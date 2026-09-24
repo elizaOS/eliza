@@ -5,7 +5,7 @@
  * Callers retain their inbox or render a viewport fallback when unavailable.
  */
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { invokeDesktopBridgeRequest } from "./electrobun-rpc";
 import {
   type NativeNotificationRequest,

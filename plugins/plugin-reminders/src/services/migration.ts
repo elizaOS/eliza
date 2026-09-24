@@ -23,7 +23,7 @@ import {
   type CarveOutDatabase,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 
 export const REMINDERS_LOG_PREFIX = "[Reminders]";
 export const REMINDERS_MIGRATION_SERVICE_TYPE = "reminders_migration";

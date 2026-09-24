@@ -1012,11 +1012,19 @@ export function isActionConfirmationStatus(
 	);
 }
 
-/**
- * Result returned by an action after execution
- * Used for action chaining and state management
- */
+/** A tool-owned observation of an entire current inventory, never a filtered search or mutation result. */
+export interface EmptyTrackedStateObservation {
+	resource: "notes";
+	scope: "entire_current_inventory";
+	count: 0;
+	revision: number;
+	observedAt: string;
+}
+
+/** Result returned by an action for chaining, grounding, and state management. */
 export interface ActionResult {
+	/** Complete current read evidence for scoped absence claims; not an effect receipt. */
+	emptyTrackedState?: EmptyTrackedStateObservation;
 	/** Whether the action succeeded */
 	success: boolean;
 

@@ -3,15 +3,13 @@
  * across redirects without retaining stale authorization attempts.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
 const PREFIX = "eliza.subscription-oauth.v1";
 const MAX_AGE_MS = 20 * 60 * 1000;
-
 export type SubscriptionOAuthMode = "localhost" | "device";
 export type SubscriptionOAuthPhase = "waiting" | "need-code";
-
 export interface PersistedSubscriptionOAuth {
   providerId: LinkedAccountProviderId;
   sessionId: string;
@@ -21,11 +19,9 @@ export interface PersistedSubscriptionOAuth {
   oauthUrl?: string;
   startedAt: number;
 }
-
 function key(providerId: LinkedAccountProviderId): string {
   return `${PREFIX}:${providerId}`;
 }
-
 export function readSubscriptionOAuth(
   providerId: LinkedAccountProviderId,
 ): PersistedSubscriptionOAuth | null {
@@ -54,7 +50,6 @@ export function readSubscriptionOAuth(
     return null;
   }
 }
-
 export function writeSubscriptionOAuth(
   value: PersistedSubscriptionOAuth,
 ): void {
@@ -66,7 +61,6 @@ export function writeSubscriptionOAuth(
     // In-memory flow remains usable when storage is unavailable.
   }
 }
-
 export function clearSubscriptionOAuth(
   providerId: LinkedAccountProviderId,
 ): void {

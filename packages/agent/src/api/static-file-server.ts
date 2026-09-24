@@ -4,17 +4,14 @@
  * Serves packages/app/web-dist/ with SPA fallback, caching, and API-base
  * injection for reverse-proxy deployments.
  */
-
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger } from "@elizaos/core";
-import {
-  isCloudProvisionedContainer,
-  resolveApiToken,
-  sendJsonError,
-} from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/core/api/http-helpers";
+import { resolveApiToken } from "@elizaos/core/runtime-env";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { serializeInlineScriptValue } from "./inline-script-serialization.ts";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import {
@@ -26,11 +23,9 @@ import { findOwnPackageRoot } from "./server-helpers.ts";
 // One-time warning when an operator opts into embedding the API token in served
 // HTML outside a cloud-provisioned container (see ELIZA_FORCE_INJECT_TOKEN below).
 let warnedForceInjectToken = false;
-
 // ---------------------------------------------------------------------------
 // MIME types
 // ---------------------------------------------------------------------------
-
 const STATIC_MIME: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".gif": "image/gif",
@@ -58,22 +53,18 @@ const STATIC_MIME: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
-
 // ---------------------------------------------------------------------------
 // UI directory resolution
 // ---------------------------------------------------------------------------
-
 /** Resolved UI directory. Lazily computed once on first request. */
 let uiDir: string | null | undefined;
 let uiIndexHtml: Buffer | null = null;
-
 export function resolveUiDir(): string | null {
   if (uiDir !== undefined) return uiDir;
   if (process.env.NODE_ENV !== "production") {
     uiDir = null;
     return null;
   }
-
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const packageRoot = findOwnPackageRoot(thisDir);
   const candidates = [
@@ -82,7 +73,6 @@ export function resolveUiDir(): string | null {
     path.resolve(packageRoot, "packages", "app", "web-dist"),
     path.resolve(packageRoot, "apps", "app", "web-dist"),
   ];
-
   for (const candidate of candidates) {
     const indexPath = path.join(candidate, "index.html");
     try {
@@ -96,16 +86,13 @@ export function resolveUiDir(): string | null {
       // Candidate not present, keep searching.
     }
   }
-
   uiDir = null;
   logger.info("[eliza-api] No built UI found — dashboard routes are disabled");
   return null;
 }
-
 // ---------------------------------------------------------------------------
 // Response helpers
 // ---------------------------------------------------------------------------
-
 export function sendStaticResponse(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -120,15 +107,18 @@ export function sendStaticResponse(
   }
   res.end(body);
 }
-
 // ---------------------------------------------------------------------------
 // Static file cache
 // ---------------------------------------------------------------------------
-
 const STATIC_CACHE_MAX = 50;
 const STATIC_CACHE_FILE_LIMIT = 512 * 1024; // 512 KB
-const staticFileCache = new Map<string, { body: Buffer; mtimeMs: number }>();
-
+const staticFileCache = new Map<
+  string,
+  {
+    body: Buffer;
+    mtimeMs: number;
+  }
+>();
 function getCachedFile(filePath: string, mtimeMs: number): Buffer {
   return getOrReadCachedFile(
     staticFileCache,
@@ -139,11 +129,9 @@ function getCachedFile(filePath: string, mtimeMs: number): Buffer {
     STATIC_CACHE_FILE_LIMIT,
   );
 }
-
 // ---------------------------------------------------------------------------
 // API base injection (reverse-proxy support)
 // ---------------------------------------------------------------------------
-
 /**
  * Serve built dashboard assets from packages/app/web-dist with SPA fallback.
  * Returns true when the request is handled.
@@ -151,17 +139,18 @@ function getCachedFile(filePath: string, mtimeMs: number): Buffer {
 export function injectApiBaseIntoHtml(
   html: Buffer,
   externalBase?: string | null,
-  opts?: { apiToken?: string | null; webPushVapidPublicKey?: string | null },
+  opts?: {
+    apiToken?: string | null;
+    webPushVapidPublicKey?: string | null;
+  },
 ): Buffer {
   const trimmedBase = externalBase?.trim();
   const trimmedToken = opts?.apiToken?.trim();
   const trimmedVapid = opts?.webPushVapidPublicKey?.trim();
   if (!trimmedBase && !trimmedToken && !trimmedVapid) return html;
-
   const headCloseTag = "</head>";
   const headCloseIndex = html.indexOf(headCloseTag);
   if (headCloseIndex < 0) return html;
-
   const parts: string[] = [];
   // Merge boot-config overrides (apiBase, webPushVapidPublicKey) into one store
   // write so separate seed scripts do not race each other.
@@ -217,14 +206,12 @@ export function injectApiBaseIntoHtml(
     );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
-
   return Buffer.concat([
     html.subarray(0, headCloseIndex),
     injection,
     html.subarray(headCloseIndex),
   ]);
 }
-
 /**
  * Decide whether to embed the API token into the served dashboard HTML, and
  * return the token to inject (or `null`).
@@ -251,7 +238,6 @@ export function resolveInjectedDashboardToken(): string | null {
   }
   return resolveApiToken(process.env);
 }
-
 /** Compose the exact SPA document returned by the static dashboard boundary. */
 export function buildServedDashboardHtml(html: Buffer): Buffer {
   const injectedToken = resolveInjectedDashboardToken();
@@ -266,18 +252,15 @@ export function buildServedDashboardHtml(html: Buffer): Buffer {
           ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
         }
       : undefined;
-
   return injectApiBaseIntoHtml(
     html,
     process.env.ELIZA_EXTERNAL_BASE_URL,
     injectOpts,
   );
 }
-
 // ---------------------------------------------------------------------------
 // SPA serving
 // ---------------------------------------------------------------------------
-
 export function serveStaticUi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -285,10 +268,8 @@ export function serveStaticUi(
 ): boolean {
   const root = resolveUiDir();
   if (!root) return false;
-
   // Keep API and WebSocket namespaces exclusively owned by server handlers.
   if (isAuthProtectedRoute(pathname)) return false;
-
   let decodedPath: string;
   try {
     decodedPath = decodeURIComponent(pathname);
@@ -296,7 +277,6 @@ export function serveStaticUi(
     sendJsonError(res, "Invalid URL path encoding", 400);
     return true;
   }
-
   const relativePath = decodedPath.replace(/^\/+/, "");
   const candidatePath = path.resolve(root, relativePath);
   const realCandidate = resolveRealPathSync(candidatePath);
@@ -309,7 +289,6 @@ export function serveStaticUi(
     sendJsonError(res, "Forbidden", 403);
     return true;
   }
-
   try {
     const stat = fs.statSync(realCandidate);
     if (stat.isFile()) {
@@ -358,19 +337,15 @@ export function serveStaticUi(
   } catch {
     // Missing file falls through to SPA index fallback below.
   }
-
   // Only serve the SPA index.html for navigation-like requests (no file extension
   // or .html). Asset requests (.vrm, .js, .png, etc.) that miss on disk should 404
   // rather than silently returning HTML — which breaks binary loaders like GLTFLoader.
   const reqExt = path.extname(decodedPath).toLowerCase();
   if (reqExt && reqExt !== ".html") return false;
-
   if (!uiIndexHtml) return false;
-
   // Reverse-proxy config and explicit self-hosted grants are resolved at this
   // boundary so tests can exercise the exact document that crosses pre-auth.
   const html = buildServedDashboardHtml(uiIndexHtml);
-
   sendStaticResponse(
     req,
     res,
@@ -384,11 +359,9 @@ export function serveStaticUi(
   );
   return true;
 }
-
 // ---------------------------------------------------------------------------
 // Route classification
 // ---------------------------------------------------------------------------
-
 export function isAuthProtectedRoute(pathname: string): boolean {
   return (
     pathname === "/api" ||

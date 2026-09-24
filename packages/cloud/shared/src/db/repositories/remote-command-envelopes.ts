@@ -4,7 +4,6 @@
  * claim lease may retry, while any post-start uncertainty becomes terminally
  * `execution_ambiguous` and is never returned to the queue.
  */
-
 import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
@@ -15,9 +14,9 @@ import {
   REMOTE_COMMAND_CLOCK_SKEW_MS,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_MAX_REPLAY_ENTRIES_PER_SESSION,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
-import type { Database, DbTransaction } from "../client";
+import { type Database, type DbTransaction } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
 import {
@@ -29,10 +28,9 @@ import { remoteHosts } from "../schemas/remote-hosts";
 import { remoteSessions } from "../schemas/remote-sessions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
-const DEFAULT_CLAIM_LEASE_MS = 30_000;
-const MAX_CLAIM_LEASE_MS = 5 * 60_000;
+const DEFAULT_CLAIM_LEASE_MS = 30000;
+const MAX_CLAIM_LEASE_MS = 5 * 60000;
 const SESSION_EXPIRY_COMMAND_BATCH = 500;
-
 export interface RemoteRelayScope {
   ownerId: string;
   grantId: string;
@@ -44,43 +42,74 @@ export interface RemoteRelayScope {
   targetKeyId: string;
   commandId: string;
 }
-
 export type EnqueueRemoteCommandResult =
-  | { kind: "queued"; command: RemoteCommandEnvelope }
-  | { kind: "duplicate"; command: RemoteCommandEnvelope }
-  | { kind: "not_found" }
-  | { kind: "expired" }
-  | { kind: "replay" }
-  | { kind: "sequence_gap" }
-  | { kind: "session_capacity" };
-
+  | {
+      kind: "queued";
+      command: RemoteCommandEnvelope;
+    }
+  | {
+      kind: "duplicate";
+      command: RemoteCommandEnvelope;
+    }
+  | {
+      kind: "not_found";
+    }
+  | {
+      kind: "expired";
+    }
+  | {
+      kind: "replay";
+    }
+  | {
+      kind: "sequence_gap";
+    }
+  | {
+      kind: "session_capacity";
+    };
 export type ClaimRemoteCommandResult =
   | {
       kind: "claimed";
       command: RemoteCommandEnvelope;
       session: typeof remoteSessions.$inferSelect;
     }
-  | { kind: "empty" }
-  | { kind: "not_found" };
-
+  | {
+      kind: "empty";
+    }
+  | {
+      kind: "not_found";
+    };
 export type StartRemoteCommandResult =
-  | { kind: "started" | "duplicate"; command: RemoteCommandEnvelope }
-  | { kind: "not_found" }
-  | { kind: "claim_lost" };
-
+  | {
+      kind: "started" | "duplicate";
+      command: RemoteCommandEnvelope;
+    }
+  | {
+      kind: "not_found";
+    }
+  | {
+      kind: "claim_lost";
+    };
 export type CompleteRemoteCommandResult =
-  | { kind: "completed" | "duplicate"; command: RemoteCommandEnvelope }
-  | { kind: "not_found" }
-  | { kind: "claim_lost" }
-  | { kind: "execution_ambiguous"; command: RemoteCommandEnvelope };
-
+  | {
+      kind: "completed" | "duplicate";
+      command: RemoteCommandEnvelope;
+    }
+  | {
+      kind: "not_found";
+    }
+  | {
+      kind: "claim_lost";
+    }
+  | {
+      kind: "execution_ambiguous";
+      command: RemoteCommandEnvelope;
+    };
 function invalidInput(message: string): ElizaError {
   return new ElizaError(message, {
     code: "REMOTE_RELAY_INVALID_INPUT",
     severity: "fatal",
   });
 }
-
 function storageFailure(message: string, context: Record<string, unknown>): ElizaError {
   return new ElizaError(message, {
     code: "REMOTE_RELAY_STORAGE_FAILURE",
@@ -88,7 +117,6 @@ function storageFailure(message: string, context: Record<string, unknown>): Eliz
     context,
   });
 }
-
 function sameEnvelope(
   left: StoredRemoteControlEnvelope | null,
   right: StoredRemoteControlEnvelope,
@@ -97,7 +125,6 @@ function sameEnvelope(
     left !== null && canonicalizeRemoteControlValue(left) === canonicalizeRemoteControlValue(right)
   );
 }
-
 function validateScope(scope: RemoteRelayScope): void {
   for (const [field, value] of Object.entries(scope).filter(([key]) => key !== "grantRevision")) {
     if (typeof value !== "string" || value.length === 0 || value.length > 512) {
@@ -108,13 +135,11 @@ function validateScope(scope: RemoteRelayScope): void {
     throw invalidInput("grantRevision must be a positive safe integer");
   }
 }
-
 function validateSequence(sequence: number): void {
   if (!Number.isSafeInteger(sequence) || sequence < 1) {
     throw invalidInput("sequence must be a positive safe integer");
   }
 }
-
 function validateEnvelopeKind(
   envelope: StoredRemoteControlEnvelope,
   messageKind: StoredRemoteControlEnvelope["messageKind"],
@@ -130,7 +155,6 @@ function validateEnvelopeKind(
     throw invalidInput("envelope sender and recipient do not match its message kind");
   }
 }
-
 function envelopeMatchesCommand(
   envelope: StoredRemoteControlEnvelope,
   command: RemoteCommandEnvelope,
@@ -147,7 +171,6 @@ function envelopeMatchesCommand(
     envelope.commandId === command.command_id
   );
 }
-
 function validateClaim(input: { claimAttempt: number; claimToken: string }): void {
   if (!Number.isSafeInteger(input.claimAttempt) || input.claimAttempt < 1) {
     throw invalidInput("claimAttempt must be a positive safe integer");
@@ -156,7 +179,6 @@ function validateClaim(input: { claimAttempt: number; claimToken: string }): voi
     throw invalidInput("claimToken is required");
   }
 }
-
 async function terminalizeSessionCommands(
   tx: DbTransaction,
   sessionId: string,
@@ -200,10 +222,8 @@ async function terminalizeSessionCommands(
       .where(inArray(remoteCommandEnvelopes.id, startedIds));
   }
 }
-
 export class RemoteCommandEnvelopesRepository {
   constructor(private readonly database: Database = dbWrite) {}
-
   async enqueue(input: {
     organizationId: string;
     ownerId: string;
@@ -228,7 +248,6 @@ export class RemoteCommandEnvelopesRepository {
     validateSequence(input.envelope.sequence);
     const expiresAt = new Date(input.envelope.expiresAt);
     if (Number.isNaN(expiresAt.getTime())) throw invalidInput("envelope expiresAt is invalid");
-
     return this.database.transaction(async (tx) => {
       const [host] = await tx
         .select()
@@ -243,7 +262,6 @@ export class RemoteCommandEnvelopesRepository {
         )
         .for("update");
       if (!host || host.runtime_key_id !== scope.targetKeyId) return { kind: "not_found" };
-
       const [session] = await tx
         .select()
         .from(remoteSessions)
@@ -266,7 +284,6 @@ export class RemoteCommandEnvelopesRepository {
       ) {
         return { kind: "not_found" };
       }
-
       const now = await readPostLockDatabaseNow(tx);
       if (session.status !== "active") {
         await terminalizeSessionCommands(
@@ -296,7 +313,6 @@ export class RemoteCommandEnvelopesRepository {
       if (input.envelope.sequence > REMOTE_CONTROL_MAX_REPLAY_ENTRIES_PER_SESSION) {
         return { kind: "session_capacity" };
       }
-
       const [existing] = await tx
         .select()
         .from(remoteCommandEnvelopes)
@@ -316,7 +332,6 @@ export class RemoteCommandEnvelopesRepository {
       }
       if (input.envelope.sequence <= session.last_sequence) return { kind: "replay" };
       if (input.envelope.sequence !== session.last_sequence + 1) return { kind: "sequence_gap" };
-
       const [command] = await tx
         .insert(remoteCommandEnvelopes)
         .values({
@@ -345,7 +360,6 @@ export class RemoteCommandEnvelopesRepository {
       return { kind: "queued", command };
     });
   }
-
   async claimNext(input: {
     sessionId: string;
     hostId: string;
@@ -353,7 +367,7 @@ export class RemoteCommandEnvelopesRepository {
     leaseMs?: number;
   }): Promise<ClaimRemoteCommandResult> {
     const leaseMs = input.leaseMs ?? DEFAULT_CLAIM_LEASE_MS;
-    if (!Number.isSafeInteger(leaseMs) || leaseMs < 1_000 || leaseMs > MAX_CLAIM_LEASE_MS) {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs < 1000 || leaseMs > MAX_CLAIM_LEASE_MS) {
       throw invalidInput("leaseMs must be between one second and five minutes");
     }
     let tokenHash: string;
@@ -363,7 +377,6 @@ export class RemoteCommandEnvelopesRepository {
       // error-policy:J3 malformed bearer material is an explicit auth miss.
       return { kind: "not_found" };
     }
-
     return this.database.transaction(async (tx) => {
       const [host] = await tx
         .select()
@@ -412,7 +425,6 @@ export class RemoteCommandEnvelopesRepository {
         await terminalizeSessionCommands(tx, session.id, now, "expired");
         return { kind: "not_found" };
       }
-
       const staleStarted = await tx
         .select({ id: remoteCommandEnvelopes.id })
         .from(remoteCommandEnvelopes)
@@ -469,7 +481,6 @@ export class RemoteCommandEnvelopesRepository {
             sql`${remoteCommandEnvelopes.expires_at} <= ${now}`,
           ),
         );
-
       const [candidate] = await tx
         .select()
         .from(remoteCommandEnvelopes)
@@ -485,7 +496,6 @@ export class RemoteCommandEnvelopesRepository {
         .limit(1)
         .for("update", { skipLocked: true });
       if (!candidate) return { kind: "empty" };
-
       const claimToken = crypto.randomUUID();
       const claimExpiresAt = new Date(
         Math.min(now.getTime() + leaseMs, candidate.expires_at.getTime()),
@@ -514,7 +524,6 @@ export class RemoteCommandEnvelopesRepository {
       return { kind: "claimed", command: claimed, session };
     });
   }
-
   async recordStart(input: {
     sessionId: string;
     commandId: string;
@@ -568,7 +577,6 @@ export class RemoteCommandEnvelopesRepository {
       return { kind: "started", command: started };
     });
   }
-
   async complete(input: {
     sessionId: string;
     commandId: string;
@@ -634,7 +642,6 @@ export class RemoteCommandEnvelopesRepository {
       return { kind: "completed", command: completed };
     });
   }
-
   async readOwnedResult(input: {
     organizationId: string;
     ownerId: string;
@@ -663,7 +670,6 @@ export class RemoteCommandEnvelopesRepository {
       .limit(1);
     return row?.command;
   }
-
   private async withHostSessionCommand<T>(
     input: {
       sessionId: string;
@@ -676,7 +682,12 @@ export class RemoteCommandEnvelopesRepository {
       command: RemoteCommandEnvelope;
       now: Date;
     }) => Promise<T>,
-  ): Promise<T | { kind: "not_found" }> {
+  ): Promise<
+    | T
+    | {
+        kind: "not_found";
+      }
+  > {
     let tokenHash: string;
     try {
       tokenHash = await hashRemoteHostToken(input.hostToken);
@@ -752,5 +763,4 @@ export class RemoteCommandEnvelopesRepository {
     });
   }
 }
-
 export const remoteCommandEnvelopesRepository = new RemoteCommandEnvelopesRepository();

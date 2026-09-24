@@ -6,10 +6,10 @@
  * live feed).
  */
 
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarSourceHealth,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarSourceHealth,
+} from "@elizaos/core/contracts/calendar";
 import {
   cleanup,
   fireEvent,

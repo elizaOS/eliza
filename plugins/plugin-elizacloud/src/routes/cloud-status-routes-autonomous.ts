@@ -1,50 +1,41 @@
-import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
-import type { AgentRuntime, Service } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
 import { nativeBillingSelection } from "./native-billing-selection";
-import {
-  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
-  resolveCloudBillingUrl,
-} from "../cloud/base-url.js";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+import { resolveCloudBillingUrl } from "../cloud/base-url.js";
+import { type AgentRuntime } from "@elizaos/core";
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+import { type RouteRequestMeta } from "@elizaos/core/api/route-helpers";
+import { type Service } from "@elizaos/core";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-
 const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 interface CloudAuthIdentityService {
-  isAuthenticated: () => boolean;
-  getUserId?: () => string | undefined;
-  getOrganizationId?: () => string | undefined;
+    isAuthenticated: () => boolean;
+    getUserId?: () => string | undefined;
+    getOrganizationId?: () => string | undefined;
 }
-
 interface CloudAuthCreditsService {
-  isAuthenticated: () => boolean;
-  getClient: () => {
-    requestData: <T>(method: "GET", path: string) => Promise<T>;
-  };
+    isAuthenticated: () => boolean;
+    getClient: () => {
+        requestData: <T>(method: "GET", path: string) => Promise<T>;
+    };
 }
-
 export interface CloudConfigLike {
-  cloud?: {
-    enabled?: boolean;
-    apiKey?: string;
-    baseUrl?: string;
-  };
+    cloud?: {
+        enabled?: boolean;
+        apiKey?: string;
+        baseUrl?: string;
+    };
 }
-
-export interface CloudStatusRouteContext
-  extends RouteRequestMeta,
-    Pick<RouteHelpers, "json"> {
-  config: CloudConfigLike;
-  runtime: AgentRuntime | null;
+export interface CloudStatusRouteContext extends RouteRequestMeta, Pick<RouteHelpers, "json"> {
+    config: CloudConfigLike;
+    runtime: AgentRuntime | null;
 }
-
 function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  return resolveCanonicalCloudApiBaseUrl(
-    rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
-  );
+    return resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL);
 }
-
 /**
  * Coerce an Eliza Cloud `balance` field into a number. The cloud API
  * returns `balance` as `string | number` — string when upstream is using
@@ -52,194 +43,148 @@ function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
  * same dollar amount.
  */
 function coerceCloudBalance(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number.parseFloat(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return null;
+        const parsed = Number.parseFloat(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
 }
-
-async function fetchCloudCreditsByApiKey(
-  baseUrl: string,
-  apiKey: string,
-): Promise<number | null> {
-  const response = await fetch(`${baseUrl}/credits/balance`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    redirect: "manual",
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (response.status >= 300 && response.status < 400) {
-    throw new Error(
-      "Cloud credits request was redirected; redirects are not allowed",
-    );
-  }
-
-  // error-policy:J3 sanitizing boundary — parse defensively so a non-OK
-  // response with a malformed body still lets us surface any `error` field
-  // below; on an OK response a parse miss leaves `balance` unresolved and the
-  // caller throws rather than fabricating a credit figure.
-  const creditResponse = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-
-  if (!response.ok) {
-    const message =
-      typeof creditResponse.error === "string" && creditResponse.error.trim()
-        ? creditResponse.error
-        : `HTTP ${response.status}`;
-    throw new Error(message);
-  }
-
-  const balance =
-    coerceCloudBalance(creditResponse.balance) ??
-    coerceCloudBalance(
-      (creditResponse.data as Record<string, unknown> | undefined)?.balance,
-    );
-  return balance;
+async function fetchCloudCreditsByApiKey(baseUrl: string, apiKey: string): Promise<number | null> {
+    const response = await fetch(`${baseUrl}/credits/balance`, {
+        headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${apiKey}`,
+        },
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
+    });
+    if (response.status >= 300 && response.status < 400) {
+        throw new Error("Cloud credits request was redirected; redirects are not allowed");
+    }
+    // error-policy:J3 sanitizing boundary — parse defensively so a non-OK
+    // response with a malformed body still lets us surface any `error` field
+    // below; on an OK response a parse miss leaves `balance` unresolved and the
+    // caller throws rather than fabricating a credit figure.
+    const creditResponse = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok) {
+        const message = typeof creditResponse.error === "string" && creditResponse.error.trim()
+            ? creditResponse.error
+            : `HTTP ${response.status}`;
+        throw new Error(message);
+    }
+    const balance = coerceCloudBalance(creditResponse.balance) ??
+        coerceCloudBalance((creditResponse.data as Record<string, unknown> | undefined)?.balance);
+    return balance;
 }
-
-export async function handleCloudStatusRoutes(
-  ctx: CloudStatusRouteContext,
-): Promise<boolean> {
-  const { res, method, pathname, config, runtime, json } = ctx;
-  const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
-
-  if (method === "GET" && pathname === "/api/cloud/status") {
-    const applicationBilling = nativeBillingSelection(runtime);
-    migrateLegacyRuntimeConfig(config as Record<string, unknown>);
-    const cloudEnabled = isCloudInferenceSelectedInConfig(
-      config as Record<string, unknown>,
-    );
-    const cloudVoiceProxyAvailable = isElizaCloudServiceSelectedInConfig(
-      config as Record<string, unknown>,
-      "tts",
-    );
-    const configApiKey = resolveCloudApiKey(config, runtime);
-    const hasApiKey = Boolean(configApiKey);
-    const cloudAuth = runtime
-      ? runtime.getService<Service & CloudAuthIdentityService>("CLOUD_AUTH")
-      : null;
-    const authConnected = Boolean(cloudAuth?.isAuthenticated());
-
-    if (authConnected || hasApiKey) {
-      json(res, {
-        applicationBilling,
-        connected: true,
-        enabled: cloudEnabled,
-        cloudVoiceProxyAvailable,
-        hasApiKey,
-        userId: authConnected ? cloudAuth?.getUserId?.() : undefined,
-        organizationId: authConnected
-          ? cloudAuth?.getOrganizationId?.()
-          : undefined,
-        topUpUrl,
-        reason: authConnected
-          ? undefined
-          : runtime
-            ? "api_key_present_not_authenticated"
-            : "api_key_present_runtime_not_started",
-      });
-      return true;
-    }
-
-    if (!runtime) {
-      json(res, {
-        applicationBilling,
-        connected: false,
-        enabled: cloudEnabled,
-        cloudVoiceProxyAvailable,
-        hasApiKey,
-        reason: "runtime_not_started",
-      });
-      return true;
-    }
-
-    json(res, {
-      applicationBilling,
-      connected: false,
-      enabled: cloudEnabled,
-      cloudVoiceProxyAvailable,
-      hasApiKey,
-      reason: "not_authenticated",
-    });
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/cloud/credits") {
-    const cloudAuth = runtime
-      ? runtime.getService<Service & CloudAuthCreditsService>("CLOUD_AUTH")
-      : null;
-    const configApiKey = resolveCloudApiKey(config, runtime);
-
-    if (!cloudAuth?.isAuthenticated()) {
-      if (!configApiKey) {
-        json(res, { balance: null, connected: false });
+export async function handleCloudStatusRoutes(ctx: CloudStatusRouteContext): Promise<boolean> {
+    const { res, method, pathname, config, runtime, json } = ctx;
+    const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
+    if (method === "GET" && pathname === "/api/cloud/status") {
+        const applicationBilling = nativeBillingSelection(runtime);
+        migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+        const cloudEnabled = isCloudInferenceSelectedInConfig(config as Record<string, unknown>);
+        const cloudVoiceProxyAvailable = isElizaCloudServiceSelectedInConfig(config as Record<string, unknown>, "tts");
+        const configApiKey = resolveCloudApiKey(config, runtime);
+        const hasApiKey = Boolean(configApiKey);
+        const cloudAuth = runtime
+            ? runtime.getService<Service & CloudAuthIdentityService>("CLOUD_AUTH")
+            : null;
+        const authConnected = Boolean(cloudAuth?.isAuthenticated());
+        if (authConnected || hasApiKey) {
+            json(res, {
+                applicationBilling,
+                connected: true,
+                enabled: cloudEnabled,
+                cloudVoiceProxyAvailable,
+                hasApiKey,
+                userId: authConnected ? cloudAuth?.getUserId?.() : undefined,
+                organizationId: authConnected
+                    ? cloudAuth?.getOrganizationId?.()
+                    : undefined,
+                topUpUrl,
+                reason: authConnected
+                    ? undefined
+                    : runtime
+                        ? "api_key_present_not_authenticated"
+                        : "api_key_present_runtime_not_started",
+            });
+            return true;
+        }
+        if (!runtime) {
+            json(res, {
+                applicationBilling,
+                connected: false,
+                enabled: cloudEnabled,
+                cloudVoiceProxyAvailable,
+                hasApiKey,
+                reason: "runtime_not_started",
+            });
+            return true;
+        }
+        json(res, {
+            applicationBilling,
+            connected: false,
+            enabled: cloudEnabled,
+            cloudVoiceProxyAvailable,
+            hasApiKey,
+            reason: "not_authenticated",
+        });
         return true;
-      }
-
-      const resolvedBaseUrl = resolveCloudApiBaseUrl(config.cloud?.baseUrl);
-      const baseUrlRejection = await validateCloudBaseUrl(resolvedBaseUrl);
-      if (baseUrlRejection) {
-        json(res, { balance: null, connected: true, error: baseUrlRejection });
+    }
+    if (method === "GET" && pathname === "/api/cloud/credits") {
+        const cloudAuth = runtime
+            ? runtime.getService<Service & CloudAuthCreditsService>("CLOUD_AUTH")
+            : null;
+        const configApiKey = resolveCloudApiKey(config, runtime);
+        if (!cloudAuth?.isAuthenticated()) {
+            if (!configApiKey) {
+                json(res, { balance: null, connected: false });
+                return true;
+            }
+            const resolvedBaseUrl = resolveCloudApiBaseUrl(config.cloud?.baseUrl);
+            const baseUrlRejection = await validateCloudBaseUrl(resolvedBaseUrl);
+            if (baseUrlRejection) {
+                json(res, { balance: null, connected: true, error: baseUrlRejection });
+                return true;
+            }
+            const balance = await fetchCloudCreditsByApiKey(resolvedBaseUrl, configApiKey);
+            if (typeof balance !== "number") {
+                throw new Error("unexpected response");
+            }
+            const low = balance < 2.0;
+            const critical = balance < 0.5;
+            json(res, {
+                connected: true,
+                balance,
+                low,
+                critical,
+                topUpUrl,
+            });
+            return true;
+        }
+        const client = cloudAuth.getClient();
+        const creditResponse = await client.requestData<Record<string, unknown>>("GET", "/credits/balance");
+        const balance = coerceCloudBalance(creditResponse?.balance) ??
+            coerceCloudBalance((creditResponse?.data as Record<string, unknown> | undefined)?.balance);
+        if (typeof balance !== "number") {
+            throw new Error(`Unexpected response shape: ${JSON.stringify(creditResponse)}`);
+        }
+        const low = balance < 2.0;
+        const critical = balance < 0.5;
+        json(res, {
+            connected: true,
+            balance,
+            low,
+            critical,
+            topUpUrl,
+        });
         return true;
-      }
-
-      const balance = await fetchCloudCreditsByApiKey(
-        resolvedBaseUrl,
-        configApiKey,
-      );
-      if (typeof balance !== "number") {
-        throw new Error("unexpected response");
-      }
-      const low = balance < 2.0;
-      const critical = balance < 0.5;
-      json(res, {
-        connected: true,
-        balance,
-        low,
-        critical,
-        topUpUrl,
-      });
-      return true;
     }
-
-    const client = cloudAuth.getClient();
-    const creditResponse = await client.requestData<Record<string, unknown>>(
-      "GET",
-      "/credits/balance",
-    );
-    const balance =
-      coerceCloudBalance(creditResponse?.balance) ??
-      coerceCloudBalance(
-        (creditResponse?.data as Record<string, unknown> | undefined)?.balance,
-      );
-    if (typeof balance !== "number") {
-      throw new Error(
-        `Unexpected response shape: ${JSON.stringify(creditResponse)}`,
-      );
-    }
-
-    const low = balance < 2.0;
-    const critical = balance < 0.5;
-    json(res, {
-      connected: true,
-      balance,
-      low,
-      critical,
-      topUpUrl,
-    });
-    return true;
-  }
-
-  return false;
+    return false;
 }

@@ -49,7 +49,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { resolveAttachmentBytes } from "@elizaos/shared/media";
+import { resolveAttachmentBytes } from "@elizaos/core/media";
 import { App, LogLevel } from "@slack/bolt";
 import { WebClient as SlackWebClient } from "@slack/web-api";
 

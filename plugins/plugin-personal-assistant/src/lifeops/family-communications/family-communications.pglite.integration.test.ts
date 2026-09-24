@@ -4,12 +4,12 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

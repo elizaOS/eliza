@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { existsSync } from "node:fs";
+import { wordErrorRate } from "@elizaos/core/voice-wer";
 /**
  * Real ASR WER under acoustic degradation — REAL speech + REAL models (#8785).
  *
@@ -15,9 +17,6 @@
  * ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELIZA_KOKORO_MODEL_DIR, optional
  * ELEVENLABS_API_KEY. Exits 2 (skip) when an artifact is missing.
  */
-
-import { existsSync } from "node:fs";
-import { wordErrorRate } from "@elizaos/shared";
 import {
   type AugmentationSpec,
   augmentPcm,
@@ -26,15 +25,16 @@ import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inferenc
 import { type BenchGates, ensureKokoroCorpus } from "./voice-bench-shared";
 
 const EL_VOICE = "21m00Tcm4TlvDq8ikWAM";
-const SR = 16_000;
-
+const SR = 16000;
 const PHRASES = [
   "What time is it right now in San Francisco",
   "Set a timer for ten minutes please",
   "Add milk and eggs to the shopping list",
 ];
-
-const CONDITIONS: Array<{ name: string; spec: AugmentationSpec }> = [
+const CONDITIONS: Array<{
+  name: string;
+  spec: AugmentationSpec;
+}> = [
   { name: "clean", spec: {} },
   { name: "noise 10dB", spec: { noiseSnrDb: 10, noiseKind: "pink", seed: 1 } },
   { name: "noise 5dB", spec: { noiseSnrDb: 5, noiseKind: "pink", seed: 1 } },
@@ -69,18 +69,15 @@ const CONDITIONS: Array<{ name: string; spec: AugmentationSpec }> = [
     },
   },
 ];
-
 function skip(m: string): never {
   console.log(`[real-robustness] SKIP: ${m}`);
   process.exit(2);
 }
-
 const lib = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 const elKey = process.env.ELEVENLABS_API_KEY?.trim();
 if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY");
 if (!bundle || !existsSync(`${bundle}/asr`)) skip("set ELIZA_ASR_BUNDLE");
-
 /** ElevenLabs TTS → raw mono PCM16 @16k → normalized Float32 [-1,1]. */
 async function ttsFloat32(text: string): Promise<Float32Array> {
   const r = await fetch(
@@ -100,11 +97,9 @@ async function ttsFloat32(text: string): Promise<Float32Array> {
   for (let i = 0; i < n; i++) out[i] = view.getInt16(i * 2, true) / 32768;
   return out;
 }
-
 const ffi = loadElizaInferenceFfi(lib);
 const ctx = ffi.create(bundle);
 ffi.mmapAcquire(ctx, "asr");
-
 // Keyless (#9577): synthesize the clean phrases once with a fused Kokoro voice
 // pack (cached); ELEVENLABS_API_KEY upgrades them to a real human voice.
 const cleanByPhrase = new Map<string, Float32Array>();
@@ -138,7 +133,6 @@ if (elKey) {
     cleanByPhrase.set(phrase, items[i].pcm);
   }
 }
-
 // rows[condition] = list of WER across phrases
 const rows = new Map<string, number[]>();
 try {
@@ -169,7 +163,6 @@ try {
   ffi.destroy(ctx);
   ffi.close();
 }
-
 console.log("[real-robustness] ── mean WER by condition (real eliza-1-asr) ──");
 for (const cond of CONDITIONS) {
   const arr = rows.get(cond.name) ?? [];

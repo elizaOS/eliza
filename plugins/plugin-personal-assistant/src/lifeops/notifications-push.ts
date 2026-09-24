@@ -6,12 +6,10 @@
  */
 
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/shared";
-
+import { createIntegrationTelemetrySpan } from "@elizaos/core/integration-observability";
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
 export class NtfyConfigError extends Error {
   readonly code = "NTFY_NOT_CONFIGURED" as const;
   constructor(message: string) {
@@ -19,12 +17,10 @@ export class NtfyConfigError extends Error {
     this.name = "NtfyConfigError";
   }
 }
-
 export interface NtfyConfig {
   baseUrl: string;
   defaultTopic: string;
 }
-
 export function readNtfyConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NtfyConfig {
@@ -40,14 +36,11 @@ export function readNtfyConfigFromEnv(
     defaultTopic: defaultTopic ?? "eliza",
   };
 }
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 /** Ntfy message priority. 1 = min, 3 = default, 5 = max. */
 export type NtfyPriority = 1 | 2 | 3 | 4 | 5;
-
 export interface SendPushRequest {
   /** Topic to publish to. Falls back to NTFY_DEFAULT_TOPIC. */
   topic?: string;
@@ -62,27 +55,22 @@ export interface SendPushRequest {
   /** URL to open when notification is clicked. */
   click?: string;
 }
-
 export interface SendPushResult {
   messageId: string | null;
   deliveredAt: string;
 }
-
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
-
 /** Hard timeout on the Ntfy publish HTTP call. Push delivery is best-effort,
  *  so we cap latency rather than letting a slow upstream stall the caller. */
-const NTFY_PUBLISH_TIMEOUT_MS = 10_000;
-
+const NTFY_PUBLISH_TIMEOUT_MS = 10000;
 /** Validates and coerces priority to the 1–5 range. */
 function normalizePriority(value: number | undefined): NtfyPriority {
   if (value === undefined) return 3;
   const clamped = Math.round(Math.max(1, Math.min(5, value)));
   return clamped as NtfyPriority;
 }
-
 /**
  * Publish a push notification via Ntfy.
  *
@@ -96,7 +84,6 @@ export async function sendPush(
   const resolvedConfig = config ?? readNtfyConfigFromEnv();
   const topic = request.topic?.trim() || resolvedConfig.defaultTopic;
   const url = `${resolvedConfig.baseUrl}/${encodeURIComponent(topic)}`;
-
   const headers: Record<string, string> = {
     "Content-Type": "text/plain; charset=utf-8",
     Title: request.title,
@@ -108,13 +95,11 @@ export async function sendPush(
   if (request.click) {
     headers.Click = request.click;
   }
-
   const span = createIntegrationTelemetrySpan({
     boundary: "lifeops",
     operation: "ntfy_publish",
     timeoutMs: NTFY_PUBLISH_TIMEOUT_MS,
   });
-
   let response: Response;
   try {
     response = await fetch(url, {
@@ -136,7 +121,6 @@ export async function sendPush(
     span.failure({ error, errorKind: "network_error" });
     throw new Error(`Ntfy publish failed: ${msg}`);
   }
-
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     const errorMsg = body || `HTTP ${response.status}`;
@@ -147,7 +131,6 @@ export async function sendPush(
     span.failure({ statusCode: response.status, errorKind: "http_error" });
     throw new Error(`Ntfy publish failed (${response.status}): ${errorMsg}`);
   }
-
   const data = (await response.json().catch(() => ({}))) as {
     id?: string;
     time?: number;
@@ -157,12 +140,10 @@ export async function sendPush(
   const deliveredAt = data.time
     ? new Date(data.time * 1000).toISOString()
     : new Date().toISOString();
-
   span.success({ statusCode: response.status });
   logger.info(
     { boundary: "lifeops", integration: "ntfy", topic, messageId },
     `[lifeops-push] Push notification delivered to topic '${topic}'`,
   );
-
   return { messageId, deliveredAt };
 }

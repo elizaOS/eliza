@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "playwright-core": "^1.56.0"
   },
   "peerDependencies": {
@@ -66,7 +65,8 @@
     "tsup": "8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.0.1"
+    "vitest": "5.0.1",
+    "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

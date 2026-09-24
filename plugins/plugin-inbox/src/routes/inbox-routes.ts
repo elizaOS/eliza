@@ -6,21 +6,24 @@
  * `executeInboxQueueOperation`). Owner-gated; validates and coerces request
  * bodies before handing pre-validated input to the service.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared";
+
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+} from "@elizaos/core/api/http-plugin";
 import {
   executeInboxQueueOperation,
   type InboxQueueOperationResult,
 } from "../actions/inbox.ts";
 import { InboxService } from "../inbox/service.ts";
-import type { InboundMessage, TriageClassification } from "../inbox/types.ts";
+import {
+  type InboundMessage,
+  type TriageClassification,
+} from "../inbox/types.ts";
 
 type InboxRouteOperation = "reply" | "snooze" | "archive" | "approve";
-
 const TRIAGE_CLASSIFICATIONS = new Set<TriageClassification>([
   "ignore",
   "info",
@@ -28,49 +31,47 @@ const TRIAGE_CLASSIFICATIONS = new Set<TriageClassification>([
   "needs_reply",
   "urgent",
 ]);
-
 function json(status: number, body: unknown): RouteHandlerResult {
   return { status, body };
 }
-
 function bodyRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === "object" && !Array.isArray(body)
     ? (body as Record<string, unknown>)
     : {};
 }
-
 function queryBool(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string") return false;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
-
 function queryInt(value: unknown, fallback: number): number {
   if (typeof value !== "string") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
-
 /**
  * Coerce a request-body `exampleLimit` to a positive integer. A missing value
  * is accepted (the service applies its own default); a present-but-invalid
  * value — non-number, non-finite, or non-positive — is rejected so the route
  * returns a clean 400 rather than forwarding a malformed count into raw SQL.
  */
-function parseExampleLimit(
-  value: unknown,
-): { ok: true; value?: number } | { ok: false } {
+function parseExampleLimit(value: unknown):
+  | {
+      ok: true;
+      value?: number;
+    }
+  | {
+      ok: false;
+    } {
   if (value === undefined) return { ok: true };
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return { ok: false };
   }
   return { ok: true, value: Math.floor(value) };
 }
-
 function firstQuery(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
-
 function routeParams(
   ctx: RouteHandlerContext,
   operation?: InboxRouteOperation,
@@ -82,7 +83,6 @@ function routeParams(
     ...(operation ? { action: operation, subaction: operation } : {}),
   };
 }
-
 /**
  * Map a thrown inbox-operation error to an HTTP status. The operation throws
  * for three distinct causes that must not collapse to one code: a missing/
@@ -108,7 +108,6 @@ function classifyInboxError(error: unknown): {
   }
   return { status: 500, message };
 }
-
 async function runOperation(
   runtime: IAgentRuntime,
   operation: InboxRouteOperation,
@@ -133,7 +132,6 @@ async function runOperation(
     ...result.data,
   });
 }
-
 async function handleTriageRead(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
@@ -153,7 +151,6 @@ async function handleTriageRead(
       : await service.getRepository().getUnresolved({ limit, includeSnoozed });
   return json(200, { ok: true, entries });
 }
-
 async function handleTriageWrite(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
@@ -181,14 +178,12 @@ async function handleTriageWrite(
   });
   return json(200, { ok: true, ...result });
 }
-
 async function inboxRouteHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
   if (ctx.isTrustedLocal !== true) {
     return json(403, { ok: false, error: "Inbox routes are owner-only" });
   }
-
   const path = ctx.path;
   if (path === "/api/lifeops/inbox/triage") {
     return ctx.method === "POST"
@@ -209,8 +204,10 @@ async function inboxRouteHandler(
   }
   return json(404, { ok: false, error: "Inbox route not found" });
 }
-
-const inboxRouteSpecs: Array<{ type: Route["type"]; path: string }> = [
+const inboxRouteSpecs: Array<{
+  type: Route["type"];
+  path: string;
+}> = [
   { type: "GET", path: "/api/lifeops/inbox/triage" },
   { type: "POST", path: "/api/lifeops/inbox/triage" },
   { type: "POST", path: "/api/lifeops/inbox/:id/reply" },
@@ -218,7 +215,6 @@ const inboxRouteSpecs: Array<{ type: Route["type"]; path: string }> = [
   { type: "POST", path: "/api/lifeops/inbox/:id/archive" },
   { type: "POST", path: "/api/lifeops/inbox/:id/approve" },
 ];
-
 export const inboxRoutes: Route[] = inboxRouteSpecs.map((spec) => ({
   ...spec,
   rawPath: true,

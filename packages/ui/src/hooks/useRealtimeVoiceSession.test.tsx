@@ -306,6 +306,7 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
     expect(result.current.status).toBe("thinking");
+    // Keep the acknowledgment visible until playback completes.
     expect(result.current.progressText).toBe("Checking your note.");
 
     await act(async () => {

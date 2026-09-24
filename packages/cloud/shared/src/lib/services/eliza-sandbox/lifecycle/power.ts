@@ -106,6 +106,33 @@ export interface SandboxPowerHost {
   }>;
 }
 
+/**
+ * The agent's latest compute funding window by (period_start, id) DESC — the
+ * same ordering every latest-window read in this file uses. Suspend routing
+ * consults its retirement binding to distinguish a committed funded stop
+ * awaiting reclaim from expiry's unbacked stop-in-place; picking any other
+ * row would route on a stale window. Exported so the real-PostgreSQL suite
+ * can pin this query's ordering against adversarial physical row order.
+ */
+export async function latestAgentComputeFundingWindow(
+  db: Pick<typeof dbWrite, "select">,
+  agentId: string,
+  orgId: string,
+): Promise<{ retirementBackupId: string | null } | undefined> {
+  const [latest] = await db
+    .select({ retirementBackupId: agentComputeFunding.retirement_backup_id })
+    .from(agentComputeFunding)
+    .where(
+      and(
+        eq(agentComputeFunding.agent_id, agentId),
+        eq(agentComputeFunding.organization_id, orgId),
+      ),
+    )
+    .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+    .limit(1);
+  return latest;
+}
+
 export class SandboxPower {
   constructor(private readonly host: SandboxPowerHost) {}
 
@@ -585,21 +612,27 @@ export class SandboxPower {
     const fundedSource = await dbWrite.transaction((tx) =>
       hasOpenAgentComputeFunding(tx, agentId, orgId),
     );
+    let retireUnfundedRuntime = false;
     if (
       expectedLifecycleRevision !== undefined &&
       (await this.host.getProvider()).computeFundingCapability === "host-lease-v1"
     ) {
-      const [latest] = await dbWrite
-        .select({ id: agentComputeFunding.id })
-        .from(agentComputeFunding)
-        .where(
-          and(
-            eq(agentComputeFunding.agent_id, agentId),
-            eq(agentComputeFunding.organization_id, orgId),
-          ),
-        )
-        .limit(1);
-      if (latest) {
+      const latest = await latestAgentComputeFundingWindow(dbWrite, agentId, orgId);
+      retireUnfundedRuntime =
+        !fundedSource && latest !== undefined && snapshotSource.status !== "stopped";
+      // Paid retirement is a funding-state decision, not a funding-history one.
+      // Settled windows persist forever, so routing on row existence would send
+      // every post-funded agent into the sleep lifecycle, which refuses the two
+      // states expiry reconciliation deliberately produces (stopped in place
+      // without a retirement binding, and running with no open window). The
+      // stopped fast path preserves retained state; a running unfunded runtime
+      // needs a committed backup and explicit cold-retirement publication. Route only an
+      // open window, or a stopped record whose latest window is retirement-bound
+      // (the unfunded reclaim-from-backup crash-retry path).
+      if (
+        fundedSource ||
+        (snapshotSource.status === "stopped" && latest?.retirementBackupId != null)
+      ) {
         const sleep = await this.executeSleepWithStopAuthority(agentId, orgId, {
           jobId,
           lifecycleRevision: expectedLifecycleRevision,
@@ -825,7 +858,9 @@ export class SandboxPower {
               fundedAt,
               "billing_recovery",
             );
-          if (settlement.status === "funded_until") {
+          // A verified absent runtime must finish stop publication even when
+          // credit has recovered. Keep settlement, but never revive its intent.
+          if (!recoverAbsent && settlement.status === "funded_until") {
             if (
               !(await deferFundedAgentStopInTransaction(tx, {
                 agentId,
@@ -843,7 +878,7 @@ export class SandboxPower {
               reason: "billing_recovered",
             } as const;
           }
-          if (settlement.status !== "insufficient_credits") {
+          if (!recoverAbsent && settlement.status !== "insufficient_credits") {
             await tx
               .update(agentComputeStopIntents)
               .set({
@@ -1006,6 +1041,13 @@ export class SandboxPower {
           }
         }
 
+        // A removed formerly funded runtime cannot be published as retained:
+        // resume would purchase a successor lease for its deleted container.
+        // Only the committed, verified fresh snapshot authorizes cold retirement.
+        if (retireUnfundedRuntime && !preparedProof)
+          throw new ElizaError("Cold retirement requires a committed stop backup", {
+            code: "AGENT_STOP_BACKUP_UNAVAILABLE",
+          });
         let containerStopped = false;
         const attempt = (stopIntent?.attempts ?? 0) + 1;
         if (stopIntent) {
@@ -1066,7 +1108,13 @@ export class SandboxPower {
         // zero-row tier race. It mirrors the guard in SQL as defense in depth.
         await tx.execute(sql`
         UPDATE ${agentSandboxes}
-        SET status = 'stopped',
+        SET status = ${retireUnfundedRuntime ? "sleeping" : "stopped"},
+            ${
+              retireUnfundedRuntime
+                ? sql`sandbox_id = NULL, node_id = NULL, container_name = NULL,
+              bridge_port = NULL, web_ui_port = NULL, headscale_ip = NULL,`
+                : sql``
+            }
             billing_status = ${retainedBackupBilling ? "active" : "suspended"},
             scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
             bridge_url = NULL, health_url = NULL, updated_at = NOW()
@@ -1162,6 +1210,15 @@ export class SandboxPower {
       return { success: true, containerStarted: true, reprovisioned: false };
 
     try {
+      if (rec.status === "sleeping") {
+        const restored = await this.executeWake(agentId, orgId);
+        return {
+          success: restored.success,
+          containerStarted: restored.success,
+          reprovisioned: restored.reprovisioned,
+          ...(restored.error ? { error: restored.error } : {}),
+        };
+      }
       const retained = await this.executeFundedResume(agentId, orgId);
       if (retained) return retained;
     } catch (error) {

@@ -16,8 +16,8 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
-  Transcript,
-} from "@elizaos/shared";
+} from "@elizaos/core/meetings";
+import type { Transcript } from "@elizaos/core/transcripts";
 import { Radio } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api/client";
@@ -31,7 +31,6 @@ const TERMINAL_MEETING_STATUSES: ReadonlySet<MeetingSessionStatus> = new Set([
   "ended",
   "failed",
 ]);
-
 /** A session actively recording (its transcript is streaming live). */
 function isRecordingSession(session: MeetingSession): boolean {
   return (
@@ -40,7 +39,6 @@ function isRecordingSession(session: MeetingSession): boolean {
     session.transcriptId.length > 0
   );
 }
-
 export function LiveMeetingPage(): React.JSX.Element {
   const [activeMeetings, setActiveMeetings] = React.useState<MeetingSession[]>(
     [],
@@ -55,7 +53,6 @@ export function LiveMeetingPage(): React.JSX.Element {
   >({});
   const [joiningMeeting, setJoiningMeeting] = React.useState(false);
   const [meetingError, setMeetingError] = React.useState<string | null>(null);
-
   // Fetch a live transcript. `force` re-fetches even one we already hold (used
   // when a meeting finalizes so its pane flips out of "recording"); otherwise a
   // functional-state guard skips a record we have, keeping this stable.
@@ -88,7 +85,6 @@ export function LiveMeetingPage(): React.JSX.Element {
     },
     [],
   );
-
   // Only fetches + sets the active sessions, so it never closes over the
   // transcript cache and stays referentially stable across renders.
   const refresh = React.useCallback(async () => {
@@ -104,11 +100,9 @@ export function LiveMeetingPage(): React.JSX.Element {
       );
     }
   }, []);
-
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
-
   // Pull the live transcript for each recording session we don't yet hold,
   // whenever the active-session list changes.
   React.useEffect(() => {
@@ -118,7 +112,6 @@ export function LiveMeetingPage(): React.JSX.Element {
       }
     }
   }, [activeMeetings, loadLiveTranscript]);
-
   // Session lifecycle over the agent WebSocket: keep the active strip fresh and
   // refetch a finalized transcript so its live pane flips out of "recording".
   React.useEffect(() => {
@@ -135,7 +128,6 @@ export function LiveMeetingPage(): React.JSX.Element {
       void refresh();
     });
   }, [refresh, loadLiveTranscript]);
-
   const onJoinMeeting = React.useCallback(
     (input: MeetingJoinRequest) => {
       setJoiningMeeting(true);
@@ -152,7 +144,6 @@ export function LiveMeetingPage(): React.JSX.Element {
     },
     [refresh],
   );
-
   const onStopMeeting = React.useCallback(
     (sessionId: string) => {
       setMeetingError(null);
@@ -167,9 +158,7 @@ export function LiveMeetingPage(): React.JSX.Element {
     },
     [refresh],
   );
-
   const recordingSessions = activeMeetings.filter(isRecordingSession);
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <ShellViewAgentSurface viewId="transcripts">

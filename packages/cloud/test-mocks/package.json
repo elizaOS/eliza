@@ -24,25 +24,18 @@
     "lint:check": "bunx @biomejs/biome check package.json src test bin",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
     "format:check": "bunx @biomejs/biome format package.json src test bin",
-    "test": "bun --conditions=eliza-source test --config=/dev/null --isolate test/"
+    "test": "bun test test"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "hono": "4.13.8"
+    "hono": "4.13.8",
+    "@elizaos/testing": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "1.4.2"
-  },
-  "elizaos": {
-    "scripts": {
-      "testLanes": [
-        "server"
-      ]
-    }
   }
 }

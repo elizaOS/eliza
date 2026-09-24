@@ -7,7 +7,7 @@
  * registry-client-local.ts when building catalog entries for discovered apps.
  */
 import { logger } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "@elizaos/shared";
+import { packageNameToAppDisplayName } from "@elizaos/core/contracts/apps";
 import type {
   AppUiExtensionConfig,
   RegistryAppMeta,

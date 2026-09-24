@@ -6,22 +6,19 @@ export type {
 	PermissionStatus,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/permissions";
 
 import type {
 	PermissionId,
 	PermissionState,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/permissions";
 export type SystemPermissionId = PermissionId;
-
 /** Local variant keeps a loose index signature for legacy Electrobun RPC code. */
 export interface AllPermissionsState {
 	[key: string]: PermissionState;
 }
-
 export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 	{
 		id: "accessibility",
@@ -257,11 +254,9 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 		requiredForFeatures: ["lifeops", "mobile-signals"],
 	},
 ];
-
 const PERMISSION_MAP = new Map<SystemPermissionId, SystemPermissionDefinition>(
 	SYSTEM_PERMISSIONS.map((p) => [p.id, p]),
 );
-
 export function isPermissionApplicable(
 	id: SystemPermissionId,
 	platform: Platform,

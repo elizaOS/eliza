@@ -44,7 +44,7 @@ export async function createProgressiveContentBenchmarkFactory(input) {
       throw new TypeError("PostgreSQL benchmark factory requires POSTGRES_URL");
     }
     const sqlModule = await import(
-      "../../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts"
+      "../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts"
     );
     const factories =
       await sqlModule.createProgressivePostgresSqlTargetFactories({
@@ -107,7 +107,7 @@ export async function createProgressiveContentProductionFactories(input) {
         "../../agent/src/testing/progressive-content-attachment-target.ts"
       ),
       import(
-        "../../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts"
+        "../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts"
       ),
     ]);
   const file = await fileModule.createProgressiveFileTargetFactory({

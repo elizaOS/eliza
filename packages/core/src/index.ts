@@ -180,7 +180,9 @@ export {
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
+	DISCOVER_ACTIONS_NAME,
 	DISCOVER_TOOLS_NAME,
+	isDiscoveryActionName,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
 export { validateToolArgs } from "./actions/validate-tool-args.ts";

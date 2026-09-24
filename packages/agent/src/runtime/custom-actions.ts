@@ -26,7 +26,7 @@ import {
 import {
   createSelfApiRequestHeaders,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 import type {
   CustomActionDef,

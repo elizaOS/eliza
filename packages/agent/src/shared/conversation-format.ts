@@ -8,7 +8,7 @@
  * to an empty label rather than leaking "NaNd ago" into provider context.
  */
 import type { IAgentRuntime, Memory, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
 
 const readString = asNonEmptyString;
 

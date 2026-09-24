@@ -28,10 +28,6 @@ const ELIZA_ROOT = existsSync(
 // beta packages.
 const SEED_TARGETS = [
   { label: "@elizaos/core", dir: path.join(ELIZA_ROOT, "packages", "core") },
-  {
-    label: "@elizaos/shared",
-    dir: path.join(ELIZA_ROOT, "packages", "shared"),
-  },
   { label: "@elizaos/ui", dir: path.join(ELIZA_ROOT, "packages", "ui") },
   {
     label: "@elizaos/auth",

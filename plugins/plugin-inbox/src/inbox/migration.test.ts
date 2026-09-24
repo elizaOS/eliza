@@ -5,7 +5,7 @@
  * source schema is never dropped or altered.
  */
 
-import type { CarveOutDatabase } from "@elizaos/shared";
+import { type CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_INBOX_TABLES,

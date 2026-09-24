@@ -15,6 +15,7 @@ import {
   promoteSubactionsToActions,
   type UUID,
 } from "@elizaos/core";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import {
   type CalendarHostGate,
@@ -23,7 +24,6 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import {
   afterAll,
   afterEach,

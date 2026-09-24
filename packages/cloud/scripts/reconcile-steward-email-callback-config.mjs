@@ -4,7 +4,7 @@
  * Eliza app origin, then reads it back so deployment fails on persistent drift.
  */
 import { pathToFileURL } from "node:url";
-import { ELIZA_DOMAIN_CONTRACTS } from "../../shared/src/elizacloud/domain-contract.ts";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { validateStewardEmailCallbackConfig } from "./verify-steward-email-callback-config.mjs";
 
 const CALLBACK_PATH = "/auth/callback/email";

@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
-
 /**
  * Exercises local model management and SSE state reconciliation in jsdom.
  * The model list, first-run recommendation and publication policy are real;
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
-import { MODEL_CATALOG } from "@elizaos/shared/local-inference";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
   act,
   cleanup,
@@ -17,6 +16,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelHubSnapshot } from "../../api/client-local-inference";
+import { ApiError } from "../../api/client-types-core";
+import { LocalInferencePanel } from "./LocalInferencePanel";
 
 const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
@@ -26,7 +27,6 @@ const clientMock = vi.hoisted(() => ({
   getVoiceModelPreferences: vi.fn(),
   listVoiceModels: vi.fn(),
 }));
-
 const eventSourceMock = vi.hoisted(() => ({
   available: true,
   source: {
@@ -39,10 +39,13 @@ const eventSourceMock = vi.hoisted(() => ({
 }));
 const appStateMock = vi.hoisted(() => ({
   setActionNotice: vi.fn(),
-  t: (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
+  t: (
+    _key: string,
+    options?: {
+      defaultValue?: string;
+    },
+  ) => options?.defaultValue ?? _key,
 }));
-
 vi.mock("../../api", () => ({ client: clientMock }));
 vi.mock("../../hooks/useRenderGuard", () => ({ useRenderGuard: vi.fn() }));
 vi.mock("../../hooks/useRole", () => ({
@@ -55,9 +58,14 @@ vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>
     selector(appStateMock),
 }));
-vi.mock("@elizaos/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/shared")>()),
+vi.mock("@elizaos/ui/utils/asset-url", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => path,
+}));
+vi.mock("@elizaos/core/utils/eliza-globals", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/core/utils/eliza-globals")
+  >()),
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({
@@ -70,11 +78,14 @@ vi.mock("../../utils/renderer-diagnostics", () => ({
 vi.mock("./useDeviceBridgeStatus", () => ({
   useDeviceBridgeStatus: () => ({}),
 }));
-
 vi.mock("./ActiveModelBar", () => ({
-  ActiveModelBar: ({ active }: { active: { modelId: string | null } }) => (
-    <output data-testid="active-model">{active.modelId ?? "none"}</output>
-  ),
+  ActiveModelBar: ({
+    active,
+  }: {
+    active: {
+      modelId: string | null;
+    };
+  }) => <output data-testid="active-model">{active.modelId ?? "none"}</output>,
 }));
 vi.mock("./DeviceBridgeStatus", () => ({
   DeviceBridgeStatusBar: () => null,
@@ -86,10 +97,6 @@ vi.mock("../settings/settings-control-primitives", () => ({
   AdvancedSettingsDisclosure: ({ children }: { children: React.ReactNode }) =>
     children,
 }));
-
-import { ApiError } from "../../api/client-types-core";
-import { LocalInferencePanel } from "./LocalInferencePanel";
-
 const unassignedSlot = {
   assigned: false,
   assignedModelId: null,
@@ -144,7 +151,6 @@ const initialHub: ModelHubSnapshot = {
   },
   installed: [],
 };
-
 beforeEach(() => {
   clientMock.getLocalInferenceHub.mockReset();
   // Keep the unrelated voice bootstrap pending so this focused stream test
@@ -159,31 +165,26 @@ beforeEach(() => {
   eventSourceMock.source.onerror = null;
   eventSourceMock.source.onmessage = null;
 });
-
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
-
 describe("LocalInferencePanel stream snapshots", () => {
   it("preserves authoritative active state when a downloads snapshot omits it", async () => {
     const { promise: hubPromise, resolve: resolveHub } =
       Promise.withResolvers<ModelHubSnapshot>();
     clientMock.getLocalInferenceHub.mockReturnValue(hubPromise);
-
     render(<LocalInferencePanel />);
     await act(async () => {
       resolveHub(initialHub);
       await hubPromise;
     });
-
     await waitFor(() => {
       expect(screen.getByTestId("active-model").textContent).toBe(
         "eliza-1-initial",
       );
     });
-
     act(() => {
       eventSourceMock.source.onmessage?.(
         new MessageEvent("message", {
@@ -191,11 +192,9 @@ describe("LocalInferencePanel stream snapshots", () => {
         }),
       );
     });
-
     expect(screen.getByTestId("active-model").textContent).toBe(
       "eliza-1-initial",
     );
-
     act(() => {
       eventSourceMock.source.onmessage?.(
         new MessageEvent("message", {
@@ -210,9 +209,7 @@ describe("LocalInferencePanel stream snapshots", () => {
         }),
       );
     });
-
     expect(screen.getByTestId("active-model").textContent).toBe("eliza-1-next");
-
     act(() => {
       eventSourceMock.source.onmessage?.(
         new MessageEvent("message", {
@@ -227,7 +224,6 @@ describe("LocalInferencePanel stream snapshots", () => {
     expect(screen.getByTestId("active-model").textContent).toBe("none");
   });
 });
-
 it("keeps an installed unpublished model removable without offering it as a fresh download", async () => {
   const baseModel = MODEL_CATALOG[0];
   if (!baseModel) throw new Error("Local catalog fixture unavailable");
@@ -248,9 +244,13 @@ it("keeps an installed unpublished model removable without offering it as a fres
       },
     ],
   };
-  clientMock.getLocalInferenceHub
-    .mockResolvedValueOnce(installedHub)
-    .mockResolvedValue({ ...installedHub, installed: [] });
+  clientMock.getLocalInferenceHub.mockResolvedValue(installedHub);
+  clientMock.uninstallLocalInferenceModel.mockImplementationOnce(async () => {
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...installedHub,
+      installed: [],
+    });
+  });
   render(<LocalInferencePanel />);
   fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
   await waitFor(() =>
@@ -266,7 +266,6 @@ it("keeps an installed unpublished model removable without offering it as a fres
   ).toBeNull();
   expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
 });
-
 describe("download snapshots without a usable stream", () => {
   const job = {
     jobId: "native-download",
@@ -279,7 +278,6 @@ describe("download snapshots without a usable stream", () => {
     startedAt: "2026-09-06T00:00:00.000Z",
     updatedAt: "2026-09-06T00:00:01.000Z",
   };
-
   it.each(["unavailable", "rejected"])(
     "reconciles progress and completion when streaming is %s and stops after unmount",
     async (stream) => {
@@ -295,7 +293,6 @@ describe("download snapshots without a usable stream", () => {
       }
       fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
       expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
-
       const pending = Promise.withResolvers<ModelHubSnapshot>();
       clientMock.getLocalInferenceHub.mockReturnValue(pending.promise);
       await act(async () => {
@@ -313,7 +310,6 @@ describe("download snapshots without a usable stream", () => {
         screen.getByRole("progressbar").getAttribute("aria-valuenow"),
       ).toBe("20");
       expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-
       clientMock.getLocalInferenceHub.mockResolvedValue({
         ...initialHub,
         downloads: [{ ...job, received: 70 }],
@@ -339,7 +335,6 @@ describe("download snapshots without a usable stream", () => {
       );
     },
   );
-
   it.each(["resolve", "reject"])(
     "ignores a pre-cancellation poll that later %ss after cancellation refresh",
     async (settlement) => {
@@ -352,7 +347,6 @@ describe("download snapshots without a usable stream", () => {
       render(<LocalInferencePanel />);
       await act(async () => {});
       fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
-
       const stale = Promise.withResolvers<ModelHubSnapshot>();
       clientMock.getLocalInferenceHub
         .mockReturnValueOnce(stale.promise)
@@ -376,7 +370,6 @@ describe("download snapshots without a usable stream", () => {
       expect(screen.queryByText("Obsolete snapshot failed")).toBeNull();
     },
   );
-
   it.each([
     { status: 401, streamAvailable: false },
     { status: 403, streamAvailable: false },
@@ -424,7 +417,6 @@ describe("download snapshots without a usable stream", () => {
       ).toBe("20");
     },
   );
-
   it("retains downloads and exposes a retry when a fallback snapshot fails", async () => {
     vi.useFakeTimers();
     eventSourceMock.available = false;
@@ -454,7 +446,6 @@ describe("download snapshots without a usable stream", () => {
     expect(screen.queryByText("Snapshot unavailable")).toBeNull();
     expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
   });
-
   it("reconciles completion received before the first hub snapshot", async () => {
     const initial = Promise.withResolvers<ModelHubSnapshot>();
     const opened = Promise.withResolvers<ModelHubSnapshot>();
@@ -479,7 +470,6 @@ describe("download snapshots without a usable stream", () => {
     expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
-
   it("does not roll stream progress back when an earlier refresh resolves", async () => {
     clientMock.getLocalInferenceHub.mockResolvedValue({
       ...initialHub,
@@ -511,7 +501,6 @@ describe("download snapshots without a usable stream", () => {
       "70",
     );
   });
-
   it("refreshes immediately after download and cancellation without waiting for streaming", async () => {
     eventSourceMock.available = false;
     const hub = {

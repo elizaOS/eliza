@@ -3,22 +3,22 @@
  * family and thus eligible for the first-run local path.
  */
 
-import type { CatalogModel, InstalledModel } from "@elizaos/shared";
+import type {
+  CatalogModel,
+  InstalledModel,
+} from "@elizaos/core/contracts/local-inference";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   eliza1TierPublishStatus,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
 export function isEliza1ModelFamilyId(id: string): boolean {
   return id.startsWith("eliza-1-");
 }
-
 export function isDefaultLocalModelFamily(model: CatalogModel): boolean {
   return (
     isEliza1ModelFamilyId(model.id) && DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id)
   );
 }
-
 export function isSettingsDefaultLocalModel(model: CatalogModel): boolean {
   return (
     !model.hiddenFromCatalog &&
@@ -26,7 +26,6 @@ export function isSettingsDefaultLocalModel(model: CatalogModel): boolean {
     (model.publishStatus ?? eliza1TierPublishStatus(model.id)) === "published"
   );
 }
-
 export function isVerifiedCuratedEliza1Download(
   model: InstalledModel,
 ): boolean {
@@ -37,7 +36,6 @@ export function isVerifiedCuratedEliza1Download(
     model.bundleVerifiedAt.length > 0
   );
 }
-
 export function filterSettingsDefaultLocalModels(
   catalog: CatalogModel[],
 ): CatalogModel[] {

@@ -4,7 +4,7 @@
  * restore cannot be overtaken by an earlier hide.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 
 import { isIOS, isNative } from "../../platform/init";
 

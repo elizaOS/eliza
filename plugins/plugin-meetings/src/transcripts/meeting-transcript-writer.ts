@@ -14,7 +14,7 @@
  *    regardless of which ASR provider serves it) through an unsupported deep
  *    wildcard subpath (`./services/voice/transcript-store`) — brittle surface.
  *  - (c) is ~100 lines against the SHARED `Transcript` contract
- *    (@elizaos/shared/transcripts), which both the write and read sides JSON
+ *    (@elizaos/core/transcripts), which both the write and read sides JSON
  *    round-trip. The record-shape golden test in
  *    `meeting-transcript-writer.test.ts` parses the persisted row with the
  *    same reader logic transcripts-routes uses, so drift fails loudly.
@@ -27,7 +27,6 @@
  * .addDocument` with the transcript-knowledge payload (tag `"transcript"`,
  * `clientDocumentId` = transcript id, `textBacked: true`).
  */
-
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,11 +37,11 @@ import {
   resolveStateDir,
   type UUID,
 } from "@elizaos/core";
-import type {
-  MeetingEndReason,
-  MeetingParticipant,
-  MeetingPlatform,
-} from "@elizaos/shared";
+import {
+  type MeetingEndReason,
+  type MeetingParticipant,
+  type MeetingPlatform,
+} from "@elizaos/core/meetings";
 import {
   type Transcript,
   type TranscriptConsentState,
@@ -52,29 +51,28 @@ import {
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/transcripts";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.source` marker — matches plugin-local-inference's store. */
 export const TRANSCRIPT_METADATA_TYPE = "transcript";
 /** Tag every mirrored transcript carries so it's filterable as a transcript. */
 export const TRANSCRIPT_DOCUMENT_TAG = "transcript";
-
 /** Default milliseconds between incremental segment flushes to the store. */
-export const DEFAULT_WRITE_THROTTLE_MS = 5_000;
-
+export const DEFAULT_WRITE_THROTTLE_MS = 5000;
 /** The subset of `IAgentRuntime` the writer needs (real runtime satisfies it). */
 export interface MeetingTranscriptRuntime {
   agentId: UUID;
   createMemory(memory: Memory, tableName: string): Promise<UUID>;
   getMemoryById(id: UUID): Promise<Memory | null>;
   updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+    memory: Partial<Memory> & {
+      id: UUID;
+      metadata?: MemoryMetadata;
+    },
   ): Promise<boolean>;
   getService(name: string): unknown;
 }
-
 /** The documents/knowledge service surface the mirror needs (structural). */
 interface DocumentsLike {
   addDocument(options: {
@@ -88,10 +86,14 @@ interface DocumentsLike {
     scope?: string;
     addedFrom?: string;
     metadata?: Record<string, unknown>;
-    fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
-  }): Promise<{ storedDocumentMemoryId: UUID }>;
+    fragments?: Array<{
+      text: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  }): Promise<{
+    storedDocumentMemoryId: UUID;
+  }>;
 }
-
 export interface StartMeetingTranscriptInput {
   sessionId: UUID;
   worldId: UUID;
@@ -104,7 +106,6 @@ export interface StartMeetingTranscriptInput {
   /** Capture-time consent decision; callers must never omit or infer it later. */
   consentState: TranscriptConsentState;
 }
-
 export interface FinalizeMeetingTranscriptInput {
   segments: TranscriptSegment[];
   endReason: MeetingEndReason;
@@ -112,11 +113,13 @@ export interface FinalizeMeetingTranscriptInput {
   /** Retained session audio (mono PCM16 WAV) — persisted to the media store. */
   audioWav?: Buffer | null;
   /** Already-rehosted source audio, used by authenticated platform imports. */
-  retainedAudio?: { url: string; contentType: string };
+  retainedAudio?: {
+    url: string;
+    contentType: string;
+  };
   /** Import/capture provenance stored with the transcript record. */
   metadata?: Record<string, unknown>;
 }
-
 /** Serialize a transcript into the exact memory row the Transcripts view reads. */
 function transcriptContentAndMetadata(transcript: Transcript): {
   content: Memory["content"];
@@ -138,7 +141,6 @@ function transcriptContentAndMetadata(transcript: Transcript): {
     },
   };
 }
-
 /**
  * Parse the stored {@link Transcript} back out of a memory row — the exact
  * reader logic plugin-local-inference's transcripts-routes uses
@@ -146,7 +148,11 @@ function transcriptContentAndMetadata(transcript: Transcript): {
  * GET_MEETING_TRANSCRIPT action read rows the same way the view does.
  */
 export function readTranscriptRow(row: Memory): Transcript | null {
-  const raw = (row.content as { transcript?: unknown }).transcript;
+  const raw = (
+    row.content as {
+      transcript?: unknown;
+    }
+  ).transcript;
   if (typeof raw !== "string") return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -155,7 +161,6 @@ export function readTranscriptRow(row: Memory): Transcript | null {
     return null;
   }
 }
-
 /**
  * Persist mono PCM16 WAV bytes into the content-addressed media store dir the
  * agent already serves at `/api/media/<sha256>.wav` (same mechanism as
@@ -164,7 +169,11 @@ export function readTranscriptRow(row: Memory): Transcript | null {
 export function persistMeetingMedia(
   bytes: Buffer,
   extension: string,
-): { id: string; url: string; checksum: string } {
+): {
+  id: string;
+  url: string;
+  checksum: string;
+} {
   const normalizedExtension = extension.toLowerCase().replace(/^\./, "");
   if (!/^[a-z0-9]{1,10}$/.test(normalizedExtension)) {
     throw new Error("[MeetingService] media extension is invalid");
@@ -180,11 +189,9 @@ export function persistMeetingMedia(
     checksum: hash,
   };
 }
-
 export function persistMeetingAudioWav(wav: Buffer): string {
   return persistMeetingMedia(wav, "wav").url;
 }
-
 /**
  * Lifecycle writer for ONE meeting's transcript record: create at session
  * start with status `"recording"`, throttled incremental segment updates while
@@ -199,7 +206,6 @@ export class MeetingTranscriptWriter {
   private lastWriteAt = 0;
   private pendingFlush: ReturnType<typeof setTimeout> | null = null;
   private finalized = false;
-
   constructor(
     private readonly runtime: MeetingTranscriptRuntime,
     private readonly throttleMs: number = DEFAULT_WRITE_THROTTLE_MS,
@@ -207,7 +213,6 @@ export class MeetingTranscriptWriter {
   ) {
     this.transcriptId = crypto.randomUUID() as UUID;
   }
-
   /** Create the transcript record in status "recording". */
   async start(input: StartMeetingTranscriptInput): Promise<Transcript> {
     const createdAt = this.now();
@@ -265,7 +270,6 @@ export class MeetingTranscriptWriter {
     );
     return transcript;
   }
-
   /**
    * Replace the live segment set (confirmed + pending tail) and schedule a
    * throttled store update — at most one write per `throttleMs`.
@@ -287,7 +291,6 @@ export class MeetingTranscriptWriter {
       this.pendingFlush.unref?.();
     }
   }
-
   /**
    * Incremental store write. Invoked via `void this.flush()` (fire-and-forget)
    * from the throttle path, so it must never reject — a DB hiccup would surface
@@ -331,7 +334,6 @@ export class MeetingTranscriptWriter {
       );
     }
   }
-
   /** Final write: status "ready", timings, participants, audio + knowledge mirror. */
   async finalize(input: FinalizeMeetingTranscriptInput): Promise<Transcript> {
     if (!this.transcript || !this.input) {
@@ -345,7 +347,6 @@ export class MeetingTranscriptWriter {
       clearTimeout(this.pendingFlush);
       this.pendingFlush = null;
     }
-
     const endedAt = this.now();
     if (input.audioWav && input.retainedAudio) {
       throw new Error(
@@ -361,7 +362,6 @@ export class MeetingTranscriptWriter {
       audioUrl = input.retainedAudio.url;
       audioContentType = input.retainedAudio.contentType;
     }
-
     const final: Transcript = {
       ...this.transcript,
       segments: input.segments,
@@ -388,11 +388,9 @@ export class MeetingTranscriptWriter {
         },
       },
     };
-
     const knowledgeDocumentId = await this.mirrorToKnowledge(final);
     if (knowledgeDocumentId) final.knowledgeDocumentId = knowledgeDocumentId;
     this.transcript = final;
-
     const { content, metadata } = transcriptContentAndMetadata(final);
     const ok = await this.runtime.updateMemory({
       id: this.transcriptId,
@@ -416,7 +414,6 @@ export class MeetingTranscriptWriter {
     );
     return final;
   }
-
   /**
    * Best-effort searchable mirror into the documents/knowledge store — a
    * search-index failure must never lose the meeting record.

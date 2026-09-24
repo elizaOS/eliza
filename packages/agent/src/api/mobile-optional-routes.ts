@@ -12,15 +12,14 @@
  */
 import type http from "node:http";
 import {
-  isMobilePlatform,
-  normalizeDeploymentTargetConfig,
   readRequestBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-helpers";
+import { normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { loadEffectiveElizaConfig } from "../config/config.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
-
 /**
  * Visual/voice settings persisted by GET/POST /api/stream/settings. The
  * dashboard hydrates these at startup (client.getStreamSettings()); the
@@ -35,7 +34,6 @@ export type StreamVisualSettings = {
     provider?: string;
   };
 };
-
 const EMPTY_MOBILE_APPROVAL_SNAPSHOT = {
   mode: "off",
   pendingCount: 0,
@@ -43,22 +41,23 @@ const EMPTY_MOBILE_APPROVAL_SNAPSHOT = {
 } as const;
 const STREAM_SETTINGS_MAX_JSON_BYTES = 4096;
 let streamSettings: StreamVisualSettings = {};
-
-function validateStreamSettings(
-  raw: unknown,
-):
-  | { settings: StreamVisualSettings; error?: undefined }
-  | { settings?: undefined; error: string } {
+function validateStreamSettings(raw: unknown):
+  | {
+      settings: StreamVisualSettings;
+      error?: undefined;
+    }
+  | {
+      settings?: undefined;
+      error: string;
+    } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { error: "Settings must be a non-array object" };
   }
-
   if (JSON.stringify(raw).length > STREAM_SETTINGS_MAX_JSON_BYTES) {
     return {
       error: `Settings payload exceeds ${STREAM_SETTINGS_MAX_JSON_BYTES} byte limit`,
     };
   }
-
   const input = raw as Record<string, unknown>;
   const result: StreamVisualSettings = {};
   if ("theme" in input) {
@@ -110,18 +109,15 @@ function validateStreamSettings(
     }
     result.voice = voice;
   }
-
   const knownKeys = new Set(["theme", "avatarIndex", "voice"]);
   for (const key of Object.keys(input)) {
     if (!knownKeys.has(key)) return { error: `Unknown settings key: ${key}` };
   }
   return { settings: result };
 }
-
 function isTrueMobileLocalAgent(): boolean {
   return isMobilePlatform() || process.env.ELIZA_MOBILE_LOCAL_AGENT === "1";
 }
-
 function getRuntimeModeFallbackSnapshot(): {
   mode: "local" | "cloud" | "remote";
   deploymentRuntime: "local" | "cloud" | "remote";
@@ -149,13 +145,11 @@ function getRuntimeModeFallbackSnapshot(): {
     ),
   };
 }
-
 function parseJsonPayload(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
   if (raw.trim().length === 0) return {};
   return JSON.parse(raw);
 }
-
 function sendEmptyComputerUseApprovalStream(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -171,12 +165,10 @@ function sendEmptyComputerUseApprovalStream(
       snapshot: EMPTY_MOBILE_APPROVAL_SNAPSHOT,
     })}\n\n`,
   );
-
   const heartbeat = setInterval(() => {
     res.write(": keepalive\n\n");
-  }, 30_000);
+  }, 30000);
   heartbeat.unref?.();
-
   const cleanup = () => {
     clearInterval(heartbeat);
     res.end();
@@ -184,7 +176,6 @@ function sendEmptyComputerUseApprovalStream(
   req.once("close", cleanup);
   req.once("aborted", cleanup);
 }
-
 export async function handleMobileOptionalRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -195,21 +186,20 @@ export async function handleMobileOptionalRoutes(
     sendJson(res, getRuntimeModeFallbackSnapshot());
     return true;
   }
-
   if (method === "GET" && pathname === "/api/computer-use/approvals") {
     sendJson(res, EMPTY_MOBILE_APPROVAL_SNAPSHOT);
     return true;
   }
-
   if (method === "GET" && pathname === "/api/computer-use/approvals/stream") {
     sendEmptyComputerUseApprovalStream(req, res);
     return true;
   }
-
   if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
     try {
       const body = parseJsonPayload(await readRequestBody(req)) as
-        | { mode?: unknown }
+        | {
+            mode?: unknown;
+          }
         | undefined;
       if (body?.mode !== undefined && body.mode !== "off") {
         sendJsonError(
@@ -230,16 +220,16 @@ export async function handleMobileOptionalRoutes(
     sendJson(res, { mode: EMPTY_MOBILE_APPROVAL_SNAPSHOT.mode });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/stream/settings") {
     sendJson(res, { ok: true, settings: streamSettings });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/stream/settings") {
     try {
       const body = parseJsonPayload(await readRequestBody(req)) as
-        | { settings?: unknown }
+        | {
+            settings?: unknown;
+          }
         | undefined;
       const result = validateStreamSettings(body?.settings);
       if (result.error || !result.settings) {
@@ -258,12 +248,10 @@ export async function handleMobileOptionalRoutes(
     }
     return true;
   }
-
   if (method === "GET" && pathname === "/api/catalog/apps") {
     sendJson(res, []);
     return true;
   }
-
   if (method === "GET" && pathname === "/api/drop/status") {
     // Off-state only. This mobile fallback reports zero/empty mint constants
     // rather than fabricating an on-chain supply cap or shiny price.
@@ -279,7 +267,6 @@ export async function handleMobileOptionalRoutes(
     });
     return true;
   }
-
   // coding-agents preflight/coordinator + lifeops activity-signals stubs are
   // declared once in the absent-plugin route stub registry (shared with the
   // host's handleBuiltinOptionalRoutes) so the two handlers cannot drift
@@ -297,6 +284,5 @@ export async function handleMobileOptionalRoutes(
     );
     return true;
   }
-
   return false;
 }

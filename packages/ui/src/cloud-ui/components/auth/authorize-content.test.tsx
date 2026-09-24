@@ -1,7 +1,7 @@
 /** Verifies AuthorizeContent through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 /**
  * Component tests for AuthorizeContent, the app-authorize consent screen. Drives
  * the signed-in and signed-out branches and the OAuth-start / cancel-redirect

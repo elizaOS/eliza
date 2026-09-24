@@ -8,8 +8,7 @@
  * heavy top-level side effects and is not unit-testable — so the resolution
  * contract can be exercised directly by `brand-env-reads.test.ts`.
  */
-import { readAliasedEnv } from "@elizaos/shared";
-
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 /**
  * Renderer URL for the desktop webview: an explicit `ELIZA_RENDERER_URL` (or its
  * brand alias) wins, then Vite's `VITE_DEV_SERVER_URL`, else empty so the caller
@@ -23,7 +22,6 @@ export function resolveRendererUrlFromEnv(): string {
 		""
 	);
 }
-
 /**
  * App namespace used to locate the per-brand state-dir `.env`. Falls back to the
  * compiled-in brand namespace when `ELIZA_NAMESPACE` (or its brand alias) is unset.

@@ -166,17 +166,17 @@ class ElizaMINTAgent:
                 )
                 trajectory.num_tool_uses += 1
 
-                output_preview = (exec_result.output or "")[:500]
+                output_text = (exec_result.output or "")
                 if exec_result.success:
                     current_prompt = (
-                        f"Code executed successfully. Output:\n```\n{output_preview}\n```\n\n"
+                        f"Code executed successfully. Output:\n```\n{output_text}\n```\n\n"
                         f"Now provide your final answer in the exact format requested. "
                         f"End with: Final answer: <YOUR_ANSWER>"
                     )
                 else:
-                    error_preview = (exec_result.error or "Unknown error")[:300]
+                    error_text = (exec_result.error or "Unknown error")
                     current_prompt = (
-                        f"Code error:\n```\n{error_preview}\n```\n\nPlease fix the code and try again."
+                        f"Code error:\n```\n{error_text}\n```\n\nPlease fix the code and try again."
                     )
                 continue
 

@@ -4,7 +4,6 @@
  * content-addressed file service; this module stores only durable metadata,
  * review decisions, pins, and authorization bindings.
  */
-
 import crypto from "node:crypto";
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
@@ -17,15 +16,21 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { DocumentService } from "@elizaos/plugin-assistant";
-import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
+import { type PdfCompleteDocument, type PdfService } from "@elizaos/plugin-pdf";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { z } from "zod";
+import {
+  assertFamilyWorkspaceReadable,
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+  withActiveFamilyWorkspaceTransaction,
+} from "../family-workflows/workspace-operation-store.js";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -84,26 +89,20 @@ const agreementExtractionSchema = z.strictObject({
     }),
   ),
 });
-
-import {
-  assertFamilyWorkspaceReadable,
-  beginFamilyWorkspaceOperation,
-  settleFamilyWorkspaceOperation,
-  withActiveFamilyWorkspaceTransaction,
-} from "../family-workflows/workspace-operation-store.js";
-
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
   "lifeops_household_agreement_knowledge";
-
 interface AgreementOcrService {
   describe(input: {
     displayId: string;
     sourceX: number;
     sourceY: number;
     pngBytes: Uint8Array;
-  }): Promise<{ blocks: ReadonlyArray<{ text: string }> }>;
+  }): Promise<{
+    blocks: ReadonlyArray<{
+      text: string;
+    }>;
+  }>;
 }
-
 async function resolveAgreementOcr(): Promise<AgreementOcrService | null> {
   const specifier: string = "@elizaos/plugin-vision/ocr-with-coords";
   try {
@@ -117,16 +116,20 @@ async function resolveAgreementOcr(): Promise<AgreementOcrService | null> {
     return null;
   }
 }
-
 export type AgreementObligationStatus = "proposed" | "approved" | "rejected";
 export type KnowledgePinTargetType = "agent" | "chat";
-
 /** Current destinations an owner can select without entering technical identifiers. */
 export interface AgreementPinTargets {
-  agent: { id: string; name: string | null };
-  chats: Array<{ id: string; name: string | null; source: string }>;
+  agent: {
+    id: string;
+    name: string | null;
+  };
+  chats: Array<{
+    id: string;
+    name: string | null;
+    source: string;
+  }>;
 }
-
 /** Owner-visible choices retain exact permission identities behind human-readable labels. */
 export interface AgreementGuestAccessOptions {
   candidates: Array<{
@@ -148,7 +151,6 @@ export interface AgreementGuestAccessOptions {
     denial: string | null;
   }>;
 }
-
 export interface ParentingAgreementArtifact {
   id: string;
   agentId: string;
@@ -168,7 +170,6 @@ export interface ParentingAgreementArtifact {
   uploadedByEntityId: string;
   createdAt: string;
 }
-
 export interface ParentingAgreementObligation {
   id: string;
   agentId: string;
@@ -186,7 +187,6 @@ export interface ParentingAgreementObligation {
   createdAt: string;
   updatedAt: string;
 }
-
 const preparedReviewSchema = z.strictObject({
   artifactId: z.string(),
   sourceSha256: z.string(),
@@ -195,9 +195,7 @@ const preparedReviewSchema = z.strictObject({
   explanation: z.string().min(1),
   obligationIds: z.array(z.string()),
 });
-
 type PreparedReviewRecord = z.infer<typeof preparedReviewSchema>;
-
 function preparedReviewFromJson(value: unknown): PreparedReviewRecord {
   try {
     return preparedReviewSchema.parse(
@@ -213,7 +211,6 @@ function preparedReviewFromJson(value: unknown): PreparedReviewRecord {
     );
   }
 }
-
 export interface PreparedAgreementReview {
   artifactId: string;
   generatedAt: string;
@@ -221,7 +218,6 @@ export interface PreparedAgreementReview {
   outcome: "proposals" | "no_proposals";
   obligations: ParentingAgreementObligation[];
 }
-
 export interface HouseholdKnowledgePin {
   id: string;
   agentId: string;
@@ -232,7 +228,6 @@ export interface HouseholdKnowledgePin {
   pinnedAt: string;
   unpinnedAt: string | null;
 }
-
 export interface HouseholdKnowledgeGrant {
   id: string;
   agentId: string;
@@ -247,12 +242,10 @@ export interface HouseholdKnowledgeGrant {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface ParentingAgreementView {
   artifact: ParentingAgreementArtifact;
   obligations: ParentingAgreementObligation[];
 }
-
 /** Guest-safe source metadata. Permanent byte capabilities and owner internals are excluded. */
 export type ParentingAgreementGuestArtifact = Pick<
   ParentingAgreementArtifact,
@@ -265,12 +258,10 @@ export type ParentingAgreementGuestArtifact = Pick<
   | "pageCount"
   | "createdAt"
 >;
-
 export interface ParentingAgreementGuestView {
   artifact: ParentingAgreementGuestArtifact;
   obligations: ParentingAgreementGuestObligation[];
 }
-
 export type ParentingAgreementGuestObligation = Pick<
   ParentingAgreementObligation,
   | "id"
@@ -282,7 +273,6 @@ export type ParentingAgreementGuestObligation = Pick<
   | "status"
   | "decidedAt"
 >;
-
 export interface AgreementGuestGrantPreview {
   allowed: boolean;
   artifactId: string;
@@ -294,9 +284,11 @@ export interface AgreementGuestGrantPreview {
     "mutate_agreement",
     "inherit_access_from_pin",
   ];
-  denial: { code: string; message: string } | null;
+  denial: {
+    code: string;
+    message: string;
+  } | null;
 }
-
 type AgreementKnowledgeErrorCode =
   | "AGREEMENT_ACCESS_DENIED"
   | "AGREEMENT_ARTIFACT_NOT_FOUND"
@@ -307,10 +299,8 @@ type AgreementKnowledgeErrorCode =
   | "AGREEMENT_EXTRACTION_UNAVAILABLE"
   | "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED"
   | "AGREEMENT_INGESTION_CLEANUP_FAILED";
-
 export class AgreementKnowledgeError extends ElizaError {
   override readonly name = "AgreementKnowledgeError";
-
   constructor(
     message: string,
     code: AgreementKnowledgeErrorCode,
@@ -325,10 +315,8 @@ export class AgreementKnowledgeError extends ElizaError {
     });
   }
 }
-
 /** An ingestion failure whose operation settled before any source persistence began. */
 export class AgreementSourceUnchangedError extends AgreementKnowledgeError {}
-
 function requiredText(value: unknown, field: string): string {
   const text = toText(value).trim();
   if (!text) {
@@ -340,12 +328,10 @@ function requiredText(value: unknown, field: string): string {
   }
   return text;
 }
-
 function optionalText(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   return toText(value);
 }
-
 function positiveInteger(value: unknown, field: string): number {
   const number = toNumber(value, Number.NaN);
   if (!Number.isSafeInteger(number) || number < 1) {
@@ -357,7 +343,6 @@ function positiveInteger(value: unknown, field: string): number {
   }
   return number;
 }
-
 function obligationStatus(value: unknown): AgreementObligationStatus {
   if (value === "proposed" || value === "approved" || value === "rejected") {
     return value;
@@ -368,7 +353,6 @@ function obligationStatus(value: unknown): AgreementObligationStatus {
     { status: toText(value) },
   );
 }
-
 function artifactFromRow(
   row: Record<string, unknown>,
 ): ParentingAgreementArtifact {
@@ -395,7 +379,6 @@ function artifactFromRow(
     createdAt: requiredText(row.created_at, "createdAt"),
   };
 }
-
 function obligationFromRow(
   row: Record<string, unknown>,
 ): ParentingAgreementObligation {
@@ -420,7 +403,6 @@ function obligationFromRow(
     updatedAt: requiredText(row.updated_at, "updatedAt"),
   };
 }
-
 function pinFromRow(row: Record<string, unknown>): HouseholdKnowledgePin {
   const targetType = requiredText(row.target_type, "targetType");
   if (targetType !== "agent" && targetType !== "chat") {
@@ -441,7 +423,6 @@ function pinFromRow(row: Record<string, unknown>): HouseholdKnowledgePin {
     unpinnedAt: optionalText(row.unpinned_at),
   };
 }
-
 function grantFromRow(row: Record<string, unknown>): HouseholdKnowledgeGrant {
   return {
     id: requiredText(row.id, "id"),
@@ -461,13 +442,11 @@ function grantFromRow(row: Record<string, unknown>): HouseholdKnowledgeGrant {
     updatedAt: requiredText(row.updated_at, "updatedAt"),
   };
 }
-
 export class AgreementKnowledgeRepository {
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
   ) {}
-
   private async executeAgreementMutation(statement: string) {
     return withActiveFamilyWorkspaceTransaction(
       this.runtime,
@@ -481,7 +460,6 @@ export class AgreementKnowledgeRepository {
       (tx) => executeRawSqlTx(tx, statement),
     );
   }
-
   /** All mutable export records are read from one PostgreSQL statement snapshot. */
   async readExportSnapshot(artifactId: string) {
     const scoped = `agent_id = ${sqlQuote(this.agentId)}`;
@@ -520,8 +498,11 @@ export class AgreementKnowledgeRepository {
       this.runtime,
       queries
         .map(
-          ([kind, table, condition]) =>
-            `SELECT ${sqlQuote(kind)} AS kind, to_jsonb(record)::text AS payload
+          ([
+            kind,
+            table,
+            condition,
+          ]) => `SELECT ${sqlQuote(kind)} AS kind, to_jsonb(record)::text AS payload
        FROM app_lifeops.${table} AS record WHERE ${scoped} AND ${condition}`,
         )
         .join(" UNION ALL "),
@@ -570,7 +551,6 @@ export class AgreementKnowledgeRepository {
       ),
     };
   }
-
   async recordExport(input: {
     artifact: ParentingAgreementArtifact;
     exportId: string;
@@ -600,7 +580,6 @@ export class AgreementKnowledgeRepository {
         "AGREEMENT_INVALID_CONTRACT",
       );
   }
-
   async insertArtifact(
     input: Omit<ParentingAgreementArtifact, "version"> & {
       extractionSha256: string;
@@ -667,7 +646,6 @@ export class AgreementKnowledgeRepository {
       return artifactFromRow(row);
     });
   }
-
   async getArtifact(id: string): Promise<ParentingAgreementArtifact | null> {
     const rows = await executeRawSql(
       this.runtime,
@@ -677,7 +655,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows[0] ? artifactFromRow(rows[0]) : null;
   }
-
   async listArtifacts(
     householdId?: string,
   ): Promise<ParentingAgreementArtifact[]> {
@@ -690,7 +667,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(artifactFromRow);
   }
-
   async getArtifactByContent(input: {
     householdId: string;
     agreementKey: string;
@@ -707,7 +683,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows[0] ? artifactFromRow(rows[0]) : null;
   }
-
   private obligationInsertSql(
     obligation: ParentingAgreementObligation,
   ): string {
@@ -733,7 +708,6 @@ export class AgreementKnowledgeRepository {
       },
     );
   }
-
   async insertObligation(
     obligation: ParentingAgreementObligation,
   ): Promise<ParentingAgreementObligation> {
@@ -749,11 +723,13 @@ export class AgreementKnowledgeRepository {
     }
     return obligationFromRow(row);
   }
-
   /** Serializes correction retries with other review writes without resetting a saved decision. */
   async insertOwnerProposalOnce(
     obligation: ParentingAgreementObligation,
-  ): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+  ): Promise<{
+    obligation: ParentingAgreementObligation;
+    created: boolean;
+  }> {
     return withActiveFamilyWorkspaceTransaction(
       this.runtime,
       [
@@ -794,7 +770,6 @@ export class AgreementKnowledgeRepository {
       },
     );
   }
-
   async readPreparedReview(
     artifactId: string,
   ): Promise<PreparedReviewRecord | null> {
@@ -812,7 +787,6 @@ export class AgreementKnowledgeRepository {
       );
     return preparedReviewFromJson(rows[0]?.decision_json);
   }
-
   async commitPreparedReview(
     record: PreparedReviewRecord,
     obligations: ParentingAgreementObligation[],
@@ -894,7 +868,6 @@ export class AgreementKnowledgeRepository {
       },
     );
   }
-
   async decideObligation(input: {
     obligationId: string;
     status: Exclude<AgreementObligationStatus, "proposed">;
@@ -932,7 +905,6 @@ export class AgreementKnowledgeRepository {
     }
     return obligationFromRow(row);
   }
-
   async listObligations(
     artifactId: string,
   ): Promise<ParentingAgreementObligation[]> {
@@ -945,7 +917,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(obligationFromRow);
   }
-
   async listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -955,7 +926,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(obligationFromRow);
   }
-
   async setPin(input: {
     artifactId: string;
     targetType: KnowledgePinTargetType;
@@ -996,7 +966,6 @@ export class AgreementKnowledgeRepository {
     }
     return pinFromRow(row);
   }
-
   async listPins(artifactId: string): Promise<HouseholdKnowledgePin[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -1008,7 +977,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(pinFromRow);
   }
-
   async listActivePinsForTargets(
     targets: ReadonlyArray<{
       targetType: KnowledgePinTargetType;
@@ -1032,7 +1000,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(pinFromRow);
   }
-
   async removePin(input: {
     pinId: string;
     unpinnedByEntityId: string;
@@ -1064,7 +1031,6 @@ export class AgreementKnowledgeRepository {
     }
     return pinFromRow(row);
   }
-
   async upsertGrant(input: HouseholdKnowledgeGrant) {
     const rows = await this.executeAgreementMutation(
       agreementMutationSql(
@@ -1104,7 +1070,6 @@ export class AgreementKnowledgeRepository {
     }
     return grantFromRow(row);
   }
-
   async listGrants(
     artifactId: string,
     principalEntityId: string,
@@ -1119,7 +1084,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(grantFromRow);
   }
-
   async listArtifactGrants(
     artifactId: string,
   ): Promise<HouseholdKnowledgeGrant[]> {
@@ -1132,7 +1096,6 @@ export class AgreementKnowledgeRepository {
     );
     return rows.map(grantFromRow);
   }
-
   async revokeGrant(input: {
     grantId: string;
     revokedByEntityId: string;
@@ -1169,7 +1132,6 @@ export class AgreementKnowledgeRepository {
     return grantFromRow(row);
   }
 }
-
 function nonEmpty(value: string, field: string): string {
   const normalized = value.trim();
   if (!normalized) {
@@ -1181,7 +1143,6 @@ function nonEmpty(value: string, field: string): string {
   }
   return normalized;
 }
-
 function guestArtifactProjection(
   artifact: ParentingAgreementArtifact,
 ): ParentingAgreementGuestArtifact {
@@ -1196,7 +1157,6 @@ function guestArtifactProjection(
     createdAt: artifact.createdAt,
   };
 }
-
 function guestObligationProjection(
   obligation: ParentingAgreementObligation,
 ): ParentingAgreementGuestObligation {
@@ -1211,7 +1171,6 @@ function guestObligationProjection(
     decidedAt: obligation.decidedAt,
   };
 }
-
 function requirePositiveInteger(value: number, field: string): number {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new AgreementKnowledgeError(
@@ -1222,14 +1181,12 @@ function requirePositiveInteger(value: number, field: string): number {
   }
   return value;
 }
-
 export class AgreementKnowledgeService {
   private readonly now: () => Date;
   private readonly reviewInFlight = new Map<
     string,
     Promise<PreparedAgreementReview>
   >();
-
   constructor(
     private readonly deps: {
       runtime: IAgentRuntime;
@@ -1245,7 +1202,6 @@ export class AgreementKnowledgeService {
   ) {
     this.now = deps.now ?? (() => new Date());
   }
-
   private requireOwner(actorEntityId: string): void {
     if (actorEntityId !== SELF_ENTITY_ID) {
       throw new AgreementKnowledgeError(
@@ -1255,18 +1211,15 @@ export class AgreementKnowledgeService {
       );
     }
   }
-
   async listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
     await this.requireReadableWorkspace();
     const obligations = await this.deps.repository.listApprovedObligations();
     await this.requireReadableWorkspace();
     return obligations;
   }
-
   private requireReadableWorkspace(): Promise<void> {
     return assertFamilyWorkspaceReadable(this.deps.runtime, this.deps.agentId);
   }
-
   async prepareOwnerReview(input: {
     artifactId: string;
     ownerEntityId: string;
@@ -1287,7 +1240,6 @@ export class AgreementKnowledgeService {
         this.reviewInFlight.delete(artifactId);
     }
   }
-
   async readOwnerReview(input: {
     artifactId: string;
     ownerEntityId: string;
@@ -1301,7 +1253,6 @@ export class AgreementKnowledgeService {
       record,
     );
   }
-
   private async reviewSource(
     artifactId: string,
   ): Promise<AgreementReviewSource> {
@@ -1358,7 +1309,6 @@ export class AgreementKnowledgeService {
       );
     }
   }
-
   private async prepareOwnerReviewOnce(
     artifactId: string,
   ): Promise<PreparedAgreementReview> {
@@ -1407,7 +1357,6 @@ export class AgreementKnowledgeService {
     }
     return this.preparedReviewResult(source, record);
   }
-
   private async preparedReviewResult(
     source: AgreementReviewSource,
     record: PreparedReviewRecord,
@@ -1443,7 +1392,6 @@ export class AgreementKnowledgeService {
       obligations,
     };
   }
-
   private requireOwnerOrAgent(actorEntityId: string): void {
     if (
       actorEntityId !== SELF_ENTITY_ID &&
@@ -1456,7 +1404,6 @@ export class AgreementKnowledgeService {
       );
     }
   }
-
   private async settleIngestionOperation(
     operationId: string,
     priorFailure?: unknown,
@@ -1477,7 +1424,6 @@ export class AgreementKnowledgeService {
       throw failure;
     }
   }
-
   private async requireArtifact(id: string) {
     await this.requireReadableWorkspace();
     const artifact = await this.deps.repository.getArtifact(
@@ -1493,7 +1439,6 @@ export class AgreementKnowledgeService {
     await this.requireReadableWorkspace();
     return artifact;
   }
-
   async listOwnerAgreements(input: {
     ownerEntityId: string;
     householdId?: string;
@@ -1513,7 +1458,6 @@ export class AgreementKnowledgeService {
     await this.requireReadableWorkspace();
     return views;
   }
-
   async createAgreementVersion(input: {
     householdId?: string;
     agreementKey: string;
@@ -1807,11 +1751,14 @@ export class AgreementKnowledgeService {
       throw error;
     }
   }
-
   async readOwnerPdf(input: {
     artifactId: string;
     ownerEntityId: string;
-  }): Promise<{ bytes: Buffer; mimeType: string; fileName: string }> {
+  }): Promise<{
+    bytes: Buffer;
+    mimeType: string;
+    fileName: string;
+  }> {
     this.requireOwner(input.ownerEntityId);
     const artifact = await this.requireArtifact(input.artifactId);
     const fileStorage = this.deps.fileStorage();
@@ -1844,11 +1791,14 @@ export class AgreementKnowledgeService {
       fileName: artifact.originalFilename,
     };
   }
-
   async exportOwnerAgreement(input: {
     artifactId: string;
     ownerEntityId: string;
-  }): Promise<{ bytes: Buffer; mimeType: string; fileName: string }> {
+  }): Promise<{
+    bytes: Buffer;
+    mimeType: string;
+    fileName: string;
+  }> {
     this.requireOwner(input.ownerEntityId);
     // Verify immutable bytes before recording a prepared export. Mutable review,
     // pin, and grant state is subsequently captured in a single SQL snapshot.
@@ -1883,7 +1833,10 @@ export class AgreementKnowledgeService {
           sha256: string;
           pageCount: number;
         }
-      | { status: "unavailable"; reason: string };
+      | {
+          status: "unavailable";
+          reason: string;
+        };
     const ingestion = snapshot.audit.find(
       (event) => event.event_type === "agreement_ingested",
     );
@@ -2020,13 +1973,15 @@ export class AgreementKnowledgeService {
       fileName: `agreement-${snapshot.artifact.id}-v${snapshot.artifact.version}.zip`,
     };
   }
-
   /** Adds an owner correction as an unapproved proposal; identical retries recover its current decision. */
   async addOwnerReviewProposal(input: {
     artifactId: string;
     ownerEntityId: string;
     proposal: AgreementReviewProposal;
-  }): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+  }): Promise<{
+    obligation: ParentingAgreementObligation;
+    created: boolean;
+  }> {
     this.requireOwner(input.ownerEntityId);
     const artifactId = normalizeHouseholdIdentifier(
       input.artifactId,
@@ -2064,7 +2019,6 @@ export class AgreementKnowledgeService {
       updatedAt: now,
     });
   }
-
   async proposeObligation(input: {
     artifactId: string;
     title: string;
@@ -2107,7 +2061,6 @@ export class AgreementKnowledgeService {
       updatedAt: now,
     });
   }
-
   async decideObligation(input: {
     obligationId: string;
     decision: "approve" | "reject";
@@ -2126,14 +2079,16 @@ export class AgreementKnowledgeService {
       decidedAt: this.now().toISOString(),
     });
   }
-
   /** Lists only conversations in this agent's current participant set. */
   async listPinTargets(ownerEntityId: string): Promise<AgreementPinTargets> {
     this.requireOwner(ownerEntityId);
     const runtime = this.deps.runtime;
     const ids = await runtime.getRoomsForParticipant(runtime.agentId);
-    const chats: Array<{ id: string; name: string | null; source: string }> =
-      [];
+    const chats: Array<{
+      id: string;
+      name: string | null;
+      source: string;
+    }> = [];
     const conversational = new Set<ChannelType>([
       ChannelType.DM,
       ChannelType.GROUP,
@@ -2168,7 +2123,6 @@ export class AgreementKnowledgeService {
       chats,
     };
   }
-
   async pin(input: {
     artifactId: string;
     targetType: KnowledgePinTargetType;
@@ -2199,7 +2153,6 @@ export class AgreementKnowledgeService {
       pinnedAt: this.now().toISOString(),
     });
   }
-
   async listPins(input: {
     artifactId: string;
     ownerEntityId: string;
@@ -2208,7 +2161,6 @@ export class AgreementKnowledgeService {
     const artifact = await this.requireArtifact(input.artifactId);
     return await this.deps.repository.listPins(artifact.id);
   }
-
   async unpin(input: {
     pinId: string;
     unpinnedByEntityId: string;
@@ -2220,7 +2172,6 @@ export class AgreementKnowledgeService {
       unpinnedAt: this.now().toISOString(),
     });
   }
-
   async listGuestAccessOptions(input: {
     artifactId: string;
     ownerEntityId: string;
@@ -2275,7 +2226,6 @@ export class AgreementKnowledgeService {
     }
     return options;
   }
-
   async previewGuestRead(input: {
     artifactId: string;
     principalEntityId: string;
@@ -2335,7 +2285,6 @@ export class AgreementKnowledgeService {
       };
     }
   }
-
   async activePinnedContext(input: {
     ownerEntityId: string;
     roomId?: string;
@@ -2365,7 +2314,6 @@ export class AgreementKnowledgeService {
     await this.requireReadableWorkspace();
     return views;
   }
-
   /**
    * Resolve active pins through the requesting principal's current resource
    * grants. Owner callers retain the complete owner view; guests receive only
@@ -2431,7 +2379,6 @@ export class AgreementKnowledgeService {
     await this.requireReadableWorkspace();
     return views;
   }
-
   async grantGuestRead(input: {
     artifactId: string;
     principalEntityId: string;
@@ -2475,7 +2422,6 @@ export class AgreementKnowledgeService {
       updatedAt: now,
     });
   }
-
   /** Owner-only recipient ACL projection for downstream share drafts. */
   async listActiveGuestPrincipals(input: {
     artifactId: string;
@@ -2506,7 +2452,6 @@ export class AgreementKnowledgeService {
     }
     return [...new Set(allowed)].sort();
   }
-
   async revokeGuestRead(input: {
     grantId: string;
     revokedByEntityId: string;
@@ -2520,7 +2465,6 @@ export class AgreementKnowledgeService {
       revokedAt: this.now().toISOString(),
     });
   }
-
   async readFor(input: {
     artifactId: string;
     principalEntityId: string;
@@ -2571,7 +2515,6 @@ export class AgreementKnowledgeService {
     );
   }
 }
-
 export function createAgreementKnowledgeService(
   runtime: IAgentRuntime,
   now?: () => Date,
@@ -2602,14 +2545,11 @@ export function createAgreementKnowledgeService(
     now,
   });
 }
-
 export class AgreementKnowledgeRuntimeService extends Service {
   static override serviceType = HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE;
   override capabilityDescription =
     "Immutable parenting-agreement versions, reviewed citations, pins, and bounded guest reads";
-
   readonly agreements: AgreementKnowledgeService;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -2620,7 +2560,6 @@ export class AgreementKnowledgeRuntimeService extends Service {
     }
     this.agreements = createAgreementKnowledgeService(runtime);
   }
-
   static async start(runtime: IAgentRuntime) {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
@@ -2628,10 +2567,8 @@ export class AgreementKnowledgeRuntimeService extends Service {
     ]);
     return new AgreementKnowledgeRuntimeService(runtime);
   }
-
   async stop(): Promise<void> {}
 }
-
 export function getAgreementKnowledgeService(
   runtime: IAgentRuntime,
 ): AgreementKnowledgeService | null {

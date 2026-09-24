@@ -11,9 +11,9 @@ import type {
   UserVisibleModelOutput,
 } from "@elizaos/core";
 import {
-  DISCOVER_TOOLS_NAME,
   ElizaError,
   HANDLE_RESPONSE_TOOL_NAME,
+  isDiscoveryActionName,
   parseCompletionContextSelection,
   parseJsonObject,
   stripJsonStructuralJunkReply,
@@ -370,10 +370,8 @@ export function messageHandlerFromFieldResult(
   // Discovery is registered for the planner after Stage 1. Its absence from
   // runtime.actions here is not a missing/invalid model hint and must not
   // trigger text inference that invents domain work or negated navigation.
-  const hasDiscoveryCandidate = candidateActions.some(
-    (name) =>
-      normalizeActionIdentifier(name) ===
-      normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
+  const hasDiscoveryCandidate = candidateActions.some((name) =>
+    isDiscoveryActionName(name),
   );
   const inferredAckCandidateActions =
     !subAgentCompletionRelay &&
@@ -391,7 +389,7 @@ export function messageHandlerFromFieldResult(
       ? candidateActions.some((name) => {
           const normalized = normalizeActionIdentifier(name);
           if (
-            normalized === normalizeActionIdentifier(DISCOVER_TOOLS_NAME) ||
+            isDiscoveryActionName(name) ||
             canonicalPlannerControlActionName(normalized) !== null
           ) {
             return true;
@@ -848,7 +846,11 @@ export function candidateActionsContainRunnableAction(
   if (!runtimeContext) return true;
   return candidateActions.some((name) => {
     const normalized = normalizeActionIdentifier(name);
-    if (canonicalPlannerControlActionName(normalized) !== null) return true;
+    if (
+      isDiscoveryActionName(name) ||
+      canonicalPlannerControlActionName(normalized) !== null
+    )
+      return true;
     return exposedActionMatches(runtimeContext.actions, normalized);
   });
 }
@@ -864,7 +866,11 @@ export function filterRunnableCandidateActions(
   if (!runtimeContext) return [...candidateActions];
   return candidateActions.filter((name) => {
     const normalized = normalizeActionIdentifier(name);
-    if (canonicalPlannerControlActionName(normalized) !== null) return true;
+    if (
+      isDiscoveryActionName(name) ||
+      canonicalPlannerControlActionName(normalized) !== null
+    )
+      return true;
     return exposedActionMatches(runtimeContext.actions, normalized);
   });
 }
@@ -893,10 +899,8 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
     messageHandler.processMessage !== "RESPOND" ||
     !runtimeContext ||
     runtimeContext.subAgentCompletionRelay === true ||
-    getMessageHandlerCandidateActions(messageHandler).some(
-      (name) =>
-        normalizeActionIdentifier(name) ===
-        normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
+    getMessageHandlerCandidateActions(messageHandler).some((name) =>
+      isDiscoveryActionName(name),
     ) ||
     currentMessageText.trim().length === 0
   ) {

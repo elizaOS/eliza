@@ -7,10 +7,10 @@
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/testing": ["./src/index.ts"],
       "@elizaos/plugin-sqlite": ["../../plugins/plugin-sqlite/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/testing/scenario-runner": ["./scenario-runner/src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
-      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"]
+      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"],
+      "@elizaos/core/*": ["../core/src/*"]
     },
     "composite": false,
     "incremental": false

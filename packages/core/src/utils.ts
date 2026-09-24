@@ -1,7 +1,6 @@
 /** Shared runtime formatting, identity and structured text utilities. */
 
 import { createHash } from "node:crypto";
-import z from "zod";
 import { ElizaError } from "./errors";
 import logger from "./logger";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
@@ -18,6 +17,7 @@ import type { IAgentRuntime } from "./types/runtime";
 import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
+import { uuidFromString } from "./utils/uuid.js";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
@@ -739,78 +739,12 @@ export function parseBooleanFromText(
 	return false;
 }
 
-// UUID Utils
+export { validateUuid } from "./utils/uuid.js";
 
-const uuidSchema = z
-	.string()
-	.regex(
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-		"Invalid UUID format",
-	) as z.ZodType<UUID>;
-
-/**
- * Validates a UUID value.
- *
- * @param {unknown} value - The value to validate.
- * @returns {UUID | null} Returns the validated UUID value or null if validation fails.
- */
-export function validateUuid(value: unknown): UUID | null {
-	const result = uuidSchema.safeParse(value);
-	return result.success ? result.data : null;
-}
-
-/**
- * Converts a string or number to a UUID.
- *
- * @param {string | number} target - The string or number to convert to a UUID.
- * @returns {UUID} The UUID generated from the input target.
- * @throws {TypeError} Throws an error if the input target is not a string.
- */
+/** Returns the persisted deterministic identity using the Node SHA-1 implementation. */
 export function stringToUuid(target: string | number): UUID {
-	if (typeof target === "number") {
-		target = target.toString();
-	}
-
-	if (typeof target !== "string") {
-		throw TypeError("Value must be string");
-	}
-
-	// If already a UUID, return as-is to avoid re-hashing
-	const maybeUuid = validateUuid(target);
-	if (maybeUuid) return maybeUuid;
-
-	const escapedStr = encodeURIComponent(target);
-
-	// Deterministic UUID derived from SHA-1(escapedStr)
-	// Keep the historical escaping and version bits: persisted IDs cannot change.
-	const digest = createHash("sha1").update(escapedStr).digest();
-	const bytes = digest.slice(0, 16);
-
-	// Set RFC4122 variant bits: 10xxxxxx
-	bytes[8] = (bytes[8] & 0x3f) | 0x80;
-	// Set custom version nibble to 0x0 (custom elizaOS UUID format)
-	bytes[6] = (bytes[6] & 0x0f) | 0x00;
-
-	return bytesToUuid(bytes) as UUID;
-}
-
-function bytesToUuid(bytes: Uint8Array): string {
-	const hex: string[] = [];
-	for (let i = 0; i < bytes.length; i++) {
-		const h = bytes[i].toString(16).padStart(2, "0");
-		hex.push(h);
-	}
-	// Format: 8-4-4-4-12 hexadecimal digits
-	return (
-		hex.slice(0, 4).join("") +
-		"-" +
-		hex.slice(4, 6).join("") +
-		"-" +
-		hex.slice(6, 8).join("") +
-		"-" +
-		hex.slice(8, 10).join("") +
-		"-" +
-		hex.slice(10, 16).join("")
+	return uuidFromString(target, (input) =>
+		createHash("sha1").update(input).digest(),
 	);
 }
 

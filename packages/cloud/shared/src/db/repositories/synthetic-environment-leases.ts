@@ -5,23 +5,21 @@
 
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import type {
-  AcquireSyntheticEnvironmentLeaseInput,
-  GuardedSyntheticEnvironmentWriteResult,
-  RefreshSyntheticEnvironmentLeaseInput,
-  SyntheticEnvironmentLeaseAuthority,
-  SyntheticEnvironmentLeaseOwner,
-  SyntheticEnvironmentLeaseReceipt,
-  SyntheticEnvironmentLeaseSnapshot,
-  SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared";
 import {
+  type AcquireSyntheticEnvironmentLeaseInput,
+  type GuardedSyntheticEnvironmentWriteResult,
   isSyntheticEnvironmentNamespace,
+  type RefreshSyntheticEnvironmentLeaseInput,
   SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
   SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
-} from "@elizaos/shared";
+  type SyntheticEnvironmentLeaseAuthority,
+  type SyntheticEnvironmentLeaseOwner,
+  type SyntheticEnvironmentLeaseReceipt,
+  type SyntheticEnvironmentLeaseSnapshot,
+  type SyntheticEnvironmentLeaseStore,
+} from "@elizaos/core/contracts/synthetic-environment-lease";
 import { eq } from "drizzle-orm";
-import type { DbTransaction } from "../client";
+import { type DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
   type SyntheticEnvironmentLease,
@@ -29,9 +27,8 @@ import {
 } from "../schemas/synthetic-environment-leases";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
-const MAX_LEASE_DURATION_MS = 86_400_000;
+const MAX_LEASE_DURATION_MS = 86400000;
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:@-]{0,127}$/;
-
 function containsControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
@@ -39,14 +36,12 @@ function containsControlCharacter(value: string): boolean {
   }
   return false;
 }
-
 function invalidInput(message: string): ElizaError {
   return new ElizaError(message, {
     code: "SYNTHETIC_LEASE_INVALID_INPUT",
     severity: "fatal",
   });
 }
-
 function storageFailure(message: string, namespace: string): ElizaError {
   return new ElizaError(message, {
     code: "SYNTHETIC_LEASE_STORAGE_FAILURE",
@@ -54,7 +49,6 @@ function storageFailure(message: string, namespace: string): ElizaError {
     context: { namespace },
   });
 }
-
 function validateNamespace(value: unknown, field: string): string {
   if (!isSyntheticEnvironmentNamespace(value)) {
     throw invalidInput(
@@ -63,14 +57,12 @@ function validateNamespace(value: unknown, field: string): string {
   }
   return value;
 }
-
 function validateIdentifier(value: unknown, field: string): string {
   if (typeof value !== "string" || !IDENTIFIER_PATTERN.test(value)) {
     throw invalidInput(`${field} must be 1-128 safe identifier characters and start alphanumeric`);
   }
   return value;
 }
-
 function validateOwner(owner: SyntheticEnvironmentLeaseOwner): SyntheticEnvironmentLeaseOwner {
   if (typeof owner !== "object" || owner === null) {
     throw invalidInput("owner must be an object");
@@ -78,9 +70,7 @@ function validateOwner(owner: SyntheticEnvironmentLeaseOwner): SyntheticEnvironm
   validateIdentifier(owner.ownerId, "owner.ownerId");
   if (
     owner.processId !== null &&
-    (!Number.isSafeInteger(owner.processId) ||
-      owner.processId < 1 ||
-      owner.processId > 2_147_483_647)
+    (!Number.isSafeInteger(owner.processId) || owner.processId < 1 || owner.processId > 2147483647)
   ) {
     throw invalidInput("owner.processId must be a positive 32-bit integer or null");
   }
@@ -91,7 +81,6 @@ function validateOwner(owner: SyntheticEnvironmentLeaseOwner): SyntheticEnvironm
   }
   return { ...owner, host };
 }
-
 function validateDuration(leaseDurationMs: number): number {
   if (
     !Number.isSafeInteger(leaseDurationMs) ||
@@ -102,7 +91,6 @@ function validateDuration(leaseDurationMs: number): number {
   }
   return leaseDurationMs;
 }
-
 function validateAuthority(
   authority: SyntheticEnvironmentLeaseAuthority,
 ): SyntheticEnvironmentLeaseAuthority {
@@ -120,7 +108,6 @@ function validateAuthority(
   }
   return { ...authority, namespace };
 }
-
 function rowOwner(row: SyntheticEnvironmentLease): SyntheticEnvironmentLeaseOwner | null {
   if (row.owner_id === null || row.owner_host === null) return null;
   return {
@@ -129,7 +116,6 @@ function rowOwner(row: SyntheticEnvironmentLease): SyntheticEnvironmentLeaseOwne
     host: row.owner_host,
   };
 }
-
 function snapshot(
   row: SyntheticEnvironmentLease,
   databaseNow: Date,
@@ -155,7 +141,6 @@ function snapshot(
     observedAt: databaseNow.toISOString(),
   };
 }
-
 function authorityFromRow(row: SyntheticEnvironmentLease): SyntheticEnvironmentLeaseAuthority {
   const owner = rowOwner(row);
   if (!row.lease_id || !owner) {
@@ -173,7 +158,6 @@ function authorityFromRow(row: SyntheticEnvironmentLease): SyntheticEnvironmentL
     owner,
   };
 }
-
 function assertAuthorityMatches(
   row: SyntheticEnvironmentLease | undefined,
   authority: SyntheticEnvironmentLeaseAuthority,
@@ -204,7 +188,6 @@ function assertAuthorityMatches(
   }
   return row;
 }
-
 async function lockRow(
   tx: DbTransaction,
   namespace: string,
@@ -217,7 +200,6 @@ async function lockRow(
     .limit(1);
   return row;
 }
-
 function receipt(
   operation: SyntheticEnvironmentLeaseReceipt["operation"],
   row: SyntheticEnvironmentLease,
@@ -225,7 +207,6 @@ function receipt(
 ): SyntheticEnvironmentLeaseReceipt {
   return { operation, authority: authorityFromRow(row), snapshot: snapshot(row, databaseNow) };
 }
-
 /** PostgreSQL/PGlite adapter used by Cloud workers and the local Cloud stack. */
 export class CloudSyntheticEnvironmentLeaseStore
   implements SyntheticEnvironmentLeaseStore<DbTransaction>
@@ -292,7 +273,6 @@ export class CloudSyntheticEnvironmentLeaseStore
       return receipt(operation, updated, databaseNow);
     });
   }
-
   async read(namespace: string): Promise<SyntheticEnvironmentLeaseSnapshot | null> {
     namespace = validateNamespace(namespace, "namespace");
     return dbWrite.transaction(async (tx) => {
@@ -302,7 +282,6 @@ export class CloudSyntheticEnvironmentLeaseStore
       return snapshot(row, databaseNow);
     });
   }
-
   async heartbeat(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -334,7 +313,6 @@ export class CloudSyntheticEnvironmentLeaseStore
       return receipt("heartbeat", updated, databaseNow);
     });
   }
-
   async rollover(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -370,7 +348,6 @@ export class CloudSyntheticEnvironmentLeaseStore
       return receipt("rollover", updated, databaseNow);
     });
   }
-
   async release(
     uncheckedAuthority: SyntheticEnvironmentLeaseAuthority,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -406,7 +383,6 @@ export class CloudSyntheticEnvironmentLeaseStore
       };
     });
   }
-
   async withActiveGeneration<T>(
     uncheckedAuthority: SyntheticEnvironmentLeaseAuthority,
     write: (transaction: DbTransaction) => T | Promise<T>,
@@ -427,5 +403,4 @@ export class CloudSyntheticEnvironmentLeaseStore
     });
   }
 }
-
 export const cloudSyntheticEnvironmentLeaseStore = new CloudSyntheticEnvironmentLeaseStore();

@@ -3,7 +3,7 @@
  * route-helper spies.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/core/api/route-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { handleIMessageRoute } from "./imessage-routes.js";
 
@@ -16,7 +16,6 @@ function makeHelpers() {
     error: ReturnType<typeof vi.fn>;
   };
 }
-
 async function request(url: string, observedLimits: number[]) {
   const helpers = makeHelpers();
   const state = {
@@ -43,7 +42,6 @@ async function request(url: string, observedLimits: number[]) {
   expect(handled).toBe(true);
   return helpers;
 }
-
 describe("GET /api/imessage/messages limit", () => {
   it.each([
     ["/api/imessage/messages", 50],
@@ -55,11 +53,9 @@ describe("GET /api/imessage/messages limit", () => {
   ])("maps %s to %i", async (url, expected) => {
     const observedLimits: number[] = [];
     const helpers = await request(url, observedLimits);
-
     expect(helpers.error).not.toHaveBeenCalled();
     expect(observedLimits).toEqual([expected]);
   });
-
   it.each(["1e2", "12px", "abc", "50abc", "0x10"])(
     "rejects malformed limit %s before reading messages",
     async (limit) => {
@@ -68,7 +64,6 @@ describe("GET /api/imessage/messages limit", () => {
         `/api/imessage/messages?limit=${encodeURIComponent(limit)}`,
         observedLimits
       );
-
       expect(helpers.error).toHaveBeenCalledWith(
         expect.anything(),
         "limit must be an integer",

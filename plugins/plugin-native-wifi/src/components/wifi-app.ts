@@ -6,10 +6,9 @@
  * not appear in the catalog where it cannot function.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
-
+import { type OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
+import { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
-
 export const wifiApp: OverlayApp = {
   name: WIFI_APP_NAME,
   displayName: "WiFi",
@@ -20,7 +19,6 @@ export const wifiApp: OverlayApp = {
   loader: () =>
     import("./WifiAppView").then((m) => ({ default: m.WifiAppView })),
 };
-
 /** Register the WiFi app with the overlay app registry. */
 export function registerWifiApp(): void {
   registerOverlayApp(wifiApp);

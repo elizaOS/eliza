@@ -7,8 +7,7 @@ import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,
   WalletMarketPriceSnapshot,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/wallet-types";
 /**
  * Price-only wallet widget derivation (#10706).
  *
@@ -27,12 +26,10 @@ import type {
  *   6. return price-only rows — `{ symbol, priceUsd, change24hPct }`, with NO
  *      balance, holding value, or portfolio total.
  */
-
 /** The minimum holding value (USD) a position must be worth to appear. */
 export const MIN_HOLDING_USD = 1;
 /** Max assets shown in the price-only widget. */
 export const MAX_PRICED_HOLDINGS = 3;
-
 /**
  * Default rows shown when the user holds nothing priceable, in display order.
  * BTC/SOL/ETH are the tracked fixed snapshots (`MARKET_PRICE_IDS`); when a
@@ -41,24 +38,25 @@ export const MAX_PRICED_HOLDINGS = 3;
 export const DEFAULT_WIDGET_SYMBOLS = ["BTC", "SOL", "ETH"] as const;
 /** Rows shown in the default (no-holdings) state. */
 export const MAX_DEFAULT_ROWS = 3;
-
 /** A price-only row — deliberately carries no amount/holding value. */
 export interface PricedHolding {
   symbol: string;
   priceUsd: number;
   change24hPct: number;
 }
-
 function parseUsd(value: string | number | null | undefined): number {
   const n = typeof value === "number" ? value : Number.parseFloat(value ?? "");
   return Number.isFinite(n) ? n : 0;
 }
-
 /** Flatten every held position to `{ symbol, valueUsd }` (holding value). */
-function collectHoldings(
-  balances: WalletBalancesResponse,
-): { symbol: string; valueUsd: number }[] {
-  const out: { symbol: string; valueUsd: number }[] = [];
+function collectHoldings(balances: WalletBalancesResponse): {
+  symbol: string;
+  valueUsd: number;
+}[] {
+  const out: {
+    symbol: string;
+    valueUsd: number;
+  }[] = [];
   const { solana, evm } = balances;
   if (solana) {
     out.push({ symbol: "SOL", valueUsd: parseUsd(solana.solValueUsd) });
@@ -79,7 +77,6 @@ function collectHoldings(
   }
   return out;
 }
-
 /**
  * Select the top-{@link MAX_PRICED_HOLDINGS} priced holdings for the price-only
  * widget. See the module docstring for the exact contract. Pure + deterministic.
@@ -89,14 +86,12 @@ export function selectPricedHoldings(
   prices: readonly WalletMarketPriceSnapshot[] | null | undefined,
 ): PricedHolding[] {
   if (!balances) return [];
-
   // symbol -> unit price snapshot (case-insensitive; first wins).
   const priceBySymbol = new Map<string, WalletMarketPriceSnapshot>();
   for (const p of prices ?? []) {
     const key = p.symbol.trim().toUpperCase();
     if (key && !priceBySymbol.has(key)) priceBySymbol.set(key, p);
   }
-
   // Aggregate holding value per symbol (used only for ranking, never surfaced).
   const heldValueBySymbol = new Map<string, number>();
   for (const { symbol, valueUsd } of collectHoldings(balances)) {
@@ -105,7 +100,6 @@ export function selectPricedHoldings(
     if (!key) continue;
     heldValueBySymbol.set(key, (heldValueBySymbol.get(key) ?? 0) + valueUsd);
   }
-
   const ranked = [...heldValueBySymbol.entries()]
     .filter(([symbol]) => priceBySymbol.has(symbol)) // must have a unit price
     .sort((a, b) => {
@@ -113,7 +107,6 @@ export function selectPricedHoldings(
       return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; // tie-break by symbol
     })
     .slice(0, MAX_PRICED_HOLDINGS);
-
   return ranked.map(([symbol]) => {
     const snap = priceBySymbol.get(symbol);
     // biome-ignore lint/style/noNonNullAssertion: filtered to has-price above.
@@ -125,12 +118,10 @@ export function selectPricedHoldings(
     };
   });
 }
-
 type MarketOverviewLike = Pick<
   WalletMarketOverviewResponse,
   "prices" | "movers"
 >;
-
 function toPricedRow(
   s: WalletMarketPriceSnapshot | WalletMarketMover,
 ): PricedHolding | null {
@@ -141,7 +132,6 @@ function toPricedRow(
     change24hPct: s.change24hPct,
   };
 }
-
 /**
  * Rows for the no-holdings default state: the tracked BTC/SOL/ETH price
  * snapshots in {@link DEFAULT_WIDGET_SYMBOLS} order, back-filled from trending
@@ -153,13 +143,11 @@ export function selectDefaultPriceRows(
   overview: MarketOverviewLike | null | undefined,
 ): PricedHolding[] {
   if (!overview) return [];
-
   const priceBySymbol = new Map<string, WalletMarketPriceSnapshot>();
   for (const p of overview.prices ?? []) {
     const key = p.symbol.trim().toUpperCase();
     if (key && !priceBySymbol.has(key)) priceBySymbol.set(key, p);
   }
-
   const rows: PricedHolding[] = [];
   const present = new Set<string>();
   const push = (row: PricedHolding | null) => {
@@ -169,7 +157,6 @@ export function selectDefaultPriceRows(
     present.add(key);
     rows.push(row);
   };
-
   for (const symbol of DEFAULT_WIDGET_SYMBOLS) {
     const snap = priceBySymbol.get(symbol);
     if (snap) push(toPricedRow(snap));

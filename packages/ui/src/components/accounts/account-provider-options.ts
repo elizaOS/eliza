@@ -3,11 +3,8 @@
  * capability display. Keeping the catalog outside the dialog prevents
  * presentational components from depending on the enrollment state machine.
  */
-
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
-
 export interface AccountProviderOption {
   id: LinkedAccountProviderId;
   name: string;
@@ -16,7 +13,6 @@ export interface AccountProviderOption {
   eligibility: string[];
   unavailable?: boolean;
 }
-
 export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   {
     id: "anthropic-subscription",
@@ -125,7 +121,6 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     eligibility: ["model inference", "code-agent", "API key"],
   },
 ];
-
 export function getAccountProviderOption(
   providerId: LinkedAccountProviderId,
 ): AccountProviderOption | undefined {

@@ -2,7 +2,7 @@
 
 Node runtime kernel for Eliza agents: plugin registration, authorization, state, model dispatch, memory, and cancellation.
 
-Keep core independent of application hosts, database adapters, and assistant behavior. Preserve authorization, cancellation, effect receipts, and complete model context; hosts register behavior and providers explicitly.
+The root entrypoint is Node-only; exported protocol and utility leaves must not import the runtime barrel. Keep core independent of application hosts, database adapters, and assistant behavior. Preserve authorization, cancellation, effect receipts, and complete model context; hosts register behavior and providers explicitly.
 
 Build, test, and setup: [README.md](README.md).
 

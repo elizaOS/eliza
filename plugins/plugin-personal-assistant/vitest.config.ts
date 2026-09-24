@@ -36,14 +36,11 @@ const appCoreTaskHostCapabilities = path.join(
   "task-host-capabilities.ts",
 );
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
-const corePackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "core", "package.json"),
-);
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
 );
-const sharedPackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "shared", "package.json"),
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
 );
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
@@ -179,7 +176,7 @@ const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
 const markdownItRoot = path.dirname(
-  sharedPackageRequire.resolve("markdown-it/package.json"),
+  corePackageRequire.resolve("markdown-it/package.json"),
 );
 const telegramSessionsEntry = path.join(
   elizaRoot,
@@ -281,30 +278,6 @@ export default defineConfig({
           "auth-store.ts",
         ),
       },
-      // The real agent runtime loads audio-redaction services while this lane
-      // boots the OWNER/USER matrix. This specialized alias list replaces the
-      // base shared-source aliases, so keep these two package subpaths anchored
-      // to their source modules instead of requiring prebuilt shared/core dist.
-      {
-        find: /^@elizaos\/shared\/audio-redaction$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "shared",
-          "src",
-          "audio-redaction.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/audio-redaction-verify$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "shared",
-          "src",
-          "audio-redaction-verify.ts",
-        ),
-      },
       {
         find: /^@elizaos\/agent\/api\/connector-account-routes$/,
         replacement: path.join(
@@ -312,6 +285,10 @@ export default defineConfig({
           "api",
           "connector-account-routes.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/loopback-trust$/,
+        replacement: path.join(agentSourceRoot, "api", "loopback-trust.ts"),
       },
       {
         find: /^@elizaos\/agent\/api\/server-helpers$/,
@@ -515,7 +492,7 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
@@ -862,7 +839,7 @@ export default defineConfig({
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
     ],

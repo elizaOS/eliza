@@ -5,7 +5,7 @@
  * authorize irreversible catalogue settlement or local spool cleanup.
  */
 
-import { AgentBackupCaptureV2ProtocolError } from "@elizaos/shared";
+import { AgentBackupCaptureV2ProtocolError } from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { AgentBackupCaptureV2HttpError } from "./agent-backup-capture-v2-client";
 import { AgentBackupCaptureV2PipelineError } from "./agent-backup-capture-v2-pipeline";
 import { AgentBackupCaptureV3SpoolError } from "./agent-backup-capture-v2-spool";

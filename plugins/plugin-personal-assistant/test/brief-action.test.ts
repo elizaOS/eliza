@@ -361,6 +361,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections.calendar).toHaveLength(1);
       expect(data.briefing.sections.inbox).toHaveLength(1);
       expect(data.briefing.sections.life).toHaveLength(1);
+      expect(data.briefing.sections).not.toHaveProperty("money");
       // Trimmed by the compose pass — not the raw model string.
       expect(data.briefing.narrative).toBe(
         "Composed narrative from the model.",

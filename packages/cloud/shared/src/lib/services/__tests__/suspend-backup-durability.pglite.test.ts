@@ -16,7 +16,10 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { agentBillingRepository } from "../../../db/repositories/agent-billing";
+import {
+  type AgentHourlyBillingOutcome,
+  agentBillingRepository,
+} from "../../../db/repositories/agent-billing";
 import { jobsRepository } from "../../../db/repositories/jobs";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
 import { agentComputeFunding } from "../../../db/schemas/agent-compute-funding";
@@ -156,19 +159,28 @@ afterAll(async () => {
   await closeDb();
 });
 
-test(
-  "committed backup survives publication rollback and the same job recovers without recapturing a removed runtime",
-  async () => {
+test.each([
+  "insufficient_credits",
+  "already_billed_recently",
+  "billed",
+  "funded_until",
+  "before_billed",
+  "before_funded",
+] as const)(
+  "%s: billing recovery respects the exact runtime removal boundary and durable backup",
+  async (recoveryCase) => {
     const { orgId, userId } = await seedOwner();
     const agent = await seedRunningAgent(orgId, userId);
     const sibling = await seedRunningAgent(orgId, userId);
+    const nodeId = unique("owned-node");
+    const nodeRecordId = crypto.randomUUID();
     await dbWrite
       .update(agentSandboxes)
-      .set({ node_id: "owned-node" })
+      .set({ node_id: nodeId })
       .where(eq(agentSandboxes.id, sibling.id));
     await dbWrite.insert(dockerNodes).values({
-      id: "10000000-0000-4000-8000-000000000001",
-      node_id: "owned-node",
+      id: nodeRecordId,
+      node_id: nodeId,
       hostname: "127.0.0.1",
       allocated_count: 2,
     });
@@ -176,14 +188,14 @@ test(
       const [node] = await dbWrite
         .select()
         .from(dockerNodes)
-        .where(eq(dockerNodes.node_id, "owned-node"));
+        .where(eq(dockerNodes.node_id, nodeId));
       return node.allocated_count;
     };
     await dbWrite
       .update(agentSandboxes)
       .set({
         sandbox_id: "owned-original",
-        node_id: "owned-node",
+        node_id: nodeId,
         container_name: "owned-container",
         bridge_url: "http://127.0.0.1:1",
       })
@@ -270,8 +282,8 @@ test(
         const identity = input.expected ?? {
           organizationId: orgId,
           agentId: agent.id,
-          nodeId: "owned-node",
-          nodeRecordId: "10000000-0000-4000-8000-000000000001",
+          nodeId,
+          nodeRecordId,
           nodeIncarnation: "10000000-0000-4000-8000-000000000002",
           nodeHistoryId: "10000000-0000-4000-8000-000000000003",
           hostname: "127.0.0.1",
@@ -325,7 +337,57 @@ test(
       agentBillingRepository,
       "settleAccruedBillingBeforeLifecycleInTransaction",
     ).mockResolvedValue({ status: "insufficient_credits" });
+    const fundedUntil = new Date(Date.now() + 60 * 60 * 1000);
+    const recoveredOutcome: AgentHourlyBillingOutcome =
+      recoveryCase === "funded_until" || recoveryCase === "before_funded"
+        ? { status: "funded_until", fundedUntil, stopAfter: fundedUntil }
+        : recoveryCase === "billed" || recoveryCase === "before_billed"
+          ? {
+              status: "billed",
+              newBalance: 10,
+              transactionId: crypto.randomUUID(),
+              amount: 0.1,
+              amountDecimal: "0.100000",
+            }
+          : { status: "already_billed_recently" };
     try {
+      if (recoveryCase === "before_billed" || recoveryCase === "before_funded") {
+        billing.mockResolvedValue(recoveredOutcome);
+        expect(
+          await service.executeSuspend(
+            agent.id,
+            orgId,
+            job.id,
+            "billing_request",
+            (await readIntent()).lifecycle_revision,
+          ),
+        ).toMatchObject({
+          success: true,
+          containerStopped: false,
+          skipped: true,
+          reason: "billing_recovered",
+        });
+        expect(present).toBe(true);
+        expect(stops).toBe(0);
+        expect(await allocation()).toBe(2);
+        expect(await readIntent()).toMatchObject(
+          recoveryCase === "before_funded"
+            ? {
+                status: "retry",
+                last_error: "existing_runtime_funded",
+                next_attempt_at: fundedUntil,
+              }
+            : { status: "superseded", last_error: "billing_recovered" },
+        );
+        const [retained] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, agent.id));
+        expect(retained.status).toBe("running");
+        expect(retained.bridge_url).toBe(current.bridge_url);
+        expect(retained.health_url).toBe(current.health_url);
+        return;
+      }
       await dbWrite.execute(
         sql.raw(
           `CREATE FUNCTION reject_stop_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.provider_confirmed_at IS NOT NULL THEN RAISE EXCEPTION 'injected_provider_publication_failure'; END IF; RETURN NEW; END $$`,
@@ -472,6 +534,15 @@ test(
         reclaimed.execution_generation,
       );
       expect(retryIntent.provider_confirmed_at).toBeNull();
+      if (recoveryCase !== "insufficient_credits") {
+        expect(present).toBe(false);
+        await dbWrite
+          .update(organizations)
+          .set({ credit_balance: "10.000000" })
+          .where(eq(organizations.id, orgId));
+        billing.mockResolvedValue(recoveredOutcome);
+      }
+      const settlementsBeforeRetry = billing.mock.calls.length;
       const result = await service.executeSuspend(
         agent.id,
         orgId,
@@ -479,6 +550,8 @@ test(
         "billing_request",
         retryIntent.lifecycle_revision,
       );
+      expect(billing.mock.calls.length).toBe(settlementsBeforeRetry + 1);
+      expect(billing.mock.calls.at(-1)?.[4]).toBe("billing_recovery");
       process.stdout.write(
         JSON.stringify({
           observedBackupRows: backups.length,
@@ -507,6 +580,14 @@ test(
         (await readIntent()).lifecycle_revision,
       );
       expect(replay.success).toBe(true);
+      expect(await readIntent()).toMatchObject({ status: "provider_confirmed" });
+      const [stopped] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agent.id));
+      expect(stopped.status).toBe("stopped");
+      expect(stopped.bridge_url).toBeNull();
+      expect(stopped.health_url).toBeNull();
       expect(await allocation()).toBe(1);
       expect(stops).toBe(1);
     } finally {

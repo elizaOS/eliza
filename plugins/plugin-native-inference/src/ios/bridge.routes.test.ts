@@ -18,7 +18,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import type { TranscriptSegment } from "@elizaos/shared";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleDirectCoreRoute,
@@ -27,7 +27,6 @@ import {
 } from "./bridge.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
-
 /** A minimal in-memory runtime implementing the memory APIs the shims use. */
 function createFakeRuntime(): IAgentRuntime {
   const tables = new Map<string, Memory[]>();
@@ -42,7 +41,10 @@ function createFakeRuntime(): IAgentRuntime {
       orderBy?: "createdAt";
       orderDirection?: "asc" | "desc";
       offset?: number;
-      cursor?: { createdAt: number; id: UUID };
+      cursor?: {
+        createdAt: number;
+        id: UUID;
+      };
       end?: number;
       textContains?: string;
     }): Promise<Memory[]> {
@@ -57,7 +59,13 @@ function createFakeRuntime(): IAgentRuntime {
       if (params.textContains) {
         const needle = params.textContains.toLowerCase();
         rows = rows.filter((m) =>
-          ((m.content as { text?: string }).text ?? "")
+          (
+            (
+              m.content as {
+                text?: string;
+              }
+            ).text ?? ""
+          )
             .toLowerCase()
             .includes(needle),
         );
@@ -103,7 +111,9 @@ function createFakeRuntime(): IAgentRuntime {
       return memory.id as UUID;
     },
     async updateMemory(
-      memory: Partial<Memory> & { id: UUID },
+      memory: Partial<Memory> & {
+        id: UUID;
+      },
     ): Promise<boolean> {
       for (const rows of tables.values()) {
         const idx = rows.findIndex((m) => m.id === memory.id);
@@ -123,7 +133,6 @@ function createFakeRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
   return runtime;
 }
-
 function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
@@ -132,17 +141,20 @@ function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
     close: async () => {},
   };
 }
-
-function jsonBody(payload: unknown): { body: string } {
+function jsonBody(payload: unknown): {
+  body: string;
+} {
   return { body: JSON.stringify(payload) };
 }
-
 async function call(
   backend: IosBridgeBackend,
   method: string,
   rawPath: string,
   body?: unknown,
-): Promise<{ status: number; json: Record<string, unknown> }> {
+): Promise<{
+  status: number;
+  json: Record<string, unknown>;
+}> {
   const res = await handleDirectCoreRoute(
     backend,
     method,
@@ -152,7 +164,6 @@ async function call(
   if (!res) throw new Error(`route returned null: ${method} ${rawPath}`);
   return { status: res.status, json: JSON.parse(res.body) };
 }
-
 const seg = (
   text: string,
   endMs = 1000,
@@ -165,16 +176,13 @@ const seg = (
   text,
   words: [],
 });
-
 describe("iOS bridge — memories view routes", () => {
   let backend: IosBridgeBackend;
   let runtime: IAgentRuntime;
-
   beforeEach(() => {
     runtime = createFakeRuntime();
     backend = makeBackend(runtime);
   });
-
   async function seedMemory(
     table: string,
     text: string,
@@ -193,12 +201,10 @@ describe("iOS bridge — memories view routes", () => {
       table,
     );
   }
-
   it("feed returns newest-first browse items with the UI shape", async () => {
-    await seedMemory("messages", "oldest", 1_000);
-    await seedMemory("facts", "newest", 3_000, "user");
-    await seedMemory("memories", "middle", 2_000);
-
+    await seedMemory("messages", "oldest", 1000);
+    await seedMemory("facts", "newest", 3000, "user");
+    await seedMemory("memories", "middle", 2000);
     const { status, json } = await call(backend, "GET", "/api/memories/feed");
     expect(status).toBe(200);
     const memories = json.memories as Array<Record<string, unknown>>;
@@ -208,34 +214,31 @@ describe("iOS bridge — memories view routes", () => {
       type: "facts",
       text: "newest",
       source: "user",
-      createdAt: 3_000,
+      createdAt: 3000,
     });
     expect(json).toMatchObject({ count: 3, limit: 50, hasMore: false });
   });
-
   it("feed honors the limit + hasMore + before params", async () => {
     for (let i = 0; i < 5; i++) {
-      await seedMemory("messages", `m${i}`, 1_000 + i);
+      await seedMemory("messages", `m${i}`, 1000 + i);
     }
     const first = await call(backend, "GET", "/api/memories/feed?limit=2");
     expect((first.json.memories as unknown[]).length).toBe(2);
     expect(first.json.hasMore).toBe(true);
-
     // `before` excludes items at/after the cursor (newest is createdAt 1004).
     const before = await call(backend, "GET", "/api/memories/feed?before=1002");
-    const beforeTexts = (before.json.memories as Array<{ text: string }>).map(
-      (m) => m.text,
-    );
+    const beforeTexts = (
+      before.json.memories as Array<{
+        text: string;
+      }>
+    ).map((m) => m.text);
     expect(beforeTexts).toEqual(["m1", "m0"]);
-
     const epoch = await call(backend, "GET", "/api/memories/feed?before=0");
     expect(epoch.status).toBe(200);
     expect(epoch.json.memories).toEqual([]);
-
     const blank = await call(backend, "GET", "/api/memories/feed?before=%20");
     expect(blank.status).toBe(200);
     expect((blank.json.memories as unknown[]).length).toBe(5);
-
     for (const cursor of [
       "abc",
       "0x10",
@@ -256,13 +259,11 @@ describe("iOS bridge — memories view routes", () => {
       });
     }
   });
-
   it("pages every tied-timestamp feed row exactly once with the id cursor", async () => {
-    const createdAt = 1_700_000_000_000;
+    const createdAt = 1700000000000;
     for (let i = 0; i < 120; i++) {
       await seedMemory("messages", `tied ${i}`, createdAt);
     }
-
     const seen: string[] = [];
     let path = "/api/memories/feed?type=messages&limit=50";
     for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
@@ -277,11 +278,9 @@ describe("iOS bridge — memories view routes", () => {
       if (page.json.hasMore === false || !last) break;
       path = `/api/memories/feed?type=messages&limit=50&before=${last.createdAt}&beforeId=${last.id}`;
     }
-
     expect(seen).toHaveLength(120);
     expect(new Set(seen).size).toBe(120);
   });
-
   it("rejects an id cursor without its timestamp pair", async () => {
     const result = await call(
       backend,
@@ -293,24 +292,25 @@ describe("iOS bridge — memories view routes", () => {
       error: "beforeId must be a UUID paired with before",
     });
   });
-
   it("feed type filter scopes to a single table", async () => {
-    await seedMemory("messages", "a message", 1_000);
-    await seedMemory("facts", "a fact", 2_000);
+    await seedMemory("messages", "a message", 1000);
+    await seedMemory("facts", "a fact", 2000);
     const { json } = await call(
       backend,
       "GET",
       "/api/memories/feed?type=facts",
     );
-    const texts = (json.memories as Array<{ text: string }>).map((m) => m.text);
+    const texts = (
+      json.memories as Array<{
+        text: string;
+      }>
+    ).map((m) => m.text);
     expect(texts).toEqual(["a fact"]);
   });
-
   it("browse paginates + keyword-filters with total/limit/offset", async () => {
-    await seedMemory("messages", "alpha bravo", 1_000);
-    await seedMemory("messages", "charlie delta", 2_000);
-    await seedMemory("facts", "alpha echo", 3_000);
-
+    await seedMemory("messages", "alpha bravo", 1000);
+    await seedMemory("messages", "charlie delta", 2000);
+    await seedMemory("facts", "alpha echo", 3000);
     const all = await call(backend, "GET", "/api/memories/browse");
     expect(all.json).toMatchObject({
       total: 3,
@@ -319,14 +319,14 @@ describe("iOS bridge — memories view routes", () => {
       limit: 50,
       offset: 0,
     });
-
     const search = await call(backend, "GET", "/api/memories/browse?q=alpha");
-    const texts = (search.json.memories as Array<{ text: string }>).map(
-      (m) => m.text,
-    );
+    const texts = (
+      search.json.memories as Array<{
+        text: string;
+      }>
+    ).map((m) => m.text);
     expect(texts).toEqual(["alpha echo", "alpha bravo"]);
     expect(search.json.total).toBe(2);
-
     const page = await call(
       backend,
       "GET",
@@ -335,7 +335,6 @@ describe("iOS bridge — memories view routes", () => {
     expect((page.json.memories as unknown[]).length).toBe(1);
     expect(page.json).toMatchObject({ total: 3, limit: 1, offset: 1 });
   });
-
   it("finds sparse matches beyond the first adapter window", async () => {
     for (let i = 0; i < 450; i++) {
       await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
@@ -351,7 +350,6 @@ describe("iOS bridge — memories view routes", () => {
       hasMore: true,
     });
   });
-
   it("fails closed when an adapter ignores the keyset cursor", async () => {
     for (let i = 0; i < 450; i++) {
       await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
@@ -360,7 +358,6 @@ describe("iOS bridge — memories view routes", () => {
     runtime.getMemories = vi.fn((params) =>
       cursorAware({ ...params, cursor: undefined }),
     );
-
     await expect(
       call(
         backend,
@@ -370,7 +367,6 @@ describe("iOS bridge — memories view routes", () => {
     ).rejects.toMatchObject({ code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS" });
     expect(runtime.getMemories).toHaveBeenCalledTimes(2);
   });
-
   it("fails closed at the shared request-wide sparse scan bound", async () => {
     let sequence = 0;
     const getMemories = vi.fn(
@@ -382,13 +378,12 @@ describe("iOS bridge — memories view routes", () => {
             entityId: AGENT_ID,
             roomId: AGENT_ID,
             agentId: AGENT_ID,
-            createdAt: 1_000_000 - index,
+            createdAt: 1000000 - index,
             content: { text: `hay ${index}` },
           } as Memory;
         }),
     );
     runtime.getMemories = getMemories as IAgentRuntime["getMemories"];
-
     await expect(
       call(
         backend,
@@ -401,14 +396,12 @@ describe("iOS bridge — memories view routes", () => {
         (sum, [params]) => sum + (params.limit ?? 0),
         0,
       ),
-    ).toBe(25_000);
+    ).toBe(25000);
   });
-
   it("stats totals per table", async () => {
-    await seedMemory("messages", "m1", 1_000);
-    await seedMemory("messages", "m2", 2_000);
-    await seedMemory("facts", "f1", 3_000);
-
+    await seedMemory("messages", "m1", 1000);
+    await seedMemory("messages", "m2", 2000);
+    await seedMemory("facts", "f1", 3000);
     const { status, json } = await call(backend, "GET", "/api/memories/stats");
     expect(status).toBe(200);
     expect(json).toEqual({
@@ -416,13 +409,12 @@ describe("iOS bridge — memories view routes", () => {
       byType: { messages: 2, memories: 0, facts: 1, documents: 0 },
     });
   });
-
   it("stats uses exact counts without materializing capped row windows", async () => {
     runtime.getMemories = vi.fn(async () => {
       throw new Error("stats must not read rows");
     });
     const values: Record<string, number> = {
-      messages: 25_000,
+      messages: 25000,
       memories: 4,
       facts: 3,
       documents: 2,
@@ -430,21 +422,18 @@ describe("iOS bridge — memories view routes", () => {
     runtime.countMemories = vi.fn(
       async ({ tableName }) => values[tableName ?? "messages"] ?? 0,
     );
-
     const { status, json } = await call(backend, "GET", "/api/memories/stats");
     expect(status).toBe(200);
-    expect(json).toEqual({ total: 25_009, byType: values });
+    expect(json).toEqual({ total: 25009, byType: values });
     expect(runtime.countMemories).toHaveBeenCalledTimes(4);
     expect(runtime.getMemories).not.toHaveBeenCalled();
   });
-
   it("stats fails closed on an invalid adapter count", async () => {
     runtime.countMemories = vi.fn(async () => Number.NaN);
     await expect(
       call(backend, "GET", "/api/memories/stats"),
     ).rejects.toMatchObject({ code: "MEMORY_STATS_INVALID_COUNT" });
   });
-
   it("stats fails closed when individually safe counts overflow in aggregate", async () => {
     runtime.getMemories = vi.fn(async () => {
       throw new Error("stats must not fall back to reading rows");
@@ -458,7 +447,6 @@ describe("iOS bridge — memories view routes", () => {
     runtime.countMemories = vi.fn(
       async ({ tableName }) => values[tableName ?? "messages"] ?? 0,
     );
-
     await expect(
       call(backend, "GET", "/api/memories/stats"),
     ).rejects.toMatchObject({ code: "MEMORY_STATS_INVALID_COUNT" });
@@ -466,14 +454,11 @@ describe("iOS bridge — memories view routes", () => {
     expect(runtime.getMemories).not.toHaveBeenCalled();
   });
 });
-
 describe("iOS bridge — transcripts view routes", () => {
   let backend: IosBridgeBackend;
-
   beforeEach(() => {
     backend = makeBackend(createFakeRuntime());
   });
-
   it("create → list → get → update → delete round-trips", async () => {
     // Create
     const created = await call(backend, "POST", "/api/transcripts", {
@@ -489,7 +474,6 @@ describe("iOS bridge — transcripts view routes", () => {
       speakerCount: 1,
     });
     const id = transcript.id as string;
-
     // List → summary shape
     const list = await call(backend, "GET", "/api/transcripts");
     expect(list.status).toBe(200);
@@ -503,7 +487,6 @@ describe("iOS bridge — transcripts view routes", () => {
       preview: "hello world",
       hasAudio: false,
     });
-
     // Get by id
     const got = await call(
       backend,
@@ -511,8 +494,13 @@ describe("iOS bridge — transcripts view routes", () => {
       `/api/transcripts/${encodeURIComponent(id)}`,
     );
     expect(got.status).toBe(200);
-    expect((got.json.transcript as { id: string }).id).toBe(id);
-
+    expect(
+      (
+        got.json.transcript as {
+          id: string;
+        }
+      ).id,
+    ).toBe(id);
     // Update (PUT) — new title + longer segment
     const updated = await call(
       backend,
@@ -526,9 +514,12 @@ describe("iOS bridge — transcripts view routes", () => {
       durationMs: 3000,
     });
     expect(
-      (updated.json.transcript as { editedAt?: number }).editedAt,
+      (
+        updated.json.transcript as {
+          editedAt?: number;
+        }
+      ).editedAt,
     ).toBeGreaterThan(0);
-
     // Delete
     const deleted = await call(
       backend,
@@ -536,11 +527,9 @@ describe("iOS bridge — transcripts view routes", () => {
       `/api/transcripts/${encodeURIComponent(id)}`,
     );
     expect(deleted.json).toEqual({ ok: true });
-
     const emptyList = await call(backend, "GET", "/api/transcripts");
     expect((emptyList.json.transcripts as unknown[]).length).toBe(0);
   });
-
   it("create rejects empty segments with 400", async () => {
     const res = await call(backend, "POST", "/api/transcripts", {
       segments: [],
@@ -548,18 +537,20 @@ describe("iOS bridge — transcripts view routes", () => {
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ error: "segments are required" });
   });
-
   it("get + delete of an unknown id 404s", async () => {
     const unknown = "11111111-1111-1111-1111-111111111111";
     const got = await call(backend, "GET", `/api/transcripts/${unknown}`);
     expect(got.status).toBe(404);
   });
-
   it("update rejects a body with neither title nor segments (400)", async () => {
     const created = await call(backend, "POST", "/api/transcripts", {
       segments: [seg("x")],
     });
-    const id = (created.json.transcript as { id: string }).id;
+    const id = (
+      created.json.transcript as {
+        id: string;
+      }
+    ).id;
     const res = await call(
       backend,
       "PUT",
@@ -569,10 +560,8 @@ describe("iOS bridge — transcripts view routes", () => {
     expect(res.status).toBe(400);
   });
 });
-
 describe("iOS bridge — browser workspace routes", () => {
   let backend: IosBridgeBackend;
-
   beforeEach(() => {
     resetIosBrowserWorkspace();
     backend = makeBackend(createFakeRuntime());
@@ -580,7 +569,6 @@ describe("iOS bridge — browser workspace routes", () => {
   afterEach(() => {
     resetIosBrowserWorkspace();
   });
-
   it("starts in web mode with no tabs", async () => {
     const { status, json } = await call(
       backend,
@@ -590,7 +578,6 @@ describe("iOS bridge — browser workspace routes", () => {
     expect(status).toBe(200);
     expect(json).toEqual({ mode: "web", tabs: [] });
   });
-
   it("open → navigate → show/hide → close tab lifecycle", async () => {
     // Open (the "Open a website" button path)
     const opened = await call(backend, "POST", "/api/browser-workspace/tabs", {
@@ -607,12 +594,10 @@ describe("iOS bridge — browser workspace routes", () => {
       partition: "persist:eliza-browser-user",
     });
     const id = tab.id as string;
-
     // Snapshot appears in the workspace GET, web mode
     const snapshot = await call(backend, "GET", "/api/browser-workspace");
     expect(snapshot.json.mode).toBe("web");
     expect((snapshot.json.tabs as unknown[]).length).toBe(1);
-
     // Navigate
     const navigated = await call(
       backend,
@@ -620,24 +605,38 @@ describe("iOS bridge — browser workspace routes", () => {
       `/api/browser-workspace/tabs/${encodeURIComponent(id)}/navigate`,
       { url: "example.com" },
     );
-    expect((navigated.json.tab as { url: string }).url).toBe(
-      "https://example.com",
-    );
-
+    expect(
+      (
+        navigated.json.tab as {
+          url: string;
+        }
+      ).url,
+    ).toBe("https://example.com");
     // Hide then show
     const hidden = await call(
       backend,
       "POST",
       `/api/browser-workspace/tabs/${encodeURIComponent(id)}/hide`,
     );
-    expect((hidden.json.tab as { visible: boolean }).visible).toBe(false);
+    expect(
+      (
+        hidden.json.tab as {
+          visible: boolean;
+        }
+      ).visible,
+    ).toBe(false);
     const shown = await call(
       backend,
       "POST",
       `/api/browser-workspace/tabs/${encodeURIComponent(id)}/show`,
     );
-    expect((shown.json.tab as { visible: boolean }).visible).toBe(true);
-
+    expect(
+      (
+        shown.json.tab as {
+          visible: boolean;
+        }
+      ).visible,
+    ).toBe(true);
     // snapshot action returns empty data (web mode has no server screenshot)
     const snap = await call(
       backend,
@@ -645,7 +644,6 @@ describe("iOS bridge — browser workspace routes", () => {
       `/api/browser-workspace/tabs/${encodeURIComponent(id)}/snapshot`,
     );
     expect(snap.json).toEqual({ data: "" });
-
     // Close
     const closed = await call(
       backend,
@@ -656,7 +654,6 @@ describe("iOS bridge — browser workspace routes", () => {
     const after = await call(backend, "GET", "/api/browser-workspace");
     expect((after.json.tabs as unknown[]).length).toBe(0);
   });
-
   it("opening a second visible tab hides the first", async () => {
     const a = await call(backend, "POST", "/api/browser-workspace/tabs", {
       url: "a.com",
@@ -667,12 +664,22 @@ describe("iOS bridge — browser workspace routes", () => {
       show: true,
     });
     const ws = await call(backend, "GET", "/api/browser-workspace");
-    const tabs = ws.json.tabs as Array<{ id: string; visible: boolean }>;
-    const first = tabs.find((t) => t.id === (a.json.tab as { id: string }).id);
+    const tabs = ws.json.tabs as Array<{
+      id: string;
+      visible: boolean;
+    }>;
+    const first = tabs.find(
+      (t) =>
+        t.id ===
+        (
+          a.json.tab as {
+            id: string;
+          }
+        ).id,
+    );
     expect(first?.visible).toBe(false);
     expect(tabs.filter((t) => t.visible)).toHaveLength(1);
   });
-
   it("acting on an unknown tab id 404s", async () => {
     const res = await call(
       backend,
@@ -682,7 +689,6 @@ describe("iOS bridge — browser workspace routes", () => {
     expect(res.status).toBe(404);
   });
 });
-
 describe("iOS bridge — conversation message failure surfacing", () => {
   // A failed `createMemory` write is best-effort secondary persistence
   // (error-policy:J6): it must not drop the reply, but the failure must surface
@@ -706,7 +712,6 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       },
     } as unknown as IAgentRuntime;
   }
-
   function seedConversation(backend: IosBridgeBackend, id: string): void {
     backend.conversations.set(id, {
       id,
@@ -716,7 +721,6 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       updatedAt: new Date().toISOString(),
     });
   }
-
   // Point the local-inference state dir at an empty temp dir so no real
   // on-disk model registry diverts the reply through the native-llama path;
   // with zero installed models the deterministic messageService path runs.
@@ -732,7 +736,6 @@ describe("iOS bridge — conversation message failure surfacing", () => {
     else process.env.ELIZA_STATE_DIR = prevStateDir;
     vi.restoreAllMocks();
   });
-
   it("surfaces a rejected createMemory to stderr but still returns the reply", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const runtime = createMessageServiceRuntime(() =>
@@ -740,14 +743,12 @@ describe("iOS bridge — conversation message failure surfacing", () => {
     );
     const backend = makeBackend(runtime);
     seedConversation(backend, "conv-fail-1");
-
     const { status, json } = await call(
       backend,
       "POST",
       "/api/conversations/conv-fail-1/messages",
       { text: "hi there" },
     );
-
     // The reply is produced despite the persistence failure (J6 continues).
     expect(status).toBe(200);
     expect(json.reply).toBe("hello from the local agent");
@@ -757,7 +758,6 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       "db offline",
     );
   });
-
   it("does not log when createMemory succeeds", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const runtime = createMessageServiceRuntime(() =>
@@ -765,14 +765,12 @@ describe("iOS bridge — conversation message failure surfacing", () => {
     );
     const backend = makeBackend(runtime);
     seedConversation(backend, "conv-ok-1");
-
     const { status, json } = await call(
       backend,
       "POST",
       "/api/conversations/conv-ok-1/messages",
       { text: "hi there" },
     );
-
     expect(status).toBe(200);
     expect(json.reply).toBe("hello from the local agent");
     expect(errorSpy).not.toHaveBeenCalledWith(
@@ -781,7 +779,6 @@ describe("iOS bridge — conversation message failure surfacing", () => {
     );
   });
 });
-
 describe("iOS bridge — unmatched routes still fall through", () => {
   it("returns null (→ eventual 404) for an unknown /api path", async () => {
     const backend = makeBackend(createFakeRuntime());
@@ -793,7 +790,6 @@ describe("iOS bridge — unmatched routes still fall through", () => {
     );
     expect(res).toBeNull();
   });
-
   it("returns null for an unknown /api/memories subpath", async () => {
     const backend = makeBackend(createFakeRuntime());
     const res = await handleDirectCoreRoute(
@@ -804,7 +800,6 @@ describe("iOS bridge — unmatched routes still fall through", () => {
     );
     expect(res).toBeNull();
   });
-
   it("sorts conversations safely when updatedAt contains invalid date strings", async () => {
     const backend = makeBackend(createFakeRuntime());
     backend.conversations.set("conv-invalid", {
@@ -823,7 +818,6 @@ describe("iOS bridge — unmatched routes still fall through", () => {
       messageCount: 1,
       isUnread: false,
     });
-
     const res = await handleDirectCoreRoute(
       backend,
       "GET",

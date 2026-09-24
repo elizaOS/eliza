@@ -6,11 +6,11 @@
  * JNI loopback forwards literal `/api/...` paths.
  */
 
-import type { Route } from "@elizaos/shared";
+import { type Route } from "@elizaos/core/api/http-plugin";
 import {
   normalizeScreenCaptureFailureContract,
   normalizeScreenCaptureFrameContract,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/screen-capture";
 import {
   OCR_BRIDGE_SERVICE_TYPE,
   type OcrBridgeService,
@@ -24,14 +24,17 @@ import {
 function jsonResult(
   status: number,
   body: unknown,
-): { status: number; headers: Record<string, string>; body: string } {
+): {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+} {
   return {
     status,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   };
 }
-
 /** GET — drain the queue of pending capture requests for the renderer poller. */
 export const captureRequestsRoute: Route = {
   type: "GET",
@@ -45,7 +48,6 @@ export const captureRequestsRoute: Route = {
     return jsonResult(200, { requests: bridge.takeRequests() });
   },
 };
-
 /** POST — accept a captured frame (or a skip) for a queued request. */
 export const screenFrameRoute: Route = {
   type: "POST",
@@ -57,7 +59,6 @@ export const screenFrameRoute: Route = {
     );
     if (!bridge)
       return jsonResult(404, { ok: false, error: "bridge_unavailable" });
-
     const body = ctx.body;
     // Renderer signalled a capture failure/skip so the pending request settles
     // immediately rather than waiting out the bridge timeout.
@@ -68,12 +69,10 @@ export const screenFrameRoute: Route = {
         ? jsonResult(200, { ok: true })
         : jsonResult(404, { ok: false, error: "unknown_request" });
     }
-
     const frame = normalizeScreenCaptureFrameContract(body);
     if (!frame) {
       return jsonResult(400, { ok: false, error: "invalid_body" });
     }
-
     const ok = bridge.submitFrame(
       frame.requestId,
       frame.base64,
@@ -87,7 +86,6 @@ export const screenFrameRoute: Route = {
       : jsonResult(404, { ok: false, error: "unknown_request" });
   },
 };
-
 function isOcrWord(value: unknown): value is OcrBridgeWord {
   if (typeof value !== "object" || value === null) return false;
   const word = value as Record<string, unknown>;
@@ -103,7 +101,6 @@ function isOcrWord(value: unknown): value is OcrBridgeWord {
     typeof word.line === "number"
   );
 }
-
 export const ocrRequestsRoute: Route = {
   type: "GET",
   path: "/api/vision/ocr-requests",
@@ -116,7 +113,6 @@ export const ocrRequestsRoute: Route = {
     return jsonResult(200, { requests: bridge.takeRequests() });
   },
 };
-
 export const ocrResultRoute: Route = {
   type: "POST",
   path: "/api/vision/ocr-result",
@@ -127,7 +123,6 @@ export const ocrResultRoute: Route = {
     );
     if (!bridge)
       return jsonResult(404, { ok: false, error: "bridge_unavailable" });
-
     const body = ctx.body;
     if (
       typeof body !== "object" ||
@@ -137,7 +132,6 @@ export const ocrResultRoute: Route = {
       return jsonResult(400, { ok: false, error: "invalid_body" });
     }
     const requestId = (body as Record<string, unknown>).requestId as string;
-
     if ((body as Record<string, unknown>).error !== undefined) {
       const failed = bridge.failRequest(
         requestId,
@@ -147,7 +141,6 @@ export const ocrResultRoute: Route = {
         ? jsonResult(200, { ok: true })
         : jsonResult(404, { ok: false, error: "unknown_request" });
     }
-
     const rawWords = (body as Record<string, unknown>).words;
     if (!Array.isArray(rawWords)) {
       return jsonResult(400, { ok: false, error: "invalid_body" });
@@ -158,7 +151,6 @@ export const ocrResultRoute: Route = {
       : jsonResult(404, { ok: false, error: "unknown_request" });
   },
 };
-
 export const visionRoutes: Route[] = [
   captureRequestsRoute,
   screenFrameRoute,

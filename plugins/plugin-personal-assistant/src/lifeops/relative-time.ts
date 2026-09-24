@@ -4,17 +4,20 @@
  * can be scheduled against "after you wake" rather than a fixed clock time.
  */
 
-import type {
-  LifeOpsAwakeProbability,
-  LifeOpsCircadianState,
-  LifeOpsDayBoundary,
-  LifeOpsPersonalBaseline,
-  LifeOpsRelativeTime,
-  LifeOpsRelativeTimeAnchorSource,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleRegularity,
-} from "@elizaos/shared";
-import { parseIsoMs, roundConfidence } from "@elizaos/shared";
+import {
+  type LifeOpsAwakeProbability,
+  type LifeOpsCircadianState,
+  type LifeOpsDayBoundary,
+  type LifeOpsPersonalBaseline,
+  type LifeOpsRelativeTime,
+  type LifeOpsRelativeTimeAnchorSource,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleRegularity,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
+  parseIsoMs,
+  roundConfidence,
+} from "@elizaos/core/lifeops-normalize/time-util";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -37,7 +40,6 @@ type RelativeTimeScheduleFields = Pick<
   | "wakeAt"
   | "firstActiveAt"
 >;
-
 function _defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
   return {
     pAwake: 0,
@@ -47,7 +49,6 @@ function _defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
     computedAt,
   };
 }
-
 function allowsProjectedBedtime(
   regularity: LifeOpsScheduleRegularity | null | undefined,
 ): boolean {
@@ -56,7 +57,6 @@ function allowsProjectedBedtime(
     regularity?.regularityClass === "very_regular"
   );
 }
-
 function allowsFallbackBedtimeFromLastSleep(
   regularity: LifeOpsScheduleRegularity | null | undefined,
 ): boolean {
@@ -65,11 +65,9 @@ function allowsFallbackBedtimeFromLastSleep(
     regularity?.regularityClass === "insufficient_data"
   );
 }
-
 function minutesBetween(startMs: number, endMs: number): number {
-  return Math.max(0, Math.round((endMs - startMs) / 60_000));
+  return Math.max(0, Math.round((endMs - startMs) / 60000));
 }
-
 function localDayBoundary(args: {
   nowMs: number;
   timezone: string;
@@ -97,7 +95,6 @@ function localDayBoundary(args: {
     endOfDayAt: end.toISOString(),
   };
 }
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 // How far in the past we tolerate before rolling the target forward by a day.
 // 18h lets a post-midnight "bedtime was ~2h ago" answer survive, while still
@@ -106,7 +103,6 @@ const BEDTIME_TARGET_MAX_PAST_MS = 18 * 60 * 60 * 1000;
 // Symmetric ceiling: the target should never be more than a day in the future,
 // otherwise it has rolled to "tomorrow night" when it should be "tonight".
 const BEDTIME_TARGET_MAX_FUTURE_MS = DAY_MS;
-
 /**
  * Builds a UTC instant for a normalized local bedtime hour
  * (in the canonical [12, 36) range) anchored on the sleep-day that `anchorMs`
@@ -152,21 +148,17 @@ function localHourInstantMs(args: {
   }
   return candidate;
 }
-
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
-
 function isAwakeState(state: LifeOpsCircadianState): boolean {
   return state === "awake" || state === "waking" || state === "winding_down";
 }
-
 function baselineBedtimeHour(
   baseline: LifeOpsPersonalBaseline | null | undefined,
 ): number | null {
   return baseline?.medianBedtimeLocalHour ?? null;
 }
-
 function sourceConfidence(
   source: LifeOpsRelativeTimeAnchorSource | null,
 ): number {
@@ -183,7 +175,6 @@ function sourceConfidence(
       return 0;
   }
 }
-
 export function resolveLifeOpsRelativeTime(args: {
   nowMs: number;
   timezone: string;
@@ -275,7 +266,7 @@ export function resolveLifeOpsRelativeTime(args: {
   const minutesUntilBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs < args.nowMs
       ? null
-      : Math.round((bedtimeTargetMs - args.nowMs) / 60_000);
+      : Math.round((bedtimeTargetMs - args.nowMs) / 60000);
   const minutesSinceBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs > args.nowMs
       ? null
@@ -305,7 +296,7 @@ export function resolveLifeOpsRelativeTime(args: {
       ? minutesBetween(startOfDayMs, args.nowMs)
       : 0,
     minutesUntilDayBoundaryEnd: Number.isFinite(endOfDayMs)
-      ? Math.max(0, Math.round((endOfDayMs - args.nowMs) / 60_000))
+      ? Math.max(0, Math.round((endOfDayMs - args.nowMs) / 60000))
       : 0,
     confidence: roundConfidence(
       Math.max(
@@ -318,10 +309,16 @@ export function resolveLifeOpsRelativeTime(args: {
     ),
   };
 }
-
 export function refreshLifeOpsRelativeTime<
-  T extends RelativeTimeScheduleFields & { timezone: string },
->(state: T, now: Date): T & { relativeTime: LifeOpsRelativeTime } {
+  T extends RelativeTimeScheduleFields & {
+    timezone: string;
+  },
+>(
+  state: T,
+  now: Date,
+): T & {
+  relativeTime: LifeOpsRelativeTime;
+} {
   return {
     ...state,
     relativeTime: resolveLifeOpsRelativeTime({

@@ -7,18 +7,20 @@
  * the fetchers on pull paths and the status probes on cache paths.
  */
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
+  logger,
+  normalizeConnectorSource,
+} from "@elizaos/core";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+import {
   type GetLifeOpsGmailTriageRequest,
-  type LifeOpsConnectorDegradation,
   type LifeOpsGmailTriageFeed,
   type LifeOpsGoogleConnectorStatus,
   type LifeOpsInboxSourceStatus,
   type LifeOpsXConnectorStatus,
   type LifeOpsXDm,
-  normalizeConnectorSource,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 

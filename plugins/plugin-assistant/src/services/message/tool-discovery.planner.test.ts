@@ -1,6 +1,10 @@
 /** Exercises real discovery, execution and planner settlement with deterministic model responses. */
 
 import { randomUUID } from "node:crypto";
+import {
+  buildPlannerToolsFromActions,
+  CORE_PLANNER_TERMINALS,
+} from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { PlannerRuntime } from "../../../../../packages/core/src/runtime/planner-types.ts";
@@ -13,9 +17,26 @@ import { executeV5PlannedToolCall } from "./planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "./tool-discovery.ts";
 
 describe("discovery denial through planner settlement", () => {
-  it.each([false, true])(
-    "settles discovery denial without masking a real write failure (%s)",
-    async (writeFailure) => {
+  it.each([
+    {
+      writeFailure: false,
+      discoveryName: "DISCOVER_ACTIONS",
+      loadSuccess: false,
+    },
+    {
+      writeFailure: true,
+      discoveryName: "DISCOVER_ACTIONS",
+      loadSuccess: false,
+    },
+    {
+      writeFailure: false,
+      discoveryName: "DISCOVER_ACTIONS",
+      loadSuccess: true,
+    },
+    { writeFailure: false, discoveryName: "DISCOVER_TOOLS", loadSuccess: true },
+  ])(
+    "settles native discovery and executes admitted work: %j",
+    async ({ writeFailure, discoveryName, loadSuccess }) => {
       const runtime = createSQLiteTestRuntime({
         character: { name: "Discovery regression", bio: "Test" },
 
@@ -71,9 +92,15 @@ describe("discovery denial through planner settlement", () => {
           },
         };
         const loaded: Action[][] = [];
-        const discovery = createPlannerToolDiscoveryAction([read], (actions) =>
-          loaded.push(actions),
+        const tools = [...CORE_PLANNER_TERMINALS];
+        const discovery = createPlannerToolDiscoveryAction(
+          [read],
+          (actions) => {
+            loaded.push(actions);
+            tools.push(...buildPlannerToolsFromActions(actions));
+          },
         );
+        tools.push(...buildPlannerToolsFromActions([discovery]));
         const failedWrite: Action = {
           name: "WRITE_RECORD",
           description: "Update the requested record",
@@ -95,11 +122,16 @@ describe("discovery denial through planner settlement", () => {
             toolCalls: [
               {
                 id: "describe",
-                name: writeFailure ? "WRITE_RECORD" : "DISCOVER_TOOLS",
+                name: writeFailure ? "WRITE_RECORD" : discoveryName,
                 arguments: {
                   ...(writeFailure
                     ? {}
-                    : { names: ["READ_PAGE", "DENIED"], mode: "describe" }),
+                    : {
+                        names: loadSuccess
+                          ? ["READ_PAGE"]
+                          : ["READ_PAGE", "DENIED"],
+                        mode: loadSuccess ? "load" : "describe",
+                      }),
                   eliza_turn_scope: "more_work_pending",
                 },
               },
@@ -164,6 +196,7 @@ describe("discovery denial through planner settlement", () => {
           runtime: plannerRuntime,
           context,
           config: { maxIterations: 6 },
+          ...(loadSuccess ? { tools } : {}),
           executeToolCall: (toolCall) =>
             executeV5PlannedToolCall({
               runtime,
@@ -179,6 +212,23 @@ describe("discovery denial through planner settlement", () => {
               executorOptions: { actions },
             }),
         });
+        if (loadSuccess) {
+          expect(result.trajectory.steps[0].toolCall?.name).toBe(
+            "DISCOVER_ACTIONS",
+          );
+          expect(result.trajectory.steps[0].result?.success).toBe(true);
+          expect(loaded).toEqual([[read]]);
+          expect(reads).toBe(1);
+          expect(result.finalMessage).toBe("The page title is Example Domain.");
+          const initial = calls[0].input as { tools?: Array<{ name: string }> };
+          expect(
+            initial.tools?.some((tool) => tool.name === "DISCOVER_ACTIONS"),
+          ).toBe(true);
+          expect(
+            initial.tools?.some((tool) => tool.name === "DISCOVER_TOOLS"),
+          ).toBe(false);
+          return;
+        }
         expect(result.trajectory.steps[0].result).toMatchObject({
           success: false,
           error: expect.stringContaining(

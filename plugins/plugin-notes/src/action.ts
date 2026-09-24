@@ -262,6 +262,7 @@ export const notesAction: Action = {
   name: "NOTES",
   tags: [
     "resource:tracked-work",
+    "resource:notes",
     "capability:read",
     "capability:write",
     "capability:update",
@@ -415,7 +416,13 @@ export const notesAction: Action = {
             );
           })
         : candidates;
-      return committed({
+      const emptyInventory =
+        op === "list" &&
+        notes.length === 0 &&
+        noteId === undefined &&
+        topic === undefined &&
+        dateRange === undefined;
+      const result = committed({
         op,
         readOnlyOperation: true,
         count: matches.length,
@@ -437,6 +444,18 @@ export const notesAction: Action = {
         notes: matches,
         notesRevision: snapshot.revision,
       });
+      return emptyInventory
+        ? {
+            ...result,
+            emptyTrackedState: {
+              resource: "notes",
+              scope: "entire_current_inventory",
+              count: 0,
+              revision: snapshot.revision,
+              observedAt: new Date().toISOString(),
+            },
+          }
+        : result;
     }
 
     // The service still receives one user-authored content value. Providers

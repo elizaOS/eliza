@@ -3,23 +3,19 @@
  * elizaOS runtime plugin route system. The handlers run in-process against
  * plugin-workflow services; there is no external workflow server or sidecar.
  */
-
 import type http from 'node:http';
-import type { HttpPlugin as Plugin, Route } from '@elizaos/shared';
+import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
 import { handleAutomationsRoutes } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
-
 interface WorkflowRouteState {
   current: AnyRuntime;
 }
-
 function buildState(runtime: unknown): WorkflowRouteState {
   return { current: runtime as AnyRuntime } as WorkflowRouteState;
 }
-
 function jsonResponder(httpRes: http.ServerResponse) {
   return (_res: http.ServerResponse, body: unknown, status = 200) => {
     if (httpRes.headersSent) return;
@@ -28,7 +24,6 @@ function jsonResponder(httpRes: http.ServerResponse) {
     httpRes.end(JSON.stringify(body));
   };
 }
-
 function makeWorkflowHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -36,7 +31,6 @@ function makeWorkflowHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleWorkflowRoutes({
       req: httpReq,
       res: httpRes,
@@ -47,7 +41,6 @@ function makeWorkflowHandler() {
     });
   };
 }
-
 function makeAutomationsHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -55,7 +48,6 @@ function makeAutomationsHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleAutomationsRoutes({
       req: httpReq,
       res: httpRes,
@@ -66,7 +58,6 @@ function makeAutomationsHandler() {
     });
   };
 }
-
 function makeWorkbenchTodosHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -74,7 +65,6 @@ function makeWorkbenchTodosHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleWorkbenchTodosRoutes({
       req: httpReq,
       res: httpRes,
@@ -84,11 +74,9 @@ function makeWorkbenchTodosHandler() {
     });
   };
 }
-
 const workflowHandler = makeWorkflowHandler();
 const automationsHandler = makeAutomationsHandler();
 const workbenchTodosHandler = makeWorkbenchTodosHandler();
-
 const workflowRouteList: Route[] = [
   // Status surface
   {
@@ -253,11 +241,9 @@ const workflowRouteList: Route[] = [
     handler: workbenchTodosHandler,
   },
 ];
-
 export const workflowRoutePlugin: Plugin = {
   name: '@elizaos/plugin-workflow:routes',
   description: 'Workflow routes — in-process status, generation, CRUD, and lifecycle handlers.',
   routes: workflowRouteList,
 };
-
 export default workflowRoutePlugin;

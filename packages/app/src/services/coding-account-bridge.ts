@@ -51,9 +51,9 @@ import {
 } from "@elizaos/auth/auth/credentials";
 import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
 import { accountRefreshMutex } from "@elizaos/auth/auth/refresh-mutex";
-import type { DirectAccountProvider } from "@elizaos/auth/auth/types";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
+  type DirectAccountProvider,
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/auth/auth/types";
@@ -65,8 +65,8 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/core/contracts/coding-agent-capabilities";
+import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,
@@ -87,11 +87,9 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "reset-soonest",
   "drain-soonest-reset",
 ]);
-
 function accountStoragePolicy() {
   return createRuntimeAccountStoragePolicy(resolveStateDir());
 }
-
 /** Optional coding-only operator override from ELIZA_CODING_ACCOUNT_STRATEGY. */
 function getEnvCodingStrategy(): Strategy | undefined {
   const env =
@@ -101,13 +99,10 @@ function getEnvCodingStrategy(): Strategy | undefined {
   if (!env) return undefined;
   if (VALID_CODING_STRATEGIES.has(env as Strategy)) return env as Strategy;
   logger.warn(
-    `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
-      env,
-    )}; using the provider default`,
+    `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(env)}; using the provider default`,
   );
   return undefined;
 }
-
 /**
  * Ordered provider candidates per coding-agent type. The first provider with an
  * eligible account wins. The shared descriptor only maps credential transports
@@ -125,11 +120,9 @@ const AGENT_PROVIDER_CANDIDATES: Readonly<
   codex: CODING_AGENT_BACKEND_PROVIDERS.codex,
   "pi-agent": CODING_AGENT_BACKEND_PROVIDERS["pi-agent"],
 };
-
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
   return AGENT_PROVIDER_CANDIDATES[agentType.toLowerCase()] ?? [];
 }
-
 /**
  * Whether a token-resolve failure is a genuine auth problem (→ needs-reauth)
  * vs a transient network/5xx blip. A transient failure must NOT sideline a
@@ -144,7 +137,6 @@ export function isAuthFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return AUTH_FAILURE_PATTERN.test(msg);
 }
-
 function accessTokenFailureIsAuth(
   outcome: AccessTokenOutcome | undefined,
   err?: unknown,
@@ -152,7 +144,6 @@ function accessTokenFailureIsAuth(
   if (outcome && !outcome.ok) return outcome.kind === "auth";
   return isAuthFailure(err);
 }
-
 function codexHomeDir(accountId: string): string {
   return path.join(
     process.env.ELIZA_HOME || resolveStateDir(),
@@ -161,7 +152,6 @@ function codexHomeDir(accountId: string): string {
     accountId,
   );
 }
-
 function codexGenerationDir(accountId: string, refreshToken: string): string {
   const generation = createHash("sha256")
     .update(refreshToken)
@@ -169,10 +159,8 @@ function codexGenerationDir(accountId: string, refreshToken: string): string {
     .slice(0, 24);
   return path.join(codexHomeDir(accountId), "generations", generation);
 }
-
 const CODEX_ACTIVE_HOME_FILE = "active-home";
 const CODEX_GENERATION_NAME_PATTERN = /^[a-f0-9]{24}$/;
-
 /** Decode the `exp` claim (epoch ms) from a JWT access token, or null. */
 function jwtExpiryMs(accessToken: string): number | null {
   const parts = accessToken.split(".");
@@ -180,7 +168,9 @@ function jwtExpiryMs(accessToken: string): number | null {
   try {
     const payload = JSON.parse(
       Buffer.from(parts[1], "base64url").toString("utf-8"),
-    ) as { exp?: unknown };
+    ) as {
+      exp?: unknown;
+    };
     return typeof payload.exp === "number" && Number.isFinite(payload.exp)
       ? payload.exp * 1000
       : null;
@@ -190,7 +180,6 @@ function jwtExpiryMs(accessToken: string): number | null {
     return null;
   }
 }
-
 /** Credential fields read from a ChatGPT-mode Codex `auth.json`. */
 interface MaterializedCodexAuthJson {
   tokens: {
@@ -201,21 +190,23 @@ interface MaterializedCodexAuthJson {
   };
   last_refresh?: string;
 }
-
 interface MaterializedCodexAuthCandidate {
   authPath: string;
   homeDir: string;
   auth: MaterializedCodexAuthJson;
   lastRefreshMs: number | null;
 }
-
 type CodexAuthParseResult =
-  | { ok: true; value: MaterializedCodexAuthJson }
-  | { ok: false; error: Error };
-
+  | {
+      ok: true;
+      value: MaterializedCodexAuthJson;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
 const CODEX_AUTH_STABLE_READ_ATTEMPTS = 20;
 const CODEX_AUTH_STABLE_READ_DELAY_MS = 10;
-
 function parseMaterializedCodexAuth(
   raw: string,
   authPath: string,
@@ -299,7 +290,6 @@ function parseMaterializedCodexAuth(
     },
   };
 }
-
 function sameFileGeneration(left: Stats, right: Stats): boolean {
   return (
     left.dev === right.dev &&
@@ -309,7 +299,6 @@ function sameFileGeneration(left: Stats, right: Stats): boolean {
     left.ctimeMs === right.ctimeMs
   );
 }
-
 async function readStableCodexAuth(
   homeDir: string,
 ): Promise<MaterializedCodexAuthCandidate> {
@@ -349,7 +338,6 @@ async function readStableCodexAuth(
     },
   );
 }
-
 function listCodexHomeCandidates(accountId: string): string[] {
   const accountHome = codexHomeDir(accountId);
   const homes: string[] = [];
@@ -367,7 +355,6 @@ function listCodexHomeCandidates(accountId: string): string[] {
   }
   return homes;
 }
-
 function publishJsonExclusive(filePath: string, value: unknown): void {
   const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   try {
@@ -395,7 +382,6 @@ function publishJsonExclusive(filePath: string, value: unknown): void {
     rmSync(tmpPath, { force: true });
   }
 }
-
 function canonicalCodexAuth(
   accountId: string,
   record: NonNullable<ReturnType<typeof loadAccount>>,
@@ -426,7 +412,6 @@ function canonicalCodexAuth(
     last_refresh: new Date(record.updatedAt).toISOString(),
   };
 }
-
 async function createCanonicalCodexHome(
   accountId: string,
   record: NonNullable<ReturnType<typeof loadAccount>>,
@@ -468,13 +453,11 @@ async function createCanonicalCodexHome(
   }
   return candidate;
 }
-
 interface CodexReconciliation {
   adopted: boolean;
   candidate: MaterializedCodexAuthCandidate | null;
   record: NonNullable<ReturnType<typeof loadAccount>>;
 }
-
 async function reconcileCodexTokensLocked(
   accountId: string,
   storagePolicy: AccountStoragePolicy,
@@ -581,7 +564,6 @@ async function reconcileCodexTokensLocked(
   )[0];
   return { adopted: false, candidate: candidate ?? null, record };
 }
-
 /**
  * Adopt tokens a spawned Codex CLI rotated inside its per-account CODEX_HOME
  * back into the canonical account record.
@@ -610,7 +592,6 @@ export async function adoptRotatedCodexTokens(
     return reconciled.adopted;
   });
 }
-
 /**
  * Reasoning-effort values the Codex model catalog knows. Codex itself silently
  * accepts an invalid `model_reasoning_effort`, so validation is on us: an
@@ -624,7 +605,6 @@ const CODEX_EFFORT_VALUES: ReadonlySet<string> = new Set([
   "max",
   "ultra",
 ]);
-
 /**
  * Effort values guaranteed by the managed Codex ACP contract across linked
  * account spawns. The catalog recognizes newer variants for other consumers,
@@ -637,7 +617,6 @@ const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "high",
   "xhigh",
 ]);
-
 function resolveCodexConfig(): string {
   // Codex reads its model from CODEX_HOME/config.toml; with none, codex-acp
   // falls back to a built-in default (e.g. gpt-5.3-codex) that ChatGPT-account
@@ -693,11 +672,8 @@ function resolveCodexConfig(): string {
     );
     effort = undefined;
   }
-  return `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${
-    effort ? `model_reasoning_effort = "${effort}"\n` : ""
-  }`;
+  return `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${effort ? `model_reasoning_effort = "${effort}"\n` : ""}`;
 }
-
 function materializeRequiredTextFile(
   targetPath: string,
   contents: string,
@@ -753,7 +729,6 @@ function materializeRequiredTextFile(
     },
   );
 }
-
 function materializeRequiredCodexConfig(
   homeDir: string,
   storagePolicy: AccountStoragePolicy,
@@ -766,7 +741,6 @@ function materializeRequiredCodexConfig(
     "config",
   );
 }
-
 function publishActiveCodexHome(
   accountId: string,
   homeDir: string,
@@ -795,7 +769,6 @@ function publishActiveCodexHome(
     "active-home pointer",
   );
 }
-
 /**
  * Reconcile a Codex-owned token generation and return a safe `CODEX_HOME`.
  * Existing auth files are immutable from the bridge's perspective: Codex may
@@ -821,7 +794,6 @@ async function materializeCodexHome(accountId: string): Promise<string> {
     return candidate.homeDir;
   });
 }
-
 async function buildEnvPatch(
   providerId: LinkedAccountProviderId,
   accessToken: string,
@@ -843,7 +815,6 @@ async function buildEnvPatch(
     }
   }
 }
-
 function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
   return {
     describe() {
@@ -870,7 +841,6 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       }
       return out;
     },
-
     async select(agentType, opts) {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
@@ -1002,7 +972,6 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       }
       return null;
     },
-
     markRateLimited(
       providerId: LinkedAccountProviderId,
       accountId,
@@ -1088,7 +1057,6 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
     },
   };
 }
-
 /**
  * Install the coding-agent selector bridge. Idempotent — called from
  * `getDefaultAccountPool()` so it is present before the first spawn. The
@@ -1098,5 +1066,4 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
 export function installCodingAgentSelectorBridge(pool: AccountPool): void {
   setCodingAgentSelectorBridge(makeBridge(pool));
 }
-
 export { getCodingAgentSelectorBridge } from "@elizaos/core";

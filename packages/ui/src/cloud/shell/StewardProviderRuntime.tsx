@@ -11,7 +11,7 @@
  */
 
 import { LoginClient } from "@elizaos/auth";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { writeStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   type ComponentProps,
   type ReactNode,

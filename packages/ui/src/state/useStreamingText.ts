@@ -26,7 +26,7 @@
  * stay as direct `setConversationMessages` calls.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,
@@ -37,11 +37,9 @@ import type {
 } from "../api";
 import { mergeChatToolEvent } from "../components/tool-events/chat-tool-events";
 import { mergeStreamingText } from "./parsers";
-
 export type StreamingTextSetter = Dispatch<
   SetStateAction<ConversationMessage[]>
 >;
-
 /**
  * One streaming-text mutation against a single in-flight assistant turn.
  *
@@ -125,7 +123,6 @@ export type StreamingTextModification =
       messageId: string;
       mode: "drop";
     };
-
 /**
  * Stamp or clear the `provisional` marker (action-callback text the final
  * reply may replace — held back from voice output). The latest frame is
@@ -143,7 +140,6 @@ function withProvisional(
   if (message.provisional !== undefined) delete message.provisional;
   return message;
 }
-
 /**
  * Compute the patched message for a single modification, or return `null`
  * if the modification produces no observable change.
@@ -304,7 +300,6 @@ function computeNextMessage(
       return message;
   }
 }
-
 /**
  * Apply one streaming-text modification to the chat-message reducer.
  *
@@ -320,7 +315,6 @@ export function applyStreamingTextModification(
       const filtered = prev.filter((message) => message.id !== mod.messageId);
       return filtered.length === prev.length ? prev : filtered;
     }
-
     let changed = false;
     let next = prev.map((message) => {
       if (message.id !== mod.messageId) return message;

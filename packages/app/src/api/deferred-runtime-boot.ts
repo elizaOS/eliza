@@ -36,8 +36,12 @@ import { isCloudProvisioned } from "./server-first-run-helpers";
  */
 type DeferredRuntimeBoot = () => Promise<void>;
 
-let pendingBoot: DeferredRuntimeBoot | null = null;
-let bootInFlight: Promise<void> | null = null;
+interface BootRegistration {
+  run: DeferredRuntimeBoot;
+  inFlight: Promise<void> | null;
+}
+
+let pendingBoot: BootRegistration | null = null;
 
 /**
  * True when a provider auto-enable env key is set — the same keys the plugin
@@ -75,8 +79,7 @@ export function shouldDeferRuntimeBootUntilOnboarding(): boolean {
  * arrive over HTTP is guaranteed to find the closure registered.
  */
 export function registerDeferredRuntimeBoot(boot: DeferredRuntimeBoot): void {
-  pendingBoot = boot;
-  bootInFlight = null;
+  pendingBoot = { run: boot, inFlight: null };
 }
 
 /** True while the runtime boot is deferred (registered and not yet succeeded). */
@@ -96,22 +99,21 @@ export function triggerDeferredRuntimeBoot(reason: string): Promise<void> {
   if (!boot) {
     return Promise.resolve();
   }
-  if (!bootInFlight) {
+  if (!boot.inFlight) {
     logger.info(`[eliza] Booting the deferred agent runtime (${reason})`);
-    bootInFlight = (async () => {
+    boot.inFlight = Promise.resolve().then(async () => {
       try {
-        await boot();
-        pendingBoot = null;
+        await boot.run();
+        if (pendingBoot === boot) pendingBoot = null;
       } finally {
-        bootInFlight = null;
+        boot.inFlight = null;
       }
-    })();
+    });
   }
-  return bootInFlight;
+  return boot.inFlight;
 }
 
 /** Test-only: reset the module-scoped registry between cases. */
 export function resetDeferredRuntimeBootForTests(): void {
   pendingBoot = null;
-  bootInFlight = null;
 }

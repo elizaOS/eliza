@@ -8,9 +8,7 @@
     "rootDir": "./src",
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../shared/dist/*"]
+      "@elizaos/core": ["../core/dist/index.d.ts"]
     },
     "types": ["node", "bun"]
   },

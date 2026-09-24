@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { wordErrorRate } from "@elizaos/core/voice-wer";
+import { STT_BENCH_CORPUS } from "../../../../plugins/plugin-local-inference/src/services/voice/bench-utils";
 /**
  * STT quality benchmark across the published eliza-1-asr GGUF quants (#10726
  * scope item: "STT quality benchmarks per model/quant, documented per-device
@@ -23,11 +27,6 @@
  *   STT_BENCH_MAX_BEST_WER — sanity ceiling for the BEST quant's mean WER (default 0.5)
  *   ELIZA_VOICE_BENCH_OUT  — report dir (default <plugin>/voice-bench-output)
  */
-
-import { existsSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
-import { wordErrorRate } from "@elizaos/shared";
-import { STT_BENCH_CORPUS } from "../../../../plugins/plugin-local-inference/src/services/voice/bench-utils";
 import {
   BENCH_SAMPLE_RATE,
   bootFusedFfi,
@@ -44,14 +43,12 @@ import {
 const TAG = "stt-quant-bench";
 const gates = makeBenchGates(TAG, "STT_BENCH_REQUIRE");
 const log = (msg: string) => console.log(`[${TAG}] ${msg}`);
-
 interface Variant {
   name: string;
   bundleDir: string;
   sizeBytes: number;
   cleanup?: () => void;
 }
-
 interface VariantResult {
   name: string;
   sizeBytes: number;
@@ -73,10 +70,8 @@ interface VariantResult {
     audioSeconds: number;
   }>;
 }
-
 const { ffi, libPath } = bootFusedFfi(gates);
 log(`lib=${libPath}`);
-
 // --- discover variants -------------------------------------------------------
 const quantDir = process.env.ELIZA_ASR_QUANT_DIR?.trim();
 const variants: Variant[] = [];
@@ -121,7 +116,6 @@ if (variants.length === 0) {
   );
 }
 log(`variants: ${variants.map((v) => v.name).join(", ")}`);
-
 // --- corpus -------------------------------------------------------------------
 const corpus: CorpusItem[] = await ensureKokoroCorpus(
   "clean",
@@ -133,7 +127,6 @@ const totalAudioSec = corpus.reduce((a, c) => a + c.seconds, 0);
 log(
   `corpus: ${corpus.length} utterances, ${totalAudioSec.toFixed(1)}s audio total`,
 );
-
 // --- benchmark ----------------------------------------------------------------
 const results: VariantResult[] = [];
 for (const variant of variants) {
@@ -184,7 +177,6 @@ for (const variant of variants) {
     utterances,
   });
 }
-
 // --- report -------------------------------------------------------------------
 const header =
   "| variant | size (MB) | load (ms) | mean WER | median WER | mean ms/utt | 1st utt (ms) | RTF | × realtime |";
@@ -195,7 +187,6 @@ const rows = results.map(
 );
 const table = [header, sep, ...rows].join("\n");
 console.log(`\n${table}\n`);
-
 const md = [
   "# STT quant benchmark — eliza-1-asr (real weights, fused lib, CPU)",
   "",
@@ -220,7 +211,6 @@ const { jsonPath, mdPath } = writeBenchReport(
 );
 log(`report: ${jsonPath}`);
 log(`report: ${mdPath}`);
-
 // --- gate ---------------------------------------------------------------------
 // Sanity, not vanity: if even the best quant cannot transcribe the corpus, the
 // published weights (or the ASR path) are broken and the lane must go RED.

@@ -2,12 +2,11 @@
 import {
   FirstRunActivationSchema,
   PostFirstRunResponseSchema,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/first-run-routes";
 export async function waitForFirstRunActivation(
   response: unknown,
   readActivation: (operationId: string) => Promise<unknown>,
-  timeoutMs = 420_000,
+  timeoutMs = 420000,
 ): Promise<void> {
   let activation = PostFirstRunResponseSchema.parse(response).activation;
   if (!activation) return;

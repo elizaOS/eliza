@@ -27,3 +27,5 @@ new File(repoRoot, 'plugins').listFiles().sort { it.name }.each { pluginDir ->
         project(":${projectName}").projectDir = new File(pluginDir, 'android')
     }
 }
+
+include ':native-block-target'

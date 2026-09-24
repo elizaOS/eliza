@@ -7,18 +7,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import {
+  type CapturedAction,
   type DeterministicModelFixture,
   finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  type ScenarioContext,
+  type ScenarioTurnExecution,
   scenario,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
@@ -39,9 +37,7 @@ const PR_URL = "https://github.test/octo/repo/pull/17";
 const REVIEW_BODY = "Looks good";
 const ISSUE_CREATE_PREVIEW =
   'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent. Re-invoke with confirmed: true to proceed.';
-
 type JsonRecord = Record<string, unknown>;
-
 type RuntimeWithGithubScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
@@ -54,21 +50,17 @@ type RuntimeWithGithubScenario = IAgentRuntime &
       __scenarioGithubRoute?: boolean;
     }>;
   };
-
 type GithubLedgerEntry = {
   method: string;
   args: JsonRecord;
 };
-
 let githubLedger: GithubLedgerEntry[] = [];
 let originalElizaStateDir: string | undefined;
 let scenarioStateDir: string | null = null;
 let scenarioRuntime: RuntimeWithGithubScenario | null = null;
-
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
@@ -81,7 +73,6 @@ function stableStringify(value: unknown): string {
   }
   return JSON.stringify(value) ?? String(value);
 }
-
 function readPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -93,7 +84,6 @@ function readPath(value: unknown, path: string): unknown {
   }
   return current;
 }
-
 function expectEqual(
   actual: unknown,
   expected: unknown,
@@ -105,7 +95,6 @@ function expectEqual(
     ? undefined
     : `expected ${label}=${expectedJson}, saw ${actualJson}`;
 }
-
 function firstAction(
   execution: ScenarioTurnExecution,
   actionName: string,
@@ -118,7 +107,6 @@ function firstAction(
     `expected ${actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`
   );
 }
-
 function fakeOctokit() {
   return {
     activity: {
@@ -229,7 +217,6 @@ function fakeOctokit() {
     },
   };
 }
-
 async function ensureGithubPlugin(
   runtime: RuntimeWithGithubScenario,
 ): Promise<GitHubService> {
@@ -260,7 +247,6 @@ async function ensureGithubPlugin(
   }
   return service;
 }
-
 async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithGithubScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
@@ -279,7 +265,6 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     return err instanceof Error ? err.message : String(err);
   }
 }
-
 function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
   return {
     action: "issue_create",
@@ -292,7 +277,6 @@ function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
     confirmed,
   };
 }
-
 function githubActionParameters(
   action: string,
   parameters: Record<string, unknown> = {},
@@ -305,7 +289,6 @@ function githubActionParameters(
     ...parameters,
   };
 }
-
 const strictGithubRoutes = [
   {
     actionName: "GITHUB_ISSUE_CREATE",
@@ -405,7 +388,6 @@ const strictGithubRoutes = [
     messageToUser: "Triaged 2 unread notification(s)",
   },
 ];
-
 /** Evaluates only the correlated pending confirmation, never a failed mutation. */
 const githubPreviewEvaluator: DeterministicModelFixture = {
   name: "route-github-issue-create-preview-evaluator",
@@ -429,7 +411,9 @@ const githubPreviewEvaluator: DeterministicModelFixture = {
       (message) =>
         message.role === "user" &&
         typeof message.content === "string" &&
-        message.content.includes("message:user:\n"),
+        /(?:^|\n\n)(?:message:user:\n|# Current message\n)/.test(
+          message.content,
+        ),
     );
     if (
       inputs.length !== 1 ||
@@ -489,7 +473,6 @@ const githubPreviewEvaluator: DeterministicModelFixture = {
   },
   times: 1,
 };
-
 function registerGithubStrictFixtures(
   runtime: RuntimeWithGithubScenario,
 ): void {
@@ -504,7 +487,6 @@ function registerGithubStrictFixtures(
     githubPreviewEvaluator,
   );
 }
-
 function expectGithubPreview(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -531,7 +513,6 @@ function expectGithubPreview(
   }
   return undefined;
 }
-
 function expectGithubConfirmation({
   actionName,
   expectedLedgerLength,
@@ -579,7 +560,6 @@ function expectGithubConfirmation({
     return undefined;
   };
 }
-
 function expectGithubCreate(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -618,7 +598,6 @@ function expectGithubCreate(
   ];
   return expectEqual(githubLedger, expectedLedger, "GitHub Octokit ledger");
 }
-
 function expectGithubIssueAssign(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -641,7 +620,6 @@ function expectGithubIssueAssign(
     ? undefined
     : `expected assign response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubIssueState(
   actionName: "GITHUB_ISSUE_CLOSE" | "GITHUB_ISSUE_REOPEN",
   op: "close" | "reopen",
@@ -670,7 +648,6 @@ function expectGithubIssueState(
       : `expected ${op} response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
   };
 }
-
 function expectGithubIssueComment(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -695,7 +672,6 @@ function expectGithubIssueComment(
     ? undefined
     : `expected comment response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubIssueLabel(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -718,7 +694,6 @@ function expectGithubIssueLabel(
     ? undefined
     : `expected label response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubPrList(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -743,7 +718,6 @@ function expectGithubPrList(
     ? undefined
     : `expected PR list response, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubParentPrList(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -765,7 +739,6 @@ function expectGithubParentPrList(
     ? undefined
     : `expected parent GitHub response, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubPrReview(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -786,7 +759,6 @@ function expectGithubPrReview(
     ? undefined
     : `expected PR review response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubNotificationTriage(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -810,7 +782,6 @@ function expectGithubNotificationTriage(
     ? undefined
     : `expected notification triage response, saw ${JSON.stringify(execution.responseText)}`;
 }
-
 function expectGithubTokenRoute(
   status: number,
   body: unknown,
@@ -822,7 +793,6 @@ function expectGithubTokenRoute(
     "GitHub token route body",
   );
 }
-
 async function finalGithubCheck(): Promise<string | undefined> {
   const service = scenarioRuntime?.getService<GitHubService>(
     GitHubService.serviceType,
@@ -941,7 +911,6 @@ async function finalGithubCheck(): Promise<string | undefined> {
   }
   return ledgerFailure;
 }
-
 export default scenario({
   id: "deterministic-github-actions-routes",
   lane: "pr-deterministic",

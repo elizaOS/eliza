@@ -9,7 +9,7 @@ import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_CONNECTOR_SIDES,
   type LifeOpsConnectorSide,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   sqlBoolean,

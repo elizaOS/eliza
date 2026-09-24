@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
 import {
 	_resetVoiceRevisionMemoForTesting,
 	computeLocalVoiceRevision,

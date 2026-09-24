@@ -19,11 +19,11 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
-import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+import { canonicalJsonString } from "@elizaos/core/canonical-json";
 import type {
   SyntheticControlSession,
   SyntheticManifest,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 import {
   assertScenarioStabilityBoundedJson,
   parseScenarioStabilityAttemptExecution,

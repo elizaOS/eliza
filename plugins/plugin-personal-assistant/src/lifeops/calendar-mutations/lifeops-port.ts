@@ -5,6 +5,15 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type CreateLifeOpsCalendarEventRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSummary,
+  type ListLifeOpsCalendarsRequest,
+} from "@elizaos/core/contracts/calendar";
+import {
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,
   CalendarServiceError,
@@ -21,15 +30,6 @@ import {
   recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
 } from "@elizaos/plugin-calendar/internal/recurrence";
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  ListLifeOpsCalendarsRequest,
-} from "@elizaos/shared";
 import { INTERNAL_URL } from "../access.js";
 import type {
   ApprovalPayload,

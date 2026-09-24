@@ -70,7 +70,7 @@ describe("interrupted turn context", () => {
       });
       expect(
         events.find((event) => event.id === "history:request"),
-      ).toMatchObject({ segment: { content: "Compare my notes." } });
+      ).toMatchObject({ segment: { content: "user: Compare my notes." } });
       expect(JSON.stringify(f)).toBe(before);
     },
   );

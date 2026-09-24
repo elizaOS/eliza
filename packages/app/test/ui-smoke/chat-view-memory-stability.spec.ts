@@ -3,7 +3,7 @@
  * the real renderer fixture.
  */
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/core/events";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { CHAT_PREFILL_EVENT } from "../../../ui/src/events";
 import {
@@ -22,12 +22,10 @@ type RuntimeMetrics = {
   documents: number;
   jsEventListeners: number;
 };
-
 const MI_B = 1024 * 1024;
 const ROUTE_SETTLE_MS = 120;
 const DEFAULT_ROUTE_CYCLES = 8;
 const MAX_ROUTE_CYCLES = 60;
-
 function parseRouteCycleCount(): number {
   const raw = process.env.ELIZA_UI_SMOKE_MEMORY_CYCLES?.trim();
   if (!raw) return DEFAULT_ROUTE_CYCLES;
@@ -35,13 +33,14 @@ function parseRouteCycleCount(): number {
   if (!Number.isInteger(parsed) || parsed <= 0) return DEFAULT_ROUTE_CYCLES;
   return Math.min(parsed, MAX_ROUTE_CYCLES);
 }
-
 function metricMap(
-  metrics: Array<{ name: string; value: number }>,
+  metrics: Array<{
+    name: string;
+    value: number;
+  }>,
 ): Map<string, number> {
   return new Map(metrics.map((metric) => [metric.name, metric.value]));
 }
-
 async function collectRuntimeMetrics(page: Page): Promise<RuntimeMetrics> {
   const session = await page.context().newCDPSession(page);
   try {
@@ -62,11 +61,9 @@ async function collectRuntimeMetrics(page: Page): Promise<RuntimeMetrics> {
     await session.detach().catch(() => {});
   }
 }
-
 function growth(before: number, after: number): number {
   return Math.max(0, after - before);
 }
-
 function expectBoundedRuntimeGrowth(
   before: RuntimeMetrics,
   after: RuntimeMetrics,
@@ -79,7 +76,6 @@ function expectBoundedRuntimeGrowth(
   );
   const documentGrowth = growth(before.documents, after.documents);
   const summary = JSON.stringify({ before, after }, null, 2);
-
   expect(
     heapGrowth,
     `expected retained JS heap growth to stay bounded after repeated chat/view switching; metrics=${summary}`,
@@ -93,21 +89,20 @@ function expectBoundedRuntimeGrowth(
   expect(
     nodeGrowth,
     `expected DOM node growth to stay bounded after route cycles; metrics=${summary}`,
-  ).toBeLessThanOrEqual(8_000);
+  ).toBeLessThanOrEqual(8000);
   expect(
     after.nodes,
     `expected final DOM node count to stay near the warmed baseline; metrics=${summary}`,
-  ).toBeLessThanOrEqual(Math.max(before.nodes * 2.5, before.nodes + 12_000));
+  ).toBeLessThanOrEqual(Math.max(before.nodes * 2.5, before.nodes + 12000));
   expect(
     listenerGrowth,
     `expected event-listener growth to stay bounded after route cycles; metrics=${summary}`,
-  ).toBeLessThanOrEqual(2_000);
+  ).toBeLessThanOrEqual(2000);
   expect(
     documentGrowth,
     `expected document count not to grow repeatedly across SPA route changes; metrics=${summary}`,
   ).toBeLessThanOrEqual(8);
 }
-
 async function navigateInPlace(page: Page, targetPath: string): Promise<void> {
   await page.evaluate(
     ({ eventName, path }) => {
@@ -123,17 +118,15 @@ async function navigateInPlace(page: Page, targetPath: string): Promise<void> {
     ),
   );
 }
-
 async function waitForRoute(
   page: Page,
   targetPath: string,
   marker: Locator,
 ): Promise<void> {
   await navigateInPlace(page, targetPath);
-  await expect(marker).toBeVisible({ timeout: 20_000 });
+  await expect(marker).toBeVisible({ timeout: 20000 });
   await page.waitForTimeout(ROUTE_SETTLE_MS);
 }
-
 async function prefillChat(page: Page, text: string): Promise<void> {
   await page.evaluate(
     ({ eventName, value }) => {
@@ -147,37 +140,31 @@ async function prefillChat(page: Page, text: string): Promise<void> {
   );
   await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(text);
 }
-
 test.beforeEach(async ({ page }) => {
   installPageDiagnosticsGuard(page);
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
 });
-
 test.afterEach(async ({ page }, testInfo) => {
   await expectNoPageDiagnostics(page, testInfo.title);
   await expectNoRenderTelemetryErrors(page, testInfo.title);
 });
-
 test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   browserName,
   page,
 }) => {
   const routeCycles = parseRouteCycleCount();
-  test.setTimeout(Math.max(180_000, 45_000 + routeCycles * 8_000));
+  test.setTimeout(Math.max(180000, 45000 + routeCycles * 8000));
   test.skip(
     browserName !== "chromium",
     "CDP runtime metrics are Chromium-only.",
   );
-
   const composer = page.getByTestId("chat-composer-textarea");
   const calendar = page.getByTestId("lifeops-calendar-section").first();
   const documents = page.getByTestId("documents-view").first();
   const taskCoordinator = page.getByTestId("task-coordinator-panel").first();
-
   await openAppPath(page, "/chat");
-  await expect(composer).toBeVisible({ timeout: 20_000 });
-
+  await expect(composer).toBeVisible({ timeout: 20000 });
   // Warm each route once so the baseline includes normal lazy imports, cached
   // plugin bundles, and first-render allocations. The measured cycles below
   // then catch retained growth, not expected startup work.
@@ -186,9 +173,7 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   await waitForRoute(page, "/task-coordinator", taskCoordinator);
   await waitForRoute(page, "/chat", composer);
   await prefillChat(page, "show my calendar");
-
   const before = await collectRuntimeMetrics(page);
-
   const prompts = [
     "show my documents",
     "what's on my calendar",
@@ -201,7 +186,6 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
     await waitForRoute(page, "/chat", composer);
     await prefillChat(page, prompts[index % prompts.length]);
   }
-
   const after = await collectRuntimeMetrics(page);
   expectBoundedRuntimeGrowth(before, after);
 });

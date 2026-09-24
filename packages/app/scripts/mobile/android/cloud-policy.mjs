@@ -119,6 +119,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaVoiceInputMethodService",
   "ElizaAccessibilityService",
   "ElizaInCallService",
+  "ElizaInCallActivity",
   "ElizaNotificationListenerService",
   "ElizaVoiceCaptureService",
   "ElizaVoiceTileService",
@@ -145,6 +146,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // background location/service, camera, Bluetooth, health, telephony, or
 // shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+  "android.permission.USE_FULL_SCREEN_INTENT",
   "CAMERA",
   "BLUETOOTH_SCAN",
   "BLUETOOTH_CONNECT",
@@ -248,6 +250,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaContactsActivity.java",
   "ElizaDialActivity.java",
   "ElizaInCallService.java",
+  "ElizaInCallActivity.java",
   "ElizaMmsReceiver.java",
   "ElizaSmsGatewayService.java",
   "ElizaRespondViaMessageService.java",
@@ -270,6 +273,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
+  "ElizaInCallToneTest.java",
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
@@ -509,6 +513,7 @@ export const ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES = Object.freeze({
 });
 
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
+  ["@capacitor-community/sqlite", "capacitor-community-sqlite"],
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
   ["@capacitor/device", "capacitor-device"],

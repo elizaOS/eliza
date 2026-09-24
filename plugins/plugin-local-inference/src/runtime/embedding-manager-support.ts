@@ -8,7 +8,8 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { formatByteSize, getLogPrefix } from "@elizaos/shared";
+import { formatByteSize } from "@elizaos/core/utils/format-bytes";
+import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
 import { EMBEDDING_PRESETS } from "./embedding-presets.js";
 
 /**

@@ -43,8 +43,8 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));
 
-vi.mock("@elizaos/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/shared")>()),
+vi.mock("../../utils/asset-url.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
 

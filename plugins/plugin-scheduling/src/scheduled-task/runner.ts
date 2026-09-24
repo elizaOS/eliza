@@ -529,6 +529,11 @@ export interface ScheduledTaskDispatchRecord {
   eventPayload?: unknown;
   resolvedContext?: import("./types.js").ScheduledTaskResolvedContext;
   consolidationBatchId?: string;
+  /** Commit the exact payload through the fire's guarded snapshot before egress. */
+  persistPreparedDelivery?: (
+    message: string,
+    idempotencyKey: string,
+  ) => Promise<void>;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -2736,6 +2741,27 @@ export function createScheduledTaskRunner(
           : {}),
         output: claimed.output,
         metadata: claimed.metadata,
+        persistPreparedDelivery: async (message, idempotencyKey) => {
+          claimed.metadata ??= {};
+          Object.assign(claimed.metadata, {
+            dispatchPreparedMessage: message,
+            dispatchIdempotencyKey: idempotencyKey,
+            dispatchAttempt: {
+              status: "prepared",
+              preparedAtIso: now().toISOString(),
+              firedAtIso: fireAtIso,
+            },
+          });
+          if (!(await persist(claimed, { expectedStatus: "fired" }))) {
+            throw new ElizaError(
+              "Scheduled task changed before delivery preparation",
+              {
+                code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+                context: { taskId: claimed.taskId },
+              },
+            );
+          }
+        },
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));

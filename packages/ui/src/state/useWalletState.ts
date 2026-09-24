@@ -26,8 +26,8 @@ import type {
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/contracts/wallet-types";
+import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -55,7 +55,6 @@ import {
 import type { InventoryChainFilters, WalletResourceStatus } from "./types";
 
 // ── Types ──────────────────────────────────────────────────────────────
-
 interface WalletStateParams {
   setActionNotice: (
     text: string,
@@ -73,13 +72,10 @@ interface WalletStateParams {
   /** Hydrate capability flags from the running backend config. */
   hydrateServerConfig?: boolean;
 }
-
 interface WalletAuthorityToken {
   authority: string;
 }
-
 // ── Hook ──────────────────────────────────────────────────────────────
-
 export function useWalletState({
   setActionNotice,
   promptModal,
@@ -102,7 +98,6 @@ export function useWalletState({
       getActiveAgentAuthority() === token.authority
     );
   }, []);
-
   // ── Feature toggles ────────────────────────────────────────────────
   // A capability toggle is a write that matters: if the server-side config
   // update fails silently, the running agent's capabilities diverge from what
@@ -127,7 +122,6 @@ export function useWalletState({
     },
     [isCurrentAuthority, setActionNotice],
   );
-
   const [walletEnabled, setWalletEnabledRaw] = useState(loadWalletEnabled);
   const setWalletEnabled = useCallback(
     (v: boolean) => {
@@ -137,7 +131,6 @@ export function useWalletState({
     },
     [syncCapability],
   );
-
   const [browserEnabled, setBrowserEnabledRaw] = useState(loadBrowserEnabled);
   const setBrowserEnabled = useCallback(
     (v: boolean) => {
@@ -147,7 +140,6 @@ export function useWalletState({
     },
     [syncCapability],
   );
-
   const [computerUseEnabled, setComputerUseEnabledRaw] = useState(
     loadComputerUseEnabled,
   );
@@ -159,7 +151,6 @@ export function useWalletState({
     },
     [syncCapability],
   );
-
   // ── Hydrate capability flags from server config on mount ──────────
   // Server config (written by TOGGLE_CAPABILITY agent action) wins on
   // first load; localStorage remains a fallback for offline / stale.
@@ -201,7 +192,6 @@ export function useWalletState({
       cancelled = true;
     };
   }, [authority, hydrateServerConfig, isCurrentAuthority]);
-
   // ── Wallet / Inventory ─────────────────────────────────────────────
   const [walletAddresses, setWalletAddresses] =
     useState<WalletAddresses | null>(null);
@@ -258,7 +248,6 @@ export function useWalletState({
       solana: true,
     });
   const [walletError, setWalletError] = useState<string | null>(null);
-
   // ── ERC-8004 Registry ──────────────────────────────────────────────
   const [registryStatus, setRegistryStatus] = useState<RegistryStatus | null>(
     null,
@@ -266,7 +255,6 @@ export function useWalletState({
   const [registryLoading, setRegistryLoading] = useState(false);
   const [registryRegistering, setRegistryRegistering] = useState(false);
   const [registryError, setRegistryError] = useState<string | null>(null);
-
   // ── Drop / Mint ────────────────────────────────────────────────────
   const [dropStatus, setDropStatus] = useState<DropStatus | null>(null);
   const [dropLoading, setDropLoading] = useState(false);
@@ -274,12 +262,10 @@ export function useWalletState({
   const [mintResult, setMintResult] = useState<MintResult | null>(null);
   const [mintError, setMintError] = useState<string | null>(null);
   const [mintShiny, setMintShiny] = useState(false);
-
   // ── Whitelist ──────────────────────────────────────────────────────
   const [whitelistStatus, setWhitelistStatus] =
     useState<WhitelistStatus | null>(null);
   const [whitelistLoading, setWhitelistLoading] = useState(false);
-
   // ── Synchronous lock to prevent duplicate save clicks ──────────────
   const walletApiKeySavingRef = useRef(false);
   const walletExportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -288,11 +274,9 @@ export function useWalletState({
   const walletConfigRequestRef = useRef(0);
   const walletBalancesRequestRef = useRef(0);
   const walletNftsRequestRef = useRef(0);
-
   useEffect(() => {
     if (walletStateAuthorityRef.current === authority) return;
     walletStateAuthorityRef.current = authority;
-
     // Agent-owned wallet material is fail-closed across a repoint. Clear every
     // public/config/balance surface before the new authority's loaders settle;
     // request-token checks below prevent old continuations from repopulating it.
@@ -321,7 +305,6 @@ export function useWalletState({
     setWalletPrimaryPending({});
     setCloudRefreshing(false);
     setWalletError(null);
-
     setRegistryStatus(null);
     setRegistryLoading(false);
     setRegistryRegistering(false);
@@ -335,7 +318,6 @@ export function useWalletState({
     setWhitelistStatus(null);
     setWhitelistLoading(false);
   }, [authority]);
-
   const applyWalletConfig = useCallback((cfg: WalletConfigStatus) => {
     setWalletConfig(cfg);
     setWalletAddresses({
@@ -345,7 +327,6 @@ export function useWalletState({
     setWallets(Array.isArray(cfg.wallets) ? cfg.wallets : []);
     setWalletPrimaryMap(cfg.primary ?? null);
   }, []);
-
   const fetchWalletConfig = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) {
@@ -355,7 +336,6 @@ export function useWalletState({
     walletConfigRequestRef.current = requestId;
     setWalletConfigStatus("loading");
     setWalletConfigError(null);
-
     try {
       const cfg = await client.getWalletConfig();
       if (
@@ -383,7 +363,6 @@ export function useWalletState({
       throw err;
     }
   }, [applyWalletConfig, isCurrentAuthority]);
-
   const hasWalletSource = useCallback(
     (
       config: WalletConfigStatus | null | undefined,
@@ -399,7 +378,6 @@ export function useWalletState({
       ),
     [],
   );
-
   const normalizeCloudWalletNotice = useCallback((warning: string) => {
     const detail = warning.replace(
       /^Cloud (evm|solana) wallet import failed:\s*/i,
@@ -410,19 +388,19 @@ export function useWalletState({
     }
     return detail;
   }, []);
-
   const summarizeCloudWalletImport = useCallback(
     (
       config: WalletConfigStatus | null | undefined,
       warnings: string[] | undefined,
-    ): { text: string; tone: "success" | "info" } => {
+    ): {
+      text: string;
+      tone: "success" | "info";
+    } => {
       const evmConnected = hasWalletSource(config, "evm", "cloud");
       const solanaConnected = hasWalletSource(config, "solana", "cloud");
-
       if (evmConnected && solanaConnected) {
         return { text: "Cloud wallets connected.", tone: "success" };
       }
-
       const solanaWarning = warnings?.find((warning) =>
         /Cloud solana wallet import failed:/i.test(warning),
       );
@@ -432,7 +410,6 @@ export function useWalletState({
           tone: "info",
         };
       }
-
       const evmWarning = warnings?.find((warning) =>
         /Cloud evm wallet import failed:/i.test(warning),
       );
@@ -442,14 +419,11 @@ export function useWalletState({
           tone: "info",
         };
       }
-
       return { text: "Cloud wallet import queued.", tone: "success" };
     },
     [hasWalletSource, normalizeCloudWalletNotice],
   );
-
   // ── Wallet callbacks ───────────────────────────────────────────────
-
   const loadWalletConfig = useCallback(async () => {
     try {
       await fetchWalletConfig();
@@ -458,7 +432,6 @@ export function useWalletState({
       // fire-and-forget safe for effects and polling callers.
     }
   }, [fetchWalletConfig]);
-
   const loadBalances = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -497,7 +470,6 @@ export function useWalletState({
       }
     }
   }, [isCurrentAuthority]);
-
   const loadNfts = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -548,7 +520,6 @@ export function useWalletState({
       }
     }
   }, [isCurrentAuthority]);
-
   const handleWalletApiKeySave = useCallback(
     async (config: WalletConfigUpdateRequest) => {
       const requestAuthority = authorityTokenRef.current;
@@ -571,7 +542,6 @@ export function useWalletState({
           selectedProviders.evm === "eliza-cloud" &&
           selectedProviders.bsc === "eliza-cloud" &&
           selectedProviders.solana === "eliza-cloud";
-
         let walletConfigAfterSave: WalletConfigStatus | null | undefined;
         if (shouldImportCloudWallets) {
           setCloudRefreshing(true);
@@ -628,7 +598,6 @@ export function useWalletState({
       summarizeCloudWalletImport,
     ],
   );
-
   const refreshCloudWallets = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -657,7 +626,6 @@ export function useWalletState({
     setActionNotice,
     summarizeCloudWalletImport,
   ]);
-
   const setWalletPrimary = useCallback(
     async (chain: WalletChainKind, source: WalletSource) => {
       const requestAuthority = authorityTokenRef.current;
@@ -673,7 +641,6 @@ export function useWalletState({
           currentConfig = await fetchWalletConfig();
           if (!isCurrentAuthority(requestAuthority)) return;
         }
-
         if (!hasWalletSource(currentConfig, chain, source)) {
           if (source === "local") {
             await client.generateWallet({ chain, source: "local" });
@@ -692,7 +659,6 @@ export function useWalletState({
           currentConfig = await fetchWalletConfig();
           if (!isCurrentAuthority(requestAuthority)) return;
         }
-
         await client.setWalletPrimary({ chain, source });
         if (!isCurrentAuthority(requestAuthority)) return;
         await fetchWalletConfig();
@@ -721,7 +687,6 @@ export function useWalletState({
       walletConfig,
     ],
   );
-
   const handleExportKeys = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -769,7 +734,7 @@ export function useWalletState({
         walletExportTimerRef.current = null;
         setWalletExportVisible(false);
         setWalletExportData(null);
-      }, 60_000);
+      }, 60000);
     } catch (err) {
       if (!isCurrentAuthority(requestAuthority)) return;
       setWalletError(
@@ -777,9 +742,7 @@ export function useWalletState({
       );
     }
   }, [isCurrentAuthority, promptModal, walletExportVisible]);
-
   // ── Registry callbacks ─────────────────────────────────────────────
-
   const loadRegistryStatus = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -797,7 +760,6 @@ export function useWalletState({
       if (isCurrentAuthority(requestAuthority)) setRegistryLoading(false);
     }
   }, [isCurrentAuthority]);
-
   const registerOnChain = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -820,7 +782,6 @@ export function useWalletState({
       }
     }
   }, [characterName, agentName, isCurrentAuthority, loadRegistryStatus]);
-
   const syncRegistryProfile = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -841,9 +802,7 @@ export function useWalletState({
       }
     }
   }, [characterName, agentName, isCurrentAuthority, loadRegistryStatus]);
-
   // ── Drop / Mint callbacks ──────────────────────────────────────────
-
   const loadDropStatus = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -857,7 +816,6 @@ export function useWalletState({
       if (isCurrentAuthority(requestAuthority)) setDropLoading(false);
     }
   }, [isCurrentAuthority]);
-
   const mintFromDrop = useCallback(
     async (shiny: boolean) => {
       const requestAuthority = authorityTokenRef.current;
@@ -894,9 +852,7 @@ export function useWalletState({
       loadDropStatus,
     ],
   );
-
   // ── Whitelist callback ─────────────────────────────────────────────
-
   const loadWhitelistStatus = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
     if (!isCurrentAuthority(requestAuthority)) return;
@@ -910,9 +866,7 @@ export function useWalletState({
       if (isCurrentAuthority(requestAuthority)) setWhitelistLoading(false);
     }
   }, [isCurrentAuthority]);
-
   // ── Return ─────────────────────────────────────────────────────────
-
   const walletStateIsCurrent =
     walletStateAuthorityRef.current === authority &&
     getActiveAgentAuthority() === authority;
@@ -923,7 +877,6 @@ export function useWalletState({
     },
     [authority],
   );
-
   return {
     state: {
       browserEnabled,

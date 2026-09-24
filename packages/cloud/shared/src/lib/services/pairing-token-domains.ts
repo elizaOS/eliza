@@ -8,9 +8,10 @@
  * suffixes are retained only while old pairing records expire. Personal or
  * otherwise retired domains are intentionally excluded and fail validation.
  */
-
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
-
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 export const DOMAIN_ALIAS_GROUPS: readonly (readonly string[])[] = [
   [
     ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix,
@@ -23,9 +24,7 @@ export const DOMAIN_ALIAS_GROUPS: readonly (readonly string[])[] = [
     LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.dedicatedAgentHostnameSuffix,
   ],
 ];
-
 const MANAGED_AGENT_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
 /**
  * Given an origin like https://uuid.waifu.fun, return every other origin
  * that resolves to the same agent container under
@@ -40,8 +39,12 @@ export function getAlternateDomainOrigins(origin: string): string[] {
     // error-policy:J3 Invalid origins are explicit non-matches.
     return [];
   }
-  let bestMatch: { group: readonly string[]; suffix: string } | undefined;
-
+  let bestMatch:
+    | {
+        group: readonly string[];
+        suffix: string;
+      }
+    | undefined;
   for (const group of DOMAIN_ALIAS_GROUPS) {
     for (const suffix of group) {
       if (
@@ -52,16 +55,13 @@ export function getAlternateDomainOrigins(origin: string): string[] {
       }
     }
   }
-
   if (!bestMatch) return [];
-
   const { group, suffix } = bestMatch;
   const prefix = url.hostname.slice(0, -suffix.length);
   // Managed-agent hosts are flat: `<agent-id><suffix>`. Refusing a nested
   // prefix prevents labels such as `staging` from being smuggled through a
   // broader production suffix and crossing the environment trust boundary.
   if (!MANAGED_AGENT_LABEL.test(prefix)) return [];
-
   return group
     .filter((candidate) => candidate !== suffix)
     .map((candidate) => {

@@ -5,7 +5,7 @@
  * Google connector. Results are capped at `maxResults` (default 12).
  */
 
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

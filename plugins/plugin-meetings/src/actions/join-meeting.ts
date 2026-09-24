@@ -11,7 +11,7 @@ import {
   logger,
   type Memory,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
 import { MeetingJoinError } from "../service.js";
 import {
   optionString,

@@ -15,7 +15,7 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-sql/database-utils/sql-compat";
 import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -32,19 +32,16 @@ interface TableIntrospection {
   columns: string[];
   expiresAt: number;
 }
-
 interface DatabaseRowsCompatRouteDeps {
   ensureOwner?: typeof ensureRouteMinRole;
 }
-
 // Resolved schema + column list for a (schema, table) — stable unless a
 // migration alters the table. Caching it skips the two information_schema
 // lookups on every table-browser request (the count + rows queries still run).
 // Short TTL bounds staleness if a table changes at runtime; bounded size.
 const tableIntrospectionCache = new Map<string, TableIntrospection>();
-const TABLE_INTROSPECTION_TTL_MS = 30_000;
+const TABLE_INTROSPECTION_TTL_MS = 30000;
 const TABLE_INTROSPECTION_CACHE_LIMIT = 256;
-
 /**
  * Parse the untrusted `limit` query. Defaults to 50 and caps canonical
  * positive decimal integers at 500. Prefix-numeric junk must not become a
@@ -57,7 +54,6 @@ function parseDatabaseRowsLimit(raw: string | null): number | null {
   if (!Number.isSafeInteger(parsed)) return null;
   return Math.min(parsed, 500);
 }
-
 /**
  * Parse the untrusted `offset` query. Defaults to 0. Reject leading zeros,
  * signs, hex, scientific notation, and other parseInt prefix forms.
@@ -69,7 +65,6 @@ function parseDatabaseRowsOffset(raw: string | null): number | null {
   if (!Number.isSafeInteger(parsed)) return null;
   return parsed;
 }
-
 /** Decode an untrusted database table-name path segment. */
 function decodeTableName(raw: string): string | null {
   try {
@@ -79,7 +74,6 @@ function decodeTableName(raw: string): string | null {
     return null;
   }
 }
-
 function rememberTableIntrospection(
   key: string,
   resolvedSchema: string,
@@ -98,7 +92,6 @@ function rememberTableIntrospection(
     }
   }
 }
-
 export async function handleDatabaseRowsCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -110,7 +103,6 @@ export async function handleDatabaseRowsCompatRoute(
   if ((req.method ?? "GET").toUpperCase() !== "GET" || !match) {
     return false;
   }
-
   const ensureOwner = deps.ensureOwner ?? ensureRouteMinRole;
   // Raw table reads expose arbitrary tables (secrets, sessions, identities),
   // so this must require OWNER - matching the sibling `/api/secrets/*` routes -
@@ -118,7 +110,6 @@ export async function handleDatabaseRowsCompatRoute(
   if (!(await ensureOwner(req, res, state, "OWNER"))) {
     return true;
   }
-
   const decoded = decodeTableName(match[1] ?? "");
   if (decoded === null) {
     sendJsonErrorResponse(
@@ -128,22 +119,18 @@ export async function handleDatabaseRowsCompatRoute(
     );
     return true;
   }
-
   const runtime = state.current;
   if (!runtime) {
     sendJsonErrorResponse(res, 503, DATABASE_UNAVAILABLE_MESSAGE);
     return true;
   }
-
   const tableName = sanitizeIdentifier(decoded);
   const requestUrl = new URL(req.url ?? "/", "http://localhost");
   const schemaName = sanitizeIdentifier(requestUrl.searchParams.get("schema"));
-
   if (!tableName) {
     sendJsonErrorResponse(res, 400, "Invalid table name");
     return true;
   }
-
   const limit = parseDatabaseRowsLimit(requestUrl.searchParams.get("limit"));
   const offset = parseDatabaseRowsOffset(requestUrl.searchParams.get("offset"));
   if (limit === null) {
@@ -154,15 +141,12 @@ export async function handleDatabaseRowsCompatRoute(
     sendJsonErrorResponse(res, 400, "offset must be a non-negative integer");
     return true;
   }
-
   const schemaParam = schemaName ?? "";
   const introspectionKey = `${schemaParam}:${tableName}`;
   const nowMs = Date.now();
   const cachedIntrospection = tableIntrospectionCache.get(introspectionKey);
-
   let resolvedSchema: string;
   let columns: string[];
-
   if (cachedIntrospection && cachedIntrospection.expiresAt > nowMs) {
     recordCacheHit("db-rows-introspection");
     resolvedSchema = cachedIntrospection.resolvedSchema;
@@ -170,7 +154,6 @@ export async function handleDatabaseRowsCompatRoute(
   } else {
     recordCacheMiss("db-rows-introspection");
     resolvedSchema = schemaParam;
-
     if (!resolvedSchema) {
       const { rows } = await executeRawSql(
         runtime,
@@ -182,16 +165,13 @@ export async function handleDatabaseRowsCompatRoute(
           ORDER BY CASE WHEN table_schema = 'public' THEN 0 ELSE 1 END,
                    table_schema`,
       );
-
       const schemas = rows
         .map((row) => row.schema)
         .filter((value): value is string => typeof value === "string");
-
       if (schemas.length === 0) {
         sendJsonErrorResponse(res, 404, `Unknown table "${tableName}"`);
         return true;
       }
-
       if (schemas.length > 1 && !schemas.includes("public")) {
         sendJsonErrorResponse(
           res,
@@ -200,10 +180,8 @@ export async function handleDatabaseRowsCompatRoute(
         );
         return true;
       }
-
       resolvedSchema = schemas.includes("public") ? "public" : schemas[0];
     }
-
     const columnResult = await executeRawSql(
       runtime,
       `SELECT column_name
@@ -212,11 +190,9 @@ export async function handleDatabaseRowsCompatRoute(
           AND table_schema = ${sqlLiteral(resolvedSchema)}
         ORDER BY ordinal_position`,
     );
-
     columns = columnResult.rows
       .map((row) => row.column_name)
       .filter((value): value is string => typeof value === "string");
-
     if (columns.length === 0) {
       sendJsonErrorResponse(
         res,
@@ -225,7 +201,6 @@ export async function handleDatabaseRowsCompatRoute(
       );
       return true;
     }
-
     // Only successful introspection is cached (never 404/409) — a table that
     // appears later must not be shadowed by a negative entry.
     rememberTableIntrospection(
@@ -235,12 +210,10 @@ export async function handleDatabaseRowsCompatRoute(
       nowMs,
     );
   }
-
   const sortColumn = sanitizeIdentifier(requestUrl.searchParams.get("sort"));
   const order =
     requestUrl.searchParams.get("order") === "desc" ? "DESC" : "ASC";
   const search = requestUrl.searchParams.get("search")?.trim();
-
   const filters: string[] = [];
   if (search) {
     const likeEscaped = search
@@ -259,13 +232,11 @@ export async function handleDatabaseRowsCompatRoute(
   }
   const whereClause =
     filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-
   const orderBy =
     sortColumn && columns.includes(sortColumn)
       ? `ORDER BY ${quoteIdent(sortColumn)} ${order}`
       : "";
   const qualifiedTable = `${quoteIdent(resolvedSchema)}.${quoteIdent(tableName)}`;
-
   const countResult = await executeRawSql(
     runtime,
     `SELECT count(*)::int AS total FROM ${qualifiedTable} ${whereClause}`,
@@ -284,7 +255,6 @@ export async function handleDatabaseRowsCompatRoute(
       severity: "ephemeral",
     });
   }
-
   const rowsResult = await executeRawSql(
     runtime,
     `SELECT * FROM ${qualifiedTable}
@@ -293,7 +263,6 @@ export async function handleDatabaseRowsCompatRoute(
       LIMIT ${limit}
      OFFSET ${offset}`,
   );
-
   sendJsonResponse(res, 200, {
     table: tableName,
     schema: resolvedSchema,

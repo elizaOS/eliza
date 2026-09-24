@@ -884,6 +884,7 @@ export function computeTestRoots(root) {
     cloudSharedSrc: path.join(root, "packages", "cloud", "shared", "src"),
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),
+    cloudMocksRoot: path.join(root, "packages", "cloud", "test-mocks"),
   };
 }
 
@@ -1119,7 +1120,7 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot } = testRoots;
+  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot, cloudMocksRoot } = testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {
@@ -1162,10 +1163,19 @@ async function main() {
     process.exit(1);
   }
 
+  const cloudMocksTests = walkTests(cloudMocksRoot, EXCLUDED_DIRS).sort();
+  if (cloudMocksTests.length === 0) {
+    console.error(
+      `[test:cloud] no cloud/test-mocks tests found under ${cloudMocksRoot}`,
+    );
+    process.exit(1);
+  }
+
   const allTestFiles = [
     ...walkTests(cloudSharedSrc, EXCLUDED_DIRS),
     ...cloudApiUnitTests,
     ...cloudServicesTests,
+    ...cloudMocksTests,
   ];
   if (allTestFiles.length === 0) {
     console.error(

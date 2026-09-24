@@ -5,8 +5,9 @@
  * service is present it registers Solana with it opportunistically (failure
  * to register is logged, not fatal).
  */
+
 import type { IAgentRuntime, ServiceTypeName } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";
 import { solanaRoutes } from "./routes/index";
@@ -17,7 +18,6 @@ function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   return typeof value === "string" ? value : null;
 }
-
 function parseBoolSetting(value: string | number | boolean | null): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "boolean") return value;
@@ -25,7 +25,6 @@ function parseBoolSetting(value: string | number | boolean | null): boolean {
   const str = String(value).toLowerCase().trim();
   return str === "true" || str === "1" || str === "yes";
 }
-
 export const solanaPlugin: Plugin = {
   name: SOLANA_SERVICE_NAME,
   description: "Solana blockchain plugin",
@@ -36,13 +35,10 @@ export const solanaPlugin: Plugin = {
       runtime.logger.log("no SOLANA_RPC_URL, skipping Solana chain init");
       return;
     }
-
     if (parseBoolSetting(runtime.getSetting("SOLANA_NO_ACTIONS"))) {
       runtime.logger.log("SOLANA_NO_ACTIONS is set, skipping solana actions");
     }
-
     runtime.registerProvider(walletProvider);
-
     runtime
       .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName)
       .then(() => {
@@ -74,7 +70,6 @@ export const solanaPlugin: Plugin = {
   },
 };
 export default solanaPlugin;
-
 export { SOLANA_SERVICE_NAME } from "./constants";
 export type { SolanaService as ISolanaService } from "./service";
 export { SolanaService, SolanaWalletService } from "./service";

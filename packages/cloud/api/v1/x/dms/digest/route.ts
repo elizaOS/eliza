@@ -5,7 +5,7 @@
  *   - connectionRole: "owner" | "agent" (default "owner")
  */
 
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXDmDigest } from "@/lib/services/x";

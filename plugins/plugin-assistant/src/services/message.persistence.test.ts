@@ -69,6 +69,10 @@ function makeRuntime() {
     getWorld: vi.fn(async () => null),
     getService: vi.fn(() => null),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory,
     updateMemory,
     queueEmbeddingGeneration,

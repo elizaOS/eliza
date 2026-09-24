@@ -1,6 +1,5 @@
 /** Verifies App in-process host-realm mutation isolation (#14179) through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * In-process host-realm mutation fuzz for the real `<App/>` shell (#14179).
  *
@@ -33,22 +32,19 @@
  * while hash-only mutation and the shell's privileged channel keep working.
  */
 
-import { createNavigateViewEvent } from "@elizaos/shared";
+import { createNavigateViewEvent } from "@elizaos/core/events";
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubOfflineAppFetch } from "../test/offline-app-fetch";
-
-// The offline fetch stub keeps every probe permanently pending; withTimeout's
-// real timer would fire seconds later — after this file's jsdom env is torn
-// down — and reject that pending probe into a post-teardown setState that reads
-// the deleted `window`. Pass it through so the probe simply stays pending.
-vi.mock("./utils/with-timeout", () => ({
-  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
-}));
-
+import { App } from "./App";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import type { BuiltinTab } from "./navigation";
+import {
+  chatDraftStorageKey,
+  readChatDraft,
+  writeChatDraft,
+} from "./state/ChatComposerContext.hooks";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
   getActiveSurfaceRealmScope,
@@ -57,11 +53,17 @@ import {
 } from "./surface-realm-broker";
 import { shellHistory, shellLocalStorage } from "./surface-realm-channel";
 
+// The offline fetch stub keeps every probe permanently pending; withTimeout's
+// real timer would fire seconds later — after this file's jsdom env is torn
+// down — and reject that pending probe into a post-teardown setState that reads
+// the deleted `window`. Pass it through so the probe simply stays pending.
+vi.mock("./utils/with-timeout", () => ({
+  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
+}));
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
   tab: "views" as string,
 }));
-
 const authorityState = vi.hoisted(() => ({
   agent: "agent-one",
   identityId: "test-user",
@@ -69,7 +71,6 @@ const authorityState = vi.hoisted(() => ({
   cloudAuthenticated: false,
   cloudUserId: null as string | null,
 }));
-
 vi.mock("./hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.agent,
   getActiveAgentAuthority: () => authorityState.agent,
@@ -83,11 +84,9 @@ vi.mock("./cloud/lib/use-session-auth", () => ({
       : null,
   }),
 }));
-
 const bgState = vi.hoisted(() => ({
   config: { mode: "shader", color: "#059669" } as BackgroundConfig,
 }));
-
 const backgroundConfigMock = vi.hoisted(() => ({
   redoBackgroundConfig: vi.fn(),
   setBackgroundConfig: vi.fn((config: BackgroundConfig) => {
@@ -95,12 +94,10 @@ const backgroundConfigMock = vi.hoisted(() => ({
   }),
   undoBackgroundConfig: vi.fn(),
 }));
-
 const glslRuntimeState = vi.hoisted(() => ({
   compileOk: true,
   rendererCount: 0,
 }));
-
 const desktopTabsState = vi.hoisted(() => ({
   tabs: [] as Array<{
     viewId: string;
@@ -110,24 +107,20 @@ const desktopTabsState = vi.hoisted(() => ({
     pinned: boolean;
   }>,
 }));
-
 const desktopTabsMock = vi.hoisted(() => ({
   closeTab: vi.fn(),
   openTab: vi.fn(),
 }));
-
 const desktopBridgeMock = vi.hoisted(() => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
   subscribeDesktopBridgeEvent: vi.fn(() => vi.fn()),
 }));
-
 const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(({ viewId }: { viewId: string }) => (
     <div data-testid="dynamic-view-loader" data-view-id={viewId} />
   )),
 }));
-
 // Three registered views differing ONLY by grant: no grants, `storage`, and
 // `navigate`. The manifest — not the route — decides what each may mutate.
 const noGrantView = {
@@ -165,7 +158,6 @@ let mockAvailableViews: ViewRegistryEntry[] = [
   storageView,
   navigateView,
 ];
-
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
@@ -273,8 +265,12 @@ vi.mock("./state", async () => {
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? "",
+    t: (
+      _key: string,
+      options?: {
+        defaultValue?: string;
+      },
+    ) => options?.defaultValue ?? "",
     uiLanguage: "en",
     uiShellMode: "default",
     uiTheme: "light",
@@ -290,8 +286,12 @@ vi.mock("./state", async () => {
       selector: (s: ReturnType<typeof getAppValue>) => T,
     ): T => selector(getAppValue()),
     useTranslation: () => ({
-      t: (key: string, options?: { defaultValue?: string }) =>
-        options?.defaultValue ?? key,
+      t: (
+        key: string,
+        options?: {
+          defaultValue?: string;
+        },
+      ) => options?.defaultValue ?? key,
     }),
   };
 });
@@ -453,18 +453,9 @@ vi.mock("three", () => {
     WebGLRenderer,
   };
 });
-
-import { App } from "./App";
-import {
-  chatDraftStorageKey,
-  readChatDraft,
-  writeChatDraft,
-} from "./state/ChatComposerContext.hooks";
-
 // A shell-owned storage key that must never be writable through a view path.
 const SHELL_STORAGE_KEY = "eliza:ui-theme";
 const SHELL_STORAGE_VALUE = "owner-chosen-dark";
-
 // This env ships a partial Node Web Storage global (getItem present, setItem/
 // clear missing) that the shared setup's getItem check does not repair. Install
 // a real in-memory Storage so the shell's `window.localStorage` backing and the
@@ -491,19 +482,19 @@ class MemoryStorage implements Storage {
   }
   [name: string]: unknown;
 }
-
 // The routes the walk visits: the three grant-differentiated views plus a couple
 // of builtin tabs (which resolve to the default no-grant manifest).
-const WALK_ROUTES: { tab: BuiltinTab; path: string }[] = [
+const WALK_ROUTES: {
+  tab: BuiltinTab;
+  path: string;
+}[] = [
   { tab: "views", path: "/iso-nogrant" },
   { tab: "views", path: "/iso-storage" },
   { tab: "views", path: "/iso-navigate" },
   { tab: "browser", path: "/browser" },
   { tab: "settings", path: "/settings" },
 ];
-
 const VIEWS_HOME = { tab: "views" as BuiltinTab, path: "/views" };
-
 function makeRng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -514,7 +505,6 @@ function makeRng(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
 function shuffle<T>(arr: T[], rng: () => number): T[] {
   const out = arr.slice();
   for (let i = out.length - 1; i > 0; i -= 1) {
@@ -523,12 +513,10 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   }
   return out;
 }
-
 describe("App in-process host-realm mutation isolation (#14179)", () => {
   const swallow = (e: ErrorEvent | PromiseRejectionEvent) => {
     e.preventDefault?.();
   };
-
   beforeEach(() => {
     mockAvailableViews = [noGrantView, storageView, navigateView];
     Object.assign(authorityState, {
@@ -561,7 +549,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
   });
-
   afterEach(() => {
     window.removeEventListener("error", swallow);
     window.removeEventListener("unhandledrejection", swallow);
@@ -571,7 +558,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     document.body.className = "";
     document.documentElement.removeAttribute("style");
   });
-
   async function navigate(
     rerender: (ui: React.ReactElement) => void,
     tab: string,
@@ -586,21 +572,18 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       rerender(<App />);
     });
   }
-
   it("resolves a distinct broker scope per active view", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-nogrant");
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
     await navigate(rerender, "views", "/iso-storage");
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-storage");
-  }, 60_000);
-
+  }, 60000);
   it("retains the mounted view scope when unrelated registry metadata changes", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
     const scope = getActiveSurfaceRealmScope();
     expect(scope?.viewId).toBe("iso-navigate");
-
     await act(async () => {
       mockAvailableViews = mockAvailableViews.map((view) => ({
         ...view,
@@ -609,10 +592,8 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       }));
       rerender(<App />);
     });
-
     expect(getActiveSurfaceRealmScope()).toBe(scope);
-  }, 60_000);
-
+  }, 60000);
   it("replaces the scope when the mounted view's navigation grant changes", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
@@ -632,8 +613,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       SurfaceRealmDeniedError,
     );
     expect(window.location.pathname).toBe("/iso-navigate");
-  }, 60_000);
-
+  }, 60000);
   it("replaces the scope when a view ID moves to a different route", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
@@ -644,8 +624,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     await navigate(rerender, "views", "/second-route");
     expect(getActiveSurfaceRealmScope()).not.toBe(previous);
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
-  }, 60_000);
-
+  }, 60000);
   it("replaces the scope for authority and principal changes on the same view", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
@@ -674,8 +653,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       expect(getActiveSurfaceRealmScope()).not.toBe(previous);
       expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
     }
-  }, 60_000);
-
+  }, 60000);
   it("publishes only rendered layout members and revokes changed child policy", async () => {
     const { rerender } = render(<App />);
     await act(async () => {
@@ -695,7 +673,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(first?.ownsView("iso-nogrant")).toBe(false);
     expect(first?.manifest.capabilities.size).toBe(0);
     expect(() => first?.navigate("/settings")).toThrow(/no "navigate" grant/);
-
     await act(async () => {
       mockAvailableViews = mockAvailableViews.map((view) => ({
         ...view,
@@ -705,7 +682,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       rerender(<App />);
     });
     expect(getActiveSurfaceRealmScope()).toBe(first);
-
     await act(async () => {
       mockAvailableViews = mockAvailableViews.map((view) =>
         view.id === "iso-navigate"
@@ -718,7 +694,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(changedPolicy).not.toBe(first);
     expect(changedPolicy?.ownsView("iso-navigate")).toBe(true);
     expect(changedPolicy?.manifest.capabilities.size).toBe(0);
-
     await act(async () => {
       mockAvailableViews = mockAvailableViews.filter(
         (view) => view.id !== "iso-storage",
@@ -732,8 +707,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(changedMembership?.ownsView("iso-navigate")).toBe(true);
     await navigate(rerender, "settings", "/settings");
     expect(getActiveSurfaceRealmScope()?.ownsView("iso-navigate")).toBe(false);
-  }, 60_000);
-
+  }, 60000);
   it("declares the Database vector child only under its builtin owner", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "database", "/apps/database");
@@ -746,21 +720,18 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(getActiveSurfaceRealmScope()?.ownsView("vector-browser")).toBe(
       false,
     );
-  }, 60_000);
-
+  }, 60000);
   it("scopes/blocks all four host-realm vectors across a fuzzed cross-view walk", async () => {
     for (const seed of [1, 7, 42]) {
       const rng = makeRng(seed);
       const order = shuffle(WALK_ROUTES, rng);
       const { rerender } = render(<App />);
       await navigate(rerender, VIEWS_HOME.tab, VIEWS_HOME.path);
-
       for (const route of order) {
         await navigate(rerender, route.tab, route.path);
         const scope = getActiveSurfaceRealmScope();
         expect(scope, `${route.path}: scope published`).not.toBeNull();
         if (!scope) continue;
-
         // The view reaches the host realm directly (bypassing its host node).
         const rogueRootClass = `rogue-root-${seed}`;
         const rogueBodyClass = `rogue-body-${seed}`;
@@ -768,7 +739,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
         document.documentElement.classList.add(rogueRootClass);
         document.body.classList.add(rogueBodyClass);
         document.documentElement.style.setProperty(rogueVar, "red");
-
         // (c) storage: a write to the shell's key. Non-`storage` views are
         // namespaced; the `storage` view is denied the reserved shell key.
         const grantsStorage = route.path === "/iso-storage";
@@ -790,7 +760,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
           window.localStorage.getItem(SHELL_STORAGE_KEY),
           `${route.path}: shell storage key intact`,
         ).toBe(SHELL_STORAGE_VALUE);
-
         // (c-raw) the view bypasses the facade and hits the raw global. The
         // reserved shell key is denied for EVERY view — grant or not — via
         // setItem, removeItem, and the legacy indexed-assignment path.
@@ -828,7 +797,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
           window.localStorage.getItem(SHELL_STORAGE_KEY),
           `${route.path}: raw clear spared reserved shell keys`,
         ).toBe(SHELL_STORAGE_VALUE);
-
         // (d) navigation: a non-`navigate` view is denied; the route never moves.
         const grantsNavigate = route.path === "/iso-navigate";
         if (!grantsNavigate) {
@@ -852,10 +820,8 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
             `${route.path}: route not hijacked`,
           ).toBe(route.path);
         }
-
         // Transition away — the scope tears down and resets the host realm.
         await navigate(rerender, VIEWS_HOME.tab, VIEWS_HOME.path);
-
         // (a) + (b) the view's injected class/var did not survive the transition.
         expect(
           document.documentElement.classList.contains(rogueRootClass),
@@ -872,8 +838,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       }
       cleanup();
     }
-  }, 120_000);
-
+  }, 120000);
   it("a storage-granted view reaches the host keyspace (the grant is a real switch)", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-storage");
@@ -886,8 +851,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe(
       SHELL_STORAGE_VALUE,
     );
-  }, 60_000);
-
+  }, 60000);
   it("a navigate-granted view can drive shell navigation (the grant is a real switch)", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
@@ -898,8 +862,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     });
     // The grant admits the navigation the un-granted twin was denied.
     expect(window.location.pathname).toBe("/iso-storage");
-  }, 60_000);
-
+  }, 60000);
   it("the navigate grant is a real switch on the RAW history guard too", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-navigate");
@@ -908,8 +871,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       window.history.pushState(null, "", "/raw-but-granted");
     });
     expect(window.location.pathname).toBe("/raw-but-granted");
-  }, 60_000);
-
+  }, 60000);
   it("the privileged shell channel stays writable while a no-grant view is active", async () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-nogrant");
@@ -926,8 +888,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       shellHistory.replaceState(null, "", "/shell-owned-route");
     });
     expect(window.location.pathname).toBe("/shell-owned-route");
-  }, 60_000);
-
+  }, 60000);
   it("real shell persisters keep working under an active view scope (regression guard for missed migrations)", async () => {
     // The raw-global guard is a Proxy over window.localStorage installed for the
     // whole realm — so EVERY shell writer of a reserved key, not just the ones
@@ -942,7 +903,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     const { rerender } = render(<App />);
     await navigate(rerender, "views", "/iso-nogrant");
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
-
     const conversationId = "conv-under-scope";
     writeChatDraft(conversationId, "half-typed message");
     expect(readChatDraft(conversationId)).toBe("half-typed message");
@@ -953,8 +913,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     // Clearing (removeItem on the reserved key) also works under the scope.
     writeChatDraft(conversationId, "");
     expect(readChatDraft(conversationId)).toBeNull();
-  }, 60_000);
-
+  }, 60000);
   it("raw guards disarm when no view scope is active", async () => {
     const { rerender, unmount } = render(<App />);
     await navigate(rerender, "views", "/iso-nogrant");
@@ -967,9 +926,8 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe("boot-write");
     window.history.pushState(null, "", "/boot-route");
     expect(window.location.pathname).toBe("/boot-route");
-  }, 60_000);
+  }, 60000);
 });
-
 // ── Mutation-check (red→green proof) ─────────────────────────────────────────
 //
 // Each vector's guard is independently load-bearing — remove it and the walk

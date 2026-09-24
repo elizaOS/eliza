@@ -1001,7 +1001,7 @@ export function collectBudgetedStageOneCandidateActions(args: {
           .filter((action): action is Action => action !== undefined);
     // Hints are not an execution contract. One invented name must not throw
     // away the known families and inflate the entire surface; the pipeline
-    // exposes DISCOVER_TOOLS for the remaining authorized catalog.
+    // exposes DISCOVER_ACTIONS for the remaining authorized catalog.
     if (resolved.length === 0) continue;
     for (const action of resolved) {
       selectedNames.add(normalizeActionIdentifier(action.name));
@@ -1026,7 +1026,7 @@ export function collectBudgetedStageOneCandidateActions(args: {
   }
   // Legacy budget fallback has no discovery guarantee and keeps the whole
   // family. Progressive planning keeps exact child hints; unselected siblings
-  // and their parent stay in DISCOVER_TOOLS, including for compound follow-ups.
+  // and their parent stay in DISCOVER_ACTIONS, including for compound follow-ups.
   // A parent still selected after the initial hint projection expands its
   // complete authorized family. Explicit discovery retains every named parent.
   for (const parent of args.deferUnselectedContexts ? [] : args.actions) {

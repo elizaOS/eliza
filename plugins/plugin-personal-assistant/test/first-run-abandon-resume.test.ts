@@ -84,7 +84,7 @@ describe("first-run abandon / resume e2e", () => {
     expect(surface.text).toBe("");
   });
 
-  it("surfaces pending first-run in private or explicit setup turns", async () => {
+  it("surfaces pending first-run only for explicit setup turns", async () => {
     const runtime = createMinimalRuntimeStub();
 
     const { firstRunProvider } = await import("../src/providers/first-run.ts");
@@ -103,9 +103,10 @@ describe("first-run abandon / resume e2e", () => {
       { values: {}, data: {}, text: "" } as never,
     );
 
-    expect(privateSurface.values?.firstRunPending).toBe(true);
+    expect(privateSurface.values?.firstRunPending).toBe(false);
+    expect(privateSurface.text).toBe("");
     expect(explicitGroupSurface.values?.firstRunPending).toBe(true);
-    expect(explicitGroupSurface.text).toMatch(/first-run setup/i);
+    expect(explicitGroupSurface.text).toMatch(/setup pending/i);
   });
 
   it("provider stays loud while abandoned-in-progress and goes quiet on completion", async () => {

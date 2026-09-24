@@ -7,7 +7,11 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime } from "@elizaos/core";
+import {
+  type EntityAttribute,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
 import {
   getHouseholdOperationsService,
   getSchoolSourceFactRuntimeService,
@@ -17,15 +21,12 @@ import {
   type SourceArtifactInput,
 } from "@elizaos/plugin-personal-assistant";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { type EntityAttribute, SELF_ENTITY_ID } from "@elizaos/shared";
-import type { BenchmarkSession } from "./server-utils.js";
-
+import { type BenchmarkSession } from "./server-utils.js";
 export const TRUSTED_PARENT_CONTRACT_STATE_SCHEMA =
   "lifeops.trusted-parent-contract-state.v1" as const;
 export const G15_SCENARIO_ID = "m1.g15.school_source_correction" as const;
 export const G30_SCENARIO_ID = "m1.g30.child_size_history" as const;
 export const G38_SCENARIO_ID = "m1.g38.partner_nonuse_renegotiation" as const;
-
 export const G15_NOTICE_KEY = "early-release" as const;
 export const G30_CHILD_ENTITY_ID = "Lee" as const;
 export const G30_HOUSEHOLD_ID = "trusted-parent-g30-household" as const;
@@ -34,18 +35,15 @@ export const G38_HOUSEHOLD_ID = "trusted-parent-g38-household" as const;
 export const G38_PARTNER_ENTITY_ID = "trusted-parent-g38-partner" as const;
 export const G38_ASSIGNMENT_RECORD_ID =
   "gutter-responsibility-assignment" as const;
-
 const G15_CHILD_ENTITY_ID = "trusted-parent-g15-child";
 const G15_CHILD_EXTERNAL_ID = "trusted-parent-g15-student";
 const G30_SUBJECT_KEY = `child-item:${G30_CHILD_ENTITY_ID}:raincoat`;
 const G38_SUBJECT_KEY = "home:gutter-maintenance";
-
 interface TrustedActionResult {
   readonly success: boolean;
   readonly data: Record<string, unknown>;
   readonly effectReceipts?: readonly Record<string, unknown>[];
 }
-
 interface SessionActionObservation {
   readonly actionName: string;
   readonly discriminator: string | null;
@@ -55,7 +53,6 @@ interface SessionActionObservation {
   readonly resourceKinds: readonly string[];
   readonly artifactKinds: readonly string[];
 }
-
 interface EvidenceSession {
   readonly scenarioId:
     | typeof G15_SCENARIO_ID
@@ -63,10 +60,8 @@ interface EvidenceSession {
     | typeof G38_SCENARIO_ID;
   readonly actions: SessionActionObservation[];
 }
-
 const sessions = new WeakMap<BenchmarkSession, EvidenceSession>();
 const preparations = new WeakMap<BenchmarkSession, Promise<void>>();
-
 function scenarioIdForTask(
   taskId: string,
 ): EvidenceSession["scenarioId"] | null {
@@ -79,15 +74,12 @@ function scenarioIdForTask(
   }
   return null;
 }
-
 function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
-
 function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
-
 function textField(
   value: Record<string, unknown>,
   field: string,
@@ -97,7 +89,6 @@ function textField(
     ? candidate.trim()
     : null;
 }
-
 function actionObservation(
   actionName: string,
   parameters: Record<string, unknown>,
@@ -144,7 +135,6 @@ function actionObservation(
     artifactKinds: sortedUnique(artifactKinds),
   };
 }
-
 async function ensureHouseholdEntity(
   runtime: AgentRuntime,
   input: {
@@ -202,7 +192,6 @@ async function ensureHouseholdEntity(
     source: "user_chat",
   });
 }
-
 function schoolArtifact(input: {
   kind: "calendar" | "document";
   sourceId: string;
@@ -228,7 +217,6 @@ function schoolArtifact(input: {
     visibility: "child_scoped",
   };
 }
-
 function schoolExtraction(input: {
   noticeKey: string;
   kind: "event" | "correction";
@@ -276,7 +264,6 @@ function schoolExtraction(input: {
     cancelsNoticeKey: null,
   };
 }
-
 async function prepareG15(runtime: AgentRuntime): Promise<void> {
   const observedAt = new Date().toISOString();
   await ensureHouseholdEntity(runtime, {
@@ -349,7 +336,6 @@ async function prepareG15(runtime: AgentRuntime): Promise<void> {
     responsibility: null,
   });
 }
-
 function operationsProvenance(input: {
   sourceId: string;
   sourceRevision: number;
@@ -367,7 +353,6 @@ function operationsProvenance(input: {
     confidence: 1,
   };
 }
-
 async function prepareG30(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G30_CHILD_ENTITY_ID,
@@ -441,7 +426,6 @@ async function prepareG30(runtime: AgentRuntime): Promise<void> {
     },
   });
 }
-
 function responsibilityDefinition(
   minimumStandard: string,
 ): ResponsibilityAssignmentDefinition {
@@ -473,7 +457,6 @@ function responsibilityDefinition(
     },
   };
 }
-
 async function prepareG38(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G38_PARTNER_ENTITY_ID,
@@ -538,7 +521,7 @@ async function prepareG38(runtime: AgentRuntime): Promise<void> {
           sourceId: `scheduled-task:gutter:${index}`,
           sourceRevision: 1,
           // Keep non-use evidence within the production rolling assessment window.
-          observedAt: new Date(Date.now() - index * 86_400_000).toISOString(),
+          observedAt: new Date(Date.now() - index * 86400000).toISOString(),
           kind: "scheduled_task_state",
           authority: "provider_confirmed",
         }),
@@ -546,7 +529,6 @@ async function prepareG38(runtime: AgentRuntime): Promise<void> {
     });
   }
 }
-
 async function prepareScenario(
   runtime: AgentRuntime,
   scenarioId: EvidenceSession["scenarioId"],
@@ -559,7 +541,6 @@ async function prepareScenario(
     await prepareG38(runtime);
   }
 }
-
 export async function prepareTrustedParentContractEvidenceSession(
   runtime: AgentRuntime,
   session: BenchmarkSession,
@@ -584,11 +565,9 @@ export async function prepareTrustedParentContractEvidenceSession(
     throw error;
   }
 }
-
 function observedAtNow(): string {
   return new Date().toISOString();
 }
-
 async function captureG15(
   runtime: AgentRuntime,
   actionHistory: readonly SessionActionObservation[],
@@ -670,7 +649,6 @@ async function captureG15(
     },
   };
 }
-
 function commerceAudit(
   actionHistory: readonly SessionActionObservation[],
 ): Record<string, number> {
@@ -688,7 +666,6 @@ function commerceAudit(
     ).length,
   };
 }
-
 async function captureG30(
   runtime: AgentRuntime,
   actionHistory: readonly SessionActionObservation[],
@@ -735,7 +712,6 @@ async function captureG30(
     commerceAudit: commerceAudit(actionHistory),
   };
 }
-
 async function captureG38(
   runtime: AgentRuntime,
   actionHistory: readonly SessionActionObservation[],
@@ -828,7 +804,6 @@ async function captureG38(
     unapprovedOwnerChangeCount,
   };
 }
-
 export async function captureTrustedParentContractFinalState(
   runtime: AgentRuntime,
   session: BenchmarkSession,

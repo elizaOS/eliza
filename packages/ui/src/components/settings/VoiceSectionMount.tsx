@@ -15,7 +15,7 @@
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
@@ -50,16 +50,13 @@ import {
 } from "./VoiceSection.helpers";
 
 const VOICE_PREFS_CONFIG_KEY = "voice";
-
 const profilesClient = createVoiceProfilesClient(client);
-
 function isContinuousMode(value: unknown): value is VoiceContinuousMode {
   return (
     typeof value === "string" &&
     VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
   );
 }
-
 function readVadAutoStop(value: unknown): VadAutoStopPrefs {
   const stored = (value ?? {}) as Record<string, unknown>;
   return {
@@ -74,7 +71,6 @@ function readVadAutoStop(value: unknown): VadAutoStopPrefs {
         : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
   };
 }
-
 function readStoredVoicePrefs(
   config: Record<string, unknown>,
 ): VoiceSectionPrefs {
@@ -107,7 +103,6 @@ function readStoredVoicePrefs(
     vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
-
 export function VoiceSectionMount(): React.ReactElement {
   const { cloudOnly } = useBranding();
   const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(
@@ -129,7 +124,6 @@ export function VoiceSectionMount(): React.ReactElement {
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
   );
-
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
     const payload = event.payload as VoiceSettingsApplyPayload;
     const continuous = readContinuousMode(payload.continuous);
@@ -160,7 +154,6 @@ export function VoiceSectionMount(): React.ReactElement {
     }
     setPrefs((current) => ({ ...current, ...applied }));
   });
-
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -187,7 +180,6 @@ export function VoiceSectionMount(): React.ReactElement {
       cancelled = true;
     };
   }, []);
-
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -205,14 +197,12 @@ export function VoiceSectionMount(): React.ReactElement {
       cancelled = true;
     };
   }, []);
-
   // Persist the wake-word toggle and update local state so the control reflects
   // it immediately; the shell picks the new value up on its next render.
   const handleWakeWordToggle = React.useCallback((next: boolean) => {
     setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
   }, []);
-
   const handlePrefsChange = React.useCallback(
     async (next: VoiceSectionPrefs) => {
       setPrefs(next);
@@ -236,7 +226,6 @@ export function VoiceSectionMount(): React.ReactElement {
     },
     [],
   );
-
   return (
     <>
       {persistError ? (
@@ -278,5 +267,4 @@ export function VoiceSectionMount(): React.ReactElement {
     </>
   );
 }
-
 export default VoiceSectionMount;

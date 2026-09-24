@@ -13,30 +13,29 @@ import {
   createRuntimeAccountStoragePolicy,
   updateAccountMetadata,
 } from "@elizaos/auth/auth/account-storage";
-import type { AnthropicFlow } from "@elizaos/auth/auth/anthropic";
-import type { CodexFlow } from "@elizaos/auth/auth/openai-codex";
+import { type AnthropicFlow } from "@elizaos/auth/auth/anthropic";
+import { type CodexFlow } from "@elizaos/auth/auth/openai-codex";
 import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "@elizaos/auth/auth/types";
 import { logger, resolveStateDir } from "@elizaos/core";
-import type {
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-  LinkedAccountUsage,
-  RouteRequestContext,
-} from "@elizaos/shared";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import {
+  type LinkedAccountConfig,
+  type LinkedAccountHealth,
+  type LinkedAccountUsage,
+} from "@elizaos/core/contracts/service-routing";
 import {
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/types.eliza.ts";
+} from "@elizaos/core/contracts/subscription-routes";
+import { type ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 type AuthModule = typeof import("@elizaos/auth/auth");
-
 export type SubscriptionAuthApi = Pick<
   AuthModule,
   | "getSubscriptionStatus"
@@ -50,26 +49,22 @@ export type SubscriptionAuthApi = Pick<
   | "deleteCredentials"
   | "deleteProviderCredentials"
 >;
-
 export interface SubscriptionRouteState {
   config: ElizaConfig;
   _anthropicFlow?: AnthropicFlow;
   _codexFlow?: CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
 }
-
 export interface SubscriptionRouteContext extends RouteRequestContext {
   state: SubscriptionRouteState;
   saveConfig: (config: ElizaConfig) => void;
   loadSubscriptionAuth: () => Promise<SubscriptionAuthApi>;
 }
-
 // Runtime reloads replace the request state while an OAuth browser is open.
 // Codex's PKCE verifier cannot be reconstructed from its localhost callback,
 // so retain the live flow in this process-level module across runtime swaps.
 let activeCodexFlow: CodexFlow | undefined;
 let activeCodexFlowTimer: ReturnType<typeof setTimeout> | undefined;
-
 export async function handleSubscriptionRoutes(
   ctx: SubscriptionRouteContext,
 ): Promise<boolean> {
@@ -86,7 +81,6 @@ export async function handleSubscriptionRoutes(
   } = ctx;
   if (!pathname.startsWith("/api/subscription/")) return false;
   const storagePolicy = createRuntimeAccountStoragePolicy(resolveStateDir());
-
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
@@ -123,7 +117,6 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/subscription/anthropic/start") {
     try {
       const { startAnthropicLogin } = await loadSubscriptionAuth();
@@ -136,7 +129,6 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (
     method === "POST" &&
     pathname === "/api/subscription/anthropic/exchange"
@@ -237,7 +229,6 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (
     method === "POST" &&
     pathname === "/api/subscription/anthropic/setup-token"
@@ -276,7 +267,6 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/subscription/openai/start") {
     try {
       const { startCodexLogin } = await loadSubscriptionAuth();
@@ -292,7 +282,6 @@ export async function handleSubscriptionRoutes(
       }
       clearTimeout(state._codexFlowTimer);
       clearTimeout(activeCodexFlowTimer);
-
       const flow = await startCodexLogin();
       state._codexFlow = flow;
       activeCodexFlow = flow;
@@ -325,7 +314,6 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/subscription/openai/exchange") {
     const rawOaeb = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawOaeb === null) return true;
@@ -347,7 +335,6 @@ export async function handleSubscriptionRoutes(
         submitProviderFlowCode,
       } = await loadSubscriptionAuth();
       const flow = state._codexFlow ?? activeCodexFlow;
-
       if (!flow) {
         if (!body.code) {
           error(res, "No active flow — call /start first", 400);
@@ -372,14 +359,12 @@ export async function handleSubscriptionRoutes(
         }
         return true;
       }
-
       if (body.code) {
         flow.submitCode(body.code);
       } else if (!body.waitForCallback) {
         error(res, "Provide either code or set waitForCallback: true", 400);
         return true;
       }
-
       let credentials: OAuthCredentials;
       try {
         credentials = await flow.credentials;
@@ -420,14 +405,12 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   if (method === "DELETE" && pathname.startsWith("/api/subscription/")) {
     const provider = pathname.split("/").pop();
     if (isSubscriptionProvider(provider)) {
       try {
         const { deleteProviderCredentials } = await loadSubscriptionAuth();
         deleteProviderCredentials(provider, storagePolicy);
-
         if (provider === "anthropic-subscription" && state.config.env) {
           delete (state.config.env as Record<string, unknown>)
             .__anthropicSubscriptionToken;
@@ -464,10 +447,8 @@ export async function handleSubscriptionRoutes(
     }
     return true;
   }
-
   return false;
 }
-
 function subscriptionSelectionIdForStoredProvider(
   provider: SubscriptionProvider,
 ): string {
@@ -486,7 +467,6 @@ function subscriptionSelectionIdForStoredProvider(
       return "anthropic-subscription";
   }
 }
-
 /**
  * Read rich `LinkedAccountConfig` rows from the AccountPool singleton.
  * The pool is the single source of truth — it joins on-disk credential

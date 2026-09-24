@@ -1,5 +1,4 @@
 /** Provider logo mapping — maps AI provider IDs to their logo image paths. */
-
 export {
   FIRST_RUN_PROVIDER_CATALOG,
   type FirstRunProviderId,
@@ -17,9 +16,9 @@ export {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
   sortFirstRunProviders,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 
-import { resolveAppAssetUrl } from "@elizaos/shared";
+import { resolveAppAssetUrl } from "../utils/asset-url.js";
 
 const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {
   openai: "logos/openai-icon-white.png",
@@ -45,7 +44,6 @@ const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {
   zai: "logos/zai-icon-white.png",
   "z.ai": "logos/zai-icon-white.png",
 };
-
 const PROVIDER_LOGO_MAP_LIGHT: Record<string, string> = {
   openai: "logos/openai-icon.png",
   anthropic: "logos/anthropic-icon.png", // Anthropic API Key
@@ -70,17 +68,14 @@ const PROVIDER_LOGO_MAP_LIGHT: Record<string, string> = {
   zai: "logos/zai-icon.png",
   "z.ai": "logos/zai-icon.png",
 };
-
 // ---------------------------------------------------------------------------
 // Provider logo registry — allows plugins to register logos for custom
 // providers at runtime without modifying the hardcoded maps above.
 // ---------------------------------------------------------------------------
-
 const _registeredLogos: {
   dark: Record<string, string>;
   light: Record<string, string>;
 } = { dark: {}, light: {} };
-
 /**
  * Register a provider logo at runtime. Plugins should call this during
  * initialization to add logos for their custom providers.
@@ -90,7 +85,10 @@ const _registeredLogos: {
  */
 export function registerProviderLogo(
   providerId: string,
-  logos: { logoDark?: string; logoLight?: string },
+  logos: {
+    logoDark?: string;
+    logoLight?: string;
+  },
 ): void {
   const key = providerId.toLowerCase();
   if (logos.logoDark) {
@@ -100,7 +98,6 @@ export function registerProviderLogo(
     _registeredLogos.light[key] = logos.logoLight;
   }
 }
-
 /**
  * Get the logo path for a provider based on theme.
  *
@@ -112,16 +109,17 @@ export function registerProviderLogo(
 export function getProviderLogo(
   providerId: string,
   isDarkMode: boolean = true,
-  customLogo?: { logoDark?: string; logoLight?: string },
+  customLogo?: {
+    logoDark?: string;
+    logoLight?: string;
+  },
 ): string {
   // Check custom logo first (from app-injected providers)
   const custom = isDarkMode ? customLogo?.logoDark : customLogo?.logoLight;
   if (custom) {
     return resolveAppAssetUrl(custom);
   }
-
   const key = providerId.toLowerCase();
-
   // Check runtime-registered logos
   const registeredMap = isDarkMode
     ? _registeredLogos.dark
@@ -130,18 +128,15 @@ export function getProviderLogo(
   if (registeredLogo) {
     return resolveAppAssetUrl(registeredLogo);
   }
-
   // Check hardcoded logo maps
   const logoMap = isDarkMode ? PROVIDER_LOGO_MAP_DARK : PROVIDER_LOGO_MAP_LIGHT;
   const logo = logoMap[key];
   if (logo) {
     return resolveAppAssetUrl(logo);
   }
-
   // Fallback: generate a colored square with initials
   return generateFallbackLogo(providerId);
 }
-
 /**
  * Generate a fallback logo for unknown providers
  * Creates a colored square with the provider's initials
@@ -151,6 +146,5 @@ function generateFallbackLogo(providerId: string): string {
   const colors = ["3b82f6", "ef4444", "10b981", "f59e0b", "8b5cf6", "ec4899"];
   const colorIndex = providerId.charCodeAt(0) % colors.length;
   const bgColor = colors[colorIndex];
-
   return `data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='24' height='24' rx='4' fill='%23${bgColor}'/%3E%3Ctext x='12' y='16' font-family='sans-serif' font-size='10' font-weight='bold' fill='white' text-anchor='middle'%3E${initials}%3C/text%3E%3C/svg%3E`;
 }

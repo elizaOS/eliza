@@ -4,14 +4,13 @@
  * They live here (not hardcoded in app) so a wallet action rename or plugin
  * name change updates the node in one place with the code it gates.
  */
-
-import type { AutomationNodeDescriptor } from "@elizaos/shared";
 import {
   type AutomationNodeContributorContext,
   buildRuntimeCapabilityNodes,
   type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
-} from "@elizaos/shared";
+} from "@elizaos/core/automation-node-contributors";
+import { type AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
 
 const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
   {
@@ -67,13 +66,11 @@ const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
     disabledReason: "Load the Solana plugin with swap support.",
   },
 ];
-
 export function buildWalletAutomationNodes({
   runtime,
 }: AutomationNodeContributorContext): AutomationNodeDescriptor[] {
   return buildRuntimeCapabilityNodes(WALLET_AUTOMATION_NODE_SPECS, runtime);
 }
-
 export function registerWalletAutomationNodeContributor(): void {
   registerAutomationNodeContributor("wallet", buildWalletAutomationNodes);
 }

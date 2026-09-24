@@ -3,16 +3,15 @@
  * idempotent commit or rollback after the target durably installs authority.
  */
 
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/shared";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../host-auth";
 
 const app = new Hono<AppEnv>();
-
 app.get("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -60,7 +59,6 @@ app.get("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.patch("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -122,7 +120,6 @@ app.patch("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.put("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -171,7 +168,6 @@ app.put("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.delete("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -220,7 +216,6 @@ app.delete("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.post("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -271,7 +266,6 @@ app.post("/", async (c) => {
         400,
       );
     }
-
     const result = await remoteSessionsRepository.activatePendingHost({
       sessionId,
       hostId: credential.hostId,
@@ -313,5 +307,4 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

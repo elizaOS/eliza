@@ -3,12 +3,15 @@
  * renderer RPC (bypassing CORS/bind-host limits) when running under Electrobun,
  * falling back to fetch otherwise.
  */
+
+import {
+  isLoopbackBindHost,
+  isWildcardBindHost,
+} from "@elizaos/core/runtime-env";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-  isLoopbackBindHost,
-  isWildcardBindHost,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
@@ -28,7 +31,6 @@ interface DesktopHttpRequestResult {
   body?: string | null;
   bodyBase64?: string | null;
 }
-
 function isExternalPlainHttpUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -43,7 +45,6 @@ function isExternalPlainHttpUrl(url: string): boolean {
     return false;
   }
 }
-
 /**
  * Trusted Eliza Cloud HTTPS origins whose CORS policy does not allowlist
  * loopback renderer origins. The desktop main process proxies these through
@@ -62,7 +63,6 @@ function isTrustedElizaCloudHttpsUrl(url: string): boolean {
     return false;
   }
 }
-
 const desktopHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     init.signal?.throwIfAborted();
@@ -71,7 +71,6 @@ const desktopHttpTransport: AgentRequestTransport = {
     if (!request || !rpc?.request) {
       return fetchAgentTransport.request(url, init, context);
     }
-
     const method = init.method ?? "GET";
     const rawBody = init.body;
     const body = bodyToString(rawBody);
@@ -81,7 +80,6 @@ const desktopHttpTransport: AgentRequestTransport = {
     ) {
       return fetchAgentTransport.request(url, init, context);
     }
-
     const signal = init.signal;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let abortListener: (() => void) | undefined;
@@ -122,11 +120,9 @@ const desktopHttpTransport: AgentRequestTransport = {
       if (signal && abortListener)
         signal.removeEventListener("abort", abortListener);
     }
-
     return nativeHttpResultToResponse(result);
   },
 };
-
 export function desktopHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {

@@ -2,7 +2,6 @@
  * Vision action handler that routes structured sub-operations for capture,
  * describe, mode changes, entity naming, and screen element grounding.
  */
-
 import {
   type Action,
   type ActionExample,
@@ -16,7 +15,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
@@ -25,10 +24,10 @@ import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
-import type { VisionService } from "./service";
+import { type VisionService } from "./service";
 import { hasReadyInputForMode, VisionMode } from "./types";
 
-const VISION_ACTION_TIMEOUT_MS = 10_000;
+const VISION_ACTION_TIMEOUT_MS = 10000;
 const ALL_VISION_CONTEXTS = [
   "media",
   "screen_time",
@@ -36,7 +35,6 @@ const ALL_VISION_CONTEXTS = [
   "memory",
   "settings",
 ] as const;
-
 function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -48,7 +46,6 @@ function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
     ),
   ]);
 }
-
 async function saveExecutionRecord(
   runtime: IAgentRuntime,
   messageContext: Memory,
@@ -73,7 +70,6 @@ async function saveExecutionRecord(
   };
   await runtime.createMemory(memory, "messages");
 }
-
 function readActionParams(
   options?: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -87,7 +83,6 @@ function readActionParams(
       : {};
   return { ...direct, ...parameters };
 }
-
 function selectedContextMatches(
   state: State | undefined,
   contexts: readonly string[],
@@ -108,32 +103,36 @@ function selectedContextMatches(
   const contextObject = (state?.data as Record<string, unknown> | undefined)
     ?.contextObject as
     | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
+        trajectoryPrefix?: {
+          selectedContexts?: unknown;
+        };
+        metadata?: {
+          selectedContexts?: unknown;
+        };
       }
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
 }
-
 function visionServiceIsActive(runtime: IAgentRuntime): boolean {
   const visionService = runtime.getService<VisionService>("VISION");
   return Boolean(visionService?.isActive());
 }
-
 /** Structural view of plugin-computeruse's screenshot capability (no hard dep). */
 interface ComputerUseLike {
   executeCommand?: (
     command: string,
     params?: Record<string, unknown>,
-  ) => Promise<{ success?: boolean; screenshot?: string; displayId?: number }>;
+  ) => Promise<{
+    success?: boolean;
+    screenshot?: string;
+    displayId?: number;
+  }>;
 }
-
 function isValidDisplayId(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
-
 /**
  * Acquire a fresh screen frame for GET_SCREEN. Prefers plugin-computeruse's
  * verified OS screenshot (which also drives the CUA loop); falls back to the
@@ -188,9 +187,7 @@ async function acquireScreenFrame(
       }
     } catch (err) {
       logger.debug(
-        `[vision] computeruse screenshot unavailable for get_screen (${
-          err instanceof Error ? err.message : String(err)
-        })`,
+        `[vision] computeruse screenshot unavailable for get_screen (${err instanceof Error ? err.message : String(err)})`,
       );
     }
   }
@@ -208,7 +205,6 @@ async function acquireScreenFrame(
   }
   return null;
 }
-
 async function runGetScreen(
   runtime: IAgentRuntime,
   message: Memory,
@@ -220,7 +216,6 @@ async function runGetScreen(
   const includeOcr = options.includeOcr !== false;
   const rawDisplayId = options.displayId;
   const displayId = isValidDisplayId(rawDisplayId) ? rawDisplayId : undefined;
-
   if (rawDisplayId !== undefined && !isValidDisplayId(rawDisplayId)) {
     return {
       success: false,
@@ -234,7 +229,6 @@ async function runGetScreen(
       },
     };
   }
-
   const frame = await acquireScreenFrame(runtime, displayId);
   if (!frame) {
     const thought = "No screen capture source is available.";
@@ -254,7 +248,6 @@ async function runGetScreen(
       },
     };
   }
-
   if (displayId !== undefined && frame.displayId !== displayId) {
     const actualDisplay = frame.displayId ?? "unknown";
     return {
@@ -271,7 +264,6 @@ async function runGetScreen(
       },
     };
   }
-
   const result = await buildGetScreen({
     pngBytes: frame.pngBytes,
     displayId: frame.displayId ?? 0,
@@ -296,7 +288,6 @@ async function runGetScreen(
     data: { actionName: "VISION", ...result },
   };
 }
-
 async function runDescribe(
   runtime: IAgentRuntime,
   message: Memory,
@@ -308,7 +299,6 @@ async function runDescribe(
   const visionMode = visionService?.getVisionMode();
   const hasReadyInput = hasReadyInputForMode(caps, visionMode);
   const serviceActive = visionService?.isActive() === true;
-
   if (!serviceActive || !hasReadyInput) {
     const awaitingFirstInput = serviceActive && !hasReadyInput;
     const unavailableReason =
@@ -342,7 +332,6 @@ async function runDescribe(
       },
     };
   }
-
   try {
     const scene = await withVisionTimeout(
       visionService.getEnhancedSceneDescription(),
@@ -350,7 +339,6 @@ async function runDescribe(
     );
     const cameraInfo = visionService.getCameraInfo();
     const visionMode = visionService.getVisionMode();
-
     if (!scene) {
       const thought =
         "A vision input is ready but no scene has been analyzed yet.";
@@ -385,7 +373,6 @@ async function runDescribe(
         },
       };
     }
-
     const peopleCount = scene.people.length;
     const objectCount = scene.objects.length;
     const people = scene.people;
@@ -393,7 +380,6 @@ async function runDescribe(
     const timestamp = new Date(scene.timestamp).toLocaleString();
     const detailLevel =
       options.detailLevel === "summary" ? "summary" : "detailed";
-
     let description =
       visionMode === VisionMode.SCREEN
         ? "Looking at the screen, "
@@ -401,7 +387,6 @@ async function runDescribe(
           ? "Using the camera and screen, "
           : `Looking through ${cameraInfo?.name || "the camera"}, `;
     description += scene.description;
-
     if (detailLevel === "detailed" && peopleCount > 0) {
       description += `\n\nI can see ${peopleCount} ${peopleCount === 1 ? "person" : "people"}`;
       const facingData = people.reduce(
@@ -413,7 +398,6 @@ async function runDescribe(
         },
         {} as Record<string, number>,
       );
-
       if (Object.keys(facingData).length > 0) {
         const facingDescriptions = Object.entries(facingData).map(
           ([direction, count]) => `${count} facing ${direction}`,
@@ -422,7 +406,6 @@ async function runDescribe(
       }
       description += ".";
     }
-
     if (detailLevel === "detailed" && objectCount > 0) {
       const objectTypes = objects.reduce(
         (acc, obj) => {
@@ -431,13 +414,11 @@ async function runDescribe(
         },
         {} as Record<string, number>,
       );
-
       const objectDescriptions = Object.entries(objectTypes).map(
         ([type, count]) => `${count} ${type}${count > 1 ? "s" : ""}`,
       );
       description += `\n\nObjects detected: ${objectDescriptions.join(", ")}.`;
     }
-
     if (
       detailLevel === "detailed" &&
       scene.sceneChanged &&
@@ -445,15 +426,12 @@ async function runDescribe(
     ) {
       description += `\n\n(Scene changed by ${scene.changePercentage.toFixed(1)}% since last analysis)`;
     }
-
     const thought = `Analyzed the visual scene at ${timestamp}.`;
     const text = description;
-
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
     }
-
     return {
       success: true,
       text,
@@ -501,7 +479,6 @@ async function runDescribe(
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
     }
-
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
@@ -521,14 +498,12 @@ async function runDescribe(
     };
   }
 }
-
 async function runCapture(
   runtime: IAgentRuntime,
   message: Memory,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
-
   // Capture requires a camera. Check capability honestly — SCREEN mode with
   // no camera should fail closed here, not pass isActive() and fail later.
   const caps = visionService?.getCapabilities();
@@ -564,7 +539,6 @@ async function runCapture(
       },
     };
   }
-
   try {
     const imageBuffer = await Promise.race([
       visionService.captureImage(),
@@ -576,7 +550,6 @@ async function runCapture(
       ),
     ]);
     const cameraInfo = visionService.getCameraInfo();
-
     if (!imageBuffer) {
       const thought = "Failed to capture image from camera.";
       const text =
@@ -607,11 +580,9 @@ async function runCapture(
         },
       };
     }
-
     const imageInfo = await assertValidVisionImageBuffer(imageBuffer);
     const attachmentId = createUniqueUuid(runtime, `capture-${Date.now()}`);
     const timestamp = new Date().toISOString();
-
     const imageAttachment: Media = {
       id: attachmentId,
       title: `Camera Capture - ${timestamp}`,
@@ -619,10 +590,8 @@ async function runCapture(
       source: `camera:${cameraInfo?.name || "unknown"}`,
       url: `data:${imageInfo.contentType};base64,${imageBuffer.toString("base64")}`,
     };
-
     const thought = `Captured an image from camera "${cameraInfo?.name}".`;
     const text = `I've captured an image from the camera at ${timestamp}.`;
-
     await saveExecutionRecord(
       runtime,
       message,
@@ -631,7 +600,6 @@ async function runCapture(
       ["VISION"],
       [imageAttachment],
     );
-
     if (callback) {
       await callback({
         thought,
@@ -640,7 +608,6 @@ async function runCapture(
         attachments: [imageAttachment],
       });
     }
-
     return {
       success: true,
       text: `I've captured an image from the camera at ${timestamp}.`,
@@ -680,7 +647,6 @@ async function runCapture(
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
     }
-
     return {
       success: false,
       text: "Error capturing image",
@@ -699,7 +665,6 @@ async function runCapture(
     };
   }
 }
-
 async function runToggleSubMode(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -760,7 +725,6 @@ async function runToggleSubMode(
     };
   }
 }
-
 async function runSetMode(
   runtime: IAgentRuntime,
   message: Memory,
@@ -768,7 +732,6 @@ async function runSetMode(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
-
   if (!visionService) {
     const thought = "Vision service is not available.";
     const text =
@@ -783,12 +746,10 @@ async function runSetMode(
       data: { actionName: "VISION", op: "set_mode" },
     };
   }
-
   try {
     // #10471: the mode comes from the structured `mode` param, matched exactly
     // against the VisionMode enum — never a substring test on message text.
     const newMode = normalizeVisionMode(options.mode);
-
     if (!newMode) {
       const thought =
         "Could not determine the desired vision mode from the message.";
@@ -804,7 +765,6 @@ async function runSetMode(
         data: { actionName: "VISION", op: "set_mode" },
       };
     }
-
     const currentMode = visionService.getVisionMode();
     await Promise.race([
       visionService.setVisionMode(newMode),
@@ -815,10 +775,8 @@ async function runSetMode(
         ),
       ),
     ]);
-
     const thought = `Changed vision mode from ${currentMode} to ${newMode}.`;
     let text = "";
-
     switch (newMode) {
       case VisionMode.OFF:
         text =
@@ -837,7 +795,6 @@ async function runSetMode(
           "Vision mode set to BOTH. I will process input from both camera and screen.";
         break;
     }
-
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
@@ -865,7 +822,6 @@ async function runSetMode(
     };
   }
 }
-
 async function runNameEntity(
   runtime: IAgentRuntime,
   message: Memory,
@@ -874,7 +830,6 @@ async function runNameEntity(
 ): Promise<ActionResult> {
   try {
     const visionService = runtime.getService<VisionService>("VISION");
-
     if (!visionService) {
       const thought = "Vision service is not available.";
       const text =
@@ -889,12 +844,10 @@ async function runNameEntity(
         data: { actionName: "VISION", op: "name_entity" },
       };
     }
-
     const scene = await withVisionTimeout(
       visionService.getSceneDescription(),
       "vision scene description",
     );
-
     if (!scene || scene.people.length === 0) {
       const thought = "No people visible to name.";
       const text = "I don't see any people in the current scene to name.";
@@ -908,11 +861,9 @@ async function runNameEntity(
         data: { actionName: "VISION", op: "name_entity" },
       };
     }
-
     // #10471: the entity name comes from the structured `name` param, not a
     // regex over the raw message text.
     const name = typeof options.name === "string" ? options.name.trim() : "";
-
     if (!name) {
       const thought = "No structured name parameter was provided.";
       const text =
@@ -927,9 +878,7 @@ async function runNameEntity(
         data: { actionName: "VISION", op: "name_entity" },
       };
     }
-
     const entityTracker = visionService.getEntityTracker();
-
     await entityTracker.updateEntities(
       scene.objects,
       scene.people,
@@ -938,7 +887,6 @@ async function runNameEntity(
     );
     const activeEntities = entityTracker.getActiveEntities();
     const people = activeEntities.filter((e) => e.entityType === "person");
-
     if (people.length === 0) {
       const thought = "No tracked people found.";
       const text =
@@ -953,7 +901,6 @@ async function runNameEntity(
         data: { actionName: "VISION", op: "name_entity" },
       };
     }
-
     let targetPerson = people[0];
     if (people.length > 1) {
       targetPerson = people.reduce((prev, curr) => {
@@ -962,13 +909,10 @@ async function runNameEntity(
         return currArea > prevArea ? curr : prev;
       });
     }
-
     const success = entityTracker.assignNameToEntity(targetPerson.id, name);
-
     if (success) {
       const thought = `Named entity "${name}" and associated with person in scene.`;
       const text = `I've identified the person as ${name}. I'll remember them for future interactions.`;
-
       await saveExecutionRecord(
         runtime,
         message,
@@ -977,7 +921,6 @@ async function runNameEntity(
         ["VISION"],
         undefined,
       );
-
       if (callback) {
         await callback({
           thought,
@@ -986,7 +929,6 @@ async function runNameEntity(
           data: { entityId: targetPerson.id, name },
         });
       }
-
       logger.info(
         `[VISION/name_entity] Assigned name "${name}" to entity ${targetPerson.id}`,
       );
@@ -1030,7 +972,6 @@ async function runNameEntity(
     };
   }
 }
-
 async function runIdentifyPerson(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1038,7 +979,6 @@ async function runIdentifyPerson(
 ): Promise<ActionResult> {
   try {
     const visionService = runtime.getService<VisionService>("VISION");
-
     if (!visionService) {
       const thought = "Vision service is not available.";
       const text =
@@ -1053,12 +993,10 @@ async function runIdentifyPerson(
         data: { actionName: "VISION", op: "identify_person" },
       };
     }
-
     const scene = await withVisionTimeout(
       visionService.getSceneDescription(),
       "vision scene description",
     );
-
     if (!scene || scene.people.length === 0) {
       const thought = "No people visible to identify.";
       const text = "I don't see any people in the current scene.";
@@ -1072,9 +1010,7 @@ async function runIdentifyPerson(
         data: { actionName: "VISION", op: "identify_person" },
       };
     }
-
     const entityTracker = visionService.getEntityTracker();
-
     await entityTracker.updateEntities(
       scene.objects,
       scene.people,
@@ -1083,7 +1019,6 @@ async function runIdentifyPerson(
     );
     const activeEntities = entityTracker.getActiveEntities();
     const people = activeEntities.filter((e) => e.entityType === "person");
-
     if (people.length === 0) {
       const thought = "No tracked people found.";
       const text = "I can see someone but I'm still processing their identity.";
@@ -1097,11 +1032,9 @@ async function runIdentifyPerson(
         data: { actionName: "VISION", op: "identify_person" },
       };
     }
-
     let recognizedCount = 0;
     let unknownCount = 0;
     const identifications: string[] = [];
-
     for (const person of people) {
       const name = person.attributes.name;
       const duration = Date.now() - person.firstSeen;
@@ -1109,12 +1042,10 @@ async function runIdentifyPerson(
         duration < 60000
           ? `${Math.round(duration / 1000)} seconds`
           : `${Math.round(duration / 60000)} minutes`;
-
       if (name) {
         recognizedCount++;
         const personInfo = `I can see ${name}. They've been here for ${durationStr}.`;
         identifications.push(personInfo);
-
         if (person.appearances.length > 5) {
           identifications.push("I've been tracking them consistently.");
         }
@@ -1122,7 +1053,6 @@ async function runIdentifyPerson(
         unknownCount++;
         const personInfo = `I see an unidentified person who has been here for ${durationStr}.`;
         identifications.push(personInfo);
-
         if (person.attributes.faceId) {
           identifications.push(
             "I've captured their face profile but they haven't been named yet.",
@@ -1130,7 +1060,6 @@ async function runIdentifyPerson(
         }
       }
     }
-
     const recentlyLeft = entityTracker.getRecentlyLeft();
     if (recentlyLeft.length > 0) {
       identifications.push("\nRecently departed:");
@@ -1145,12 +1074,9 @@ async function runIdentifyPerson(
         }
       }
     }
-
     const thought = `Identified ${recognizedCount} known people and ${unknownCount} unknown people.`;
     const text = identifications.join(" ");
-
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
-
     if (callback) {
       await callback({
         thought,
@@ -1192,7 +1118,6 @@ async function runIdentifyPerson(
     };
   }
 }
-
 async function runTrackEntity(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1200,7 +1125,6 @@ async function runTrackEntity(
 ): Promise<ActionResult> {
   try {
     const visionService = runtime.getService<VisionService>("VISION");
-
     if (!visionService) {
       const thought = "Vision service is not available.";
       const text =
@@ -1215,12 +1139,10 @@ async function runTrackEntity(
         data: { actionName: "VISION", op: "track_entity" },
       };
     }
-
     const scene = await withVisionTimeout(
       visionService.getSceneDescription(),
       "vision scene description",
     );
-
     if (!scene) {
       const thought = "No scene available for tracking.";
       const text =
@@ -1235,7 +1157,6 @@ async function runTrackEntity(
         data: { actionName: "VISION", op: "track_entity" },
       };
     }
-
     const entityTracker = visionService.getEntityTracker();
     await entityTracker.updateEntities(
       scene.objects,
@@ -1244,7 +1165,6 @@ async function runTrackEntity(
       runtime,
     );
     const stats = entityTracker.getStatistics();
-
     const thought = `Tracking ${stats.activeEntities} entities in the scene.`;
     const summary = [
       `I'm now tracking ${stats.activeEntities} entities in the scene`,
@@ -1253,11 +1173,9 @@ async function runTrackEntity(
       "and notify you of significant changes.",
     ];
     const responseText = summary.join(" ");
-
     await saveExecutionRecord(runtime, message, thought, responseText, [
       "VISION",
     ]);
-
     if (callback) {
       await callback({
         thought,
@@ -1266,7 +1184,6 @@ async function runTrackEntity(
         data: { entities: stats.activeEntities },
       });
     }
-
     logger.info(
       `[VISION/track_entity] Tracking ${stats.activeEntities} entities`,
     );
@@ -1302,7 +1219,6 @@ async function runTrackEntity(
     };
   }
 }
-
 export const visionAction: Action = {
   name: "VISION",
   contexts: [...ALL_VISION_CONTEXTS],
@@ -1433,7 +1349,6 @@ export const visionAction: Action = {
     const inferredOp = normalizeOp(
       params.action ?? params.subaction ?? params.op,
     );
-
     if (!inferredOp) {
       const text = `VISION could not determine the operation. Specify one of: ${VISION_OPS.join(", ")}.`;
       if (callback) {
@@ -1449,7 +1364,6 @@ export const visionAction: Action = {
         },
       };
     }
-
     switch (inferredOp) {
       case "describe":
         return runDescribe(runtime, message, params, callback);

@@ -3,7 +3,6 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "customConditions": ["eliza-source"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,6 +13,7 @@
     "types": ["node", "bun-types"],
     "ignoreDeprecations": "5.0",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "customConditions": ["eliza-source"],
     "jsx": "react-jsx"
   },
   "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"],

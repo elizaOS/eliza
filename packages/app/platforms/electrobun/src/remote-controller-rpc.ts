@@ -4,6 +4,7 @@
  * service; renderer RPC exposes only public identity, encrypted envelopes, and
  * verified command results.
  */
+
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import {
 	canonicalizeRemoteControlValue,
@@ -23,7 +24,7 @@ import {
 	type SignedRemoteCommand,
 	type SignedRemoteCommandResult,
 	type SignedRemoteCommandStartReceipt,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 import {
@@ -42,7 +43,6 @@ interface StoredControllerIdentity {
 	encryptionPrivateKeyJwk: JsonWebKey;
 	sessionSequences?: Record<string, StoredRemoteSessionSequence>;
 }
-
 interface StoredRemoteSessionSequence {
 	bindingDigest: string;
 	sequence: number;
@@ -54,12 +54,10 @@ interface StoredRemoteSessionSequence {
 		envelope: EncryptedRemoteControlEnvelope;
 	};
 }
-
 const store = createNodePlatformSecureStore();
 const controllerMutationTails = new Map<string, Promise<void>>();
 const CONTROLLER_DEVICE_VAULT_ID = "remote-controller-device-v1";
 const MAX_STORED_REMOTE_SESSIONS = 256;
-
 async function withControllerMutation<T>(
 	vaultId: string,
 	operation: () => Promise<T>,
@@ -85,19 +83,16 @@ async function withControllerMutation<T>(
 		}
 	}
 }
-
 function controllerVaultId(ownerId: string, deviceId: string): string {
 	return `remote-controller-${createHash("sha256")
 		.update(`${ownerId}\0${deviceId}`)
 		.digest("hex")}`;
 }
-
 function isIdentifier(value: unknown): value is string {
 	return (
 		typeof value === "string" && /^[A-Za-z0-9._:-]{1,256}$/.test(value.trim())
 	);
 }
-
 function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return false;
@@ -111,7 +106,6 @@ function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
 		typeof key.d === "string"
 	);
 }
-
 function parseStoredIdentity(value: string): StoredControllerIdentity {
 	let parsed: unknown;
 	try {
@@ -223,17 +217,14 @@ function parseStoredIdentity(value: string): StoredControllerIdentity {
 			: {}),
 	};
 }
-
 function publicJwk(privateKeyJwk: JsonWebKey): JsonWebKey {
 	const { d: _privateScalar, ...publicFields } = privateKeyJwk;
 	return publicFields;
 }
-
 function generatePrivateP256Jwk(): JsonWebKey {
 	const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 	return pair.privateKey.export({ format: "jwk" });
 }
-
 function identityKeyId(
 	signingPublicKeyJwk: JsonWebKey,
 	encryptionPublicKeyJwk: JsonWebKey,
@@ -247,7 +238,6 @@ function identityKeyId(
 		)
 		.digest("base64url")}`;
 }
-
 function readIdentityRequest(params: unknown): {
 	ownerId: string;
 	deviceId: string | null;
@@ -280,7 +270,6 @@ function readIdentityRequest(params: unknown): {
 		platform: platform as RemoteControllerPlatform,
 	};
 }
-
 async function nativeControllerDeviceId(
 	nativeStore: PlatformSecureStore,
 ): Promise<string> {
@@ -310,7 +299,6 @@ async function nativeControllerDeviceId(
 		return created;
 	});
 }
-
 async function loadControllerIdentity(
 	ownerId: string,
 	deviceId: string,
@@ -333,7 +321,6 @@ async function loadControllerIdentity(
 	}
 	return stored;
 }
-
 export async function desktopGetOrCreateControllerIdentity(
 	params: unknown,
 	nativeStore: PlatformSecureStore = store,
@@ -349,7 +336,6 @@ export async function desktopGetOrCreateControllerIdentity(
 			nativeStore,
 		);
 		if (existing) return existing.identity;
-
 		const signingPrivateKeyJwk = generatePrivateP256Jwk();
 		const encryptionPrivateKeyJwk = generatePrivateP256Jwk();
 		const signingPublicKeyJwk = publicJwk(signingPrivateKeyJwk);
@@ -383,12 +369,10 @@ export async function desktopGetOrCreateControllerIdentity(
 		return identity;
 	});
 }
-
 function asRemoteJsonValue(value: unknown): RemoteJsonValue {
 	canonicalizeRemoteControlValue(value);
 	return value as RemoteJsonValue;
 }
-
 export async function desktopCreateRemoteCommand(params: unknown): Promise<{
 	commandId: string;
 	expiresAt: number;
@@ -550,11 +534,12 @@ export async function desktopCreateRemoteCommand(
 		};
 	});
 }
-
 export async function desktopAcknowledgeRemoteCommandEnqueue(
 	params: unknown,
 	nativeStore: PlatformSecureStore = store,
-): Promise<{ acknowledged: boolean }> {
+): Promise<{
+	acknowledged: boolean;
+}> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote enqueue acknowledgement parameters are required.");
 	}
@@ -608,11 +593,12 @@ export async function desktopAcknowledgeRemoteCommandEnqueue(
 		return { acknowledged: true };
 	});
 }
-
 export async function desktopClearRemoteSessionState(
 	params: unknown,
 	nativeStore: PlatformSecureStore = store,
-): Promise<{ cleared: boolean }> {
+): Promise<{
+	cleared: boolean;
+}> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote session cleanup parameters are required.");
 	}
@@ -653,10 +639,11 @@ export async function desktopClearRemoteSessionState(
 		return { cleared: true };
 	});
 }
-
-export async function desktopOpenRemoteCommandResult(
-	params: unknown,
-): Promise<{ status: string; result?: RemoteJsonValue; errorCode?: string }> {
+export async function desktopOpenRemoteCommandResult(params: unknown): Promise<{
+	status: string;
+	result?: RemoteJsonValue;
+	errorCode?: string;
+}> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote result parameters are required.");
 	}
@@ -707,10 +694,12 @@ export async function desktopOpenRemoteCommandResult(
 		...(result.body.errorCode ? { errorCode: result.body.errorCode } : {}),
 	};
 }
-
 export async function desktopOpenRemoteCommandStartReceipt(
 	params: unknown,
-): Promise<{ startedAt: number; executionId: string }> {
+): Promise<{
+	startedAt: number;
+	executionId: string;
+}> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote start receipt parameters are required.");
 	}
@@ -759,7 +748,6 @@ export async function desktopOpenRemoteCommandStartReceipt(
 		executionId: opened.body.executionId,
 	};
 }
-
 export const remoteControllerInternals = {
 	controllerVaultId,
 	identityKeyId,

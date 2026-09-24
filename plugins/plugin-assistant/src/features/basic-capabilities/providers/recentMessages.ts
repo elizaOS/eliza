@@ -17,10 +17,8 @@
  * settings and old compaction timestamps must never silently remove prompt
  * history. Errors are reported and returned as explicit history unavailability.
  *
- * Also surfaces cross-room `recentInteractions` between the sender's verified
- * identity cluster and the agent. These are rendered in Stage 1 so a direct
- * handoff question can be answered without a retrieval round trip, but only
- * after the live destination is revalidated as an owner-exclusive DM.
+ * Cross-room history is retrieved explicitly through authorized memory providers
+ * and actions; ordinary room composition never reads other conversations.
  */
 
 import type {
@@ -35,17 +33,12 @@ import type {
 } from "@elizaos/core";
 import {
   addHeader,
-  buildCrossWorldConversationAccessContext,
   ChannelType,
   conversationMessagesHeader,
   formatMessageSegments,
   formatMessages,
   formatPosts,
   isInternalBridgeMessage,
-  markOwnerExclusiveDisclosureUsed,
-  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-  recordOwnerExclusiveSuppression,
-  revalidateOwnerExclusiveDisclosure,
 } from "@elizaos/core";
 import { getEntityDetails } from "../../../entities.ts";
 
@@ -295,77 +288,15 @@ export async function ensureFormattingEntities(
   }
   return Array.from(entitiesById.values());
 }
-// Cross-room history from rooms shared by the sender's identity cluster and
-// the target entity, excluding the current room.
-const getRecentInteractions = async (
-  runtime: IAgentRuntime,
-  message: Memory,
-  targetEntityId: UUID,
-  excludeRoomId: UUID,
-  selectedProviderNames?: readonly string[],
-): Promise<Memory[]> => {
-  // Ownership follows the current composition, not installed plugins. If the
-  // dedicated provider is omitted or denied, core retains its authorized fallback.
-  if (selectedProviderNames?.includes("recent-conversations")) return [];
-
-  const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
-  if (
-    !disclosure.allowed ||
-    disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
-  ) {
-    if (!disclosure.allowed) {
-      recordOwnerExclusiveSuppression(message, disclosure.reason);
-    }
-    return [];
-  }
-  if (targetEntityId !== runtime.agentId) return [];
-  const accessContext = await buildCrossWorldConversationAccessContext(
-    runtime,
-    message,
-  );
-  const otherRooms = (accessContext.authorizedRoomIds ?? []).filter(
-    (room) => room !== excludeRoomId,
-  );
-  if (otherRooms.length === 0) {
-    return [];
-  }
-  // Check the existing memories in the database
-  const interactions = await runtime.getMemoriesByRoomIds({
-    tableName: "messages",
-    roomIds: otherRooms,
-    accessContext,
-  });
-  if (interactions.length > 0) {
-    markOwnerExclusiveDisclosureUsed(message);
-  }
-  return interactions;
-};
-function summarizeInteractionAttachments(memory: Memory): string {
-  return (memory.content.attachments ?? [])
-    .map((attachment) => {
-      const label =
-        attachment.filename ??
-        attachment.title ??
-        attachment.id ??
-        "attachment";
-      const mediaType = attachment.mimeType ?? attachment.contentType;
-      const readableContent = attachment.text ?? attachment.description;
-      return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
-    })
-    .join(" ");
-}
 export const recentMessagesProvider: Provider = {
   name: "RECENT_MESSAGES",
   description:
-    "Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity",
+    "Complete transcript for the current room, including prior dialogue, post-style turns and action results",
   position: 100,
   contexts: ["memory", "messaging"],
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  // Stage 1 chooses routing contexts, so cross-world handoff evidence must be
-  // available before a context gate can use that choice. The provider itself
-  // revalidates owner-exclusive delivery before reading any other room.
   alwaysInResponseState: true,
   // GUEST floor: this is the CURRENT room's transcript — content every
   // participant can already read in their client. Gating it at USER made the
@@ -379,30 +310,18 @@ export const recentMessagesProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
-    execution,
   ): Promise<ProviderResult> => {
     try {
       const { roomId } = message;
-      // Parallelize initial data fetching operations including recentInteractions
-      const [entitiesData, recentMessagesData, recentInteractionsData, room] =
-        await Promise.all([
-          getEntityDetails({ runtime, roomId }),
-          runtime.getMemories({
-            tableName: "messages",
-            roomId,
-            unique: false,
-          }),
-          message.entityId !== runtime.agentId
-            ? getRecentInteractions(
-                runtime,
-                message,
-                runtime.agentId,
-                roomId,
-                execution?.selectedProviderNames,
-              )
-            : Promise.resolve([]),
-          runtime.getRoom(roomId),
-        ]);
+      const [entitiesData, recentMessagesData, room] = await Promise.all([
+        getEntityDetails({ runtime, roomId }),
+        runtime.getMemories({
+          tableName: "messages",
+          roomId,
+          unique: false,
+        }),
+        runtime.getRoom(roomId),
+      ]);
       // Separate action results from regular messages
       const actionResultMessages = recentMessagesData.filter(
         (msg) => msg.content && msg.content.type === "action_result",
@@ -533,138 +452,23 @@ export const recentMessagesProvider: Provider = {
             `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message, but include as context any previous messages in the thread from after your last reply.`,
           )
         : "";
-      // Preload all necessary entities for both types of interactions
-      const interactionEntityMap = new Map<UUID, Entity>();
-      // Only proceed if there are interactions to process
-      if (recentInteractionsData.length > 0) {
-        // Get unique entity IDs that aren't the runtime agent
-        const uniqueEntityIds = [
-          ...new Set(
-            recentInteractionsData
-              .map((message) => message.entityId)
-              .filter((id) => id !== runtime.agentId),
-          ),
-        ];
-        // Create a Set for faster lookup
-        const uniqueEntityIdSet = new Set(uniqueEntityIds);
-        // Add entities already fetched in entitiesData to the map
-        const entitiesDataIdSet = new Set<UUID>();
-        entitiesForFormatting.forEach((entity: Entity) => {
-          const entityId = entity.id;
-          if (entityId && uniqueEntityIdSet.has(entityId)) {
-            interactionEntityMap.set(entityId, entity);
-            entitiesDataIdSet.add(entityId);
-          }
-        });
-        // Get the remaining entities that weren't already loaded
-        // Use Set difference for efficient filtering
-        const remainingEntityIds = uniqueEntityIds.filter(
-          (id) => !entitiesDataIdSet.has(id),
-        );
-        // Only fetch the entities we don't already have
-        if (remainingEntityIds.length > 0) {
-          const entities = await Promise.all(
-            remainingEntityIds.map((entityId) =>
-              runtime.getEntityById(entityId),
-            ),
-          );
-          entities.forEach((entity, index) => {
-            if (entity) {
-              interactionEntityMap.set(remainingEntityIds[index], entity);
-            }
-          });
-        }
-      }
-      // Format recent message interactions
-      const getRecentMessageInteractions = async (
-        recentInteractionsData: Memory[],
-      ): Promise<string> => {
-        // Format messages using the pre-fetched entities
-        const formattedInteractions = recentInteractionsData.map((message) => {
-          const isSelf = message.entityId === runtime.agentId;
-          let sender: string;
-          if (isSelf) {
-            sender = runtime.character.name ?? "Agent";
-          } else {
-            const interactionEntity = interactionEntityMap.get(
-              message.entityId,
-            );
-            const interactionMetadata = interactionEntity?.metadata;
-            sender =
-              (interactionMetadata &&
-                (interactionMetadata.userName as string)) ||
-              "unknown";
-          }
-          return `${sender}: ${[
-            message.content.text,
-            summarizeInteractionAttachments(message),
-          ]
-            .filter(Boolean)
-            .join(" ")}`;
-        });
-        return formattedInteractions.join("\n");
-      };
-      // Format recent post interactions
-      const getRecentPostInteractions = async (
-        recentInteractionsData: Memory[],
-        entities: Entity[],
-      ): Promise<string> => {
-        // Combine pre-loaded entities with any other entities
-        const combinedEntities = [...entities];
-        // Add entities from interactionEntityMap that aren't already in entities
-        const actorIds = new Set(entities.map((entity) => entity.id));
-        for (const [id, entity] of interactionEntityMap.entries()) {
-          if (!actorIds.has(id)) {
-            combinedEntities.push(entity);
-          }
-        }
-        const formattedInteractions = formatPosts({
-          messages: recentInteractionsData,
-          entities: combinedEntities,
-          conversationHeader: true,
-        });
-        return formattedInteractions;
-      };
-      // Process both types of interactions in parallel
-      const [recentMessageInteractions, recentPostInteractions] =
-        await Promise.all([
-          getRecentMessageInteractions(recentInteractionsData),
-          getRecentPostInteractions(
-            recentInteractionsData,
-            entitiesForFormatting,
-          ),
-        ]);
       const data = {
         recentMessages: dialogueMessages,
-        recentInteractions: recentInteractionsData,
-        ...(recentInteractionsData.length > 0
-          ? {
-              recentInteractionsDisclosure:
-                OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-            }
-          : {}),
+        recentInteractions: [],
         actionResults: actionResultMessages,
       };
       const values = {
         recentPosts,
         recentMessages,
-        recentMessageInteractions,
-        recentPostInteractions,
-        recentInteractions: isPostFormat
-          ? recentPostInteractions
-          : recentMessageInteractions,
+        recentMessageInteractions: "",
+        recentPostInteractions: "",
+        recentInteractions: "",
         recentActionResults: "",
         recentMessage,
       };
       // Combine all text sections
       const text = [
         isPostFormat ? recentPosts : recentMessages,
-        recentMessageInteractions
-          ? addHeader(
-              "# Recent conversations across verified accounts",
-              recentMessageInteractions,
-            )
-          : "",
         // Only add received message and focus headers if there are messages or a current message to process
         recentMessages || recentPosts || message.content.text
           ? receivedMessageHeader
@@ -680,11 +484,6 @@ export const recentMessagesProvider: Provider = {
           recentMessages: data.recentMessages,
           formattedMessageSegments,
           recentInteractions: data.recentInteractions,
-          ...(data.recentInteractionsDisclosure
-            ? {
-                recentInteractionsDisclosure: data.recentInteractionsDisclosure,
-              }
-            : {}),
           actionResults: data.actionResults,
         },
         values,

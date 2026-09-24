@@ -4,7 +4,7 @@
  * host mounts the `/api/workflow/*` and `/api/automations` endpoints. `index.ts`
  * imports the exported flag to keep bundlers from dropping this registration.
  */
-import { registerAppRoutePluginLoader } from '@elizaos/shared/api/app-route-plugin-registry';
+import { registerAppRoutePluginLoader } from '@elizaos/core/api/app-route-plugin-registry';
 
 type RegisterAppRoutePluginLoader = typeof registerAppRoutePluginLoader;
 

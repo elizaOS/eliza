@@ -16,6 +16,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
+// This real one-time-code test needs its explicit local cache even when CI disables caching.
+process.env.CACHE_ENABLED = "true";
 process.env.CACHE_BACKEND = "memory";
 process.env.CACHE_ENABLED = "true";
 process.env.NODE_ENV = "test";

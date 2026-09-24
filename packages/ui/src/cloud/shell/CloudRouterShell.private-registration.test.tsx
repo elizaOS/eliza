@@ -3,7 +3,7 @@
  */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, useEffect } from "react";
 import { Link } from "react-router-dom";

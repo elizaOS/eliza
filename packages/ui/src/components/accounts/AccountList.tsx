@@ -7,7 +7,7 @@
  * sequential PATCH calls (no drag-drop dependency).
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
@@ -23,7 +23,6 @@ import { readSubscriptionOAuth } from "./subscription-oauth-state";
 interface AccountListProps {
   providerId: LinkedAccountProviderId;
 }
-
 export function AccountList({ providerId }: AccountListProps) {
   const t = useAppSelector((s) => s.t);
   const accounts = useAccounts();
@@ -32,7 +31,6 @@ export function AccountList({ providerId }: AccountListProps) {
   );
   const [credentialRepairAccount, setCredentialRepairAccount] =
     useState<AccountWithCredentialFlag | null>(null);
-
   useEffect(() => {
     const restorePendingDialog = () => {
       if (readSubscriptionOAuth(providerId)) setAddDialogOpen(true);
@@ -47,12 +45,10 @@ export function AccountList({ providerId }: AccountListProps) {
       document.removeEventListener("visibilitychange", restorePendingDialog);
     };
   }, [providerId]);
-
   const providerEntry = useMemo(
     () => accounts.data?.providers.find((p) => p.providerId === providerId),
     [accounts.data, providerId],
   );
-
   const sorted: AccountWithCredentialFlag[] = useMemo(
     () =>
       providerEntry
@@ -64,7 +60,6 @@ export function AccountList({ providerId }: AccountListProps) {
         : [],
     [providerEntry],
   );
-
   const handleMove = useCallback(
     async (accountId: string, direction: "up" | "down") => {
       const index = sorted.findIndex((a) => a.id === accountId);
@@ -102,7 +97,6 @@ export function AccountList({ providerId }: AccountListProps) {
     },
     [accounts, providerId, sorted],
   );
-
   const listState =
     accounts.loading && !accounts.data
       ? {
@@ -163,7 +157,6 @@ export function AccountList({ providerId }: AccountListProps) {
                 />
               )),
             };
-
   return (
     <>
       <AccountListShell

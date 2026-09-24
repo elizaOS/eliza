@@ -91,9 +91,7 @@ const stubWeatherDeps = {
     b.onLoad(
       { filter: /^surface-realm-channel-stub$/, namespace: "home-locale-stub" },
       () => ({
-        // `runAsPrivilegedShell` is pulled in once the auth-status gate
-        // (#16242) reaches this bundle via csrf-client → ios-local-agent-kernel;
-        // stub it as a direct passthrough (no realm boundary in the fixture).
+        // The isolated shell fixture has no realm boundary.
         contents:
           "export const shellLocalStorage = window.localStorage;\n" +
           "export const runAsPrivilegedShell = (fn) => fn();",

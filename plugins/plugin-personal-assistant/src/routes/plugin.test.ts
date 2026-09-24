@@ -4,54 +4,15 @@
  * `/api/lifeops/*` surface. Downstream route handlers are stubbed (deterministic
  * vi.mock), so the assertions isolate the access-control boundary in plugin.ts.
  */
-
 import type http from "node:http";
 import { _resetAuthRateLimiter } from "@elizaos/app/api/auth";
-import type { AgentRuntime } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
+import { type AgentRuntime } from "@elizaos/core";
+import { type Route } from "@elizaos/core/api/http-plugin";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const cloudRouteMocks = vi.hoisted(() => ({
-  handleCloudFeaturesRoute: vi.fn(async () => true),
-}));
-
-vi.mock("../lifeops/scheduled-task/service.js", () => ({
-  getScheduledTaskRunner: () => null,
-}));
-
-vi.mock("./entities.js", () => ({
-  handleEntityRoutes: async () => false,
-}));
-
-vi.mock("./lifeops-routes.js", () => ({
-  handleLifeOpsRoutes: async () => undefined,
-}));
-
-vi.mock("./relationships.js", () => ({
-  handleRelationshipRoutes: async () => false,
-}));
-
-vi.mock("./scheduled-tasks.js", () => ({
-  DEV_REGISTRIES_ROUTE_PATHS: [],
-  makeScheduledTasksRouteHandler: () => async () => false,
-}));
-
-vi.mock("./sleep-routes.js", () => ({
-  handleSleepRoutes: async () => undefined,
-}));
-
-vi.mock("./website-blocker-routes.js", () => ({
-  handleWebsiteBlockerRoutes: async () => undefined,
-}));
-
-vi.mock("./cloud-features-routes.js", () => ({
-  handleCloudFeaturesRoute: cloudRouteMocks.handleCloudFeaturesRoute,
-}));
-
 import {
   AGREEMENT_UPLOAD_CHUNK_BYTES,
   AGREEMENT_UPLOAD_METADATA_BYTES,
@@ -61,16 +22,47 @@ import {
   requireLifeOpsRouteOwnerAdminAccess,
 } from "./plugin.js";
 
+const cloudRouteMocks = vi.hoisted(() => ({
+  handleCloudFeaturesRoute: vi.fn(async () => true),
+}));
+vi.mock("../lifeops/scheduled-task/service.js", () => ({
+  getScheduledTaskRunner: () => null,
+}));
+vi.mock("./entities.js", () => ({
+  handleEntityRoutes: async () => false,
+}));
+vi.mock("./lifeops-routes.js", () => ({
+  handleLifeOpsRoutes: async () => undefined,
+}));
+vi.mock("./relationships.js", () => ({
+  handleRelationshipRoutes: async () => false,
+}));
+vi.mock("./scheduled-tasks.js", () => ({
+  DEV_REGISTRIES_ROUTE_PATHS: [],
+  makeScheduledTasksRouteHandler: () => async () => false,
+}));
+vi.mock("./sleep-routes.js", () => ({
+  handleSleepRoutes: async () => undefined,
+}));
+vi.mock("./website-blocker-routes.js", () => ({
+  handleWebsiteBlockerRoutes: async () => undefined,
+}));
+vi.mock("./cloud-features-routes.js", () => ({
+  handleCloudFeaturesRoute: cloudRouteMocks.handleCloudFeaturesRoute,
+}));
 type CapturedResponse = http.ServerResponse & {
   body: string;
   headers: Record<string, string | number | string[]>;
   writableEnded: boolean;
 };
-
 function createRequest(
   url: string,
   headers: http.IncomingHttpHeaders = {},
-  options: { method?: string; remoteAddress?: string; host?: string } = {},
+  options: {
+    method?: string;
+    remoteAddress?: string;
+    host?: string;
+  } = {},
 ): http.IncomingMessage {
   return {
     method: options.method ?? "GET",
@@ -84,7 +76,6 @@ function createRequest(
     },
   } as http.IncomingMessage;
 }
-
 function createResponse(): CapturedResponse {
   return {
     statusCode: 200,
@@ -108,7 +99,6 @@ function createResponse(): CapturedResponse {
     },
   } as CapturedResponse;
 }
-
 function createRuntime(options?: {
   ownerId?: string | null;
   roles?: Record<string, "OWNER" | "ADMIN" | "USER" | "GUEST">;
@@ -132,18 +122,20 @@ function createRuntime(options?: {
     getService: vi.fn(() => null),
   } as AgentRuntime;
 }
-
 function findRoute(
   type: Route["type"],
   path: string,
-): Route & { handler: NonNullable<Route["handler"]> } {
+): Route & {
+  handler: NonNullable<Route["handler"]>;
+} {
   const route = personalAssistantRoutesPlugin.routes?.find(
     (candidate) => candidate.type === type && candidate.path === path,
   );
   expect(route?.handler).toBeTypeOf("function");
-  return route as Route & { handler: NonNullable<Route["handler"]> };
+  return route as Route & {
+    handler: NonNullable<Route["handler"]>;
+  };
 }
-
 describe("LifeOps raw route owner/admin gate", () => {
   beforeEach(() => {
     resetDevCloudEnvAuthorityForTests();
@@ -152,7 +144,6 @@ describe("LifeOps raw route owner/admin gate", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
   });
-
   afterEach(() => {
     vi.unstubAllEnvs();
     resetDevCloudEnvAuthorityForTests();
@@ -160,7 +151,6 @@ describe("LifeOps raw route owner/admin gate", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
   });
-
   it("allows configured owner bearer tokens without trusting actor headers", async () => {
     process.env.ELIZA_API_TOKEN = "owner-token";
     const res = createResponse();
@@ -172,11 +162,9 @@ describe("LifeOps raw route owner/admin gate", () => {
       res,
       runtime: createRuntime({ roles: { "spoofed-admin": "GUEST" } }),
     });
-
     expect(allowed).toBe(true);
     expect(res.writableEnded).toBe(false);
   });
-
   it("allows trusted local UI calls without an actor header", async () => {
     const res = createResponse();
     const allowed = await requireLifeOpsRouteOwnerAdminAccess({
@@ -188,11 +176,9 @@ describe("LifeOps raw route owner/admin gate", () => {
       res,
       runtime: createRuntime({ ownerId: null }),
     });
-
     expect(allowed).toBe(true);
     expect(res.writableEnded).toBe(false);
   });
-
   it("denies remote headerless raw routes instead of defaulting to owner", async () => {
     const res = createResponse();
     const runtime = createRuntime({ ownerId: null });
@@ -201,13 +187,11 @@ describe("LifeOps raw route owner/admin gate", () => {
       res,
       runtime,
     });
-
     expect(allowed).toBe(false);
     expect(runtime.getAllWorlds).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
   });
-
   it("denies spoofed actor headers even when they name the canonical owner", async () => {
     const res = createResponse();
     const runtime = createRuntime();
@@ -219,17 +203,14 @@ describe("LifeOps raw route owner/admin gate", () => {
       res,
       runtime,
     });
-
     expect(allowed).toBe(false);
     expect(runtime.getAllWorlds).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
   });
-
   it("denies private raw routes for explicit non-admin actors before the route handler runs", async () => {
     const route = findRoute("GET", "/api/lifeops/app-state");
     const res = createResponse();
-
     await route.handler(
       createRequest("/api/lifeops/app-state", {
         "x-eliza-entity-id": "user-1",
@@ -237,13 +218,11 @@ describe("LifeOps raw route owner/admin gate", () => {
       res as never,
       createRuntime({ roles: { "user-1": "USER" } }) as never,
     );
-
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({
       error: "Unauthorized",
     });
   });
-
   it("mounts every owner calendar surface behind the same private gate", () => {
     const calendarRoutes = [
       ["GET", "/api/lifeops/calendar/feed"],
@@ -270,12 +249,10 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["GET", "/api/lifeops/calendar/cards/:cardId"],
       ["DELETE", "/api/lifeops/calendar/cards/:cardId"],
     ] as const;
-
     for (const [type, path] of calendarRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
   });
-
   it("mounts every agreement mutation and preview behind the owner gate", () => {
     const agreementRoutes = [
       ["GET", "/api/lifeops/agreements"],
@@ -298,7 +275,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["PUT", "/api/lifeops/agreement-uploads/:id/chunks/:index"],
       ["POST", "/api/lifeops/agreement-uploads/:id/commit"],
     ] as const;
-
     for (const [type, path] of agreementRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
@@ -313,7 +289,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       findRoute("POST", "/api/lifeops/agreements/grants").maxBodyBytes,
     ).toBeUndefined();
   });
-
   it("mounts every family workflow surface behind the owner gate", () => {
     const workflowRoutes = [
       ["PUT", "/api/lifeops/family-workflows/school/source"],
@@ -331,12 +306,10 @@ describe("LifeOps raw route owner/admin gate", () => {
         "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
       ],
     ] as const;
-
     for (const [type, path] of workflowRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
   });
-
   it.each([
     ["POST", "/api/lifeops/account-handoffs"],
     ["GET", "/api/lifeops/account-handoffs/active"],
@@ -371,11 +344,9 @@ describe("LifeOps raw route owner/admin gate", () => {
       expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
     },
   );
-
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();
-
     await route.handler(
       createRequest("/api/connectors/google/oauth/callback", {
         "x-eliza-entity-id": "user-1",
@@ -383,14 +354,12 @@ describe("LifeOps raw route owner/admin gate", () => {
       res as never,
       createRuntime({ roles: { "user-1": "USER" } }) as never,
     );
-
     expect(route.public).toBe(true);
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body)).toEqual({
       error: "Missing OAuth state",
     });
   });
-
   it("passes the frozen staging Cloud tuple after late env and runtime pollution", async () => {
     vi.stubEnv("ELIZA_DEV_SOURCE", "1");
     vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-explicit");
@@ -402,7 +371,6 @@ describe("LifeOps raw route owner/admin gate", () => {
     vi.stubEnv("ELIZAOS_CLOUD_SERVICE_KEY", "launch-staging-service-key");
     resetDevCloudEnvAuthorityForTests();
     captureDevCloudEnvAuthoritySnapshot();
-
     process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
     process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
     process.env.ELIZAOS_CLOUD_SERVICE_KEY = "late-production-service-key";
@@ -414,7 +382,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       if (key.includes("SERVICE_KEY")) return "runtime-production-service-key";
       return undefined;
     });
-
     const route = findRoute("GET", "/api/cloud/features");
     await route.handler(
       createRequest(
@@ -425,7 +392,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       createResponse() as never,
       runtime as never,
     );
-
     const state = cloudRouteMocks.handleCloudFeaturesRoute.mock.calls[0]?.[4] as
       | {
           config?: {
@@ -445,7 +411,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       },
     });
   });
-
   it("retains runtime-first Cloud proxy resolution without dev authority", async () => {
     vi.stubEnv("ELIZA_DEV_SOURCE", "");
     vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "");
@@ -463,7 +428,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       if (key === "ELIZAOS_CLOUD_SERVICE_KEY") return "runtime-service-key";
       return undefined;
     });
-
     const route = findRoute("GET", "/api/cloud/features");
     await route.handler(
       createRequest(
@@ -474,7 +438,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       createResponse() as never,
       runtime as never,
     );
-
     const state = cloudRouteMocks.handleCloudFeaturesRoute.mock.calls[0]?.[4] as
       | {
           config?: {

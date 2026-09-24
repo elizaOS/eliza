@@ -3,25 +3,35 @@
  * entities for narrow guest LifeOps reads. Request headers never name the
  * entity: a live session identity must match one unique verified binding.
  */
-
 import type http from "node:http";
 import { resolveAuthorizedRouteRole } from "@elizaos/app/api/auth";
 import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-
 export const AUTH_SESSION_ENTITY_PLATFORM = "eliza_auth_session";
 export const AUTH_SESSION_CONNECTOR_ACCOUNT = "local-auth";
-
 export type LifeOpsAuthenticatedPrincipal =
-  | { kind: "owner"; entityId: string; authIdentityId: string | null }
-  | { kind: "guest"; entityId: string; authIdentityId: string };
-
+  | {
+      kind: "owner";
+      entityId: string;
+      authIdentityId: string | null;
+    }
+  | {
+      kind: "guest";
+      entityId: string;
+      authIdentityId: string;
+    };
 export type LifeOpsPrincipalResolution =
-  | { ok: true; principal: LifeOpsAuthenticatedPrincipal }
-  | { ok: false; status: 401 | 403 | 429 | 503; reason: string };
-
+  | {
+      ok: true;
+      principal: LifeOpsAuthenticatedPrincipal;
+    }
+  | {
+      ok: false;
+      status: 401 | 403 | 429 | 503;
+      reason: string;
+    };
 async function verifiedEntityForAuthIdentity(
   runtime: AgentRuntime,
   authIdentityId: string,
@@ -47,7 +57,6 @@ async function verifiedEntityForAuthIdentity(
   );
   return exact.length === 1 ? (exact[0]?.entity.entityId ?? null) : null;
 }
-
 /** True only when an Entity retains a verified binding to a live machine identity. */
 export async function entityHasVerifiedMachineAuthBinding(
   runtime: AgentRuntime,
@@ -71,7 +80,6 @@ export async function entityHasVerifiedMachineAuthBinding(
   }
   return false;
 }
-
 /** Resolve only a live owner or machine session to a canonical Entity. */
 export async function resolveLifeOpsAuthenticatedPrincipal(args: {
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">;
@@ -120,7 +128,6 @@ export async function resolveLifeOpsAuthenticatedPrincipal(args: {
     },
   };
 }
-
 /**
  * Owner-only use-case for binding a paired machine identity to one Entity.
  * The auth row must exist, be machine-kind, and must not already bind another
@@ -130,7 +137,10 @@ export async function bindMachineAuthIdentityToEntity(args: {
   runtime: AgentRuntime;
   entityId: string;
   authIdentityId: string;
-}): Promise<{ entityId: string; authIdentityId: string }> {
+}): Promise<{
+  entityId: string;
+  authIdentityId: string;
+}> {
   const auth = authStoreForRuntime(args.runtime);
   const graph = resolveKnowledgeGraphService(args.runtime);
   if (!auth || !graph) {

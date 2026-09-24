@@ -440,7 +440,7 @@ if (
 // the dist is stale — in BOTH stub and live mode (see playwright-ui-live-stack.ts
 // `viteRendererBuildNeeded` → `build:web`). That vite build needs linked
 // workspace package dists during config load and renderer bundling:
-// - @elizaos/shared/brand is imported by app.config.ts before Vite aliases apply.
+// - @elizaos/ui/brand is imported by app.config.ts before Vite aliases apply.
 // - @elizaos/core is bundled through its browser export.
 // On a fresh CI checkout these dists may not exist, so the stack fails before any
 // smoke spec runs. Build them first — gated only on the ui-smoke config (NOT on
@@ -456,7 +456,6 @@ if (
       path.join(repoRoot, "packages", "scripts", "run-turbo.mjs"),
       "run",
       "build",
-      "--filter=@elizaos/shared",
       "--filter=@elizaos/core",
     ],
     {

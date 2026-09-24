@@ -33,7 +33,6 @@
         "packages/core",
         "packages/agent",
         "packages/auth",
-        "packages/shared",
         "packages/testing/synthetic-world",
         "plugins/**",
         "packages/app",
@@ -64,7 +63,7 @@
     {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
-      "workspacePatterns": ["packages/core", "packages/shared"],
+      "workspacePatterns": ["packages/core"],
       "inputs": [
         "packages/scripts/test-cloud-run-watchdog.self-test.mjs",
         ".github/ci-windows-command-inventory.json"
@@ -74,12 +73,7 @@
     {
       "id": "ui-core",
       "workflow": ".github/workflows/ui-e2e-gate.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/core",
-        "packages/shared",
-        "packages/ui"
-      ],
+      "workspacePatterns": ["packages/app", "packages/core", "packages/ui"],
       "inputs": [
         "packages/ui/src/**",
         "packages/ui/test/**",

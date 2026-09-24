@@ -2,10 +2,8 @@
  * Cloud MCP compatibility facade over the shared schema traversal kernel;
  * the shared preflight rejects malformed or oversized schemas before rewriting.
  */
-
-import { transformMcpToolSchema } from "@elizaos/shared";
-import type { JSONSchema7 } from "json-schema";
-
+import { transformMcpToolSchema } from "@elizaos/plugin-mcp/protocol-utils/tool-schema-compatibility";
+import { type JSONSchema7 } from "json-schema";
 export type ModelProvider = "openai" | "anthropic" | "google" | "bitrouter" | "unknown";
 export interface ModelInfo {
   provider: ModelProvider;
@@ -13,16 +11,12 @@ export interface ModelInfo {
   supportsStructuredOutputs?: boolean;
   isReasoningModel?: boolean;
 }
-
 export abstract class McpToolCompatibility {
   protected modelInfo: ModelInfo;
-
   constructor(modelInfo: ModelInfo) {
     this.modelInfo = modelInfo;
   }
-
   abstract shouldApply(): boolean;
-
   transformToolSchema<TSchema extends JSONSchema7>(toolSchema: TSchema): TSchema {
     return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
       applies: this.shouldApply(),
@@ -30,7 +24,6 @@ export abstract class McpToolCompatibility {
       describe: (original, constraints) => this.mergeDescription(original, { ...constraints }),
     }) as TSchema;
   }
-
   private unsupportedFor(type: string | undefined): readonly string[] {
     switch (type) {
       case "string":
@@ -46,7 +39,6 @@ export abstract class McpToolCompatibility {
         return [];
     }
   }
-
   protected mergeDescription(
     original: string | undefined,
     constraints: Record<string, unknown>,
@@ -54,11 +46,9 @@ export abstract class McpToolCompatibility {
     const serialized = this.stringifyConstraints(constraints);
     return original ? `${original}\n${serialized}` : serialized;
   }
-
   protected stringifyConstraints(constraints: Record<string, unknown>): string {
     return JSON.stringify(constraints);
   }
-
   protected abstract getUnsupportedStringProperties(): string[];
   protected abstract getUnsupportedNumberProperties(): string[];
   protected abstract getUnsupportedArrayProperties(): string[];

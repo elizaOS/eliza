@@ -10,7 +10,7 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
-import { ROLE_RANK } from "@elizaos/shared/browser-contracts";
+import { ROLE_RANK } from "@elizaos/core/access-control/role-primitives";
 import type { ReactNode } from "react";
 import { useAuthStatus } from "../hooks/useAuthStatus.ts";
 import { RoleProvider } from "../hooks/useRole.tsx";

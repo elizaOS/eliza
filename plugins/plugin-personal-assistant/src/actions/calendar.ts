@@ -34,6 +34,11 @@ import {
   stableStringify,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarProvider,
+} from "@elizaos/core/contracts/calendar";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
   type CalendarActionDeps,
@@ -53,11 +58,6 @@ import {
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
 } from "@elizaos/plugin-calendar/calendar-action-schema";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarProvider,
-} from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

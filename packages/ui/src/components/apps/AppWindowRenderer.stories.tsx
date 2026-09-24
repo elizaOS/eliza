@@ -4,10 +4,10 @@
  * case-insensitive-slug states.
  */
 
-import type { OverlayAppContext } from "@elizaos/shared";
-import { registerOverlayApp } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactElement } from "react";
+import type { OverlayAppContext } from "../../apps/overlay-app-api.js";
+import { registerOverlayApp } from "../../apps/overlay-app-registry.js";
 import { Button } from "../ui/button";
 import { AppWindowRenderer } from "./AppWindowRenderer";
 
@@ -35,7 +35,6 @@ function MockOverlayComponent(props: OverlayAppContext): ReactElement {
     </div>
   );
 }
-
 // Register a mock overlay app exactly once at module scope so the slug
 // `mock-window` resolves through the real registry used by the component.
 registerOverlayApp({
@@ -46,7 +45,6 @@ registerOverlayApp({
   icon: null,
   Component: MockOverlayComponent,
 });
-
 const meta = {
   title: "Apps/AppWindowRenderer",
   component: AppWindowRenderer,
@@ -65,18 +63,14 @@ const meta = {
     ),
   ],
 } satisfies Meta<typeof AppWindowRenderer>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const Default: Story = {};
-
 export const NotFound: Story = {
   args: {
     slug: "this-app-does-not-exist",
   },
 };
-
 export const CaseInsensitiveSlug: Story = {
   args: {
     slug: "MOCK-WINDOW",

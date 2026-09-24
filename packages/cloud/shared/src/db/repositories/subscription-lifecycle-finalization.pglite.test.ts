@@ -51,6 +51,8 @@ beforeAll(async () => {
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
   await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+  const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+  await applyAppBillingTestMigrations((statement) => getPgliteClientForTests().exec(statement));
   const noticeMigration = await readFile(
     new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
     "utf8",

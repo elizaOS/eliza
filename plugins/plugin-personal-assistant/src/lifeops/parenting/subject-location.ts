@@ -5,28 +5,24 @@
  * travel state, planner parameter, or another child's record cannot select
  * safety resources.
  */
-
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   type Entity,
   type EntityAttribute,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/knowledge-graph/entity-types";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   createHouseholdCoordinationService,
   getHouseholdCoordinationService,
   HouseholdCoordinationError,
   type HouseholdCoordinationService,
 } from "../household/index.js";
-
 export const PARENTING_CURRENT_LOCATION_ATTRIBUTE =
   "lifeops.parenting.currentLocation" as const;
 export const PARENTING_SUBJECT_LOCATION_VERSION = 1 as const;
-export const PARENTING_SUBJECT_LOCATION_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
-
-const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1_000;
-
+export const PARENTING_SUBJECT_LOCATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1000;
 export const PARENTING_SUBJECT_LOCATION_SOURCES = [
   "subject_device_location",
   "verified_subject_check_in",
@@ -35,7 +31,6 @@ export const PARENTING_SUBJECT_LOCATION_SOURCES = [
 ] as const;
 export type ParentingSubjectLocationSource =
   (typeof PARENTING_SUBJECT_LOCATION_SOURCES)[number];
-
 export interface ParentingSubjectLocationRecord {
   readonly schemaVersion: typeof PARENTING_SUBJECT_LOCATION_VERSION;
   readonly assurance: "subject_current_location_verified";
@@ -49,7 +44,6 @@ export interface ParentingSubjectLocationRecord {
   readonly verifiedByEntityId: string;
   readonly verificationEvidenceId: string;
 }
-
 export interface ParentingSubjectLocationAssertion {
   readonly tenantAgentId: string;
   readonly subjectEntityId: string;
@@ -61,7 +55,6 @@ export interface ParentingSubjectLocationAssertion {
   readonly verifiedByEntityId: string;
   readonly verificationEvidenceId: string;
 }
-
 export type ParentingSubjectLocationEvidence =
   | {
       readonly status: "resolved";
@@ -92,10 +85,8 @@ export type ParentingSubjectLocationEvidence =
         | "location_untrusted"
         | "location_stale";
     };
-
 /** Compatibility name for the handoff resource resolver's locale projection. */
 export type ParentingLocaleEvidence = ParentingSubjectLocationEvidence;
-
 export interface ParentingSubjectLocationResolver {
   resolve(input: {
     readonly runtime: IAgentRuntime;
@@ -103,12 +94,10 @@ export interface ParentingSubjectLocationResolver {
     readonly requestedAt: string;
   }): Promise<ParentingSubjectLocationEvidence>;
 }
-
 interface ParsedLocale {
   readonly locale: string;
   readonly jurisdiction: string;
 }
-
 interface LocationCandidate {
   readonly locale: string | null;
   readonly jurisdiction: string | null;
@@ -118,18 +107,15 @@ interface LocationCandidate {
   readonly verifiedByEntityId: string | null;
   readonly verificationEvidenceId: string | null;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-
 function requiredString(value: unknown, maximum = 500): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   if (!normalized || normalized.length > maximum) return null;
   return normalized;
 }
-
 function locationSource(value: unknown): ParentingSubjectLocationSource | null {
   if (
     typeof value === "string" &&
@@ -141,7 +127,6 @@ function locationSource(value: unknown): ParentingSubjectLocationSource | null {
   }
   return null;
 }
-
 function exactLocale(value: string): ParsedLocale | null {
   try {
     const locale = new Intl.Locale(value);
@@ -156,7 +141,6 @@ function exactLocale(value: string): ParsedLocale | null {
     return null;
   }
 }
-
 function candidateFrom(value: unknown): LocationCandidate {
   if (!isRecord(value)) {
     return {
@@ -179,7 +163,6 @@ function candidateFrom(value: unknown): LocationCandidate {
     verificationEvidenceId: requiredString(value.verificationEvidenceId, 500),
   };
 }
-
 function unavailable(
   subjectEntityId: string,
   candidate: LocationCandidate,
@@ -196,7 +179,6 @@ function unavailable(
     unavailableReason,
   };
 }
-
 function recordFrom(value: unknown): ParentingSubjectLocationRecord | null {
   if (!isRecord(value)) return null;
   const tenantAgentId = requiredString(value.tenantAgentId, 200);
@@ -240,7 +222,6 @@ function recordFrom(value: unknown): ParentingSubjectLocationRecord | null {
     verificationEvidenceId,
   };
 }
-
 /**
  * Builds the graph attribute accepted by the production resolver. Callers are
  * trusted host integrations that already authenticated the observation and
@@ -262,7 +243,6 @@ export function createParentingSubjectLocationAttribute(
     updatedAt: recordedAt,
   };
 }
-
 export function evaluateParentingSubjectLocationEvidence(input: {
   readonly agentId: string;
   readonly subjectEntityId: string;
@@ -343,7 +323,6 @@ export function evaluateParentingSubjectLocationEvidence(input: {
     unavailableReason: null,
   };
 }
-
 async function verifierAuthorized(input: {
   readonly household: HouseholdCoordinationService;
   readonly subjectEntityId: string;
@@ -399,7 +378,6 @@ async function verifierAuthorized(input: {
     throw error;
   }
 }
-
 export class GraphBackedParentingSubjectLocationResolver
   implements ParentingSubjectLocationResolver
 {
@@ -410,7 +388,6 @@ export class GraphBackedParentingSubjectLocationResolver
       getHouseholdCoordinationService(runtime) ??
       createHouseholdCoordinationService(runtime),
   ) {}
-
   async resolve(input: {
     readonly runtime: IAgentRuntime;
     readonly subjectEntityId: string;
@@ -449,6 +426,5 @@ export class GraphBackedParentingSubjectLocationResolver
     });
   }
 }
-
 export const graphBackedParentingSubjectLocationResolver =
   new GraphBackedParentingSubjectLocationResolver();

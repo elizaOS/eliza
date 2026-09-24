@@ -1,12 +1,14 @@
 /** Implements Electrobun desktop print electrobun dev settings banner ts behavior for app shell integration. */
+import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-settings-banner-style";
+import { prependDevSubsystemFigletHeading } from "@elizaos/app/dev-settings-figlet-heading";
 import {
-	colorizeDevSettingsStartupBanner,
 	type DevSettingsRow,
-	firstWinningEnvString,
 	formatDevSettingsTable,
-	prependDevSubsystemFigletHeading,
+} from "@elizaos/app/dev-settings-table";
+import {
+	firstWinningEnvString,
 	resolveDesktopApiPortPreference,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { resolveMainWindowPartition } from "./main-window-session";
 
@@ -17,7 +19,6 @@ function shouldPrintElectrobunDevSettingsBanner(): boolean {
 	const dir = import.meta.dir.replace(/\\/g, "/");
 	return dir.includes("/electrobun/src/");
 }
-
 /**
  * Electrobun main process — env reads for desktop dev (printed once at startup).
  */
@@ -25,26 +26,21 @@ export function printElectrobunDevSettingsBanner(
 	env: Record<string, string | undefined>,
 ): void {
 	if (!shouldPrintElectrobunDevSettingsBanner()) return;
-
 	const runtime = resolveDesktopRuntimeMode(env);
 	const apiPref = resolveDesktopApiPortPreference(env);
 	const partition = resolveMainWindowPartition(env);
-
 	const rendererWin = firstWinningEnvString(env, [
 		"ELIZA_RENDERER_URL",
 		"VITE_DEV_SERVER_URL",
 	]);
-
 	const browserPort = env.ELIZA_BROWSER_WORKSPACE_PORT?.trim();
 	const browserTok = env.ELIZA_BROWSER_WORKSPACE_TOKEN?.trim();
-
 	const shotOpt = env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
 	const screenshotOff =
 		shotOpt === "0" ||
 		shotOpt === "false" ||
 		shotOpt === "no" ||
 		shotOpt === "off";
-
 	const rows: DevSettingsRow[] = [
 		{
 			setting: "desktopRuntimeMode",
@@ -129,7 +125,6 @@ export function printElectrobunDevSettingsBanner(
 			change: "export NODE_ENV=development|production",
 		},
 	];
-
 	console.log(
 		colorizeDevSettingsStartupBanner(
 			prependDevSubsystemFigletHeading(

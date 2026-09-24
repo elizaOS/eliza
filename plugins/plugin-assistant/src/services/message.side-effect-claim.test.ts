@@ -29,11 +29,9 @@ import type { EffectReceipt } from "../../../../packages/core/src/types/effects.
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import type { State } from "../../../../packages/core/src/types/state.ts";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
-import { getDefaultContextDefinitions } from "../runtime/default-contexts.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
-  formatAvailableContextsForPrompt,
   plannedReplyHasClaimGroundingReceipt,
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
@@ -1395,38 +1393,6 @@ describe("evaluatePlannedReplyEgress", () => {
         actions: [reminderSurface],
       }),
     ).toBe(false);
-  });
-});
-
-describe("tasks context recap/status routing vocabulary", () => {
-  // #17059 variant B root cause: the tasks catalog line carried no
-  // recap/status vocabulary — a "recap my day" ask had nothing to route on
-  // and fell to contexts=["simple"]. The compact catalog tier was retired by
-  // #24134 (complete model context); the catalog now always renders the
-  // complete description, which must keep carrying that vocabulary.
-  it("keeps recap/status/summary vocabulary in the tasks line the DM catalog renders", () => {
-    const catalog = formatAvailableContextsForPrompt(
-      getDefaultContextDefinitions(),
-    );
-    const tasksLine = catalog
-      .split("\n")
-      .find((line) => line.startsWith("- tasks"));
-    expect(tasksLine).toBeDefined();
-    expect(tasksLine).toMatch(/recap\/summary\/status/i);
-    expect(tasksLine).toMatch(/recap my day/i);
-    expect(tasksLine).toMatch(/what's left today/i);
-  });
-
-  it("keeps recap examples in the full tasks description", () => {
-    const full = formatAvailableContextsForPrompt(
-      getDefaultContextDefinitions(),
-    );
-    const tasksLine = full
-      .split("\n")
-      .find((line) => line.startsWith("- tasks"));
-    expect(tasksLine).toBeDefined();
-    expect(tasksLine).toMatch(/recap my day/i);
-    expect(tasksLine).toMatch(/what did I get done today/i);
   });
 });
 

@@ -4,16 +4,13 @@
  * semantics ("confirmed appends, pending replaces") are unit-testable without
  * a WebSocket or the data layer.
  */
-
-import type {
-  MeetingParticipant,
-  MeetingPlatform,
-  MeetingTranscriptEvent,
-  Transcript,
-  TranscriptSegment,
-} from "@elizaos/shared";
-import { MEETING_PLATFORMS } from "@elizaos/shared";
-
+import {
+  MEETING_PLATFORMS,
+  type MeetingParticipant,
+  type MeetingPlatform,
+  type MeetingTranscriptEvent,
+} from "@elizaos/core/meetings";
+import type { Transcript, TranscriptSegment } from "@elizaos/core/transcripts";
 /** The live pane's view of an in-progress meeting transcript. */
 export interface LiveTranscriptState {
   /** Stable, LocalAgreement-confirmed segments (append-only). */
@@ -21,12 +18,10 @@ export interface LiveTranscriptState {
   /** Mutable ASR tail — replaced wholesale by every event/poll. */
   pending: TranscriptSegment[];
 }
-
 export const EMPTY_LIVE_TRANSCRIPT: LiveTranscriptState = {
   confirmed: [],
   pending: [],
 };
-
 /**
  * Apply one `meeting-transcript` ws event: append the confirmed segments the
  * pane hasn't seen yet (deduped by segment id, so replays/backlog are safe)
@@ -44,7 +39,6 @@ export function applyMeetingTranscriptEvent(
     pending: event.pending,
   };
 }
-
 /**
  * Reconcile against a polled transcript record (the ws-unavailable fallback).
  * The server record is authoritative for confirmed segments; the poll carries
@@ -61,20 +55,17 @@ export function applyPolledTranscript(
     pending: state.pending.filter((s) => !confirmedIds.has(s.id)),
   };
 }
-
 function isMeetingPlatform(value: unknown): value is MeetingPlatform {
   return (
     typeof value === "string" &&
     (MEETING_PLATFORMS as readonly string[]).includes(value)
   );
 }
-
 /** Meeting-specific fields a meeting transcript carries in its metadata. */
 export interface MeetingTranscriptMeta {
   platform: MeetingPlatform | null;
   participants: MeetingParticipant[];
 }
-
 /**
  * Read the meeting metadata off a transcript record (`metadata.platform`,
  * `metadata.participants`). Meaningful only for `source: "meeting"` records;
@@ -92,7 +83,11 @@ export function meetingTranscriptMeta(transcript: {
         (p): p is MeetingParticipant =>
           typeof p === "object" &&
           p !== null &&
-          typeof (p as { displayName?: unknown }).displayName === "string",
+          typeof (
+            p as {
+              displayName?: unknown;
+            }
+          ).displayName === "string",
       )
     : [];
   return { platform, participants };

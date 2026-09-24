@@ -641,8 +641,8 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     let resolveCommands: (() => void) | undefined;
     mocks.client.rememberMemory.mockImplementation(
       () =>
-        new Promise((resolve) => {
-          resolveCommands = () => resolve(undefined);
+        new Promise<void>((resolve) => {
+          resolveCommands = resolve;
         }),
     );
     const harness = makeHarness();
@@ -650,9 +650,12 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
 
     let commandSend: Promise<void>;
     act(() => {
-      commandSend = result.current.send.sendChatText("#remember a note", {
-        clientMessageId: "command-reset",
-      });
+      commandSend = result.current.send.sendChatText(
+        "#remember ownership note",
+        {
+          clientMessageId: "command-reset",
+        },
+      );
     });
     await flushPendingWork();
     act(() => {
@@ -1402,8 +1405,8 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
     mocks.client.rememberMemory.mockImplementation(
       () =>
-        new Promise((resolve) => {
-          resolveCommands = () => resolve(undefined);
+        new Promise<void>((resolve) => {
+          resolveCommands = resolve;
         }),
     );
     const harness = makeHarness();
@@ -1420,10 +1423,13 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
 
     let commandSend: Promise<void>;
     act(() => {
-      commandSend = result.current.send.sendChatText("#remember a note", {
-        conversationId: "conv-a",
-        clientMessageId: "same-id-command",
-      });
+      commandSend = result.current.send.sendChatText(
+        "#remember ownership note",
+        {
+          conversationId: "conv-a",
+          clientMessageId: "same-id-command",
+        },
+      );
     });
     await flushPendingWork();
     await vi.waitFor(() => {
@@ -1451,10 +1457,10 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       harness.conversationMessagesRef.current.map((message) => message.role),
     ).toEqual(["user", "assistant"]);
     expect(harness.conversationMessagesRef.current[0]?.text).toBe(
-      "#remember a note",
+      "#remember ownership note",
     );
     expect(harness.conversationMessagesRef.current[1]?.text).toContain(
-      "Saved memory note",
+      'Saved memory note: "ownership note"',
     );
   });
 });

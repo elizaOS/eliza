@@ -19,10 +19,8 @@ import {
   runExtractorPipeline,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import {
-  normalizeKeywordMatchText,
-  textStatesExplicitRecurrence,
-} from "@elizaos/shared";
+import { normalizeKeywordMatchText } from "@elizaos/core/i18n/keyword-matching";
+import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,

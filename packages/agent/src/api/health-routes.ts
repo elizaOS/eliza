@@ -14,56 +14,49 @@
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
 import {
+  type AgentRuntime,
   getSwarmCoordinatorService,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
-// Pure env detector lives in shared so status can report managed hosting mode
-// without loading the full cloud plugin graph (which may fail in lean test
-// harnesses or partial installs).
-import {
-  isCloudProvisionedContainer,
-  parseCanonicalInteger,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
+import { type ElizaConfig } from "../config/config.ts";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
-import type { ConnectorHealthMonitor } from "./connector-health.ts";
+import { type ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
 import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
+// Pure env detector lives in shared so status can report managed hosting mode
+// without loading the full cloud plugin graph (which may fail in lean test
+// harnesses or partial installs).
 type CloudApiKeyResolver = {
   resolveCloudApiKey: (
     config: ElizaConfig,
     runtime: AgentRuntime | null,
   ) => string | undefined;
 };
-
 let cloudApiKeyResolverPromise: Promise<CloudApiKeyResolver> | null = null;
-
 function getCloudApiKeyResolver(): Promise<CloudApiKeyResolver> {
   cloudApiKeyResolverPromise ??= import(
     "@elizaos/plugin-elizacloud"
   ) as Promise<CloudApiKeyResolver>;
   return cloudApiKeyResolverPromise;
 }
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 interface PluginEntryLike {
   enabled: boolean;
   configured: boolean;
   isActive?: boolean;
   loadError?: string | null;
 }
-
 interface AgentStartupDiagnostics {
   phase: string;
   attempt: number;
@@ -71,7 +64,6 @@ interface AgentStartupDiagnostics {
   lastErrorAt?: number;
   nextRetryAt?: number;
 }
-
 export interface HealthRouteState {
   runtime: AgentRuntime | null;
   config: ElizaConfig;
@@ -84,7 +76,6 @@ export interface HealthRouteState {
   pendingRestartReasons: string[];
   connectorHealthMonitor: ConnectorHealthMonitor | null;
 }
-
 export interface HealthRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -95,24 +86,20 @@ export interface HealthRouteContext {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
 }
-
 // ---------------------------------------------------------------------------
 // Runtime debug utilities (only used by GET /api/runtime)
 // ---------------------------------------------------------------------------
-
 const RUNTIME_DEBUG_DEFAULT_MAX_DEPTH = 10;
 const RUNTIME_DEBUG_MAX_DEPTH_CAP = 24;
 const RUNTIME_DEBUG_DEFAULT_MAX_ARRAY_LENGTH = 1000;
 const RUNTIME_DEBUG_DEFAULT_MAX_OBJECT_ENTRIES = 1000;
 const RUNTIME_DEBUG_DEFAULT_MAX_STRING_LENGTH = 8000;
-
 interface RuntimeDebugSerializeOptions {
   maxDepth: number;
   maxArrayLength: number;
   maxObjectEntries: number;
   maxStringLength: number;
 }
-
 /**
  * /api/runtime serializes the entire runtime object graph (six deep reflective
  * walks). RuntimeView re-requests on depth/cap changes and may revalidate
@@ -120,19 +107,16 @@ interface RuntimeDebugSerializeOptions {
  * serialize options and guarded by runtime identity — a restart swaps the
  * runtime reference and forces a fresh build.
  */
-const RUNTIME_DEBUG_SNAPSHOT_TTL_MS = 2_500;
-
+const RUNTIME_DEBUG_SNAPSHOT_TTL_MS = 2500;
 interface RuntimeDebugSnapshotCacheEntry {
   payload: unknown;
   builtAt: number;
   runtime: object;
 }
-
 const runtimeDebugSnapshotCache = new Map<
   string,
   RuntimeDebugSnapshotCacheEntry
 >();
-
 function getCachedRuntimeDebugSnapshot<T>(
   runtime: object,
   options: RuntimeDebugSerializeOptions,
@@ -152,21 +136,18 @@ function getCachedRuntimeDebugSnapshot<T>(
   runtimeDebugSnapshotCache.set(key, { payload, builtAt: now, runtime });
   return payload;
 }
-
 interface RuntimeOrderItem {
   index: number;
   name: string;
   className: string;
   id: string | null;
 }
-
 interface RuntimeServiceOrderItem {
   index: number;
   serviceType: string;
   count: number;
   instances: RuntimeOrderItem[];
 }
-
 export function parseDebugPositiveInt(
   raw: string | null,
   fallback: number,
@@ -177,13 +158,17 @@ export function parseDebugPositiveInt(
   const parsed = parseCanonicalInteger(raw, { min, max, clamp: true });
   return parsed === undefined ? fallback : parsed;
 }
-
 function classNameFor(value: object): string {
-  const ctor = (value as { constructor?: { name?: string } }).constructor;
+  const ctor = (
+    value as {
+      constructor?: {
+        name?: string;
+      };
+    }
+  ).constructor;
   const maybeName = typeof ctor?.name === "string" ? ctor.name.trim() : "";
   return maybeName || "Object";
 }
-
 function stringDataProperty(value: unknown, key: string): string | null {
   if (!value || typeof value !== "object") return null;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -193,7 +178,6 @@ function stringDataProperty(value: unknown, key: string): string | null {
   const trimmed = maybeString.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
-
 function describeRuntimeOrder(
   values: unknown[],
   fallbackLabel: string,
@@ -212,7 +196,6 @@ function describeRuntimeOrder(
     return { index, name, className, id };
   });
 }
-
 function describeRuntimeServiceOrder(
   servicesMap: Map<string, unknown[]>,
 ): RuntimeServiceOrderItem[] {
@@ -228,18 +211,14 @@ function describeRuntimeServiceOrder(
     },
   );
 }
-
 export function serializeForRuntimeDebug(
   value: unknown,
   options: RuntimeDebugSerializeOptions,
 ): unknown {
   const seen = new WeakMap<object, string>();
-
   const visit = (current: unknown, path: string, depth: number): unknown => {
     if (current === null) return null;
-
     const kind = typeof current;
-
     if (kind === "string") {
       if ((current as string).length <= options.maxStringLength) return current;
       const wellFormedString = toWellFormedUnicode(current as string);
@@ -276,9 +255,7 @@ export function serializeForRuntimeDebug(
         length: fn.length,
       };
     }
-
     const obj = current as object;
-
     if (obj instanceof Date) {
       return { __type: "date", value: obj.toISOString() };
     }
@@ -286,7 +263,9 @@ export function serializeForRuntimeDebug(
       return { __type: "regexp", value: String(obj) };
     }
     if (obj instanceof Error) {
-      const err = obj as Error & { cause?: unknown };
+      const err = obj as Error & {
+        cause?: unknown;
+      };
       const out: Record<string, unknown> = {
         __type: "error",
         name: err.name,
@@ -342,7 +321,6 @@ export function serializeForRuntimeDebug(
         truncated: obj.byteLength > previewLength,
       };
     }
-
     const seenPath = seen.get(obj);
     if (seenPath) return { __type: "circular", ref: seenPath };
     if (depth >= options.maxDepth) {
@@ -353,7 +331,6 @@ export function serializeForRuntimeDebug(
       };
     }
     seen.set(obj, path);
-
     if (Array.isArray(obj)) {
       const arr = obj as unknown[];
       const limit = Math.min(arr.length, options.maxArrayLength);
@@ -369,9 +346,11 @@ export function serializeForRuntimeDebug(
       if (arr.length > limit) out.truncatedItems = arr.length - limit;
       return out;
     }
-
     if (obj instanceof Map) {
-      const entries: Array<{ key: unknown; value: unknown }> = [];
+      const entries: Array<{
+        key: unknown;
+        value: unknown;
+      }> = [];
       let i = 0;
       for (const [entryKey, entryValue] of obj.entries()) {
         if (i >= options.maxObjectEntries) break;
@@ -391,7 +370,6 @@ export function serializeForRuntimeDebug(
       }
       return out;
     }
-
     if (obj instanceof Set) {
       const values: unknown[] = [];
       let i = 0;
@@ -409,7 +387,6 @@ export function serializeForRuntimeDebug(
         out.truncatedEntries = obj.size - values.length;
       return out;
     }
-
     if (obj instanceof WeakMap) {
       return { __type: "weak-map" };
     }
@@ -419,13 +396,11 @@ export function serializeForRuntimeDebug(
     if (obj instanceof Promise) {
       return { __type: "promise" };
     }
-
     const ownNames = Object.getOwnPropertyNames(obj);
     const ownSymbols = Object.getOwnPropertySymbols(obj);
     const allKeys: Array<string | symbol> = [...ownNames, ...ownSymbols];
     const limit = Math.min(allKeys.length, options.maxObjectEntries);
     const properties: Record<string, unknown> = {};
-
     for (let i = 0; i < limit; i++) {
       const propertyKey = allKeys[i];
       const keyLabel =
@@ -449,29 +424,23 @@ export function serializeForRuntimeDebug(
         };
       }
     }
-
     if (allKeys.length > limit) {
       properties.__truncatedKeys = allKeys.length - limit;
     }
-
     const prototype = Object.getPrototypeOf(obj);
     const isPlainObject = prototype === Object.prototype || prototype === null;
     if (isPlainObject) return properties;
-
     return {
       __type: "object",
       className: classNameFor(obj),
       properties,
     };
   };
-
   return visit(value, "$", 0);
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 /**
  * "First-turn capability online": the agent can actually produce a response.
  *
@@ -496,7 +465,6 @@ export function computeCanRespond(
     return false;
   }
 }
-
 /**
  * Handle health / status / runtime introspection routes.
  * Returns `true` if the request was handled.
@@ -505,7 +473,6 @@ export async function handleHealthRoutes(
   ctx: HealthRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, state, json, error } = ctx;
-
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
     const effectiveConfig = createDevCloudConfigAuthorityView(state.config);
@@ -540,7 +507,7 @@ export async function handleHealthRoutes(
       detectRuntimeModel(state.runtime ?? null, effectiveConfig) ??
       activeLocalModel ??
       state.model;
-    // Managed hosting detection is a pure env check from @elizaos/shared and
+    // Managed hosting detection is a pure env check from @elizaos/core and
     // must not depend on loading plugin-elizacloud. Optional hasApiKey still
     // comes from the plugin and degrades to false if the plugin is unloadable
     // — never 500 the status endpoint for optional cloud status fields.
@@ -561,7 +528,6 @@ export async function handleHealthRoutes(
       cloudProvisioned,
       hasApiKey: hasCloudApiKey,
     };
-
     json(res, {
       state: state.agentState,
       agentName: state.agentName,
@@ -576,7 +542,6 @@ export async function handleHealthRoutes(
     });
     return true;
   }
-
   // ── GET /api/health ──────────────────────────────────────────────────────
   // Structured health check endpoint returning subsystem status.
   if (method === "GET" && pathname === "/api/health") {
@@ -584,12 +549,10 @@ export async function handleHealthRoutes(
     const uptime = state.startedAt
       ? Math.floor((Date.now() - state.startedAt) / 1000)
       : 0;
-
     const loadedPluginCount = runtime?.plugins?.length
       ? runtime.plugins.length
       : state.plugins.filter((p) => p.enabled || p.isActive).length;
     const failedPluginCount = state.plugins.filter((p) => p.loadError).length;
-
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
       if (getSwarmCoordinatorService(runtime)) {
@@ -598,7 +561,6 @@ export async function handleHealthRoutes(
     } catch {
       // not available
     }
-
     const connectors: Record<string, string> = state.connectorHealthMonitor
       ? state.connectorHealthMonitor.getConnectorStatuses()
       : {};
@@ -613,13 +575,11 @@ export async function handleHealthRoutes(
         }
       }
     }
-
     const databaseLiveness = await probeRuntimeDatabaseLiveness(runtime);
     const ready =
       state.agentState !== "starting" &&
       state.agentState !== "restarting" &&
       !databaseLiveness.terminal;
-
     // The endpoint stays unauthenticated for readiness probes, so callers
     // that fail the trusted-local check receive only the liveness bit: the
     // detailed shape discloses deployment topology (connector names, plugin
@@ -630,7 +590,6 @@ export async function handleHealthRoutes(
       json(res, { ready }, databaseLiveness.terminal ? 503 : 200);
       return true;
     }
-
     // Service registration truth (#16309): a service whose start() threw is
     // recorded as "failed" by the runtime but previously never reached this
     // surface, so supervisors saw a settled healthy boot over dead services.
@@ -639,7 +598,6 @@ export async function handleHealthRoutes(
       .filter(([, entry]) => entry.status === "failed")
       .map(([type]) => type)
       .sort();
-
     json(
       res,
       {
@@ -679,7 +637,6 @@ export async function handleHealthRoutes(
     );
     return true;
   }
-
   // ── GET /api/runtime ───────────────────────────────────────────────────
   // Deep runtime introspection endpoint for advanced debugging UI.
   if (method === "GET" && pathname === "/api/runtime") {
@@ -705,7 +662,7 @@ export async function handleHealthRoutes(
       url.searchParams.get("maxStringLength"),
       RUNTIME_DEBUG_DEFAULT_MAX_STRING_LENGTH,
       64,
-      100_000,
+      100000,
     );
     if (
       maxDepth === "invalid" ||
@@ -720,17 +677,14 @@ export async function handleHealthRoutes(
       );
       return true;
     }
-
     const serializeOptions: RuntimeDebugSerializeOptions = {
       maxDepth,
       maxArrayLength,
       maxObjectEntries,
       maxStringLength,
     };
-
     const runtime = state.runtime;
     const generatedAt = Date.now();
-
     if (!runtime) {
       json(res, {
         runtimeAvailable: false,
@@ -765,7 +719,6 @@ export async function handleHealthRoutes(
       });
       return true;
     }
-
     try {
       const payload = getCachedRuntimeDebugSnapshot(
         runtime,
@@ -788,7 +741,6 @@ export async function handleHealthRoutes(
             runtime.evaluators,
             "evaluator",
           );
-
           return {
             runtimeAvailable: true,
             generatedAt,
@@ -845,6 +797,5 @@ export async function handleHealthRoutes(
     }
     return true;
   }
-
   return false;
 }

@@ -464,7 +464,7 @@ const factsProvider: Provider = {
             durableFacts,
             currentFacts,
           },
-          text: "No facts available.",
+          text: "",
         };
       }
       const agentName = runtime.character.name ?? "Agent";

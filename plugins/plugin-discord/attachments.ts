@@ -14,7 +14,7 @@ import {
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
-import { resolveAttachmentBytes } from "@elizaos/shared/media";
+import { resolveAttachmentBytes } from "@elizaos/core/media";
 import { type Attachment, Collection } from "discord.js";
 import ffmpeg from "fluent-ffmpeg";
 import { generateSummary } from "./utils";

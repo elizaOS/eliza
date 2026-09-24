@@ -3,11 +3,10 @@
  * PGlite repository path. The journal durably grants one boot attempt; it does
  * not claim atomicity between SQLite journal state and the PGlite domain store.
  */
-
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
-import type { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
+import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { type SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
 import {
   SYNTHETIC_WORLD_CAPABILITIES,
   SYNTHETIC_WORLD_COMMAND_VERSION,
@@ -15,35 +14,57 @@ import {
 
 const BOOT_COMMAND_TYPE = "controller.production-boot.claim.v1";
 const PRODUCTION_RUNTIME_MODULE = "@elizaos/agent/runtime";
-
 /** Internal runtime shape used by the non-package-exported adversarial seam. */
 export interface SyntheticProductionRuntime {
   agentId: string;
-  adapter?: { constructor: { name: string } };
-  character: { name?: string };
-  plugins: Array<{ name: string }>;
-  getEntityById(id: string): Promise<{ id?: string } | null>;
+  adapter?: {
+    constructor: {
+      name: string;
+    };
+  };
+  character: {
+    name?: string;
+  };
+  plugins: Array<{
+    name: string;
+  }>;
+  getEntityById(id: string): Promise<{
+    id?: string;
+  } | null>;
 }
-
 /** Internal test seam; deliberately omitted from the package barrel. */
 export interface SyntheticProductionRuntimeModule {
   startEliza(options: {
     headless: true;
     onRuntimeCreated(runtime: SyntheticProductionRuntime): void;
     configOverride: {
-      meta: { firstRunComplete: true };
-      ui: { assistant: { name: string } };
-      database: { provider: "pglite"; pglite: { dataDir: string } };
-      logging: { level: "error" };
+      meta: {
+        firstRunComplete: true;
+      };
+      ui: {
+        assistant: {
+          name: string;
+        };
+      };
+      database: {
+        provider: "pglite";
+        pglite: {
+          dataDir: string;
+        };
+      };
+      logging: {
+        level: "error";
+      };
     };
   }): Promise<SyntheticProductionRuntime | undefined>;
   shutdownRuntime(
     runtime: SyntheticProductionRuntime,
     context: string,
-    options: { fast: true },
+    options: {
+      fast: true;
+    },
   ): Promise<void>;
 }
-
 function isProductionRuntimeModule(
   value: unknown,
 ): value is SyntheticProductionRuntimeModule {
@@ -54,7 +75,6 @@ function isProductionRuntimeModule(
     typeof candidate.shutdownRuntime === "function"
   );
 }
-
 export interface ProductionSyntheticWorldBootInput {
   authority: SyntheticEnvironmentLeaseAuthority;
   journal: SqliteSyntheticCommandJournal;
@@ -62,7 +82,6 @@ export interface ProductionSyntheticWorldBootInput {
   runtimeName: string;
   pgliteDataDir: string;
 }
-
 export interface ProductionSyntheticWorldRuntimeProof {
   agentId: string;
   agentEntityId: string;
@@ -77,19 +96,16 @@ export interface ProductionSyntheticWorldRuntimeProof {
     pgliteDataDir: string;
   };
 }
-
 export type ProductionSyntheticWorldFailureStage =
   | "input"
   | "claim"
   | "initialization"
   | "proof"
   | "teardown";
-
 export interface ProductionSyntheticWorldFailure {
   code: string;
   message: string;
 }
-
 export type ProductionSyntheticWorldBootResult =
   | {
       status: "available";
@@ -108,7 +124,6 @@ export type ProductionSyntheticWorldBootResult =
       failure: ProductionSyntheticWorldFailure;
       capabilities: typeof SYNTHETIC_WORLD_CAPABILITIES;
     };
-
 function controllerError(
   code: string,
   message: string,
@@ -116,7 +131,6 @@ function controllerError(
 ): ElizaError {
   return new ElizaError(message, { code, severity: "fatal", cause });
 }
-
 function validateInput(input: ProductionSyntheticWorldBootInput): void {
   if (
     input.runtimeName.trim().length === 0 ||
@@ -130,18 +144,15 @@ function validateInput(input: ProductionSyntheticWorldBootInput): void {
     );
   }
 }
-
 /** Owns the live production runtime and its idempotent teardown boundary. */
 export interface ProductionSyntheticWorldController {
   readonly proof: ProductionSyntheticWorldRuntimeProof;
   stop(): Promise<void>;
 }
-
 class OwnedProductionSyntheticWorldController
   implements ProductionSyntheticWorldController
 {
   private stopPromise: Promise<void> | null = null;
-
   constructor(
     runtime: SyntheticProductionRuntime,
     readonly proof: ProductionSyntheticWorldRuntimeProof,
@@ -149,9 +160,7 @@ class OwnedProductionSyntheticWorldController
   ) {
     this.stopRuntime = () => stopRuntime(runtime);
   }
-
   private readonly stopRuntime: () => Promise<void>;
-
   async stop(): Promise<void> {
     this.stopPromise ??= this.stopRuntime().catch((error: unknown) => {
       // error-policy:J2 Teardown remains a typed visible failure on every idempotent caller.
@@ -164,7 +173,6 @@ class OwnedProductionSyntheticWorldController
     await this.stopPromise;
   }
 }
-
 /**
  * Claims exactly one production boot attempt, boots the canonical agent
  * composition, and verifies the agent entity through its real SQL repository.
@@ -183,7 +191,6 @@ export async function bootProductionSyntheticWorldController(
     return productionRuntime;
   });
 }
-
 /** Internal adversarial seam; not exported from `@elizaos/testing/synthetic-world`. */
 export async function bootProductionSyntheticWorldControllerWithModule(
   input: ProductionSyntheticWorldBootInput,
@@ -191,7 +198,6 @@ export async function bootProductionSyntheticWorldControllerWithModule(
 ): Promise<ProductionSyntheticWorldBootResult> {
   return bootWithProductionRuntime(input, async () => productionRuntime);
 }
-
 async function bootWithProductionRuntime(
   input: ProductionSyntheticWorldBootInput,
   loadProductionRuntime: () => Promise<SyntheticProductionRuntimeModule>,
@@ -258,7 +264,6 @@ async function bootWithProductionRuntime(
         "The durable boot claim was already consumed; a new command ID is required",
       );
     }
-
     stage = "initialization";
     const productionRuntime = await loadProductionRuntime();
     const { shutdownRuntime, startEliza } = productionRuntime;

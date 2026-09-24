@@ -22,7 +22,7 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type { LifeOpsInboxMessage } from "@elizaos/shared";
+import { type LifeOpsInboxMessage } from "@elizaos/core/contracts/personal-assistant";
 import { parseFlags } from "./priority-flags.ts";
 
 export type PriorityCategory = "important" | "planning" | "casual";

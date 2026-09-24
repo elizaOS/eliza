@@ -5,32 +5,31 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import type {
-  SyntheticEnvironmentLeaseAuthority,
-  SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared";
-import { isSyntheticEnvironmentNamespace } from "@elizaos/shared";
-import type {
-  SyntheticCommandJournalExpected,
-  SyntheticCommandJournalIdentity,
-  SyntheticCommandJournalPatch,
-  SyntheticCommandJournalRepository,
-  SyntheticCommandJournalRow,
+import {
+  isSyntheticEnvironmentNamespace,
+  type SyntheticEnvironmentLeaseAuthority,
+  type SyntheticEnvironmentLeaseStore,
+} from "@elizaos/core/contracts/synthetic-environment-lease";
+import {
+  type SyntheticCommandJournalExpected,
+  type SyntheticCommandJournalIdentity,
+  type SyntheticCommandJournalPatch,
+  type SyntheticCommandJournalRepository,
+  type SyntheticCommandJournalRow,
 } from "./journal-repository";
-import type {
-  SyntheticCommandExecution,
-  SyntheticCommandExecutionOptions,
-  SyntheticCommandHeartbeat,
-  SyntheticCommandPhase,
-  SyntheticCommandRecord,
-  SyntheticCommandRecovery,
-  SyntheticJson,
-  SyntheticWorldCommand,
+import {
+  SYNTHETIC_WORLD_COMMAND_VERSION,
+  type SyntheticCommandExecution,
+  type SyntheticCommandExecutionOptions,
+  type SyntheticCommandHeartbeat,
+  type SyntheticCommandPhase,
+  type SyntheticCommandRecord,
+  type SyntheticCommandRecovery,
+  type SyntheticJson,
+  type SyntheticWorldCommand,
 } from "./types";
-import { SYNTHETIC_WORLD_COMMAND_VERSION } from "./types";
 
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:@/-]{0,127}$/;
-
 function commandError(
   code: string,
   message: string,
@@ -44,7 +43,6 @@ function commandError(
     cause,
   });
 }
-
 function invalidJson(message: string, cause?: unknown): ElizaError {
   return commandError(
     "SYNTHETIC_COMMAND_INVALID_INPUT",
@@ -53,7 +51,6 @@ function invalidJson(message: string, cause?: unknown): ElizaError {
     cause,
   );
 }
-
 function canonicalJson(
   value: unknown,
   ancestors = new WeakSet<object>(),
@@ -133,7 +130,6 @@ function canonicalJson(
   ancestors.delete(value);
   return `{${encoded.join(",")}}`;
 }
-
 function serializeJson(value: unknown): string {
   try {
     return canonicalJson(value);
@@ -143,7 +139,6 @@ function serializeJson(value: unknown): string {
     throw invalidJson("JSON value could not be inspected safely", error);
   }
 }
-
 function parseJson(value: string, field: "payload" | "result"): SyntheticJson {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -160,11 +155,13 @@ function parseJson(value: string, field: "payload" | "result"): SyntheticJson {
     );
   }
 }
-
 function validateCommand(
   authority: SyntheticEnvironmentLeaseAuthority,
   command: SyntheticWorldCommand,
-): { payloadJson: string; payloadHash: string } {
+): {
+  payloadJson: string;
+  payloadHash: string;
+} {
   if (
     command.version !== SYNTHETIC_WORLD_COMMAND_VERSION ||
     !isSyntheticEnvironmentNamespace(command.namespace) ||
@@ -198,7 +195,6 @@ function validateCommand(
     payloadHash: createHash("sha256").update(payloadJson).digest("hex"),
   };
 }
-
 function toRecord(row: SyntheticCommandJournalRow): SyntheticCommandRecord {
   return {
     version: SYNTHETIC_WORLD_COMMAND_VERSION,
@@ -223,7 +219,6 @@ function toRecord(row: SyntheticCommandJournalRow): SyntheticCommandRecord {
     revision: row.revision,
   };
 }
-
 function expected(
   row: SyntheticCommandJournalRow,
 ): SyntheticCommandJournalExpected {
@@ -234,26 +229,22 @@ function expected(
     revision: row.revision,
   };
 }
-
 function identity(
   namespace: string,
   commandId: string,
 ): SyntheticCommandJournalIdentity {
   return { namespace, commandId };
 }
-
 interface ClaimResult {
   replay: SyntheticCommandJournalRow | null;
   executionToken: string | null;
 }
-
 /** Durable command engine shared by SQLite and production database adapters. */
 export class LeaseFencedSyntheticCommandJournal<TContext> {
   constructor(
     private readonly leaseStore: SyntheticEnvironmentLeaseStore<TContext>,
     private readonly repository: SyntheticCommandJournalRepository<TContext>,
   ) {}
-
   async execute(
     authority: SyntheticEnvironmentLeaseAuthority,
     command: SyntheticWorldCommand,
@@ -351,7 +342,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
         return { replay: null, executionToken } satisfies ClaimResult;
       },
     );
-
     if (claim.value.replay !== null) {
       const resultJson = claim.value.replay.resultJson;
       if (resultJson === null) {
@@ -383,7 +373,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
       commandId: command.commandId,
       executionToken,
     });
-
     let result: SyntheticJson;
     try {
       const committed = await this.leaseStore.withActiveGeneration(
@@ -455,7 +444,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
         error,
       );
     }
-
     await options.onCheckpoint?.({
       phase: "COMMITTED",
       commandId: command.commandId,
@@ -470,7 +458,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     );
     return { record: final, result, replayed: false };
   }
-
   async heartbeat(
     input: SyntheticCommandHeartbeat,
   ): Promise<SyntheticCommandRecord> {
@@ -517,7 +504,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     );
     return guarded.value;
   }
-
   async inspect(
     authority: SyntheticEnvironmentLeaseAuthority,
     commandId: string,
@@ -537,7 +523,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     );
     return guarded.value;
   }
-
   async recover(
     authority: SyntheticEnvironmentLeaseAuthority,
   ): Promise<SyntheticCommandRecovery> {
@@ -624,7 +609,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     );
     return guarded.value;
   }
-
   private async transition(
     authority: SyntheticEnvironmentLeaseAuthority,
     commandId: string,
@@ -664,7 +648,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     );
     return guarded.value;
   }
-
   private async markFailed(
     authority: SyntheticEnvironmentLeaseAuthority,
     commandId: string,
@@ -701,7 +684,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
       );
     });
   }
-
   private async requireRow(
     context: TContext,
     rowIdentity: SyntheticCommandJournalIdentity,
@@ -716,7 +698,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     }
     return row;
   }
-
   private assertSamePayload(
     row: SyntheticCommandJournalRow,
     command: SyntheticWorldCommand,
@@ -730,7 +711,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
       );
     }
   }
-
   private assertNotFuture(
     row: SyntheticCommandJournalRow,
     authority: SyntheticEnvironmentLeaseAuthority,
@@ -748,7 +728,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
       );
     }
   }
-
   private assertChanges(
     changes: number,
     code: string,
@@ -758,7 +737,6 @@ export class LeaseFencedSyntheticCommandJournal<TContext> {
     if (changes !== 1)
       throw commandError(code, message, { ...context, changes });
   }
-
   private assertExecution(
     row: SyntheticCommandJournalRow | null,
     executionToken: string,

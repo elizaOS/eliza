@@ -14,16 +14,14 @@
  * Every route is private: the host dispatcher answers 401 for
  * unauthenticated callers before the handler runs.
  */
-
 import type * as http from "node:http";
-import type { Route } from "@elizaos/shared";
-import { sendJsonError } from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/core/api/http-helpers";
+import type { Route } from "@elizaos/core/api/http-plugin";
 
 type VoicePrefixHandler = (
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
 ) => Promise<boolean>;
-
 /**
  * Adapt a boolean-returning prefix dispatcher to the plugin-route handler
  * contract. The route table below only registers paths the dispatcher owns,
@@ -41,19 +39,16 @@ function delegate(load: () => Promise<VoicePrefixHandler>) {
 		}
 	};
 }
-
 const speakerProfiles = delegate(
 	async () =>
 		(await import("./voice-speaker-profile-routes.js"))
 			.handleVoiceSpeakerProfileRoutes,
 );
-
 const profilesManagement = delegate(
 	async () =>
 		(await import("./voice-profiles-management-routes.js"))
 			.handleVoiceProfilesManagementRoutes,
 );
-
 export const voiceProfilePluginRoutes: Route[] = [
 	// Recognized-speaker centroids → elizaOS entity binding.
 	{

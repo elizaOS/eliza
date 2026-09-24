@@ -15,9 +15,9 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
+import { normalizeHostPairingCode } from "@elizaos/agent/host-use-cases";
 import { logger } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
-import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { authStoreForRuntime } from "../services/auth-store";
 import {
   createMachineSession,
@@ -47,7 +47,6 @@ import { isCloudProvisioned } from "./server-first-run-helpers";
 // ---------------------------------------------------------------------------
 // Pairing state & helpers
 // ---------------------------------------------------------------------------
-
 // Remote operators often retrieve the code from a service journal before
 // switching devices to the public dashboard. The longer window accommodates
 // that handoff while one-time consumption and the attempt limiter remain the
@@ -56,13 +55,22 @@ const PAIRING_TTL_MS = 60 * 60 * 1000;
 const PAIRING_WINDOW_MS = 10 * 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 5;
 const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
 let pairingCode: string | null = null;
 let pairingExpiresAt = 0;
 let pairingInstanceId = crypto.randomUUID();
-const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
-const guestPairingInvites = new Map<string, { expiresAt: number }>();
-
+const pairingAttempts = new Map<
+  string,
+  {
+    count: number;
+    resetAt: number;
+  }
+>();
+const guestPairingInvites = new Map<
+  string,
+  {
+    expiresAt: number;
+  }
+>();
 export const AUTH_PAIRING_ERROR_CODES = {
   invalid: "PAIRING_INVALID",
   expired: "PAIRING_EXPIRED",
@@ -72,10 +80,8 @@ export const AUTH_PAIRING_ERROR_CODES = {
   rateLimited: "PAIRING_RATE_LIMITED",
   sessionFailed: "PAIRING_SESSION_FAILED",
 } as const;
-
 type AuthPairingErrorCode =
   (typeof AUTH_PAIRING_ERROR_CODES)[keyof typeof AUTH_PAIRING_ERROR_CODES];
-
 function sendPairingError(
   res: http.ServerResponse,
   status: number,
@@ -88,7 +94,6 @@ function sendPairingError(
     instanceId: pairingInstanceId,
   });
 }
-
 // Periodic sweep to prevent unbounded memory growth
 const PAIRING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const pairingSweepTimer = setInterval(() => {
@@ -105,14 +110,12 @@ const pairingSweepTimer = setInterval(() => {
 if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
   pairingSweepTimer.unref();
 }
-
 export function _resetAuthPairingStateForTests(): void {
   pairingCode = null;
   pairingExpiresAt = 0;
   pairingAttempts.clear();
   guestPairingInvites.clear();
 }
-
 /** Simulates the process-identity change a restart or a different replica causes. */
 export function _rotateAuthPairingInstanceForTests(): string {
   pairingCode = null;
@@ -121,7 +124,6 @@ export function _rotateAuthPairingInstanceForTests(): string {
   pairingInstanceId = crypto.randomUUID();
   return pairingInstanceId;
 }
-
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
@@ -129,7 +131,6 @@ function pairingEnabled(): boolean {
     !isCloudProvisioned()
   );
 }
-
 function generatePairingCode(): string {
   let raw = "";
   for (let i = 0; i < 12; i += 1) {
@@ -137,14 +138,12 @@ function generatePairingCode(): string {
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }
-
 function pairingCodeDigest(code: string): string {
   return crypto
     .createHash("sha256")
     .update(normalizeHostPairingCode(code))
     .digest("hex");
 }
-
 function createGuestPairingInvite(): {
   code: string;
   expiresAt: number;
@@ -165,12 +164,10 @@ function createGuestPairingInvite(): {
   guestPairingInvites.set(pairingCodeDigest(code), { expiresAt });
   return { code, expiresAt, instanceId: pairingInstanceId };
 }
-
 function ensurePairingCode(): string | null {
   if (!pairingEnabled()) {
     return null;
   }
-
   const now = Date.now();
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
@@ -179,10 +176,8 @@ function ensurePairingCode(): string | null {
       `[api] Pairing code for remote devices: ${pairingCode} (valid for 60 minutes)`,
     );
   }
-
   return pairingCode;
 }
-
 export function ensureAuthPairingCodeForRemoteAccess(): {
   code: string;
   expiresAt: number;
@@ -193,7 +188,6 @@ export function ensureAuthPairingCodeForRemoteAccess(): {
     ? { code, expiresAt: pairingExpiresAt, instanceId: pairingInstanceId }
     : null;
 }
-
 async function requestHasActiveSession(
   req: http.IncomingMessage,
   store: import("../services/auth-store").AuthRepository,
@@ -205,7 +199,6 @@ async function requestHasActiveSession(
     );
     if (session) return true;
   }
-
   const bearer = getProvidedApiToken(req);
   if (bearer) {
     const session = await findActiveSession(store, bearer).catch(
@@ -213,37 +206,28 @@ async function requestHasActiveSession(
     );
     if (session) return true;
   }
-
   return false;
 }
-
 function rateLimitPairing(ip: string | null): boolean {
   const key = ip ?? "unknown";
   const now = Date.now();
   const current = pairingAttempts.get(key);
-
   if (!current || now > current.resetAt) {
     pairingAttempts.set(key, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
     return true;
   }
-
   if (current.count >= PAIRING_MAX_ATTEMPTS) {
     return false;
   }
-
   current.count += 1;
   return true;
 }
-
 // ---------------------------------------------------------------------------
 // Identity bookkeeping for paired devices
 // ---------------------------------------------------------------------------
-
 const PAIRED_DEVICE_IDENTITY_DISPLAY_NAME = "paired-device";
 const PAIRED_GUEST_IDENTITY_DISPLAY_NAME = "paired-guest-device";
-
 type PairingAccess = "owner" | "guest";
-
 /**
  * Resolve an identity id to bind a paired-device machine session to. Owner
  * pairing preserves OWNER authority; explicit guest pairing
@@ -272,10 +256,8 @@ async function ensurePairedDeviceIdentityId(
     });
     return id;
   }
-
   const owner = (await store.listIdentitiesByKind("owner"))[0];
   if (owner) return owner.id;
-
   const id = crypto.randomUUID();
   await store.createIdentity({
     id,
@@ -287,11 +269,9 @@ async function ensurePairedDeviceIdentityId(
   });
   return id;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 /**
  * Auth / pairing routes:
  *
@@ -308,7 +288,6 @@ export async function handleAuthPairingCompatRoutes(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
-
   // ── GET /api/first-run/status ──────────────────────────────────────
   // Requires a trusted local request, a valid cookie session, an allowed
   // bearer token, or a bootstrap exchange — no unauthenticated bypass.
@@ -326,7 +305,6 @@ export async function handleAuthPairingCompatRoutes(
     });
     return true;
   }
-
   // ── GET /api/auth/status ────────────────────────────────────────────
   // This is a public probe so unauthenticated clients can decide whether
   // to show pairing UI. The response leaks no secrets — only whether auth
@@ -381,7 +359,6 @@ export async function handleAuthPairingCompatRoutes(
     });
     return true;
   }
-
   // ── GET /api/auth/pair-code ─────────────────────────────────────────
   // Loopback-only helper for local dashboards/operators. External clients
   // must use the normal pairing flow and never receive the code directly.
@@ -407,7 +384,6 @@ export async function handleAuthPairingCompatRoutes(
     });
     return true;
   }
-
   // ── POST /api/auth/guest-pair-code ─────────────────────────────────
   // Guest authority is attached to a server-held one-time grant. The public
   // pair endpoint never accepts a caller-selected role, so possession of the
@@ -432,14 +408,12 @@ export async function handleAuthPairingCompatRoutes(
     });
     return true;
   }
-
   // ── POST /api/auth/pair ─────────────────────────────────────────────
   if (method === "POST" && url.pathname === "/api/auth/pair") {
     const body = await readCompatJsonBody(req, res);
     if (body == null) {
       return true;
     }
-
     const token = getCompatApiToken();
     if (!token) {
       sendPairingError(
@@ -469,7 +443,6 @@ export async function handleAuthPairingCompatRoutes(
       );
       return true;
     }
-
     const requestedInstanceId =
       typeof body.instanceId === "string" ? body.instanceId : "";
     if (
@@ -484,7 +457,6 @@ export async function handleAuthPairingCompatRoutes(
       );
       return true;
     }
-
     const provided = normalizeHostPairingCode(
       typeof body.code === "string" ? body.code : "",
     );
@@ -518,7 +490,6 @@ export async function handleAuthPairingCompatRoutes(
       );
       return true;
     }
-
     const pairingAccess: PairingAccess | null = guestInvite
       ? "guest"
       : current && tokenMatches(normalizeHostPairingCode(current), provided)
@@ -542,7 +513,6 @@ export async function handleAuthPairingCompatRoutes(
       );
       return true;
     }
-
     // Mint a machine session so the paired client gets a session-id bearer
     // token that authenticates against `ensureCompatApiAuthorizedAsync`.
     // Sessions are TTL-bound and revocable; the raw static connection key is
@@ -562,7 +532,6 @@ export async function handleAuthPairingCompatRoutes(
       );
       return true;
     }
-
     // Consume the code only now that a session can actually be minted, so the
     // transient DB-not-ready 503 above does not burn a still-valid code.
     if (pairingAccess === "guest") {
@@ -571,7 +540,6 @@ export async function handleAuthPairingCompatRoutes(
       pairingCode = null;
       pairingExpiresAt = 0;
     }
-
     try {
       const identityId = await ensurePairedDeviceIdentityId(
         store,
@@ -595,9 +563,7 @@ export async function handleAuthPairingCompatRoutes(
       // mints a forever-valid static-token bearer. Operators should see the
       // underlying error and fix it; clients retry pairing.
       logger.error(
-        `[api] pair: failed to mint machine session: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[api] pair: failed to mint machine session: ${err instanceof Error ? err.message : String(err)}`,
       );
       sendPairingError(
         res,
@@ -608,6 +574,5 @@ export async function handleAuthPairingCompatRoutes(
       return true;
     }
   }
-
   return false;
 }

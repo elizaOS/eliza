@@ -13,6 +13,14 @@
  */
 import { buildPlugin } from "../plugin-build";
 
+// Browser clients consume these protocol leaves without Node loader helpers.
+function isBrowserProtocolEntry(entry: string): boolean {
+  return (
+    entry.startsWith("src/steward-session-client/") ||
+    (entry.startsWith("src/cloud-config/") && !entry.endsWith("/server-cloud-tts.ts"))
+  );
+}
+
 // Per-file subpath bundles: every src module except the dedicated Node
 // entrypoints and tests. Emitted under dist/src (naming "[dir]/[name]"), then
 // flattened up into dist/ by the driver's `flatten` step.
@@ -33,6 +41,9 @@ const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."
     return true;
   })
   .sort();
+
+const browserProtocolEntries = subpathEntries.filter(isBrowserProtocolEntry);
+const nodeSubpathEntries = subpathEntries.filter((entry) => !isBrowserProtocolEntry(entry));
 
 // Single-quoted re-exports to keep the emitted alias .d.ts byte-stable. The
 // specifiers carry an explicit .js extension because TypeScript's node16/nodenext
@@ -64,7 +75,7 @@ await buildPlugin({
     },
     {
       label: "Exported subpaths",
-      entry: subpathEntries,
+      entry: nodeSubpathEntries,
       outSubdir: "",
       target: "node",
       format: "esm",
@@ -73,6 +84,14 @@ await buildPlugin({
         chunk: "chunks/[name]-[hash].[ext]",
         asset: "assets/[name]-[hash].[ext]",
       },
+    },
+    {
+      label: "Browser protocol leaves",
+      entry: browserProtocolEntries,
+      outSubdir: "",
+      target: "browser",
+      format: "esm",
+      naming: { entry: "[dir]/[name].[ext]" },
     },
     // `host-routes` is a re-export-only public entrypoint. Building it in the
     // large multi-entry subpath batch lets Bun tree-shake the local bindings

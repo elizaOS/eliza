@@ -24,7 +24,10 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { stage1ResponseStateProviderNames } from "../../plugin-assistant/src/services/message/provider-state.ts";
+import {
+  selectV5PlannerStateProviderNames,
+  stage1ResponseStateProviderNames,
+} from "../../plugin-assistant/src/services/message/provider-state.ts";
 import { notesPlugin } from "./plugin.js";
 import {
   namedNotesProvider,
@@ -148,6 +151,14 @@ describe("SAVED_NOTES provider", () => {
     const message = recallMessage(runtime, "Change Same title to amber.");
     expect(
       stage1ResponseStateProviderNames(runtime, message, ["OWNER"]),
+    ).not.toContain("NAMED_NOTES");
+    expect(
+      selectV5PlannerStateProviderNames({
+        runtime,
+        message,
+        selectedContexts: ["notes"],
+        userRoles: ["OWNER"],
+      }),
     ).toContain("NAMED_NOTES");
     expect(
       stage1ResponseStateProviderNames(runtime, message, ["USER"]),

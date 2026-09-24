@@ -14,16 +14,16 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { NlmsEchoCanceller } from "@elizaos/shared/voice/aec";
+import { NlmsEchoCanceller } from "@elizaos/core/voice/aec";
 import {
 	type OwnerObservation,
 	resolveOwnerCandidate,
-} from "@elizaos/shared/voice/owner-inference";
+} from "@elizaos/core/voice/owner-inference";
 import {
 	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
 	buildVoiceTurnSignal,
-} from "@elizaos/shared/voice/respond-gate";
-import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+} from "@elizaos/core/voice/respond-gate";
+import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { OnlineSpeakerClusterer } from "./acoustic-speaker-attribution";
 import type {

@@ -18,11 +18,9 @@ import {
   logger,
   type TargetSource,
 } from "@elizaos/core";
-import {
-  ensureRuntimeSqlCompatibility,
-  formatErrorWithStack,
-  isMobilePlatform,
-} from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";
@@ -42,7 +40,6 @@ import {
 } from "./post-ready.js";
 
 const runtimeBootResources = new WeakMap<AgentRuntime, RuntimeBootResources>();
-
 export async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
   resources: RuntimeBootResources,
@@ -50,7 +47,6 @@ export async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   runtimeBootResources.set(runtime, resources);
   await ensureRuntimeSqlCompatibility(runtime);
-
   // Mobile (Android / iOS) shortcut: the runtime is already serving from
   // PGlite + the AI provider plugin. The remaining boot steps either spawn
   // subprocesses (workflow runtime, telegram polling), shell
@@ -69,9 +65,7 @@ export async function repairRuntimeAfterBoot(
     onPostReadyPhase?.("complete");
     return runtime;
   }
-
   await configureAutonomy(runtime, isRuntimeAutonomyEnabled(process.env));
-
   // Post-ready tail: feature-route plugins, training hooks, sensitive-request
   // adapters, telegram polling, the trigger bridge, the connector catalog, and
   // voice warmup. None of these gate correctness of the first turn, so by
@@ -123,7 +117,6 @@ export async function repairRuntimeAfterBoot(
   }
   return runtime;
 }
-
 /**
  * The post-ready boot steps, named so a focused unit test can inject stubs and
  * assert ordering / deferral / liveness / error-isolation without loading the
@@ -154,7 +147,6 @@ export {
 };
 
 const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
-
 async function ensureTriggerEventBridge(
   runtime: AgentRuntime,
   resources: RuntimeBootResources,
@@ -169,7 +161,6 @@ async function ensureTriggerEventBridge(
   resources.triggerEventBridge = startTriggerEventBridge(runtime);
   logger.debug("[eliza] trigger event bridge armed");
 }
-
 async function ensureConnectorTargetCatalog(
   runtime: AgentRuntime,
   resources: RuntimeBootResources,
@@ -186,7 +177,9 @@ async function ensureConnectorTargetCatalog(
     listSources: () => {
       const registry = runtime.getService(
         CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
-      ) as { list(): TargetSource[] } | null;
+      ) as {
+        list(): TargetSource[];
+      } | null;
       return registry?.list() ?? [];
     },
     logger: { warn: runtime.logger.warn.bind(runtime.logger) },
@@ -201,7 +194,6 @@ async function ensureConnectorTargetCatalog(
   };
   logger.debug("[eliza] connector-target-catalog registered");
 }
-
 export function stopRuntimeBootResources(
   resources: RuntimeBootResources,
 ): void {
@@ -230,7 +222,6 @@ export function stopRuntimeBootResources(
     resources.connectorTargetCatalog = null;
   }
 }
-
 export async function shutdownRuntime(
   ...args: Parameters<typeof upstreamShutdownRuntime>
 ): Promise<Awaited<ReturnType<typeof upstreamShutdownRuntime>>> {
@@ -244,7 +235,6 @@ export async function shutdownRuntime(
   }
   return await upstreamShutdownRuntime(...args);
 }
-
 export async function failRuntimeRepair(
   runtime: AgentRuntime,
   scope: "boot" | "server-only-boot" | "start",

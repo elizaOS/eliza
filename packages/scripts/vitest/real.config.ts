@@ -20,7 +20,6 @@ import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
   getElizaCoreEntry,
-  getSharedSourceRoot,
   getUiSourceRoot,
 } from "@elizaos/testing/package-paths";
 import { defineConfig } from "vitest/config";
@@ -31,7 +30,6 @@ import {
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
   getWorkspacePluginAliases,
@@ -106,7 +104,6 @@ const liveSetupFile = [
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const vaultSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages",
@@ -257,10 +254,6 @@ const realResolveAlias: ModuleAlias[] = [
       "index.ts",
     ),
   },
-  ...getSharedSourceAliases(sharedSourceRoot, {
-    includeConfigAlias: true,
-    includeElizaAlias: true,
-  }),
   {
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
@@ -433,7 +426,6 @@ export default defineConfig({
           "@elizaos/core",
           "@elizaos/agent",
           "@elizaos/app",
-          /^@elizaai\/shared/,
           /^@elizaos\/plugin-/,
           "zod",
         ],

@@ -5,7 +5,7 @@
  * and performs no user, organization, identity, or tenant provisioning.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import {
@@ -35,29 +35,32 @@ import {
   looksLikeStagingSessionCode,
 } from "@/lib/services/staging-session-exchange-codes";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const STAGING_API_ORIGIN = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 const STAGING_API_HOST = new URL(STAGING_API_ORIGIN).hostname;
 const STAGING_APP_ORIGIN = ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
-
 function errorBody(
   message: string,
   code: string,
-): { error: string; code: string } {
+): {
+  error: string;
+  code: string;
+} {
   return { error: message, code };
 }
-
 function noStoreHeaders(): Record<string, string> {
   return {
     "Cache-Control": "no-store, max-age=0",
     Pragma: "no-cache",
   };
 }
-
 function exactStagingRequestSurface(c: {
   env: AppEnv["Bindings"];
-  req: { url: string; header(name: string): string | undefined };
+  req: {
+    url: string;
+    header(name: string): string | undefined;
+  };
 }): boolean {
   if (!isStagingSessionExchangeEnabled(c.env)) return false;
   const url = new URL(c.req.url);
@@ -67,19 +70,20 @@ function exactStagingRequestSurface(c: {
     c.req.header("host") === STAGING_API_HOST
   );
 }
-
 function exactStagingAppOrigin(c: {
-  req: { header(name: string): string | undefined };
+  req: {
+    header(name: string): string | undefined;
+  };
 }): boolean {
   return c.req.header("origin") === STAGING_APP_ORIGIN;
 }
-
 function stewardSignerConfigured(env: StewardVerifyEnv): boolean {
   return isStagingSessionSigningConfigured(env);
 }
-
 function readSingleApiKeyCredential(c: {
-  req: { header(name: string): string | undefined };
+  req: {
+    header(name: string): string | undefined;
+  };
 }): string | null {
   const headerKey = c.req.header("x-api-key")?.trim() ?? "";
   const authorization = c.req.header("authorization")?.trim() ?? "";
@@ -90,9 +94,7 @@ function readSingleApiKeyCredential(c: {
   if ((!headerKey && !bearerKey) || (headerKey && bearerKey)) return null;
   return headerKey || bearerKey;
 }
-
 const app = new Hono<AppEnv>();
-
 // This credential-mint surface has no availability fallback: if the shared
 // limiter is unavailable, every request receives 503 before identity work.
 app.use(
@@ -102,7 +104,6 @@ app.use(
     failClosed: true,
   }),
 );
-
 app.post("/mint", async (c) => {
   if (!exactStagingRequestSurface(c)) {
     return c.json(errorBody("Not found", "not_found"), 404, noStoreHeaders());
@@ -129,7 +130,6 @@ app.post("/mint", async (c) => {
       noStoreHeaders(),
     );
   }
-
   const body = (await c.req.json().catch(() => ({}))) as {
     codeChallenge?: unknown;
   };
@@ -142,7 +142,6 @@ app.post("/mint", async (c) => {
       noStoreHeaders(),
     );
   }
-
   try {
     const authedUser = await requireUserOrApiKeyWithOrg(c);
     const apiKeyId = c.get("apiKeyId");
@@ -153,7 +152,6 @@ app.post("/mint", async (c) => {
         noStoreHeaders(),
       );
     }
-
     const subject = await loadExistingStagingSessionSubjectForMint({
       env: c.env,
       apiKeyId,
@@ -230,7 +228,6 @@ app.post("/mint", async (c) => {
     );
   }
 });
-
 app.post("/exchange", async (c) => {
   if (!exactStagingRequestSurface(c)) {
     return c.json(errorBody("Not found", "not_found"), 404, noStoreHeaders());
@@ -256,7 +253,6 @@ app.post("/exchange", async (c) => {
   }
   const codeVerifier =
     typeof body.codeVerifier === "string" ? body.codeVerifier : null;
-
   try {
     // Atomic DELETE ... RETURNING happens before verifier and eligibility
     // checks, so a wrong verifier, revoked source, or malformed binding burns
@@ -282,7 +278,6 @@ app.post("/exchange", async (c) => {
         noStoreHeaders(),
       );
     }
-
     const bindingValid = await validateStagingSessionBinding({
       env: c.env,
       binding: record.claims.stagingSessionBinding,
@@ -298,7 +293,6 @@ app.post("/exchange", async (c) => {
         noStoreHeaders(),
       );
     }
-
     const remainingSeconds = Math.min(
       STAGING_SESSION_MAX_TTL_SECONDS,
       record.tokenExpiresAt - Math.floor(Date.now() / 1000),
@@ -325,7 +319,6 @@ app.post("/exchange", async (c) => {
         noStoreHeaders(),
       );
     }
-
     return c.json(
       {
         ok: true,
@@ -347,5 +340,4 @@ app.post("/exchange", async (c) => {
     );
   }
 });
-
 export default app;

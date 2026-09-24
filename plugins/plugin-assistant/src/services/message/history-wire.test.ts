@@ -136,7 +136,7 @@ describe("lossless history references", () => {
     expect(labeled).toEqual(before);
   });
 
-  it("uses the role legend only for direct text input and keeps current-turn boundaries after complete history", () => {
+  it("uses the same source-bound transcript for direct text and voice without early action catalogs", () => {
     const history = Array.from({ length: 40 }, (_, index) =>
       source(`source ${index}`, index),
     );
@@ -187,51 +187,27 @@ describe("lossless history references", () => {
     const text = renderMessageHandlerModelInput(runtime, context, [], {
       directMessage: true,
     });
-    expect(text.messages[1].content).toContain("History roles:");
+    expect(text.messages[1].content).toContain("History:");
     for (let index = 0; index < history.length; index++) {
       expect(text.messages[1].content).toContain(
         `[h${index + 1} user]\nsource ${index}`,
       );
     }
     const userText = String(text.messages[1].content);
-    expect(userText).toContain(
-      'available_actions:\n["READ_ORIGINAL_Ω", "SHOW_VIEW"]\nComplete discovery notice.\n\n',
-    );
-    expect(userText.indexOf("available_actions:")).toBeGreaterThan(
-      userText.indexOf("[h40 user]\nsource 39"),
-    );
-    expect(userText.indexOf("available_actions:")).toBeLessThan(
-      userText.indexOf("current_turn_boundary:"),
-    );
-    const changedCatalog = structuredClone(context);
-    const catalogEvent = changedCatalog.events.find(
-      (event) => event.id === "available-actions",
-    );
-    if (!catalogEvent || catalogEvent.type !== "segment")
-      throw new Error("Missing catalog fixture");
-    catalogEvent.segment.content = '["SHOW_VIEW"]\nUpdated authorized catalog.';
-    const changedText = String(
-      renderMessageHandlerModelInput(runtime, changedCatalog, [], {
-        directMessage: true,
-      }).messages[1].content,
-    );
-    expect(
-      changedText.slice(0, changedText.indexOf("available_actions:")),
-    ).toBe(userText.slice(0, userText.indexOf("available_actions:")));
-    expect(changedText).not.toContain("READ_ORIGINAL_Ω");
-    expect(changedText).toContain("Updated authorized catalog.");
-    expect(userText.match(/Complete discovery notice\./g)).toHaveLength(1);
+    expect(userText).not.toContain("available_actions");
+    expect(userText).not.toContain("READ_ORIGINAL_Ω");
     expect(text.messages[0].content).not.toContain("READ_ORIGINAL_Ω");
-    expect(
-      text.promptSegments.find((s) => s.content.includes("READ_ORIGINAL_Ω"))
-        ?.stable,
-    ).toBe(false);
     expect(userText.indexOf("[h40 user]\nsource 39")).toBeLessThan(
       userText.indexOf("current_turn_boundary:"),
     );
     expect(userText.indexOf("current_turn_boundary:")).toBeLessThan(
-      userText.indexOf("message:user:\nRecall"),
+      userText.indexOf("# Current message\nRecall"),
     );
+    const voice = renderMessageHandlerModelInput(runtime, context, [], {
+      directMessage: true,
+      voiceDirectMessage: true,
+    });
+    expect(voice).toEqual(text);
     for (const options of [
       undefined,
       { directMessage: false },
@@ -243,12 +219,9 @@ describe("lossless history references", () => {
         [],
         options,
       );
-      expect(other.messages[1].content).not.toContain("History roles:");
-      expect(other.messages[1].content).toContain("prior_message:user:");
-      const otherText = String(other.messages[1].content);
-      expect(otherText.indexOf("available_actions:")).toBeGreaterThan(
-        otherText.indexOf("current_turn_boundary:"),
-      );
+      expect(other.messages[1].content).not.toContain("available_actions");
+      for (const segment of history)
+        expect(other.messages[1].content).toContain(segment.content);
     }
     expect(context).toEqual(before);
   });
@@ -315,7 +288,7 @@ describe("lossless history references", () => {
         wire.indexOf("current_turn_boundary:"),
       );
       expect(wire.indexOf("current_turn_boundary:")).toBeLessThan(
-        wire.indexOf("message:user:"),
+        wire.indexOf("# Current message\n"),
       );
     }
     expect(context).toEqual(before);

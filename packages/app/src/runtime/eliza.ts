@@ -11,7 +11,6 @@
  * lifecycle live in focused startup modules. This file retains the public API
  * compatibility wrappers and composes upstream boot with those modules.
  */
-import "@elizaos/shared";
 import process from "node:process";
 import {
   type BootElizaRuntimeOptions,
@@ -24,14 +23,9 @@ import {
   collectPluginNames as upstreamCollectPluginNames,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
-
-export { prepareDevTrajectoryRecovery } from "@elizaos/agent";
-export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
-export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
-
-import { readAliasedEnv } from "@elizaos/shared";
 import {
   createRuntimeBootResources,
   failRuntimeRepair,
@@ -52,10 +46,12 @@ import {
 } from "./startup/pglite-recovery.js";
 import { startServerOnlyHost } from "./startup/server-only-host.js";
 
+export { prepareDevTrajectoryRecovery } from "@elizaos/agent";
 export {
   drainBootHookContributors,
   resolveBootHookContributors,
 } from "@elizaos/agent/runtime/boot-hooks";
+export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 export {
   __loadAppRoutePluginFromSpecifierForTest,
   drainRuntimeHookContributors,
@@ -70,26 +66,22 @@ export {
   runPostReadyBootTail,
   shutdownRuntime,
 } from "./startup/app-runtime-host.js";
-
+export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
 ): ReturnType<typeof upstreamCollectPluginNames> {
   return upstreamCollectPluginNames(...args);
 }
-
 export function applyCloudConfigToEnv(
   ...args: Parameters<typeof upstreamApplyCloudConfigToEnv>
 ): ReturnType<typeof upstreamApplyCloudConfigToEnv> {
   return upstreamApplyCloudConfigToEnv(...args);
 }
-
 export { startDeferredLocalEmbeddingWarmup };
-
 export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
 }
-
 export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
@@ -106,7 +98,6 @@ export async function bootElizaRuntime(
   // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
   // still surfaces progress through the startup overlay.
   prepareLocalEmbeddingWarmup(opts.onEmbeddingProgress);
-
   // Default the embedding-vector dimension plugin-sql provisions to 384 when
   // unset: that is the compact SQL-safe column and the native width of the
   // standalone gte-small embedding model. Setting it here lets plugin-sql
@@ -115,11 +106,9 @@ export async function bootElizaRuntime(
   // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
   // still wins.
   ensureDefaultEmbeddingDimension();
-
   // The agent host drains registry-declared pre-ready hooks during initialize.
   // Expose the app-bundled native library before entering that shared path.
   ensureBundledFusedLibDir();
-
   const runtime = await upstreamBootElizaRuntime(opts);
   // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
   if (!runtime) return runtime;
@@ -131,7 +120,6 @@ export async function bootElizaRuntime(
     return await failRuntimeRepair(runtime, "boot", error);
   }
 }
-
 export interface StartElizaOptionsExt extends StartElizaOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
@@ -151,7 +139,6 @@ export interface StartElizaOptionsExt extends StartElizaOptions {
     host: import("./server-only-process").ServerOnlyHost,
   ) => void;
 }
-
 async function upstreamStartElizaWithPgliteCompat(
   options?: StartElizaOptions,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
@@ -166,7 +153,6 @@ async function upstreamStartElizaWithPgliteCompat(
 }
 
 export { attemptPgliteAutoReset, getPgliteRecoveryRetrySkipPlugins };
-
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
@@ -179,16 +165,13 @@ export async function startEliza(
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
-
   // Eagerly download the embedding model with progress reporting.
   // Fire-and-forget — see comment at the matching call in bootElizaRuntime
   // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
   // time while the warmup runs alongside.
   prepareLocalEmbeddingWarmup(options?.onEmbeddingProgress);
-
   // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
   ensureDefaultEmbeddingDimension();
-
   if (options?.serverOnly) {
     return await startServerOnlyHost({
       options,
@@ -216,7 +199,6 @@ export async function startEliza(
       stopWithoutRuntime: () => stopRuntimeBootResources(bootResources),
     });
   }
-
   const runtime = await upstreamStartElizaWithPgliteCompat(options);
   if (!runtime) return runtime;
   try {

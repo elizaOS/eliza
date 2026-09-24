@@ -19,13 +19,18 @@
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
  * DTOs below are declared locally to match the JSON shape PA emits
- * (LifeOpsGoalDefinition / LifeOpsGoalLink in @elizaos/shared).
+ * (LifeOpsGoalDefinition / LifeOpsGoalLink in @elizaos/core).
  */
 
 import { client } from "@elizaos/ui/api";
-
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   GOAL_STATUSES,
   type GoalItem,
@@ -36,10 +41,9 @@ import { type GoalsSnapshot, GoalsSpatialView } from "./GoalsSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Wire DTOs — local mirror of the JSON shape served by the PA goals route.
-// Never import PA / @elizaos/shared goal types here; keep this view's contract
+// Never import PA / @elizaos/core goal types here; keep this view's contract
 // self-contained and aligned by shape.
 // ---------------------------------------------------------------------------
-
 interface GoalDefinitionWire {
   id: string;
   title: string;
@@ -52,34 +56,27 @@ interface GoalDefinitionWire {
   createdAt: string;
   updatedAt: string;
 }
-
 interface GoalLinkWire {
   id: string;
   goalId: string;
   linkedType: string;
   linkedId: string;
 }
-
 interface GoalRecordWire {
   goal: GoalDefinitionWire;
   links: GoalLinkWire[];
 }
-
 interface GoalsWire {
   goals: GoalRecordWire[];
 }
-
 // ---------------------------------------------------------------------------
 // Fetcher seam — default to a real GET; tests inject an offline fake.
 // ---------------------------------------------------------------------------
-
 export interface GoalsFetchers {
   fetchGoals: (signal?: AbortSignal) => Promise<GoalsWire>;
 }
-
 /** Goals JSON GET is a short UI read — same 15s family as InboxView / FocusView. */
-export const GOALS_VIEW_JSON_TIMEOUT_MS = 15_000;
-
+export const GOALS_VIEW_JSON_TIMEOUT_MS = 15000;
 export async function getGoalsJsonWithFetch<T>(
   url: string,
   fetchImpl: typeof fetch,
@@ -96,7 +93,6 @@ export async function getGoalsJsonWithFetch<T>(
   }
   return (await response.json()) as T;
 }
-
 async function getGoals(signal?: AbortSignal): Promise<GoalsWire> {
   return getGoalsJsonWithFetch<GoalsWire>(
     `${client.getBaseUrl()}/api/lifeops/goals`,
@@ -105,20 +101,16 @@ async function getGoals(signal?: AbortSignal): Promise<GoalsWire> {
     signal,
   );
 }
-
 const defaultFetchers: GoalsFetchers = {
   fetchGoals: getGoals,
 };
-
 export interface GoalsViewProps {
   /** Test/host injection seam. Defaults to the real `/api/lifeops/goals` GET. */
   fetchers?: GoalsFetchers;
 }
-
 // ---------------------------------------------------------------------------
 // Wire -> display DTO mapping.
 // ---------------------------------------------------------------------------
-
 const KNOWN_STATUSES: ReadonlySet<string> = new Set(GOAL_STATUSES);
 const KNOWN_REVIEW_STATES: ReadonlySet<string> = new Set([
   "idle",
@@ -126,17 +118,14 @@ const KNOWN_REVIEW_STATES: ReadonlySet<string> = new Set([
   "on_track",
   "at_risk",
 ]);
-
 /** Coerce an unknown wire status to a known one; unknowns settle to "active". */
 function toStatus(value: string): GoalStatus {
   return KNOWN_STATUSES.has(value) ? (value as GoalStatus) : "active";
 }
-
 /** Coerce an unknown wire review state; unknowns settle to "idle". */
 function toReviewState(value: string): GoalReviewState {
   return KNOWN_REVIEW_STATES.has(value) ? (value as GoalReviewState) : "idle";
 }
-
 /** The cadence record carries a `kind` discriminator when present. */
 function readCadenceKind(
   cadence: Record<string, unknown> | null,
@@ -146,7 +135,6 @@ function readCadenceKind(
   }
   return null;
 }
-
 /**
  * successCriteria is a free-form record. We surface a human-readable target
  * only when it carries one of the conventional fields, otherwise null. Display
@@ -163,7 +151,6 @@ function readTarget(criteria: Record<string, unknown>): string | null {
   if (typeof candidate === "number") return String(candidate);
   return null;
 }
-
 function mapGoal(record: GoalRecordWire): GoalItem {
   const { goal, links } = record;
   return {
@@ -178,31 +165,33 @@ function mapGoal(record: GoalRecordWire): GoalItem {
     updatedAt: goal.updatedAt,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.
 // ---------------------------------------------------------------------------
-
 type LoadState =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "ready"; goals: GoalItem[] };
-
+  | {
+      kind: "loading";
+    }
+  | {
+      kind: "error";
+      message: string;
+    }
+  | {
+      kind: "ready";
+      goals: GoalItem[];
+    };
 function requestNewGoal(): void {
   client.sendChatMessage?.("Help me set a goal to head toward this quarter.");
 }
-
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeStatuses, setActiveStatuses] = useState<Set<GoalStatus>>(
     () => new Set<GoalStatus>(),
   );
-
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
   const activeLoadRef = useRef<AbortController | null>(null);
-
   const load = useCallback((background = false) => {
     activeLoadRef.current?.abort();
     const controller = new AbortController();
@@ -227,20 +216,18 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
         if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
   }, []);
-
   // Initial fetch on mount, then a quiet 20s background poll keeps the list
   // fresh (the view has no store subscription and there is no manual refresh).
   // The poll refetches silently: it never drops to the loading skeleton and a
   // transient poll failure leaves the current data on screen.
   useEffect(() => {
     load();
-    const interval = setInterval(() => load(true), 20_000);
+    const interval = setInterval(() => load(true), 20000);
     return () => {
       clearInterval(interval);
       activeLoadRef.current?.abort();
     };
   }, [load]);
-
   const toggleStatus = useCallback((status: GoalStatus) => {
     setActiveStatuses((prev) => {
       const next = new Set(prev);
@@ -249,7 +236,6 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
       return next;
     });
   }, []);
-
   const onAction = useCallback(
     (action: string) => {
       if (action.startsWith("filter-set:")) {
@@ -277,7 +263,6 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     },
     [load, toggleStatus],
   );
-
   const snapshot: GoalsSnapshot = useMemo(() => {
     const activeList = Array.from(activeStatuses);
     if (state.kind === "loading") {
@@ -293,8 +278,6 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     }
     return { status: "ready", goals: state.goals, activeStatuses: activeList };
   }, [state, activeStatuses]);
-
   return <GoalsSpatialView snapshot={snapshot} onAction={onAction} />;
 }
-
 export default GoalsView;

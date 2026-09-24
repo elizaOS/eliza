@@ -8,7 +8,7 @@ import {
   addLogListener,
   type LogEntry as StructuredLogEntry,
 } from "@elizaos/core";
-import type { LogEntry } from "@elizaos/shared";
+import { type LogEntry } from "@elizaos/core/api/agent-api-types";
 
 export type { LogEntry as EarlyLogEntry };
 

@@ -3,3 +3,6 @@
 A Capacitor plugin that provides geolocation services (current position, watch position, permissions) to Eliza agents running in browser, Electrobun desktop, iOS, and Android environments.
 
 Build, test, and setup: [README.md](README.md).
+
+Android requests use framework providers, owned timeouts and cancellation. Preserve
+complete coordinate results and explicit permission/provider failures.

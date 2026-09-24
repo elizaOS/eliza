@@ -9,14 +9,14 @@
  */
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import type { Relationship } from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { isHouseholdRole } from "../household/types.js";
 import {
   evaluateItemReplacement,
@@ -61,9 +61,7 @@ import {
   stableOperationsId,
   type VendorProfileDefinition,
 } from "./types.js";
-
 export const HOUSEHOLD_OPERATIONS_SERVICE = "lifeops_household_operations";
-
 export interface HouseholdOperationsServiceDependencies {
   runtime: IAgentRuntime;
   agentId: string;
@@ -72,7 +70,6 @@ export interface HouseholdOperationsServiceDependencies {
   repository: HouseholdOperationsRepository;
   now?: () => Date;
 }
-
 function householdRole(relationship: Relationship): string | null {
   const value = relationship.metadata?.householdRole;
   if (value === undefined) return null;
@@ -85,7 +82,6 @@ function householdRole(relationship: Relationship): string | null {
   }
   return value;
 }
-
 function relationshipHouseholdId(relationship: Relationship): string | null {
   const value = relationship.metadata?.householdId;
   if (value === undefined) return null;
@@ -98,7 +94,6 @@ function relationshipHouseholdId(relationship: Relationship): string | null {
   }
   return value.trim();
 }
-
 function relationshipSubjects(relationship: Relationship): string[] {
   const value = relationship.metadata?.householdSubjectEntityIds;
   if (value === undefined) return [];
@@ -114,7 +109,6 @@ function relationshipSubjects(relationship: Relationship): string[] {
   }
   return value.filter((entry): entry is string => typeof entry === "string");
 }
-
 function phaseOwner(
   assignment: ResponsibilityAssignmentDefinition,
   phase: ResponsibilitySignalInput["phase"],
@@ -124,30 +118,41 @@ function phaseOwner(
   if (phase === "execution") return assignment.owners.executionOwnerId;
   return assignment.owners.monitoringOwnerId;
 }
-
 function isRevisionKind<K extends HouseholdOperationRecordKind>(
   revision: HouseholdOperationRevision,
   kind: K,
 ): revision is HouseholdOperationRevision<
-  Extract<HouseholdOperationDefinition, { kind: K }>
+  Extract<
+    HouseholdOperationDefinition,
+    {
+      kind: K;
+    }
+  >
 > {
   return revision.kind === kind;
 }
-
 function windowsOverlap(
-  left: { startsAt: string; endsAt: string },
-  right: { startsAt: string; endsAt: string },
+  left: {
+    startsAt: string;
+    endsAt: string;
+  },
+  right: {
+    startsAt: string;
+    endsAt: string;
+  },
 ): boolean {
   return (
     Date.parse(left.startsAt) < Date.parse(right.endsAt) &&
     Date.parse(right.startsAt) < Date.parse(left.endsAt)
   );
 }
-
 function findCalendarCheck(
   checks: readonly HouseholdCalendarCheck[],
   subjectKey: string,
-  window: { startsAt: string; endsAt: string },
+  window: {
+    startsAt: string;
+    endsAt: string;
+  },
 ): HouseholdCalendarCheck | null {
   return (
     checks.find(
@@ -158,18 +163,14 @@ function findCalendarCheck(
     ) ?? null
   );
 }
-
 export class HouseholdOperationsService {
   private readonly now: () => Date;
-
   constructor(private readonly deps: HouseholdOperationsServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
   }
-
   async initialize(): Promise<void> {
     await this.deps.repository.ensureSchema();
   }
-
   private assertOwnerPrincipal(principalEntityId: string): void {
     if (principalEntityId !== SELF_ENTITY_ID) {
       throw new HouseholdOperationsError(
@@ -179,7 +180,6 @@ export class HouseholdOperationsService {
       );
     }
   }
-
   private async requireEntity(entityId: string): Promise<void> {
     if (!(await this.deps.entityStore.get(entityId))) {
       throw new HouseholdOperationsError(
@@ -189,7 +189,6 @@ export class HouseholdOperationsService {
       );
     }
   }
-
   private async activeHouseholdRelationships(
     entityId: string,
     householdId: string,
@@ -212,7 +211,6 @@ export class HouseholdOperationsService {
         relationshipHouseholdId(relationship) === householdId,
     );
   }
-
   private async requireHouseholdMember(
     entityId: string,
     householdId: string,
@@ -230,7 +228,6 @@ export class HouseholdOperationsService {
       );
     }
   }
-
   private async assertVisibilityEntities(
     visibility: HouseholdOperationsVisibility,
     householdId: string,
@@ -243,7 +240,6 @@ export class HouseholdOperationsService {
       }
     }
   }
-
   private async canView(
     visibility: HouseholdOperationsVisibility,
     principalEntityId: string,
@@ -276,13 +272,17 @@ export class HouseholdOperationsService {
       relationshipSubjects(relationship).includes(visibility.childEntityId),
     );
   }
-
   private async requireCurrentRevision<K extends HouseholdOperationRecordKind>(
     kind: K,
     recordId: string,
   ): Promise<
     HouseholdOperationRevision<
-      Extract<HouseholdOperationDefinition, { kind: K }>
+      Extract<
+        HouseholdOperationDefinition,
+        {
+          kind: K;
+        }
+      >
     >
   > {
     const revision = await this.deps.repository.getCurrentRevision(
@@ -298,7 +298,6 @@ export class HouseholdOperationsService {
     }
     return revision;
   }
-
   private async validateDefinitionGraph(
     definition: HouseholdOperationDefinition,
   ): Promise<void> {
@@ -385,7 +384,6 @@ export class HouseholdOperationsService {
       );
     }
   }
-
   async putRevision(input: {
     principalEntityId: string;
     definition: HouseholdOperationDefinition;
@@ -400,11 +398,13 @@ export class HouseholdOperationsService {
       this.now().toISOString(),
     );
   }
-
   async recordObservation(input: {
     principalEntityId: string;
     observation: HouseholdObservationInput;
-  }): Promise<{ observation: HouseholdObservation; inserted: boolean }> {
+  }): Promise<{
+    observation: HouseholdObservation;
+    inserted: boolean;
+  }> {
     this.assertOwnerPrincipal(input.principalEntityId);
     const observation = normalizeObservationInput(input.observation);
     await this.assertVisibilityEntities(
@@ -442,11 +442,13 @@ export class HouseholdOperationsService {
       this.now().toISOString(),
     );
   }
-
   async recordServiceEvent(input: {
     principalEntityId: string;
     event: HouseholdServiceEventInput;
-  }): Promise<{ event: HouseholdServiceEvent; inserted: boolean }> {
+  }): Promise<{
+    event: HouseholdServiceEvent;
+    inserted: boolean;
+  }> {
     this.assertOwnerPrincipal(input.principalEntityId);
     const event = normalizeServiceEventInput(input.event);
     await this.assertVisibilityEntities(event.visibility, event.householdId);
@@ -456,11 +458,13 @@ export class HouseholdOperationsService {
       this.now().toISOString(),
     );
   }
-
   async recordResponsibilitySignal(input: {
     actingEntityId: string;
     signal: ResponsibilitySignalInput;
-  }): Promise<{ signal: ResponsibilitySignal; inserted: boolean }> {
+  }): Promise<{
+    signal: ResponsibilitySignal;
+    inserted: boolean;
+  }> {
     const signal = normalizeResponsibilitySignalInput(input.signal);
     await this.requireHouseholdMember(input.actingEntityId, signal.householdId);
     const assignment = await this.requireCurrentRevision(
@@ -522,7 +526,6 @@ export class HouseholdOperationsService {
       this.now().toISOString(),
     );
   }
-
   async listVisibleObservations(input: {
     principalEntityId: string;
     householdId: string;
@@ -554,7 +557,6 @@ export class HouseholdOperationsService {
     }
     return visible;
   }
-
   async resolveObservation(input: {
     principalEntityId: string;
     householdId: string;
@@ -565,7 +567,6 @@ export class HouseholdOperationsService {
       await this.listVisibleObservations(input),
     );
   }
-
   async evaluateOpportunity(input: {
     principalEntityId: string;
     opportunityRecordId: string;
@@ -589,7 +590,6 @@ export class HouseholdOperationsService {
     }
     return evaluateOpportunity(opportunity);
   }
-
   async evaluateItemReplacement(input: {
     principalEntityId: string;
     thresholdRecordId: string;
@@ -634,7 +634,6 @@ export class HouseholdOperationsService {
       inventoryObservations,
     });
   }
-
   async listChildItemSizeHistory(input: {
     principalEntityId: string;
     householdId: string;
@@ -654,12 +653,14 @@ export class HouseholdOperationsService {
         observation.value.itemCategory === input.itemCategory,
     );
   }
-
   async assessResponsibility(input: {
     principalEntityId: string;
     assignmentRecordId: string;
   }): Promise<
-    (ResponsibilityReviewProposal & { readonly replayed: boolean }) | null
+    | (ResponsibilityReviewProposal & {
+        readonly replayed: boolean;
+      })
+    | null
   > {
     this.assertOwnerPrincipal(input.principalEntityId);
     const assignment = await this.requireCurrentRevision(
@@ -684,10 +685,14 @@ export class HouseholdOperationsService {
       replayed: !persisted.inserted,
     };
   }
-
   private async responsibilityForEntry(
     entry: HouseholdOperationRevision<
-      Extract<HouseholdOperationDefinition, { kind: "almanac_entry" }>
+      Extract<
+        HouseholdOperationDefinition,
+        {
+          kind: "almanac_entry";
+        }
+      >
     >,
   ): Promise<HouseholdOperationRevision<ResponsibilityAssignmentDefinition> | null> {
     if (!entry.responsibilityAssignmentId) return null;
@@ -697,10 +702,14 @@ export class HouseholdOperationsService {
     );
     return assignment.active ? assignment : null;
   }
-
   private async vendorForEntry(
     entry: HouseholdOperationRevision<
-      Extract<HouseholdOperationDefinition, { kind: "almanac_entry" }>
+      Extract<
+        HouseholdOperationDefinition,
+        {
+          kind: "almanac_entry";
+        }
+      >
     >,
   ): Promise<HouseholdOperationRevision<VendorProfileDefinition> | null> {
     if (!entry.vendorProfileRecordId) return null;
@@ -710,11 +719,13 @@ export class HouseholdOperationsService {
     );
     return vendor.active ? vendor : null;
   }
-
   async generateWeeklyBrief(input: {
     principalEntityId: string;
     householdId: string;
-    window: { startsAt: string; endsAt: string };
+    window: {
+      startsAt: string;
+      endsAt: string;
+    };
     calendarChecks: HouseholdCalendarCheck[];
   }): Promise<
     HouseholdWeeklyBrief & {
@@ -758,7 +769,6 @@ export class HouseholdOperationsService {
     );
     const items: HouseholdWeeklyBriefItem[] = [];
     const questions: HouseholdWeeklyBriefQuestion[] = [];
-
     for (const revision of current) {
       if (!revision.active || !isRevisionKind(revision, "almanac_entry")) {
         continue;
@@ -929,7 +939,6 @@ export class HouseholdOperationsService {
         });
       }
     }
-
     for (const revision of current) {
       if (!revision.active || !isRevisionKind(revision, "opportunity")) {
         continue;
@@ -998,7 +1007,6 @@ export class HouseholdOperationsService {
         });
       }
     }
-
     for (const revision of current) {
       if (!revision.active || !isRevisionKind(revision, "item_threshold")) {
         continue;
@@ -1073,7 +1081,6 @@ export class HouseholdOperationsService {
         });
       }
     }
-
     const currentReviewByAssignment = Array.from(
       reviews
         .filter((review) => activeResponsibilityReviewIds.has(review.reviewId))
@@ -1123,7 +1130,6 @@ export class HouseholdOperationsService {
         calendarCheck: null,
       });
     }
-
     items.sort(
       (left, right) =>
         (left.dueWindow?.startsAt ?? "9999").localeCompare(
@@ -1173,7 +1179,6 @@ export class HouseholdOperationsService {
       responsibilityReviewIds: [...activeResponsibilityReviewIds].sort(),
     };
   }
-
   async readWeeklyBrief(input: {
     principalEntityId: string;
     briefId: string;
@@ -1232,7 +1237,6 @@ export class HouseholdOperationsService {
     };
   }
 }
-
 export function createHouseholdOperationsService(
   runtime: IAgentRuntime,
 ): HouseholdOperationsService {
@@ -1252,15 +1256,11 @@ export function createHouseholdOperationsService(
     repository: new HouseholdOperationsRepository(runtime, runtime.agentId),
   });
 }
-
 export class HouseholdOperationsRuntimeService extends Service {
   static override serviceType = HOUSEHOLD_OPERATIONS_SERVICE;
-
   override capabilityDescription =
     "Durable vendor, maintenance, seasonal, child-item, C/P/E/M ownership, non-use review, and scoped weekly-brief coordination";
-
   readonly operations: HouseholdOperationsService;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -1271,7 +1271,6 @@ export class HouseholdOperationsRuntimeService extends Service {
     }
     this.operations = createHouseholdOperationsService(runtime);
   }
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<HouseholdOperationsRuntimeService> {
@@ -1280,10 +1279,8 @@ export class HouseholdOperationsRuntimeService extends Service {
     await service.operations.initialize();
     return service;
   }
-
   async stop(): Promise<void> {}
 }
-
 export function getHouseholdOperationsService(
   runtime: IAgentRuntime,
 ): HouseholdOperationsService | null {

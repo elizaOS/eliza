@@ -3,8 +3,8 @@
  *
  * For each turn this adapter exercises the shipped decision modules:
  *
- *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/shared/voice-eot`)
- *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/shared/voice/respond-gate`)
+ *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/core/voice-eot`)
+ *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/core/voice/respond-gate`)
  *     bystander / wake-word   — the SAME gate the UI client ships
  *   - diarization:        `OnlineSpeakerClusterer` clusters each turn BY ITS
  *                         AUDIO (blind to the ground-truth label), so the DER
@@ -26,9 +26,9 @@
 import {
 	type OwnerObservation,
 	resolveOwnerCandidate,
-} from "@elizaos/shared/voice/owner-inference";
-import { buildVoiceTurnSignal } from "@elizaos/shared/voice/respond-gate";
-import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+} from "@elizaos/core/voice/owner-inference";
+import { buildVoiceTurnSignal } from "@elizaos/core/voice/respond-gate";
+import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 import {
 	OnlineSpeakerClusterer,
 	selfVoiceSimilarity,

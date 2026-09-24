@@ -474,15 +474,19 @@ for (const corruption of ["missing", "stale", "corrupt"] as const)
         f.input.organizationId,
       ]);
     else if (corruption === "stale") {
-      // Simulate historical corruption that current write guards now prevent.
+      const corruptRevision = () =>
+        database.query(
+          "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
+          [f.input.organizationId],
+        );
+      await expect(corruptRevision()).rejects.toThrow("Entitlement source revision is stale");
+      // Inject historical corruption only in this isolated database; the real write
+      // guard is restored before either recovery path is exercised.
       await database.exec(
         "ALTER TABLE organization_entitlements DISABLE TRIGGER organization_entitlements_app_source",
       );
       try {
-        await database.query(
-          "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
-          [f.input.organizationId],
-        );
+        await corruptRevision();
       } finally {
         await database.exec(
           "ALTER TABLE organization_entitlements ENABLE TRIGGER organization_entitlements_app_source",

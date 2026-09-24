@@ -214,6 +214,7 @@ describe("computeTestRoots", () => {
       cloudSharedSrc: join("/repo", "packages", "cloud", "shared", "src"),
       cloudApiRoot: join("/repo", "packages", "cloud", "api"),
       cloudServicesRoot: join("/repo", "packages", "cloud", "services"),
+      cloudMocksRoot: join("/repo", "packages", "cloud", "test-mocks"),
     });
   });
 });

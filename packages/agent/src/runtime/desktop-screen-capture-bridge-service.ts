@@ -13,7 +13,7 @@ import {
   type ScreenCaptureFrameOptions,
   ServiceType,
 } from "@elizaos/core";
-import { resolveDesktopApiPort } from "@elizaos/shared";
+import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
 
 export const DESKTOP_SCREEN_CAPTURE_BRIDGE_URL_ENV =
   "ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_URL";

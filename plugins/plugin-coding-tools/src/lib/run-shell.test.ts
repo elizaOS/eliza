@@ -1,4 +1,5 @@
 /** Tests for the `runShell` child-process wrapper, using the core capability router doubles. */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
 
@@ -16,7 +17,6 @@ const TEST_CAPTURE_SCOPE = {
   ownerAgentId: "00000000-0000-4000-8000-000000000001",
   ownerConversationId: "00000000-0000-4000-8000-000000000002",
 };
-
 const ENV_KEYS = [
   "ELIZA_PLATFORM",
   "ELIZA_BUILD_VARIANT",
@@ -29,11 +29,9 @@ const ENV_KEYS = [
   "ELIZA_STATE_DIR",
   "SHELL_JOB_TTL_MS",
 ] as const;
-
 let savedEnv: Record<string, string | undefined>;
 let savedPlatformDescriptor: PropertyDescriptor | undefined;
 let stateDir: string;
-
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   savedPlatformDescriptor = Object.getOwnPropertyDescriptor(
@@ -45,7 +43,6 @@ beforeEach(() => {
   process.env.ELIZA_STATE_DIR = stateDir;
   process.env.SHELL_JOB_TTL_MS = "60000";
 });
-
 afterEach(() => {
   for (const key of ENV_KEYS) {
     const value = savedEnv[key];
@@ -57,7 +54,6 @@ afterEach(() => {
   }
   rmSync(stateDir, { recursive: true, force: true });
 });
-
 function hostRuntime(): IAgentRuntime {
   return {
     agentId: TEST_CAPTURE_SCOPE.ownerAgentId,
@@ -65,14 +61,12 @@ function hostRuntime(): IAgentRuntime {
     redactSecrets: (text: string) => text,
   } as IAgentRuntime;
 }
-
 function runtimeWithRouter(router: ElizaCapabilityRouter): IAgentRuntime {
   return {
     getService: (serviceType: string) =>
       serviceType === CAPABILITY_ROUTER_SERVICE_TYPE ? router : null,
   } as IAgentRuntime;
 }
-
 function remoteRouter(): {
   router: ElizaCapabilityRouter;
   runCommand: ReturnType<typeof vi.fn>;
@@ -113,21 +107,18 @@ function remoteRouter(): {
   } satisfies ElizaCapabilityRouter;
   return { router, runCommand };
 }
-
 describe("plugin-coding-tools runShell mobile routing", () => {
   it("reports unverifiable source capture from a Remote capability router", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
     const { router, runCommand } = remoteRouter();
-
     const result = await runShell(runtimeWithRouter(router), {
       command: "codex exec 'touch changed.txt'",
       cwd: "/workspace",
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result).toMatchObject({
       exitCode: 0,
       signal: null,
@@ -144,28 +135,25 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     expect(runCommand).toHaveBeenCalledWith({
       command: "codex exec 'touch changed.txt'",
       cwd: "/workspace",
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
     });
   });
-
   it("never claims complete capability-router output regardless of returned size", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
     const { router, runCommand } = remoteRouter();
     runCommand.mockResolvedValueOnce({
-      output: "x".repeat(1_000_001),
+      output: "x".repeat(1000001),
       exitCode: 0,
       timedOut: false,
     });
-
     const result = await runShell(runtimeWithRouter(router), {
       command: "noisy-command",
       cwd: "/workspace",
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result).toMatchObject({
       stdout: "",
       stderr: "",
@@ -175,16 +163,14 @@ describe("plugin-coding-tools runShell mobile routing", () => {
       sandbox: "capability-router",
     });
   });
-
   it("rejects iOS coding commands when no Remote capability router is available", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
-
     await expect(
       runShell(hostRuntime(), {
         command: "codex exec 'touch changed.txt'",
         cwd: "/workspace",
-        timeoutMs: 10_000,
+        timeoutMs: 10000,
         captureScope: TEST_CAPTURE_SCOPE,
       }),
     ).rejects.toThrow(
@@ -192,7 +178,6 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     );
   });
 });
-
 describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
   it("routes Windows local-safe commands through the runtime sandbox manager", async () => {
     Object.defineProperty(process, "platform", {
@@ -200,7 +185,6 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       configurable: true,
     });
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
-
     const exec = vi.fn(async () => ({
       exitCode: 0,
       stdout: "",
@@ -215,18 +199,16 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
         exec,
       }),
     } as unknown as IAgentRuntime;
-
     const result = await runShell(runtime, {
       command: "echo sandboxed",
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(exec).toHaveBeenCalledWith({
       command: "echo sandboxed",
       workdir: "/workspace",
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
     });
     expect(result).toMatchObject({
       exitCode: 0,
@@ -242,7 +224,6 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       },
     });
   });
-
   it("reports unverifiable source capture for full-string sandbox output", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     const runtime = {
@@ -251,21 +232,19 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
         engine: { engineType: "docker" },
         exec: vi.fn(async () => ({
           exitCode: 0,
-          stdout: "x".repeat(1_000_001),
+          stdout: "x".repeat(1000001),
           stderr: "",
           durationMs: 7,
           executedInSandbox: true,
         })),
       }),
     } as unknown as IAgentRuntime;
-
     const result = await runShell(runtime, {
       command: "noisy-command",
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result).toMatchObject({
       stdout: "",
       stderr: "",
@@ -276,7 +255,6 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
     });
   });
 });
-
 describe("plugin-coding-tools host execution authority", () => {
   it("decodes split multibyte stdout and stderr as UTF-8 streams", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -289,39 +267,33 @@ describe("plugin-coding-tools host execution authority", () => {
       "  process.stderr.write(value.subarray(2));",
       "}, 50);",
     ].join("");
-
     const result = await runShell(hostRuntime(), {
       command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("\u4f60");
     expect(result.stderr).toBe("\u4f60");
   });
-
   it("uses the captured PATH without forwarding mutable PATH, HOME, or SHELL", async () => {
     const bootPath = process.env.PATH;
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
     process.env.PATH = "/tmp/runtime-bin";
     process.env.HOME = "/tmp/runtime-home";
     process.env.SHELL = "/tmp/runtime-shell";
-
     const result = await runShell(hostRuntime(), {
       command: "printf '%s' \"$PATH|$HOME|$SHELL\"",
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result.exitCode).toBe(0);
     expect(result.stdout.split("|")[0]).toBe(bootPath);
     expect(result.stdout).not.toContain("/tmp/runtime-home");
     expect(result.stdout).not.toContain("/tmp/runtime-shell");
   });
-
   it("streams ten MiB to a private artifact without killing the command", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
     const bytes = 10 * 1024 * 1024;
@@ -329,10 +301,9 @@ describe("plugin-coding-tools host execution authority", () => {
     const result = await runShell(hostRuntime(), {
       command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
       cwd: process.cwd(),
-      timeoutMs: 30_000,
+      timeoutMs: 30000,
       captureScope: TEST_CAPTURE_SCOPE,
     });
-
     expect(result.exitCode).toBe(0);
     expect(result.signal).toBeNull();
     expect(result.sourceLoss).toBeUndefined();
@@ -349,5 +320,5 @@ describe("plugin-coding-tools host execution authority", () => {
       characters: 5,
       lines: 1,
     });
-  }, 120_000);
+  }, 120000);
 });

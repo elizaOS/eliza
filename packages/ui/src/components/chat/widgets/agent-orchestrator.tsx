@@ -16,7 +16,7 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import {
   Activity,
   AlertTriangle,

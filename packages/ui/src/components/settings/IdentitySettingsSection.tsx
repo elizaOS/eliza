@@ -12,7 +12,7 @@ import {
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/shared";
+} from "@elizaos/core/voice";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type VoiceConfig } from "../../api";
@@ -41,7 +41,6 @@ function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
     (edgeVoiceId && !elevenLabsVoiceId ? "edge" : "elevenlabs");
   return `${provider}:${provider === "edge" ? edgeVoiceId : elevenLabsVoiceId}`;
 }
-
 function resolveVisibleVoicePresetId(
   config: VoiceConfig,
   useElevenLabs: boolean,
@@ -57,7 +56,6 @@ function resolveVisibleVoicePresetId(
         ?.id ?? null
     );
   }
-
   const edgeVoiceId =
     typeof config.edge?.voice === "string" ? config.edge.voice.trim() : "";
   if (!edgeVoiceId) return null;
@@ -66,14 +64,12 @@ function resolveVisibleVoicePresetId(
     null
   );
 }
-
 function normalizeVoiceConfigForSave(args: {
   voiceConfig: VoiceConfig;
   useElevenLabs: boolean;
 }): VoiceConfig {
   const provider =
     args.voiceConfig.provider ?? (args.useElevenLabs ? "eliza-cloud" : "edge");
-
   if (provider === "edge") {
     return {
       ...args.voiceConfig,
@@ -81,7 +77,6 @@ function normalizeVoiceConfigForSave(args: {
       edge: args.voiceConfig.edge ?? {},
     };
   }
-
   if (provider === "eliza-cloud") {
     return {
       ...args.voiceConfig,
@@ -89,7 +84,6 @@ function normalizeVoiceConfigForSave(args: {
       mode: undefined,
     };
   }
-
   if (provider === "local-inference" || provider === "robot-voice") {
     return {
       ...args.voiceConfig,
@@ -97,7 +91,6 @@ function normalizeVoiceConfigForSave(args: {
       mode: undefined,
     };
   }
-
   const hasElevenLabsApiKey = hasConfiguredApiKey(
     args.voiceConfig.elevenlabs?.apiKey,
   );
@@ -114,7 +107,6 @@ function normalizeVoiceConfigForSave(args: {
   const sanitizedKey = sanitizeApiKey(normalized.apiKey);
   if (sanitizedKey) normalized.apiKey = sanitizedKey;
   else delete normalized.apiKey;
-
   return {
     ...args.voiceConfig,
     provider: "elevenlabs",
@@ -122,7 +114,6 @@ function normalizeVoiceConfigForSave(args: {
     elevenlabs: normalized,
   };
 }
-
 /**
  * Canonical voice-preset editor. The legacy `identity` route wraps this in its
  * own SettingsStack, while the everyday Voice destination injects the same
@@ -135,7 +126,6 @@ export function VoicePresetSettingsContent() {
       elizaCloudConnected: s.elizaCloudConnected,
       elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     }));
-
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
   const [savedVoiceConfig, setSavedVoiceConfig] = useState<VoiceConfig>({});
@@ -143,7 +133,6 @@ export function VoicePresetSettingsContent() {
   const [voiceTesting, setVoiceTesting] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -167,12 +156,10 @@ export function VoicePresetSettingsContent() {
         }
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, []);
-
   useEffect(() => {
     return () => {
       if (!audioRef.current) return;
@@ -182,7 +169,6 @@ export function VoicePresetSettingsContent() {
       audio.currentTime = 0;
     };
   }, []);
-
   const stopVoicePreview = useCallback(() => {
     if (!audioRef.current) return;
     const audio = audioRef.current;
@@ -191,17 +177,14 @@ export function VoicePresetSettingsContent() {
     audio.currentTime = 0;
     setVoiceTesting(false);
   }, []);
-
   const visibleVoicePresetId = useMemo(
     () => resolveVisibleVoicePresetId(voiceConfig, useElevenLabs),
     [useElevenLabs, voiceConfig],
   );
-
   const activeVoicePreset = useMemo(() => {
     const presets = useElevenLabs ? PREMADE_VOICES : EDGE_BACKUP_VOICES;
     return presets.find((preset) => preset.id === visibleVoicePresetId) ?? null;
   }, [useElevenLabs, visibleVoicePresetId]);
-
   const voiceGroups = useMemo(() => {
     if (useElevenLabs) {
       return ELEVENLABS_VOICE_GROUPS.map((group) => ({
@@ -220,7 +203,6 @@ export function VoicePresetSettingsContent() {
         }),
       }));
     }
-
     return EDGE_VOICE_GROUPS.map((group) => ({
       label: t(group.labelKey, { defaultValue: group.defaultLabel }),
       items: group.items.map((item) => {
@@ -237,12 +219,10 @@ export function VoicePresetSettingsContent() {
       }),
     }));
   }, [t, useElevenLabs]);
-
   const voiceDirty =
     resolveEditableVoiceSelectionKey(voiceConfig) !==
     resolveEditableVoiceSelectionKey(savedVoiceConfig);
   const dirty = voiceDirty;
-
   const handleVoiceSelect = useCallback(
     (presetId: string) => {
       stopVoicePreview();
@@ -264,7 +244,6 @@ export function VoicePresetSettingsContent() {
         });
         return;
       }
-
       const preset = EDGE_BACKUP_VOICES.find((entry) => entry.id === presetId);
       if (!preset) return;
       setVoiceConfig((prev) => {
@@ -281,7 +260,6 @@ export function VoicePresetSettingsContent() {
     },
     [stopVoicePreview, useElevenLabs],
   );
-
   const handlePreviewVoice = useCallback(() => {
     if (!activeVoicePreset?.previewUrl) return;
     stopVoicePreview();
@@ -311,7 +289,6 @@ export function VoicePresetSettingsContent() {
       failPreview();
     });
   }, [activeVoicePreset, stopVoicePreview, t]);
-
   const performSave = useCallback(async () => {
     if (!voiceDirty) return;
     const config = await client.getConfig();
@@ -329,14 +306,12 @@ export function VoicePresetSettingsContent() {
     dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
     setSavedVoiceConfig(normalizedVoiceConfig);
   }, [useElevenLabs, voiceConfig, voiceDirty]);
-
   const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
     onSave: performSave,
     errorFallback: t("settings.identity.saveFailed", {
       defaultValue: "Failed to save identity settings.",
     }),
   });
-
   return (
     <>
       <SettingsGroup
@@ -405,7 +380,6 @@ export function VoicePresetSettingsContent() {
     </>
   );
 }
-
 /** Legacy `#identity`/`basics` compatibility surface. */
 export function IdentitySettingsSection() {
   return (

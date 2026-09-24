@@ -8,7 +8,6 @@
  * so the client persists a short, stable `/api/media/<hash>` reference rather
  * than a multi-MB data URL.
  */
-
 import { Buffer } from "node:buffer";
 import {
   type IMediaGenerationService,
@@ -16,8 +15,8 @@ import {
   type MediaGenerationRequest,
   ServiceType,
 } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
-import { fetchRemoteMedia } from "@elizaos/shared/media";
+import { type Route } from "@elizaos/core/api/http-plugin";
+import { fetchRemoteMedia } from "@elizaos/core/media";
 import {
   persistDataUrl,
   persistMediaBytes,
@@ -28,7 +27,6 @@ interface GenerateImageBody {
   prompt?: unknown;
   size?: unknown;
 }
-
 function jsonResult(status: number, body: unknown) {
   return {
     status,
@@ -36,10 +34,8 @@ function jsonResult(status: number, body: unknown) {
     body,
   };
 }
-
 /** Cap on a re-hosted background image (generated art is small). */
 const BACKGROUND_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
-
 /** Normalize a generated image (base64 / data URL / remote URL) to a served URL. */
 async function persistGeneratedImage(
   imageBase64: string | undefined,
@@ -63,16 +59,13 @@ async function persistGeneratedImage(
       return persistMediaBytes(buffer, contentType ?? mimeType).url;
     } catch (err) {
       logger.warn(
-        `[background] could not re-host generated image ${imageUrl}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[background] could not re-host generated image ${imageUrl}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
   // Already a usable URL we couldn't (or needn't) re-host.
   return imageUrl;
 }
-
 export const backgroundGenerateImageRoute: Route = {
   type: "POST",
   path: "/api/background/generate-image",
@@ -85,14 +78,12 @@ export const backgroundGenerateImageRoute: Route = {
     if (!prompt) {
       return jsonResult(400, { error: "A prompt is required." });
     }
-
     const service = ctx.runtime.getService<IMediaGenerationService>(
       ServiceType.MEDIA_GENERATION,
     );
     if (!service) {
       return jsonResult(503, { error: "Media generation is not available." });
     }
-
     const request: MediaGenerationRequest = {
       mediaType: "image",
       prompt,
@@ -101,7 +92,6 @@ export const backgroundGenerateImageRoute: Route = {
     if (!(await service.canGenerateMedia(request))) {
       return jsonResult(503, { error: "Image generation is not configured." });
     }
-
     try {
       const result = await service.generateMedia(request);
       const sourceUrl = result.imageUrl ?? result.url ?? "";
@@ -127,17 +117,14 @@ export const backgroundGenerateImageRoute: Route = {
     }
   },
 };
-
 interface UploadImageBody {
   dataUrl?: unknown;
 }
-
 /**
  * Cap on an uploaded wallpaper data URL. The client downscales to ≤4 MB of
  * bytes before uploading; base64 inflates ~4/3, so allow modest headroom.
  */
 const BACKGROUND_UPLOAD_MAX_CHARS = 8 * 1024 * 1024;
-
 /**
  * Re-host a user-picked wallpaper into the content-addressed media store
  * (authenticated write — the same normalization the generate route performs),

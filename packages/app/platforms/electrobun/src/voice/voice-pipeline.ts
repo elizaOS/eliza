@@ -1,12 +1,13 @@
 /** Implements Electrobun desktop voice pipeline ts behavior for app shell integration. */
+
 import type { JsonValue } from "@elizaos/core";
-import type { CatalogModel } from "@elizaos/shared";
+import type { CatalogModel } from "@elizaos/core/contracts/local-inference";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
-	MODEL_CATALOG,
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import type {
 	VoiceComponentRole,
 	VoiceComponentSnapshot,
@@ -24,7 +25,6 @@ type ComponentSeed = {
 	path?: string;
 	raw?: JsonValue;
 };
-
 const VOICE_MODEL_ROLES: Readonly<Record<VoiceModelId, VoiceComponentRole>> = {
 	"speaker-encoder": "voice",
 	diarizer: "voice",
@@ -37,7 +37,6 @@ const VOICE_MODEL_ROLES: Readonly<Record<VoiceModelId, VoiceComponentRole>> = {
 	embedding: "voice",
 	asr: "asr",
 };
-
 const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
 	"speaker-encoder": "Speaker Encoder",
 	diarizer: "Speaker Diarizer",
@@ -50,13 +49,11 @@ const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
 	embedding: "Voice Embedding",
 	asr: "ASR",
 };
-
 function providerForVoiceModel(id: VoiceModelId): string {
 	if (id === "kokoro") return "kokoro";
 	if (id === "asr" || id === "vad") return "eliza-1";
 	return "local-inference";
 }
-
 function latestVoiceVersions(): Map<VoiceModelId, VoiceModelVersion> {
 	const latest = new Map<VoiceModelId, VoiceModelVersion>();
 	for (const version of VOICE_MODEL_VERSIONS) {
@@ -64,21 +61,19 @@ function latestVoiceVersions(): Map<VoiceModelId, VoiceModelVersion> {
 	}
 	return latest;
 }
-
 function jsonRecord(value: Record<string, JsonValue>): JsonValue {
 	return value;
 }
-
-function firstCatalogComponent(
-	key: "voice" | "asr" | "vad",
-): { model: CatalogModel; file?: string } | null {
+function firstCatalogComponent(key: "voice" | "asr" | "vad"): {
+	model: CatalogModel;
+	file?: string;
+} | null {
 	for (const model of MODEL_CATALOG) {
 		const component = model.sourceModel?.components[key];
 		if (component) return { model, file: component.file };
 	}
 	return null;
 }
-
 function addSeed(
 	components: Map<string, VoiceComponentSnapshot>,
 	seed: ComponentSeed,
@@ -95,7 +90,6 @@ function addSeed(
 		raw: seed.raw,
 	});
 }
-
 export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 	const components = new Map<string, VoiceComponentSnapshot>();
 	const versions = latestVoiceVersions();
@@ -117,7 +111,6 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 			}),
 		});
 	}
-
 	const backends = new Set(
 		MODEL_CATALOG.flatMap((model) => [...(model.voiceBackends ?? [])]),
 	);
@@ -130,7 +123,6 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 			raw: jsonRecord({ source: "MODEL_CATALOG" }),
 		});
 	}
-
 	const asr = firstCatalogComponent("asr");
 	if (asr) {
 		addSeed(components, {
@@ -143,7 +135,6 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 			raw: jsonRecord({ source: "MODEL_CATALOG" }),
 		});
 	}
-
 	const vad = firstCatalogComponent("vad");
 	if (vad) {
 		addSeed(components, {
@@ -156,7 +147,6 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 			raw: jsonRecord({ source: "MODEL_CATALOG" }),
 		});
 	}
-
 	addSeed(components, {
 		id: "audio-input",
 		name: "Audio Input",
@@ -171,12 +161,10 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
 		provider: "electrobun",
 		raw: jsonRecord({ source: "host" }),
 	});
-
 	return Array.from(components.values()).sort((a, b) =>
 		a.id.localeCompare(b.id),
 	);
 }
-
 function markOffset(
 	turn: VoiceTurn,
 	stage: string,
@@ -187,12 +175,10 @@ function markOffset(
 	});
 	return mark?.offsetMs ?? null;
 }
-
 function span(start: number | null, end: number | null): number | undefined {
 	if (start === null || end === null) return undefined;
 	return Math.max(0, end - start);
 }
-
 export function summarizeVoiceLatency(
 	turn: VoiceTurn | undefined,
 ): VoiceLatencySummary | undefined {
@@ -223,7 +209,6 @@ export function summarizeVoiceLatency(
 		totalToPlaybackMs: span(input, playback),
 	};
 }
-
 export function cloneVoiceTurn(turn: VoiceTurn): VoiceTurn {
 	return {
 		...turn,

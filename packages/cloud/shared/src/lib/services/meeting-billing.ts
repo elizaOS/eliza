@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import type { MeetingBillingState, MeetingEndReason } from "@elizaos/shared";
+import { type MeetingBillingState, type MeetingEndReason } from "@elizaos/core/meetings";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 
 export type MeetingCloudBillingErrorCode = "insufficient_credits" | "billing_failed";

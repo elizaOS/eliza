@@ -17,6 +17,4 @@ bun run --cwd plugins/plugin-scheduling build  # build
 bun run --cwd plugins/plugin-scheduling test   # tests
 ```
 
-Hosts can use `consumption: "host_claim"` anchors and the runner admission,
-mutation, and execution hooks to enforce persisted owner controls. Automatic
-claims commit admission metadata atomically; stale writers return `raced`.
+Host-owned activity anchors may declare `consumption: "host_claim"`. Automatic admission, execution preparation and mutation hooks preserve owner control metadata, and atomic claim expectations reject stale writes as `raced`. Manual fire does not consume automatic admission. These hooks use the existing runner and store; they do not introduce another scheduler.

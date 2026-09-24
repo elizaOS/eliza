@@ -1,8 +1,11 @@
 /** Implements Electrobun desktop api base ts behavior for app shell integration. */
-import { resolveApiExposePort, resolveDesktopApiPort } from "@elizaos/shared";
+
+import {
+	resolveApiExposePort,
+	resolveDesktopApiPort,
+} from "@elizaos/core/runtime-env";
 import { DEFAULT_API_PORT } from "./constants";
 import { logger } from "./logger";
-
 /**
  * Renderer-facing API base for the desktop local-agent IPC transport (#12180
  * phase 2 / #12355). When local-agent IPC mode is active the renderer's API base
@@ -13,35 +16,28 @@ import { logger } from "./logger";
  * transports already use, so one renderer resolver chain serves every platform.
  */
 export const DESKTOP_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
-
 const LOCAL_AGENT_IPC_ENV_KEY = "ELIZA_DESKTOP_LOCAL_AGENT_IPC";
-
 type ExternalApiBaseEnvKey =
 	| "ELIZA_DESKTOP_TEST_API_BASE"
 	| "ELIZA_DESKTOP_API_BASE"
 	| "ELIZA_API_BASE_URL"
 	| "ELIZA_API_BASE";
-
 export type DesktopRuntimeMode = "local" | "external" | "disabled";
-
 const EXTERNAL_API_BASE_ENV_KEYS: readonly ExternalApiBaseEnvKey[] = [
 	"ELIZA_DESKTOP_TEST_API_BASE",
 	"ELIZA_DESKTOP_API_BASE",
 	"ELIZA_API_BASE_URL",
 	"ELIZA_API_BASE",
 ];
-
 export interface ExternalApiBaseResolution {
 	base: string | null;
 	source: ExternalApiBaseEnvKey | null;
 	invalidSources: ExternalApiBaseEnvKey[];
 }
-
 export interface DesktopRuntimeModeResolution {
 	mode: DesktopRuntimeMode;
 	externalApi: ExternalApiBaseResolution;
 }
-
 export function normalizeApiBase(raw: string | undefined): string | null {
 	if (!raw) return null;
 	try {
@@ -55,26 +51,21 @@ export function normalizeApiBase(raw: string | undefined): string | null {
 		return null;
 	}
 }
-
 export function resolveExternalApiBase(
 	env: Record<string, string | undefined>,
 ): ExternalApiBaseResolution {
 	const invalidSources: ExternalApiBaseEnvKey[] = [];
-
 	for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
 		const rawValue = env[key]?.trim();
 		if (!rawValue) continue;
-
 		const normalized = normalizeApiBase(rawValue);
 		if (normalized) {
 			return { base: normalized, source: key, invalidSources };
 		}
 		invalidSources.push(key);
 	}
-
 	return { base: null, source: null, invalidSources };
 }
-
 function isEnabledFlag(raw: string | undefined): boolean {
 	const normalized = raw?.trim().toLowerCase();
 	return (
@@ -84,7 +75,6 @@ function isEnabledFlag(raw: string | undefined): boolean {
 		normalized === "on"
 	);
 }
-
 export function resolveDesktopRuntimeMode(
 	env: Record<string, string | undefined>,
 ): DesktopRuntimeModeResolution {
@@ -92,14 +82,11 @@ export function resolveDesktopRuntimeMode(
 	if (externalApi.base) {
 		return { mode: "external", externalApi };
 	}
-
 	if (isEnabledFlag(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT)) {
 		return { mode: "disabled", externalApi };
 	}
-
 	return { mode: "local", externalApi };
 }
-
 /**
  * The persisted deployment runtime the desktop main process reads from
  * `eliza.json` (`deploymentTarget.runtime`). `"cloud"` is a cloud-hosted agent
@@ -108,7 +95,6 @@ export function resolveDesktopRuntimeMode(
  * the existing env-driven embedded-agent boot. `null` ⇒ no persisted target.
  */
 export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
-
 /**
  * The persisted deployment the desktop main process reads from `eliza.json`'s
  * `deploymentTarget`. `runtime` drives the topology decision; `remoteApiBase`
@@ -121,7 +107,6 @@ export interface PersistedDeployment {
 	/** Bearer credential bound to the persisted remote target, if configured. */
 	remoteAccessToken?: string | null;
 }
-
 /**
  * Resolve the cloud-hosted agent API base the renderer should call when the
  * persisted deployment is a real cloud-hosted agent (topology 3). This is a
@@ -146,7 +131,6 @@ export function resolveCloudHostedAgentApiBase(
 	if (fromEnv) return fromEnv;
 	return normalizeApiBase(persistedRemoteApiBase?.trim() ?? undefined);
 }
-
 /**
  * Topology-aware runtime-mode resolution. Layers the persisted deployment
  * target on top of the pure env resolver ({@link resolveDesktopRuntimeMode}):
@@ -175,7 +159,6 @@ export function resolveDesktopRuntimeModeWithDeployment(
 	if (envResolution.mode === "external") {
 		return envResolution;
 	}
-
 	if (deployment?.runtime === "cloud" || deployment?.runtime === "remote") {
 		const cloudBase = resolveCloudHostedAgentApiBase(
 			env,
@@ -192,10 +175,8 @@ export function resolveDesktopRuntimeModeWithDeployment(
 			};
 		}
 	}
-
 	return envResolution;
 }
-
 /**
  * Desktop cloud-only opt-in. Returns `"cloud"` when the desktop shell should run
  * cloud-only — cloud model providers only (no local model/embedding warmup) and a
@@ -218,7 +199,6 @@ export function resolveDesktopRuntimeModeSignal(
 	if (deployment?.runtime === "cloud") return "cloud";
 	return null;
 }
-
 /**
  * True when the desktop local agent should reach the runtime over native
  * Electrobun IPC (`localAgentRequest`/`localAgentStreamRequest`) rather than a
@@ -237,7 +217,6 @@ export function resolveLocalAgentIpcMode(
 	const raw = env[LOCAL_AGENT_IPC_ENV_KEY];
 	return isEnabledFlag(raw);
 }
-
 export function resolveInitialApiBase(
 	env: Record<string, string | undefined>,
 ): string | null {
@@ -245,21 +224,17 @@ export function resolveInitialApiBase(
 	if (resolution.mode === "external") {
 		return resolution.externalApi.base;
 	}
-
 	if (resolveLocalAgentIpcMode(env)) {
 		return DESKTOP_LOCAL_AGENT_IPC_BASE;
 	}
-
 	const agentPort = resolveDesktopApiPort(env) || DEFAULT_API_PORT;
 	return `http://127.0.0.1:${agentPort}`;
 }
-
 /** True when the hostname is a loopback we treat as same-trust as 127.0.0.1. */
 function isLoopbackHttpHostname(hostname: string): boolean {
 	const h = hostname.toLowerCase();
 	return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
 }
-
 /**
  * When the desktop loads the UI from a local http(s) dev server (Vite), the
  * renderer must call `/api` on **that origin** so requests stay same-origin and
@@ -284,7 +259,6 @@ export function resolveHttpLoopbackRendererOriginForApiClient(
 		return null;
 	}
 }
-
 /**
  * Base URL the **renderer** should use for `the appClient` (REST + relative `/api`).
  * Prefer the Vite/dev-server origin when `ELIZA_RENDERER_URL` points at loopback;
@@ -304,7 +278,6 @@ export function resolveRendererFacingApiBase(
 	if (fromDevServer) return fromDevServer;
 	return `http://127.0.0.1:${apiListenPort}`;
 }
-
 /**
  * Push the API base URL (and optional token) to the renderer via typed
  * RPC message (CSP-safe). The renderer bridge handles `apiBaseUpdate`.
@@ -319,9 +292,12 @@ type ApiBaseUpdateRpc = {
 		}) => void;
 	};
 };
-
 export function pushApiBaseToRenderer(
-	win: { webview: { rpc?: unknown } },
+	win: {
+		webview: {
+			rpc?: unknown;
+		};
+	},
 	base: string,
 	apiToken?: string,
 	externalApiBase?: string | null,

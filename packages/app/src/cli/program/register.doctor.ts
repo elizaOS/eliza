@@ -8,25 +8,27 @@
  * executed. `doctor:mtp` probes MTP llama-server acceleration readiness. Both
  * exit non-zero when any check fails.
  */
+
 import { spawnSync } from "node:child_process";
-import { theme } from "@elizaos/shared";
-import type { Command } from "commander";
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
-import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
+import {
+  type CheckCategory,
+  type CheckResult,
+  type CheckStatus,
+} from "../doctor/checks";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
-
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------
-
 const CATEGORY_LABELS: Record<CheckCategory, string> = {
   system: "System",
   config: "Configuration",
   storage: "Storage",
   network: "Network",
 };
-
 function statusIcon(status: CheckStatus): string {
   switch (status) {
     case "pass":
@@ -39,7 +41,6 @@ function statusIcon(status: CheckStatus): string {
       return theme.muted("–");
   }
 }
-
 function printResult(result: CheckResult): void {
   const icon = statusIcon(result.status);
   const label = result.label.padEnd(20);
@@ -49,64 +50,51 @@ function printResult(result: CheckResult): void {
     console.log(`      ${theme.muted("fix:")} ${theme.command(result.fix)}`);
   }
 }
-
 function printGrouped(results: CheckResult[]): void {
   const byCategory = new Map<CheckCategory, CheckResult[]>();
   const order: CheckCategory[] = ["system", "config", "storage", "network"];
-
   for (const cat of order) {
     byCategory.set(cat, []);
   }
   for (const r of results) {
     byCategory.get(r.category)?.push(r);
   }
-
   let first = true;
   for (const cat of order) {
     const group = byCategory.get(cat);
     if (!group?.length) continue;
-
     if (!first) console.log();
     first = false;
-
     console.log(`  ${theme.muted(CATEGORY_LABELS[cat])}`);
     for (const result of group) {
       printResult(result);
     }
   }
 }
-
 // ---------------------------------------------------------------------------
 // --fix: auto-remediate autoFixable results
 // ---------------------------------------------------------------------------
-
 function attemptFix(result: CheckResult): boolean {
   if (!result.fix || !result.autoFixable) return false;
-
   // Only auto-run eliza sub-commands — don't blindly shell out to arbitrary
   // fix strings (e.g. chmod commands require explicit user confirmation).
   if (!result.fix.startsWith("eliza ")) return false;
-
   const args = result.fix.split(/\s+/).slice(1); // strip "eliza"
   console.log(
     `\n  ${theme.muted("→ auto-fix:")} ${theme.command(result.fix)}\n`,
   );
-
   // Resolve the eliza binary: prefer the one already running, fall back to
   // looking it up in PATH.
   const bin =
     process.env.ELIZA_BIN ??
     (process.execArgv.length === 0 ? process.argv[1] : null) ??
     "eliza";
-
   const result2 = spawnSync(bin, args, { stdio: "inherit" });
   return result2.status === 0;
 }
-
 // ---------------------------------------------------------------------------
 // Command registration
 // ---------------------------------------------------------------------------
-
 export function registerDoctorCommand(program: Command) {
   program
     .command("doctor:mtp")
@@ -144,7 +132,6 @@ export function registerDoctorCommand(program: Command) {
         if (!report.ok) process.exit(1);
       });
     });
-
   program
     .command("doctor")
     .description("Check environment health and diagnose common issues")
@@ -154,9 +141,7 @@ export function registerDoctorCommand(program: Command) {
     .action(async (opts: { ports: boolean; fix: boolean; json: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const { runAllChecks } = await import("../doctor/checks");
-
         const results = await runAllChecks({ checkPorts: opts.ports });
-
         // ── JSON output ──────────────────────────────────────────────────
         if (opts.json) {
           const summary = {
@@ -171,14 +156,11 @@ export function registerDoctorCommand(program: Command) {
           if (summary.fail > 0) process.exit(1);
           return;
         }
-
         // ── Human output ─────────────────────────────────────────────────
         console.log(`\n${theme.heading("Eliza Health Check")}\n`);
         printGrouped(results);
-
         const failures = results.filter((r) => r.status === "fail");
         const warnings = results.filter((r) => r.status === "warn");
-
         console.log();
         if (failures.length === 0 && warnings.length === 0) {
           console.log(
@@ -194,7 +176,6 @@ export function registerDoctorCommand(program: Command) {
             `  ${theme.warn(`${warnings.length} warning${warnings.length === 1 ? "" : "s"}. Things should still work.`)}`,
           );
         }
-
         // ── --fix pass ────────────────────────────────────────────────────
         if (opts.fix) {
           const fixable = results.filter(
@@ -210,9 +191,7 @@ export function registerDoctorCommand(program: Command) {
             }
           }
         }
-
         console.log();
-
         if (failures.length > 0) {
           process.exit(1);
         }
