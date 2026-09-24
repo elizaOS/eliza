@@ -204,7 +204,7 @@ async function runTurn(
 ): Promise<string[]> {
   const runtime = makeFailingRuntime(failure, options);
   const deliveries: Content[] = [];
-  await new DefaultMessageService().handleMessage(
+  const result = await new DefaultMessageService().handleMessage(
     runtime,
     makeMessage(),
     async (content) => {
@@ -212,6 +212,7 @@ async function runTurn(
       return [];
     },
   );
+  expect(result.outcome.status).toBe("failed");
   return deliveries
     .map((content) => (typeof content.text === "string" ? content.text : ""))
     .filter((text) => text.trim().length > 0);

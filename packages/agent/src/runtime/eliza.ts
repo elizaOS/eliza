@@ -327,6 +327,7 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import { EscalationService } from "../services/escalation.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
@@ -1671,14 +1672,24 @@ export async function shutdownRuntime(
     // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
     // not block on a slow deferred service start or a long embedding drain.
     await runtime.stop(options.fast ? options : undefined);
+    logger.debug(`[eliza] ${context}: runtime services stopped`);
   } catch (err) {
     if (!firstError) firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
   }
 
+  try {
+    await EscalationService.stop(runtime);
+  } catch (err) {
+    if (!firstError) firstError = err;
+    logger.warn(`[eliza] ${context}: escalation drain failed: ${formatError(err)}`);
+  }
+
   if (adapter && typeof adapter.close === "function") {
     try {
+      logger.debug(`[eliza] ${context}: closing database adapter`);
       await adapter.close();
+      logger.debug(`[eliza] ${context}: database adapter closed`);
     } catch (err) {
       if (!firstError) {
         firstError = err;
@@ -5496,7 +5507,7 @@ export async function startEliza(
         "This GGUF serves TEXT_EMBEDDING / memory only — not your conversation model.",
     );
     abortSignal.throwIfAborted();
-    await ensureModel(modelsDir, modelRepo, model, false);
+    await ensureModel(modelsDir, modelRepo, model, false, undefined, abortSignal);
   };
 
   const startEmbeddingWarmup = async (

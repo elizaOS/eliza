@@ -15,7 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Final
+from collections.abc import Awaitable, Callable
+from typing import Any, Final
 
 from hermes_adapter.client import HermesClient
 
@@ -125,8 +126,9 @@ def _validated_tool_arguments(args: object) -> dict[str, Any] | str:
     """Preserve model arguments; malformed calls must never become empty calls."""
     parsed = json.loads(args) if isinstance(args, str) else args
     if not isinstance(parsed, dict):
-        raise ValueError("LifeOps tool arguments must encode an object")
+        raise TypeError("LifeOps tool arguments must encode an object")
     return args if isinstance(args, str) else dict(parsed)
+
 
 def _compute_cost_usd(
     model: str | None, prompt_tokens: int, completion_tokens: int
@@ -143,13 +145,14 @@ def _compute_cost_usd(
     pricing = _CEREBRAS_PRICING.get(model)
     if pricing is None:
         return None
-    return (
-        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
-        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
-    )
+    return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
+        completion_tokens / 1_000_000.0
+    ) * pricing["output_per_million_usd"]
 
 
-def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[str, Any]]:
+def _history_to_openai_messages(
+    conversation_history: list[Any],
+) -> list[dict[str, Any]]:
     """Convert LifeOpsBench ``MessageTurn`` history into OpenAI chat shape.
 
     Preserves assistant ``tool_calls`` and tool-result ``tool_call_id``/``name``
@@ -159,9 +162,8 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
     """
     out: list[dict[str, Any]] = []
     for turn in conversation_history:
-        role = (
-            getattr(turn, "role", None)
-            or (turn.get("role") if isinstance(turn, dict) else None)
+        role = getattr(turn, "role", None) or (
+            turn.get("role") if isinstance(turn, dict) else None
         )
         if role not in {"system", "user", "assistant", "tool"}:
             continue
@@ -170,7 +172,10 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
             if not isinstance(turn, dict)
             else turn.get("content")
         )
-        item: dict[str, Any] = {"role": role, "content": "" if content is None else str(content)}
+        item: dict[str, Any] = {
+            "role": role,
+            "content": "" if content is None else str(content),
+        }
         if role == "assistant":
             tcs = (
                 getattr(turn, "tool_calls", None)
@@ -217,11 +222,13 @@ def _build_bench_preamble(
     it there and inject only here (hermes + openclaw).
     """
     lines: list[str] = [
-        "You are operating in LifeOpsBench. Use the exact action names and "
-        "parameter schemas shown in your tool list — do not invent synonyms. "
-        "For contacts, use ENTITY with subaction='create' and provide name and "
-        "email at the top level of the arguments object. "
-        "Always search for existing records before creating new ones.",
+        (
+            "You are operating in LifeOpsBench. Use the exact action names and "
+            "parameter schemas shown in your tool list — do not invent synonyms. "
+            "For contacts, use ENTITY with subaction='create' and provide name and "
+            "email at the top level of the arguments object. "
+            "Always search for existing records before creating new ones."
+        ),
     ]
 
     # Surface seeded contact IDs so the agent can reference them directly.
@@ -232,7 +239,9 @@ def _build_bench_preamble(
                 f"  {cid}: {c.get('display_name', '?')} <{c.get('primary_email', '?')}>"
                 for cid, c in list(contacts.items())[:10]
             ]
-            lines.append("Seeded contacts (use these IDs to reference existing people):")
+            lines.append(
+                "Seeded contacts (use these IDs to reference existing people):"
+            )
             lines.extend(snippets)
 
         events = world_context.get("calendar_events", {})
@@ -326,7 +335,9 @@ def build_lifeops_bench_agent_fn(
             raise RuntimeError("hermes LifeOps send_message failed") from exc
         latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
 
-        raw_tool_calls = resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        raw_tool_calls = (
+            resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        )
         tool_calls: list[dict[str, Any]] = []
         if isinstance(raw_tool_calls, list):
             for entry in raw_tool_calls:
@@ -352,8 +363,8 @@ def build_lifeops_bench_agent_fn(
             tool_calls=tool_calls or None,
         )
         if model_name:
-            setattr(turn, "model_name", model_name)
-        setattr(turn, "latency_ms", int(latency_ms))
+            turn.model_name = model_name
+        turn.latency_ms = int(latency_ms)
         # Surface usage + cache telemetry on the returned MessageTurn so the
         # LifeOpsBench runner can populate TurnResult.cache_read_input_tokens
         # / cache_creation_input_tokens / cache_hit_pct via getattr(). The
@@ -378,7 +389,7 @@ def build_lifeops_bench_agent_fn(
         out_tok = int(out_tok_raw) if isinstance(out_tok_raw, (int, float)) else 0
         pricing_model = model_name or bridge.model
         cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
-        setattr(turn, "cost_usd", cost if cost is None else float(cost))
+        turn.cost_usd = cost if cost is None else float(cost)
         return turn
 
     return _agent_fn

@@ -1,26 +1,8 @@
-"""H2.b — Production Pyannote-3 + WeSpeaker int8 diarization.
+"""Opt-in production diarization evaluation on five synthetic audio fixtures.
 
-W3-6 shipped the diarization test suite against a SpeechBrain ECAPA + energy
-VAD harness because the production ONNX weights were not yet pushed to
-HuggingFace. H4 confirmed both real artifacts are live:
-
-  - elizaos/eliza-1 :: voice/diarizer/pyannote-segmentation-3.0-int8.onnx
-  - elizaos/eliza-1 :: voice/speaker-encoder/wespeaker-resnet34-lm.onnx
-
-This test runs the same 5 fixtures (f1..f5) through the production stack
-when `PRODUCTION_SPEAKER_STACK=1` is set (or always, if all deps are
-available). Per-fixture pass criteria mirror W3-6:
-
-  - Detected cluster count ≥ ground-truth speaker count.
-  - DER (cluster-level, no collar) ≤ 0.50 — the production WeSpeaker
-    encoder produces fewer false-positive clusters than the W3-6 ECAPA
-    fallback but pitch-shifted TTS still over-detects relative to
-    natural-speech benchmarks. Pyannote-3 on the LibriSpeech/AMI test
-    sets reports DER ~0.18; the relaxed 0.50 bound here accounts for the
-    pitch-shifted-TTS distortion in the test fixtures.
-
-The original W3-6 tests (`test_diarization.py`) continue to assert the
-fallback path. This module asserts the production path.
+Set PRODUCTION_SPEAKER_STACK=1 to require the selected backend and its assets.
+Missing dependencies, model download failures and inference errors fail this lane.
+The default suite does not claim production coverage from fallback encoders.
 """
 
 from __future__ import annotations
@@ -30,11 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytest
-
 from conftest import (
-    FIXTURES_DIR,
     TARGET_SR,
     load_fixture_audio,
     read_manifest,
@@ -44,38 +23,16 @@ from production_stack import ProductionDiarizer, production_stack_enabled
 logger = logging.getLogger(__name__)
 
 
-def _deps_available() -> tuple[bool, str]:
-    try:
-        import huggingface_hub  # noqa: F401
-        import onnxruntime  # noqa: F401
-        import torch  # noqa: F401
-        import torchaudio  # noqa: F401
-    except ImportError as err:
-        return False, f"missing dependency: {err.name}"
-    return True, ""
-
-
-_DEPS_OK, _DEPS_REASON = _deps_available()
-
-
 pytestmark = pytest.mark.skipif(
-    not _DEPS_OK,
-    reason=f"production stack deps unavailable: {_DEPS_REASON}",
+    not production_stack_enabled(),
+    reason="production stack requires PRODUCTION_SPEAKER_STACK=1 and staged assets",
 )
 
 
 @pytest.fixture(scope="module")
 def production_diarizer() -> ProductionDiarizer:
-    """Load the production diarizer + encoder once per module."""
-    if not (_DEPS_OK and (production_stack_enabled() or True)):
-        # Always-on when deps are available; PRODUCTION_SPEAKER_STACK=1 is
-        # documented as the canonical opt-in but skipping makes the test
-        # invisible — H2.b spec says we ship it green.
-        pytest.skip("production stack disabled")
-    try:
-        return ProductionDiarizer.load()
-    except Exception as err:  # noqa: BLE001
-        pytest.skip(f"cannot load production stack: {err}")
+    """Load the requested backend; an unavailable production stack is a failure."""
+    return ProductionDiarizer.load()
 
 
 def _compute_cluster_der(
@@ -161,8 +118,7 @@ class TestProductionDiarization:
         detected = len({s["speaker_id"] for s in segments})
         expected = fixture["speakers"]
         assert detected >= expected, (
-            f"{fixture_key}: detected {detected} speakers, "
-            f"expected >= {expected}",
+            f"{fixture_key}: detected {detected} speakers, expected >= {expected}"
         )
         total_ms = float(pcm.size / TARGET_SR * 1000)
         der = _compute_cluster_der(segments, fixture["ground_truth"], total_ms)
@@ -195,7 +151,7 @@ class TestProductionDiarization:
         clusters = {s["speaker_id"] for s in segments}
         assert len(clusters) <= 2, (
             f"Single-speaker fixture produced {len(clusters)} clusters; "
-            f"production stack should not over-split below 3.",
+            f"production stack should not over-split below 3."
         )
 
 
@@ -232,6 +188,5 @@ class TestProductionStackArtifacts:
             json.dump(report, fh, indent=2)
         assert out_path.exists()
         assert all(
-            r["detected_speakers"] >= r["expected_speakers"]
-            for r in report.values()
+            r["detected_speakers"] >= r["expected_speakers"] for r in report.values()
         )
