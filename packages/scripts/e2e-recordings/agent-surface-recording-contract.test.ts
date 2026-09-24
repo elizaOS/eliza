@@ -8,11 +8,8 @@ import {
   DIRECT_AGENT_SURFACE_OUTPUT_DIR,
   resolveAgentSurfaceOutputDir,
 } from "../../ui/src/agent-surface/__e2e__/output-path.mjs";
-import {
-  recordingEnvironment,
-  recordingOutputDirForSuite,
-} from "./run-all.mjs";
-import { suiteByName } from "./suites.mjs";
+import { recordingEnvironment, recordingOutputDirForSuite } from "./run-all.ts";
+import { suiteByName } from "./suites.ts";
 
 const suite = suiteByName("ui-agent-surface");
 if (!suite)

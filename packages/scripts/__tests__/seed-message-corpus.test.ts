@@ -11,12 +11,12 @@ import {
   parseArgs,
   parseTcpPort,
   resolveApiPortFromEnv,
-} from "../seed-message-corpus.mjs";
+} from "../seed-message-corpus.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "seed-message-corpus.mjs",
+  "seed-message-corpus.ts",
 );
 
 function runCli(args, env = {}) {

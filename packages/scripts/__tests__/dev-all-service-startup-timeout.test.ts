@@ -9,13 +9,13 @@ import {
   DEFAULT_SERVICE_STARTUP_TIMEOUT_MS,
   parsePositiveSafeInteger,
   resolveServiceStartupTimeoutMs,
-} from "../dev-all.mjs";
+} from "../dev-all.ts";
 import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "dev-all.mjs",
+  "dev-all.ts",
 );
 
 function runCli(args, env = {}) {

@@ -99,7 +99,7 @@ const RM_PATH_RECURSIVE_SCRIPT = path.join(
   ROOT,
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =

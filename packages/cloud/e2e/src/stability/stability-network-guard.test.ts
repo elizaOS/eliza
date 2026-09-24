@@ -11,7 +11,7 @@ test("production Bun preload blocks a child fetch before external egress", async
     const ledger = path.join(directory, "ledger.jsonl");
     const guard = path.resolve(
       import.meta.dirname,
-      "../../../scripts/e2e/stability-network-guard.mjs",
+      "../../../scripts/e2e/stability-network-guard.ts",
     );
     const child = Bun.spawn(
       [
@@ -59,7 +59,7 @@ test("production Bun preload rejects a DNS name with a loopback-looking prefix",
     const ledger = path.join(directory, "ledger.jsonl");
     const guard = path.resolve(
       import.meta.dirname,
-      "../../../scripts/e2e/stability-network-guard.mjs",
+      "../../../scripts/e2e/stability-network-guard.ts",
     );
     const child = Bun.spawn(
       [
@@ -114,7 +114,7 @@ test("production Bun preload rejects a loopback fetch redirect before the target
     const ledger = path.join(directory, "ledger.jsonl");
     const guard = path.resolve(
       import.meta.dirname,
-      "../../../scripts/e2e/stability-network-guard.mjs",
+      "../../../scripts/e2e/stability-network-guard.ts",
     );
     const child = Bun.spawn(
       [
@@ -192,7 +192,7 @@ test.each([
       const ledger = path.join(directory, "ledger.jsonl");
       const guard = path.resolve(
         import.meta.dirname,
-        "../../../scripts/e2e/stability-network-guard.mjs",
+        "../../../scripts/e2e/stability-network-guard.ts",
       );
       const child = Bun.spawn(
         [process.execPath, "--preload", guard, "-e", script(targetPort)],

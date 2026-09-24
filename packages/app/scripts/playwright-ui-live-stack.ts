@@ -3,7 +3,7 @@
  * a live model provider, seeds first-run config, rebuilds the renderer when
  * stale, proxies HTTP/WebSocket traffic through a local server, and builds
  * optional live-stack plugins. The live counterpart of
- * playwright-ui-smoke-api-stub.mjs.
+ * playwright-ui-smoke-api-stub.ts.
  */
 import {
   type ChildProcessByStdio,
@@ -39,7 +39,7 @@ import {
   getFirstRunProviderForLiveProvider,
   selectLiveProviderAsync,
 } from "../test/helpers/live-provider.ts";
-import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.ts";
 import {
   attachSafeChildOutputObserver,
   formatSafeLiveStackDiagnostic,
@@ -66,7 +66,7 @@ const CLEANUP_HELPER_SCRIPT = path.join(
   REPO_ROOT,
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
 const APP_DIST_DIR = path.join(APP_DIR, "web-dist");
@@ -78,13 +78,13 @@ const COMPANION_PUBLIC_DIR = path.join(
 );
 const UI_SMOKE_STUB_SCRIPT = path.join(
   import.meta.dirname,
-  "playwright-ui-smoke-api-stub.mjs",
+  "playwright-ui-smoke-api-stub.ts",
 );
 const REAL_LOCAL_AGENT_SCRIPT = path.join(
   import.meta.dirname,
   "serve-real-local-agent.ts",
 );
-const NODE_TSX_RUNNER = path.join(import.meta.dirname, "run-node-tsx.mjs");
+const NODE_TSX_RUNNER = path.join(import.meta.dirname, "run-node-tsx.ts");
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
@@ -304,7 +304,7 @@ function resolveBunCommand(): string {
  *
  * The Playwright runner exports `NODE_OPTIONS=--conditions=eliza-source` so its
  * spec collector resolves app/agent source on a fresh `--ignore-scripts`
- * install (run-ui-playwright.mjs, #15764). That condition must NOT reach the
+ * install (run-ui-playwright.ts, #15764). That condition must NOT reach the
  * Vite renderer build: `node vite.js build` loads `vite.config.ts` under node's
  * native ESM/type-stripping loader, which — unlike tsx — does not rewrite
  * `.js`→`.ts` import specifiers. Under `eliza-source` a package like
@@ -1326,7 +1326,7 @@ async function startRealStack(): Promise<StartedStack> {
     apiChild = spawn(
       "node",
       [
-        path.join(REPO_ROOT, "packages/app/scripts/run-node-tsx.mjs"),
+        path.join(REPO_ROOT, "packages/app/scripts/run-node-tsx.ts"),
         path.join(REPO_ROOT, "packages/app/src/entry.ts"),
         "start",
       ],

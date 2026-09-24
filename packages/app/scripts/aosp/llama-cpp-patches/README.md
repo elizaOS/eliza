@@ -1,6 +1,6 @@
 # llama.cpp patches — DEPRECATED archival drop (2026-05-09)
 
-The directory and `apply-patches.mjs` script are kept in-tree for one release as a rollback path.
+The directory and `apply-patches.ts` script are kept in-tree for one release as a rollback path.
 
 This directory is part of `packages/app`.
 

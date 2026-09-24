@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const scriptPath = fileURLToPath(
-  new URL("../rewrite-dist-relative-imports-node-esm.mjs", import.meta.url),
+  new URL("../rewrite-dist-relative-imports-node-esm.ts", import.meta.url),
 );
 
 const tempRoots: string[] = [];

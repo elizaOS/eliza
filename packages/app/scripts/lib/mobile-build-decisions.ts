@@ -26,7 +26,7 @@ export function androidUsesAppDirFor(
 
 const MTP_BUILD_SCRIPT = path.resolve(
   appCoreScriptsDir,
-  "build-llama-cpp-mtp.mjs",
+  "build-llama-cpp-mtp.ts",
 );
 
 // The builder derives its repo root from packages/app/scripts, not from

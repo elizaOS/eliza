@@ -21,7 +21,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc6 -p tsconfig.json --noCheck",
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json --noCheck",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector",
     "test": "vitest run",

@@ -17,8 +17,8 @@ import {
   probeSystemTesseract,
   runProbes,
   summarize,
-} from "./evidence-doctor.mjs";
-import { EVIDENCE_REQUIREMENTS } from "./evidence-install-tools.mjs";
+} from "./evidence-doctor.ts";
+import { EVIDENCE_REQUIREMENTS } from "./evidence-install-tools.ts";
 
 const healthyMedia = async () => ({
   ffmpeg: { available: true, bin: "/tools/ffmpeg", source: "bundled" },
@@ -447,7 +447,7 @@ describe("evidence toolchain doctor", () => {
     const cli = spawnSync(
       process.execPath,
       [
-        fileURLToPath(new URL("./evidence-doctor.mjs", import.meta.url)),
+        fileURLToPath(new URL("./evidence-doctor.ts", import.meta.url)),
         "--strcit",
       ],
       { encoding: "utf8" },

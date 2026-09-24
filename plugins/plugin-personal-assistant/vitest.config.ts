@@ -876,7 +876,7 @@ export default defineConfig({
             repoRoot,
             path.join(
               elizaRoot,
-              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
             ),
           )
           .replaceAll(path.sep, "/"),

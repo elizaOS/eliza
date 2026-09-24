@@ -14,13 +14,13 @@ import path from "node:path";
 import {
   buildAndPackReleaseCandidate,
   loadReleaseState,
-} from "../lib/release-candidate.mjs";
+} from "../lib/release-candidate.ts";
 import {
   inspectRegistryChannel,
   inspectReleaseRegistry,
   publishReleaseCandidate,
   verifyPromotedReleaseCandidate,
-} from "../lib/release-registry.mjs";
+} from "../lib/release-registry.ts";
 
 const roots: string[] = [];
 const processes: ChildProcess[] = [];

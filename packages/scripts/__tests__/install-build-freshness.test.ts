@@ -30,8 +30,8 @@ for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
     };
     try {
       for (const name of [
-        "build-private-workspace-packages.mjs",
-        "run-turbo.mjs",
+        "build-private-workspace-packages.ts",
+        "run-turbo.ts",
         "lib/script-metadata.ts",
         "lib/workspaces.ts",
         "lib/repository-file-integrity.ts",
@@ -63,8 +63,8 @@ for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
       write(".gitignore", "node_modules\n.turbo\ndist\n");
       write("plugins/plugin-build.ts", "helper-v1");
       write("plugins/plugin-build-externals.ts", "externals-v1");
-      write("packages/scripts/prepare-package-dist.mjs", "manifest-v1");
-      write("packages/scripts/copy-package-assets.mjs", "assets-v1");
+      write("packages/scripts/prepare-package-dist.ts", "manifest-v1");
+      write("packages/scripts/copy-package-assets.ts", "assets-v1");
       for (const name of ["leaf", "consumer"]) {
         write(
           `packages/${name}/package.json`,
@@ -91,7 +91,7 @@ for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
           `packages/${name}/build.mjs`,
           `import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 mkdirSync('dist', { recursive: true });
-writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSync('runtime.json', 'utf8') + readFileSync('../../plugins/plugin-build.ts', 'utf8') + readFileSync('../../plugins/plugin-build-externals.ts', 'utf8') + readFileSync('../scripts/prepare-package-dist.mjs', 'utf8') + readFileSync('../scripts/copy-package-assets.mjs', 'utf8')${name === "consumer" ? " + readFileSync('../leaf/dist/index.js', 'utf8')" : ""});`,
+writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSync('runtime.json', 'utf8') + readFileSync('../../plugins/plugin-build.ts', 'utf8') + readFileSync('../../plugins/plugin-build-externals.ts', 'utf8') + readFileSync('../scripts/prepare-package-dist.ts', 'utf8') + readFileSync('../scripts/copy-package-assets.ts', 'utf8')${name === "consumer" ? " + readFileSync('../leaf/dist/index.js', 'utf8')" : ""});`,
         );
       }
       // The real runner resolves Turbo from node_modules without installing fixtures.
@@ -104,7 +104,7 @@ writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSy
       const run = () => {
         const result = spawnSync(
           process.execPath,
-          ["packages/scripts/build-private-workspace-packages.mjs"],
+          ["packages/scripts/build-private-workspace-packages.ts"],
           {
             cwd: fixture,
             encoding: "utf8",
@@ -134,9 +134,9 @@ writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSy
         write("plugins/plugin-build-externals.ts", "externals-v2");
         assert.match(run(), /externals-v2/);
       }
-      write("packages/scripts/prepare-package-dist.mjs", "manifest-v2");
+      write("packages/scripts/prepare-package-dist.ts", "manifest-v2");
       assert.match(run(), /manifest-v2/);
-      write("packages/scripts/copy-package-assets.mjs", "assets-v2");
+      write("packages/scripts/copy-package-assets.ts", "assets-v2");
       const latest = run();
       assert.match(latest, /assets-v2/);
       rmSync(path.join(fixture, "packages/consumer/dist"), { recursive: true });

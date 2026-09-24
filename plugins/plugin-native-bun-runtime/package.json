@@ -49,8 +49,8 @@
     "directory": "plugins/plugin-native-bun-runtime"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-bun-runtime -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-bun-runtime -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "bun run test:bridge && bun run engine:test",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
@@ -69,11 +69,11 @@
     "engine:test": "node --test ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/*.test.ts",
     "engine:smoke:sim": "node dist/engine/smoke-ios-bun-engine.mjs --target=simulator",
     "engine:smoke:device": "node dist/engine/smoke-ios-bun-engine.mjs --target=device",
-    "build:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.mjs plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh",
-    "build:sqlite-vec:device": "node ../../packages/scripts/run-bash-darwin-only.mjs plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh device",
-    "build:sqlite-vec:simulator": "node ../../packages/scripts/run-bash-darwin-only.mjs plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh simulator",
-    "clean:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.mjs plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh clean",
-    "build:engine-tools": "bun build ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/build-ios-bun-engine.mjs ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/check-upstream-support.mjs ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/smoke-ios-bun-engine.mjs ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/verify-ios-app-store.mjs ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs ../../packages/scripts/rm-path-recursive.mjs --target=node --outdir=dist/engine --entry-naming='[name].mjs'"
+    "build:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh",
+    "build:sqlite-vec:device": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh device",
+    "build:sqlite-vec:simulator": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh simulator",
+    "clean:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh clean",
+    "build:engine-tools": "bun build ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/build-ios-bun-engine.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/check-upstream-support.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/smoke-ios-bun-engine.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/verify-ios-app-store.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts ../../packages/scripts/rm-path-recursive.ts --target=node --outdir=dist/engine --entry-naming='[name].mjs'"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

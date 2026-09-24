@@ -20,7 +20,7 @@ import {
   builtBeforeTypecheck,
   discoverTypecheckProjects,
   workspaceSourceEntry,
-} from "./audit-tsconfig-workspace-resolution.mjs";
+} from "./audit-tsconfig-workspace-resolution.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 

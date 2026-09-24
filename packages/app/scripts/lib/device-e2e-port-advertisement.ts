@@ -4,7 +4,7 @@
  */
 
 import { syncResolvedApiPort } from "@elizaos/core/runtime-env";
-import { advertisePort } from "../../../scripts/e2e-ports.mjs";
+import { advertisePort } from "../../../scripts/e2e-ports.ts";
 import { invalidateCorsAllowedPorts } from "../../src/api/server-cors.ts";
 export function publishBoundDeviceE2ePort(
   port: number,

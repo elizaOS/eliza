@@ -2571,7 +2571,7 @@ export function runSelfTest() {
       "- [x] Backend logs:",
       "```",
       "$ bun run audit:test-integrity:no-vi-mocks",
-      "packages/scripts/lint-no-vi-mocks.mjs:12: const json = vi.fn();",
+      "packages/scripts/lint-no-vi-mocks.ts:12: const json = vi.fn();",
       "running fixtures/setup.ts against the real adapter",
       "loaded fixture.json through object.mock and test:mocks",
       String.raw`opened C:\fixtures\setup.ts and todo.md`,
@@ -2944,7 +2944,7 @@ from scratch.
 
 Fix in one command (uploads/patches rows AND re-adds the missing markers; each
 row takes a local file, an existing URL, or an "N/A - <reason>" string):
-  node packages/scripts/pr-evidence.mjs rows <pr> \\
+  node packages/scripts/pr-evidence.ts rows <pr> \\
 ${rowFlags}
 Or copy the \`<!-- evidence-row:* -->\` block from .github/pull_request_template.md
 into the PR description and fill each row.`;
@@ -3041,7 +3041,7 @@ How to fix (fastest path):
   2. capture: bun run --cwd packages/app audit:app  (screenshots + OCR)
      and/or the fixtures under packages/ui/src/components/shell/__e2e__/
   3. attach + patch rows in ONE command:
-     node packages/scripts/pr-evidence.mjs rows <pr> \\
+     node packages/scripts/pr-evidence.ts rows <pr> \\
        --row after-screenshots=shot.jpg --row walkthrough-video=walk.mp4 \\
        --row ocr-review=ocr.txt --row frontend-logs=e2e.log ...
      (uploads to the pr-evidence release and verifies this gate locally)

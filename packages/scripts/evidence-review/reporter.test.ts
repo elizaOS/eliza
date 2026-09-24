@@ -12,7 +12,7 @@ import {
   createMatrixReporter,
   formatDuration,
   renderMatrixSummary,
-} from "./reporter.mjs";
+} from "./reporter.ts";
 
 function collector() {
   const lines = [];

@@ -1,7 +1,7 @@
 /** Exercises the console's zero-workspace-import Cloud login protocol boundary. */
 
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { startCloudLogin } from "../lib/oauth.mjs";
+import { startCloudLogin } from "../lib/oauth.ts";
 
 const originalFetch = globalThis.fetch;
 const SERVER_SESSION_ID = "11111111-2222-4333-8444-555555555555";

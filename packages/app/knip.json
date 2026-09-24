@@ -45,7 +45,7 @@
     "@elizaos/plugin-openai",
     "@elizaos/plugin-wechat"
   ],
-  "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
+  "ignoreUnresolved": ["tsx", "scripts/build.ts"],
   "ignore": ["dist/**", "ios/**", "android/**", "web-dist/**"],
   "vite": false,
   "vitest": false,

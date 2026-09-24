@@ -2,7 +2,7 @@
 # eliza-cloud-api — Cloudflare Worker config
 # =============================================================================
 # This file is committed; secrets live in `wrangler secret put` (push them via
-# packages/cloud/scripts/admin/cf-secrets-migrate.mjs). Environment bindings below
+# packages/cloud/scripts/admin/cf-secrets-migrate.ts). Environment bindings below
 # identify provisioned resources. New environments require explicit provisioning
 # and binding configuration before the protected cloud-cf-release.yml workflow.
 # =============================================================================
@@ -361,7 +361,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 # -----------------------------------------------------------------------------
 # Required secrets — set via `wrangler secret put KEY` (or run
-# packages/cloud/scripts/admin/cf-secrets-migrate.mjs which iterates a .env file).
+# packages/cloud/scripts/admin/cf-secrets-migrate.ts which iterates a .env file).
 #
 # Login credentials retain their existing names to preserve deployed sessions
 # and encrypted keys. LOGIN_API_URL selects the owned identity service.

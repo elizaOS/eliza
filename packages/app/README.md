@@ -32,8 +32,8 @@ These select a product, not a merchant credential or paid entitlement.
 With the Android SDK, Java 21, workspace dependencies, and a running emulator:
 
 ```bash
-node packages/app/scripts/android-native-plugins.mjs --list
-node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554
+node packages/app/scripts/android-native-plugins.ts --list
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554
 ```
 
 The runner builds every Android native module and executes its instrumentation
@@ -54,7 +54,7 @@ VPN enforcement, embedded agent startup, or all physical camera/audio hardware.
 
 The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
 RAM and no installed `ai.elizaos.app`. Run
-`node packages/app/scripts/android-native-agent.mjs --serial emulator-5580` with
+`node packages/app/scripts/android-native-agent.ts --serial emulator-5580` with
 `JAVA_HOME` and `ANDROID_HOME` set. It builds the real mobile Bun bundle and host
 service, selects the first-party Agent plugin in a minimal test WebView, verifies
 startup, authenticated requests and shutdown, then removes its APKs. Reports and

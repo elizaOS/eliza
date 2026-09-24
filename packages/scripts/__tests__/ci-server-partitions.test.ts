@@ -22,7 +22,7 @@ function plan(filter) {
     execFileSync(
       "node",
       [
-        "packages/scripts/run-all-tests.mjs",
+        "packages/scripts/run-all-tests.ts",
         "--lane=server",
         "--no-cloud",
         "--concurrency=3",

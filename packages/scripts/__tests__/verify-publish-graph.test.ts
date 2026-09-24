@@ -13,10 +13,10 @@ import {
   assertPublishableWorkspaceGraph,
   findUnpublishableWorkspaceDependencies,
   formatPublishGraphViolation,
-} from "../verify-publish-graph.mjs";
+} from "../verify-publish-graph.ts";
 
 const CHECK = fileURLToPath(
-  new URL("../verify-publish-graph.mjs", import.meta.url),
+  new URL("../verify-publish-graph.ts", import.meta.url),
 );
 
 function pkg(

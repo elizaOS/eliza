@@ -5,7 +5,7 @@ import {
   clearGitHubDeviceLoginsForTest,
   pollGitHubDeviceLogin,
   startGitHubDeviceLogin,
-} from "./github-device-login.mjs";
+} from "./github-device-login.ts";
 
 function response(payload, status = 200) {
   return new Response(JSON.stringify(payload), {

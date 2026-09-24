@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkMobileArtifacts } from "./check-mobile-artifacts.mjs";
+import { checkMobileArtifacts } from "./check-mobile-artifacts.ts";
 
 const tempRoots: string[] = [];
 
@@ -103,7 +103,7 @@ async function makeRepo() {
     JSON.stringify({
       scripts: {
         "build:android:system":
-          "node ../../packages/app/scripts/run-mobile-build.mjs android-system",
+          "node ../../packages/app/scripts/run-mobile-build.ts android-system",
       },
     }),
   );

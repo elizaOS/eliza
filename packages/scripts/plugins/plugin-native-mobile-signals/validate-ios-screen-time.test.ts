@@ -11,7 +11,7 @@ import {
   defaultIosScreenTimeValidationPaths,
   IOS_SCREEN_TIME_REQUIREMENTS,
   validateIosScreenTimeBuildWiring,
-} from "./validate-ios-screen-time.mjs";
+} from "./validate-ios-screen-time.ts";
 
 const tempRoots = [];
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));

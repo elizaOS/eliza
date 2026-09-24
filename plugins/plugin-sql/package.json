@@ -74,7 +74,7 @@
     "typecheck": "tsc --noEmit -p src/tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write src build.ts",
     "lint:check": "bunx @biomejs/biome check src build.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist src/dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist src/dist .turbo",
     "format": "bunx @biomejs/biome format --write src build.ts",
     "format:check": "bunx @biomejs/biome format src build.ts",
     "test:postgres": "bash ../../packages/scripts/plugins/plugin-sql/run-integration-tests.sh --postgres",

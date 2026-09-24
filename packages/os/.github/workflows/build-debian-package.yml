@@ -131,7 +131,7 @@ jobs:
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
           test "$(dpkg --print-architecture)" = "${{ matrix.debian-architecture }}"
-          test "$DESKTOP_SOURCE_SHA" = "$(node scripts/read-eliza-source-lock.mjs)"
+          test "$DESKTOP_SOURCE_SHA" = "$(node scripts/read-eliza-source-lock.ts)"
       - name: Install deterministic Debian packaging tools
         run: |
           sudo apt-get update -qq
@@ -255,7 +255,7 @@ jobs:
           subject-path: ${{ steps.deb.outputs.path }}
       - name: Bind producer evidence to exact package bytes
         run: |
-          node scripts/create-release-evidence.mjs \
+          node scripts/create-release-evidence.ts \
             --artifact-id 'debian-package-${{ matrix.debian-architecture }}' \
             --source-artifact 'elizaos-debian-package-${{ matrix.debian-architecture }}' \
             --subject '${{ steps.deb.outputs.path }}' \
@@ -277,4 +277,4 @@ jobs:
           retention-days: 30
       - name: Remove package workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.mjs "$WORK_ROOT"
+        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"

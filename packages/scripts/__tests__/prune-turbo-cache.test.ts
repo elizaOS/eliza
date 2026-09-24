@@ -15,12 +15,12 @@ import {
   parseMaxGb,
   pruneTurboCache,
   resolveCacheDir,
-} from "../prune-turbo-cache.mjs";
+} from "../prune-turbo-cache.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "prune-turbo-cache.mjs",
+  "prune-turbo-cache.ts",
 );
 
 function runCli(args, env = {}) {

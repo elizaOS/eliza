@@ -23,7 +23,7 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "build:js": "bun run clean && tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

@@ -16,7 +16,7 @@ import {
   recordOutcome,
   recordOutcomes,
   STALE_DAYS,
-} from "./hitl-ledger.mjs";
+} from "./hitl-ledger.ts";
 
 const DAY_MS = 86_400_000;
 const NOW = Date.parse("2026-07-06T00:00:00.000Z");

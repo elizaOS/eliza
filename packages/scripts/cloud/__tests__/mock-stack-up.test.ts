@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const SCRIPT = path.join(REPO_ROOT, "packages/scripts/cloud/mock-stack-up.mjs");
+const SCRIPT = path.join(REPO_ROOT, "packages/scripts/cloud/mock-stack-up.ts");
 
 // Bun's test-runner pipe capture loses output on `process.exit(non-zero)`,
 // so we redirect child stdio to files via the shell and read them back.

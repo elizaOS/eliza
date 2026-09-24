@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   dashboardErrorResponse,
   HttpError,
-} from "./hitl-credential-dashboard.mjs";
+} from "./hitl-credential-dashboard.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
@@ -121,7 +121,7 @@ test("credential dashboard rejects cross-site writes and requires its page sessi
   const home = tempDir("hitl-dashboard-home-");
   const child = spawn(
     "node",
-    ["packages/scripts/lifeops/hitl-credential-dashboard.mjs"],
+    ["packages/scripts/lifeops/hitl-credential-dashboard.ts"],
     {
       cwd: ROOT,
       env: {
@@ -196,7 +196,7 @@ test("discord loopback OAuth surfaces fail closed without registration or a know
   const home = tempDir("hitl-dashboard-home-");
   const child = spawn(
     "node",
-    ["packages/scripts/lifeops/hitl-credential-dashboard.mjs"],
+    ["packages/scripts/lifeops/hitl-credential-dashboard.ts"],
     {
       cwd: ROOT,
       env: {

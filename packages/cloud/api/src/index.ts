@@ -689,7 +689,7 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
       // the beacon the cross-environment routing verifier probes
-      // (packages/cloud/scripts/verify-environment-routing.mjs).
+      // (packages/cloud/scripts/verify-environment-routing.ts).
       environment: env.ENVIRONMENT ?? null,
       // The protected Telegram cutover uses a secret binding to override the
       // tracked false default without changing code. This value-free beacon

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { checkRequiredPlaywrightResults } from "../check-required-playwright-results.mjs";
+import { checkRequiredPlaywrightResults } from "../check-required-playwright-results.ts";
 
 const require = createRequire(import.meta.url);
 const directory = mkdtempSync(path.join(tmpdir(), "required-playwright-"));

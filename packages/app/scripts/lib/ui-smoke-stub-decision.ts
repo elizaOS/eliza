@@ -1,6 +1,6 @@
 /**
  * Decides whether the Playwright UI-smoke stack must serve the deterministic
- * stub API (`playwright-ui-smoke-api-stub.mjs`) instead of a real app
+ * stub API (`playwright-ui-smoke-api-stub.ts`) instead of a real app
  * runtime.
  *
  * The precedence matters and is easy to get subtly wrong, which is why it lives
@@ -15,7 +15,7 @@
  *      real backend. This is the seam the gated live e2e lane drives through.
  *   3. Otherwise `CI=true` forces the stub (the historical default).
  *
- * Note that the *runner* (`packages/app/scripts/run-ui-playwright.mjs`) only sets
+ * Note that the *runner* (`packages/app/scripts/run-ui-playwright.ts`) only sets
  * `ELIZA_UI_SMOKE_FORCE_STUB` when `ELIZA_UI_SMOKE_LIVE_STACK !== "1"`, so in the
  * normal path force-stub and live-stack are mutually exclusive; this function
  * still defines a total ordering for the case where both are set.

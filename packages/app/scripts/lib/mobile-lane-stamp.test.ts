@@ -2,9 +2,9 @@
  * Unit tests for the mobile build-lane guard decisions (issue #11030).
  *
  * These are the pure functions behind:
- *  - the dist-reuse / pre-Capacitor-sync lane assert in run-mobile-build.mjs,
+ *  - the dist-reuse / pre-Capacitor-sync lane assert in run-mobile-build.ts,
  *  - the sideload staged-bundle preflight rule in
- *    packages/app/scripts/mobile-release-preflight.mjs.
+ *    packages/app/scripts/mobile-release-preflight.ts.
  *
  * Runs in the packages/app vitest suite (`bun run --cwd packages/app
  * test`), i.e. the root `test:server` lane in CI.
@@ -17,7 +17,7 @@ import {
   isLocalAgentRuntimeMode,
   rendererLaneStampMismatches,
   resolveExpectedRendererStamp,
-} from "./mobile-lane-stamp.mjs";
+} from "./mobile-lane-stamp.ts";
 
 /** Mirrors resolveMobileBuildPolicy() output for the lanes under test. */
 const POLICIES = {

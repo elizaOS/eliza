@@ -1,5 +1,5 @@
 /**
- * Contract tests for verify-grizzly-artifacts.mjs: attestation must fail
+ * Contract tests for verify-grizzly-artifacts.ts: attestation must fail
  * closed whenever the staged product output disagrees with the prepare stamp,
  * and the flash-host check must refuse any image whose bytes differ from the
  * attested build.
@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = join(here, "../..");
 const script = join(
   repositoryRoot,
-  "scripts/distro-android/verify-grizzly-artifacts.mjs",
+  "scripts/distro-android/verify-grizzly-artifacts.ts",
 );
 
 function run(args: string[]) {

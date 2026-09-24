@@ -6,7 +6,7 @@ import {
   collectLinuxDevReport,
   parseLinuxDoctorArgs,
   renderLinuxDevReport,
-} from "./linux-dev-doctor.mjs";
+} from "./linux-dev-doctor.ts";
 
 function healthyRun(command, args) {
   const key = `${command} ${args.join(" ")}`;

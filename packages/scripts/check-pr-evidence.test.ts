@@ -707,7 +707,7 @@ describe("check-pr-evidence parser", () => {
     const hint = markerFreeBodyHint();
     assert.match(hint, /NO evidence-row markers found/);
     assert.match(hint, /<!-- evidence-row:<id> -->/);
-    assert.match(hint, /pr-evidence\.mjs rows/);
+    assert.match(hint, /pr-evidence\.ts rows/);
     for (const { id } of REQUIRED_EVIDENCE_ROWS) {
       assert.ok(hint.includes(`--row ${id}=`), `hint must offer --row ${id}=…`);
     }
@@ -1302,7 +1302,7 @@ describe("check-pr-evidence pr-evidence release family", () => {
     `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
 
   it("accepts an overflow-release screenshot on a visual row exactly like the primary release", () => {
-    // The unblock: once `pr-evidence` fills, pr-evidence.mjs emits pr-evidence-N
+    // The unblock: once `pr-evidence` fills, pr-evidence.ts emits pr-evidence-N
     // URLs; a media asset there must satisfy the visual rows identically.
     assert.equal(
       hasVisualArtifactReference(dl("pr-evidence", "15171-after-desktop.jpg")),

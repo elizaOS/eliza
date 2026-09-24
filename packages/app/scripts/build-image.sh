@@ -271,7 +271,7 @@ run "SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail 
 ok "Postinstall patches complete"
 
 hdr "Step 2c: Build Capacitor plugins"
-run "bun packages/app/scripts/build-native-plugins.mjs"
+run "bun packages/app/scripts/build-native-plugins.ts"
 ok "Capacitor plugins built"
 
 hdr "Step 2d: Build workspace packages"
@@ -395,7 +395,7 @@ if $REMOTE; then
     REMOTE_BUILD_ARGS+=" $(printf '%q' "$arg")"
   done
   REMOTE_BUILD_DIR_QUOTED="$(printf '%q' "${REMOTE_BUILD_DIR}")"
-  REMOTE_CLEANUP_HELPER="$(printf '%q' "${REMOTE_BUILD_DIR}/packages/scripts/rm-path-recursive.mjs")"
+  REMOTE_CLEANUP_HELPER="$(printf '%q' "${REMOTE_BUILD_DIR}/packages/scripts/rm-path-recursive.ts")"
   REMOTE_SCRIPT=$(cat <<SCRIPT
 set -e
 cd ${REMOTE_BUILD_DIR_QUOTED}

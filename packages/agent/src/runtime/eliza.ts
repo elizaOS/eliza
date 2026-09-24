@@ -305,7 +305,7 @@ export {
 // `setAgentHostBridge` before boot — agent never imports `@elizaos/app`.
 // When no host installs a bridge (mobile bundle / standalone agent), the leaf
 // default in `./host-bridge.ts` supplies the same no-op behavior the mobile
-// `app-runtime.cjs` stub used to. `await`-compatible (returns the bridge
+// `app-runtime.ts` stub used to. `await`-compatible (returns the bridge
 // synchronously) so existing `await importAppCoreRuntime()` call sites are
 // unchanged.
 function importAppCoreRuntime(): AgentHostBridge {
@@ -837,7 +837,7 @@ export async function ensureCoreStaticPluginsRegistered(
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-*) resolve.
 // WHY: When eliza is loaded from dist/ or by a test runner, Node's resolution does not
 // search repo root node_modules; import("@elizaos/plugin-*") then fails. We prepend
-// repo root node_modules only if not already in NODE_PATH (run-node.mjs may have set it)
+// repo root node_modules only if not already in NODE_PATH (run-node.ts may have set it)
 // to avoid duplicate entries; _initPaths() makes Node re-read NODE_PATH. See docs/plugin-resolution-and-node-path.md.
 // We walk up from this file to find node_modules — we do not assume a fixed depth
 // (e.g. two levels for src/runtime/ or dist/runtime/) so we still work if build
@@ -4438,7 +4438,7 @@ export async function startEliza(
   const runtimeLogLevel = (() => {
     // process.env.LOG_LEVEL is already resolved (set explicitly or from
     // config.logging.level above), so prefer it to honour the dev-mode
-    // LOG_LEVEL=error override set by eliza/packages/app/scripts/dev-ui.mjs.
+    // LOG_LEVEL=error override set by eliza/packages/app/scripts/dev-ui.ts.
     const lvl = process.env.LOG_LEVEL ?? config.logging?.level ?? "error";
     if (lvl === "silent") return "fatal" as const;
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";

@@ -194,7 +194,7 @@ const laneResultSchema = z.looseObject({
 });
 
 // The analysis contract rollup understands, matching the shape produced by
-// packages/app/scripts/lib/visual-qa.mjs and expected from #14542 analyzers:
+// packages/app/scripts/lib/visual-qa.ts and expected from #14542 analyzers:
 // an optional top-level `verdict` and an optional `checks[]` with `ok` flags.
 const analysisDocumentSchema = z.looseObject({
   verdict: z.string().optional(),

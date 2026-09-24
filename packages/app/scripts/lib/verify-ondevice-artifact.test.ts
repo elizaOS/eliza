@@ -13,7 +13,7 @@ const cleanupHelperScript = path.join(
   repoRoot,
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 
 function removePathRecursive(targetPath: string) {

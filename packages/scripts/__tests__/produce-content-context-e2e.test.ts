@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseContentContextE2EArgs,
   readTraceZipMembers,
-} from "../produce-content-context-e2e.mjs";
+} from "../produce-content-context-e2e.ts";
 
 describe("produce-content-context-e2e", () => {
   it("requires the complete run-bound collector contract", () => {

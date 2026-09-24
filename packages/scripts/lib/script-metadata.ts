@@ -30,9 +30,9 @@ export interface ScriptMetadata {
   };
   /** Dev-stack membership. */
   devStack?: {
-    /** dev-all.mjs adds this plugin to the agent's ELIZA_SKIP_PLUGINS. */
+    /** dev-all.ts adds this plugin to the agent's ELIZA_SKIP_PLUGINS. */
     skipInDevAll?: true;
-    /** dev-harness.mjs builds this package's dist before the watch loop. */
+    /** dev-harness.ts builds this package's dist before the watch loop. */
     harnessBuild?: true;
   };
   /** Private package to build on a fresh clone (no other install step emits it). */
@@ -126,7 +126,7 @@ export function resolveTestLaneDirs(
  * whether the value is a well-formed lane array. `resolveTestLaneDirs` silently
  * drops a malformed or unrecognized declaration (`Array.isArray` + `includes`),
  * which is correct for resolving one lane's membership but hides the mistake
- * from a completeness auditor. audit-test-lane-membership.mjs uses this
+ * from a completeness auditor. audit-test-lane-membership.ts uses this
  * unfiltered read to tell "not declared" apart from "declared but invalid".
  */
 export function resolveTestLaneDeclarations(opts?: WorkspaceDiscoveryOptions) {
@@ -140,7 +140,7 @@ export function resolveTestLaneDeclarations(opts?: WorkspaceDiscoveryOptions) {
 }
 
 /**
- * The `buildModel` exception maps (audit-build-typecheck.mjs) as package name
+ * The `buildModel` exception maps (audit-build-typecheck.ts) as package name
  * to package-owned reason, plus validation errors for malformed declarations.
  */
 export function resolveBuildModelExceptions(opts?: WorkspaceDiscoveryOptions) {
@@ -178,7 +178,7 @@ export function resolveBuildModelExceptions(opts?: WorkspaceDiscoveryOptions) {
 
 /**
  * Package names whose turbo `#build` may enumerate non-imported build deps, as a
- * Set. Replaces audit-turbo-build-deps.mjs ALLOW_OWNERS.
+ * Set. Replaces audit-turbo-build-deps.ts ALLOW_OWNERS.
  */
 export function resolveTurboNonImportedBuildDepOwners(
   opts?: WorkspaceDiscoveryOptions,
@@ -193,7 +193,7 @@ export function resolveTurboNonImportedBuildDepOwners(
 /**
  * Map of `@elizaos/…` package name → npm dist-tag to fall back to when its
  * workspace: version cannot be resolved. Replaces the
- * OPTIONAL_PLUGIN_FALLBACK_VERSIONS map in prepare-package-dist.mjs.
+ * OPTIONAL_PLUGIN_FALLBACK_VERSIONS map in prepare-package-dist.ts.
  */
 export function resolveRegistryFallbackTags(opts?: WorkspaceDiscoveryOptions) {
   const map = new Map();
@@ -204,7 +204,7 @@ export function resolveRegistryFallbackTags(opts?: WorkspaceDiscoveryOptions) {
   return map;
 }
 
-/** Package names dev-all.mjs adds to the agent's ELIZA_SKIP_PLUGINS, sorted. */
+/** Package names dev-all.ts adds to the agent's ELIZA_SKIP_PLUGINS, sorted. */
 export function resolveDevAllSkipPlugins(opts?: WorkspaceDiscoveryOptions) {
   return packagesWithScriptMeta(opts)
     .filter((pkg) => pkg.scripts.devStack?.skipInDevAll === true)
@@ -212,7 +212,7 @@ export function resolveDevAllSkipPlugins(opts?: WorkspaceDiscoveryOptions) {
     .sort((a, b) => a.localeCompare(b));
 }
 
-/** Workspace-relative dirs dev-harness.mjs builds before the watch loop, sorted. */
+/** Workspace-relative dirs dev-harness.ts builds before the watch loop, sorted. */
 export function resolveDevHarnessBuildDirs(opts?: WorkspaceDiscoveryOptions) {
   return packagesWithScriptMeta(opts)
     .filter((pkg) => pkg.scripts.devStack?.harnessBuild === true)

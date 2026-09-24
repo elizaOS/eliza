@@ -14,7 +14,7 @@ import {
   elizaStateLocations,
   installedElizaBundles,
   parseCleanArgs,
-} from "./desktop-clean-install-state.mjs";
+} from "./desktop-clean-install-state.ts";
 
 describe("parseCleanArgs", () => {
   it("defaults to a dry run keeping bundles", () => {

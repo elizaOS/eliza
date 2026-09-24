@@ -2,7 +2,7 @@
  * Proves the dist probe cannot inherit source conditions or hide child failures.
  */
 import { describe, expect, it, vi } from "vitest";
-import { verifyBuiltPackage } from "./verify-built-package.mjs";
+import { verifyBuiltPackage } from "./verify-built-package.ts";
 
 describe("verifyBuiltPackage", () => {
   it("imports with default conditions in an isolated child", () => {

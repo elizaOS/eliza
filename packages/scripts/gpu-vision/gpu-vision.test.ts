@@ -27,8 +27,8 @@ import {
   reconcileLock,
   sha256File,
   waitForReady,
-} from "./lib.mjs";
-import { ensureFile } from "./setup.mjs";
+} from "./lib.ts";
+import { ensureFile } from "./setup.ts";
 
 test("model sets pin exact repo, revision, and filenames", () => {
   assert.equal(MODEL_SETS.ocr.repo, "sahilchachra/Unlimited-OCR-GGUF");

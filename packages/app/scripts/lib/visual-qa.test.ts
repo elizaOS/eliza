@@ -13,14 +13,14 @@ import {
   summarizeDiff,
 } from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
-import { analyzeImageFile } from "../mvp-visual-verify/ocr.mjs";
+import { analyzeImageFile } from "../mvp-visual-verify/ocr.ts";
 import {
   analyzeScreenshot,
   changeMetric,
   colorFractions,
   dominantPalette,
   evaluateExpectation,
-} from "./visual-qa.mjs";
+} from "./visual-qa.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "visual-qa-"));
 const __dirname = dirname(fileURLToPath(import.meta.url));

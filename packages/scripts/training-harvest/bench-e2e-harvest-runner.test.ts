@@ -14,10 +14,10 @@ import {
   parseHarvestLimit,
   parseHarvestShard,
   parseItemTimeoutMs,
-} from "./bench-e2e-harvest-runner.mjs";
+} from "./bench-e2e-harvest-runner.ts";
 
 const runner = fileURLToPath(
-  new URL("./bench-e2e-harvest-runner.mjs", import.meta.url),
+  new URL("./bench-e2e-harvest-runner.ts", import.meta.url),
 );
 const maxSafe = String(Number.MAX_SAFE_INTEGER);
 const overflow = `${maxSafe}0`;

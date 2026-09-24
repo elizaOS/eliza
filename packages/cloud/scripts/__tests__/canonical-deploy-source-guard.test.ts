@@ -15,13 +15,13 @@ import {
   hasEligibleSuccessorReleaseRun,
   parseCanonicalRemoteHead,
   proveSuccessorReleaseRun,
-} from "../canonical-deploy-source-guard.mjs";
+} from "../canonical-deploy-source-guard.ts";
 
 const RUN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../canonical-deploy-source-guard.mjs",
+  "../canonical-deploy-source-guard.ts",
 );
 
 describe("canonical deploy source decision", () => {

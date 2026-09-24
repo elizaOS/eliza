@@ -1,9 +1,9 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Source of truth: packages/app/src/platform/chat-failure-strings.ts
-// Regenerate: node packages/app/scripts/lib/chat-failure-strings.mjs --emit-swift
-// Parity guard: packages/app/scripts/lib/chat-failure-strings.test.mjs
+// Regenerate: node packages/app/scripts/lib/chat-failure-strings.ts --emit-swift
+// Parity guard: packages/app/scripts/lib/chat-failure-strings.test.ts
 //
-// The mobile chat-reply FAILURE vocabulary shared with mobile-local-chat-smoke.mjs.
+// The mobile chat-reply FAILURE vocabulary shared with mobile-local-chat-smoke.ts.
 // A candidate XCUITest reply matching any of these is an error render / broken
 // pipeline and must FAIL the attempt (never count as a "genuine model reply").
 

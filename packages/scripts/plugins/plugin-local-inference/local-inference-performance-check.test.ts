@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { evaluatePerformance } from "./local-inference-performance-check.mjs";
+import { evaluatePerformance } from "./local-inference-performance-check.ts";
 
 const policy = {
   baseline: "baseline",

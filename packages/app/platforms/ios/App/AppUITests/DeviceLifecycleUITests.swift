@@ -2,7 +2,7 @@ import XCTest
 
 /// Real-device OS-lifecycle robustness harness (#12185 / #12459) — the physical
 /// iPhone counterpart to the simulator lane
-/// (`packages/app/scripts/ios-sim-lifecycle.mjs`). Where the simulator lane must
+/// (`packages/app/scripts/ios-sim-lifecycle.ts`). Where the simulator lane must
 /// mark Home-button backgrounding, real-camera switching, orientation, and true
 /// process death as "not drivable / analog only", attached hardware driven
 /// through XCUITest genuinely delivers them — this class is the honest delta.
@@ -30,7 +30,7 @@ import XCTest
 /// camera cover the same resign-active / enter-background / re-activate
 /// callbacks a lock would, so the recovery path is still exercised.
 ///
-/// Driven by `packages/app/scripts/ios-device-capture.mjs --platform device
+/// Driven by `packages/app/scripts/ios-device-capture.ts --platform device
 /// --only-testing AppUITests/DeviceLifecycleUITests`. Screenshots export via
 /// `xcrun xcresulttool export attachments`. Boot budget arrives as
 /// `ELIZA_BOOT_TIMEOUT_SECONDS` through xcodebuild's `TEST_RUNNER_` prefix.

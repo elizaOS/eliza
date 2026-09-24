@@ -4,7 +4,7 @@ import {
   classifyReviewerFailure,
   preflightReviewer,
   resolveReviewerBackend,
-} from "./reviewer-preflight.mjs";
+} from "./reviewer-preflight.ts";
 
 describe("reviewer provider preflight", () => {
   it("honors an explicit backend and otherwise selects a configured provider", () => {

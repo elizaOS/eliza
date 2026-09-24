@@ -13,7 +13,7 @@ import { resolveConcurrency } from "../lib/test-task-pool.ts";
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "run-all-tests.mjs",
+  "run-all-tests.ts",
 );
 
 function runPlan(

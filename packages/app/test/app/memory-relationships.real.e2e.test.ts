@@ -643,7 +643,7 @@ async function ensureUiDistReady(): Promise<void> {
   }
 
   const logs: string[] = [];
-  const child = spawn("bun", ["scripts/build.mjs"], {
+  const child = spawn("bun", ["scripts/build.ts"], {
     cwd: APP_DIR,
     env: {
       ...process.env,
@@ -842,7 +842,7 @@ async function startRealStack(): Promise<StartedStack> {
   const apiChild = spawn(
     "node",
     [
-      path.join(REPO_ROOT, "eliza/packages/app/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "eliza/packages/app/scripts/run-node-tsx.ts"),
       path.join(REPO_ROOT, "eliza/packages/app/src/runtime/eliza.ts"),
     ],
     {

@@ -8,7 +8,7 @@
 #                constant (BLOCKS_PER_WG / TOKENS_PER_WG) set at pipeline-create
 #                time, so one SPV family tunes per device.
 #
-# This is an anchor-driven patch (parsed by kernel-patches/vulkan-kernels.mjs).
+# This is an anchor-driven patch (parsed by kernel-patches/vulkan-kernels.ts).
 # Format:
 #   ANCHOR  <line>     — exact substring; injection happens immediately BEFORE
 #                        the matched line.
@@ -28,7 +28,7 @@ SENTINEL  ELIZA-VK-DISPATCH-PATCH-V1
     // ELIZA-VK-DISPATCH-PATCH-V1 BEGIN — register eliza turbo / qjl / polar
     // standalone shaders. Each entry causes vulkan-shaders-gen to compile the
     // matching .comp via glslc (staged into vulkan-shaders/ by
-    // kernel-patches/vulkan-kernels.mjs) and emit `<name>_data[]` + `<name>_len`
+    // kernel-patches/vulkan-kernels.ts) and emit `<name>_data[]` + `<name>_len`
     // symbols into ggml-vulkan-shaders.hpp. The shader sources are
     // self-contained TUs — no defines are required.
     string_to_spv("eliza_turbo3",         "turbo3.comp",         {});

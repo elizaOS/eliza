@@ -9,7 +9,7 @@ import {
   classify,
   evaluate,
   waitForRequiredChecks,
-} from "./security-advisory-gate.mjs";
+} from "./security-advisory-gate.ts";
 
 describe("base-trusted workflow contract", () => {
   it("grants the read-only Actions authority required by the production query", () => {
@@ -111,13 +111,13 @@ describe("deterministic canaries", () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "security advisory gate "));
     const linkedScript = path.join(tempDir, "security advisory gate.mjs");
     symlinkSync(
-      new URL("./security-advisory-gate.mjs", import.meta.url),
+      new URL("./security-advisory-gate.ts", import.meta.url),
       linkedScript,
     );
 
     try {
       // Pinned to "node", not process.execPath: this required lane runs under
-      // Bun (run-script-tests.mjs hands every discovered test to Bun), so
+      // Bun (run-script-tests.ts hands every discovered test to Bun), so
       // process.execPath resolves to the Bun binary. The production
       // entrypoint (.github/workflows/security-advisory-gate.yml) always runs
       // under Node - pinning here is what makes this test actually exercise

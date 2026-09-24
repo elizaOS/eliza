@@ -1,6 +1,6 @@
 /**
  * Colour analyzers over screenshots and keyframes. `color.palette` ports the
- * dominant-k quantized palette from `packages/app/scripts/lib/visual-qa.mjs`.
+ * dominant-k quantized palette from `packages/app/scripts/lib/visual-qa.ts`.
  * `color.corners` samples the four corners plus the centre — the regions a
  * whole-frame palette washes out — to catch wrong-theme bleed, unstyled
  * corners, and dark/light-mode leaks, reporting each swatch's average RGB and
@@ -25,7 +25,7 @@ export interface PaletteData {
 
 /**
  * Top-k colours by area from a downscaled, 4-bit-per-channel quantized
- * thumbnail. Ported verbatim from visual-qa.mjs so the palette numbers match
+ * thumbnail. Ported verbatim from visual-qa.ts so the palette numbers match
  * the existing gate.
  */
 export async function dominantPalette(

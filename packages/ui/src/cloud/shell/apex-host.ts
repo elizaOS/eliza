@@ -34,7 +34,7 @@ export function isApexControlPlaneHost(): boolean {
   // marketing-host behavior (app path → /cloud, unauth → /login, agent app
   // never boots) is otherwise untestable in `vite dev`. Vite inlines the env
   // read on literal access, and production-mode packages/app builds refuse to
-  // bake the flag (packages/app/scripts/forced-host-mode-guard.mjs).
+  // bake the flag (packages/app/scripts/forced-host-mode-guard.ts).
   if (import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true") return true;
   return isApexControlPlaneHostname(window.location.hostname);
 }

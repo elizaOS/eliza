@@ -13,10 +13,10 @@ import {
   loadReleasePlan,
   recordReleaseTransition,
   verifyReleaseCandidate,
-} from "../lib/release-candidate.mjs";
-import { stableStringify } from "../lib/release-contract.mjs";
+} from "../lib/release-candidate.ts";
+import { stableStringify } from "../lib/release-contract.ts";
 import { execFileSync } from "../lib/spawn-sync-captured.ts";
-import { main as candidateMain } from "../release-candidate.mjs";
+import { main as candidateMain } from "../release-candidate.ts";
 
 const roots: string[] = [];
 const releaseIdentity = {

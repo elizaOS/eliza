@@ -7,7 +7,7 @@ import {
   markDiscordFlowSaved,
   pollDiscordOAuthLogin,
   startDiscordOAuthLogin,
-} from "./discord-oauth-login.mjs";
+} from "./discord-oauth-login.ts";
 
 function response(payload, status = 200) {
   return new Response(JSON.stringify(payload), {

@@ -53,7 +53,7 @@ function runFixture(mode: "mixed" | "skipped" | "failed") {
     return spawnSync(
       process.execPath,
       [
-        path.join(root, "packages/scripts/run-all-tests.mjs"),
+        path.join(root, "packages/scripts/run-all-tests.ts"),
         "--only=test",
         "--no-cloud",
         `--filter=${name}`,

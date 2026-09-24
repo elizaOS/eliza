@@ -48,7 +48,7 @@ jobs:
     # (#17813): hosted is the default, and an explicit robot dispatch degrades
     # to hosted when the fleet is offline instead of queuing against zero
     # registered runners. This exact selector is allowlisted in
-    # packages/scripts/hetzner-fleet-routing-contract.mjs.
+    # packages/scripts/hetzner-fleet-routing-contract.ts.
     runs-on: ${{ fromJSON(inputs.runner != 'robot' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 300
     steps:

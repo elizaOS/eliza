@@ -44,7 +44,7 @@ QEMU_TIMEOUT="${ELIZA_RISCV64_QEMU_TIMEOUT:-60}"
 RUN_QEMU=1
 REQUIRE_COMPLETE=0
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -510,10 +510,10 @@ if [ -n "$s_found" ]; then
 else
     if [ "$REQUIRE_COMPLETE" = "1" ]; then
         emit_record "${SIGSYS_SEARCH[0]}" "shared-library" "FAIL" \
-            "required artifact was not built; run the elizaOS/eliza compile-shim.mjs with --abi riscv64" "0"
+            "required artifact was not built; run the elizaOS/eliza compile-shim.ts with --abi riscv64" "0"
     else
         emit_record "${SIGSYS_SEARCH[0]}" "shared-library" "SKIP" \
-            "not built; run the elizaOS/eliza compile-shim.mjs with --abi riscv64" "0"
+            "not built; run the elizaOS/eliza compile-shim.ts with --abi riscv64" "0"
     fi
 fi
 

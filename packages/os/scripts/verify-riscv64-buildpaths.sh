@@ -46,7 +46,7 @@ cd "$eliza_root"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OUT="$repo_root/reports/riscv64-buildpath-verification.md"
 KEEP_BUILD=0
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
 
 while [ $# -gt 0 ]; do
     case "$1" in

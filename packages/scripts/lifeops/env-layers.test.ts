@@ -36,7 +36,7 @@ import {
   saveEnvVar,
   upsertEnvContent,
   writeSecret,
-} from "./env-layers.mjs";
+} from "./env-layers.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
@@ -428,15 +428,15 @@ test("writeSecret rejects invalid keys, multi-line values, and bad scopes", () =
 
 test("surviving HITL consumers import the shared layered env module", () => {
   const importers = [
-    "packages/scripts/lifeops/hitl-credential-dashboard.mjs",
+    "packages/scripts/lifeops/hitl-credential-dashboard.ts",
     "packages/scripts/lifeops/env-layers.test.ts",
   ];
   for (const relativePath of importers) {
     const text = readFileSync(join(ROOT, relativePath), "utf8");
     assert.match(
       text,
-      /from "\.\/env-layers\.mjs"/,
-      `${relativePath} must import packages/scripts/lifeops/env-layers.mjs`,
+      /from "\.\/env-layers\.ts"/,
+      `${relativePath} must import packages/scripts/lifeops/env-layers.ts`,
     );
   }
 });
@@ -535,7 +535,7 @@ function writeSecretInChild(
   options = {},
 ) {
   const moduleUrl = pathToFileURL(
-    join(ROOT, "packages/scripts/lifeops/env-layers.mjs"),
+    join(ROOT, "packages/scripts/lifeops/env-layers.ts"),
   ).href;
   const script = `
     import { existsSync, writeFileSync } from "node:fs";
@@ -591,7 +591,7 @@ function writeSecretInChild(
 
 function reclaimLockInChild(lockPath, observedRecord, readyPath, waitPath) {
   const moduleUrl = pathToFileURL(
-    join(ROOT, "packages/scripts/lifeops/env-layers.mjs"),
+    join(ROOT, "packages/scripts/lifeops/env-layers.ts"),
   ).href;
   const token = observedRecord.split(":")[1].trim();
   const script = `

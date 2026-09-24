@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-const installer = new URL("./patch-llama-cpp-capacitor.mjs", import.meta.url);
+const installer = new URL("./patch-llama-cpp-capacitor.ts", import.meta.url);
 const patch = `diff --git a/dist/esm/index.js b/dist/esm/index.js
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
@@ -51,7 +51,7 @@ for (const mode of [
     try {
       const script = path.join(
         root,
-        "packages/scripts/patch-llama-cpp-capacitor.mjs",
+        "packages/scripts/patch-llama-cpp-capacitor.ts",
       );
       const pkg = path.join(root, "node_modules/llama-cpp-capacitor");
       fs.mkdirSync(path.dirname(script), { recursive: true });

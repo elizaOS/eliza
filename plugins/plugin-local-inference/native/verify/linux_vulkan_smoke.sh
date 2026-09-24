@@ -90,7 +90,7 @@ if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[linux-vulkan-smoke] building patched fork target=${TARGET}"
   set +e
   ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
-    node ../../app/scripts/build-llama-cpp-mtp.mjs --target "${TARGET}"
+    node ../../app/scripts/build-llama-cpp-mtp.ts --target "${TARGET}"
   build_status=$?
   set -e
   if [[ "$build_status" -ne 0 ]]; then
@@ -188,7 +188,7 @@ NODE
 
 if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[linux-vulkan-smoke] rebuilding target=${TARGET} with Vulkan runtime evidence enforced"
-  node ../../app/scripts/build-llama-cpp-mtp.mjs --target "${TARGET}"
+  node ../../app/scripts/build-llama-cpp-mtp.ts --target "${TARGET}"
   dump_capabilities "$CAPABILITIES"
 fi
 

@@ -35,7 +35,7 @@ PLATFORM_LDFLAGS := $(LDFLAGS_LINUX)
 endif
 
 REPO_ROOT := $(abspath ../../../..)
-RM_PATH_RECURSIVE := node $(REPO_ROOT)/packages/scripts/rm-path-recursive.mjs
+RM_PATH_RECURSIVE := node $(REPO_ROOT)/packages/scripts/rm-path-recursive.ts
 
 .PHONY: all build-output clean verify verify-stub-rejected
 all: $(DEFAULT_TARGET)
@@ -59,7 +59,7 @@ verify: $(DEFAULT_TARGET)
 verify-stub-rejected: $(DEFAULT_TARGET)
 	@tmp=$$(mktemp -d); \
 	cp $(DEFAULT_TARGET) $$tmp/$(REAL_LIB_NAME); \
-	if node ../build-helpers/verify-fused-symbols.mjs --out-dir $$tmp --target $(VERIFY_TARGET) --json >$$tmp/stdout 2>$$tmp/stderr; then \
+	if node ../build-helpers/verify-fused-symbols.ts --out-dir $$tmp --target $(VERIFY_TARGET) --json >$$tmp/stdout 2>$$tmp/stderr; then \
 		echo "[verify] FAILED: real verifier accepted the stub as $(REAL_LIB_NAME)"; \
 		cat $$tmp/stdout; \
 		$(RM_PATH_RECURSIVE) $$tmp; \

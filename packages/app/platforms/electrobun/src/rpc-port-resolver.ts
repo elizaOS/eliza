@@ -9,7 +9,7 @@
  * call, forcing every renderer-side wrapper to fall through to HTTP.
  *
  * The orchestrator already exports `ELIZA_API_PORT` into the electrobun
- * bun process's env (see `dev-platform.mjs`). So when the embedded status
+ * bun process's env (see `dev-platform.ts`). So when the embedded status
  * doesn't know the port, fall back to `resolveDesktopApiPort(env)`. The
  * port we return is then used by the HTTP reader inside each composer.
  *

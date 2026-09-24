@@ -28,12 +28,12 @@ const VOICE_A = "21m00Tcm4TlvDq8ikWAM"; // Rachel (female)
 const VOICE_B = "pNInz6obpgDQGcFmaJgB"; // Adam (male)
 
 function skip(m: string): never {
-	console.log(`[real-voice-stack] SKIP: ${m}`);
-	process.exit(2);
+  console.log(`[real-voice-stack] SKIP: ${m}`);
+  process.exit(2);
 }
 function hardFail(m: string): never {
-	console.error(`[real-voice-stack] FAIL: ${m}`);
-	process.exit(1);
+  console.error(`[real-voice-stack] FAIL: ${m}`);
+  process.exit(1);
 }
 
 const lib = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
@@ -45,39 +45,39 @@ if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY");
 if (!bundle) skip("set ELIZA_ASR_BUNDLE");
 
 async function tts(text: string, voice: string): Promise<Float32Array> {
-	const r = await fetch(
-		`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_16000`,
-		{
-			method: "POST",
-			headers: { "xi-api-key": elKey!, "content-type": "application/json" },
-			body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5" }),
-		},
-	);
-	if (!r.ok) skip(`ElevenLabs ${r.status}`);
-	const b = new Uint8Array(await r.arrayBuffer());
-	const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
-	const n = Math.floor(b.length / 2);
-	const out = new Float32Array(n);
-	for (let i = 0; i < n; i++) out[i] = v.getInt16(i * 2, true) / 32768;
-	return out;
+  const r = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_16000`,
+    {
+      method: "POST",
+      headers: { "xi-api-key": elKey!, "content-type": "application/json" },
+      body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5" }),
+    },
+  );
+  if (!r.ok) skip(`ElevenLabs ${r.status}`);
+  const b = new Uint8Array(await r.arrayBuffer());
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const n = Math.floor(b.length / 2);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = v.getInt16(i * 2, true) / 32768;
+  return out;
 }
 
 function cosine(a: Float32Array, b: Float32Array): number {
-	let dot = 0;
-	let na = 0;
-	let nb = 0;
-	for (let i = 0; i < a.length; i++) {
-		dot += a[i] * b[i];
-		na += a[i] * a[i];
-		nb += b[i] * b[i];
-	}
-	return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
 function rms(p: Float32Array): number {
-	let s = 0;
-	for (let i = 0; i < p.length; i++) s += p[i] * p[i];
-	return Math.sqrt(s / p.length);
+  let s = 0;
+  for (let i = 0; i < p.length; i++) s += p[i] * p[i];
+  return Math.sqrt(s / p.length);
 }
 
 // Keyless (#9577): synthesize the same three utterances once with two distinct
@@ -87,41 +87,41 @@ let a1: Float32Array;
 let a2: Float32Array;
 let b1: Float32Array;
 if (elKey) {
-	console.log("[real-voice-stack] synthesizing real voices (ElevenLabs)…");
-	a1 = await tts("The weather today is sunny and pleasant", VOICE_A);
-	a2 = await tts("Please remind me to call the dentist tomorrow", VOICE_A);
-	b1 = await tts("I would like to book a table for two at seven", VOICE_B);
+  console.log("[real-voice-stack] synthesizing real voices (ElevenLabs)…");
+  a1 = await tts("The weather today is sunny and pleasant", VOICE_A);
+  a2 = await tts("Please remind me to call the dentist tomorrow", VOICE_A);
+  b1 = await tts("I would like to book a table for two at seven", VOICE_B);
 } else {
-	console.log(
-		"[real-voice-stack] keyless — synthesizing corpus with fused Kokoro voice packs (#9577)…",
-	);
-	const gates: BenchGates = { required: false, skip, fail: hardFail };
-	const items = await ensureKokoroCorpus(
-		"voice-stack",
-		[
-			{
-				id: "a1",
-				voiceId: "af_bella",
-				text: "The weather today is sunny and pleasant",
-			},
-			{
-				id: "a2",
-				voiceId: "af_bella",
-				text: "Please remind me to call the dentist tomorrow",
-			},
-			{
-				id: "b1",
-				voiceId: "am_michael",
-				text: "I would like to book a table for two at seven",
-			},
-		],
-		gates,
-		(m) => console.log(`[real-voice-stack] ${m}`),
-	);
-	[a1, a2, b1] = items.map((i) => i.pcm);
+  console.log(
+    "[real-voice-stack] keyless — synthesizing corpus with fused Kokoro voice packs (#9577)…",
+  );
+  const gates: BenchGates = { required: false, skip, fail: hardFail };
+  const items = await ensureKokoroCorpus(
+    "voice-stack",
+    [
+      {
+        id: "a1",
+        voiceId: "af_bella",
+        text: "The weather today is sunny and pleasant",
+      },
+      {
+        id: "a2",
+        voiceId: "af_bella",
+        text: "Please remind me to call the dentist tomorrow",
+      },
+      {
+        id: "b1",
+        voiceId: "am_michael",
+        text: "I would like to book a table for two at seven",
+      },
+    ],
+    gates,
+    (m) => console.log(`[real-voice-stack] ${m}`),
+  );
+  [a1, a2, b1] = items.map((i) => i.pcm);
 }
 console.log(
-	`  voiceA1=${a1.length} voiceA2=${a2.length} voiceB1=${b1.length} samples`,
+  `  voiceA1=${a1.length} voiceA2=${a2.length} voiceB1=${b1.length} samples`,
 );
 
 const ffi = loadElizaInferenceFfi(lib);
@@ -130,96 +130,104 @@ let pass = true;
 
 // ── Speaker recognition (WeSpeaker) ────────────────────────────────────────
 if (ffi.speakerSupported?.() && ffi.speakerOpen && ffi.speakerEmbed) {
-	const sp = ffi.speakerOpen({ ctx, ggufPath: speakerGguf });
-	const eA1 = ffi.speakerEmbed({ speaker: sp, pcm: a1 });
-	const eA2 = ffi.speakerEmbed({ speaker: sp, pcm: a2 });
-	const eB1 = ffi.speakerEmbed({ speaker: sp, pcm: b1 });
-	ffi.speakerClose?.(sp);
-	const same = cosine(eA1, eA2);
-	const diff = cosine(eA1, eB1);
-	console.log("[real-voice-stack] SPEAKER RECOGNITION (WeSpeaker 256-d):");
-	console.log(`  same speaker  (A1 vs A2): cosine = ${same.toFixed(3)}`);
-	console.log(`  diff speakers (A1 vs B1): cosine = ${diff.toFixed(3)}`);
-	const ok = same > 0.6 && same - diff > 0.15;
-	console.log(`  → ${ok ? "PASS" : "FAIL"} (same > diff by a clear margin)`);
-	pass &&= ok;
+  const sp = ffi.speakerOpen({ ctx, ggufPath: speakerGguf });
+  const eA1 = ffi.speakerEmbed({ speaker: sp, pcm: a1 });
+  const eA2 = ffi.speakerEmbed({ speaker: sp, pcm: a2 });
+  const eB1 = ffi.speakerEmbed({ speaker: sp, pcm: b1 });
+  ffi.speakerClose?.(sp);
+  const same = cosine(eA1, eA2);
+  const diff = cosine(eA1, eB1);
+  console.log("[real-voice-stack] SPEAKER RECOGNITION (WeSpeaker 256-d):");
+  console.log(`  same speaker  (A1 vs A2): cosine = ${same.toFixed(3)}`);
+  console.log(`  diff speakers (A1 vs B1): cosine = ${diff.toFixed(3)}`);
+  const ok = same > 0.6 && same - diff > 0.15;
+  console.log(`  → ${ok ? "PASS" : "FAIL"} (same > diff by a clear margin)`);
+  pass &&= ok;
 } else {
-	console.log("[real-voice-stack] speaker encoder: not supported in this build");
+  console.log(
+    "[real-voice-stack] speaker encoder: not supported in this build",
+  );
 }
 
 // ── Diarization (pyannote) — 5 s window: 2.5 s A then 2.5 s B ───────────────
 if (ffi.diarizSupported?.() && ffi.diarizOpen && ffi.diarizSegment) {
-	const half = 40000; // 2.5 s @ 16 kHz
-	const win = new Float32Array(80000);
-	win.set(a1.subarray(0, Math.min(half, a1.length)), 0);
-	win.set(b1.subarray(0, Math.min(half, b1.length)), half);
-	const dz = ffi.diarizOpen({ ctx, ggufPath: diarizGguf });
-	const labels = ffi.diarizSegment({ diariz: dz, pcm: win });
-	ffi.diarizClose?.(dz);
-	const distinct = new Set<number>();
-	for (const l of labels) if (l > 0) distinct.add(l);
-	console.log("[real-voice-stack] DIARIZATION (pyannote, 5 s 2-speaker window):");
-	console.log(
-		`  frames=${labels.length} distinct non-silence powerset labels=${[...distinct].sort().join(",")}`,
-	);
-	const ok = distinct.size >= 1; // ≥1 active speaker label across the window
-	console.log(`  → ${ok ? "PASS" : "FAIL"} (diarizer produced speaker frames)`);
-	pass &&= ok;
+  const half = 40000; // 2.5 s @ 16 kHz
+  const win = new Float32Array(80000);
+  win.set(a1.subarray(0, Math.min(half, a1.length)), 0);
+  win.set(b1.subarray(0, Math.min(half, b1.length)), half);
+  const dz = ffi.diarizOpen({ ctx, ggufPath: diarizGguf });
+  const labels = ffi.diarizSegment({ diariz: dz, pcm: win });
+  ffi.diarizClose?.(dz);
+  const distinct = new Set<number>();
+  for (const l of labels) if (l > 0) distinct.add(l);
+  console.log(
+    "[real-voice-stack] DIARIZATION (pyannote, 5 s 2-speaker window):",
+  );
+  console.log(
+    `  frames=${labels.length} distinct non-silence powerset labels=${[...distinct].sort().join(",")}`,
+  );
+  const ok = distinct.size >= 1; // ≥1 active speaker label across the window
+  console.log(`  → ${ok ? "PASS" : "FAIL"} (diarizer produced speaker frames)`);
+  pass &&= ok;
 } else {
-	console.log("[real-voice-stack] diarizer: not supported in this build");
+  console.log("[real-voice-stack] diarizer: not supported in this build");
 }
 
 // ── VAD (Silero) — speech vs silence ───────────────────────────────────────
 if (ffi.vadSupported?.() && ffi.vadOpen && ffi.vadProcess) {
-	const vad = ffi.vadOpen({ ctx, sampleRateHz: SR });
-	const frame = 512;
-	let speechMax = 0;
-	for (let i = 0; i + frame <= a1.length; i += frame) {
-		const p = ffi.vadProcess({ vad, pcm: a1.subarray(i, i + frame) });
-		if (p > speechMax) speechMax = p;
-	}
-	ffi.vadReset?.(vad);
-	let silenceMax = 0;
-	const silence = new Float32Array(frame);
-	for (let i = 0; i < 20; i++) {
-		const p = ffi.vadProcess({ vad, pcm: silence });
-		if (p > silenceMax) silenceMax = p;
-	}
-	ffi.vadClose?.(vad);
-	console.log("[real-voice-stack] VAD (Silero):");
-	console.log(`  speech max prob = ${speechMax.toFixed(3)}, silence max prob = ${silenceMax.toFixed(3)}`);
-	const ok = speechMax > silenceMax && speechMax > 0.4;
-	console.log(`  → ${ok ? "PASS" : "FAIL"} (speech scores above silence)`);
-	pass &&= ok;
+  const vad = ffi.vadOpen({ ctx, sampleRateHz: SR });
+  const frame = 512;
+  let speechMax = 0;
+  for (let i = 0; i + frame <= a1.length; i += frame) {
+    const p = ffi.vadProcess({ vad, pcm: a1.subarray(i, i + frame) });
+    if (p > speechMax) speechMax = p;
+  }
+  ffi.vadReset?.(vad);
+  let silenceMax = 0;
+  const silence = new Float32Array(frame);
+  for (let i = 0; i < 20; i++) {
+    const p = ffi.vadProcess({ vad, pcm: silence });
+    if (p > silenceMax) silenceMax = p;
+  }
+  ffi.vadClose?.(vad);
+  console.log("[real-voice-stack] VAD (Silero):");
+  console.log(
+    `  speech max prob = ${speechMax.toFixed(3)}, silence max prob = ${silenceMax.toFixed(3)}`,
+  );
+  const ok = speechMax > silenceMax && speechMax > 0.4;
+  console.log(`  → ${ok ? "PASS" : "FAIL"} (speech scores above silence)`);
+  pass &&= ok;
 } else {
-	console.log("[real-voice-stack] VAD: not supported in this build");
+  console.log("[real-voice-stack] VAD: not supported in this build");
 }
 
 // ── Local TTS (bundle default — OmniVoice / Kokoro via ttsSynthesize) ───────
 try {
-	ffi.mmapAcquire(ctx, "tts");
-	const out = new Float32Array(SR * 6); // up to 6 s
-	const t0 = performance.now();
-	const written = ffi.ttsSynthesize({
-		ctx,
-		text: "Hello, this is Eliza speaking on device.",
-		speakerPresetId: null,
-		out,
-	});
-	const ms = Math.round(performance.now() - t0);
-	const pcm = out.subarray(0, Math.max(0, written));
-	const ok = written > SR / 2 && rms(pcm) > 0.001;
-	console.log("[real-voice-stack] LOCAL TTS (on-device, bundle default):");
-	console.log(`  synthesized ${written} samples (${(written / SR).toFixed(2)}s) in ${ms}ms, rms=${rms(pcm).toFixed(4)}`);
-	console.log(`  → ${ok ? "PASS" : "FAIL"}`);
-	pass &&= !!ok;
-	ffi.mmapEvict(ctx, "tts");
+  ffi.mmapAcquire(ctx, "tts");
+  const out = new Float32Array(SR * 6); // up to 6 s
+  const t0 = performance.now();
+  const written = ffi.ttsSynthesize({
+    ctx,
+    text: "Hello, this is Eliza speaking on device.",
+    speakerPresetId: null,
+    out,
+  });
+  const ms = Math.round(performance.now() - t0);
+  const pcm = out.subarray(0, Math.max(0, written));
+  const ok = written > SR / 2 && rms(pcm) > 0.001;
+  console.log("[real-voice-stack] LOCAL TTS (on-device, bundle default):");
+  console.log(
+    `  synthesized ${written} samples (${(written / SR).toFixed(2)}s) in ${ms}ms, rms=${rms(pcm).toFixed(4)}`,
+  );
+  console.log(`  → ${ok ? "PASS" : "FAIL"}`);
+  pass &&= !!ok;
+  ffi.mmapEvict(ctx, "tts");
 } catch (e) {
-	// error-policy:J4 the TTS-region check is one row of this smoke's verdict;
-	// an exception is that row's FAIL, reported through the same pass flag the
-	// other rows use rather than aborting the remaining stack coverage.
-	console.log(`[real-voice-stack] local TTS: FAIL ${(e as Error).message}`);
-	pass = false;
+  // error-policy:J4 the TTS-region check is one row of this smoke's verdict;
+  // an exception is that row's FAIL, reported through the same pass flag the
+  // other rows use rather than aborting the remaining stack coverage.
+  console.log(`[real-voice-stack] local TTS: FAIL ${(e as Error).message}`);
+  pass = false;
 }
 
 ffi.destroy(ctx);

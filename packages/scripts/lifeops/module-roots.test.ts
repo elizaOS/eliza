@@ -35,7 +35,7 @@ async function importFromSpacedCheckout(moduleName, run) {
 }
 
 test("ledger outcomes persist in the decoded checkout and survive a reread", async () => {
-  await importFromSpacedCheckout("hitl-ledger.mjs", (mod, repo) => {
+  await importFromSpacedCheckout("hitl-ledger.ts", (mod, repo) => {
     const outcome = {
       pathId: "fixture-calendar",
       ok: true,
@@ -62,7 +62,7 @@ test("ledger outcomes persist in the decoded checkout and survive a reread", asy
 });
 
 test("credential reads and writes use the decoded checkout's repo layer", async () => {
-  await importFromSpacedCheckout("env-layers.mjs", (mod, repo) => {
+  await importFromSpacedCheckout("env-layers.ts", (mod, repo) => {
     const envPath = join(repo, ".env");
     writeFileSync(
       envPath,

@@ -26,7 +26,7 @@ import {
   runBufferedUtf8,
   selectPrEvidenceTarget,
   uploadAssets,
-} from "./pr-evidence.mjs";
+} from "./pr-evidence.ts";
 
 // Real repository content, not a mock: the PR template every contributor
 // starts from, plus the exact trailing footer shape

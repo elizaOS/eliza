@@ -20,7 +20,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT = fileURLToPath(
-  new URL("./run-with-deadline.mjs", import.meta.url),
+  new URL("./run-with-deadline.ts", import.meta.url),
 );
 const WINDOWS_HELPER = fileURLToPath(
   new URL("./run-with-deadline-windows.ps1", import.meta.url),
@@ -507,7 +507,7 @@ test("fails closed when the Windows supervisor misses its settle bound", {
   const root = mkdtempSync(
     path.join(os.tmpdir(), "run-with-deadline-windows-watchdog-"),
   );
-  const copiedScript = path.join(root, "run-with-deadline.mjs");
+  const copiedScript = path.join(root, "run-with-deadline.ts");
   const stalledHelper = path.join(root, "run-with-deadline-windows.ps1");
   copyFileSync(SCRIPT, copiedScript);
   // This exceeds the 12-second watchdog but self-terminates before the test's

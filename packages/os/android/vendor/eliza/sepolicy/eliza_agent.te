@@ -26,7 +26,7 @@
 ### builds the rule should be re-scoped to a custom file label set
 ### via restorecon from the Java service.
 ###
-### Validated by scripts/elizaos/validate.mjs::validateSepolicy().
+### Validated by scripts/elizaos/validate.ts::validateSepolicy().
 ###
 
 allow platform_app app_data_file:file { execute execute_no_trans };

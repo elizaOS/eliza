@@ -15,21 +15,24 @@
 import { writeFileSync } from "node:fs";
 import { resolveFusedLibraryPath } from "../../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime";
 import {
-	createKokoroTtsBackend,
-	encodeMonoPcm16Wav,
+  createKokoroTtsBackend,
+  encodeMonoPcm16Wav,
 } from "../../../../plugins/plugin-local-inference/src/services/voice/engine-bridge";
 import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 import { resolveKokoroEngineConfig } from "../../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-engine-discovery";
 import { resampleLinear } from "../../../../plugins/plugin-local-inference/src/services/voice/transcriber";
-import type { Phrase, SpeakerPreset } from "../../../../plugins/plugin-local-inference/src/services/voice/types";
+import type {
+  Phrase,
+  SpeakerPreset,
+} from "../../../../plugins/plugin-local-inference/src/services/voice/types";
 
 function arg(name: string): string {
-	const i = process.argv.indexOf(name);
-	if (i < 0 || i + 1 >= process.argv.length) {
-		console.error(`[synth-worker] missing ${name}`);
-		process.exit(1);
-	}
-	return process.argv[i + 1];
+  const i = process.argv.indexOf(name);
+  if (i < 0 || i + 1 >= process.argv.length) {
+    console.error(`[synth-worker] missing ${name}`);
+    process.exit(1);
+  }
+  return process.argv[i + 1];
 }
 
 const voiceId = arg("--voice");
@@ -38,63 +41,65 @@ const text = Buffer.from(arg("--text-b64"), "base64").toString("utf8");
 
 const libPath = resolveFusedLibraryPath(null, process.env);
 if (!libPath) {
-	console.error("[synth-worker] fused lib not found");
-	process.exit(1);
+  console.error("[synth-worker] fused lib not found");
+  process.exit(1);
 }
 const ffi = loadElizaInferenceFfi(libPath);
 if (!ffi.kokoroSupported()) {
-	console.error("[synth-worker] fused lib does not link the Kokoro engine");
-	process.exit(1);
+  console.error("[synth-worker] fused lib does not link the Kokoro engine");
+  process.exit(1);
 }
 const kokoro = resolveKokoroEngineConfig();
 if (!kokoro) {
-	console.error("[synth-worker] no Kokoro model staged (ELIZA_KOKORO_MODEL_DIR)");
-	process.exit(1);
+  console.error(
+    "[synth-worker] no Kokoro model staged (ELIZA_KOKORO_MODEL_DIR)",
+  );
+  process.exit(1);
 }
 
 const backend = createKokoroTtsBackend(kokoro, { ffi });
 const preset: SpeakerPreset = {
-	voiceId,
-	embedding: new Float32Array(0),
-	bytes: new Uint8Array(0),
+  voiceId,
+  embedding: new Float32Array(0),
+  bytes: new Uint8Array(0),
 };
 const phrase: Phrase = {
-	id: 1,
-	text,
-	fromIndex: 0,
-	toIndex: text.length,
-	terminator: "punctuation",
+  id: 1,
+  text,
+  fromIndex: 0,
+  toIndex: text.length,
+  terminator: "punctuation",
 };
 
 try {
-	const chunks: Float32Array[] = [];
-	let sampleRate = 0;
-	await backend.synthesizeStream({
-		phrase,
-		preset,
-		cancelSignal: { cancelled: false },
-		onChunk: (c) => {
-			if (!c.isFinal && c.pcm.length > 0) {
-				chunks.push(c.pcm);
-				sampleRate = c.sampleRate;
-			}
-			return undefined;
-		},
-	});
-	const total = chunks.reduce((a, c) => a + c.length, 0);
-	if (total === 0 || sampleRate === 0) {
-		console.error("[synth-worker] Kokoro produced no audio");
-		process.exit(1);
-	}
-	const pcm = new Float32Array(total);
-	let off = 0;
-	for (const c of chunks) {
-		pcm.set(c, off);
-		off += c.length;
-	}
-	const pcm16k = resampleLinear(pcm, sampleRate, 16_000);
-	writeFileSync(outPath, encodeMonoPcm16Wav(pcm16k, 16_000));
-	process.exit(0);
+  const chunks: Float32Array[] = [];
+  let sampleRate = 0;
+  await backend.synthesizeStream({
+    phrase,
+    preset,
+    cancelSignal: { cancelled: false },
+    onChunk: (c) => {
+      if (!c.isFinal && c.pcm.length > 0) {
+        chunks.push(c.pcm);
+        sampleRate = c.sampleRate;
+      }
+      return undefined;
+    },
+  });
+  const total = chunks.reduce((a, c) => a + c.length, 0);
+  if (total === 0 || sampleRate === 0) {
+    console.error("[synth-worker] Kokoro produced no audio");
+    process.exit(1);
+  }
+  const pcm = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    pcm.set(c, off);
+    off += c.length;
+  }
+  const pcm16k = resampleLinear(pcm, sampleRate, 16_000);
+  writeFileSync(outPath, encodeMonoPcm16Wav(pcm16k, 16_000));
+  process.exit(0);
 } finally {
-	backend.dispose();
+  backend.dispose();
 }

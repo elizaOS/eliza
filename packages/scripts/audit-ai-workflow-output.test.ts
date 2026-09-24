@@ -19,7 +19,7 @@ import {
   findWorkflowMutations,
   validateWorkflowMutations,
   verifyAuditSnapshot,
-} from "./audit-ai-workflow-output.mjs";
+} from "./audit-ai-workflow-output.ts";
 
 const EXPECTED = {
   provider: "Anthropic",
@@ -595,9 +595,9 @@ describe("AI workflow audit integration", () => {
     for (const path of paths) {
       const source = workflow(path);
       assert.match(source, /id:\s*attribution-boundary/);
-      assert.match(source, /audit-ai-workflow-output\.mjs snapshot/);
+      assert.match(source, /audit-ai-workflow-output\.ts snapshot/);
       assert.match(source, /^\s*audit-attribution:\s*$/m);
-      assert.match(source, /audit-ai-workflow-output\.mjs verify/);
+      assert.match(source, /audit-ai-workflow-output\.ts verify/);
       assert.match(source, /ATTRIBUTION_AUDIT_SNAPSHOT:/);
       assert.match(source, /persist-credentials:\s*false/);
       const audit = source.slice(source.indexOf("\n  audit-attribution:"));

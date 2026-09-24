@@ -23,7 +23,7 @@ import {
   resolveStepTimeoutScale,
   STEP_TIMEOUT_DEFAULTS_MS,
   withWindowsWingetLinksPath,
-} from "./evidence-install-tools.mjs";
+} from "./evidence-install-tools.ts";
 
 const missing = () => false;
 const unavailableMedia = {
@@ -74,7 +74,7 @@ describe("evidence tool installer", () => {
     assert.equal(plan.steps[3].args[1], "chromium");
     const doctor = plan.steps.at(-1);
     assert.equal(doctor.label, "evidence toolchain verification");
-    assert.match(doctor.args[0], /evidence-doctor\.mjs$/);
+    assert.match(doctor.args[0], /evidence-doctor\.ts$/);
     assert.deepEqual(doctor.args.slice(1), ["--strict"]);
   });
 
@@ -784,7 +784,7 @@ describe("evidence tool installer", () => {
 
   it("makes dry-run and invalid CLI invocations non-mutating and bounded", () => {
     const script = fileURLToPath(
-      new URL("./evidence-install-tools.mjs", import.meta.url),
+      new URL("./evidence-install-tools.ts", import.meta.url),
     );
     // An unresolvable env pin forces the deferred-media path so this spawn is
     // deterministic on any host: no media resolution, no system install plan.
@@ -799,7 +799,7 @@ describe("evidence tool installer", () => {
     });
     assert.equal(dryRun.status, 0, dryRun.stderr);
     assert.match(dryRun.stdout, /playwright/);
-    assert.match(dryRun.stdout, /evidence-doctor\.mjs/);
+    assert.match(dryRun.stdout, /evidence-doctor\.ts/);
     assert.match(dryRun.stdout, /# assumes: /);
     assert.doesNotMatch(dryRun.stdout, /\[install\]/);
 

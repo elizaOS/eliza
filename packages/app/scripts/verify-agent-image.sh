@@ -71,7 +71,7 @@ BOOT_CRASH_PATTERNS=(
   'MODULE_NOT_FOUND'
   # Defense-in-depth: the agent boots under the tsx loader (see APP_CMD_START),
   # so .ts extensions resolve at runtime today. But if a workspace package ever
-  # shipped without a built dist, link-docker-local-app-packages.mjs rewrites its
+  # shipped without a built dist, link-docker-local-app-packages.ts rewrites its
   # exports to ./src/*.ts, and importing that under a tsx-less or mislinked boot
   # would throw ERR_UNKNOWN_FILE_EXTENSION on the core boot path. Fail fast on that
   # signature instead of waiting out the full health timeout.
@@ -211,7 +211,7 @@ else
 fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
-RM_PATH_RECURSIVE=(node "$PACKAGES_DIR/scripts/rm-path-recursive.mjs")
+RM_PATH_RECURSIVE=(node "$PACKAGES_DIR/scripts/rm-path-recursive.ts")
 # @elizaos/core source lives under packages/core (current) or packages/typescript
 # (legacy). Prefer the current name; fall back to the legacy path so older branches
 # still work.
@@ -625,8 +625,8 @@ if [[ "$BOOT_VERIFY_ONLY" == "true" ]]; then
 fi
 
 log "Installing dependencies"
-node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
-ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
+node "$APP_CORE_SCRIPTS_DIR/init-submodules.ts"
+ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.ts"
 for attempt in 1 2 3; do
   if ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile; then
     break
@@ -657,11 +657,11 @@ else
 fi
 
 log "Running repository postinstall"
-if [[ -f packages/scripts/setup-upstreams.mjs ]]; then
-  SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.mjs"
+if [[ -f packages/scripts/setup-upstreams.ts ]]; then
+  SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.ts"
 else
-  node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
-  node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
+  node "$APP_CORE_SCRIPTS_DIR/patch-deps.ts" || true
+  node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.ts" || true
 fi
 # The app dependency graph includes the agent's runtime plugins and their
 # transitive build inputs. Turbo orders these from workspace manifests; a
@@ -669,7 +669,7 @@ fi
 log "Building app and runtime workspace artifacts"
 "$BUN_BIN" run build:client -- --force
 # Keep local native packages outside the app graph; the helper skips CI.
-"$BUN_BIN" "$APP_CORE_SCRIPTS_DIR/build-native-plugins.mjs"
+"$BUN_BIN" "$APP_CORE_SCRIPTS_DIR/build-native-plugins.ts"
 CORE_NODE_MODULE="node_modules/@elizaos/core"
 
 log "Building agent workspace"

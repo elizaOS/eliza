@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { analyzeBuildTypecheck } from "./audit-build-typecheck.mjs";
+import { analyzeBuildTypecheck } from "./audit-build-typecheck.ts";
 
 function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);

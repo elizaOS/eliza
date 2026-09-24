@@ -42,9 +42,9 @@ function fixture(t, nested = false, appName = "app") {
   const target = path.join(workspace, "packages/app/scripts");
   mkdirSync(path.join(target, "lib"), { recursive: true });
   for (const file of [
-    "ensure-avatars.mjs",
-    "process-vrms.mjs",
-    "lib/app-dir.mjs",
+    "ensure-avatars.ts",
+    "process-vrms.ts",
+    "lib/app-dir.ts",
     "lib/repo-root.ts",
   ])
     cpSync(path.join(scripts, file), path.join(target, file));
@@ -56,7 +56,7 @@ function fixture(t, nested = false, appName = "app") {
   const run = (env = {}) =>
     spawnSync(
       process.execPath,
-      [path.join(target, "ensure-avatars.mjs"), `--app=${appName}`],
+      [path.join(target, "ensure-avatars.ts"), `--app=${appName}`],
       {
         cwd: root,
         env: { ...process.env, SKIP_AVATAR_CLONE: "", ...env },
@@ -115,7 +115,7 @@ for (const nested of [false, true]) {
     const sourceBytes = randomBytes(4096);
     const imageBytes = randomBytes(2048);
     const { runEnsureAvatars } = await import(
-      pathToFileURL(path.join(target, "ensure-avatars.mjs")).href
+      pathToFileURL(path.join(target, "ensure-avatars.ts")).href
     );
     const result = runEnsureAvatars({
       log() {},

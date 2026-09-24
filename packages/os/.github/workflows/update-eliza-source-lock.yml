@@ -29,7 +29,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          current="$(node scripts/read-eliza-source-lock.mjs)"
+          current="$(node scripts/read-eliza-source-lock.ts)"
           repository="$(jq -r .repository <<<"$current")"
           source_ref="$(jq -r .sourceRef <<<"$current")"
           commit="$(git ls-remote --exit-code "https://github.com/${repository}.git" "refs/heads/${source_ref}" | cut -f1)"
@@ -71,15 +71,15 @@ jobs:
         if: steps.source.outputs.changed == 'true'
         env:
           ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
-        run: node scripts/verify-eliza-source-boundary.mjs
+        run: node scripts/verify-eliza-source-boundary.ts
 
       - name: Update and validate lock
         if: steps.source.outputs.changed == 'true'
         run: |
-          node scripts/update-eliza-source-lock.mjs \
+          node scripts/update-eliza-source-lock.ts \
             --commit "${{ steps.source.outputs.commit }}" \
             --commit-timestamp "${{ steps.identity.outputs.commit-timestamp }}"
-          node scripts/read-eliza-source-lock.mjs
+          node scripts/read-eliza-source-lock.ts
 
       - name: Open validation PR
         if: steps.source.outputs.changed == 'true'

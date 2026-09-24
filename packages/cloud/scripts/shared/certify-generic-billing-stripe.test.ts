@@ -15,7 +15,9 @@ describe("generic billing sandbox credential boundary", () => {
   });
   test("requires execution opt-in and exact merchant selection before any sandbox mutation", () => {
     expect(() =>
-      requireBillingSandboxConfiguration({ GENERIC_BILLING_STRIPE_TEST_KEY: "sk_test_fixture" }),
+      requireBillingSandboxConfiguration({
+        GENERIC_BILLING_STRIPE_TEST_KEY: "sk_test_fixture",
+      }),
     ).toThrow();
     expect(() =>
       requireBillingSandboxConfiguration({

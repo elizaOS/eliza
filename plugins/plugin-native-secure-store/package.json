@@ -29,9 +29,9 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-secure-store -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-secure-store -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

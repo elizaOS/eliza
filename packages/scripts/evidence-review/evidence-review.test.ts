@@ -27,8 +27,8 @@ import {
   parseArgs,
   resolveDefaultBundleDir,
   writeReviewerFile,
-} from "./generate.mjs";
-import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.mjs";
+} from "./generate.ts";
+import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.ts";
 
 const WHITE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQI12P4////fwAJ+wP90YOM8AAAAABJRU5ErkJggg==",
@@ -42,7 +42,7 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
-const GENERATE = "packages/scripts/evidence-review/generate.mjs";
+const GENERATE = "packages/scripts/evidence-review/generate.ts";
 
 /** Write a minimal schema-1 evidence bundle with a screenshot and a log. */
 async function writeBundle(

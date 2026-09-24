@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SCRIPT = path.resolve(SCRIPTS_DIR, "..", "fetch-archive-artifacts.mjs");
+const SCRIPT = path.resolve(SCRIPTS_DIR, "..", "fetch-archive-artifacts.ts");
 const REPO_ROOT = path.resolve(SCRIPTS_DIR, "..", "..", "..");
 const tempDirectories: string[] = [];
 

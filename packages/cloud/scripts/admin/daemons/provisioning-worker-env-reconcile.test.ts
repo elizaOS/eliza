@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { lookupSystemdEnvironmentValue } from "../systemd-environment-line.mjs";
+import { lookupSystemdEnvironmentValue } from "../systemd-environment-line.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../../..");
@@ -22,7 +22,7 @@ const workflowPath = path.join(
 );
 const serializerPath = path.join(
   repoRoot,
-  "packages/cloud/scripts/admin/systemd-environment-line.mjs",
+  "packages/cloud/scripts/admin/systemd-environment-line.ts",
 );
 const servicePath = path.join(
   repoRoot,
@@ -155,7 +155,7 @@ function installPinnedHelperWithSourceRace() {
   const destinationPath = path.join(
     directory,
     "root-owned",
-    "systemd-environment-line.mjs",
+    "systemd-environment-line.ts",
   );
   const originalBytes = readFileSync(serializerPath);
   writeFileSync(sourcePath, originalBytes);
@@ -429,16 +429,16 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
 
   it("pins privileged helper execution to an exact-SHA root-owned copy", () => {
     expect(workflow).toContain(
-      "sha256sum \\\n            packages/cloud/scripts/admin/systemd-environment-line.mjs",
+      "sha256sum \\\n            packages/cloud/scripts/admin/systemd-environment-line.ts",
     );
     expect(workflow).toContain(
       "SYSTEMD_ENVIRONMENT_HELPER_SHA256=$helper_sha256",
     );
     expect(workflow).toContain(
-      "ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs",
+      "ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts",
     );
     expect(workflow).not.toMatch(
-      /^\s*ENV_SERIALIZER=\/opt\/eliza\/.*systemd-environment-line\.mjs$/m,
+      /^\s*ENV_SERIALIZER=\/opt\/eliza\/.*systemd-environment-line\.ts$/m,
     );
     expect(workflow).not.toContain("NODE_BIN=$(command -v node)");
     expect(workflow).toContain("NODE_BIN=/usr/bin/node");

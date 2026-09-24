@@ -39,7 +39,7 @@ test("discovers an executable using the manifest pin without an nvmrc", () => {
 });
 
 test("runtime wrapper resolves its repository outside the working directory and forwards exit status", () => {
-  const wrapper = new URL("../with-test-runtime.mjs", import.meta.url);
+  const wrapper = new URL("../with-test-runtime.ts", import.meta.url);
   const result = spawnSync(
     process.execPath,
     [fileURLToPath(wrapper), process.execPath, "-e", "process.exit(7)"],

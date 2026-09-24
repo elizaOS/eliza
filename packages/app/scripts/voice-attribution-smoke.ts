@@ -156,7 +156,7 @@ const FUSED_LIB = resolveFusedLibraryPath(modelsDir, process.env);
 if (!FUSED_LIB) {
   skip(
     "fused libelizainference not found.\n" +
-      "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.mjs.",
+      "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.ts.",
   );
 }
 const FFI = loadElizaInferenceFfi(FUSED_LIB);

@@ -1,10 +1,10 @@
 /**
  * Formats the operator-facing failure message the dev orchestrator prints when
- * automatic vision dependency install (ensure-vision-deps.mjs) fails.
+ * automatic vision dependency install (ensure-vision-deps.ts) fails.
  */
 export function buildVisionDepsFailureMessage(
   error: unknown,
-  command = "node scripts/ensure-vision-deps.mjs",
+  command = "node scripts/ensure-vision-deps.ts",
 ) {
   const detail =
     error instanceof Error ? error.message : String(error ?? "unknown error");

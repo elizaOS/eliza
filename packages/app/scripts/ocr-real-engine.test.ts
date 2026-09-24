@@ -21,7 +21,7 @@ import {
   closeOcrEngines,
   ocrImage,
   resetTesseractProbe,
-} from "./mvp-visual-verify/ocr.mjs";
+} from "./mvp-visual-verify/ocr.ts";
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

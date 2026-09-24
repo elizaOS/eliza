@@ -12,13 +12,13 @@ import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   foregroundApp,
   MAIN_ACTIVITY,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import {
   expect,
   isFirstRunShowing,

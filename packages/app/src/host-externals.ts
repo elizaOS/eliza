@@ -13,7 +13,7 @@
  * Native bridge thunks use literal imports so the bundler emits resolvable
  * browser chunks while preserving the host singleton.
  *
- * The view-bundle import guard (`packages/scripts/view-bundle-import-guard.mjs`)
+ * The view-bundle import guard (`packages/scripts/view-bundle-import-guard.ts`)
  * scans this file's `registerHostExternalImporter("<specifier>", …)` calls, so
  * a specifier registered here is treated as loadable when validating built view
  * bundles. Add new host-external plugin specifiers here (or self-register from

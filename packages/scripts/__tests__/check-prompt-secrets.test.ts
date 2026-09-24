@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { scanContent, walkFiles } from "../check-prompt-secrets.mjs";
+import { scanContent, walkFiles } from "../check-prompt-secrets.ts";
 
 describe("prompt secret scanner", () => {
   it("flags concrete credential material as errors with source locations", () => {

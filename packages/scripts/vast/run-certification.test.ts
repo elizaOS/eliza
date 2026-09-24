@@ -3,7 +3,7 @@
  * filtering/sorting, onstart assembly + the 16 KB vast cap, the poll state
  * machine's kill paths, budget guards, CLI parsing, log-marker/certification
  * extraction, and dry-run secret redaction. No network, no vast account —
- * everything here is a pure function imported from run-certification.mjs
+ * everything here is a pure function imported from run-certification.ts
  * (the real-instance acceptance run is owner-gated on VAST_API_KEY).
  */
 
@@ -34,7 +34,7 @@ import {
   SUCCESS_MARKER,
   selectAttemptOffers,
   UsageError,
-} from "./run-certification.mjs";
+} from "./run-certification.ts";
 
 const SHA = "a".repeat(40);
 
@@ -364,7 +364,7 @@ describe("isRetryableOutcome", () => {
 describe("VastApiError auth classification", () => {
   it("maps vast's 404 + auth_error body to a dead key (live-API behavior)", async () => {
     const { parseVastErrorCode, VastApiError } = await import(
-      "./run-certification.mjs"
+      "./run-certification.ts"
     );
     // Verified against the live API: a dead key answers HTTP 404 with
     // {"success":false,"error":"auth_error","msg":"Invalid user key"}.
@@ -383,7 +383,7 @@ describe("VastApiError auth classification", () => {
   });
 
   it("returns undefined for HTML error pages, never throws", async () => {
-    const { parseVastErrorCode } = await import("./run-certification.mjs");
+    const { parseVastErrorCode } = await import("./run-certification.ts");
     assert.equal(parseVastErrorCode("<html>404</html>"), undefined);
     assert.equal(parseVastErrorCode('{"msg":"no error field"}'), undefined);
     assert.equal(parseVastErrorCode(undefined), undefined);

@@ -9,7 +9,7 @@
  * embedding plugin), it runs and passes in CI without secrets.
  *
  * Run via the repo's tsx runner so the check uses production module resolution:
- *   node packages/app/scripts/run-node-tsx.mjs \
+ *   node packages/app/scripts/run-node-tsx.ts \
  *     packages/app/scripts/check-real-local-provisioning.ts
  *
  * Exit 0 = all assertions passed; exit 1 = a failure (with the reason logged).

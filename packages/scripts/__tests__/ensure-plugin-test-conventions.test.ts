@@ -1,6 +1,6 @@
 /**
  * Deterministic, offline unit tests for the orphaned-plugin-test-file
- * detector in ensure-plugin-test-conventions.mjs: the pure orphan/exception
+ * detector in ensure-plugin-test-conventions.ts: the pure orphan/exception
  * computation, coverage fallback, nested-repository ownership, and one real
  * subprocess run of the guard against this repository's actual plugin tree.
  */
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT_URL = new URL(
-  "../ensure-plugin-test-conventions.mjs",
+  "../ensure-plugin-test-conventions.ts",
   import.meta.url,
 );
 const SCRIPT = fileURLToPath(SCRIPT_URL);
@@ -392,7 +392,7 @@ describe("production orphan scan surface", () => {
   });
 });
 
-describe("ensure-plugin-test-conventions.mjs (real subprocess)", () => {
+describe("ensure-plugin-test-conventions.ts (real subprocess)", () => {
   // ROOT inside the script resolves from the script's own file location
   // (import.meta.dirname), not from cwd, so this suite cannot redirect the
   // CLI at a disposable fixture tree without adding a test-only seam to

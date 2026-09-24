@@ -18,12 +18,12 @@ import {
   getPathsForFamily,
   resolveDeepLink,
   validateConnectorPaths,
-} from "./connector-paths.mjs";
+} from "./connector-paths.ts";
 import {
   DEFAULT_CLOUD_BASE,
   isSecretEnvName,
   PROBEABLE_PATH_IDS,
-} from "./credential-probes.mjs";
+} from "./credential-probes.ts";
 
 /** Deterministic machine context; override per scenario. */
 function fakeCtx(overrides = {}) {

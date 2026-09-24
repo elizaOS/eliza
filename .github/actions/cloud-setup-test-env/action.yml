@@ -42,7 +42,7 @@ runs:
     - name: Resolve Bun release variant
       id: bun-variant
       shell: bash
-      run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant
+      run: node packages/scripts/ci-fetch-bun-release.ts --print-variant
 
     - name: Restore Bun release zip
       id: bun-zip-cache
@@ -63,13 +63,13 @@ runs:
         server_log="${RUNNER_TEMP}/eliza-bun-release-server.log"
         mkdir -p "$out"
         rm -f "$url_file" "$out/download-url" "$server_log"
-        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
-        nohup node packages/scripts/ci-fetch-bun-release.mjs \
+        node packages/scripts/ci-fetch-bun-release.ts --out-dir "$out"
+        nohup node packages/scripts/ci-fetch-bun-release.ts \
           --out-dir "$out" --serve-only --url-file "$url_file" \
           >"$server_log" 2>&1 &
         server_pid=$!
         disown || true
-        if ! url="$(node packages/scripts/ci-await-bun-release-server.mjs \
+        if ! url="$(node packages/scripts/ci-await-bun-release-server.ts \
           --pid "$server_pid" --url-file "$url_file" --timeout-ms 60000)"; then
           echo "::error::Bun zip local server did not become ready"
           if [ -s "$server_log" ]; then

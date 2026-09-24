@@ -342,7 +342,7 @@ describe("plugin test command contract", () => {
 
   test("root test:plugins uses the shard-aware cross-package runner", () => {
     const script = rootPackageJson.scripts["test:plugins"];
-    expect(script).toContain("run-all-tests.mjs");
+    expect(script).toContain("run-all-tests.ts");
     expect(script).toContain("TEST_PACKAGE_FILTER='\\(plugins/'");
     expect(script).toContain("TEST_SCRIPT_FILTER='^test$'");
     expect(script).toContain("--only=test");
@@ -352,7 +352,7 @@ describe("plugin test command contract", () => {
 });
 
 describe("run-all-tests plan mode", () => {
-  const runnerPath = new URL("../run-all-tests.mjs", import.meta.url);
+  const runnerPath = new URL("../run-all-tests.ts", import.meta.url);
 
   function runPlan(args: string[], env: Record<string, string> = {}) {
     return spawnSync(process.execPath, [runnerPath.pathname, ...args], {
@@ -423,7 +423,7 @@ describe("run-all-tests plan mode", () => {
       path.relative = (from, to) => {
         const relativePath = nativeRelative(from, to);
         const caller = (new Error().stack ?? "").split("\n")[2] ?? "";
-        if (caller.includes("run-all-tests.mjs")) {
+        if (caller.includes("run-all-tests.ts")) {
           return relativePath.replaceAll("/", "\\");
         }
         return relativePath;

@@ -11,8 +11,8 @@ import {
   decideDeployFreshness,
   fetchServedCommit,
   parseServedCommit,
-} from "../deploy-freshness-guard.mjs";
-import { isAncestor } from "../deploy-freshness-guard-cli.mjs";
+} from "../deploy-freshness-guard.ts";
+import { isAncestor } from "../deploy-freshness-guard-cli.ts";
 
 const RUN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SERVED = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";

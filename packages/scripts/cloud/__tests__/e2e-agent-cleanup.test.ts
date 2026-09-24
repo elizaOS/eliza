@@ -17,7 +17,7 @@ import {
   remainingJobBudget,
   resolveE2eWalletPrivateKey,
   selectAgentsForCleanup,
-} from "../e2e-agent-cleanup-lib.mjs";
+} from "../e2e-agent-cleanup-lib.ts";
 
 setDefaultTimeout(30_000);
 
@@ -210,11 +210,7 @@ describe("job deadline", () => {
 
 describe("cli", () => {
   test("--help exits 0 without touching the network", () => {
-    const script = path.join(
-      import.meta.dirname,
-      "..",
-      "e2e-agent-cleanup.mjs",
-    );
+    const script = path.join(import.meta.dirname, "..", "e2e-agent-cleanup.ts");
     const result = spawnSync("bun", [script, "--help"], { encoding: "utf8" });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("--min-age-minutes");
@@ -813,7 +809,7 @@ function applyArgs(server, reportPath, candidateIds) {
 }
 
 async function runCli(args) {
-  const script = path.join(import.meta.dirname, "..", "e2e-agent-cleanup.mjs");
+  const script = path.join(import.meta.dirname, "..", "e2e-agent-cleanup.ts");
   const process = Bun.spawn(["bun", script, ...args], {
     env: {
       ...Bun.env,

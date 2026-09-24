@@ -28,7 +28,7 @@
     "package:darwin": "bun run verify:release-key && electrobun build --env=stable --platform darwin",
     "package:linux": "bun run verify:release-key && electrobun build --env=stable --platform linux",
     "package:win32": "bun run verify:release-key && electrobun build --env=stable --platform win32",
-    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../scripts/rm-path-recursive.ts dist",
     "lint:check": "bunx @biomejs/biome check src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "format": "bunx @biomejs/biome format --write src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",

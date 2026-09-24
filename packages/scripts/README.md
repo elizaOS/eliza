@@ -9,8 +9,8 @@ Run commands from the repository root:
 
 ```bash
 bun run test:scripts
-node packages/scripts/run-script-tests.mjs --inventory
-node packages/scripts/audit-scripts.mjs
+node packages/scripts/run-script-tests.ts --inventory
+node packages/scripts/audit-scripts.ts
 bun run verify
 ```
 

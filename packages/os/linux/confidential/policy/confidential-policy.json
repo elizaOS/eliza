@@ -78,6 +78,6 @@
   "gate": {
     "name": "confidential-policy-check",
     "blockedOn": "Enforcement of these settings inside a booted confidential guest is BLOCKED on a TDX/CoVE host (gate tdx-cvm-boot-smoke). This file is the build-time data form only.",
-    "provingCommand": "node packages/os/scripts/generate-tee-measurements.mjs --policy packages/os/linux/confidential/policy/confidential-policy.json ..."
+    "provingCommand": "node packages/os/scripts/generate-tee-measurements.ts --policy packages/os/linux/confidential/policy/confidential-policy.json ..."
   }
 }

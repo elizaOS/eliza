@@ -13,7 +13,7 @@ import {
   validateNpmPublisher,
   validateRegistryUrl,
   validateSourceRef,
-} from "./release-contract.mjs";
+} from "./release-contract.ts";
 
 const PUBLIC_CHANNELS = new Set(["beta", "latest"]);
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";

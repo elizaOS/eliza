@@ -80,7 +80,7 @@ PRODUCT_COPY_FILES += \
 
 # Boot animation. Override with a brand-specific zip; falls through to
 # AOSP defaults if the zip is absent (the file is gitignored locally
-# but populated by `scripts/elizaos/build-bootanimation.mjs`).
+# but populated by `scripts/elizaos/build-bootanimation.ts`).
 ifneq ($(wildcard vendor/eliza/bootanimation/bootanimation.zip),)
 PRODUCT_COPY_FILES += \
     vendor/eliza/bootanimation/bootanimation.zip:$(TARGET_COPY_OUT_PRODUCT)/media/bootanimation.zip

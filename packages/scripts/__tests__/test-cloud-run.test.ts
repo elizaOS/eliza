@@ -1,5 +1,5 @@
 /**
- * Exercises the pure batch-orchestration helpers in test-cloud-run.mjs
+ * Exercises the pure batch-orchestration helpers in test-cloud-run.ts
  * (walkTests, chunkByBudget, formatBatchFiles, writeSyncAll) and the
  * clean-install preflight (ensureCloudTestRuntime, runPreflightStep) directly,
  * without driving the side-effecting `main()` (which shells out to `bun
@@ -43,7 +43,7 @@ import {
   walkTests,
   windowsTaskkillInvocation,
   writeSyncAll,
-} from "../test-cloud-run.mjs";
+} from "../test-cloud-run.ts";
 
 describe("walkTests", () => {
   it("finds .test. and .spec. files recursively and skips excluded dirs", () => {
@@ -306,7 +306,7 @@ describe("runPreflightStep", () => {
     });
     expect(spawned.cmd).toBe(process.execPath);
     expect(spawned.args[0]).toBe(
-      join("/repo", "packages", "scripts", "build-core.mjs"),
+      join("/repo", "packages", "scripts", "build-core.ts"),
     );
     expect(spawned.opts.cwd).toBe("/repo");
     expect(spawned.opts.stdio).toBe("inherit");

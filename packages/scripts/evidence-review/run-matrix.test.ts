@@ -19,7 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { UI_E2E_SUITES } from "../e2e-recordings/suites.mjs";
+import { UI_E2E_SUITES } from "../e2e-recordings/suites.ts";
 import {
   assignContentContextRun,
   captureEvidenceBaseline,
@@ -30,7 +30,7 @@ import {
   probeRequirement,
   runReviewer,
   selectMatrixSteps,
-} from "./run-matrix.mjs";
+} from "./run-matrix.ts";
 
 const REPO_ROOT = path.resolve(
   fileURLToPath(import.meta.url),
@@ -73,7 +73,7 @@ test("selects all real matrix lanes by default", () => {
   const steps = selectMatrixSteps(MATRIX_STEPS, options);
   assert.deepEqual(steps.find((step) => step.id === "e2e-recordings").command, [
     "node",
-    "packages/scripts/e2e-recordings/run-all.mjs",
+    "packages/scripts/e2e-recordings/run-all.ts",
     "--skip-sheets",
     "--skip-viewer",
     `--packages=${UI_E2E_SUITES.filter((suite) => suite.script)
@@ -97,11 +97,11 @@ test("selects all real matrix lanes by default", () => {
   assert.equal(options.tier, "cpu");
   assert.deepEqual(
     steps.find((step) => step.id === "ios-sim-capture").command,
-    ["node", "packages/scripts/e2e-recordings/capture-ios-sim.mjs"],
+    ["node", "packages/scripts/e2e-recordings/capture-ios-sim.ts"],
   );
   assert.deepEqual(
     steps.find((step) => step.id === "android-emu-capture").command,
-    ["node", "packages/scripts/e2e-recordings/capture-android-emu.mjs"],
+    ["node", "packages/scripts/e2e-recordings/capture-android-emu.ts"],
   );
 });
 
@@ -159,7 +159,7 @@ test("matrix assigns the content producer a unique canonical run root", () => {
   );
   assert.deepEqual(steps[0].command, [
     "node",
-    "packages/scripts/run-content-context.mjs",
+    "packages/scripts/run-content-context.ts",
     `--source=${source}`,
     `--run-root=${path.join(REPO_ROOT, "reports", "content-context", "matrix-contract-test")}`,
   ]);

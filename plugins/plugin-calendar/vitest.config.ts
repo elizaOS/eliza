@@ -39,7 +39,7 @@ export default defineConfig({
       "**/*.e2e.test.{ts,tsx}",
       // #9310 §E: the guarded real/live connector suites (they self-skip
       // without creds) and hermetic real-DB suites are invocable only in the
-      // post-merge lane, where run-all-tests.mjs prints named accounting.
+      // post-merge lane, where run-all-tests.ts prints named accounting.
       ...(process.env.VITEST_LANE === "post-merge"
         ? []
         : [

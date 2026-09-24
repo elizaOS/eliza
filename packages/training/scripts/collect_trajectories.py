@@ -503,7 +503,7 @@ def _live_scenarios_plan(
     _add_scenario_filter(command_env, args.scenario_filter)
     argv = [
         "node",
-        "scripts/run-live-scenarios.mjs",
+        "scripts/run-live-scenarios.ts",
         "--run-dir",
         str(run_dir),
         "--runId",
@@ -511,7 +511,7 @@ def _live_scenarios_plan(
     ]
     return CommandPlan(
         suite="live-scenarios",
-        label="scripts/run-live-scenarios.mjs",
+        label="scripts/run-live-scenarios.ts",
         cwd=str(REPO_ROOT),
         argv=argv,
         env_overrides=command_env,
@@ -546,9 +546,9 @@ def _scenario_benchmark_plan(
     _add_scenario_filter(command_env, args.scenario_filter)
     return CommandPlan(
         suite="scenario-benchmark",
-        label="scripts/run-scenario-benchmark.mjs",
+        label="scripts/run-scenario-benchmark.ts",
         cwd=str(REPO_ROOT),
-        argv=["node", "scripts/run-scenario-benchmark.mjs"],
+        argv=["node", "scripts/run-scenario-benchmark.ts"],
         env_overrides=command_env,
         env_requirements=env_requirements,
         expected_outputs=[

@@ -4,10 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  buildReport,
-  snapshotSource,
-} from "../aosp/kernel-parity-evidence.mjs";
+import { buildReport, snapshotSource } from "../aosp/kernel-parity-evidence.ts";
 
 const directories: string[] = [];
 afterEach(() => {

@@ -111,7 +111,7 @@ jobs:
 
       - name: Resolve pinned Eliza source
         id: eliza-source
-        run: node scripts/read-eliza-source-lock.mjs --github-output >> "$GITHUB_OUTPUT"
+        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
 
       - name: Check out retained Android application source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -153,7 +153,7 @@ jobs:
 
       - name: Run assistant verifier regression canary
         working-directory: .eliza-source
-        run: bun test packages/app/scripts/lib/android-assistant-verify-lib.test.mjs
+        run: bun test packages/app/scripts/lib/android-assistant-verify-lib.test.ts
       - name: Resolve brand
         id: brand
         run: |
@@ -221,7 +221,7 @@ jobs:
           for target in "${targets[@]}"; do
             args+=(--target "$target")
           done
-          node packages/app/scripts/aosp/compile-libllama.mjs \
+          node packages/app/scripts/aosp/compile-libllama.ts \
             --assets-dir packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}"
 
@@ -235,7 +235,7 @@ jobs:
             args+=(--target "$target")
           done
           mkdir -p reports/cuttlefish
-          node scripts/aosp/verify-native-runtime.mjs \
+          node scripts/aosp/verify-native-runtime.ts \
             --asset-root .eliza-source/packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}" | tee reports/cuttlefish/native-runtime.json
 
@@ -261,7 +261,7 @@ jobs:
 
       - name: Static brand validation
         run: |
-          node scripts/distro-android/validate.mjs \
+          node scripts/distro-android/validate.ts \
             --brand-config "${{ steps.brand.outputs.config }}"
 
       - name: Sync the immutable AOSP manifest revision
@@ -287,7 +287,7 @@ jobs:
 
       - name: Verify immutable Cuttlefish AOSP source lock
         run: |
-          node scripts/aosp/verify-source-lock.mjs \
+          node scripts/aosp/verify-source-lock.ts \
             --profile cuttlefish \
             --aosp-root "${{ inputs.aosp-root }}" \
             --json
@@ -305,7 +305,7 @@ jobs:
           if [ "${{ inputs.launch }}" = "true" ]; then
             ARGS+=(--launch --boot-validate)
           fi
-          node scripts/distro-android/build-aosp.mjs "${ARGS[@]}"
+          node scripts/distro-android/build-aosp.ts "${ARGS[@]}"
 
       - name: Verify application-native kernels on Cuttlefish
         if: ${{ !cancelled() && inputs.launch == true }}
@@ -322,7 +322,7 @@ jobs:
           # TCP pre-gate, must decide whether every real voice stage passed.
           ELIZA_ANDROID_REQUIRE_AGENT: "0"
         run: |
-          node scripts/run-ui-playwright.mjs \
+          node scripts/run-ui-playwright.ts \
             --config playwright.android.config.ts \
             test/android/voice-selftest.android.spec.ts
 
@@ -379,7 +379,7 @@ jobs:
           }
           trap cleanup_recording EXIT
           set +e
-          node .eliza-source/packages/app/scripts/android-assistant-verify.mjs \
+          node .eliza-source/packages/app/scripts/android-assistant-verify.ts \
             --require-device --require-engine --json 2>&1 \
             | tee "$evidence/verifier.log"
           verify_status=${PIPESTATUS[0]}
@@ -430,7 +430,7 @@ jobs:
             cd .eliza-source/packages/app/platforms/android
             ./gradlew :app:connectedDebugAndroidTest --stacktrace
             cd "${GITHUB_WORKSPACE}"
-            node scripts/aosp/verify-android-instrumentation-results.mjs \
+            node scripts/aosp/verify-android-instrumentation-results.ts \
               --results .eliza-source/packages/app/platforms/android/app/build/outputs/androidTest-results/connected \
               --required-class ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
               --min-tests 6
@@ -440,7 +440,7 @@ jobs:
             adb install -r -g "$retail_apk"
             mkdir -p reports/cuttlefish/retail-assistant
             set +e
-            node .eliza-source/packages/app/scripts/android-assistant-verify.mjs \
+            node .eliza-source/packages/app/scripts/android-assistant-verify.ts \
               --require-device --json 2>&1 \
               | tee reports/cuttlefish/retail-assistant/verifier.log
             retail_verify_status=${PIPESTATUS[0]}
@@ -476,7 +476,7 @@ jobs:
           CVD_LAUNCH: ${{ inputs.launch }}
           CVD_JOB_STATUS: ${{ job.status }}
         run: |
-          node scripts/android/record-cuttlefish-result.mjs \
+          node scripts/android/record-cuttlefish-result.ts \
             reports/cuttlefish/workflow-result.json "$CVD_LAUNCH" "$CVD_JOB_STATUS" "$GITHUB_SHA"
 
       - name: Upload Cuttlefish Android validation evidence

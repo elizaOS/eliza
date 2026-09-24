@@ -47,7 +47,7 @@
     "test:scenarios": "SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions=eliza-source ../../packages/testing/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
     "test:e2e": "node --test ../../packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

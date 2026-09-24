@@ -94,7 +94,7 @@ export async function bootElizaRuntime(
   // retry on first use" semantics, and self-serializes via the module-level
   // warmupInFlight singleton. Awaiting it here parked bootstrap on sticky
   // HF 401 → multi-URL fallback chains with no overall deadline; the API
-  // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
+  // port never bound and dev-ui.ts's 300s watchdog tore the stack down
   // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
   // still surfaces progress through the startup overlay.
   prepareLocalEmbeddingWarmup(opts.onEmbeddingProgress);

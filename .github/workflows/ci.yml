@@ -35,7 +35,7 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
       - name: Validate Windows command coverage contract
-        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
+        run: node packages/scripts/ci-windows-command-coverage-contract.ts
       - name: Build core contract
         run: bun run build:core
       - name: Repository verification
@@ -45,17 +45,17 @@ jobs:
       - name: Formatting
         run: bun run format:check
       - name: Check maintained Markdown link targets
-        run: node packages/scripts/check-markdown-links.mjs
+        run: node packages/scripts/check-markdown-links.ts
       - name: Run type-duplication finder self-test
-        run: node packages/scripts/type-duplication-audit.mjs --self-test
+        run: node packages/scripts/type-duplication-audit.ts --self-test
       - name: Prompt secret scan
-        run: node packages/scripts/check-prompt-secrets.mjs
+        run: node packages/scripts/check-prompt-secrets.ts
       - name: Anti-larp test gate self-test
-        run: node packages/scripts/audit-focused-skipped-tests.mjs --self-test
+        run: node packages/scripts/audit-focused-skipped-tests.ts --self-test
       - name: Validate brand-env alias-read guard self-test
-        run: node packages/scripts/alias-read-guard.mjs --self-test
+        run: node packages/scripts/alias-read-guard.ts --self-test
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -681,7 +681,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
+        run: node packages/scripts/rm-path-recursive.ts reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

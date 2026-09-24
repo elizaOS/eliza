@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { markdownLinks } from "./check-markdown-links.mjs";
+import { markdownLinks } from "./check-markdown-links.ts";
 
 test("fenced code cannot create links or hide subsequent prose links", () => {
   const markdown = [

@@ -218,7 +218,7 @@ export interface CertifyOptions {
   gpuQueueRoot?: string;
   /** How long the queue executor waits for a worker result before an honest skip. */
   gpuQueueTimeoutMs?: number;
-  /** Test matrix runner; default spawns `packages/scripts/run-all-tests.mjs`. */
+  /** Test matrix runner; default spawns `packages/scripts/run-all-tests.ts`. */
   runMatrix?: MatrixRunner;
   /** Extra argv forwarded to the matrix runner (`--matrix-arg` on the CLI). */
   matrixArgs?: readonly string[];
@@ -262,7 +262,7 @@ export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
     repoRoot,
     "packages",
     "scripts",
-    "run-all-tests.mjs",
+    "run-all-tests.ts",
   );
   const command = [`node ${path.relative(repoRoot, script)}`, ...args].join(
     " ",

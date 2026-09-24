@@ -4,7 +4,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { UI_SMOKE_AUDIT_PROJECTS } from "../../scripts/lib/playwright-audit-projects.mjs";
+import { UI_SMOKE_AUDIT_PROJECTS } from "../../scripts/lib/playwright-audit-projects.ts";
 
 test("worker retains the explicitly requested audit project", ({
   browserName,

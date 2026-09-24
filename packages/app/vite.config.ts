@@ -38,13 +38,13 @@ import {
   removeEmittedBuildStamp,
   removePublicBuildStamp,
   shouldSkipBuildStamp,
-} from "./scripts/build-stamp.mjs";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
-import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
+} from "./scripts/build-stamp.ts";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.ts";
+import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
-} from "./scripts/lib/android-cloud-routing-markers.mjs";
+} from "./scripts/lib/android-cloud-routing-markers.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
@@ -1382,7 +1382,7 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
   APP_ENV_PREFIX,
 );
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
-/** Set by eliza/packages/app/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
+/** Set by eliza/packages/app/scripts/dev-platform.ts for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 function resolveOptionalLocalVoiceGatewayPort(
   raw: string | undefined,
@@ -1522,7 +1522,7 @@ function resolveManualChunk(id: string): string | undefined {
   // needs one — e.g. @elizaos/core's browser bundle importing the buffer shim,
   // or any dynamic-importing entry module needing the preload helper — then
   // statically imports the whole multi-MB wallet chunk at boot. The eagerness
-  // guard in scripts/verify-chunk-safety.mjs fails the build on that regression.
+  // guard in scripts/verify-chunk-safety.ts fails the build on that regression.
   if (
     normalizedId.includes("vite/preload-helper") ||
     normalizedId.includes("native-stub:") ||
@@ -2035,7 +2035,7 @@ export default defineConfig(({ command, mode }) => ({
       localVoiceGatewayPort,
       here,
     ),
-    // Build variant — set at signing time by desktop-build.mjs and embedded
+    // Build variant — set at signing time by desktop-build.ts and embedded
     // here so the renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
@@ -3069,7 +3069,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic
         // Rollup, whose chunking API is `output.manualChunks`. Keeping this
         // under `rollupOptions.output` prevents the bn.js/crypto graph from
-        // folding into eager locale chunks; `scripts/verify-chunk-safety.mjs`
+        // folding into eager locale chunks; `scripts/verify-chunk-safety.ts`
         // gates the startup-order invariant (#9150).
         manualChunks: resolveManualChunk,
       },

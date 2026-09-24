@@ -22,8 +22,8 @@
     "turbo.json",
     "tsconfig.json",
     "tsconfig.base.json",
-    "packages/scripts/develop-effect-ledger.mjs",
-    "packages/scripts/develop-impact-evidence.mjs"
+    "packages/scripts/develop-effect-ledger.ts",
+    "packages/scripts/develop-impact-evidence.ts"
   ],
   "surfaces": [
     {
@@ -48,7 +48,7 @@
         "**/*.md",
         "packages/scripts/audit-*.mjs",
         "packages/testing/scenario-runner/test/**",
-        "packages/scripts/run-all-tests.mjs",
+        "packages/scripts/run-all-tests.ts",
         "vitest*.ts",
         "vitest*.mts"
       ]
@@ -88,7 +88,7 @@
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core"],
       "inputs": [
-        "packages/scripts/test-cloud-run-watchdog.self-test.mjs",
+        "packages/scripts/test-cloud-run-watchdog.self-test.ts",
         ".github/ci-windows-command-inventory.json"
       ],
       "dependsOn": ["canonical"]

@@ -14,13 +14,13 @@ import {
   buildAndPackReleaseCandidate,
   loadReleaseState,
   recordReleaseTransition,
-} from "../lib/release-candidate.mjs";
+} from "../lib/release-candidate.ts";
 import {
   assertReleaseTagAllowed,
   pushAtomicReleaseRefs,
   pushReleaseTag,
   verifyReleaseSource,
-} from "../lib/release-git.mjs";
+} from "../lib/release-git.ts";
 import { execFileSync } from "../lib/spawn-sync-captured.ts";
 
 const roots: string[] = [];
@@ -449,7 +449,7 @@ describe("atomic release refs", () => {
       new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
     );
     const worker = new Worker(
-      new URL("./fixtures/release-lock-worker.mjs", import.meta.url),
+      new URL("./fixtures/release-lock-worker.ts", import.meta.url),
       {
         workerData: {
           lockPath,

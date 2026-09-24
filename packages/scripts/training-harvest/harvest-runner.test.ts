@@ -17,9 +17,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import * as harvestRunner from "./harvest-runner.mjs";
+import * as harvestRunner from "./harvest-runner.ts";
 
-const runner = fileURLToPath(new URL("./harvest-runner.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("./harvest-runner.ts", import.meta.url));
 const { parseHarvestLimit } = harvestRunner;
 
 function createDryRunFixture(t) {

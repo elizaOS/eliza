@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { evaluateCommentAttribution } from "./check-agent-comment-attribution.mjs";
+import { evaluateCommentAttribution } from "./check-agent-comment-attribution.ts";
 
 function machineFooter(overrides = {}) {
   const values = {

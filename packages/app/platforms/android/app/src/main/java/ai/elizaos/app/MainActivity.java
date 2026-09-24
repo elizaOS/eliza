@@ -48,7 +48,7 @@ public class MainActivity extends BridgeActivity {
      *
      * White-label forks add additional entries via
      * `app.config.ts > android.userAgentMarkers`; the
-     * `run-mobile-build.mjs:overlayAndroid()` step rewrites
+     * `run-mobile-build.ts:overlayAndroid()` step rewrites
      * `BRAND_USER_AGENT_MARKERS` below to include them. The default
      * `ro.elizaos.product` → `ElizaOS/` entry is always emitted by the
      * framework so the renderer can sniff `isElizaOS()` consistently

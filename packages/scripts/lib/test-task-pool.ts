@@ -2,7 +2,7 @@
  * test-task-pool.ts
  *
  * Concurrency primitives for the cross-package test runner
- * (`run-all-tests.mjs`). That script executes its main loop on import, so the
+ * (`run-all-tests.ts`). That script executes its main loop on import, so the
  * parallelizable logic lives here where it can be unit-tested in isolation.
  *
  * The runner has historically been strictly serial: one package's test script

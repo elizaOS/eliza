@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { attest } from "./local-inference-attest.mjs";
+import { attest } from "./local-inference-attest.ts";
 
 const platformTest = process.platform === "win32" ? test.skip : test;
 

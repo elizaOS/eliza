@@ -15,7 +15,7 @@ import {
   pluginHasHeroAsset,
   runCli,
   scanAppPluginDirs,
-} from "./generate-view-heroes.mjs";
+} from "./generate-view-heroes.ts";
 
 describe("generate-view-heroes CLI option parsing", () => {
   it("defaults to standard configuration", () => {

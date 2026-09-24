@@ -18,13 +18,13 @@ import {
   parseTcpPort,
   resolveApiPortFromEnv,
   resolveUiPortFromEnv,
-} from "../dev-health-check.mjs";
+} from "../dev-health-check.ts";
 import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "dev-health-check.mjs",
+  "dev-health-check.ts",
 );
 
 function runCli(args, env = {}) {

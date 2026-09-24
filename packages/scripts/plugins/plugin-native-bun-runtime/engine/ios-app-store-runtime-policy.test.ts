@@ -13,7 +13,7 @@ import {
   findForbiddenRuntimeImportGroups,
   findForbiddenRuntimeStrings,
   formatForbiddenRuntimeFindings,
-} from "./ios-app-store-runtime-policy.mjs";
+} from "./ios-app-store-runtime-policy.ts";
 
 test("groups exact and family forbidden runtime imports", () => {
   const groups = findForbiddenRuntimeImportGroups(`

@@ -3,7 +3,7 @@
 // --require-evidence (auto-on under CI) so a headless runner that captured zero
 // artifacts fails the run, while preserving the soft-skip behavior otherwise.
 import { describe, expect, it } from "vitest";
-import { classifyRunResults, parseRunAllArgs } from "./run-all.mjs";
+import { classifyRunResults, parseRunAllArgs } from "./run-all.ts";
 
 const passedSuite = { name: "app", passed: true, skipped: false, exitCode: 0 };
 const failedSuite = {

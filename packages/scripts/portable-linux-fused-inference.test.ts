@@ -26,11 +26,11 @@ import {
   parseArgs,
   parseElfDynamicSection,
   parseGlibcVersionInfo,
-} from "./portable-linux-fused-inference.mjs";
+} from "./portable-linux-fused-inference.ts";
 
 const scriptPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "portable-linux-fused-inference.mjs",
+  "portable-linux-fused-inference.ts",
 );
 
 test("immutable plan pins the proven Bookworm Vulkan portable build", () => {

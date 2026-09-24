@@ -15,7 +15,7 @@
  * booting the runtime (see app's boot funnel). When no host installs a
  * bridge — the on-device mobile bundle and any standalone-agent boot — the
  * built-in {@link defaultAgentHostBridge} supplies the exact no-op behavior the
- * mobile `app-runtime.cjs` stub used to provide. Agent therefore never
+ * mobile `app-runtime.ts` stub used to provide. Agent therefore never
  * imports `@elizaos/app`, static or dynamic.
  */
 
@@ -200,7 +200,7 @@ function defaultBuildVariant(): "store" | "direct" {
 }
 
 /**
- * No-op host bridge — the exact behavior the mobile `app-runtime.cjs`
+ * No-op host bridge — the exact behavior the mobile `app-runtime.ts`
  * stub used to expose. Used whenever a host has not installed a real bridge.
  */
 export const defaultAgentHostBridge: AgentHostBridge = {

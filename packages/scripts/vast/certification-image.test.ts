@@ -12,7 +12,7 @@ const workflowUrl = new URL(
   "../../../.github/workflows/certification-image.yml",
   import.meta.url,
 );
-const runnerUrl = new URL("./run-certification.mjs", import.meta.url);
+const runnerUrl = new URL("./run-certification.ts", import.meta.url);
 
 test("GPU image smoke test mounts the CUDA link stub ephemerally", async () => {
   const dockerfile = await readFile(dockerfileUrl, "utf8");
@@ -32,7 +32,7 @@ test("baked llama-server satisfies the gpu-vision build floor", async () => {
   const dockerfile = await readFile(dockerfileUrl, "utf8");
 
   // llama.cpp reports `git rev-list --count HEAD` as its build number, so a
-  // shallow clone bakes `version: 1` and serve.mjs rejects the image on the
+  // shallow clone bakes `version: 1` and serve.ts rejects the image on the
   // billed instance. Keep the history that makes the count truthful.
   assert.doesNotMatch(dockerfile, /git clone[^\n]*--depth/);
   assert.match(
@@ -49,7 +49,7 @@ test("baked llama-server satisfies the gpu-vision build floor", async () => {
     "smoke test must run the version output through assertLlamaBuildSupported",
   );
   assert.ok(
-    dockerfile.indexOf("COPY packages/scripts/gpu-vision/setup.mjs") <
+    dockerfile.indexOf("COPY packages/scripts/gpu-vision/setup.ts") <
       assertionOffset,
     "gpu-vision lib must be copied before the build-floor assertion runs",
   );
@@ -57,7 +57,7 @@ test("baked llama-server satisfies the gpu-vision build floor", async () => {
 
 test("the gpu-vision build floor rejects a shallow-clone version string", async () => {
   const { assertLlamaBuildSupported, MIN_LLAMA_BUILD } = await import(
-    new URL("../gpu-vision/lib.mjs", import.meta.url).href
+    new URL("../gpu-vision/lib.ts", import.meta.url).href
   );
 
   assert.throws(

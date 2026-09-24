@@ -55,7 +55,7 @@ async function emitCore(): Promise<void> {
 			output,
 		]);
 		await run(process.execPath, [
-			"../scripts/rewrite-dist-relative-imports-node-esm.mjs",
+			"../scripts/rewrite-dist-relative-imports-node-esm.ts",
 			staging,
 		]);
 		for (const asset of assets) {
