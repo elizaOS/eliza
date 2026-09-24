@@ -150,9 +150,16 @@ test("shared builder preserves freshness, forced development builds, and depende
     success(run("build-native-plugins.ts"));
     assert.ok(fs.existsSync(path.join(plugin, "dist/index.js")));
     assert.deepEqual(history(), ["core", "plugin"]);
-    success(run("plugin-build.ts", { ELIZA_DEV_SOURCE: "1" }));
-    assert.deepEqual(history(), ["core", "plugin", "plugin"]);
     success(run("plugin-build.ts"));
+    assert.deepEqual(history(), ["core", "plugin"]);
+    success(
+      run("plugin-build.ts", {
+        ELIZA_DEV_SOURCE: "1",
+        ELIZA_FORCE_PLUGIN_BUILD: "1",
+      }),
+    );
+    assert.deepEqual(history(), ["core", "plugin", "plugin"]);
+    success(run("plugin-build.ts", { ELIZA_FORCE_PLUGIN_BUILD: "1" }));
     assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
     const pluginManifestPath = path.join(plugin, "package.json");
     const manifest = JSON.parse(fs.readFileSync(pluginManifestPath, "utf8"));
