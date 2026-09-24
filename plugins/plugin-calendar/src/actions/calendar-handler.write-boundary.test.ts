@@ -106,6 +106,46 @@ async function create(
 }
 
 describe("calendar conversational write boundary", () => {
+  it.each([
+    ["2027-03-14T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT"],
+    ["2027-11-07T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS"],
+  ])(
+    "requests clarification before preparing a write at %s",
+    async (startAt, code) => {
+      const { result, service } = await create(
+        {
+          title: "Call dad",
+          startAt,
+          timeZone: "America/New_York",
+          durationMinutes: 30,
+        },
+        [],
+        {
+          text: "Schedule Call dad at the requested local time in New York.",
+          createdAt: Date.parse("2027-03-01T12:00:00Z"),
+        },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        effectReceipts: [
+          {
+            outcome: "failed",
+            failure: { code, retryable: false, acceptance: "rejected" },
+          },
+        ],
+        data: {
+          error: code,
+          requiresInput: true,
+          awaitingUserInput: true,
+          retryable: false,
+          timeClarification: { timeZone: "America/New_York" },
+        },
+      });
+      expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+      expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps the extracted schedule when an event title contains another date", async () => {
     const { result, service } = await create(
       { title: "September 22 QA", startAt: start, endAt: end },

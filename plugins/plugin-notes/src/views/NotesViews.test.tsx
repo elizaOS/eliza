@@ -6,7 +6,20 @@
  */
 
 import { ApiError } from "@elizaos/ui/api/client-types-core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createNavigateViewHandler } from "@elizaos/ui/app-navigate-view";
+import {
+  dispatchNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+} from "@elizaos/ui/events";
+import { getActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotesSnapshot, StickyNote } from "../types.js";
 import type { NotesState } from "./useNotesState.js";
@@ -447,5 +460,84 @@ describe("chat-only presentation", () => {
     }
     expect(firstHeading.style.overflowWrap).toBe("anywhere");
     expect(firstBody.style.overflowWrap).toBe("anywhere");
+  });
+});
+
+describe("calendar source navigation", () => {
+  it("focuses an edited historical source on cold and already-mounted navigation, then reports deletion", async () => {
+    const source = stickyNote({
+      id: "note-source",
+      body: "Edited after the event was created",
+    });
+    const other = stickyNote({ id: "note-other", title: "Other note" });
+    stateHook.mockReturnValue(
+      hookState({ snapshot: { revision: 2, notes: [source, other] } }),
+    );
+    const scroll = vi.fn();
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    const shell = createNavigateViewHandler({
+      availableViewsForDesktopTabs: [],
+      invokeDesktopBridgeRequest: async () => null,
+      openDesktopTab: vi.fn(),
+      setActiveDesktopTabId: vi.fn(),
+      setTab: vi.fn(),
+      navigatePath: vi.fn(),
+    });
+    const navigate = (noteId: string) =>
+      dispatchNavigateViewEvent({
+        viewId: "notes",
+        viewPath: "/notes",
+        source: "user",
+        payload: {
+          authority: getActiveAgentAuthority(),
+          sourceNote: {
+            agentId: "calendar-agent",
+            noteId,
+            contentHash: "a".repeat(64),
+          },
+        },
+      });
+    window.addEventListener(NAVIGATE_VIEW_EVENT, shell);
+    try {
+      navigate(source.id);
+      const view = render(<NotesView />);
+      const sourceRow = screen.getByText(source.title).closest("li");
+      await waitFor(() => expect(document.activeElement).toBe(sourceRow));
+      expect(sourceRow?.getAttribute("aria-current")).toBe("true");
+      expect(screen.getByText(source.body)).toBeTruthy();
+      // Subscribe the shell after the mounted view: the consumer must not depend on listener order.
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, shell);
+      window.addEventListener(NAVIGATE_VIEW_EVENT, shell);
+      await act(async () => navigate(other.id));
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByText(other.title).closest("li"),
+        ),
+      );
+      await act(async () => navigate(source.id));
+      await waitFor(() => expect(document.activeElement).toBe(sourceRow));
+      expect(scroll).toHaveBeenCalledTimes(3);
+      stateHook.mockReturnValue(
+        hookState({ snapshot: { revision: 3, notes: [other] } }),
+      );
+      view.rerender(<NotesView />);
+      expect(
+        screen.getByText(
+          "The source note is no longer available. The calendar event is unchanged.",
+        ),
+      ).toBeTruthy();
+      await act(async () =>
+        dispatchNavigateViewEvent({ viewId: "notes", viewPath: "/notes" }),
+      );
+      expect(
+        screen.queryByText(
+          "The source note is no longer available. The calendar event is unchanged.",
+        ),
+      ).toBeNull();
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, shell);
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
   });
 });

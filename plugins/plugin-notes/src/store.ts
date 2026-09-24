@@ -200,6 +200,14 @@ export class NotesStore {
     return snapshotFromDocument(this.requireReadyDocument());
   }
 
+  /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
+  async persistedSnapshot(): Promise<NotesSnapshot> {
+    await this.initialize();
+    return this.serialize(async () =>
+      snapshotFromDocument(await this.readDocument(this.filePath)),
+    );
+  }
+
   async transact<T>(
     mutate: (draft: NotesDocument) => T,
   ): Promise<{ value: T; snapshot: NotesSnapshot }> {

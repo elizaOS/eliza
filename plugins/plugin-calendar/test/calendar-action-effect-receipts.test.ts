@@ -1058,23 +1058,21 @@ describe("CALENDAR effect receipt settlement", () => {
         replayed: false,
         text: "Approval request calendar-timezone-approval is ready.",
       };
-      let extractionPrompt = "";
       const runJsonModel = vi.fn(async (args: { prompt: string }) => {
         if (!args.prompt.includes("Extract calendar event creation fields")) {
           return null;
         }
-        extractionPrompt = args.prompt;
         return {
           rawResponse: JSON.stringify({
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           }),
           parsed: {
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           },
         };
@@ -1120,9 +1118,6 @@ describe("CALENDAR effect receipt settlement", () => {
       });
 
       expect(result.success, JSON.stringify(result)).toBe(true);
-      expect(extractionPrompt).toContain(
-        "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
-      );
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({

@@ -3,9 +3,10 @@
  * behaviour against a mocked `CalendarService` (no live DB or connector).
  */
 import type http from "node:http";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
+import { normalizeCalendarDateTimeInTimeZone } from "../src/internal/calendar-normalize.js";
 import { calendarPlugin } from "../src/plugin.js";
 import {
   calendarHttpRoutes,
@@ -128,6 +129,42 @@ function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
   } as unknown as IAgentRuntime;
 }
 describe("calendar plugin HTTP routes", () => {
+  it.each([
+    ["2026-03-08T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT", 0],
+    ["2026-11-01T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS", 2],
+  ])(
+    "translates local-time validation at %s into actionable HTTP 409",
+    async (localTime, code, choices) => {
+      const service = makeCalendarService();
+      service.getCalendarFeed.mockImplementation(async () => {
+        normalizeCalendarDateTimeInTimeZone(
+          localTime,
+          "startAt",
+          "America/Los_Angeles",
+          "reject",
+        );
+        throw new Error("Expected local-time rejection");
+      });
+      const response = makeResponse();
+      await calendarRouteHandler()(
+        makeRequest({
+          method: "GET",
+          url: "/api/lifeops/calendar/feed",
+        }) as never,
+        response as never,
+        makeRuntime(service) as never,
+      );
+      expect(response.statusCode).toBe(409);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        code,
+        requiresInput: true,
+        timeClarification: { timeZone: "America/Los_Angeles" },
+      });
+      expect(body.timeClarification.possibleInstants).toHaveLength(choices);
+    },
+  );
+
   it("registers only the provider-authenticated webhook directly", () => {
     expect(calendarPlugin.dependencies).toEqual(["@elizaos/plugin-scheduling"]);
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);

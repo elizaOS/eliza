@@ -237,6 +237,111 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   };
 
   it.each([
+    ["2026-03-08T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT"],
+    ["2026-11-01T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS"],
+  ])(
+    "rejects unresolved local time %s without persisted or reminder effects",
+    async (startAt, code) => {
+      const request = {
+        title: "Unresolved local appointment",
+        startAt,
+        durationMinutes: 30,
+        timeZone: "America/Los_Angeles",
+        idempotencyKey: "unresolved-dst-create",
+      };
+      await expect(
+        service.prepareCalendarEventCreate(INTERNAL_URL, request),
+      ).rejects.toMatchObject({ code });
+      await expect(
+        service.createCalendarEventMutation(INTERNAL_URL, request),
+      ).rejects.toMatchObject({ code });
+      expect(
+        (await pg.query("SELECT * FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toEqual([]);
+      expect(reminderPlans).toEqual([]);
+
+      const created = await service.createCalendarEventMutation(
+        INTERNAL_URL,
+        originalEvent,
+      );
+      if (!created.event) throw new Error("Expected a persisted seed event");
+      const before = (
+        await pg.query("SELECT * FROM app_calendar.life_calendar_events")
+      ).rows;
+      const remindersBefore = [...reminderPlans];
+      await expect(
+        service.updateCalendarEvent(INTERNAL_URL, {
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          eventId: created.event.externalId,
+          expectedProviderVersion: '"eliza-1"',
+          startAt,
+          timeZone: "America/Los_Angeles",
+        }),
+      ).rejects.toMatchObject({ code });
+      expect(
+        (await pg.query("SELECT * FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toEqual(before);
+      expect(reminderPlans).toEqual(remindersBefore);
+      const unchanged = await runUpdate(
+        `Move Willow Harbor QA to ${startAt} in America/Los_Angeles.`,
+        { startAt, timeZone: "America/Los_Angeles" },
+        {
+          requiresInput: false,
+          startAt,
+          timeZone: "America/Los_Angeles",
+          endAt: null,
+        },
+        false,
+      );
+      expect(unchanged).toMatchObject({
+        id: created.event.id,
+        startAt: created.event.startAt,
+        endAt: created.event.endAt,
+      });
+      expect(
+        (await pg.query("SELECT * FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toEqual(before);
+      expect(reminderPlans).toEqual(remindersBefore);
+    },
+  );
+
+  it("persists either explicitly chosen occurrence of a repeated local time", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "First occurrence",
+      startAt: "2026-11-01T01:30:00-07:00",
+      endAt: "2026-11-01T01:45:00-07:00",
+      timeZone: "America/Los_Angeles",
+      idempotencyKey: "explicit-dst-choice",
+    });
+    if (!created.event)
+      throw new Error("Expected the first occurrence to persist");
+    expect(created.event.startAt).toBe("2026-11-01T08:30:00.000Z");
+    const updated = await service.updateCalendarEvent(INTERNAL_URL, {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      eventId: created.event.externalId,
+      expectedProviderVersion: '"eliza-1"',
+      startAt: "2026-11-01T01:30:00-08:00",
+      endAt: "2026-11-01T01:45:00-08:00",
+      timeZone: "America/Los_Angeles",
+    });
+    expect(updated).toMatchObject({
+      id: created.event.id,
+      startAt: "2026-11-01T09:30:00.000Z",
+      endAt: "2026-11-01T09:45:00.000Z",
+      timezone: "America/Los_Angeles",
+    });
+    expect(await service.getCalendarEventById(created.event.id)).toMatchObject({
+      startAt: updated.startAt,
+      endAt: updated.endAt,
+    });
+  });
+
+  it.each([
     ["omitted", {}],
     [
       "blank",

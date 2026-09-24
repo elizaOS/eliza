@@ -370,6 +370,9 @@ export function createCalendarMutationApprovalGateway(options?: {
     async schedule(args) {
       const payload: CalendarApprovalPayload = {
         action: "schedule_event",
+        ...(args.request.sourceNote !== undefined
+          ? { sourceNote: structuredClone(args.request.sourceNote) }
+          : {}),
         side: args.request.side,
         grantId: args.request.grantId,
         calendarId: args.request.calendarId,

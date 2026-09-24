@@ -465,6 +465,9 @@ export class OwnerCalendarMutationGatewayService
     const requestSha256 = sha256({ operation: "create", request });
     const payload: CalendarEditorPayload = {
       action: "schedule_event",
+      ...(request.sourceNote !== undefined
+        ? { sourceNote: structuredClone(request.sourceNote) }
+        : {}),
       side: request.side ?? "owner",
       grantId: request.grantId ?? null,
       calendarId: request.calendarId ?? "primary",
