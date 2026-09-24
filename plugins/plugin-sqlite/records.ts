@@ -1634,7 +1634,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       }
       const now = Date.now();
       const storedSegments: StoredMemory[] = params.segments.map((segment) => ({
-        ...segment,
+        ...persistableMemory(segment),
         id: segment.id,
         tableName: "message_content_segments",
         agentId: publicationAgentId,
@@ -1643,7 +1643,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const storedParent: StoredMemory =
         params.mode === "create"
           ? {
-              ...params.parent,
+              ...persistableMemory(params.parent),
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
@@ -1651,7 +1651,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             }
           : {
               ...(existing as StoredMemory),
-              content: params.replacementContent,
+              content: persistableMemory({ content: params.replacementContent })
+                .content,
             };
       let parentIndexStaged = false;
       try {
