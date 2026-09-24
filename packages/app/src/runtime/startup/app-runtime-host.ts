@@ -22,6 +22,7 @@ import { formatErrorWithStack } from "@elizaos/shared/format-error";
 import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { ensureRuntimeSqlCompatibility } from "@elizaos/shared/utils/sql-compat";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
+import { restoreRemoteBrowserController } from "../../services/remote-browser-controller";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";
 import { registerSubAgentCredentialBridge } from "../sub-agent-credential-bridge-wiring.js";
@@ -132,7 +133,10 @@ function createPostReadyBootSteps(
 ): PostReadyBootSteps {
   return {
     registerAppRoutePlugins,
-    registerRuntimeHooks,
+    registerRuntimeHooks: async (runtime) => {
+      await registerRuntimeHooks(runtime);
+      await restoreRemoteBrowserController(runtime);
+    },
     registerCoreSensitiveRequestAdapters,
     registerSubAgentCredentialBridge,
     registerSubAgentCredentialBridgeAdapter,

@@ -34,13 +34,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const osRepoRoot = path.resolve(here, "../..");
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
+
+const repoRoot = resolveElizaSourceRoot();
 const LOGO_SVG = path.join(
   repoRoot,
   "packages/app/public/brand/logos/logo_white_nobg.svg",

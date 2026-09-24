@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import platform
-import re
 import shutil
 import socket
 import subprocess
@@ -17,6 +16,8 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from mkosi_console import FORBIDDEN_MARKERS, GRAPHICAL_MARKERS, normalized_console_text
 
 
 QEMU = {
@@ -29,33 +30,11 @@ LINUX_MACHINES = {
     "arm64": "virt,accel=kvm:tcg,gic-version=max",
     "riscv64": "virt,accel=kvm:tcg",
 }
-GRAPHICAL_MARKERS = (
-    "Linux version",
-    "Started gdm.service - GNOME Display Manager",
-    "Reached target Graphical Interface",
-)
 RECOVERY_MARKERS = (
     "Linux version",
     "elizaOS recovery boundary verified: Eliza agent and privileged broker unavailable",
 )
-FORBIDDEN_MARKERS = (
-    "Kernel panic - not syncing",
-    "Entering emergency mode",
-    "You are in emergency mode",
-    "Failed to start initrd-switch-root.service",
-    "VFS: Unable to mount root fs",
-    "Cannot open root device",
-    "No bootable device",
-    "Boot failed",
-    "Dependency failed for Graphical Interface",
-)
 SCHEMA = "ai.elizaos.mkosi-qemu-evidence.v1"
-ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
-
-
-def normalized_console_text(text: str) -> str:
-    """Remove terminal control sequences before evaluating boot markers."""
-    return ANSI_ESCAPE.sub("", text).replace("\r", "")
 
 
 def now() -> str:
@@ -104,6 +83,35 @@ def send_recovery_hotkey(monitor_socket: Path) -> bool:
         return False
 
 
+def capture_screenshot(monitor_socket: Path, output: Path) -> None:
+    """Capture the VM framebuffer through QEMU's monitor, not the host desktop."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists() or output.is_symlink():
+        raise FileExistsError(f"screenshot already exists: {output}")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(5)
+        connection.connect(str(monitor_socket))
+        def wait_for_prompt() -> None:
+            response = b""
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise RuntimeError("QEMU closed the framebuffer monitor")
+                response += chunk
+                if b"(qemu) " in response:
+                    return
+            raise RuntimeError("QEMU framebuffer monitor did not finish its command")
+
+        wait_for_prompt()
+        command = f"screendump {json.dumps(str(output.resolve()))}\n"
+        connection.sendall(command.encode("utf-8"))
+        wait_for_prompt()
+        if output.is_file() and output.stat().st_size > 0:
+            return
+    raise RuntimeError("QEMU did not produce the requested framebuffer screenshot")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--architecture", choices=sorted(QEMU), required=True)
@@ -117,6 +125,7 @@ def main() -> int:
     parser.add_argument("--disk-interface", choices=("usb", "virtio"), default="usb")
     parser.add_argument("--transcript", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--screenshot", type=Path, help="save the VM framebuffer as PPM before stopping it")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--memory-mib", type=int, default=4096)
     parser.add_argument("--cpus", type=int, default=4)
@@ -237,7 +246,7 @@ def main() -> int:
                 "-snapshot",
             ]
             monitor_socket: Path | None = None
-            if args.boot_mode == "recovery":
+            if args.boot_mode == "recovery" or args.screenshot:
                 monitor_socket = Path(temporary) / "monitor.sock"
                 command.extend(
                     ("-monitor", f"unix:{monitor_socket},server=on,wait=off")
@@ -294,7 +303,8 @@ def main() -> int:
                             termination_reason = "timeout"
                             break
                         if (
-                            monitor_socket is not None
+                            args.boot_mode == "recovery"
+                            and monitor_socket is not None
                             and send_recovery_hotkey(monitor_socket)
                         ):
                             selection_attempts += 1
@@ -310,6 +320,16 @@ def main() -> int:
                             termination_reason = "required-markers"
                             break
                     if process.poll() is None:
+                        if args.screenshot and monitor_socket is not None:
+                            try:
+                                capture_screenshot(monitor_socket, args.screenshot)
+                                document["screenshot"] = {
+                                    "path": str(args.screenshot.resolve()),
+                                    "sha256": sha256_file(args.screenshot),
+                                    "size": args.screenshot.stat().st_size,
+                                }
+                            except (OSError, RuntimeError) as exc:
+                                errors.append(f"QEMU screenshot failed: {exc}")
                         process.terminate()
                         try:
                             process.wait(timeout=10)

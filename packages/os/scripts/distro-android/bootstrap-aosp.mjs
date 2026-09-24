@@ -210,6 +210,14 @@ export function loadAospLock(filePath = aospLockPath) {
   }
   if (lock.generatedVendor !== undefined) {
     const generated = lock.generatedVendor;
+    if (generated.referenceSpec !== undefined) {
+      const reference = generated.referenceSpec;
+      if (!safeRelativePath(reference?.path) ||
+          !Number.isSafeInteger(reference?.sizeBytes) || reference.sizeBytes <= 0 ||
+          !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? "") ||
+          !/^[a-f0-9]{64}$/.test(reference?.baseSha256 ?? ""))
+        fail(`invalid generated vendor reference in ${filePath}`);
+    }
     if (
       !Array.isArray(generated.command) ||
       generated.command.length === 0 ||

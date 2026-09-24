@@ -1,17 +1,5 @@
-# ElizaOS sepolicy
+# Vendor SELinux policy
 
-This directory contains the vendor SELinux policy included by `BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy` in `eliza_common.mk`.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Included by `BOARD_VENDOR_SEPOLICY_DIRS` in `eliza_common.mk`. Validate changes
+through the full [AOSP build](../../../README.md); installer frontend tests do not
+compile SELinux policy.

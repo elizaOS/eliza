@@ -38,3 +38,64 @@ describe("complete native browser context", () => {
     },
   );
 });
+
+describe("native command receipts", () => {
+  it("preserves complete accessibility snapshots and snapshot-bound selectors", async () => {
+    const { decodeNativeBrowserCommandResult } = await import(
+      "./native-page-reader"
+    );
+    const data = {
+      representation: "android-accessibility",
+      packageName: "org.chromium.chrome",
+      snapshotId: "current",
+      complete: true,
+      elements: [
+        { selector: "current:ax-0", label: "complete ".repeat(10000) },
+      ],
+    };
+    expect(
+      decodeNativeBrowserCommandResult(
+        { subaction: "snapshot" },
+        { ok: true, data },
+      ).value,
+    ).toEqual(data);
+  });
+  it("rejects incomplete page reads and false effect completion", async () => {
+    const { decodeNativeBrowserCommandResult } = await import(
+      "./native-page-reader"
+    );
+    expect(() =>
+      decodeNativeBrowserCommandResult(
+        { subaction: "snapshot" },
+        {
+          ok: true,
+          data: {
+            url: "https://example.com",
+            title: "Page",
+            text: "prefix",
+            truncated: true,
+          },
+        },
+      ),
+    ).toThrow(/incomplete/);
+    expect(() =>
+      decodeNativeBrowserCommandResult(
+        { subaction: "click" },
+        { ok: true, data: { dispatched: true, completed: true } },
+      ),
+    ).toThrow(/receipt/);
+  });
+  it("preserves native stale reference failures without claiming an effect", async () => {
+    const { decodeNativeBrowserCommandResult } = await import(
+      "./native-page-reader"
+    );
+    expect(() =>
+      decodeNativeBrowserCommandResult(
+        { subaction: "click" },
+        { ok: false, code: "STALE_REF", message: "Refresh the snapshot." },
+      ),
+    ).toThrow(
+      expect.objectContaining({ kind: "STALE_REF", targetId: "native-client" }),
+    );
+  });
+});

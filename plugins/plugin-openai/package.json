@@ -20,6 +20,7 @@
     },
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }

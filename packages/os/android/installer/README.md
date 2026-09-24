@@ -1,17 +1,4 @@
-# elizaOS Android installer
+# Android installer helpers
 
-The Bash/PowerShell helpers retain legacy image planning and read-only discovery.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Legacy Bash/PowerShell image planning and read-only discovery. Current device
+build and installation entrypoints are described in the [Android guide](../README.md).

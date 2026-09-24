@@ -1,19 +1,11 @@
 SUMMARY = "elizaOS confidential-profile policy + measured-boot enforcement artifacts"
-DESCRIPTION = "Installs the ELIZAOS_PROFILE=confidential TEE policy blob, its \
-golden TEE measurements, and the boot-consumable enforcement artifacts \
-(kernel cmdline fragment, sysctl drop-in, systemd masked-units list) into the \
-measured rootfs. These are the static files measured into measurements.policy \
-and applied at boot (plan docs/tee-os-implementation-plan.md \
-§3-§4, OS-1/OS-3). The agent container image and in-domain \
-attestation agent are installed by a separate recipe that is BLOCKED on a \
-build host (see README)."
+DESCRIPTION = "Installs confidential policy and boot settings. Release measurements \
+and attestation services must be supplied by the image producer."
 HOMEPAGE = "https://elizaos.ai"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-# Resolve file:// SRC_URI entries against the real in-tree confidential directory
-# (linux/confidential), three levels up from this recipe. Every path
-# below is a file that exists in-tree and is generated/checked by the OS-3 gates.
+# Resolve local inputs from linux/confidential.
 FILESEXTRAPATHS:prepend := "${THISDIR}/../../../:"
 
 SRC_URI = "\
@@ -33,12 +25,10 @@ do_install() {
     install -m 0444 ${WORKDIR}/policy/confidential-policy.json \
         ${D}${sysconfdir}/elizaos/tee/confidential-policy.json
 
-    # 2. Golden image manifest (the "image is the policy" record). The signed
-    #    tee-measurements.json itself is produced by generate-tee-measurements.mjs
-    #    at release time and installed by the release recipe; this manifest lets a
-    #    verifier recompute the golden digests offline.
+    # Example metadata is documentation, never the runtime trust record.
+    install -d ${D}${docdir}/${PN}
     install -m 0444 ${WORKDIR}/image-manifest.example.json \
-        ${D}${sysconfdir}/elizaos/tee/image-manifest.json
+        ${D}${docdir}/${PN}/image-manifest.example.json
 
     # 3. Kernel cmdline fragment (noswap/nohibernate/nosmt/lockdown/...). Consumed
     #    by the bootloader recipe (meta-dstack) which appends it to the measured

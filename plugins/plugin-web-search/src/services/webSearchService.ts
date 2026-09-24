@@ -1,11 +1,11 @@
 /**
- * Tavily-backed `WebSearchService` — the `ServiceType.WEB_SEARCH` implementation.
+ * Implements web search with explicitly authorized browser profiles and a Tavily fallback.
  *
  * Wraps `@tavily/core` to fulfil the `IWebSearchService` contract (search /
  * news / images / videos / suggestions / trending / page-info), normalizing
- * Tavily's responses to core's shared shape. Degrades gracefully: without
- * `TAVILY_API_KEY` it boots inert and throws a descriptive error on first use
- * rather than crashing boot. `getPageInfo` scrapes title, description, meta
+ * Tavily's responses to core's shared shape. Without `TAVILY_API_KEY`, an
+ * authorized connected browser can still search; missing both providers fails
+ * explicitly instead of crashing boot. `getPageInfo` scrapes title, description, meta
  * tags, images, and links from untrusted HTML; the page bytes are always
  * fetched through `fetchWithSsrfGuard` so private / loopback / link-local
  * targets fail closed, redirect hops are revalidated, and response bodies are
@@ -22,7 +22,6 @@ import {
     ServiceType,
 } from "@elizaos/core";
 import { tavily } from "@tavily/core";
-
 import type {
     ImageSearchOptions,
     NewsSearchOptions,
@@ -30,6 +29,7 @@ import type {
     SearchResponse,
     VideoSearchOptions,
 } from "../types";
+import { searchAuthorizedBrowser } from "./browserSearch";
 
 export type TavilyClient = ReturnType<typeof tavily>;
 
@@ -307,7 +307,7 @@ async function readBoundedPageHtml(response: Response): Promise<string> {
 
     try {
         while (true) {
-            let chunk: ReadableStreamReadResult<Uint8Array>;
+            let chunk: Awaited<ReturnType<typeof reader.read>>;
             try {
                 chunk = await reader.read();
             } catch (cause) {
@@ -461,7 +461,7 @@ export class WebSearchService extends IWebSearchService {
             this.configured = false;
             logger.warn(
                 { src: "plugin-web-search" },
-                "TAVILY_API_KEY not set — web search is inert until a key is provided"
+                "[WebSearchService] API search is unavailable without TAVILY_API_KEY; an explicitly authorized browser profile can still serve general searches"
             );
             return;
         }
@@ -472,6 +472,8 @@ export class WebSearchService extends IWebSearchService {
     async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
         const normalizedQuery = validateSearchQuery(query);
         validateSearchOptions(options);
+        const browserResult = await searchAuthorizedBrowser(this.runtime, normalizedQuery, options);
+        if (browserResult) return browserResult;
         if (!this.configured || !this.tavilyClient) {
             throw new Error("Web search is not configured: set TAVILY_API_KEY to enable it.");
         }

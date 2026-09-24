@@ -19,6 +19,7 @@ import {
 } from "../../api";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { openBrowserWebsite } from "../../bridge/system-browser";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
@@ -48,6 +49,8 @@ import {
 import { Input } from "../ui/input";
 import { TooltipHint } from "../ui/tooltip";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { AndroidChromiumBrowser } from "./AndroidChromiumBrowser";
+import { BrowserSearchSettings } from "./BrowserSearchSettings";
 import {
   type BrowserSwitcherTab,
   BrowserTabFoldControl,
@@ -577,6 +580,9 @@ function BrowserAddressInput({
 
 export function BrowserWorkspaceView(): React.JSX.Element {
   const authority = useActiveAgentAuthority();
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    return <AndroidChromiumBrowser key={authority} />;
+  }
   return <BrowserWorkspaceForAuthority key={authority} />;
 }
 
@@ -2831,7 +2837,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           onActivate={() =>
             void runBrowserWorkspaceAction("open:external", async () => {
               if (!selectedTab) return;
-              await openExternalUrl(selectedTab.url);
+              await openBrowserWebsite(selectedTab.url);
             })
           }
           variant="ghost"
@@ -2844,7 +2850,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           onClick={() =>
             void runBrowserWorkspaceAction("open:external", async () => {
               if (!selectedTab) return;
-              await openExternalUrl(selectedTab.url);
+              await openBrowserWebsite(selectedTab.url);
             })
           }
         >
@@ -2963,7 +2969,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               onSelect={() =>
                 void runBrowserWorkspaceAction("open:external", async () => {
                   if (!selectedTab) return;
-                  await openExternalUrl(selectedTab.url);
+                  await openBrowserWebsite(selectedTab.url);
                 })
               }
             >
@@ -3137,7 +3143,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
                       void runBrowserWorkspaceAction(
                         `open:external:${selectedTab.id}`,
                         async () => {
-                          await openExternalUrl(selectedTab.url);
+                          await openBrowserWebsite(selectedTab.url);
                         },
                       )
                     }
@@ -3215,7 +3221,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
                       void runBrowserWorkspaceAction(
                         `open:external:${tab.id}`,
                         async () => {
-                          await openExternalUrl(tab.url);
+                          await openBrowserWebsite(tab.url);
                         },
                       )
                     }
@@ -3368,6 +3374,16 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         >
           {navNode}
         </div>
+      )}
+      {isElectrobunRuntime() && (
+        <details className="shrink-0 rounded-xl border border-border bg-card text-sm">
+          <summary className="cursor-pointer px-4 py-3 text-txt">
+            Agent browser connection
+          </summary>
+          <div className="max-h-[40vh] overflow-auto p-3">
+            <BrowserSearchSettings />
+          </div>
+        </details>
       )}
       <div
         data-testid="browser-workspace-surface-panel"

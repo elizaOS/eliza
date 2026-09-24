@@ -19,6 +19,8 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from mkosi_console import FORBIDDEN_MARKERS, GRAPHICAL_MARKERS, normalized_console_text
 from typing import Iterator
 
 QEMU = {
@@ -31,33 +33,12 @@ MACHINES = {
     "arm64": "virt,accel=kvm:tcg,gic-version=max",
     "riscv64": "virt,accel=kvm:tcg",
 }
-REQUIRED_MARKERS = (
-    "Linux version",
-    "Started gdm.service - GNOME Display Manager",
-    "Reached target Graphical Interface",
-)
-FORBIDDEN_MARKERS = (
-    "Kernel panic - not syncing",
-    "Entering emergency mode",
-    "You are in emergency mode",
-    "Failed to start initrd-switch-root.service",
-    "VFS: Unable to mount root fs",
-    "Cannot open root device",
-    "No bootable device",
-    "Boot failed",
-    "Dependency failed for Graphical Interface",
-)
+REQUIRED_MARKERS = GRAPHICAL_MARKERS
 SCHEMA = "ai.elizaos.mkosi-persistence-evidence.v1"
-ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 
 
 class QualificationError(RuntimeError):
     pass
-
-
-def normalized_console_text(text: str) -> str:
-    """Remove terminal control sequences before evaluating boot markers."""
-    return ANSI_ESCAPE.sub("", text).replace("\r", "")
 
 
 def now() -> str:
@@ -138,9 +119,9 @@ def attached_loop(image: Path) -> Iterator[Path]:
             created_nodes.append(partition)
         yield loop
     finally:
+        run(["losetup", "--detach", str(loop)], capture=True)
         for partition in reversed(created_nodes):
             partition.unlink(missing_ok=True)
-        subprocess.run(["losetup", "--detach", str(loop)], check=False)
 
 
 def home_partition(loop: Path) -> tuple[Path, int]:
@@ -205,11 +186,14 @@ def ext4_size(partition: Path) -> int:
 def mounted_home(partition: Path, *, read_only: bool) -> Iterator[Path]:
     mountpoint = Path(tempfile.mkdtemp(prefix="elizaos-persistence-mount-"))
     options = "ro,noload,nodev,nosuid" if read_only else "rw,nodev,nosuid"
+    mounted = False
     try:
         run(["mount", "--types", "ext4", "--options", options, str(partition), str(mountpoint)])
+        mounted = True
         yield mountpoint
     finally:
-        subprocess.run(["umount", str(mountpoint)], check=False)
+        if mounted:
+            run(["umount", str(mountpoint)], capture=True)
         mountpoint.rmdir()
 
 
@@ -251,53 +235,59 @@ def qemu_command(
     return command
 
 
-def boot(command: list[str], transcript: Path, timeout: int) -> dict[str, object]:
+def boot(command: list[str], transcript: Path, timeout: int, receipts: list[dict[str, object]]) -> None:
     transcript.parent.mkdir(parents=True, exist_ok=True)
     with transcript.open("wb") as output:
         process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + timeout
         reason = "qemu-exit"
-        while process.poll() is None:
-            if time.monotonic() >= deadline:
-                reason = "timeout"
-                break
-            time.sleep(1)
-            text = normalized_console_text(
-                transcript.read_text(encoding="utf-8", errors="replace")
-            )
-            if any(marker in text for marker in FORBIDDEN_MARKERS):
-                reason = "forbidden-marker"
-                break
-            if all(marker in text for marker in REQUIRED_MARKERS):
-                reason = "required-markers"
-                break
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        try:
+            while process.poll() is None:
+                if time.monotonic() >= deadline:
+                    reason = "timeout"
+                    break
+                time.sleep(1)
+                text = normalized_console_text(
+                    transcript.read_text(encoding="utf-8", errors="replace")
+                )
+                if any(marker in text for marker in FORBIDDEN_MARKERS):
+                    reason = "forbidden-marker"
+                    break
+                if all(marker in text for marker in REQUIRED_MARKERS):
+                    reason = "required-markers"
+                    break
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
     text = normalized_console_text(
         transcript.read_text(encoding="utf-8", errors="replace")
     )
     found = [marker for marker in REQUIRED_MARKERS if marker in text]
     forbidden = [marker for marker in FORBIDDEN_MARKERS if marker in text]
-    if reason != "required-markers" or len(found) != len(REQUIRED_MARKERS) or forbidden:
-        raise QualificationError(
-            f"QEMU boot failed: reason={reason}, missing={set(REQUIRED_MARKERS) - set(found)}, forbidden={forbidden}"
-        )
-    return {
+    missing = [marker for marker in REQUIRED_MARKERS if marker not in found]
+    success = reason == "required-markers" and not missing and not forbidden
+    receipts.append({
+        "success": success,
         "terminationReason": reason,
         "returnCode": process.returncode,
         "markersFound": found,
+        "missingMarkers": missing,
         "forbiddenMarkersFound": forbidden,
         "transcript": {
             "path": str(transcript.resolve()),
             "size": transcript.stat().st_size,
             "sha256": sha256_file(transcript),
         },
-    }
+    })
+    if not success:
+        raise QualificationError(
+            f"QEMU boot failed: reason={reason}, missing={missing}, forbidden={forbidden}"
+        )
 
 
 def main() -> int:
@@ -374,6 +364,11 @@ def main() -> int:
         if not errors and not args.preflight_only:
             source_size = args.source_image.stat().st_size
             source_digest = sha256_file(args.source_image)
+            document["sourceImage"] = {
+                "path": str(args.source_image.resolve()),
+                "size": source_size,
+                "sha256": source_digest,
+            }
             args.work_image.parent.mkdir(parents=True, exist_ok=True)
             descriptor = os.open(args.work_image, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
             try:
@@ -386,12 +381,18 @@ def main() -> int:
                 readback_digest = sha256_file(loop, source_size)
             if readback_digest != source_digest:
                 raise QualificationError("virtual USB expanded-byte readback digest mismatch")
+            document["virtualUsbReadback"] = {
+                "bytes": source_size,
+                "sha256": readback_digest,
+                "interface": "loop-block-written-then-qemu-removable-usb",
+            }
 
             with attached_loop(args.work_image) as loop:
                 home, home_partition_before = home_partition(loop)
                 home_filesystem_before = ext4_size(home)
 
             boots: list[dict[str, object]] = []
+            document["boots"] = boots
             with tempfile.TemporaryDirectory(prefix="elizaos-persistence-firmware-") as temporary:
                 firmware_vars: Path | None = None
                 if args.firmware_mode == "pflash":
@@ -399,7 +400,7 @@ def main() -> int:
                     firmware_vars = Path(temporary) / "VARS.fd"
                     shutil.copyfile(args.firmware_vars, firmware_vars)
                 command = qemu_command(args, qemu or QEMU[args.architecture], firmware_vars)
-                boots.append(boot(command, args.transcript_directory / "boot-1.log", args.timeout))
+                boot(command, args.transcript_directory / "boot-1.log", args.timeout, boots)
 
                 with attached_loop(args.work_image) as loop:
                     home, home_partition_after = home_partition(loop)
@@ -421,7 +422,7 @@ def main() -> int:
                         finally:
                             os.close(directory)
 
-                boots.append(boot(command, args.transcript_directory / "boot-2.log", args.timeout))
+                boot(command, args.transcript_directory / "boot-2.log", args.timeout, boots)
                 with attached_loop(args.work_image) as loop:
                     home, home_partition_second = home_partition(loop)
                     home_filesystem_second = ext4_size(home)
@@ -432,16 +433,6 @@ def main() -> int:
                 if home_partition_second != home_partition_after or home_filesystem_second != home_filesystem_after:
                     raise QualificationError("home sizing changed unexpectedly on the second boot")
 
-            document["sourceImage"] = {
-                "path": str(args.source_image.resolve()),
-                "size": source_size,
-                "sha256": source_digest,
-            }
-            document["virtualUsbReadback"] = {
-                "bytes": source_size,
-                "sha256": readback_digest,
-                "interface": "loop-block-written-then-qemu-removable-usb",
-            }
             document["home"] = {
                 "partitionBytesBefore": home_partition_before,
                 "partitionBytesAfter": home_partition_after,
@@ -450,7 +441,6 @@ def main() -> int:
                 "sentinelSha256": hashlib.sha256(token.encode()).hexdigest(),
                 "survivedSecondBoot": True,
             }
-            document["boots"] = boots
             document["success"] = True
         elif not errors:
             document["success"] = True

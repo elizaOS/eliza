@@ -250,7 +250,7 @@ export async function runPasswordManagerHandler(
         ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
         : "";
       return {
-        text: `Copied ${field} for item '${itemId}' to clipboard (clears in ${result.expiresInSeconds}s).${fixtureSuffix}`,
+        text: `Copied ${field} for item '${itemId}' to clipboard (scheduled to clear in ${result.expiresInSeconds}s).${fixtureSuffix}`,
         success: true,
         values: {
           success: true,
@@ -270,12 +270,11 @@ export async function runPasswordManagerHandler(
     }
 
     return failure("UNKNOWN_SUBACTION", { subaction });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown password manager failure.";
-    logger.warn({ error }, `[${ACTION_NAME}] handler failed`);
-    return failure("PASSWORD_MANAGER_FAILED", { error: message });
+  } catch {
+    // error-policy:J1 Password-manager subprocess errors may contain secret output.
+    logger.warn({ action: ACTION_NAME }, `[${ACTION_NAME}] handler failed`);
+    return failure("PASSWORD_MANAGER_FAILED", {
+      error: "Open and unlock your password manager, then try again.",
+    });
   }
 }

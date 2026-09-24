@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -951,17 +950,19 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         if (!child.mountpoint) continue;
         const partPath = `/dev/${child.name}`;
         try {
-          await execFileFn("umount", [partPath]);
+          await execFileFn(escalator.command, [
+            ...escalator.argsPrefix,
+            "umount",
+            partPath,
+          ]);
         } catch (err) {
-          const e = err as { code?: number; stderr?: string };
-          const stderr = e.stderr ?? "";
-          // Exit code 32 / "not mounted" is acceptable (race vs. lsblk).
-          if (e.code !== 32 && !/not mounted/i.test(stderr)) {
-            throw new UnmountFailedError(
-              partPath,
-              stderr.trim() || "unknown error",
-            );
-          }
+          const e = err as { stderr?: string; message?: string };
+          // umount uses exit 32 for general failures, including a busy target.
+          // A failed unmount never authorizes a subsequent raw-device write.
+          throw new UnmountFailedError(
+            partPath,
+            e.stderr?.trim() || e.message || "unknown error",
+          );
         }
       }
     }

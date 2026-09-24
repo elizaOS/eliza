@@ -191,7 +191,18 @@ export function pinnedToolRunner(tools, release, run = checkedRun) {
       hashFile(command).sha256 === release.tools[name].sha256,
       `${name} changed during installation`,
     );
-    return run(command, args, options);
+    const output = run(command, args, options);
+    // Some platform-tools versions exit zero after a bootloader FAIL reply.
+    // Never journal a write as successful or dispatch the next operation then.
+    if (name === "fastboot") {
+      requireThat(
+        !/(?:^|\n)[^\r\n]*\bFAILED(?:\s|$)|(?:^|\n)fastboot:\s*error:/m.test(
+          output,
+        ),
+        `fastboot protocol failure: ${JSON.stringify(args)}\n${output}`,
+      );
+    }
+    return output;
   };
 }
 

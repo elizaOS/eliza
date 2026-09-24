@@ -109,6 +109,7 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   // Mobile-safe core boot. `plugin-sql` is the required bootstrap dependency.
   { plugin: "@elizaos/plugin-sql", mobileCore: true, requiredBootstrap: true },
   { plugin: "@elizaos/plugin-native-filesystem", mobileCore: true },
+  { plugin: "@elizaos/plugin-browser", mobileCore: true },
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
   // View-providing plugins that must resolve their home tiles on every platform.
@@ -126,6 +127,7 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-native-wifi", aospCore: true },
   { plugin: "@elizaos/plugin-native-contacts", aospCore: true },
   { plugin: "@elizaos/plugin-native-phone", aospCore: true },
+  { plugin: "@elizaos/app/mobile-remote-target", aospCore: true },
   // Privileged AOSP terminal/shell/coding surfaces (priv_app SELinux execve).
   {
     plugin: "@elizaos/plugin-coding-tools",

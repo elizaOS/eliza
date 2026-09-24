@@ -1,5 +1,9 @@
-# elizaOS OS repository guide
+# elizaOS operating-system tooling
 
-Operating-system image and installer tooling. Current distribution development lives in the separate elizaOS/os repository.
+Linux images, Android vendor overlays, and USB/device installers. Follow the root
+repository guide and the nearest installer guide. Application runtime sources
+belong to `packages/app`; use `scripts/eliza-source.mjs` to resolve their checkout.
 
-Build, test, and setup: [README.md](README.md).
+Build and validation entrypoints: [README.md](README.md). Configuration checks are
+not boot or installation evidence. Test destructive disk operations only against
+explicitly allocated disposable images or virtual machines.

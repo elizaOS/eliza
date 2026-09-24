@@ -46,9 +46,18 @@ import {
 import { runVaultBootstrap } from "../services/vault-bootstrap";
 import { sharedVault } from "../services/vault-mirror";
 
+import { registerAppRoutePluginLoader } from "./app-route-plugin-registry";
+
 let installed = false;
 
 export function installAgentHostBridge(): void {
+  registerAppRoutePluginLoader(
+    "remote-browser-controller",
+    async () =>
+      (await import("../services/remote-browser-controller"))
+        .remoteBrowserControllerPlugin,
+  );
+
   const resolveHttpRequestAuthorization: NonNullable<
     AgentHostBridge["resolveHttpRequestAuthorization"]
   > = async (req, runtime, options) => {

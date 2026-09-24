@@ -72,6 +72,14 @@
             "TAVILY_API_KEY": {
                 "type": "string",
                 "description": "Tavily API key for accessing news services"
+            },
+            "WEB_SEARCH_BROWSER_PROFILE_ID": {
+                "type": "string",
+                "description": "Explicit owner grant: exact registered Chromium profile ID permitted for browser-first web searches."
+            },
+            "WEB_SEARCH_BROWSER_TARGET_ID": {
+                "type": "string",
+                "description": "Registered profile-bound browser target; defaults to chromium-device. Does not grant access without the exact profile ID."
             }
         }
     }

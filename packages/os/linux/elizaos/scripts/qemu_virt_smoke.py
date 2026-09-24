@@ -669,7 +669,7 @@ def main(argv: list[str] | None = None) -> int:
         message = (
             "STATUS: BLOCKED os_rv64.qemu_virt_smoke - no riscv64 elizaOS live ISO "
             "built under linux/elizaos/out/; build it with "
-            "`cd linux/elizaos && ./build.sh ARCH=riscv64` (or the "
+            "`cd linux/elizaos && ELIZAOS_ARCH=riscv64 ./build-live-iso.sh` (or the "
             "Makefile build target) then re-run with --iso <path>."
         )
         write_report(

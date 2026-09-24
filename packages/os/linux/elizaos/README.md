@@ -1,17 +1,11 @@
-# elizaOS Linux live-build variant
+# Linux image builders
 
-This directory contains the source-controlled live-build variant used for the legacy multi-arch elizaOS Linux ISO checks.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
+The default builder produces the persistent [mkosi GNOME image](mkosi/README.md):
 
 ```bash
-bun run --cwd packages/os build
+make -C packages/os/linux/elizaos build ARCH=amd64 PROFILE=gui
+make -C packages/os/linux/elizaos lint
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+`build-live-iso.sh`, `config/`, and `auto/` retain the older ISO pipeline. Use
+`make legacy-iso` and `make legacy-lint` from this directory for those paths.

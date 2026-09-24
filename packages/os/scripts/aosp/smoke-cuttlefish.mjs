@@ -32,8 +32,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { isMainModule } from "../distro-android/is-main.mjs";
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
 import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
 import {
   loadAospVariantConfig,
@@ -82,13 +82,7 @@ async function configureUndiciIfAvailable(timeoutMs) {
   }
 }
 
-const osRepoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+const repoRoot = resolveElizaSourceRoot();
 
 const AGENT_PORT = 31337;
 // adb forward picks an arbitrary host port; we always pin to AGENT_PORT

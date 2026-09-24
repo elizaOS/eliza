@@ -195,7 +195,8 @@ jobs:
             git -C .eliza-source submodule status --recursive
             git -C .eliza-source ls-files -s \
               packages/app/scripts \
-              packages/native/plugins
+              plugins/plugin-local-inference/native \
+              plugins/plugin-vision/native
           } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
 
       # Exact-key only. The compiler reruns its verification and incremental

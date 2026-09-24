@@ -12,10 +12,9 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-ELIZA_ROOT = Path(os.environ.get("ELIZAOS_ELIZA_ROOT", ROOT / ".eliza-source")).resolve()
 LINUX_DIR = ROOT / "linux/elizaos"
 SCRIPT = LINUX_DIR / "scripts/stage-agent-artifacts.sh"
-BUILD_SH = LINUX_DIR / "build.sh"
+BUILD_SH = LINUX_DIR / "build-live-iso.sh"
 INSTALL_HOOK = LINUX_DIR / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 RISCV64_PACKAGE_LIST = LINUX_DIR / "config/package-lists/elizaos-riscv64.list.chroot"
 RUN_AGENT = LINUX_DIR / "config/includes.chroot/usr/lib/elizaos/run-agent.sh"
@@ -23,7 +22,18 @@ WAIT_AGENT_HEALTH = LINUX_DIR / "config/includes.chroot/usr/lib/elizaos/wait-age
 FIRST_BOOT = LINUX_DIR / "config/includes.chroot/usr/local/lib/elizaos/first-boot.sh"
 RISCV64_POSTGRES_HOOK = LINUX_DIR / "config/hooks/normal/0012-riscv64-agent-postgres.hook.chroot"
 MUSL_RUNTIME = LINUX_DIR / "artifacts/riscv64/elizaos-app/musl-runtime"
-AGENT_BUNDLE = ELIZA_ROOT / "packages/agent/dist-mobile/agent-bundle.js"
+
+
+def fixture_environment(directory: Path) -> dict[str, str]:
+    """Stage synthetic bundles without depending on or modifying a real build."""
+    source = directory / "eliza-source"
+    app = source / "packages/app"
+    app.mkdir(parents=True, exist_ok=True)
+    (app / "package.json").write_text('{"name":"@elizaos/app"}\n', encoding="utf-8")
+    bundle = source / "packages/agent/dist-mobile/agent-bundle.js"
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    bundle.write_text('export const fixture = true;\n', encoding="utf-8")
+    return {**os.environ, "ELIZAOS_ELIZA_ROOT": str(source)}
 
 
 def make_bun_zip(path: Path) -> Path:
@@ -50,6 +60,7 @@ def run_stage(
             str(out_dir),
         ],
         cwd=ROOT,
+        env=fixture_environment(out_dir.parent),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -68,6 +79,7 @@ def run_node_only_stage(out_dir: Path) -> subprocess.CompletedProcess[str]:
             str(out_dir),
         ],
         cwd=ROOT,
+        env=fixture_environment(out_dir.parent),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -80,20 +92,26 @@ def test_stale_riscv64_bun_zip_is_rejected() -> None:
         tmp = Path(tmpdir)
         stale_zip = make_bun_zip(tmp / "bun-linux-riscv64-musl.zip")
         os.utime(stale_zip, (1, 1))
-        result = run_stage(stale_zip, tmp / "out")
+        out_dir = tmp / "out"
+        out_dir.mkdir()
+        sentinel = out_dir / "previous-artifact"
+        sentinel.write_bytes(b"preserve me")
+        result = run_stage(stale_zip, out_dir)
         if result.returncode != 66:
             raise AssertionError(f"expected stale zip rejection rc=66, got {result.returncode}\n{result.stdout}")
         if "riscv64 Bun zip predates current patch-series input" not in result.stdout:
             raise AssertionError(result.stdout)
+        assert sentinel.read_bytes() == b"preserve me"
+        assert sorted(p.name for p in out_dir.iterdir()) == ["previous-artifact"]
+        assert not list(tmp.glob(".elizaos-stage*"))
 
 
 def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
-    if not AGENT_BUNDLE.is_file():
-        raise AssertionError(f"missing built agent bundle fixture: {AGENT_BUNDLE}")
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        musl_runtime = tmp / "musl-runtime"
-        musl_runtime.mkdir()
+        out_dir = tmp / "out"
+        musl_runtime = out_dir / "elizaos-app/musl-runtime"
+        musl_runtime.mkdir(parents=True)
         for soname in (
             "ld-musl-riscv64.so.1",
             "libstdc++.so.6",
@@ -105,7 +123,6 @@ def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
         fresh_zip = make_bun_zip(tmp / "bun-linux-riscv64-musl.zip")
         future = time.time() + 10
         os.utime(fresh_zip, (future, future))
-        out_dir = tmp / "out"
         result = run_stage(fresh_zip, out_dir, musl_runtime)
         if result.returncode != 0:
             raise AssertionError(f"stage failed rc={result.returncode}\n{result.stdout}")
@@ -129,11 +146,12 @@ def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
             raise AssertionError(artifact)
         if not artifact.get("staged_bun_sha256"):
             raise AssertionError(artifact)
+        assert artifact["staged_bun"] == str(musl_runtime / "bun")
+        assert (musl_runtime / "libstdc++.so.6").read_bytes() == b"fake libstdc++.so.6\n"
+        assert not list(tmp.glob(".elizaos-stage*"))
 
 
 def test_riscv64_node_only_stage_omits_bun_but_keeps_agent_bundle() -> None:
-    if not AGENT_BUNDLE.is_file():
-        raise AssertionError(f"missing built agent bundle fixture: {AGENT_BUNDLE}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         out_dir = Path(tmpdir) / "out"
@@ -173,16 +191,32 @@ def test_riscv64_node_only_stage_omits_bun_but_keeps_agent_bundle() -> None:
             raise AssertionError("node-only riscv64 bundle missing Node-compatible require shim")
 
 
+def test_stage_rejects_output_symlink_without_modifying_its_target() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        target = tmp / "existing"
+        target.mkdir()
+        sentinel = target / "sentinel"
+        sentinel.write_bytes(b"original")
+        output = tmp / "out"
+        output.symlink_to(target, target_is_directory=True)
+        result = run_node_only_stage(output)
+        assert result.returncode != 0, result.stdout
+        assert "output directory must not be a symlink" in result.stdout
+        assert output.is_symlink()
+        assert sentinel.read_bytes() == b"original"
+
+
 def test_live_build_and_install_hook_require_riscv64_bun_provenance() -> None:
     build_text = BUILD_SH.read_text(encoding="utf-8")
     hook_text = INSTALL_HOOK.read_text(encoding="utf-8")
-    for label, text in (("build.sh", build_text), ("0010 hook", hook_text)):
+    for label, text in (("build-live-iso.sh", build_text), ("0010 hook", hook_text)):
         if "riscv64-bun-provenance.json" not in text:
             raise AssertionError(f"{label} does not require riscv64 Bun provenance")
     if "staged_bun_sha256" not in build_text:
-        raise AssertionError("build.sh does not verify staged Bun hash against provenance")
+        raise AssertionError("build-live-iso.sh does not verify staged Bun hash against provenance")
     if "eliza.os.linux.riscv64_bun_stage_provenance.v1" not in build_text:
-        raise AssertionError("build.sh does not verify the riscv64 Bun provenance schema")
+        raise AssertionError("build-live-iso.sh does not verify the riscv64 Bun provenance schema")
 
 
 def test_runtime_smoke_requires_riscv64_output_markers() -> None:
@@ -303,6 +337,7 @@ if __name__ == "__main__":
     test_stale_riscv64_bun_zip_is_rejected()
     test_fresh_riscv64_stage_writes_patch_bound_provenance()
     test_riscv64_node_only_stage_omits_bun_but_keeps_agent_bundle()
+    test_stage_rejects_output_symlink_without_modifying_its_target()
     test_live_build_and_install_hook_require_riscv64_bun_provenance()
     test_runtime_smoke_requires_riscv64_output_markers()
     test_riscv64_image_has_node_agent_bundle_fallback_before_bun()

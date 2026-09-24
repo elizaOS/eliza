@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # elizaOS Debian RISC-V 64 — qemu-system-riscv64 -M virt boot harness.
 #
-# Boots the live ISO produced by `build.sh` on top of OpenSBI + EDK2 UEFI
+# Boots the live ISO produced by `build-live-iso.sh` on top of OpenSBI + EDK2 UEFI
 # under qemu-system-riscv64 -M virt, captures the serial transcript, checks
 # the transcript for the expected boot markers, and writes a JSON evidence
 # record at --evidence.

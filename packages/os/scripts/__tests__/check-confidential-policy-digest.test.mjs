@@ -16,7 +16,7 @@ const policyPath = path.join(
 );
 const releaseManifestPath = path.join(
   repoRoot,
-  "release/confidential-2026-05-21/manifest.json",
+  "scripts/__tests__/fixtures/confidential-manifest.json",
 );
 const imageManifestPath = path.join(
   repoRoot,

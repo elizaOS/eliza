@@ -5,6 +5,7 @@
   "packageName": "ai.elizaos.app",
   "classPrefix": "Eliza",
   "productName": "eliza_grizzly_phone",
+  "architecture": "arm64",
   "lunchTarget": "eliza_grizzly_phone-trunk_staging-userdebug",
   "aospDeviceTreePaths": ["vendor/google_devices/grizzly/grizzly.mk"],
   "aospLockPath": "android/pixel11pro.lock.json",

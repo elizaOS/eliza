@@ -114,7 +114,10 @@ test("an unknown extra property is rejected by the schema", async () => {
 test("the example image manifest matches the release manifest tee.measurements", async () => {
   const { manifest } = await load();
   const releaseManifest = await readJson(
-    path.join(repoRoot, "release/confidential-2026-05-21/manifest.json"),
+    path.join(
+      repoRoot,
+      "scripts/__tests__/fixtures/confidential-manifest.json",
+    ),
   );
   // The "image is the policy" contract: the normalized measurements in the image
   // manifest must equal the signed golden measurements in the release manifest.

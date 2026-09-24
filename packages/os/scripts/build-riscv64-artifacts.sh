@@ -29,8 +29,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-eliza_root="$(cd "${ELIZAOS_ELIZA_ROOT:-$repo_root/.eliza-source}" 2>/dev/null && pwd || true)"
-if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/packages/native" ]; then
+eliza_root="$(node "$repo_root/scripts/eliza-source.mjs")"
+if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
     echo "[build-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
     exit 2
 fi
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
         --jobs) JOBS="$2"; shift 2;;
         --force) FORCE=1; shift;;
         -h|--help)
-            awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$0"
+            awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$repo_root/scripts/build-riscv64-artifacts.sh"
             exit 0;;
         *) echo "unknown argument: $1" >&2; exit 2;;
     esac
@@ -115,7 +115,7 @@ should_build() {
 
 build_native_plugin() {
     local pkg="$1"; local extra_flag="${2:-}"
-    local pkgdir="$eliza_root/packages/native/plugins/$pkg"
+    local pkgdir="$eliza_root/plugins/plugin-local-inference/native/plugins/$pkg"
     local builddir="$pkgdir/build/riscv64"
     if [ ! -f "$pkgdir/CMakeLists.txt" ]; then
         echo "  ✗ $pkg: $pkgdir/CMakeLists.txt missing"

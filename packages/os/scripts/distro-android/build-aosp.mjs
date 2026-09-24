@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
 import {
   aospLockPath,
   assertExtractedVendorTree,
@@ -35,9 +36,6 @@ import { main as validateMain } from "./validate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
-const elizaRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(repoRoot, ".eliza-source"),
-);
 
 // soong_build is single-process and routinely peaks at ~25 GB RSS for a
 // trunk_staging build. Once the kati/clang phases start they fan out to -jN
@@ -325,7 +323,6 @@ export function parseSubArgs(argv) {
     skipBuild: false,
     launch: false,
     bootValidate: false,
-    skipStopCvd: false,
     // When set, also re-run `<brand.buildAndroidSystemCmd>` with AOSP env
     // flags so the privileged APK staged into vendor/<brand> is rebuilt
     // with libllama.so + BuildConfig.AOSP_BUILD=true.
@@ -361,13 +358,11 @@ export function parseSubArgs(argv) {
       args.launch = true;
     } else if (arg === "--boot-validate") {
       args.bootValidate = true;
-    } else if (arg === "--skip-stop-cvd") {
-      args.skipStopCvd = true;
     } else if (arg === "--rebuild-privileged-apk") {
       args.rebuildPrivilegedApk = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--skip-stop-cvd] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
+        "Usage: node scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("--")) {
@@ -425,23 +420,6 @@ function run(command, args, options = {}) {
       `${command} ${args.join(" ")} exited with code ${result.status}`,
     );
   }
-}
-
-// A previous --launch run leaves crosvm + cuttlefish workers holding several
-// GB of RAM. If we then re-enter `m`, soong_build stacks on top and OOMs the
-// host. Tear them down before compiling. cvd 1.x exposes `cvd reset -y`;
-// older host packages used `stop_cvd`. Best-effort: never fail the build if
-// no device is running.
-function stopRunningCvd() {
-  spawnSync(
-    "bash",
-    ["-lc", "cvd reset -y >/dev/null 2>&1 || stop_cvd >/dev/null 2>&1 || true"],
-    {
-      cwd: repoRoot,
-      env: process.env,
-      stdio: "inherit",
-    },
-  );
 }
 
 function runAospBuild(aospRoot, jobs, brand) {
@@ -523,11 +501,8 @@ function launchCuttlefish(aospRoot, brand) {
  * produced with <BRAND>_AOSP_BUILD=1.
  */
 function rebuildPrivilegedApk(brand) {
-  if (!fs.existsSync(path.join(elizaRoot, "packages/app/package.json"))) {
-    throw new Error(
-      "Set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout before rebuilding the privileged APK.",
-    );
-  }
+  const elizaRoot = resolveElizaSourceRoot();
+
   const env = {
     ...process.env,
     ELIZAOS_OS_REPO_ROOT: repoRoot,
@@ -611,10 +586,6 @@ export async function main(argv = process.argv.slice(2)) {
   if (args.sourceVendor) validateArgs.push("--vendor-dir", args.sourceVendor);
   validateArgs.push("--aosp-root", args.aospRoot);
   await validateMain(validateArgs);
-
-  if (!args.skipStopCvd) {
-    stopRunningCvd();
-  }
 
   if (!args.skipBuild) {
     runAospBuild(args.aospRoot, args.jobs, brand);

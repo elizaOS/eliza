@@ -317,6 +317,7 @@ export async function prepareManagedElizaBaseEnvironment(
       // The agent server exposes it as `cloudProvisioned` on /api/status and
       // /api/first-run/status so the UI can render managed vs user-owned UX.
       ELIZA_CLOUD_PROVISIONED: "1",
+      ELIZA_RUNTIME_OWNER_ID: params.userId,
       // Managed browser pairing terminates at the Cloud Worker. Only the local
       // Docker provider may opt a loopback-bound container into direct relay.
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",

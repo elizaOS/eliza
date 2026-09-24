@@ -328,9 +328,24 @@ export function patchAndroidGradle({ cloudBuild = false } = {}) {
     }
   }
 
-  patchOfficialCapacitorGradleForAgp9();
-  patchLlamaCppCapacitorGradle();
-  patchNativePluginGradleForAgp9();
+  const rootGradle = fs.readFileSync(
+    path.join(androidDir, "build.gradle"),
+    "utf8",
+  );
+  const agpVersion = rootGradle.match(
+    /com\.android\.tools\.build:gradle:(\d+)\./,
+  );
+  if (!agpVersion)
+    throw new Error(
+      "Cannot determine the Android Gradle Plugin version before Kotlin migration.",
+    );
+  // AGP 8 requires the explicit Kotlin plugin to package native bridge classes.
+  // Removing it merely because the Gradle wrapper is 9 breaks every Kotlin library.
+  if (Number(agpVersion[1]) >= 9) {
+    patchOfficialCapacitorGradleForAgp9();
+    patchLlamaCppCapacitorGradle();
+    patchNativePluginGradleForAgp9();
+  }
   stageBackgroundRunnerAndroidJsEngineAar();
 
   const stringsPath = path.join(

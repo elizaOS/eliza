@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 import type {
   ElizaOsImage,
   InstallerStepId,

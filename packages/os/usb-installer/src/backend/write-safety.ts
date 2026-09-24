@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 import type { RemovableDrive, WritePlan, WriteRequest } from "./types";
 
 const placeholderChecksumPattern = /^([a-f0-9])\1{63}$/;

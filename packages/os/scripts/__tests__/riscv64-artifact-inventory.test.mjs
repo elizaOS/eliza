@@ -39,7 +39,7 @@ test("RISC-V builder and checker require the same maintained native plugins", ()
     ...new Set(
       [
         ...checker.matchAll(
-          /packages\/native\/plugins\/([\w-]+)\/build\/riscv64\//g,
+          /plugins\/plugin-(?:local-inference|vision)\/native\/([\w-]+)\/build\/riscv64\//g,
         ),
       ].map((match) => match[1]),
     ),

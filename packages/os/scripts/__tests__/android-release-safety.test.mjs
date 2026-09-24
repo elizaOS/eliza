@@ -970,6 +970,31 @@ test("transport timeouts and unsuccessful exits are failures, never empty succes
   );
 });
 
+test("zero-exit fastboot protocol failures cannot admit subsequent operations", (t) => {
+  const f = fixture(t);
+  const tool = path.join(f.directory, "fastboot");
+  for (const response of [
+    "getvar:rollback-index:0 FAILED (remote: 'variable not found')\nFinished. Total time: 0.000s\n",
+    "Writing 'boot_b' FAILED (remote: 'write failure')\n",
+    "fastboot: error: Command failed\n",
+  ]) {
+    fs.writeFileSync(
+      tool,
+      `#!/usr/bin/env node\nprocess.stderr.write(${JSON.stringify(response)});\n`,
+      { mode: 0o700 },
+    );
+    f.release.tools.fastboot.sha256 = hashFile(tool).sha256;
+    assert.equal(checkedRun(tool, ["getvar", "product"]), response);
+    const run = pinnedToolRunner({ fastboot: tool }, f.release);
+    let continued = false;
+    assert.throws(() => {
+      run(tool, ["-s", "SERIAL", "flash", "boot", "fixture.img"]);
+      continued = true;
+    }, /fastboot protocol failure/);
+    assert.equal(continued, false);
+  }
+});
+
 test("health credentials stay out of argv and errors; readiness must be explicit", (t) => {
   const { release, directory } = fixture(t);
   const file = path.join(directory, "health-token");
@@ -1051,6 +1076,7 @@ test("production CLI and shell entrypoint reject fixture authorization before in
     ["bash", "android/installer/install-elizaos-android.sh"],
   ]) {
     const result = spawnSync(command, [entry, ...args], {
+      cwd: new URL("../../", import.meta.url),
       encoding: "utf8",
       env: {
         ...process.env,

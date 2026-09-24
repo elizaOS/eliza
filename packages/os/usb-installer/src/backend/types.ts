@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 export type PlatformId = "darwin" | "linux" | "win32" | "unknown";
 
 export type DriveSafety = "safe-removable" | "blocked-system" | "unknown";

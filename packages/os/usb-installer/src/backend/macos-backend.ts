@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream, promises as fs } from "node:fs";

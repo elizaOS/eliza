@@ -23,7 +23,7 @@ export interface PendingRemoteTargetVaultRecord {
 	ownerId: string;
 	deviceId: string;
 	displayName: string;
-	platform?: "macos" | "windows" | "linux";
+	platform?: "macos" | "windows" | "linux" | "android";
 	keyId: string;
 	signingPrivateKeyJwk: JsonWebKey;
 	encryptionPrivateKeyJwk: JsonWebKey;
@@ -185,7 +185,7 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
 				keyId(signingPrivateKeyJwk, encryptionPrivateKeyJwk) ||
 			!Number.isSafeInteger(Reflect.get(value, "createdAt")) ||
 			(Reflect.get(value, "platform") !== undefined &&
-				!["macos", "windows", "linux"].includes(
+				!["macos", "windows", "linux", "android"].includes(
 					Reflect.get(value, "platform") as string,
 				))
 		) {
@@ -260,7 +260,7 @@ export class RemoteTargetVault {
 	async prepare(input: {
 		ownerId: string;
 		displayName: string;
-		platform: "macos" | "windows" | "linux";
+		platform: "macos" | "windows" | "linux" | "android";
 		now: number;
 	}): Promise<
 		PendingRemoteTargetVaultRecord | EnrolledRemoteTargetVaultRecord

@@ -32,6 +32,18 @@ import com.getcapacitor.annotation.CapacitorPlugin
 @CapacitorPlugin(name = "ComputerUse")
 class ComputerUsePlugin : Plugin() {
 
+    private val browserController = BrowserAccessibilityController()
+
+    @PluginMethod
+    fun browserCommand(call: PluginCall) {
+        val service = ElizaAccessibilityService.instance
+        if (service == null) {
+            call.resolve(err("UNAVAILABLE", "Enable Eliza accessibility access to control Chromium."))
+            return
+        }
+        call.resolve(browserController.execute(service, call.data))
+    }
+
     private var camera2Source: Camera2Source? = null
 
     // ── Component lifecycle — onTrimMemory → MemoryArbiter pressure ───────────
@@ -67,6 +79,7 @@ class ComputerUsePlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        browserController.clear()
         activity?.application?.unregisterComponentCallbacks(trimMemoryCallbacks)
         camera2Source?.close()
         camera2Source = null

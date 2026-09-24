@@ -67,11 +67,11 @@ jobs:
           timestamp="$(date -u -d "$timestamp" +%Y-%m-%dT%H:%M:%SZ)"
           echo "commit-timestamp=$timestamp" >> "$GITHUB_OUTPUT"
 
-      - name: Validate repository ownership boundary
+      - name: Validate application checkout
         if: steps.source.outputs.changed == 'true'
         env:
           ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
-        run: node scripts/verify-eliza-source-boundary.mjs
+        run: node scripts/eliza-source.mjs
 
       - name: Update and validate lock
         if: steps.source.outputs.changed == 'true'

@@ -1,17 +1,5 @@
-# scripts/distro-android — Brand-aware AOSP/Cuttlefish toolchain
+# AOSP build orchestration
 
-This directory contains the toolchain for building a brand-customised Android AOSP image — Cuttlefish (virtual phone) for CI validation, and real device targets (Pixel codenames) for installs.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Brand configuration, privileged APK staging, vendor sync, and image builds for
+Cuttlefish and supported Pixel targets. Use the [Android Makefile commands](../../android/README.md).
+Application source is resolved by [eliza-source.mjs](../eliza-source.mjs).

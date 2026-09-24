@@ -1,4 +1,3 @@
-// Implements backend device and HTTP operations for the AOSP setup flasher.
 export interface IosDevice {
   udid: string;
   name: string;

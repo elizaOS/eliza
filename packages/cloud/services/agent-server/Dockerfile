@@ -36,18 +36,24 @@ ARG SERVICE_DIR=packages/cloud/services/agent-server
 # is missing from this file.
 FROM base AS deps
 ARG SERVICE_DIR
-COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
+# Required by native authentication-provider dependencies (kept out of runner).
+RUN apk add --no-cache python3 make g++
+COPY packages/auth/package.json packages/auth/
 COPY packages/cloud/sdk/package.json packages/cloud/sdk/
 COPY packages/cloud/services/_common/package.json packages/cloud/services/_common/
+COPY packages/cloud/services/agent-server/package.json packages/cloud/services/agent-server/
 COPY packages/core/package.json packages/core/
+COPY packages/remote-control-host/package.json packages/remote-control-host/
 COPY packages/shared/package.json packages/shared/
 COPY plugins/plugin-assistant/package.json plugins/plugin-assistant/
+COPY plugins/plugin-browser/package.json plugins/plugin-browser/
 COPY plugins/plugin-elizacloud/package.json plugins/plugin-elizacloud/
 COPY plugins/plugin-openai/package.json plugins/plugin-openai/
 COPY plugins/plugin-sql/package.json plugins/plugin-sql/
+COPY plugins/plugin-web-search/package.json plugins/plugin-web-search/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
 # The headless host does not install test dependencies or optional UI peers.
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/sdk","packages/cloud/services/_common","packages/core","packages/shared","plugins/plugin-assistant","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-workflow"]}\n' > package.json \
+RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/auth","packages/cloud/sdk","packages/cloud/services/_common","packages/cloud/services/agent-server","packages/core","packages/remote-control-host","packages/shared","plugins/plugin-assistant","plugins/plugin-browser","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
     && bun -e 'const root = await Bun.file("package.json").json(); for (const dir of root.workspaces) { const path = `${dir}/package.json`; const manifest = await Bun.file(path).json(); delete manifest.devDependencies; for (const [name, meta] of Object.entries(manifest.peerDependenciesMeta ?? {})) { if (meta.optional) delete manifest.peerDependencies?.[name]; } await Bun.write(path, JSON.stringify(manifest)); }' \
     && bun install --production
 
@@ -64,18 +70,20 @@ RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cach
 # bun's store lives at the workspace root and each member directory holds its
 # links, so both keep their original paths.
 COPY --from=deps /app/ ./
+COPY packages/auth packages/auth
 COPY packages/cloud/sdk packages/cloud/sdk
 COPY packages/cloud/services/_common packages/cloud/services/_common
+COPY packages/cloud/services/agent-server packages/cloud/services/agent-server
 COPY packages/core packages/core
+COPY packages/remote-control-host packages/remote-control-host
 COPY packages/shared packages/shared
 COPY plugins/plugin-assistant plugins/plugin-assistant
+COPY plugins/plugin-browser plugins/plugin-browser
 COPY plugins/plugin-elizacloud plugins/plugin-elizacloud
 COPY plugins/plugin-openai plugins/plugin-openai
 COPY plugins/plugin-sql plugins/plugin-sql
+COPY plugins/plugin-web-search plugins/plugin-web-search
 COPY plugins/plugin-workflow plugins/plugin-workflow
-COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
-COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
-COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 
 WORKDIR /app/${SERVICE_DIR}
 USER appuser

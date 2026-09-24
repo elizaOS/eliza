@@ -67,10 +67,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
 
-      - name: Verify application and OS repository ownership boundary
+      - name: Validate application checkout
         env:
           ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
-        run: node scripts/verify-eliza-source-boundary.mjs
+        run: node scripts/eliza-source.mjs
 
       - name: Validate OS release manifest
         run: |

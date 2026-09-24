@@ -1,4 +1,3 @@
-// Implements backend device and HTTP operations for the AOSP setup flasher.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync } from "node:fs";

@@ -5,17 +5,149 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
+import socket
 import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
+from mkosi_console import FORBIDDEN_MARKERS, GRAPHICAL_MARKERS, normalized_console_text
 
 HERE = Path(__file__).resolve().parent
 
 
 class QualificationPreflightTest(unittest.TestCase):
+    def test_persistence_observation_failure_stops_the_owned_emulator(self) -> None:
+        module = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))
+        boot = module["boot"]
+        processes = []
+        popen = subprocess.Popen
+
+        def start(*args, **kwargs):
+            process = popen(*args, **kwargs)
+            processes.append(process)
+            return process
+
+        def failed_observation(_text):
+            raise OSError("read failed")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(subprocess, "Popen", start), patch.dict(
+                boot.__globals__, normalized_console_text=failed_observation
+            ):
+                with self.assertRaisesRegex(OSError, "read failed"):
+                    boot([sys.executable, "-c", "import time; time.sleep(60)"], Path(temporary) / "boot.log", 5, [])
+            self.assertEqual(len(processes), 1)
+            self.assertIsNotNone(processes[0].poll())
+
+    def test_failed_persistence_boot_retains_its_observed_receipt(self) -> None:
+        module = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))
+        with tempfile.TemporaryDirectory() as temporary:
+            transcript = Path(temporary) / "boot.log"
+            receipts = []
+            with self.assertRaises(module["QualificationError"]):
+                module["boot"](
+                    [sys.executable, "-c", "print('Kernel panic - not syncing', flush=True)"],
+                    transcript, 5, receipts,
+                )
+            self.assertEqual(len(receipts), 1)
+            receipt = receipts[0]
+            self.assertFalse(receipt["success"])
+            self.assertEqual(receipt["forbiddenMarkersFound"], ["Kernel panic - not syncing"])
+            self.assertEqual(receipt["missingMarkers"], list(GRAPHICAL_MARKERS))
+            self.assertEqual(receipt["transcript"]["sha256"], module["sha256_file"](transcript))
+
+    def test_persistence_cleanup_failure_cannot_report_success(self) -> None:
+        module = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))
+        error = module["QualificationError"]
+        attached = module["attached_loop"]
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[:2] == ["losetup", "--detach"]:
+                raise error("loop detach failed")
+            return subprocess.CompletedProcess(command, 0, "/dev/loop999999\n", "")
+
+        with patch.dict(attached.__wrapped__.__globals__, run=run):
+            with self.assertRaisesRegex(error, "loop detach failed"):
+                with attached(Path("disposable.raw")) as loop:
+                    self.assertEqual(loop, Path("/dev/loop999999"))
+        self.assertEqual(calls[-1], ["losetup", "--detach", "/dev/loop999999"])
+
+    def test_failed_mount_does_not_unmount_an_unacquired_resource(self) -> None:
+        module = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))
+        error = module["QualificationError"]
+        mounted = module["mounted_home"]
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            raise error("mount failed")
+
+        with patch.dict(mounted.__wrapped__.__globals__, run=run):
+            with self.assertRaisesRegex(error, "mount failed"):
+                with mounted(Path("/dev/loop999999p1"), read_only=True):
+                    self.fail("a failed mount must not yield")
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(Path(calls[0][-1]).exists())
+
+    def test_console_normalization_preserves_success_and_failure_boundaries(self) -> None:
+        modern = "\x1b[32m[ OK ]\x1b[0m Reached target graphical.target - Graphical Interface.\r\n"
+        self.assertIn(GRAPHICAL_MARKERS[-1], normalized_console_text(modern))
+        failure = "Dependency failed for graphical.target - Graphical Interface."
+        self.assertIn(FORBIDDEN_MARKERS[-1], normalized_console_text(failure))
+        for incomplete in (
+            "Starting graphical.target - Graphical Interface.",
+            "Reached target graphi… - Graphical Interface.",
+        ):
+            self.assertNotIn(GRAPHICAL_MARKERS[-1], normalized_console_text(incomplete))
+
+    def test_framebuffer_capture_waits_for_monitor_completion_and_requires_output(self) -> None:
+        capture = runpy.run_path(str(HERE / "mkosi-qemu-qualify.py"))["capture_screenshot"]
+        for produce_output in (True, False):
+            with self.subTest(produce_output=produce_output), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                monitor = root / "monitor.sock"
+                output = root / "desktop capture.ppm"
+                pixels = b"P6\n1 1\n255\n\x00\x00\x00"
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.settimeout(5)
+                    server.bind(str(monitor))
+                    server.listen(1)
+
+                    def serve() -> None:
+                        connection, _ = server.accept()
+                        with connection:
+                            connection.settimeout(5)
+                            connection.sendall(b"QEMU monitor\n(qemu) ")
+                            request = b""
+                            while not request.endswith(b"\n"):
+                                chunk = connection.recv(4096)
+                                if not chunk:
+                                    raise RuntimeError("capture client disconnected")
+                                request += chunk
+                            self.assertEqual(request.decode(), f"screendump {json.dumps(str(output))}\n")
+                            if produce_output:
+                                output.write_bytes(pixels)
+                            connection.sendall(b"\n(qemu) ")
+
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        completed = executor.submit(serve)
+                        if produce_output:
+                            capture(monitor, output)
+                            self.assertEqual(output.read_bytes(), pixels)
+                            with self.assertRaises(FileExistsError):
+                                capture(monitor, output)
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, "did not produce"):
+                                capture(monitor, output)
+                        completed.result(timeout=5)
+
     def test_build_preflight_writes_bounded_failure_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

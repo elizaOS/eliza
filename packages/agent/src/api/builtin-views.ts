@@ -115,6 +115,13 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["browser", "web", "internet", "research", "tabs"],
     responseContext: { primaryContext: "browser" },
     relatedActions: ["BROWSER"],
+    capabilities: [
+      {
+        id: "browser-command",
+        description:
+          "Control the requesting client's native browser using typed commands and snapshot-bound element references.",
+      },
+    ],
     visibleInManager: false,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],

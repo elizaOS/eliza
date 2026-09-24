@@ -200,8 +200,8 @@ require_text 'terminationReason' "${ROOT}/scripts/mkosi-qemu-qualify.py"
 require_text '"firmwareMode": args.firmware_mode' "${ROOT}/scripts/mkosi-qemu-qualify.py"
 require_text '"version": version_line' "${ROOT}/scripts/mkosi-qemu-qualify.py"
 require_text 'virt,accel=hvf,gic-version=max' "${ROOT}/scripts/mkosi-qemu-qualify.py"
-require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/scripts/mkosi-qemu-qualify.py"
-require_text 'Reached target Graphical Interface' "${ROOT}/scripts/mkosi-qemu-qualify.py"
+require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/scripts/mkosi_console.py"
+require_text 'Reached target Graphical Interface' "${ROOT}/scripts/mkosi_console.py"
 require_text 'choices=("graphical", "recovery")' "${ROOT}/scripts/mkosi-qemu-qualify.py"
 require_text 'qemu_recovery_selection_and_service_unavailability_only' \
     "${ROOT}/scripts/mkosi-qemu-qualify.py"
@@ -214,7 +214,7 @@ require_text 'virtual USB expanded-byte readback digest mismatch' \
     "${ROOT}/scripts/mkosi-persistence-qualify.py"
 require_text 'home sentinel did not survive the second boot' \
     "${ROOT}/scripts/mkosi-persistence-qualify.py"
-require_text 'Reached target Graphical Interface' \
+require_text 'from mkosi_console import' \
     "${ROOT}/scripts/mkosi-persistence-qualify.py"
 require_text 'work image must not already exist' \
     "${ROOT}/scripts/mkosi-persistence-qualify.py"
@@ -232,7 +232,6 @@ require_text 'all input and output paths must be distinct' \
     "${ROOT}/scripts/mkosi-reproducibility-qualify.py"
 require_text 'document.get("returnCode") != 0' \
     "${ROOT}/scripts/mkosi-reproducibility-qualify.py"
-require_text 'Secure Boot is unsupported on riscv64' "${ROOT}/mkosi/README.md"
 require_text 'elizaos-system' "${ROOT}/scripts/generate-mkosi-sbom.sh"
 require_text 'mount --read-only --options noload' \
     "${ROOT}/scripts/generate-mkosi-sbom.sh"

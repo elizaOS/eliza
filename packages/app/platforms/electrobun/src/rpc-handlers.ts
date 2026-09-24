@@ -114,6 +114,7 @@ import {
 	startSteward,
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
+import { openSystemBrowser } from "./native/system-browser";
 import { getTalkModeManager } from "./native/talkmode";
 import {
 	publishNativeTranscriptStream,
@@ -1085,6 +1086,7 @@ export function buildBunRpcHandlers({
 			desktop.clipboardAvailableFormats(),
 
 		// ---- Desktop: Shell ----
+		desktopOpenBrowser: openSystemBrowser,
 		desktopOpenExternal: async (
 			params: Parameters<typeof desktop.openExternal>[0],
 		) => desktop.openExternal(params),

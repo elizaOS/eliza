@@ -1,7 +1,9 @@
 // Coordinates cloud service managed eliza env behavior behind route handlers.
+import { randomBytes } from "node:crypto";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { resolveStewardContainerUrl } from "./docker-sandbox-utils";
+import { fieldEncryption } from "./field-encryption";
 import {
   type ManagedElizaEnvironmentResult,
   prepareManagedElizaSharedEnvironment,
@@ -126,6 +128,15 @@ export async function prepareManagedElizaEnvironment(params: {
   // integration and any code path that actually needs Steward will surface a
   // clear error at the call site instead of crashing provisioning.
   const env = getCloudAwareEnv();
+  // Persist a stable runtime encryption key using the existing tenant envelope
+  // service. Without managed encryption, browser pairing stays unavailable.
+  if (!environmentVars.ENCRYPTION_SALT && env.SECRETS_MASTER_KEY) {
+    environmentVars.ENCRYPTION_SALT = await fieldEncryption.encrypt(
+      params.organizationId,
+      randomBytes(32).toString("base64url"),
+    );
+  }
+  environmentVars.ELIZA_RUNTIME_OWNER_ID = params.userId;
   let stewardContainerUrl: string | undefined;
   try {
     stewardContainerUrl = resolveStewardContainerUrl(

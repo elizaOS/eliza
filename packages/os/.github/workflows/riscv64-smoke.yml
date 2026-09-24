@@ -98,7 +98,8 @@ jobs:
           {
             git -C .eliza-source submodule status --recursive
             git -C .eliza-source ls-files -s \
-              packages/native/plugins \
+              plugins/plugin-local-inference/native \
+              plugins/plugin-vision/native \
               packages/app/scripts/aosp/compile-libllama.mjs
             git ls-files -s \
               scripts/build-riscv64-artifacts.sh \
@@ -116,7 +117,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
-            .eliza-source/packages/native/plugins/*/build/riscv64
+            .eliza-source/plugins/plugin-local-inference/native/*/build/riscv64
+            .eliza-source/plugins/plugin-vision/native/*/build/riscv64
             .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
             ~/.cache/eliza-android-agent/seccomp-shim/riscv64
           key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
@@ -137,7 +139,7 @@ jobs:
             tail -n 250 "$log"
             echo "::endgroup::"
           done < <(
-            find .eliza-source/packages/native/plugins build \
+            find .eliza-source/plugins/plugin-local-inference/native .eliza-source/plugins/plugin-vision/native build \
               -type f -name '*.log' -print0 2>/dev/null
           )
           if [ "$found" -eq 0 ]; then
@@ -150,8 +152,10 @@ jobs:
         with:
           name: riscv64-build-diagnostics
           path: |
-            .eliza-source/packages/native/plugins/*/build/*.log
-            .eliza-source/packages/native/plugins/*/build/**/*.log
+            .eliza-source/plugins/plugin-local-inference/native/*/build/*.log
+            .eliza-source/plugins/plugin-vision/native/*/build/*.log
+            .eliza-source/plugins/plugin-local-inference/native/*/build/**/*.log
+            .eliza-source/plugins/plugin-vision/native/*/build/**/*.log
             build/*.log
           if-no-files-found: warn
           include-hidden-files: true
@@ -166,15 +170,15 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: riscv64-artifacts-report
-          path: build/reports/riscv64_artifacts.json
+          path: .eliza-source/test-results/os-riscv64/artifacts.json
           if-no-files-found: warn
           retention-days: 7
 
       - name: Print summary
         if: always()
         run: |
-          if [ -f build/reports/riscv64_artifacts.json ]; then
-            jq '.summary, .final_status' build/reports/riscv64_artifacts.json
+          if [ -f .eliza-source/test-results/os-riscv64/artifacts.json ]; then
+            jq '.summary, .final_status' .eliza-source/test-results/os-riscv64/artifacts.json
           else
             echo "no report produced"
           fi
