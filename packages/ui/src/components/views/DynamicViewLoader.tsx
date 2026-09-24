@@ -1,3 +1,4 @@
+import type { ViewCapability } from "@elizaos/core";
 /**
  * DynamicViewLoader — loads a view bundle from a remote URL at runtime.
  *
@@ -1464,6 +1465,8 @@ interface DynamicViewLoaderProps {
    * an un-manifested plugin view exposes read-only introspection only.
    */
   surface?: SurfaceManifest;
+  /** Typed interaction authority supplied by the registered view declaration. */
+  capabilities?: readonly ViewCapability[];
 }
 
 /**
@@ -1487,6 +1490,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   viewType = "gui",
   reserveChatClearance = true,
   surface,
+  capabilities,
 }: DynamicViewLoaderProps) {
   const surfaceScope = useSyncExternalStore(
     subscribeActiveSurfaceRealmScope,
@@ -1602,8 +1606,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     if (!bundle) return;
 
     // The capability broker (#13452) gates the interact channel on the view's
-    // resolved manifest: read-only introspection is always allowed, but mutating
-    // agent-surface/standard capabilities require the `agent-surface` grant. A
+    // declared semantic authority and resolved surface manifest. A
     // denied capability throws, surfacing to the agent instead of a silent no-op.
     const unregister = registerViewInteractHandler(
       viewId,
@@ -1658,6 +1661,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             `View "${viewId}" does not support capability "${capability}"`,
           );
         },
+        capabilities,
       ),
       installationId,
     );
@@ -1670,6 +1674,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     cacheKey,
     componentExport,
     resolvedManifest,
+    capabilities,
     surfaceScope,
     viewId,
     viewType,

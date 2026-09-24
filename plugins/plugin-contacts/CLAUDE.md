@@ -18,7 +18,7 @@ Registered in `appContactsPlugin` (`src/plugin.ts`):
 | Kind | Name | Description |
 |------|------|-------------|
 | Provider | `androidContacts` | Read-only: fetches all contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
-| View | `contacts` | GUI address-book view — `ContactsView` component, path `/contacts`. |
+| View | `contacts` | ADMIN-gated GUI address-book view at `/contacts`. `list-contacts` is agent-readable; `create-contact` and `import-vcard` require direct human interaction. The declaration does not grant generic `agent-surface` fill/click authority. |
 
 No actions, services, evaluators, events, or routes are registered.
 
@@ -67,7 +67,7 @@ bun run --cwd plugins/plugin-contacts clean        # rm -rf dist
 
 This plugin reads no environment variables and has no settings keys. All address-book access goes through `@elizaos/capacitor-contacts` Contacts native API, which requires the Android `READ_CONTACTS` / `WRITE_CONTACTS` permissions to be granted at the OS level.
 
-The provider intentionally omits the native bridge's optional pagination limit so planner context receives the complete address book.
+The provider requests the native signed 32-bit maximum (`2,147,483,647`) because the bridge has no continuation contract. Returning exactly that many rows is treated as an incomplete-read error rather than complete planner context.
 
 ## How to extend
 
@@ -83,7 +83,8 @@ The provider intentionally omits the native bridge's optional pagination limit s
 - **No update or delete.** The `@elizaos/capacitor-contacts` native plugin does not expose contact mutation beyond create and import. The detail panel is read-only; the "Edit" path was intentionally omitted.
 - **In-app Call/Text linking.** The detail view phone rows do not use a `tel:` OS handoff. Each number renders "Call" and "Text" controls that dispatch `eliza:navigate:view` with `{ viewId, viewPath, payload }` for the in-app Phone and Messages views, pre-seeding the target through the generic navigation payload handoff. Email keeps its `mailto:` anchor (there is no in-app email view). Do not reintroduce `tel:`.
 - **Provider roleGate.** `roleGate: { minRole: "ADMIN" }` means the `androidContacts` provider only fires in admin-role sessions. Do not change this without reviewing the address-book privacy model.
-- **View interact() function.** `src/components/ContactsAppView.interact.ts` exports `interact(capability, params)` which handles `list-contacts`, `create-contact`, and `import-vcard` capability strings for programmatic view actions.
+- **View authority.** The view and provider require `ADMIN`. `list-contacts` requests the native signed 32-bit maximum and returns data only when the bridge result proves it stayed below that boundary; reaching `2,147,483,647` rows is a typed incomplete-read error, never a planner-facing prefix. `create-contact`, `import-vcard`, and generic renderer reads/writes (`get-state`, `get-text`, element inspection/focus, fill, and click) are human-only. The view intentionally omits the `agent-surface` grant, so the planner has no alternate DOM path around the complete semantic read.
+- **View interact() function.** `src/components/ContactsAppView.interact.ts` exports the bundle dispatcher for the three classified capabilities. Direct calls by the renderer remain possible; planner dispatch is governed by the view declaration's authority and role gate.
 - **Spatial view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and is purely presentational (snapshot + action callback) with no Capacitor runtime imports.
 - **Views bundle.** The overlay UI is built separately via `vite.config.views.ts` into `dist/views/bundle.js`. `bundlePath` in the view descriptors points there. The tsup build (`build:js`) and the vite build (`build:views`) are independent steps.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
