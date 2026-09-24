@@ -28,6 +28,7 @@ import {
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
+  AnchorRegistry,
   CompletionCheckContribution,
   GlobalPauseView,
   OwnerFactsView,
@@ -104,6 +105,17 @@ import {
   revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding.js";
 import { resolveScheduledTaskDispatchContext } from "./dispatch-context.js";
+import { reconcileOwnerDossierActivity } from "./dossier-activity-migration.js";
+import {
+  DOSSIER_ACTIVITY_ANCHOR_KEY,
+  isManagedDossierTask,
+} from "./dossier-activity-policy.js";
+import {
+  admitDossierAutomaticExecution,
+  createDossierActivityMutationPolicy,
+  prepareDossierAutomaticFire,
+  resolveOwnerDossierActivityAnchor,
+} from "./dossier-activity-runtime.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -1145,15 +1157,36 @@ export function createProductionScheduledTaskDispatcher(opts: {
   };
 }
 
+/** Bind activity resolution to the same durable rows used by the runner. */
+export function registerDossierActivityAnchor(
+  runtime: IAgentRuntime,
+  registry: AnchorRegistry,
+): void {
+  if (registry.get(DOSSIER_ACTIVITY_ANCHOR_KEY)) return;
+  const { store } = makeRepositoryBackedStores(runtime, runtime.agentId);
+  registry.register({
+    anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
+    consumption: "host_claim",
+    describe: {
+      label: "First authenticated owner activity of the dossier day",
+      provider: "@elizaos/plugin-personal-assistant",
+    },
+    resolve: (context) =>
+      resolveOwnerDossierActivityAnchor(store, context.nowIso),
+  });
+}
+
 function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
   const existing = getAnchorRegistry(runtime);
   if (existing) {
     registerFallbackAnchors(existing);
+    registerDossierActivityAnchor(runtime, existing);
     return existing;
   }
   const registry = createAnchorRegistry();
   registerAppLifeOpsAnchors(registry);
   registerFallbackAnchors(registry);
+  registerDossierActivityAnchor(runtime, registry);
   registerAnchorRegistry(runtime, registry);
   return registry;
 }
@@ -1239,8 +1272,25 @@ function buildLifeOpsRunnerDeps(
     opts.subjectStore ??
     makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
+  const ownerFacts = opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime);
+
   return {
     store: stores.store,
+    prepareMutation: createDossierActivityMutationPolicy({ ownerFacts }),
+    prepareAutomaticFire: prepareDossierAutomaticFire,
+    automaticAdmission: admitDossierAutomaticExecution,
+    prepareExecution: async ({ task, nowIso }) => {
+      if (!isManagedDossierTask(task)) return;
+      const facts = await ownerFacts();
+      await reconcileOwnerDossierActivity(stores.store, {
+        nowIso,
+        day: {
+          timezone: facts.timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      });
+    },
+
     executionBoundary: (task, execute) =>
       withFamilyScheduledExecution(opts.runtime, task, execute, opts.agentId),
     logStore: stores.logStore,
@@ -1249,7 +1299,7 @@ function buildLifeOpsRunnerDeps(
     ladders,
     anchors,
     consolidation,
-    ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime),
+    ownerFacts,
     globalPause,
     activity,
     subjectStore,
@@ -1308,6 +1358,16 @@ export function createRuntimeScheduledTaskRunner(
     dispatcher: deps.dispatcher,
     ...(deps.executionBoundary
       ? { executionBoundary: deps.executionBoundary }
+      : {}),
+    ...(deps.prepareMutation ? { prepareMutation: deps.prepareMutation } : {}),
+    ...(deps.prepareExecution
+      ? { prepareExecution: deps.prepareExecution }
+      : {}),
+    ...(deps.automaticAdmission
+      ? { automaticAdmission: deps.automaticAdmission }
+      : {}),
+    ...(deps.prepareAutomaticFire
+      ? { prepareAutomaticFire: deps.prepareAutomaticFire }
       : {}),
   });
 }

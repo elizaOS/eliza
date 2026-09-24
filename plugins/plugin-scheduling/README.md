@@ -36,3 +36,17 @@ remain separate work; their PostgreSQL schemas are still rejected by SQLite.
 
 SQLite files, WAL and backups require the deployment's encrypted filesystem.
 SQLite alone provides neither encrypted storage nor a tamper-evident audit log.
+
+Hosts with persisted activity admission may register an anchor with
+`consumption: "host_claim"`. Its resolver returns only the currently admitted
+occurrence; the runner does not probe adjacent days or treat a manual `firedAt`
+as consumption. `prepareAutomaticFire` returns metadata to commit in the same
+atomic fire claim. Complete state, metadata, and definition expectations guard
+that claim and its subsequent writes. A stale writer returns `raced` without
+reverting a newer owner control or activity admission.
+
+`prepareMutation` protects host-owned control metadata during creation and owner
+verbs. `prepareExecution` reconciles definitions before a fresh read, while
+`automaticAdmission` can deny automatic execution without claiming. Scheduler
+and event callers mark `cause: "automatic"`; direct manual callers do not consume
+automatic admission. These hooks do not introduce another timer or task store.

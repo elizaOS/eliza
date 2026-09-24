@@ -584,6 +584,7 @@ export async function processDueScheduledTasks(
       // There is deliberately no reopen write: reopen-then-claim lets two
       // workers claim one another's reopen and double-dispatch.
       const fireResult = await runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         recoverFiredAtIso: task.state.firedAt,
       } as never);
       const recovered = await handleFireResult({
@@ -705,6 +706,7 @@ export async function processDueScheduledTasks(
     if (!decision.due) continue;
     try {
       const fireResult = await runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         allowTerminalRefire: isRecurringTrigger(task.trigger),
       });
       const fired = await handleFireResult({

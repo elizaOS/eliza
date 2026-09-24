@@ -368,7 +368,7 @@ escalation ladders, autofill whitelists). LifeOps-owned packs live in
 `src/default-packs/`:
 
 - `daily-rhythm` — gm, gn, daily check-in.
-- `morning-brief` — fired on `wake.confirmed`.
+- `morning-brief` — admitted by the first authenticated owner foreground activity or explicit Android user-present unlock event after the configured owner-day boundary (04:00 by default). Admission and day consumption persist on the canonical scheduled-task row; automatic claims consume the day atomically. Manual refresh remains separate. Existing uncustomized managed defaults migrate on trusted activity or execution preparation; customized definitions and other wake-based tasks retain their schedule. Android admission requires the owner-authenticated client’s exact user-present event with unlocked, interactive device state; battery, screen-on and polling snapshots do not count. iOS uses app foreground events. These are authenticated client reports, not OS attestation. Ambiguous duplicate defaults and unresolved legacy delivery require explicit reconciliation.
 - `quiet-user-watcher` — daily watcher.
 - `habit-starters` — eight habits, **offered** (not auto-seeded).
 - `executive-assistant` — twenty-five scheduled records covering twenty
