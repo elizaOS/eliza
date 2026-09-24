@@ -167,6 +167,10 @@ export const VIEW_OCR_POLICIES = {
   "builtin-trajectories": expected({
     requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
+  "builtin-context-inspector": expected({
+    requireAll: ["Context inspector", "Model request budgets"],
+    requireAny: ["partial-recoverable", "token-budget", "Retention"],
+  }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],
     requireAny: [

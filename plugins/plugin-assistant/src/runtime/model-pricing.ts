@@ -1,3 +1,10 @@
+import type { TokenUsageForCost, TrajectoryRuntimeLogger } from "@elizaos/core";
+import {
+  ElizaError,
+  isLocalProvider as isLocalProviderName,
+  readEnv,
+} from "@elizaos/core";
+
 /**
  * Per-provider LLM price table — canonical source of truth.
  *
@@ -16,13 +23,6 @@
  * table is auditable. Update both the entry and the corresponding source
  * comment if a provider changes their rate card.
  */
-
-import type { TokenUsageForCost, TrajectoryRuntimeLogger } from "@elizaos/core";
-import {
-  ElizaError,
-  isLocalProvider as isLocalProviderName,
-  readEnv,
-} from "@elizaos/core";
 
 export type { TokenUsageForCost } from "@elizaos/core";
 

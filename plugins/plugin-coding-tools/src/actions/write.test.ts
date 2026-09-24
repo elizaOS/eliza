@@ -9,7 +9,7 @@ import {
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { writeFileHandler } from "./write.js";
 
 function makeWriteRouter(

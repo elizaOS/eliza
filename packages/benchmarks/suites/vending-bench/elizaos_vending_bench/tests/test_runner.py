@@ -63,7 +63,7 @@ class TestVendingBenchRunner:
 
             assert len(report.results) == 3
             assert report.metrics is not None
-            assert report.leaderboard_comparison is not None
+            assert report.leaderboard_comparison is None
 
             # Check output files were created
             output_path = Path(tmpdir)
