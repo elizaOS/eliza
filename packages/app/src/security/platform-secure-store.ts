@@ -51,6 +51,8 @@ export type SecureStoreDeleteResult =
  * Which native API backs this implementation (for diagnostics and support).
  */
 export type PlatformSecureStoreBackend =
+  | "runtime_encrypted_store"
+  | "android_keystore"
   | "macos_keychain"
   | "windows_credential_manager"
   | "linux_secret_service"

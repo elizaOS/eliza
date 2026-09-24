@@ -29,6 +29,9 @@ describe("BrowserSurfaceWeb", () => {
 
   it("rejects every surface method as unavailable", async () => {
     await expect(
+      web.openBrowser({ url: "https://example.com" }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(
       web.setBounds({
         ...identity,
         id: "a",

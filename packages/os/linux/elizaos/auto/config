@@ -14,8 +14,8 @@
 set -eu
 
 ARCH="${ELIZAOS_ARCH:-amd64}"
-DEBIAN_MIRROR="${ELIZAOS_DEBIAN_MIRROR:?build.sh must supply the locked Debian snapshot}"
-DEBIAN_SECURITY_MIRROR="${ELIZAOS_DEBIAN_SECURITY_MIRROR:?build.sh must supply the locked Debian security snapshot}"
+DEBIAN_MIRROR="${ELIZAOS_DEBIAN_MIRROR:?build-live-iso.sh must supply the locked Debian snapshot}"
+DEBIAN_SECURITY_MIRROR="${ELIZAOS_DEBIAN_SECURITY_MIRROR:?build-live-iso.sh must supply the locked Debian security snapshot}"
 # live-build's automatic firmware discovery currently sweeps unrelated packages
 # (including astronomy camera drivers) into the image. Keep it disabled and
 # declare the hardware firmware contract explicitly in each architecture list.

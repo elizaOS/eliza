@@ -656,6 +656,7 @@ export async function desktopClearRemoteSessionState(
 
 export async function desktopOpenRemoteCommandResult(
 	params: unknown,
+	nativeStore: PlatformSecureStore = store,
 ): Promise<{ status: string; result?: RemoteJsonValue; errorCode?: string }> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote result parameters are required.");
@@ -681,6 +682,7 @@ export async function desktopOpenRemoteCommandResult(
 	const stored = await loadControllerIdentity(
 		record.ownerId,
 		record.controllerDeviceId,
+		nativeStore,
 	);
 	if (!stored || stored.identity.keyId !== envelope.recipientKeyId) {
 		throw new Error("Controller identity is unavailable or changed.");
@@ -710,6 +712,7 @@ export async function desktopOpenRemoteCommandResult(
 
 export async function desktopOpenRemoteCommandStartReceipt(
 	params: unknown,
+	nativeStore: PlatformSecureStore = store,
 ): Promise<{ startedAt: number; executionId: string }> {
 	if (typeof params !== "object" || params === null || Array.isArray(params)) {
 		throw new Error("Remote start receipt parameters are required.");
@@ -735,6 +738,7 @@ export async function desktopOpenRemoteCommandStartReceipt(
 	const stored = await loadControllerIdentity(
 		record.ownerId,
 		record.controllerDeviceId,
+		nativeStore,
 	);
 	if (!stored || stored.identity.keyId !== envelope.recipientKeyId) {
 		throw new Error("Controller identity is unavailable or changed.");

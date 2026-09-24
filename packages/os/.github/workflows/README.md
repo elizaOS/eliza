@@ -1,17 +1,5 @@
-# OS release workflows
+# OS workflow definitions
 
-This directory owns AOSP, Debian/Linux image, installer, update-manifest, and OS release automation.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+These definitions came from the standalone OS repository. GitHub Actions only
+runs workflows in the repository-root [workflow directory](../../../../.github/workflows).
+The nested definitions still require migration before they can run in this monorepo.

@@ -26,6 +26,7 @@ import {
   isSignedRemoteCommand,
   isSignedRemoteCommandResult,
   isSignedRemoteCommandStartReceipt,
+  parseRemoteBrowserCommandPayload,
   REMOTE_COMMAND_CLOCK_SKEW_MS,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
@@ -49,6 +50,7 @@ export type RemoteCommandRejection =
   | "unknown_controller"
   | "wrong_owner"
   | "wrong_grant"
+  | "capability_denied"
   | "stale_grant"
   | "wrong_session"
   | "wrong_controller"
@@ -230,6 +232,19 @@ export function verifyRemoteCommandAuthenticity(
   }
   if (body.grantId !== grant.grantId) {
     return { ok: false, reason: "wrong_grant" };
+  }
+  if (body.action === "browser.command") {
+    try {
+      const browser = parseRemoteBrowserCommandPayload(body.payload);
+      if (
+        !grant.browserProfileId ||
+        grant.browserProfileId !== browser.profileId
+      )
+        return { ok: false, reason: "capability_denied" };
+    } catch {
+      // error-policy:J3 malformed browser scope cannot authorize a remote effect.
+      return { ok: false, reason: "capability_denied" };
+    }
   }
   if (body.grantRevision !== grant.revision) {
     return { ok: false, reason: "stale_grant" };

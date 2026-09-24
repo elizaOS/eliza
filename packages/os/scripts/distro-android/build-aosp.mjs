@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
 import {
   aospLockPath,
   assertExtractedVendorTree,
@@ -35,9 +36,6 @@ import { main as validateMain } from "./validate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
-const elizaRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(repoRoot, ".eliza-source"),
-);
 
 // soong_build is single-process and routinely peaks at ~25 GB RSS for a
 // trunk_staging build. Once the kati/clang phases start they fan out to -jN
@@ -523,11 +521,8 @@ function launchCuttlefish(aospRoot, brand) {
  * produced with <BRAND>_AOSP_BUILD=1.
  */
 function rebuildPrivilegedApk(brand) {
-  if (!fs.existsSync(path.join(elizaRoot, "packages/app/package.json"))) {
-    throw new Error(
-      "Set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout before rebuilding the privileged APK.",
-    );
-  }
+  const elizaRoot = resolveElizaSourceRoot();
+
   const env = {
     ...process.env,
     ELIZAOS_OS_REPO_ROOT: repoRoot,

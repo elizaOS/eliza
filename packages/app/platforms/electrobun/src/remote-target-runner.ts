@@ -193,6 +193,7 @@ export class RemoteTargetRunner {
 
 	async installActivation(
 		activation: RemoteTargetActivationResponse,
+		browserProfileId?: string,
 	): Promise<void> {
 		const enrollment = await this.requireEnrollment();
 		if (
@@ -215,6 +216,7 @@ export class RemoteTargetRunner {
 			createdAt: this.now(),
 			expiresAt: activation.grantExpiresAt,
 			revokedAt: null,
+			...(browserProfileId ? { browserProfileId } : {}),
 		};
 		await this.stateStore.transact((state) => {
 			const current = state.sessions[activation.sessionId];

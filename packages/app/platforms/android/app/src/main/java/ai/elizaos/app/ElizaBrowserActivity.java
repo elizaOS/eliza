@@ -1,39 +1,41 @@
+/**
+ * Routes Android website intents into the installed full Chromium browser.
+ * Pinning the provider prevents recursion through Eliza's own ACTION_VIEW
+ * handler and keeps authentication in the browser's persistent profile.
+ */
 package ai.elizaos.app;
 
 import android.app.Activity;
-import android.content.Intent;
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.TextUtils;
+import ai.eliza.plugins.browsersurface.BrowserLaunchException;
+import ai.eliza.plugins.browsersurface.ChromiumBrowserLauncher;
 
-/**
- * Browser entry point.
- *
- * Browser2 is stripped from ElizaOS, so without this activity any
- * external app firing ACTION_VIEW on an http(s) URL would land in
- * "No activity found to handle Intent." Eliza is the system browser
- * by being the only handler for these schemes; the actual page render
- * happens inside the WebView at the elizaos://browse?url= deep link.
- */
 public class ElizaBrowserActivity extends Activity {
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        Intent source = getIntent();
-        Uri data = source != null ? source.getData() : null;
-        Uri.Builder route = Uri.parse("elizaos://browse").buildUpon()
-                .appendQueryParameter("source", "android-view");
-        if (data != null && !TextUtils.isEmpty(data.toString())) {
-            route.appendQueryParameter("url", data.toString());
+        Uri data = getIntent() != null ? getIntent().getData() : null;
+        try {
+            ChromiumBrowserLauncher.launch(this, data != null ? data.toString() : "");
+            finish();
+        } catch (BrowserLaunchException error) {
+            // error-policy:J1 Show native launch failures instead of an empty browser.
+            showFailure(error.getMessage());
+        } catch (ActivityNotFoundException | SecurityException error) {
+            // error-policy:J1 Android can revoke browser availability during dispatch.
+            showFailure("Chromium could not open this website. Enable or repair the system browser and try again.");
         }
+    }
 
-        Intent launch = new Intent(this, MainActivity.class);
-        launch.setAction(Intent.ACTION_VIEW);
-        launch.setData(route.build());
-        launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(launch);
-        finish();
+    private void showFailure(String message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Unable to open browser")
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> finish())
+                .setOnCancelListener(dialog -> finish())
+                .show();
     }
 }

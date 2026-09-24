@@ -92,6 +92,33 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    @PluginMethod
+    fun openBrowser(call: PluginCall) {
+        val url = call.getString("url") ?: run {
+            call.reject("openBrowser requires a website address", "INVALID_BROWSER_URL")
+            return
+        }
+        activity.runOnUiThread {
+            try {
+                ChromiumBrowserLauncher.launch(activity, url)
+                call.resolve(JSObject().apply {
+                    put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME)
+                    put("engine", "chromium")
+                    put("surface", "custom-tab")
+                })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Native dispatch failures become explicit bridge errors.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 The provider may disappear between resolution and launch.
+                call.reject("Chromium is unavailable. Repair the system browser and try again.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Android policy may forbid the selected browser activity.
+                call.reject("Android prevented Chromium from opening this website.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "ElizaSurfaceManager"
         const val PROFILE_NAMESPACE_PREFIX = "eliza-browser-"

@@ -184,7 +184,7 @@ def _recapture_commands(manifest_path: Path, message: str) -> list[str]:
             0,
             (
                 "cd linux/elizaos && "
-                "make build ARCH=riscv64 PROFILE=gui"
+                "make legacy-iso ARCH=riscv64 PROFILE=gui"
             ),
         )
     if variant_dir != VARIANT_DIR:

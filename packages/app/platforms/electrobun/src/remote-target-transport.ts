@@ -48,7 +48,7 @@ export interface RemoteTargetEnrollmentRequest {
 	ownerId: string;
 	deviceId: string;
 	displayName: string;
-	platform: "macos" | "windows" | "linux";
+	platform: "macos" | "windows" | "linux" | "android";
 	runtimeKeyId: string;
 	signingPublicKeyJwk: JsonWebKey;
 	encryptionPublicKeyJwk: JsonWebKey;

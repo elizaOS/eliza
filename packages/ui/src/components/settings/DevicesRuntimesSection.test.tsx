@@ -50,6 +50,73 @@ function props(
 }
 
 describe("DevicesRuntimesSection", () => {
+  it.each(["android", "linux"] as const)(
+    "requires explicit browser consent for each %s controller pairing",
+    async (platform) => {
+      const user = userEvent.setup();
+      const confirm = vi.fn();
+      const pairing = {
+        hostId: "host",
+        hostLabel: "Device",
+        sessionId: "session",
+        code: "123456",
+        expiresAt: new Date(Date.now() + 300000).toISOString(),
+        qrPayload: "elizaos://remote/control-claim?session=session&code=123456",
+        capabilities: ["agent.request"],
+        status: "claimed" as const,
+        controller: {
+          deviceId: "controller",
+          keyId: "key",
+          displayName: "Owner controller",
+          platform: "web",
+        },
+      };
+      const target = {
+        hostId: "host",
+        enrolled: true,
+        running: false,
+        activeSessions: 0,
+        lastErrorCode: null,
+        platform,
+        browserProfileId: "exact-profile",
+      };
+      const view = render(
+        <DevicesRuntimesSection
+          {...props({
+            pairing,
+            linuxTarget: target,
+            onConfirmTargetPairing: confirm,
+          })}
+        />,
+      );
+      const button = screen.getByRole("button", {
+        name: /Confirm controller on this/,
+      });
+      await user.click(button);
+      expect(confirm).toHaveBeenLastCalledWith("session", undefined);
+      await user.click(
+        screen.getByRole("checkbox", {
+          name: /Allow this controller to use Chromium profile/,
+        }),
+      );
+      await user.click(button);
+      expect(confirm).toHaveBeenLastCalledWith("session", "exact-profile");
+      view.rerender(
+        <DevicesRuntimesSection
+          {...props({
+            pairing: { ...pairing, sessionId: "new-session" },
+            linuxTarget: target,
+            onConfirmTargetPairing: confirm,
+          })}
+        />,
+      );
+      await user.click(
+        screen.getByRole("button", { name: /Confirm controller on this/ }),
+      );
+      expect(confirm).toHaveBeenLastCalledWith("new-session", undefined);
+    },
+  );
+
   it("announces target state and exposes touch-sized retry and pairing actions", async () => {
     const user = userEvent.setup();
     const onPair = vi.fn();
@@ -140,7 +207,7 @@ describe("DevicesRuntimesSection", () => {
         name: "Confirm controller on this Mac",
       }),
     );
-    expect(onConfirmTargetPairing).toHaveBeenCalledWith("session-1");
+    expect(onConfirmTargetPairing).toHaveBeenCalledWith("session-1", undefined);
     await user.click(screen.getByRole("button", { name: "Deny" }));
     expect(onDenyTargetPairing).toHaveBeenCalledWith("session-1");
     expect(screen.getByText("Confirm Nubs's iPhone")).toBeTruthy();
@@ -187,7 +254,7 @@ describe("DevicesRuntimesSection", () => {
         })}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "Pair an iPhone" }));
+    await user.click(screen.getByRole("button", { name: "Pair a controller" }));
     expect(onCreateTargetPairing).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText("6-digit code")).toBeNull();
   });

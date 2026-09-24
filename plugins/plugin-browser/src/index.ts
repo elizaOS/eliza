@@ -44,6 +44,7 @@ export {
   isBrowserDispatchFailure,
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
+export { decodeNativeBrowserCommandResult } from "./native-page-reader.js";
 export * from "./parity/index.js";
 export * from "./password-manager-bridge.js";
 export { browserPlugin } from "./plugin.js";
@@ -105,3 +106,8 @@ const bundleSafetyGlobal = globalThis as typeof globalThis & {
 };
 bundleSafetyGlobal.__bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ =
   __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;
+
+export {
+  createRemoteBrowserDeviceTarget,
+  type RemoteBrowserDeviceConnection,
+} from "./targets/remote-device-target.js";

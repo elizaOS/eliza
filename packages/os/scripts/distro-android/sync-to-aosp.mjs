@@ -1,56 +1,17 @@
 #!/usr/bin/env node
-// Drives brand-aware Android distro distro android sync to aosp automation for CI and device builds.
-import { spawnSync } from "node:child_process";
-/**
- * sync-to-aosp.mjs — Copy the brand vendor tree into an AOSP checkout.
- *
- * Brand-aware: vendor source dir, target vendor name, and APK path are
- * driven by the brand config (see brand-config.mjs). Defaults to the
- * eliza brand at scripts/distro-android/brand.eliza.json; downstream
- * brands pass --brand-config <path>.
- */
+/** Stages a complete privileged APK vendor tree into the selected AOSP checkout. */
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.mjs";
 import { isMainModule } from "./is-main.mjs";
+import { assertBrowserAppsStaged } from "./stage-browser-apps.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
-const cleanupHelperScript = path.join(
-  repoRoot,
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
-
 const USAGE =
   "Usage: node scripts/distro-android/sync-to-aosp.mjs [--brand-config <PATH>] [--source-vendor <VENDOR_DIR>] <AOSP_ROOT>";
-
-function removePathRecursive(targetPath) {
-  const completed = spawnSync(
-    "node",
-    [cleanupHelperScript, path.resolve(targetPath)],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  if (completed.error) throw completed.error;
-  if (completed.status !== 0) {
-    throw new Error(
-      [
-        `failed to remove ${targetPath}`,
-        completed.stdout.trim(),
-        completed.stderr.trim(),
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-}
 
 export function parseSubArgs(argv, brand) {
   const args = {
@@ -95,8 +56,72 @@ export function syncToAosp({ aospRoot, sourceVendor, brand }) {
     );
   }
 
+  if (
+    !/^[a-z][a-z0-9_]*$/.test(brand.brand) ||
+    !/^[A-Za-z][A-Za-z0-9_-]*$/.test(brand.appName)
+  ) {
+    throw new Error(
+      "Vendor brand and application name must be simple directory names.",
+    );
+  }
   const targetVendor = path.join(aospRoot, "vendor", brand.brand);
-  removePathRecursive(targetVendor);
+  const source = fs.realpathSync(sourceVendor);
+  const destination = path.resolve(
+    fs.realpathSync(aospRoot),
+    "vendor",
+    brand.brand,
+  );
+  const vendorRoot = path.join(fs.realpathSync(aospRoot), "vendor");
+  if (fs.existsSync(vendorRoot) && fs.lstatSync(vendorRoot).isSymbolicLink()) {
+    throw new Error("AOSP vendor directory must not be a symbolic link.");
+  }
+  if (
+    source === destination ||
+    source.startsWith(`${destination}${path.sep}`) ||
+    destination.startsWith(`${source}${path.sep}`)
+  ) {
+    throw new Error("Source and destination vendor trees must not overlap.");
+  }
+  const sourceApk = path.join(
+    source,
+    "apps",
+    brand.appName,
+    `${brand.appName}.apk`,
+  );
+  if (
+    !fs.existsSync(sourceApk) ||
+    !fs.statSync(sourceApk).isFile() ||
+    fs.statSync(sourceApk).size === 0
+  ) {
+    throw new Error(
+      `Missing non-empty privileged APK: ${sourceApk}. Run ${brand.buildAndroidSystemCmd.join(" ")} before syncing.`,
+    );
+  }
+  if (fs.existsSync(path.join(source, "manifests/browser-apps.json"))) {
+    const inferredArchitecture = brand.productName?.match(
+      /(?:^|_)(x86_64|arm64|riscv64)(?:_|$)/,
+    )?.[1];
+    const architecture = brand.architecture ?? inferredArchitecture;
+    if (
+      brand.architecture &&
+      inferredArchitecture &&
+      brand.architecture !== inferredArchitecture
+    ) {
+      throw new Error("Explicit architecture conflicts with the AOSP product.");
+    }
+    if (!architecture) {
+      throw new Error(
+        "Browser APK architecture must be qualified for this AOSP product before sync.",
+      );
+    }
+    assertBrowserAppsStaged(source, architecture);
+  }
+  fs.rmSync(targetVendor, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
   fs.mkdirSync(path.dirname(targetVendor), { recursive: true });
   fs.cpSync(sourceVendor, targetVendor, {
     recursive: true,

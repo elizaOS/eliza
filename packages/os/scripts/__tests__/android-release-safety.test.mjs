@@ -1051,6 +1051,7 @@ test("production CLI and shell entrypoint reject fixture authorization before in
     ["bash", "android/installer/install-elizaos-android.sh"],
   ]) {
     const result = spawnSync(command, [entry, ...args], {
+      cwd: new URL("../../", import.meta.url),
       encoding: "utf8",
       env: {
         ...process.env,

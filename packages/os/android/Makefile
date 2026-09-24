@@ -35,8 +35,8 @@ HERE      := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(HERE)/..)
 DISTRO    := $(REPO_ROOT)/scripts/distro-android
 VENDOR    := $(HERE)vendor/eliza
-ELIZAOS_ELIZA_ROOT ?= $(REPO_ROOT)/.eliza-source
-ANDROID_AGENT_ASSETS := $(ELIZAOS_ELIZA_ROOT)/packages/app-core/platforms/android/app/src/main/assets/agent
+ELIZAOS_ELIZA_ROOT ?= $(shell node "$(REPO_ROOT)/scripts/eliza-source.mjs")
+ANDROID_AGENT_ASSETS := $(ELIZAOS_ELIZA_ROOT)/packages/app/platforms/android/app/src/main/assets/agent
 REPO_LAUNCHER := $(HERE)cache/repo
 
 # ARCH -> brand config (x86_64 uses the unsuffixed default).
@@ -60,10 +60,14 @@ INFERENCE_TARGETS_arm64 := android-arm64-cpu-fused
 INFERENCE_TARGETS_riscv64 := android-arm64-cpu-fused android-riscv64-cpu-fused
 INFERENCE_TARGETS := $(INFERENCE_TARGETS_$(ARCH))
 
-.PHONY: help bootstrap bootstrap-grizzly prepare-grizzly preflight-grizzly evidence-grizzly attest-grizzly verify-grizzly provision-e1 build build-e1 build-grizzly bundle-grizzly native-inference native-inference-grizzly sim splash bootanimation check-arch
+.PHONY: stage-browser-apps help bootstrap bootstrap-grizzly prepare-grizzly preflight-grizzly evidence-grizzly attest-grizzly verify-grizzly provision-e1 build build-e1 build-grizzly bundle-grizzly native-inference native-inference-grizzly sim splash bootanimation check-arch
+
+stage-browser-apps: check-arch
+	node "$(DISTRO)/stage-browser-apps.mjs" --arch "$(ARCH)" $(ARGS)
 
 help:
 	@echo "elizaOS Mobile (AOSP) targets:"
+	@echo "  make stage-browser-apps ARCH=x86_64 ARGS=... # verify pinned Chromium + Bitwarden APKs"
 	@echo "  make bootstrap                           # sync the pinned full AOSP checkout"
 	@echo "  make bootstrap-grizzly                  # sync the pinned Pixel 11 Pro AOSP checkout"
 	@echo "  make prepare-grizzly                    # generate grizzly vendor/device support from stock"
@@ -111,12 +115,12 @@ build-e1: check-arch native-inference provision-e1
 	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.mjs --brand-config $(DISTRO)/brand.eliza-riscv64-e1.json --aosp-root $(AOSP_ROOT) --rebuild-privileged-apk --launch --boot-validate $(ARGS)
 
 native-inference: check-arch
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
 
 native-inference-grizzly:
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" --target android-arm64-cpu-fused
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" --target android-arm64-cpu-fused
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
 
 build-grizzly: prepare-grizzly native-inference-grizzly bootanimation
 	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.mjs --brand-config $(DISTRO)/brand.eliza-grizzly.json --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk $(ARGS)
@@ -150,3 +154,7 @@ check-arch:
 	    *" $(ARCH) "*) ;; \
 	    *) echo "ERROR: ARCH=$(ARCH) not in: $(SUPPORTED_ARCHES)" >&2; exit 64 ;; \
 	esac
+
+.PHONY: prepare-chromium-browser
+prepare-chromium-browser:
+	node $(DISTRO)/prepare-chromium-browser.mjs $(ARGS)

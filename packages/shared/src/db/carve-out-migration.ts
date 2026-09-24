@@ -6,7 +6,7 @@
  * completed legacy import after an owner deletes data from the new table.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { executeSql, sqlQuote as literal, type RuntimeDb } from "./raw-sql.js";
 
 export type CarveOutSqlExecutor = (

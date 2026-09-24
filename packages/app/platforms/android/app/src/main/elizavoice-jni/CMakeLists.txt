@@ -84,6 +84,7 @@ foreach(dep ggml ggml-base ggml-cpu ggml-vulkan llama llama-common mtmd)
 endforeach()
 
 find_library(LOG_LIB log)
+find_library(DL_LIB dl)
 
 add_library(elizavoicejni SHARED elizavoice-jni.cpp)
 target_include_directories(elizavoicejni PRIVATE "${ELIZAVOICE_FFI_INCLUDE_DIR}")
@@ -93,7 +94,7 @@ target_compile_options(elizavoicejni PRIVATE -O2 -DNDEBUG)
 # app process). The shim never calls vulkan symbols directly, so leaving that
 # transitive NEEDED unresolved at link time is correct.
 target_link_libraries(elizavoicejni PRIVATE
-    elizainference ${ELIZAVOICE_DEP_TARGETS} ${LOG_LIB})
+    elizainference ${ELIZAVOICE_DEP_TARGETS} ${LOG_LIB} ${DL_LIB})
 target_link_options(elizavoicejni PRIVATE "-Wl,--allow-shlib-undefined")
 
 message(STATUS "[elizavoice-jni] building bionic JNI bridge for ${ANDROID_ABI}")

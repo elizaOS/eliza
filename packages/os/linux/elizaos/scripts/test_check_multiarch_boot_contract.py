@@ -139,7 +139,7 @@ class MultiarchBootContractTests(unittest.TestCase):
         return document
 
     def test_build_script_cleans_mutable_gui_profile_overlay(self) -> None:
-        build_text = (HERE.parent / "build.sh").read_text(encoding="utf-8")
+        build_text = (HERE.parent / "build-live-iso.sh").read_text(encoding="utf-8")
         self.assertIn(
             'rm -f "${HERE}/config/package-lists/elizaos-gui.list.chroot"',
             build_text,

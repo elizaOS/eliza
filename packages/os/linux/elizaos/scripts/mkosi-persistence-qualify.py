@@ -19,6 +19,8 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from mkosi_console import FORBIDDEN_MARKERS, GRAPHICAL_MARKERS, normalized_console_text
 from typing import Iterator
 
 QEMU = {
@@ -31,33 +33,12 @@ MACHINES = {
     "arm64": "virt,accel=kvm:tcg,gic-version=max",
     "riscv64": "virt,accel=kvm:tcg",
 }
-REQUIRED_MARKERS = (
-    "Linux version",
-    "Started gdm.service - GNOME Display Manager",
-    "Reached target Graphical Interface",
-)
-FORBIDDEN_MARKERS = (
-    "Kernel panic - not syncing",
-    "Entering emergency mode",
-    "You are in emergency mode",
-    "Failed to start initrd-switch-root.service",
-    "VFS: Unable to mount root fs",
-    "Cannot open root device",
-    "No bootable device",
-    "Boot failed",
-    "Dependency failed for Graphical Interface",
-)
+REQUIRED_MARKERS = GRAPHICAL_MARKERS
 SCHEMA = "ai.elizaos.mkosi-persistence-evidence.v1"
-ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 
 
 class QualificationError(RuntimeError):
     pass
-
-
-def normalized_console_text(text: str) -> str:
-    """Remove terminal control sequences before evaluating boot markers."""
-    return ANSI_ESCAPE.sub("", text).replace("\r", "")
 
 
 def now() -> str:

@@ -109,6 +109,12 @@ export function loadBrandConfig(configPath) {
     }
   }
   // Defaults for optional fields.
+  if (
+    parsed.architecture !== undefined &&
+    !["x86_64", "arm64", "riscv64"].includes(parsed.architecture)
+  ) {
+    throw new Error(`Brand config ${resolved} has invalid architecture`);
+  }
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
   parsed.vendorDir = parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
   if (

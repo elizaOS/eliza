@@ -30,18 +30,32 @@ const defaultLockPath = path.join(
 // uses a different source-tree release ID, so preserving the guard as a
 // warning is required for a custom AOSP build. The original guard text stays
 // in the file (and in the lock contract) for provenance and reviewability.
-function normalizeGeneratedBuildIdGuard(aospRoot) {
+export function normalizeGeneratedBuildIdGuard(aospRoot, buildId) {
+  if (
+    typeof buildId !== "string" ||
+    !/^[A-Z0-9]+\.[0-9]+\.[0-9]+(?:\.[A-Z0-9]+)?$/.test(buildId)
+  ) {
+    throw new Error(
+      "A locked factory build ID is required for the generated build guard",
+    );
+  }
   const makefilePath = path.join(
     aospRoot,
     "vendor/google_devices/grizzly/grizzly.mk",
   );
   if (!fs.existsSync(makefilePath)) return;
   const contents = fs.readFileSync(makefilePath, "utf8");
-  const strictError =
-    "  $(error BUILD_ID: expected CD1A.260714.001.A9, got $(BUILD_ID))";
-  const warning =
-    "  $(warning BUILD_ID: factory CD1A.260714.001.A9; using AOSP $(BUILD_ID))";
-  if (!contents.includes(strictError) || contents.includes(warning)) return;
+  const strictError = `  $(error BUILD_ID: expected ${buildId}, got $(BUILD_ID))`;
+  const warning = `  $(warning BUILD_ID: factory ${buildId}; using AOSP $(BUILD_ID))`;
+  if (
+    !contents.includes(`ifneq ($(BUILD_ID),${buildId})`) ||
+    (!contents.includes(strictError) && !contents.includes(warning))
+  ) {
+    throw new Error(
+      `Generated vendor build guard does not match locked factory ${buildId}`,
+    );
+  }
+  if (contents.includes(warning)) return;
   fs.writeFileSync(makefilePath, contents.replace(strictError, warning));
 }
 
@@ -792,7 +806,7 @@ export async function prepareGrizzly({
   }
   if (fs.existsSync(generatedRoot)) {
     try {
-      normalizeGeneratedBuildIdGuard(aospRoot);
+      normalizeGeneratedBuildIdGuard(aospRoot, lock.device.buildId);
       normalizeGeneratedProprietaryNamespace(aospRoot);
       normalizeGeneratedSePolicy(aospRoot);
       normalizeGeneratedVintf(aospRoot);
@@ -821,7 +835,7 @@ export async function prepareGrizzly({
       cwd: aospRoot,
       env: withSisoCompatibility(),
     });
-    normalizeGeneratedBuildIdGuard(aospRoot);
+    normalizeGeneratedBuildIdGuard(aospRoot, lock.device.buildId);
     normalizeGeneratedProprietaryNamespace(aospRoot);
     normalizeGeneratedSePolicy(aospRoot);
     normalizeGeneratedVintf(aospRoot);

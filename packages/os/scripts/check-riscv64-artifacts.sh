@@ -32,14 +32,17 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-eliza_root="$(cd "${ELIZAOS_ELIZA_ROOT:-$repo_root/.eliza-source}" 2>/dev/null && pwd || true)"
-if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/packages/native" ]; then
+eliza_root="$(node "$repo_root/scripts/eliza-source.mjs")"
+if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
     echo "[check-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
     exit 2
 fi
 cd "$repo_root"
 
-OUT="$repo_root/build/reports/riscv64_artifacts.json"
+OUT="$(node --input-type=module -e '
+    const { testOutputPath } = await import(process.argv[1]);
+    console.log(testOutputPath("os-riscv64", process.argv[2]));
+' "$eliza_root/packages/scripts/lib/test-output.ts" "artifacts.json")"
 QEMU_TIMEOUT="${ELIZA_RISCV64_QEMU_TIMEOUT:-60}"
 RUN_QEMU=1
 REQUIRE_COMPLETE=0
@@ -53,7 +56,7 @@ while [ $# -gt 0 ]; do
         --require-complete) REQUIRE_COMPLETE=1; shift;;
         --timeout) QEMU_TIMEOUT="$2"; shift 2;;
         -h|--help)
-            awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$0"
+            awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$repo_root/scripts/check-riscv64-artifacts.sh"
             exit 0;;
         *) echo "unknown argument: $1" >&2; exit 2;;
     esac
@@ -358,59 +361,59 @@ verify_artifact() {
 # scripts/build-riscv64-artifacts.sh is responsible for producing them.
 
 NATIVE_PLUGINS=(
-    "qjl-cpu              packages/native/plugins/qjl-cpu/build/riscv64/libqjl.a"
-    "qjl-cpu              packages/native/plugins/qjl-cpu/build/riscv64/qjl_int8_smoke"
-    "qjl-cpu              packages/native/plugins/qjl-cpu/build/riscv64/qjl_avxvnni_smoke"
-    "qjl-cpu              packages/native/plugins/qjl-cpu/build/riscv64/qjl_fork_parity"
-    "qjl-cpu              packages/native/plugins/qjl-cpu/build/riscv64/qjl_bench"
+    "qjl-cpu              plugins/plugin-local-inference/native/qjl-cpu/build/riscv64/libqjl.a"
+    "qjl-cpu              plugins/plugin-local-inference/native/qjl-cpu/build/riscv64/qjl_int8_smoke"
+    "qjl-cpu              plugins/plugin-local-inference/native/qjl-cpu/build/riscv64/qjl_avxvnni_smoke"
+    "qjl-cpu              plugins/plugin-local-inference/native/qjl-cpu/build/riscv64/qjl_fork_parity"
+    "qjl-cpu              plugins/plugin-local-inference/native/qjl-cpu/build/riscv64/qjl_bench"
 
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/libpolarquant.a"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_simd_parity_test"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_dot_test"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_preht_dot_test"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_preht_simd_parity_test"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_roundtrip_test"
-    "polarquant-cpu       packages/native/plugins/polarquant-cpu/build/riscv64/polar_bench"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/libpolarquant.a"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_simd_parity_test"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_dot_test"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_preht_dot_test"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_preht_simd_parity_test"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_roundtrip_test"
+    "polarquant-cpu       plugins/plugin-local-inference/native/polarquant-cpu/build/riscv64/polar_bench"
 
-    "turboquant-cpu       packages/native/plugins/turboquant-cpu/build/riscv64/libturboquant.a"
-    "turboquant-cpu       packages/native/plugins/turboquant-cpu/build/riscv64/turboquant_smoke"
-    "turboquant-cpu       packages/native/plugins/turboquant-cpu/build/riscv64/turboquant_simd_parity"
+    "turboquant-cpu       plugins/plugin-local-inference/native/turboquant-cpu/build/riscv64/libturboquant.a"
+    "turboquant-cpu       plugins/plugin-local-inference/native/turboquant-cpu/build/riscv64/turboquant_smoke"
+    "turboquant-cpu       plugins/plugin-local-inference/native/turboquant-cpu/build/riscv64/turboquant_simd_parity"
 
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/libsilero_vad.a"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/libsilero_vad.so"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_abi_smoke"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_resample_test"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_runtime_test"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_state_test"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/libsilero_vad.a"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/libsilero_vad.so"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/silero_vad_abi_smoke"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/silero_vad_resample_test"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/silero_vad_runtime_test"
+    "silero-vad-cpp       plugins/plugin-local-inference/native/silero-vad-cpp/build/riscv64/silero_vad_state_test"
 
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.a"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.so"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_classifier_abi_smoke"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_diarizer_parity_test"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_emotion_classes_test"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_gguf_loader_test"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_mel_features_test"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_speaker_distance_test"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_speaker_parity_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/libvoice_classifier.a"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/libvoice_classifier.so"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_classifier_abi_smoke"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_diarizer_parity_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_emotion_classes_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_gguf_loader_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_mel_features_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_speaker_distance_test"
+    "voice-classifier-cpp plugins/plugin-local-inference/native/voice-classifier-cpp/build/riscv64/voice_speaker_parity_test"
 
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/libwakeword.a"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/libwakeword.so"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_abi_smoke"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_melspec_test"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_runtime_test"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_window_test"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/libwakeword.a"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/libwakeword.so"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/wakeword_abi_smoke"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/wakeword_melspec_test"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/wakeword_runtime_test"
+    "wakeword-cpp         plugins/plugin-local-inference/native/wakeword-cpp/build/riscv64/wakeword_window_test"
 
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/libface.a"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/libface.so"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_abi_smoke"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_align_test"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_anchor_test"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_distance_test"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_embed_runtime_test"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_runtime_test"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/libface.a"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/libface.so"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_abi_smoke"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_align_test"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_anchor_test"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_distance_test"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_embed_runtime_test"
+    "face-cpp             plugins/plugin-vision/native/face-cpp/build/riscv64/face_runtime_test"
 
-    "doctr-cpp            packages/native/plugins/doctr-cpp/build/riscv64/libdoctr.a"
-    "doctr-cpp            packages/native/plugins/doctr-cpp/build/riscv64/doctr_abi_smoke"
+    "doctr-cpp            plugins/plugin-vision/native/doctr-cpp/build/riscv64/libdoctr.a"
+    "doctr-cpp            plugins/plugin-vision/native/doctr-cpp/build/riscv64/doctr_abi_smoke"
 )
 
 # MTP libllama + ggml family stages into either:

@@ -1,17 +1,20 @@
 # elizaOS Linux
 
-The accepted v1 product is a persistent Debian 13 GNOME workstation assembled by mkosi for x86_64, arm64, and riscv64.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
+The persistent Debian 13 GNOME workstation uses
+[mkosi](elizaos/mkosi/README.md). Build a development disk image from the repository
+root with Docker running:
 
 ```bash
-bun run --cwd packages/os build
+make -C packages/os/linux/elizaos build ARCH=amd64 PROFILE=gui
+bun run --cwd packages/os verify:linux
 ```
 
-Test from the repository root:
+Supported architecture selectors are `amd64`, `arm64`, and `riscv64`. Cross builds
+require the corresponding QEMU binfmt handler. Output is under
+`elizaos/out/mkosi`. Development images may omit the Eliza application; release
+images require verified desktop artifacts and the control broker.
 
-```bash
-bun run --cwd packages/os test
-```
+`build.sh`, `make build`, and `just build` select the persistent mkosi image.
+The older live-build ISO is available explicitly through `make legacy-iso`. The
+[installer package](installer/README.md) currently provides planning and execution
+contracts; its tests alone do not prove a deployable installer service.

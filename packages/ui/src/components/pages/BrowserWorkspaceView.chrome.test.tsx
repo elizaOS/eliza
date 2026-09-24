@@ -32,6 +32,10 @@ const authorityState = vi.hoisted(() => ({
 }));
 
 const openExternalUrlMock = vi.hoisted(() => vi.fn());
+const desktopRuntime = vi.hoisted(() => ({ active: false }));
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => desktopRuntime.active,
+}));
 
 // This standalone page fixture has no connected runtime view installation.
 // Catalog binding and reporting are exercised by the shell/catalog integration tests.
@@ -41,6 +45,7 @@ vi.mock("../../hooks/useAvailableViews", () => ({
 
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
+  getActiveAgentAuthority: () => authorityState.value,
 }));
 
 vi.mock("../../utils/asset-url", () => ({
@@ -184,6 +189,7 @@ function deferred<T>(): {
 }
 
 beforeEach(() => {
+  desktopRuntime.active = false;
   authorityState.value = "profile-a\u0000https://same-agent.test";
   walletStateHarness.connected = false;
   walletStateHarness.pendingApprovals = 0;
@@ -258,27 +264,32 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
   });
 
   it("keeps bridge recovery reachable without adding idle administration UI", async () => {
+    desktopRuntime.active = true;
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByText("No page open")).not.toBeNull();
     expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
+    expect(screen.getByText("Agent browser connection")).not.toBeNull();
     expect(
-      await screen.findByTestId("browser-session-policy-error"),
+      await screen.findByText(/Browser connection unavailable/),
     ).not.toBeNull();
   });
 
   it("keeps bridge recovery reachable while a browser tab is open", async () => {
+    desktopRuntime.active = true;
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByTitle("Google")).not.toBeNull();
     expect(
-      await screen.findByTestId("browser-session-policy-error"),
+      await screen.findByText(/Browser connection unavailable/),
     ).not.toBeNull();
-    expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Refresh connection", hidden: true }),
+    ).not.toBeNull();
   });
 
   it("keeps one flat navigation rail above the web surface", async () => {
