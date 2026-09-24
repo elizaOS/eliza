@@ -85,3 +85,5 @@ replacement tokens return `NOTES_EDIT_REVISION_REQUIRED`; this deliberately
 rejects older unguarded replacement calls. Literal `textEdit` retains its atomic
 unique-current-substring contract and can omit the token; supplied tokens still
 apply. Storage remains the existing per-agent JSON file and in-process barrier.
+
+Promoted `NOTES_PATCH` now requires `expectedRevision` on its native schema for every call, including legacy `textEdit` calls through that tool. Use the existing `NOTES_UPDATE` with `textEdit` for revision-free atomic literal substitutions. Full field replacements use PATCH with the revision of the complete snapshot used to author the change. This schema requirement prevents repeated revisionless replacement calls; it does not fetch or invent a token, relax the write barrier, or remove the existing service/umbrella literal-edit contract. Any intervening Notes write, including a deletion in the same request, requires a fresh complete snapshot before replacement.
