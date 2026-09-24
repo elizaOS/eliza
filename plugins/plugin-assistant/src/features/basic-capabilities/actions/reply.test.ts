@@ -4,13 +4,10 @@
  * planner-supplied text when the model returns empty structured text, and the
  * fallback to raw non-JSON model text.
  */
+
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/index.ts";
-import { ModelType } from "../../../../../../packages/core/src/index.ts";
 import { replyAction } from "./reply.ts";
 
 function createRuntime(

@@ -6,18 +6,20 @@
  * Deterministic mock runtime and connectors — no live model, no DB.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../../../../../../packages/core/src/actions/promote-subactions.ts";
-import { validateToolArgs } from "../../../../../../packages/core/src/actions/validate-tool-args.ts";
 import type {
   ActionResult,
   IAgentRuntime,
   Memory,
   MessageConnectorManageServerAuthorization,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  stringToUuid,
+  validateToolArgs,
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";

@@ -1,5 +1,5 @@
+import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../packages/core/src/types/index.ts";
 import {
   previousEvidencePage,
   selectSharedEvidencePages,

@@ -1,8 +1,9 @@
 /**
  * Unit tests for the uncapped task clipboard service factory.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { createTaskClipboardService } from "./taskClipboardService.ts";
 
 describe("taskClipboardService", () => {

@@ -5,11 +5,8 @@
  * fakes; the real handler performs all parsing, normalization, and aggregation.
  */
 
+import { ChannelType, ModelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import {
-  ChannelType,
-  ModelType,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { setSecretHandler } from "./set-secret.ts";
 
 interface SecretInput {

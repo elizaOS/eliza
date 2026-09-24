@@ -8,27 +8,19 @@
  * ends deterministically right after the seam under test.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
   attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  canActionRun,
   evaluateOwnerExclusiveDisclosure,
   getTrustedDeliveryAudience,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   ownerExclusiveSuppressionNote,
   registerRuntimeManagedInternalActor,
-} from "../../../../packages/core/src/security/trusted-delivery-audience.ts";
-import type {
-  Room,
-  World,
-} from "../../../../packages/core/src/types/environment.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
+  TurnControllerRegistry,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { resolvePlannedReplyEgress } from "./message/egress-policy.ts";
 import { DefaultMessageService } from "./message.ts";
 

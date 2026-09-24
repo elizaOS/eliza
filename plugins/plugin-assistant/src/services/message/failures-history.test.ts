@@ -1,11 +1,8 @@
 /** Exercises failure-history reference rendering and full-string fallback without a model or database. */
+
+import type { Memory, State } from "@elizaos/core";
+import { addHeader, conversationMessagesHeader } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import type { State } from "../../../../../packages/core/src/types/state.ts";
-import {
-  addHeader,
-  conversationMessagesHeader,
-} from "../../../../../packages/core/src/utils.ts";
 import { MessageFailures } from "./failures.ts";
 
 const message = {

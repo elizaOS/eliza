@@ -5,14 +5,15 @@
  * `owner` and `third_party` targets fail with the `unsupported_escalation_target`
  * error code rather than silently succeeding.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
   UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { escalateAction } from "./action.ts";
 import { AUTONOMY_SERVICE_TYPE } from "./service.ts";
 

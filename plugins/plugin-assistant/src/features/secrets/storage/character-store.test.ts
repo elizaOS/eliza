@@ -2,11 +2,9 @@
  * Unit tests for CharacterSettingsStorage: verifies character.settings.secrets
  * access control, existence, retrieval, and updates.
  */
+
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type { KeyManager } from "../crypto/encryption.ts";
 import type { SecretContext, StoredSecret } from "../types.ts";
 import { CharacterSettingsStorage } from "./character-store.ts";

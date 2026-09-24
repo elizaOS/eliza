@@ -5,11 +5,9 @@
  * re-broadcasts untrusted scaffolding to chat. Runs on the in-memory
  * FakeRuntime with a real PersonalityStore; no live model.
  */
+
+import type { ActionResult, HandlerOptions } from "@elizaos/core";
 import { beforeEach, describe, expect, test } from "vitest";
-import type {
-  ActionResult,
-  HandlerOptions,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import { personalityAction } from "../actions/personality.ts";
 import {
   captureCallback,

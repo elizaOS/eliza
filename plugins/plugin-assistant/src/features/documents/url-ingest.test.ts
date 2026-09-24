@@ -2,13 +2,10 @@
  * Unit tests for SSRF-safe URL document ingestion and content classification.
  */
 
+import type { Character, UUID } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.js";
 import {
   __setDocumentUrlFetchImplForTests,

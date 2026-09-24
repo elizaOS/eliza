@@ -1,15 +1,18 @@
 /** Exercises native response schemas and transport parity through the real Stage-1 pipeline with deterministic model responses. */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ResponseHandlerFieldEvaluator } from "../../../../../packages/core/src/runtime/response-handler-field-evaluator.ts";
-import { ResponseHandlerFieldRegistry } from "../../../../../packages/core/src/runtime/response-handler-field-registry.ts";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import type { JSONSchema } from "../../../../../packages/core/src/types/model.ts";
+
+import type {
+  IAgentRuntime,
+  JSONSchema,
+  Memory,
+  ResponseHandlerFieldEvaluator,
+  State,
+} from "@elizaos/core";
 import {
   ChannelType,
+  ResponseHandlerFieldRegistry,
   type UUID,
-} from "../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../../packages/core/src/types/state.ts";
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as builtins from "../../runtime/builtin-field-evaluators";
 import { runV5MessageRuntimeStage1 } from "../message";
 import { withoutInactiveFields } from "./inactive-field-schema.ts";

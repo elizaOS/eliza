@@ -3,14 +3,10 @@
  * the real roles.ts hasRoleAccess resolution against the exact world metadata the
  * handler writes, so DM-world owner grants are checked end to end with nothing mocked.
  */
+
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { ChannelType, EventType, hasRoleAccess } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { hasRoleAccess } from "../../../../../packages/core/src/roles.ts";
-import { EventType } from "../../../../../packages/core/src/types/events.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../packages/core/src/types/primitives.ts";
 import { createAssistantBehavior } from "./index.ts";
 
 /**

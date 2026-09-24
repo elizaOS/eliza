@@ -5,11 +5,8 @@
  * replacing the subject's regex and obfuscation-aware logic.
  */
 
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   type SecurityContext,
   type SecurityEvent,

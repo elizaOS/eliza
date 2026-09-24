@@ -1,13 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { AgentRuntime, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import { createAssistantPlugin } from "../index.ts";
 import { RelationshipsService } from "./relationships.ts";
 

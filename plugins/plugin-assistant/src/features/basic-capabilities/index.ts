@@ -29,6 +29,7 @@ import {
   ContentType,
   type ControlMessagePayload,
   createUniqueUuid,
+  describeImageCached,
   EmbeddingGenerationService,
   type EntityPayload,
   type EvaluatorEventPayload,
@@ -45,6 +46,7 @@ import {
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  MediaFetchError,
   type Memory,
   MemoryType,
   type MentionContext,
@@ -57,6 +59,7 @@ import {
   type RolesWorldMetadata,
   type Room,
   type RunEventPayload,
+  readResponseWithLimit,
   recentErrorsProvider,
   recordOwnerGrant,
   resolveOptimizedPromptForRuntime,
@@ -69,12 +72,7 @@ import {
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import {
-  describeImageCached,
-  MediaFetchError,
-  readResponseWithLimit,
-} from "@elizaos/core/media";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";

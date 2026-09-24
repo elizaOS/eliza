@@ -4,15 +4,15 @@
  * revision rejection, Unicode boundaries, and the single-carrier prompt shape.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   IAgentRuntime,
   Memory,
   ReadView,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { messageAction } from "./message.ts";
 
 /**

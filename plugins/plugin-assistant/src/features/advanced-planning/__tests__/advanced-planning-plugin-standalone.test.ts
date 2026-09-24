@@ -2,8 +2,8 @@
  * Unit tests for advanced planning plugin factory and lifecycle hooks.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import { createAdvancedPlanningPlugin, PlanningService } from "../index.ts";
 
 describe("advanced-planning plugin", () => {

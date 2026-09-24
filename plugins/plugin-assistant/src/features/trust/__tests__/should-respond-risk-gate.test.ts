@@ -6,13 +6,12 @@
  * model, no DB); the live-model path is covered separately in the `.real` suite.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   hardenIncomingUserMessage,
   unwrapUserMessageText,
-} from "../../../../../../packages/core/src/security/incoming-message-security.ts";
-import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   adjudicateInjectionRisk,
   canPublishProgressBeforeResponseDecision,

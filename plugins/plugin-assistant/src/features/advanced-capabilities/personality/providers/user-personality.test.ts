@@ -3,11 +3,9 @@
  * store, covering prompt precedence, provenance rendering, legacy compatibility,
  * absent services, and the provider's failure boundary. No live model is used.
  */
+
+import type { State, UUID } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import type {
-  State,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import {
   initStore,
   makeFakeRuntime,

@@ -5,13 +5,9 @@
  * rejects a second insert with the same natural key the way plugin-sql does.
  */
 
+import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type {
-  Component,
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { KeyManager } from "../crypto/encryption.ts";
 import type { SecretContext } from "../types.ts";
 import { ComponentSecretStorage } from "./component-store.ts";

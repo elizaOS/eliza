@@ -4,12 +4,9 @@
  * facts, and relevant memories. Every assertion drives the exported production
  * code through a stubbed runtime; no comparator is reimplemented here.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import {
   createNativeRelationshipsGraphService,
   laterIso,

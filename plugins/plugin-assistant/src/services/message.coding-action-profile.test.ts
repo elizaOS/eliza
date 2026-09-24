@@ -1,11 +1,11 @@
 /** Verifies coding action profiles fail closed before the message lifecycle has side effects. */
 
-import { describe, expect, it, vi } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
   MessageProcessingOptions,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { DefaultMessageService } from "./message.ts";
 
 function inertMessage(): Memory {

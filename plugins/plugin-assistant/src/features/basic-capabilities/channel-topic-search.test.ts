@@ -6,9 +6,10 @@
  * envelope unwrap/echo-clamp regression, and the route's 200/400/503 status
  * contract.
  */
+
+import type { Memory } from "@elizaos/core";
+import { hardenIncomingUserMessage } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { hardenIncomingUserMessage } from "../../../../../packages/core/src/security/incoming-message-security.ts";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";
 

@@ -2,25 +2,23 @@ import {
   type AccessContext,
   buildAccessContext,
   ContentType,
+  describeImageCached,
+  fetchRemoteMedia,
+  hashAttachmentIdForLocator,
   type IAgentRuntime,
   type Media,
+  MediaFetchError,
   type Memory,
   type MemoryScope,
   parseArtifactShareGrants,
+  readResponseWithLimit,
   resolveArtifactDisclosure,
   selectDisclosedArtifactUrl,
-  type UUID,
-} from "@elizaos/core";
-import {
-  describeImageCached,
-  fetchRemoteMedia,
-  MediaFetchError,
-  readResponseWithLimit,
   trustedLocalMediaUrl,
+  type UUID,
   VISION_IMAGE_FETCH_TIMEOUT_MS,
   VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/core/media";
-import { hashAttachmentIdForLocator } from "../../../../../packages/core/src/runtime/message-content-segments.ts";
+} from "@elizaos/core";
 
 /**
  * Attachment-reading helpers behind the ATTACHMENT action of the working-memory

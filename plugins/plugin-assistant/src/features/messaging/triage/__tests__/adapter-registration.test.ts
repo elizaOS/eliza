@@ -3,8 +3,9 @@
  * registered the way a plugin registers one resolves and drives the real
  * triage() dispatch, and unknown sources are skipped rather than throwing.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {

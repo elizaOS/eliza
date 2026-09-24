@@ -4,8 +4,9 @@
  * or part-array content, and response-only payload — so typed access to
  * GenerateTextResult's content/response fields keeps working without unsafe casts.
  */
+
+import type { GenerateTextResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { GenerateTextResult } from "../../../../../packages/core/src/types/model.ts";
 import {
   extractGenerateTextContentText,
   getV5ModelText,

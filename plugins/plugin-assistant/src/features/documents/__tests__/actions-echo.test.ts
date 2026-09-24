@@ -6,15 +6,16 @@
  * the user's actual words of a hardened message. Fully deterministic: the
  * runtime and DocumentService are vi.fn stubs.
  */
-import { describe, expect, it, vi } from "vitest";
-import { hardenIncomingUserMessage } from "../../../../../../packages/core/src/security/incoming-message-security.ts";
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   SearchCategoryRegistration,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { hardenIncomingUserMessage } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentAction } from "../actions.ts";
 import { type DocumentListResult, DocumentService } from "../service.ts";
 

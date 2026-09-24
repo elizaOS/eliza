@@ -6,8 +6,8 @@
  * no live model or database.
  */
 
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { ChannelType } from "../../../../../../packages/core/src/types/primitives.ts";
 import { getSecretHandler } from "./get-secret.ts";
 
 interface ServiceOverrides {
