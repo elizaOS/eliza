@@ -43,7 +43,6 @@
       "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
       "@elizaos/plugin-discord": ["../plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../plugin-discord/*"],
-      "@elizaos/plugin-discord/service": ["../plugin-discord/service.ts"],
       "@elizaos/plugin-elizacloud/host-routes": [
         "../plugin-elizacloud/src/host-routes.ts"
       ],
@@ -69,10 +68,6 @@
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
-      "@elizaos/core/atomic-json": [
-        "../../packages/core/src/utils/atomic-json.ts"
-      ],
-      "@elizaos/core/node": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
