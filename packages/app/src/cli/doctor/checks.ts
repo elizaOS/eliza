@@ -25,6 +25,7 @@ import {
   resolveServerOnlyPort,
 } from "@elizaos/core/runtime-env";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import JSON5 from "json5";
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckCategory = "system" | "config" | "network" | "storage";
 export interface CheckResult {
@@ -172,7 +173,14 @@ export function checkConfigFile(
     };
   }
   try {
-    JSON.parse(readFileSync(resolved, "utf-8"));
+    const parsed: unknown = JSON5.parse(readFileSync(resolved, "utf-8"));
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error("Configuration must be an object");
+    }
     return {
       label: "Config file",
       category: "config",
@@ -184,7 +192,7 @@ export function checkConfigFile(
       label: "Config file",
       category: "config",
       status: "fail",
-      detail: `Invalid JSON: ${resolved}`,
+      detail: `Unreadable or invalid JSON5 configuration object: ${resolved}`,
       fix: `Edit and fix: ${resolved}`,
     };
   }
@@ -317,20 +325,15 @@ export function checkDiskSpace(
 // ---------------------------------------------------------------------------
 // Config checks (continued)
 // ---------------------------------------------------------------------------
-/** Wildcard bind addresses — same regex as server.ts. */
-const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/;
-const LOOPBACK_BIND_RE =
-  /^(localhost|127\.0\.0\.1|::1|\[::1\]|0:0:0:0:0:0:0:1)$/;
 export function checkHostConfig(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const config = resolveApiSecurityConfig(env);
   const rawBind = config.bindHost;
-  const bindHost = rawBind.replace(/:\d+$/, "").toLowerCase();
   const token = config.token ?? "";
   const allowedHosts = config.allowedHosts.join(",");
-  const isWildcard = WILDCARD_BIND_RE.test(bindHost);
-  const isLoopback = LOOPBACK_BIND_RE.test(bindHost);
+  const isWildcard = config.isWildcardBind;
+  const isLoopback = config.isLoopbackBind;
   // Wildcard bind: API is reachable from all interfaces — token auto-generated
   // each restart if not explicitly set, which breaks persistent clients.
   if (isWildcard && !token) {
