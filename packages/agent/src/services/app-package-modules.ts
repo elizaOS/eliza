@@ -294,7 +294,33 @@ function isOptionalEntrypointAbsent(specifier: string): boolean {
         (left, right) =>
           right.indexOf("*") - left.indexOf("*") || right.length - left.length,
       )[0];
-    return pattern === undefined || Reflect.get(exports, pattern) === null;
+    if (pattern === undefined || Reflect.get(exports, pattern) === null)
+      return true;
+    // A wildcard maps possible filenames; it does not declare that every
+    // optional app/route entry exists. Exact exports above still fail closed
+    // when their declared target is missing. Evaluation errors are never caught
+    // here, so a broken dependency cannot select a fallback implementation.
+    try {
+      const resolved = import.meta.resolve(specifier);
+      return (
+        resolved.startsWith("file:") &&
+        fs.statSync(fileURLToPath(resolved), { throwIfNoEntry: false }) ===
+          undefined
+      );
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        [
+          "ERR_MODULE_NOT_FOUND",
+          "MODULE_NOT_FOUND",
+          "ERR_PACKAGE_PATH_NOT_EXPORTED",
+        ].includes(String(error.code))
+      )
+        return true;
+      throw error;
+    }
   }
   return true;
 }

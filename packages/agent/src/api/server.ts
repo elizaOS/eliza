@@ -74,6 +74,9 @@ import {
 } from "@elizaos/shared/runtime-env";
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { WebSocket, WebSocketServer } from "ws";
+import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+import { handleAppPackageRoutes } from "./app-package-routes.ts";
+import type { AppsRouteActorRole, FavoriteAppsStore } from "./apps-routes.ts";
 import {
   AgentBackupClientDisconnectedError,
   writeAgentBackupJsonResponse,
@@ -82,6 +85,8 @@ import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
+import { resolveBoundaryRole } from "./server-helpers-auth.ts";
+import { resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
 // when runtime routes need validation, browser on the first browser route hit,
@@ -529,6 +534,7 @@ import {
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
 import {
+  EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
@@ -565,14 +571,19 @@ import {
   getModelOptions,
   getOrFetchAllProviders,
   getOrFetchProvider,
+  paramKeyToCategory,
   providerCachePath,
+  readProviderCache,
 } from "./model-provider-helpers.ts";
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
+  aggregateSecrets,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  discoverInstalledPlugins,
   discoverPluginsFromManifest,
   getReleaseBundledPluginIds,
   isBlockedEnvKey,
+  maskValue,
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 
@@ -596,9 +607,7 @@ function getAgentEventSvc(
   return getAgentEventService(runtime);
 }
 
-function _requirePluginManager(
-  runtime: AgentRuntime | null,
-): PluginManagerLike {
+function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
   const service = runtime?.getService("plugin_manager");
   if (!isPluginManagerLike(service)) {
     throw new Error("Plugin manager service not found");
@@ -660,7 +669,7 @@ function getPluginManagerForState(state: ServerState): PluginManagerLike {
   return createConfigPluginManager(() => state.config);
 }
 
-function _requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
+function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
   const service = runtime?.getService("core_manager");
   if (!isCoreManagerLike(service)) {
     throw new Error("Core manager service not found");
@@ -994,7 +1003,7 @@ import {
 export type { ChatAttachmentWithData } from "./server-types.ts";
 export { injectApiBaseIntoHtml };
 
-function _parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
+function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   return parseClampedInteger(rawLimit, {
     min: 1,
     max: 50,
@@ -1016,12 +1025,12 @@ function sanitizeFavoriteAppList(value: unknown): string[] {
   return apps;
 }
 
-function _readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
+function readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
   const ui = (config.ui ?? {}) as Record<string, unknown>;
   return sanitizeFavoriteAppList(ui.favoriteApps);
 }
 
-function _writeFavoriteAppsToConfig(
+function writeFavoriteAppsToConfig(
   config: ElizaConfig,
   apps: string[],
 ): string[] {
@@ -1157,7 +1166,7 @@ function persistAgentAutomationMode(
  * (identity, config keys, tags, prerequisite labels) merged with the
  * host-resolved runtime status. No plugin-specific literals live in the host.
  */
-function _buildPluginEvmDiagnosticEntry(
+function buildPluginEvmDiagnosticEntry(
   state: Pick<ServerState, "config" | "runtime">,
 ): PluginEntry {
   return buildPluginDiagnosticEntry(
@@ -2457,6 +2466,43 @@ async function handleRequestForViewClient(
   }
 
   if (
+    pathname === "/api/plugins" ||
+    pathname.startsWith("/api/plugins/") ||
+    pathname === "/api/secrets" ||
+    pathname === "/api/core/status"
+  ) {
+    const { handlePluginRoutes } = await import("./plugin-routes.ts");
+    if (
+      await handlePluginRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        scheduleRuntimeRestart,
+        restartRuntime,
+        isBlockedEnvKey,
+        discoverInstalledPlugins,
+        maskValue,
+        aggregateSecrets,
+        readProviderCache,
+        paramKeyToCategory,
+        buildPluginEvmDiagnosticEntry,
+        EVM_PLUGIN_PACKAGE,
+        resolvePluginConfigMutationRejections,
+        requirePluginManager,
+        requireCoreManager,
+      })
+    ) {
+      return;
+    }
+  }
+
+  if (
     await handleDiagnosticsRoutes({
       req,
       res,
@@ -2960,6 +3006,78 @@ async function handleRequestForViewClient(
     })
   ) {
     return;
+  }
+
+  // ── App routes (/api/apps/*) ──────────────────────────────────────────
+  if (pathname.startsWith("/api/apps")) {
+    const { handleAppsRoutes } = await import("./apps-routes.ts");
+    if (!state.appManager) {
+      const { AppManager } = await import("../services/app-manager.ts");
+      state.appManager = new AppManager();
+      state.appManager.startStaleRunSweeper(() => state.runtime);
+    }
+    const appManager = state.appManager;
+    const installPluginForApp = async (
+      ...args: Parameters<typeof installPluginDirect>
+    ) => {
+      const result = await installPluginDirect(...args);
+      if (result.success) {
+        // The direct installer persists plugins.installs to eliza.json. Keep
+        // this server's in-memory config aligned so the immediately-following
+        // GET /api/apps/installed reflects a clean first install without
+        // waiting for a process restart.
+        state.config = loadElizaConfig();
+      }
+      return result;
+    };
+    // Session authority comes from the host's verified session store. Preserve
+    // it before falling back to the standalone token/loopback boundary.
+    const appAuthorization = await resolveHostSessionAuthorization();
+    const appActorRole: AppsRouteActorRole = appAuthorization.ok
+      ? appAuthorization.role === "OWNER"
+        ? "OWNER"
+        : "GUEST"
+      : resolveBoundaryRole(req);
+    if (
+      await handleAppsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        appManager,
+        getPluginManager: () => getPluginManagerForState(state),
+        parseBoundedLimit,
+        readJsonBody,
+        json,
+        error,
+        runtime: state.runtime,
+        actorRole: appActorRole,
+        favoriteApps: {
+          read: () => readFavoriteAppsFromConfig(state.config),
+          write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
+        } satisfies FavoriteAppsStore,
+        installPluginDirect: installPluginForApp,
+      })
+    ) {
+      return;
+    }
+
+    if (
+      await handleAppPackageRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        readJsonBody,
+        json,
+        error,
+        runtime: state.runtime,
+      })
+    ) {
+      return;
+    }
   }
 
   // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
@@ -5106,6 +5224,7 @@ export async function startApiServer(opts?: {
     serverResources.add(resource);
   }
   const stopServerSideResources = (): Promise<void> => {
+    state.appManager?.stopStaleRunSweeper();
     closeViewInteractionHost(state);
     unregisterInProcessApi?.();
     return serverResources.close();

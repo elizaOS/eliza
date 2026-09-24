@@ -5617,6 +5617,9 @@ export async function startEliza(
     bootTimer.lap("svc:connector-setup");
     await registerConnectorCredentialStoreService();
     bootTimer.lap("svc:connector-credential-store");
+    await runtime.registerService(
+      (await import("../services/app-session-service.ts")).AppSessionService,
+    );
     bootTimer.lap("svc:app-session");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");

@@ -19,12 +19,15 @@ import type {
   SkillEntry,
   StreamEventEnvelope,
 } from "@elizaos/shared";
+import type { HttpPlugin } from "@elizaos/shared/api/http-plugin";
 import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 export type CloudManagerLike = CloudManager | null;
-export type AppManagerLike = unknown;
+export type { AppManagerLike } from "./apps-routes.ts";
+
+import type { AppManager } from "../services/app-manager.ts";
 
 export interface StoppablePairingSession {
   stop: () => void | Promise<void>;
@@ -79,6 +82,8 @@ export type ConnectorRouteHandler = (
 export type { TradePermissionMode } from "@elizaos/shared";
 
 export interface PluginEntry {
+  widgets?: HttpPlugin["widgets"];
+  app?: HttpPlugin["app"];
   id: string;
   name: string;
   description: string;
@@ -175,7 +180,7 @@ export interface ServerState {
   cloudManager: CloudManagerLike;
   sandboxManager: SandboxManager | null;
   /** App manager for launching and managing elizaOS apps. */
-  appManager: AppManagerLike;
+  appManager: AppManager | null;
   /** In-memory queue for share ingest items. */
   shareIngestQueue: ShareIngestItem[];
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
