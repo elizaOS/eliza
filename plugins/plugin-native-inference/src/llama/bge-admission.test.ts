@@ -1,4 +1,4 @@
-/** Exercises mobile BGE routing and admission with the real shared tokenizer and a controlled native boundary. */
+/** Exercises mobile BGE routing and admission with the real native inference tokenizer and a controlled native boundary. */
 import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { prepareBgeEmbeddingInput } from "../model-catalog/bge-input.js";
@@ -152,7 +152,11 @@ it.each(["tokenize", "embedding"])(
 );
 
 it.each([
-  { bridge: {}, code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+  // Vitest throws for omitted mock exports; native module namespaces return undefined.
+  {
+    bridge: { initBgeEmbedding: undefined },
+    code: "EMBEDDING_BACKEND_UNAVAILABLE",
+  },
   { bridge: { initBgeEmbedding: true }, code: "EMBEDDING_BACKEND_UNAVAILABLE" },
   {
     bridge: { initBgeEmbedding: async () => null },
