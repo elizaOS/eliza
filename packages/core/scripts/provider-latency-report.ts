@@ -222,7 +222,9 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
 	process.stderr.write(
 		`Provider latency audit failed: ${
-			error instanceof Error ? error.stack : String(error)
+			error instanceof Error
+				? `${error.message}\n${error.stack ?? ""}`
+				: String(error)
 		}\n`,
 	);
 	process.exitCode = 1;

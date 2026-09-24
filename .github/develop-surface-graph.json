@@ -46,7 +46,7 @@
         "packages/scripts/**",
         "*.md",
         "**/*.md",
-        "packages/scripts/audit-*.mjs",
+        "packages/scripts/audit-*.ts",
         "packages/testing/scenario-runner/test/**",
         "packages/scripts/run-all-tests.ts",
         "vitest*.ts",
