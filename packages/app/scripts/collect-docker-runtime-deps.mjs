@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectWorkspaceMaps } from "../../scripts/lib/workspaces.mjs";
+import { collectWorkspaceMaps } from "../../scripts/lib/workspaces.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // scripts/ -> app -> packages -> repo root

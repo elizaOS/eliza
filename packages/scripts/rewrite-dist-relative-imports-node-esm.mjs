@@ -2,7 +2,7 @@
 // Drives repo automation rewrite dist relative imports node esm with explicit CLI and CI behavior.
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { findWorkspaceRoot } from "./lib/repo-root.ts";
 import { rewriteModuleSpecifiers } from "./lib/rewrite-module-specifiers.mjs";
 
 const workspaceRoot = findWorkspaceRoot(process.cwd());

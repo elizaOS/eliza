@@ -264,7 +264,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Install browser system-audio loopback
         run: |

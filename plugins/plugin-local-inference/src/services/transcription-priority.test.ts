@@ -15,7 +15,7 @@
  * any real ASR backend.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../packages/core/src/runtime";
 import { ModelType } from "../../../../packages/core/src/types";

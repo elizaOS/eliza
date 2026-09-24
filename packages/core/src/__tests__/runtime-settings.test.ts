@@ -6,7 +6,7 @@
  */
 
 import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";

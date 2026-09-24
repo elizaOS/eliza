@@ -18,16 +18,15 @@ export interface CapabilityDetectionOptions {
 }
 
 /**
- * Per-capability parity classification, kept in lock-step with
- * `plugins/plugin-computeruse/src/mobile/parity-status.md`.
+ * Per-capability parity classification for desktop implementations.
  *
  *   verified         — exercised on real hardware (Linux/macOS in CI today)
  *   code-parity      — feature-equivalent code path exists, runtime untested
  *   unavailable      — surface present but not available in this delivery model
  *   blocked          — OS does not allow the operation in our delivery model
  *
- * iOS / Android live in `mobile/parity-status.md`; they are not desktop OSes
- * and don't pass through `detectPlatformCapabilities`.
+ * iOS and Android use the mobile capability adapters, not
+ * `detectPlatformCapabilities`.
  */
 export type ParityStatus =
   | "verified"

@@ -4,7 +4,7 @@
  * missed-call text before Stage 1 and return a canned approval-shaped reply.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../../../../packages/core/src/actions/to-tool.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../../packages/core/src/runtime/response-handler-field-registry.ts";

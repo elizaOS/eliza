@@ -12,7 +12,7 @@
  * completion-timeout pass would have nothing to time out).
  */
 
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 
 export type JsonRecord = Record<string, unknown>;
 

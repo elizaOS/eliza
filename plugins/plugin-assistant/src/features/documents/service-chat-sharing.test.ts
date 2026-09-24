@@ -1,7 +1,7 @@
 /** Exercises chat-audience ingestion, deduplication and membership changes against real PGlite storage; text fragments are deterministic and no external model is called. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";

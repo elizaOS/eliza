@@ -18,7 +18,7 @@ import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "../lib/mobile-web-build-reuse.mjs";
-import { readRendererBuildManifest } from "../lib/renderer-build-manifest.mjs";
+import { readRendererBuildManifest } from "../lib/renderer-build-manifest.ts";
 import {
   resolveViteCli,
   run,

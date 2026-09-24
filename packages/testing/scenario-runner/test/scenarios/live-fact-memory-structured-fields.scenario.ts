@@ -11,7 +11,7 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { factMemoryEvaluator } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;

@@ -13,24 +13,13 @@ export {
 } from "./service-types.js";
 
 import type {
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionPreflightRequest,
-  BrowserBridgeCompanionPreflightResponse,
-  BrowserBridgeCompanionRevocationResetResponse,
-  BrowserBridgeCompanionRevokeResponse,
-  BrowserBridgeCompanionSessionBeginRequest,
-  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncRequest,
-  BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
-import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord/user-account-scraper";
+import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
 import type {
   DuffelOffer,
   DuffelOrder,

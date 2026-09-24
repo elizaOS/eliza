@@ -7,21 +7,21 @@ import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  type DeterministicModelCall,
-  type DeterministicModelFixture,
-  matchesScenarioInput,
-  type RuntimeWithScenarioModelFixtures,
-  type StrictActionRouteFixture,
-  stage1ResponseHandlerFixture,
-} from "@elizaos/testing";
-import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-fixture";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import {
+  type DeterministicModelCall,
+  type DeterministicModelFixture,
+  matchesScenarioInput,
+  postToolEvaluatorFixture,
+  type RuntimeWithScenarioModelFixtures,
+  type StrictActionRouteFixture,
+  scenario,
+  stage1ResponseHandlerFixture,
+} from "@elizaos/testing";
 import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";
 
 const execFileAsync = promisify(execFile);

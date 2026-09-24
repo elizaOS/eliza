@@ -7,7 +7,7 @@
  * prove a rejected write never reaches that column. This one can.
  */
 
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {

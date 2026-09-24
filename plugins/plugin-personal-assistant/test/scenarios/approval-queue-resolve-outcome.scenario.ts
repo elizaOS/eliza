@@ -7,8 +7,8 @@
  * reject leaves it "rejected" with no gated side effect and no send/sign
  * confirmation.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];
 

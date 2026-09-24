@@ -86,6 +86,7 @@ export {
   INBOX_MIGRATION_SERVICE_TYPE,
   InboxMigrationService,
   MIGRATED_INBOX_TABLES,
+  migrateInboxTables,
 } from "./inbox/migration.ts";
 // LLM inbox priority scorer (batched, cached, concurrency-capped). Also at
 // `@elizaos/plugin-inbox/inbox/priority-scoring`.

@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): School application grounds in seeded packet state; child details stay out of broad drafts.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

@@ -121,12 +121,10 @@ import {
   admitChatMessageId,
   ChatIdempotencyWaitAbortedError,
   classifyChatFailure,
-  createChatTokenStreamWriter,
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
   getChatMessageIdOutcome,
-  initSse,
   isIntentionalNoResponseResult,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
@@ -140,12 +138,16 @@ import {
   resolveNoResponseFallback,
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
+} from "./chat-routes.ts";
+import {
+  createChatTokenStreamWriter,
+  initSse,
   writeChatStatusSse,
   writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseJson,
-} from "./chat-routes.ts";
+} from "./chat-stream-writer.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   assertConversationConnectionRuntime,
@@ -4912,8 +4914,7 @@ async function streamConversationMessage(
     { traceId: trace.traceId, traceSource: trace.source },
     "[ConversationStream] accepted validated trace context",
   );
-  // Deps are the module-imported write fns so route tests that vi.mock
-  // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
+  // Both protocols use the same response writer and delivery boundary.
   const tokenWriter = createChatTokenStreamWriter(streamProtocol ?? "legacy", {
     writeChatTokenSse,
     writeSse,

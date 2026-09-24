@@ -7,7 +7,7 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
 import {
   expectNoPageDiagnostics,

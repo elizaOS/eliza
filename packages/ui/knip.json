@@ -41,7 +41,6 @@
     "src/platform/is-native-server.ts",
     "src/services/local-inference/index.ts",
     "src/views/view-interact-protocol.ts",
-    "scripts/scan-reserved-storage-writers.d.mts",
     "src/components/apps/useRegistryCatalog.ts",
     "src/components/pages/page-scoped-conversations.ts",
     "src/**/*.{test,spec}.{ts,tsx}",

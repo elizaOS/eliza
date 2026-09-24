@@ -5,7 +5,7 @@
  * Runs through a real AgentRuntime with registered event and notification services.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
 import { registerConnectorSourceMetadata } from "../connectors.ts";

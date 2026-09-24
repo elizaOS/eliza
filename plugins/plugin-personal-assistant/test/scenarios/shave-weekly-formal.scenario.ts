@@ -2,7 +2,7 @@
  * Live-model scenario: formally phrased request persists a weekly "Shave" habit
  * definition.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -5,11 +5,7 @@
  * exists, so the correct behavior is to ask).
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkAgentDisambiguated(ctx: ScenarioContext): string | undefined {

@@ -9,8 +9,8 @@ import path from "node:path";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
-import { viteRendererBuildNeeded } from "./vite-renderer-dist-stale.mjs";
+} from "./renderer-build-manifest.ts";
+import { viteRendererBuildNeeded } from "./vite-renderer-dist-stale.ts";
 
 function targetLabel(expectedTarget) {
   return expectedTarget ? `'${expectedTarget}'` : "an unset target";

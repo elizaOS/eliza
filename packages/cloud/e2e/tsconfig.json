@@ -19,9 +19,6 @@
       "@elizaos/core": ["../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
-      "@elizaos/plugin-scheduling/edge": [
-        "../../../plugins/plugin-scheduling/src/edge.ts"
-      ],
       "@elizaos/plugin-todos/edge": [
         "../../../plugins/plugin-todos/src/edge.ts"
       ],
@@ -30,9 +27,12 @@
       "@elizaos/plugin-web-search/edge": [
         "../../../plugins/plugin-web-search/src/edge.ts"
       ],
-      "@elizaos/cloud-sdk/*": ["../sdk/src/*"]
+      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
+      "@elizaos/plugin-scheduling": [
+        "../../../plugins/plugin-scheduling/src/index.ts"
+      ]
     },
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "tests", "scripts", "playwright.config.ts"]
+  "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"]
 }

@@ -37,7 +37,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
-import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
+import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {

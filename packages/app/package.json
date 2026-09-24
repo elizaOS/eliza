@@ -15,8 +15,8 @@
     "test:local-chat": "node scripts/run-node-tsx.mjs scripts/check-real-local-chat.ts",
     "test:local-reset": "node scripts/run-node-tsx.mjs scripts/check-real-local-reset.ts",
     "serve:local-agent:e2e": "node scripts/run-node-tsx.mjs scripts/serve-real-local-agent.ts",
-    "lint": "bunx @biomejs/biome check --write src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-smoke.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
-    "lint:check": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-smoke.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
+    "lint": "bunx @biomejs/biome check --write src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
+    "lint:check": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
     "format": "bunx @biomejs/biome format --write src scripts",
     "format:check": "bunx @biomejs/biome format src scripts",
     "build:dist": "node ../scripts/with-package-build-lock.mjs packages/app -- bun run build:dist:unlocked",
@@ -75,10 +75,9 @@
     "measure:login-transfer": "node scripts/measure-anonymous-login-transfer.mjs",
     "perf:login-transfer-budget": "node scripts/check-login-transfer-budget.mjs",
     "analyze:login-eager-chunks": "node scripts/list-eager-login-chunks.mjs",
-    "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",
-    "test:dev-smoke:cloud-only": "ELIZA_DEV_SMOKE_CLOUD_ONLY=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/cloud-only-mode.spec.ts",
-    "test:dev-smoke:staging-live-auth": "ELIZA_DEV_CLOUD_TARGET=staging ELIZA_DEV_CLOUD_API_KEY= ELIZA_DEV_SMOKE_STAGING_LIVE_AUTH=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/staging-live-auth-boundary.spec.ts",
-    "test:dev-smoke:local": "ELIZA_DEV_SMOKE_OFFLINE=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/runtime-chooser-default.spec.ts test/dev-smoke/bun-dev-onboarding-chat.spec.ts",
+    "test:dev-auth": "node scripts/run-ui-playwright.mjs --config playwright.dev-auth.config.ts",
+    "test:dev-auth:cloud-only": "ELIZA_DEV_AUTH_CLOUD_ONLY=1 node scripts/run-ui-playwright.mjs --config playwright.dev-auth.config.ts test/dev-auth/cloud-only-mode.spec.ts",
+    "test:dev-auth:staging-live-auth": "ELIZA_DEV_CLOUD_TARGET=staging ELIZA_DEV_CLOUD_API_KEY= ELIZA_DEV_AUTH_STAGING_LIVE_AUTH=1 node scripts/run-ui-playwright.mjs --config playwright.dev-auth.config.ts test/dev-auth/staging-live-auth-boundary.spec.ts",
     "test:hmr": "node scripts/run-ui-playwright.mjs --config playwright.hmr.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
     "test:e2e:chat-stream-real": "ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=chromium test/ui-smoke/chat-stream-real-runtime-perf.spec.ts",
@@ -382,8 +381,6 @@
         "server"
       ],
       "buildOnInstall": {
-        "sentinel": "dist/api/auth.js",
-        "order": 5,
         "script": "build:dist"
       }
     }

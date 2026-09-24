@@ -3,7 +3,7 @@
 `packages/scripts/` is the single home for repository-wide build, test, release,
 security, evidence, and development tools. It has no package manifest; root
 `package.json` commands invoke its entrypoints. Package-specific scripts remain
-with their owning packages, and GitHub-specific helpers remain in `.github/scripts/`.
+in `packages/*/scripts/`; GitHub helpers live in `packages/scripts/github/`.
 
 Run commands from the repository root:
 
@@ -23,7 +23,7 @@ correct when moving tools between subdirectories.
 ## Generated test output
 
 Audit and test artifacts belong in the ignored repository-root `test-results/`,
-never under a package. Use `testOutputPath` from `lib/test-output.mjs` so paths
+never under a package. Use `testOutputPath` from `lib/test-output.ts` so paths
 do not depend on the command's working directory. Each Playwright lane owns a
 separate leaf under `test-results/app/`; audits use `test-results/aesthetic-audit/`
 and `test-results/aesthetic-audit-cloud/`. Device bundles use

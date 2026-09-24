@@ -12,11 +12,7 @@
  * Cited: 03-coverage-gap-matrix.md — iMessage FDA-denied fallback.
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 
 function checkImessageDeniedHandled(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();

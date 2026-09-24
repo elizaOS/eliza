@@ -15,7 +15,7 @@ import {
 } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { installJsdomUiPolyfills } from "../../../test/portable-stories";
+import { installJsdomUiPolyfills } from "../../../test/jsdom-ui-polyfills";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import type {

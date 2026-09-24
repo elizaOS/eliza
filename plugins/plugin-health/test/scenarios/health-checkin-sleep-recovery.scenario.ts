@@ -2,7 +2,7 @@
  * Live-model scenario: a health check-in grounds its reply in the owner's sleep
  * and recovery signals.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

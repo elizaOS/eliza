@@ -419,7 +419,7 @@
       ],
       "ignoreBinaries": [
         "tsc",
-        "plugins/plugin-personal-assistant/scripts/work-thread-benchmark.ts"
+        "packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts"
       ]
     },
     "plugins/plugin-health": {

@@ -31,8 +31,8 @@
  *     the delivery ledger grows past one.
  */
 
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

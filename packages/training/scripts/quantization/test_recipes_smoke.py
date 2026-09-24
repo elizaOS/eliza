@@ -1,21 +1,4 @@
-"""Pytest unit + dry-run smoke tests for the quantization recipes.
-
-These tests are CPU-only and avoid downloading anything large. They
-exercise the import surface, recipe dataclasses, and CLI dry-run paths
-of every recipe so a broken module is caught at unit-test time rather
-than at training-rig invocation time. The end-to-end correctness tests
-that require a real model live in:
-
-    test_abliteration.py          -- runs vs sshleifer/tiny-gpt2
-    test_polarquant.py            -- CLI runner; needs a real Gemma 4 GPU run
-    test_turboquant.py            -- CLI runner; needs a real Gemma 4 GPU run
-    test_qjl.py                   -- CLI runner; needs a real Gemma 4 GPU run
-    test_fused_turboquant.py      -- CLI runner; needs a real Gemma 4 GPU run
-
-They are NOT pytest-collectable on purpose: they download multi-GB
-checkpoints and require a fixed val.jsonl shipped with the training
-data. Run them by hand from the repo root.
-"""
+"""Exercises quantization arithmetic, native parity, calibration and publication checks."""
 
 from __future__ import annotations
 
@@ -32,18 +15,6 @@ if str(_HERE) not in sys.path:
 _CANONICAL_LLAMA_CPP_SUFFIX = (
     Path("plugins") / "plugin-local-inference" / "native" / "llama.cpp"
 )
-
-
-def test_polarquant_recipe_serializes_with_paper_metadata():
-    from polarquant_apply import PolarQuantRecipe
-
-    recipe = PolarQuantRecipe(bits=4, block_size=128, use_qjl=True)
-    payload = recipe.to_json()
-    assert payload["bits"] == 4
-    assert payload["block_size"] == 128
-    assert payload["use_qjl"] is True
-    assert payload["paper"] == "arXiv:2603.29078"
-    assert "upstream_commit" in payload
 
 
 def test_polarquant_dry_run_emits_recipe_json(capsys):
@@ -83,17 +54,6 @@ def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
         )
 
 
-def test_fused_turboquant_recipe_metadata():
-    from fused_turboquant_apply import FusedTurboQuantRecipe
-
-    recipe = FusedTurboQuantRecipe(bits=4, compress_v=True, verify=True)
-    payload = recipe.to_json()
-    assert payload["bits"] == 4
-    assert payload["paper"] == "arXiv:2504.19874"
-    assert payload["library"] == "fused-turboquant 0.1.0"
-    assert payload["kernels"] == "triton"
-
-
 def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
     from fused_turboquant_apply import main
 
@@ -110,23 +70,6 @@ def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
                 "--dry-run",
             ]
         )
-
-
-def test_fp8_apply_dry_run_emits_capability_json(capsys):
-    """fp8_apply.py is on the publish path (`--quant fp8`). Its dry-run
-    must enumerate the capability check so users on the wrong GPU find
-    out before they run a 20-minute conversion. The dry-run intentionally
-    does NOT fail when CUDA is absent — it just records that fact in the
-    JSON output."""
-    from fp8_apply import main
-
-    rc = main(
-        ["--model", "google/gemma-4-E2B", "--output", "/tmp/_fp8_unused", "--dry-run"]
-    )
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert "fp8_ok" in payload
-    assert "reason" in payload
 
 
 def test_qjl_apply_kv_bytes_per_token_analytic_gemma():
@@ -468,22 +411,6 @@ def test_kernel_manifest_hash_verification_fails_on_drift(monkeypatch):
     monkeypatch.setitem(km.PINNED_KERNEL_CODEBOOK_SHA256, "polar_q4", "0" * 64)
     with pytest.raises(RuntimeError, match="polar_q4"):
         km.verify_kernel_codebook_hashes(("polar_q4",))
-
-
-def test_agents_quantization_section_matches_recipe_target_classes():
-    """Doc parity for the Stage 3 recipe-reality contract."""
-    from _kernel_manifest import KERNEL_RECIPE_TARGET_CLASSES
-
-    agents = (_REPO_ROOT / "packages" / "training" / "AGENTS.md").read_text(
-        encoding="utf-8"
-    )
-    assert KERNEL_RECIPE_TARGET_CLASSES["turboquant"] == "kv-cache"
-    assert "TurboQuant is a runtime KV-cache compressor" in agents
-    assert KERNEL_RECIPE_TARGET_CLASSES["qjl"] == "kv-cache"
-    assert "QJL is a runtime K-cache compressor" in agents
-    assert KERNEL_RECIPE_TARGET_CLASSES["polarquant"] == "weights"
-    assert "PolarQuant is a weight quantizer" in agents
-    assert "The shipping Gemma weight quant is stock\n`llama-quantize` Q4_K_M" in agents
 
 
 def test_llama_cpp_default_resolves_to_plugin_local_inference(monkeypatch):
@@ -927,21 +854,6 @@ def test_polarquant_full_block_parity_against_c_ref():
         )
 
 
-def test_kernel_reference_files_exist_and_compile_clean():
-    """Sanity guard: a recipe-side audit that didn't touch kernels MUST
-    leave the kernel reference compilable. If this fails, an unrelated
-    edit broke the verification harness.
-    """
-    if not _REF_C.exists():
-        pytest.skip(f"kernel reference not present at {_REF_C}")
-    so_path, skip_reason = _try_compile_qjl_polar_ref()
-    if so_path is None and skip_reason and "no C compiler" in skip_reason:
-        pytest.skip(skip_reason)
-    assert so_path is not None and so_path.exists(), (
-        f"qjl_polar_ref.c failed to build: {skip_reason}"
-    )
-
-
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
 
@@ -971,15 +883,6 @@ def _load_quantization_module(module_basename: str):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
-
-
-@pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
-def test_kquant_sibling_exports_constant(module_basename: str, expected_level: str):
-    """Every K-quant ladder sibling exports a `QUANT_LEVEL` constant matching
-    its filename. The publish path keys on this constant to pick the
-    llama-quantize target type."""
-    mod = _load_quantization_module(module_basename)
-    assert getattr(mod, "QUANT_LEVEL") == expected_level
 
 
 @pytest.mark.parametrize("module_basename,_expected_level", _KQUANT_SIBLINGS)

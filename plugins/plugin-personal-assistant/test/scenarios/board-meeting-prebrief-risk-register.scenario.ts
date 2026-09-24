@@ -8,7 +8,7 @@
  * action whose arguments carry it (selectedActionArguments), not just reply
  * wording.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

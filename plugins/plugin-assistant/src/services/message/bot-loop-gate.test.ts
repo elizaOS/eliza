@@ -20,7 +20,7 @@
  * calls (asserted via a throwing useModel stub).
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";

@@ -4,8 +4,8 @@
  * proving the pack uses structural task fields instead of prompt text to model
  * overdue communication cadence.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 function resultData(
   action: ScenarioContext["actionsCalled"][number],

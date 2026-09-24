@@ -6,7 +6,7 @@
  * items, absent from every user turn. The carry-forward turn reschedules the
  * slipped item as a real captured scheduled action (selectedActionArguments).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

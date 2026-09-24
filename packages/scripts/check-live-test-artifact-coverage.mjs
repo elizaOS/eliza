@@ -68,9 +68,9 @@ const NON_MODEL_EXCLUSION_RULES = [
   },
   {
     reason:
-      "Local plugin smoke harness; validates plugin bootstrapping/service wiring, not LLM token/cache behavior.",
+      "Plugin integration tests validate service behavior; model-call artifacts belong to the live runtime lane.",
     matches: (row) =>
-      /run-local-plugin-live-smoke|plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(
+      /plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(
         row.value,
       ),
   },
@@ -107,7 +107,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "Manual real/e2e plugin suite without model/provider terms; keep as non-model evidence unless a provider key is introduced.",
     matches: (row) =>
-      /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify|agent-orchestrator)/i.test(
+      /test:e2e:manual|\.real\.e2e|\.live\.e2e|example-bluesky|plugin-(documents|shopify|agent-orchestrator)/i.test(
         row.value,
       ),
   },

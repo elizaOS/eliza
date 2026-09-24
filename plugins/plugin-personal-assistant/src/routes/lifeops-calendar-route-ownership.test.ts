@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Proves the owner-gated LifeOps calendar adapter dispatches to the registered
  * CalendarService, including source administration and typed domain failures.

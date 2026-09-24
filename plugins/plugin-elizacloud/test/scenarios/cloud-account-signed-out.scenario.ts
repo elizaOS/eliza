@@ -6,7 +6,7 @@
  * The signed-in paths are covered by the loopback-server unit suites
  * (__tests__/unit/cloud-account-actions.test.ts).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 export default scenario({
   lane: "pr-deterministic",
   id: "cloud-account-signed-out",

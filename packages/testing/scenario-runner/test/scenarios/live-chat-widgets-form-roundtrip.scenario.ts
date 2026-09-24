@@ -20,7 +20,7 @@
  * raw submit re-entry, and submitted-value consumption pinned end to end.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import type { FormInteraction } from "../../../../core/src/types/interactions.ts";
 import {
   buildFormSubmitText,

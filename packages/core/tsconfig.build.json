@@ -1,7 +1,3 @@
 {
-	"extends": "./tsconfig.json",
-	"compilerOptions": {
-		"incremental": false,
-		"composite": false
-	}
+	"extends": "./tsconfig.json"
 }

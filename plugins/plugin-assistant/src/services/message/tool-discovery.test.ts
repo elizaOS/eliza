@@ -1,7 +1,7 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";

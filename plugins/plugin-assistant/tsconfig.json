@@ -1,7 +1,6 @@
 {
   "extends": "../../packages/core/tsconfig.json",
   "compilerOptions": {
-    "rootDir": "../..",
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/plugin-assistant": ["./src/index.ts"],

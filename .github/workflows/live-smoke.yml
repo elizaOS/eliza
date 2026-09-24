@@ -116,7 +116,7 @@ jobs:
           RUN_LIVE_PI_LINKED_ACCOUNT: "1"
           LIVE_PI_SOURCE_SHA: ${{ inputs.pi_source_sha }}
           LIVE_PI_EVIDENCE_DIR: artifacts/pi-linked-account
-        run: bun --conditions=eliza-source plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs
+        run: bun --conditions=eliza-source packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs
       - name: Retain sanitized source-bound Pi receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -180,7 +180,7 @@ jobs:
           install-native-deps: "true"
       - name: Install Chromium
         if: inputs.suite == 'all' || inputs.suite == 'app'
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: App walkthrough
         if: inputs.suite == 'all' || inputs.suite == 'app'
         run: bun run --cwd packages/app test:e2e:walkthrough:live

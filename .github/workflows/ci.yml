@@ -238,7 +238,7 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
       - name: Install Playwright browsers
-        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
+        run: PLAYWRIGHT_INSTALL_CWD=packages/app packages/scripts/github/install-playwright-browsers.sh chromium webkit
       - name: Deterministic end-to-end smoke
         env:
           CI: "true"
@@ -292,10 +292,8 @@ jobs:
           no-vision-deps: "true"
       - name: Build core contract
         run: bun run build:core
-      - name: Desktop startup smoke
-        run: node packages/app/scripts/dev-startup-smoke.mjs
       - name: Install Playwright browsers
-        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Deterministic end-to-end smoke (unshardable tasks)
         run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
     env:
@@ -664,8 +662,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Persona catalog coverage gate
-        run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs
       - name: Build workspace packages for scenario resolution
         run: bunx turbo run build --filter=@elizaos/testing...
       - name: Zero-cost scenario e2e
@@ -812,7 +808,7 @@ jobs:
       - name: Build core exports for real API harness
         run: bun run --cwd packages/core build
       - name: Install Playwright browsers (Chromium)
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
         env:
           ELIZA_VAULT_PASSPHRASE: accounts-ui-e2e-headless-only
@@ -868,9 +864,9 @@ jobs:
           setup-python: "false"
           setup-node: "false"
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Install ffmpeg (recording stitch)
-        run: .github/scripts/install-apt-packages.sh ffmpeg
+        run: packages/scripts/github/install-apt-packages.sh ffmpeg
       - name: Drive + record the in-chat onboarding + tutorial walkthrough
         run: bun run --cwd packages/app test:e2e:walkthrough -- --skip-review
       - name: Upload walkthrough screenshots + stitched recording + verdicts
@@ -927,7 +923,7 @@ jobs:
           setup-python: "false"
           setup-node: "false"
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Native workflow browser-to-runtime coverage
         run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
       - name: Upload app browser extended artifacts

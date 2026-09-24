@@ -507,7 +507,7 @@ def test_lane_environment_scrubs_ambient_providers_and_sampling(
     assert env["BENCHMARK_REASONING_EFFORT"] == "medium"
     assert env["OPENAI_REASONING_EFFORT"] == "medium"
     assert env["OPENCLAW_THINKING_LEVEL"] == "medium"
-    assert env["BENCHMARK_WORKSPACE_PATH"] == str(workspace.parent.resolve())
+    assert env["BENCHMARK_WORKSPACE_PATH"] == str(workspace.resolve())
 
 
 def test_lane_context_pins_effort_and_keeps_workspace_path_control_only(
@@ -527,9 +527,9 @@ def test_lane_context_pins_effort_and_keeps_workspace_path_control_only(
             assert "benchmark_workspace_path" not in context
         else:
             assert context["benchmark_workspace_path"] == str(
-                workspace.parent.resolve()
+                workspace.resolve()
             )
-    target_path = str(workspace.parent.resolve())
+    target_path = str(workspace.resolve())
     assert target_path not in plan.prompt
     assert target_path not in canary._LIFECYCLE_SYSTEM_HINT
 
@@ -1005,7 +1005,7 @@ def test_canary_user_request_occurs_once_in_each_telemetry_prompt(
         canary._validate_canary_user_request_surface(
             plan,
             harness,
-            {"prompt_text": prompt_text + "\n" + str(workspace.parent.resolve())},
+            {"prompt_text": prompt_text + "\n" + str(workspace.resolve())},
         )
 
 
@@ -1722,10 +1722,16 @@ def test_failed_canary_manifest_retains_independent_partial_evidence(
         for harness, validation in manifest[
             "subscription_gateway_provenance_validation"
         ].items()
-    } == {"eliza": "succeeded", "hermes": "succeeded", "openclaw": "failed"}
-    assert manifest["gateway_stage_provenance"]["validation_status"] == "failed"
-    assert manifest["gateway_stage_provenance"]["records"] == 8
-    assert manifest["gateway_stage_provenance"]["stages"]["openclaw"]
+    } == {harness: "failed" for harness in canary.HARNESSES}
+    # Legacy records remain inspectable but cannot supply durable publication proof.
+    assert all(
+        "subscription_gateway_durable_audit_required" in validation["error"]
+        for validation in manifest["subscription_gateway_provenance_validation"].values()
+    )
+    assert manifest["gateway_stage_provenance"]["validation_status"] == "unavailable"
+    assert manifest["gateway_stage_provenance"]["publication_eligible"] is False
+    assert manifest["gateway_stage_provenance"]["records"] == 0
+    assert all(not stages for stages in manifest["gateway_stage_provenance"]["stages"].values())
     assert manifest["publication_state_unchanged"] is True
     hermes_partial = manifest["lane_partial_evidence"]["hermes"]["response"]
     assert hermes_partial["validation_status"] == "unvalidated_partial"

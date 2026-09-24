@@ -27,11 +27,8 @@
 import { pluginAction } from "@elizaos/agent/actions/plugin";
 import type { Plugin } from "@elizaos/core";
 import { type IAgentRuntime, promoteSubactionsToActions } from "@elizaos/core";
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 // A settings-tab priming ask before the toggle: the model reliably routes an
 // installed-plugins list to the PLUGIN verb, which anchors the same tool in

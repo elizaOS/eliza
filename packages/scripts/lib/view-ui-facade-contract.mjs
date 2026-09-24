@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { assertContainedRegularFile } from "./repository-file-integrity.mjs";
+import { assertContainedRegularFile } from "./repository-file-integrity.ts";
 import { discoverViewBundleInventory } from "./view-bundle-inventory.mjs";
 
 const require = createRequire(import.meta.url);

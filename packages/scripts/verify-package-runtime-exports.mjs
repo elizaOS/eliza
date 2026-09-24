@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { findWorkspaceRoot } from "./lib/repo-root.ts";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {

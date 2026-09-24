@@ -51,7 +51,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { DuetAudioBridge } from "./lib/duet-bridge.mjs";
+import { DuetAudioBridge } from "./lib/duet-bridge.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -1325,7 +1325,7 @@ async function runAsPeerB(args) {
     const { PushMicSource } = await import(
       "@elizaos/plugin-local-inference/services/voice/mic-source"
     );
-    const { DuetSink } = await import("./lib/duet-bridge.mjs");
+    const { DuetSink } = await import("./lib/duet-bridge.ts");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const { stringToUuid } = await import("@elizaos/core");
     const roomB = stringToUuid("voice-duet-B");

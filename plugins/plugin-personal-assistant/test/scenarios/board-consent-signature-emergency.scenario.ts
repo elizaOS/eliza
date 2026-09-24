@@ -8,7 +8,7 @@
  * consent context contains a deal figure ("$40 million") that must never
  * appear in the chase plan the assistant proposes.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalResolvedApproved,
   expectPendingApprovalSeeded,

@@ -47,7 +47,6 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 
-
 function getLocalApiUrls(path: string): string[] {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
@@ -83,7 +82,6 @@ async function fetchLocalJson<T>(
   }
   return null;
 }
-
 
 /**
  * Minimal structural view of the browser workspace service. Typed locally so

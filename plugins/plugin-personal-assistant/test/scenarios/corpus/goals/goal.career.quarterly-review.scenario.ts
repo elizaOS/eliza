@@ -1,7 +1,6 @@
 /** Scenario fixture for goal career quarterly review; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectScenarioActionResultData } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { expectScenarioActionResultData, scenario } from "@elizaos/testing";
 import { seedLifeOpsGoal } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

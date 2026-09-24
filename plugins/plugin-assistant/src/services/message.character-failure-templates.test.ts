@@ -19,7 +19,7 @@
  */
 
 import type { CharacterFailureTemplates } from "@elizaos/shared/contracts/first-run-options";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";

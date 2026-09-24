@@ -17,10 +17,13 @@ import { test } from "vitest";
 import {
   runOwnedChild,
   safeResponseOutcome,
-} from "../../scripts/live-pi-linked-account.mjs";
+} from "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs";
 
 const script = fileURLToPath(
-  new URL("../../scripts/live-pi-linked-account.mjs", import.meta.url),
+  new URL(
+    "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
+    import.meta.url,
+  ),
 );
 test("selected live check fails when its credential is absent and emits no success receipt", () => {
   const result = spawnSync(process.execPath, [script], {
@@ -156,7 +159,7 @@ test.skipIf(process.platform === "win32")(
     const root = await mkdtemp(path.join(tmpdir(), "pi-signal-parent-"));
     const pidFile = path.join(root, "child.pid");
     const helperUrl = new URL(
-      "../../scripts/live-pi-linked-account.mjs",
+      "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
       import.meta.url,
     ).href;
     const childCode = `require("node:fs").writeFileSync(process.argv[1],String(process.pid)); process.on("SIGTERM",()=>{}); setInterval(()=>{},1000);`;
@@ -278,7 +281,7 @@ test.each(
     const evidence = path.join(container, "evidence");
     const copiedScript = path.join(
       repo,
-      "plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs",
+      "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
     );
     try {
       await mkdir(path.dirname(copiedScript), { recursive: true });

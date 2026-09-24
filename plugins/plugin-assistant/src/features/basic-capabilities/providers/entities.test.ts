@@ -6,7 +6,7 @@
  * (the "tell <name> …" over-routing family). Deterministic mocked runtime.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,

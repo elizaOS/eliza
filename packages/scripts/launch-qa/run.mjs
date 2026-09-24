@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs launch QA launch qa run automation for release-readiness checks.
+/** Orchestrates release-readiness checks and collects their results. */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,10 +26,10 @@ const TASKS = [
     command: "node",
     args: [
       "packages/scripts/launch-qa/check-docs.mjs",
-      "--scope=launchdocs",
+      "--scope=docs",
       "--json",
     ],
-    description: "Launchdocs links and documented command references",
+    description: "Documentation links and documented command references",
   },
   {
     id: "mobile-artifacts",
@@ -107,13 +107,6 @@ const TASKS = [
     command: "bun",
     args: ["run", "typecheck:cloud"],
     description: "Cloud package split typecheck",
-  },
-  {
-    id: "ui-smoke",
-    tier: 2,
-    command: "node",
-    args: ["packages/scripts/launch-qa/run-ui-smoke-offline.mjs"],
-    description: "Deterministic offline Playwright UI smoke suite",
   },
   {
     id: "cloud-api-key-redaction",

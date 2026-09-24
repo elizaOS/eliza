@@ -26,10 +26,7 @@ import {
   uiWidgetsProvider,
 } from "@elizaos/agent/providers/ui-catalog";
 import type { Plugin } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioSeedStep,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/testing";
 import { findInteractionRegions } from "../../../../../core/src/messaging/interactions/parse.ts";
 import type {
   FormInteraction,

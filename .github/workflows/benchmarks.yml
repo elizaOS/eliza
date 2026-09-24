@@ -41,8 +41,6 @@ jobs:
       - run: python -m pytest --import-mode=importlib packages/benchmarks/harnesses -q
       - run: python -m benchmarks.orchestrator inventory --format markdown
       - run: bun run --cwd packages/benchmarks/plugin-benchmarks test
-      - run: python packages/benchmarks/scripts/runtime-smoke.py
-      - run: bun packages/benchmarks/framework/typescript/src/bench.ts --scenarios=single-message --iterations=1 --warmup=0 --output=/tmp/framework-smoke.json
 
   live-framework:
     if: github.event_name == 'workflow_dispatch' && inputs.live_framework

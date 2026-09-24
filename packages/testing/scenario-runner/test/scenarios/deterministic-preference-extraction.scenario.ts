@@ -12,8 +12,8 @@
  * registration → write policy → storage rows → prompt injection — through the
  * real runtime with no model call.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const FACT_CLAIM = "prefers the dark background in the app";
 

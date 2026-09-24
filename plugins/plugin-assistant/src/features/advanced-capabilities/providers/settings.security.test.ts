@@ -12,7 +12,7 @@ import type {
   WorldSettings,
 } from "@elizaos/core";
 import { ChannelType, clearSaltCache, saltWorldSettings } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { settingsProvider } from "./settings.ts";
 

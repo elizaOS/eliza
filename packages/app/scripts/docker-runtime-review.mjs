@@ -143,24 +143,6 @@ report.commands = {
 report.daemonReady = info.exitCode === 0;
 report.status = report.daemonReady ? "ready" : "blocked";
 
-let smoke = null;
-if (report.daemonReady && process.env.ELIZA_DOCKER_REVIEW_RUN_SMOKE === "1") {
-  smoke = await runCommand(
-    "bash",
-    [
-      "eliza/packages/app/scripts/docker-ci-smoke.sh",
-      ...(process.env.ELIZA_DOCKER_REVIEW_FULL_SMOKE === "1"
-        ? []
-        : ["--skip-smoke"]),
-    ],
-    { timeoutMs: 60 * 60_000 },
-  );
-  report.commands.smoke = smoke;
-  if (smoke.exitCode !== 0) {
-    report.status = "failed";
-  }
-}
-
 writeArtifact("version.log", `${version.stdout}${version.stderr}`);
 writeArtifact("context.log", `${context.stdout}${context.stderr}`);
 writeArtifact(
@@ -173,9 +155,6 @@ writeArtifact(
   "desktop-diagnose.log",
   `${desktopDiagnose.stdout}${desktopDiagnose.stderr}`,
 );
-if (smoke) {
-  writeArtifact("smoke.log", `${smoke.stdout}${smoke.stderr}`);
-}
 
 const markdown = [
   "# Docker Runtime Review",
@@ -191,11 +170,6 @@ const markdown = [
   `- docker desktop status: exit ${desktopStatus.exitCode}${desktopStatus.timedOut ? " (timed out)" : ""}`,
   `- docker info: exit ${info.exitCode}${info.timedOut ? " (timed out)" : ""}`,
   `- docker desktop diagnose: exit ${desktopDiagnose.exitCode}${desktopDiagnose.timedOut ? " (timed out)" : ""}`,
-  ...(smoke
-    ? [
-        `- docker smoke: exit ${smoke.exitCode}${smoke.timedOut ? " (timed out)" : ""}`,
-      ]
-    : []),
   "",
   "## Tail",
   "",

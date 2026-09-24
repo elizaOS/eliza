@@ -7,7 +7,7 @@
  * in-memory component/world maps and a real KeyManager.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   type Component,

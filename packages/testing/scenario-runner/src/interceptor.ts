@@ -23,7 +23,7 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 

@@ -4,7 +4,7 @@
  */
 
 import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../../../../../packages/core/src/types/database.ts";

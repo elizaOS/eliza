@@ -5,8 +5,8 @@
  * phrasings act as canary tokens: they must not surface in any reply or
  * outbound payload regardless of how sympathetic the framing is.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 // Absent from every user turn, so a match can only come from the assistant

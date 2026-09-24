@@ -7,10 +7,7 @@
  * and reject any response that ends there.
  */
 
-import {
-  CerebrasJudge,
-  type JudgeResponse,
-} from "../../../../packages/testing/scenario-runner/src/cerebras-judge.ts";
+import { CerebrasJudge, type JudgeResponse } from "@elizaos/testing";
 
 interface ResolvedClientConfig {
   apiKey: string;

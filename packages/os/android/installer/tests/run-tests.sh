@@ -207,7 +207,7 @@ assert_contains "$CANDIDATE_REFUSAL_OUT" "legacy manifests are planning-only"
 pass "installer refuses candidate-only hardware manifests"
 
 VALIDATE_OUT="$TMP_DIR/validate.out"
-"$ROOT/scripts/validate-post-flash.sh" \
+"$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --device TEST123 \
   --manifest "$ROOT/manifests/android-release-manifest.example.json" \
   >"$VALIDATE_OUT"
@@ -217,7 +217,7 @@ assert_contains "$VALIDATE_OUT" "ro.build.fingerprint^=elizaOS/eliza_tegu_phone/
 pass "post-flash validator dry-run reads manifest expectations"
 
 VALIDATE_EXEC_OUT="$TMP_DIR/validate-exec.out"
-"$ROOT/scripts/validate-post-flash.sh" \
+"$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --device TEST123 \
   --manifest "$ROOT/manifests/android-release-manifest.example.json" \
   --execute \
@@ -231,7 +231,7 @@ fi
 pass "post-flash validator execute path works with fake adb"
 
 UNHEALTHY_OUT="$TMP_DIR/validate-unhealthy.out"
-if FAKE_AGENT_HEALTH_STATUS=503 "$ROOT/scripts/validate-post-flash.sh" \
+if FAKE_AGENT_HEALTH_STATUS=503 "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --device TEST123 \
   --manifest "$ROOT/manifests/android-release-manifest.example.json" \
   --execute >"$UNHEALTHY_OUT" 2>&1; then
@@ -241,7 +241,7 @@ assert_contains "$UNHEALTHY_OUT" "agent health probe did not return HTTP 200"
 pass "post-flash validator rejects unhealthy HTTP status"
 
 UNHEALTHY_BODY_OUT="$TMP_DIR/validate-unhealthy-body.out"
-if FAKE_AGENT_HEALTH_BODY='{"status":"unhealthy"}' "$ROOT/scripts/validate-post-flash.sh" \
+if FAKE_AGENT_HEALTH_BODY='{"status":"unhealthy"}' "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --device TEST123 \
   --manifest "$ROOT/manifests/android-release-manifest.example.json" \
   --execute >"$UNHEALTHY_BODY_OUT" 2>&1; then
@@ -251,7 +251,7 @@ assert_contains "$UNHEALTHY_BODY_OUT" "agent health probe body did not return re
 pass "post-flash validator rejects unhealthy HTTP 200 body"
 
 UNSAFE_HEALTH_OUT="$TMP_DIR/validate-unsafe-health-url.out"
-if "$ROOT/scripts/validate-post-flash.sh" \
+if "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --agent-health-url https://example.com/api/health \
   >"$UNSAFE_HEALTH_OUT" 2>&1; then
   fail "post-flash validator accepted a non-local agent health URL"
@@ -260,7 +260,7 @@ assert_contains "$UNSAFE_HEALTH_OUT" "must be an explicit http://127.0.0.1:PORT/
 pass "post-flash validator rejects non-local health endpoints"
 
 MANIFEST_OUT="$TMP_DIR/manifest.out"
-node "$ROOT/scripts/validate-release-manifest.mjs" \
+node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
   "$ROOT/manifests/android-release-manifest.example.json" \
   >"$MANIFEST_OUT"
 assert_contains "$MANIFEST_OUT" "manifest ok: elizaos-android-example-2026.05.0"
@@ -275,7 +275,7 @@ manifest.supportedDevices[0].tier = 'lab-validated';
 writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 INELIGIBLE_OUT="$TMP_DIR/ineligible-lab.out"
-if node "$ROOT/scripts/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
   "$INELIGIBLE_MANIFEST" >"$INELIGIBLE_OUT" 2>&1; then
   fail "manifest validator promoted an installer-ineligible hardware target"
 fi
@@ -293,7 +293,7 @@ delete manifest.rollback.previousReleaseId;
 writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 INCOMPLETE_EVIDENCE_OUT="$TMP_DIR/incomplete-evidence.out"
-if node "$ROOT/scripts/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
   "$INCOMPLETE_EVIDENCE_MANIFEST" >"$INCOMPLETE_EVIDENCE_OUT" 2>&1; then
   fail "manifest validator accepted incomplete runtime/rollback evidence"
 fi
@@ -319,7 +319,7 @@ writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
 ARTIFACT_VALIDATE_OUT="$TMP_DIR/artifact-validate.out"
-node "$ROOT/scripts/validate-release-manifest.mjs" \
+node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
   "$ARTIFACT_MANIFEST" \
   --artifact-dir "$ARTIFACT_DIR" \
   >"$ARTIFACT_VALIDATE_OUT"
@@ -334,7 +334,7 @@ cp "$ARTIFACT_DIR/vendor_kernel_boot.img" "$EXTRA_ARTIFACT_DIR/vendor_kernel_boo
 cp "$ARTIFACT_DIR/super.img" "$EXTRA_ARTIFACT_DIR/super.img"
 printf 'undeclared-dtbo-image\n' >"$EXTRA_ARTIFACT_DIR/dtbo.img"
 EXTRA_ARTIFACT_OUT="$TMP_DIR/extra-artifact.out"
-if node "$ROOT/scripts/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
   "$ARTIFACT_MANIFEST" \
   --artifact-dir "$EXTRA_ARTIFACT_DIR" >"$EXTRA_ARTIFACT_OUT" 2>&1; then
   fail "manifest validator accepted an undeclared image that the installer would flash"
@@ -342,7 +342,7 @@ fi
 assert_contains "$EXTRA_ARTIFACT_OUT" "dtbo.img: image is not declared by the release manifest"
 pass "manifest validator refuses undeclared flash images"
 
-if FAKE_LOGCAT_FAIL=1 "$ROOT/scripts/validate-post-flash.sh" --device TEST123 --execute >"$TMP_DIR/logcat.out" 2>&1; then
+if FAKE_LOGCAT_FAIL=1 "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" --device TEST123 --execute >"$TMP_DIR/logcat.out" 2>&1; then
   fail "validator accepted failed logcat transport"
 fi
 pass "validator fails closed when logcat cannot be read"
@@ -374,7 +374,7 @@ exit 99
 EOF
   chmod +x "$BIN_DIR/$tool"
 done
-for entry in "$ROOT/install-elizaos-android.sh" "$ROOT/scripts/validate-post-flash.sh"; do
+for entry in "$ROOT/install-elizaos-android.sh" "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh"; do
   input=()
   [[ "$entry" != "$ROOT/install-elizaos-android.sh" ]] || input=(--artifact-dir "$ARTIFACT_DIR")
   for order in first last; do
@@ -388,7 +388,7 @@ for entry in "$ROOT/install-elizaos-android.sh" "$ROOT/scripts/validate-post-fla
 done
 pass "installer and validator reject conflicts and serial argument injection before transport"
 for option in --launcher-package --expect; do
-  if "$ROOT/scripts/validate-post-flash.sh" "$option" 'x;touch /data/local/tmp/injected=value' --execute >"$TMP_DIR/refusal.out" 2>&1; then fail "accepted remote shell injection"; fi
+  if "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" "$option" 'x;touch /data/local/tmp/injected=value' --execute >"$TMP_DIR/refusal.out" 2>&1; then fail "accepted remote shell injection"; fi
   if grep -q unexpected-transport-call "$TMP_DIR/refusal.out"; then fail "queried device before rejecting remote shell injection"; fi
   assert_contains "$TMP_DIR/refusal.out" "invalid"
 done

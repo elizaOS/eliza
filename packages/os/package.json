@@ -42,7 +42,9 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "turbo": "^2.9.16",
     "typescript": "^6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.5",
+    "@elizaos/shared": "workspace:*",
+    "@fontsource/poppins": "^5.2.7"
   },
   "overrides": {
     "@biomejs/biome": "2.5.8",

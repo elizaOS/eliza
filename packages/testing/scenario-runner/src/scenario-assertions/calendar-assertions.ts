@@ -2,7 +2,7 @@
 import type {
   ScenarioCheckResult,
   ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "../../schema/index.js";
 import { describeCalls, successfulCalls } from "./effect-assertions.ts";
 
 type Pattern = string | RegExp;

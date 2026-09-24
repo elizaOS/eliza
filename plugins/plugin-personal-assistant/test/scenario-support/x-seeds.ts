@@ -2,10 +2,7 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsXFeedType } from "@elizaos/shared";
-import type {
-  ScenarioCheckResult,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../src/lifeops/repository.ts";
 import { seedXConnectorGrant } from "../support/helpers/seed-grants.ts";
 

@@ -60,8 +60,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
-    "ajv": "^8.17.1",
-    "json5": "^2.2.3"
+    "ajv": "^8.17.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

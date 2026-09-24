@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { testOutputPath } from "../../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 export const STAGE_B_SCHEMA = "eliza_voice_stage_b_stt_eval_v1";
 export const STAGE_B_ISSUE = "9958";

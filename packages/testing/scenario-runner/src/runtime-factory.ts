@@ -25,18 +25,14 @@ import {
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
-} from "@elizaos/testing/deterministic-model-plugin";
-import {
   type LiveProviderConfig,
   type LiveProviderName,
-  selectLiveProvider,
-} from "@elizaos/testing/live-provider";
-import {
-  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
-} from "@elizaos/testing/scenario-runner/schema";
+  selectLiveProvider,
+} from "@elizaos/testing";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,

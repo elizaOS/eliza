@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Media prep grounds in seeded talking points; brief never reaches producers.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

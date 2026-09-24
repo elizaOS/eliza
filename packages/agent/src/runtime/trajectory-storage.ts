@@ -2447,6 +2447,7 @@ export async function installDatabaseTrajectoryLogger(
       rewardInfo?: Record<string, unknown>,
     ) => void;
     flushWriteQueue?: (trajectoryId?: string) => Promise<void>;
+    applyReward?: (params: TrajectoryRewardRequest) => Promise<boolean>;
     endTrajectory?: (
       stepIdOrTrajectoryId: string,
       status?: string,
@@ -2665,6 +2666,9 @@ export async function installDatabaseTrajectoryLogger(
     listDatabaseTrajectories(runtime, options);
   loggerAny.getTrajectoryDetail = (trajectoryId: string) =>
     getDatabaseTrajectoryDetail(runtime, trajectoryId);
+
+  loggerAny.applyReward = (params: TrajectoryRewardRequest) =>
+    applyDatabaseTrajectoryReward(runtime, bridgeIsEnabled, params);
 
   loggerAny.getStats = async (): Promise<unknown> => {
     const { byStatus: _byStatus, ...stats } =
@@ -2921,6 +2925,82 @@ export async function completeTrajectoryStepInDatabase({
   });
 
   return true;
+}
+
+interface TrajectoryRewardRequest {
+  trajectoryId: string;
+  idempotencyKey: string;
+  reward: number;
+  component: string;
+}
+
+/** Serialize rewards with host captures, including the bridge's public entry point. */
+async function applyDatabaseTrajectoryReward(
+  runtime: IAgentRuntime,
+  isEnabled: () => boolean,
+  params: TrajectoryRewardRequest,
+): Promise<boolean> {
+  if (!Number.isFinite(params.reward)) {
+    throw new ElizaError("Trajectory reward is invalid", {
+      code: "TRAJECTORY_REWARD_INVALID",
+      context: { trajectoryId: params.trajectoryId },
+    });
+  }
+  let applied = false;
+  await enqueueStepWrite(runtime, params.trajectoryId, async () => {
+    if (!isEnabled()) return;
+    await executeRawSqlTransaction(runtime, async (execute) => {
+      const result = await execute(
+        `SELECT * FROM trajectories
+            WHERE id = ${sqlQuote(params.trajectoryId)}
+              AND agent_id = ${sqlQuote(runtime.agentId)}
+            LIMIT 1 FOR UPDATE`,
+      );
+      const rows = extractRequiredRows(result, {
+        operation: "apply delayed trajectory reward",
+        trajectoryId: params.trajectoryId,
+      });
+      const row = rows[0] ? asRecord(rows[0]) : null;
+      if (!row) return;
+      const trajectory = parsePersistedTrajectoryRow(row, params.trajectoryId);
+      const keys = Array.isArray(trajectory.metadata.appliedRewardKeys)
+        ? trajectory.metadata.appliedRewardKeys.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      if (keys.includes(params.idempotencyKey)) {
+        applied = true;
+        return;
+      }
+      trajectory.metadata.appliedRewardKeys = [...keys, params.idempotencyKey];
+      trajectory.totalReward += params.reward;
+      const componentValues = trajectory.rewardComponents.components;
+      const components =
+        componentValues === undefined
+          ? {}
+          : normalizeJsonRecord(componentValues, "rewardComponents");
+      const current = components[params.component];
+      trajectory.rewardComponents = {
+        ...trajectory.rewardComponents,
+        components: {
+          ...components,
+          [params.component]:
+            (typeof current === "number" && Number.isFinite(current)
+              ? current
+              : 0) + params.reward,
+        },
+      };
+      await execute(`UPDATE trajectories SET
+          total_reward = ${trajectory.totalReward},
+          reward_components_json = ${sqlQuote(JSON.stringify(trajectory.rewardComponents))},
+          metadata_json = ${sqlQuote(JSON.stringify(trajectory.metadata))},
+          updated_at = ${sqlQuote(new Date().toISOString())}
+          WHERE id = ${sqlQuote(params.trajectoryId)}
+            AND agent_id = ${sqlQuote(runtime.agentId)}`);
+      applied = true;
+    });
+  });
+  return applied;
 }
 
 export async function deletePersistedTrajectoryRows(
@@ -3311,79 +3391,12 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   /** Add an idempotent delayed reward without mutating a settled step. */
-  async applyReward(params: {
-    trajectoryId: string;
-    idempotencyKey: string;
-    reward: number;
-    component: string;
-  }): Promise<boolean> {
-    if (!Number.isFinite(params.reward)) {
-      throw new ElizaError("Trajectory reward is invalid", {
-        code: "TRAJECTORY_REWARD_INVALID",
-        context: { trajectoryId: params.trajectoryId },
-      });
-    }
-    let applied = false;
-    await enqueueStepWrite(this.runtime, params.trajectoryId, async () => {
-      if (!this.enabled) return;
-      await executeRawSqlTransaction(this.runtime, async (execute) => {
-        const result = await execute(
-          `SELECT * FROM trajectories
-            WHERE id = ${sqlQuote(params.trajectoryId)}
-              AND agent_id = ${sqlQuote(this.runtime.agentId)}
-            LIMIT 1 FOR UPDATE`,
-        );
-        const rows = extractRequiredRows(result, {
-          operation: "apply delayed trajectory reward",
-          trajectoryId: params.trajectoryId,
-        });
-        const row = rows[0] ? asRecord(rows[0]) : null;
-        if (!row) return;
-        const trajectory = parsePersistedTrajectoryRow(
-          row,
-          params.trajectoryId,
-        );
-        const keys = Array.isArray(trajectory.metadata.appliedRewardKeys)
-          ? trajectory.metadata.appliedRewardKeys.filter(
-              (value): value is string => typeof value === "string",
-            )
-          : [];
-        if (keys.includes(params.idempotencyKey)) {
-          applied = true;
-          return;
-        }
-        trajectory.metadata.appliedRewardKeys = [
-          ...keys,
-          params.idempotencyKey,
-        ];
-        trajectory.totalReward += params.reward;
-        const componentValues = trajectory.rewardComponents.components;
-        const components =
-          componentValues === undefined
-            ? {}
-            : normalizeJsonRecord(componentValues, "rewardComponents");
-        const current = components[params.component];
-        trajectory.rewardComponents = {
-          ...trajectory.rewardComponents,
-          components: {
-            ...components,
-            [params.component]:
-              (typeof current === "number" && Number.isFinite(current)
-                ? current
-                : 0) + params.reward,
-          },
-        };
-        await execute(`UPDATE trajectories SET
-          total_reward = ${trajectory.totalReward},
-          reward_components_json = ${sqlQuote(JSON.stringify(trajectory.rewardComponents))},
-          metadata_json = ${sqlQuote(JSON.stringify(trajectory.metadata))},
-          updated_at = ${sqlQuote(new Date().toISOString())}
-          WHERE id = ${sqlQuote(params.trajectoryId)}
-            AND agent_id = ${sqlQuote(this.runtime.agentId)}`);
-        applied = true;
-      });
-    });
-    return applied;
+  async applyReward(params: TrajectoryRewardRequest): Promise<boolean> {
+    return applyDatabaseTrajectoryReward(
+      this.runtime,
+      () => this.enabled,
+      params,
+    );
   }
 
   async flushWriteQueue(trajectoryId?: string): Promise<void> {

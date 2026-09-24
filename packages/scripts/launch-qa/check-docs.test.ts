@@ -1,4 +1,4 @@
-// Exercises launch qa check docs.test automation behavior with deterministic script fixtures.
+/** Exercises documentation validation against temporary repositories and real local files. */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -23,12 +23,11 @@ async function makeRepo() {
     path.join(repoRoot, "packages", "demo", "package.json"),
     JSON.stringify({ scripts: { test: "echo test" } }),
   );
-  await fs.writeFile(path.join(repoRoot, "SECURITY.md"), "# Security Policy\n");
   await fs.writeFile(
     path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "config.yml"),
     `contact_links:
   - name: Security vulnerability
-    url: https://github.com/elizaOS/eliza/blob/develop/SECURITY.md
+    url: https://github.com/elizaOS/eliza/security/advisories/new
     about: Report privately.
 `,
   );
@@ -180,19 +179,11 @@ describe("docs gate", () => {
     expect(result.checkedFiles).not.toContain("packages/demo/README.md");
   });
 
-  it("fails when the root security policy is missing", async () => {
+  it("accepts private security reporting without a separate policy document", async () => {
     const repoRoot = await makeRepo();
-    await fs.rm(path.join(repoRoot, "SECURITY.md"));
+    await fs.writeFile(path.join(repoRoot, "README.md"), "# Project\n");
 
-    const result = checkDocs({ repoRoot });
-
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContainEqual(
-      expect.objectContaining({
-        type: "missing-security-policy",
-        file: "SECURITY.md",
-      }),
-    );
+    expect(checkDocs({ repoRoot }).ok).toBe(true);
   });
 
   it("fails when the issue template security contact is stale", async () => {
@@ -201,14 +192,10 @@ describe("docs gate", () => {
       recursive: true,
     });
     await fs.writeFile(
-      path.join(repoRoot, "SECURITY.md"),
-      "# Security Policy\n",
-    );
-    await fs.writeFile(
       path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "config.yml"),
       `contact_links:
   - name: Security vulnerability
-    url: https://github.com/elizaOS/eliza/blob/develop/packages/docs/security.md
+    url: https://github.com/elizaOS/eliza/blob/develop/SECURITY.md
     about: stale
 `,
     );

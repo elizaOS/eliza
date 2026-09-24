@@ -4,10 +4,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 

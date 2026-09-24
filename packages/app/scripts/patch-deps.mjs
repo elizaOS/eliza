@@ -43,7 +43,7 @@ import {
   pruneNestedElizaPluginCoreCopies,
   warnStaleBunCache,
 } from "./lib/patch-bun-exports.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);

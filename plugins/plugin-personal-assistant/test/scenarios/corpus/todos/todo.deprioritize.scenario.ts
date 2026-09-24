@@ -1,5 +1,5 @@
 /** Scenario fixture for todo deprioritize; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const SEEDED_PRIORITY = 2;
 const LOW_PRIORITY_FLOOR = 4;

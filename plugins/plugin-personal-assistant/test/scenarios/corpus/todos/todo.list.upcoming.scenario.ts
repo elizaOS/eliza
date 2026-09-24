@@ -1,5 +1,5 @@
 /** Scenario fixture for todo list upcoming; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const EXPECTED_UPCOMING_TITLES = ["Team review", "Finalize slides"] as const;
 

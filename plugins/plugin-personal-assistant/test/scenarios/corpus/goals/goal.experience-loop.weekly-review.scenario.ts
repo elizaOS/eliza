@@ -1,6 +1,6 @@
 /** Scenario fixture for goal experience loop weekly review; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { LifeOpsService } from "../../../../src/lifeops/service.ts";
 

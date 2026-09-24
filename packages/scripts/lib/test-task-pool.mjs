@@ -36,7 +36,7 @@
 import crypto from "node:crypto";
 
 import { parseCanonicalInt } from "./cli-numbers.mjs";
-import { resolveTestSerialPackages } from "./script-metadata.mjs";
+import { resolveTestSerialPackages } from "./script-metadata.ts";
 
 /**
  * Create a memoized serial-package resolver without invoking its discovery

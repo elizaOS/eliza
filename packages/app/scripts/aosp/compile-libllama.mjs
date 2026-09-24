@@ -185,7 +185,7 @@ import {
   fusedExtraCmakeFlags,
 } from "../build-helpers/omnivoice-merged.mjs";
 import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
-import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   compareSemver,
   resolveAndroidNdkHostDir,

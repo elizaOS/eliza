@@ -98,7 +98,7 @@ import {
   drainSpawnedChildren,
   resolveShutdownDrainWindowMs,
 } from "./lib/shutdown-drain.mjs";
-import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.ts";
 
 // Linux WebKitGTK: the dmabuf renderer can emit a benign but noisy
 // "X11 Error: GLXBadWindow (code 168)" at webview creation on common

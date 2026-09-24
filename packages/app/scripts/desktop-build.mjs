@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { artifactStaleness } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.ts";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
@@ -33,7 +33,7 @@ import {
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
-import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
+import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.ts";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));

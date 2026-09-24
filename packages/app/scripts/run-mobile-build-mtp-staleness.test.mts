@@ -8,7 +8,7 @@ import {
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.ts";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the

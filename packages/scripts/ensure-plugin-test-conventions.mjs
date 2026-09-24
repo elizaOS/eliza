@@ -330,7 +330,7 @@ const REGISTERED_NATIVE_RUNNER_ROOTS = new Map([
     "plugins/plugin-workflow",
     [
       "__tests__",
-      "package test invokes scripts/run-isolated-tests.mjs, whose recursive discovery root is __tests__",
+      "package test invokes packages/scripts/plugins/plugin-workflow/run-isolated-tests.mjs, whose recursive discovery root is __tests__",
     ],
   ],
 ]);

@@ -3,7 +3,7 @@
  * report commitment alive through unrelated chat and store the confirmed
  * deadline reminder instead of losing it.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

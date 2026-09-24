@@ -6,8 +6,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveRegistryFallbackTags } from "./lib/script-metadata.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { resolveRegistryFallbackTags } from "./lib/script-metadata.ts";
+import { listPackages } from "./lib/workspaces.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");

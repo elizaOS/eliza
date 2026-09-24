@@ -6,11 +6,11 @@ import {
   ModelType,
   wrapExternalContent,
 } from "@elizaos/core";
-import type { DeterministicModelFixture } from "@elizaos/testing";
 import type {
+  DeterministicModelFixture,
   ScenarioContext,
   ScenarioSeedStep,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { requireIncrementalSourceCitations } from "../../../../plugins/plugin-assistant/src/services/evaluator-schema.ts";
 
 const turns = {

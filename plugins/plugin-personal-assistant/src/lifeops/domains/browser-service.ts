@@ -1,37 +1,13 @@
-/**
- * Browser-companion domain for LifeOps: projects the browser-bridge companion
- * (pairing, tab summaries, page context, session lifecycle) from
- * `@elizaos/plugin-browser` into the assistant's connector DTOs. The transport
- * and CDP implementation live in the browser plugin; this layer owns only the
- * owner-facing projection and session state.
- */
+/** Reads legacy browser history and maintains stored session records for LifeOps. Companion enrollment and callbacks are retired. */
 import crypto from "node:crypto";
 import {
-  authenticateBrowserBridgeCompanionCredential,
   BROWSER_BRIDGE_KINDS,
   type BrowserBridgeAction,
-  type BrowserBridgeCompanionPairingResponse,
-  type BrowserBridgeCompanionPreflightRequest,
-  type BrowserBridgeCompanionPreflightResponse,
-  type BrowserBridgeCompanionRevocationResetResponse,
-  type BrowserBridgeCompanionRevokeResponse,
-  type BrowserBridgeCompanionSessionBeginRequest,
-  type BrowserBridgeCompanionSessionProgressRequest,
   type BrowserBridgeCompanionStatus,
-  type BrowserBridgeCompanionSyncRequest,
-  type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgeKind,
   type BrowserBridgePageContext,
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
-  browserBridgeDomainFromUrl,
-  type CreateBrowserBridgeCompanionPairingRequest,
-  createBrowserBridgePageContext,
-  createBrowserBridgeTabSummary,
-  isoTimestampExpired,
-  MAX_BROWSER_FOCUS_WINDOW_MS,
-  resolveBrowserBridgeCompanionPairingTokenExpiresAt,
-  type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSettingsRequest,
   type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
@@ -44,8 +20,6 @@ import type {
   LifeOpsWorkflowDefinition,
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../../contracts/index.js";
-import { DEFAULT_BROWSER_PERMISSION_STATE } from "../browser-constants.js";
-import { recordBrowserFocusWindow } from "../browser-extension-store.js";
 import {
   mergeBrowserTaskLifecycle,
   summarizeBrowserTaskLifecycle,
@@ -54,16 +28,10 @@ import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsBrowserSession } from "../repository.js";
 import {
   browserPageContextIdentityKey,
-  browserSessionMatchesCompanion,
   browserTabIdentityKey,
   browserUrlAllowedBySettings,
   createBrowserSessionActions,
-  hashBrowserCompanionPairingToken,
   normalizeBrowserSessionActionIndex,
-  normalizePageForms,
-  normalizePageHeadings,
-  normalizePageLinks,
-  redactSecretLikeText,
   resolveAwaitingBrowserActionId,
   selectRememberedBrowserTabs,
 } from "../service-helpers-browser.js";
@@ -75,7 +43,6 @@ import {
   fail,
   normalizeEnumValue,
   normalizeOptionalBoolean,
-  normalizeOptionalIsoString,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../service-normalize.js";
@@ -103,25 +70,6 @@ function canonicalizeSettingsValue(value: unknown): unknown {
   return value;
 }
 
-function sameCanonicalValue(left: unknown, right: unknown): boolean {
-  return (
-    JSON.stringify(canonicalizeSettingsValue(left)) ===
-    JSON.stringify(canonicalizeSettingsValue(right))
-  );
-}
-
-function recordPatchMatches(
-  current: Record<string, unknown>,
-  patch: Record<string, unknown> | undefined,
-): boolean {
-  return (
-    patch === undefined ||
-    Object.entries(patch).every(([key, value]) =>
-      sameCanonicalValue(current[key], value),
-    )
-  );
-}
-
 export function browserBridgeSettingsVersion(
   settings: BrowserBridgeSettings,
 ): string {
@@ -136,41 +84,7 @@ export function browserSessionActionsDigest(
   return `bbad1_${crypto.createHash("sha256").update(canonical).digest("base64url")}`;
 }
 
-function browserActionNeedsApproval(
-  action: BrowserBridgeAction,
-  settings: BrowserBridgeSettings,
-): boolean {
-  return (
-    action.requiresConfirmation ||
-    (settings.requireConfirmationForAccountAffecting && action.accountAffecting)
-  );
-}
-
 export const MAX_BROWSER_SESSION_APPROVAL_AGE_MS = 2 * 60 * 1000;
-
-function hasCurrentBrowserSessionApproval(
-  session: LifeOpsBrowserSession,
-  nowMs = Date.now(),
-): boolean {
-  const approval = session.metadata.browserApproval;
-  const confirmedAt =
-    approval !== null &&
-    typeof approval === "object" &&
-    !Array.isArray(approval) &&
-    typeof (approval as Record<string, unknown>).confirmedAt === "string"
-      ? Date.parse((approval as Record<string, unknown>).confirmedAt as string)
-      : Number.NaN;
-  return (
-    approval !== null &&
-    typeof approval === "object" &&
-    !Array.isArray(approval) &&
-    (approval as Record<string, unknown>).actionsDigest ===
-      browserSessionActionsDigest(session.actions) &&
-    Number.isFinite(confirmedAt) &&
-    confirmedAt <= nowMs &&
-    nowMs - confirmedAt <= MAX_BROWSER_SESSION_APPROVAL_AGE_MS
-  );
-}
 
 /**
  * Base browser helpers and the cross-domain screen-time recorder the browser

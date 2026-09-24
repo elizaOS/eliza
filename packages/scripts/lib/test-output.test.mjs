@@ -6,9 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { testOutputPath } from "./test-output.mjs";
+import { testOutputPath } from "./test-output.ts";
 
-const moduleUrl = new URL("./test-output.mjs", import.meta.url).href;
+const moduleUrl = new URL("./test-output.ts", import.meta.url).href;
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 test("all working directories resolve one ignored root without creating package output", () => {

@@ -1,8 +1,8 @@
 /**
  * Live-model scenario (live-only lane): Missed-call repair enqueues a real approval-gated note and sends nothing.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];

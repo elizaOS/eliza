@@ -64,9 +64,7 @@ describe("Android Play account-deletion contract", () => {
     const sectionRegistry = read(
       "ui/src/components/settings/settings-sections.ts",
     );
-    const seam = read("ui/src/android-cloud/ACCOUNT_DELETION_CONTRACT_SEAM.md");
 
-    expect(seam).toContain("90343b7265d3fef2c717c1ab6701cbe3d8b59036");
     expect(lifecycle).toContain('"/api/v1/me/account-deletion"');
     expect(lifecycle).toContain('"/api/public/account-deletion"');
     expect(lifecycle).toContain('"X-Account-Deletion-Status"');

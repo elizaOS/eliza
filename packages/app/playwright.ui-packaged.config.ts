@@ -4,7 +4,7 @@
  */
 
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 export default defineConfig({
   outputDir: testOutputPath("app", "ui-packaged"),

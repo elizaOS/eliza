@@ -15,9 +15,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 import { transientTurnEvaluationSeed } from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 

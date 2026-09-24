@@ -22,7 +22,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "@elizaos/testing/eliza-package-paths";
+} from "@elizaos/testing";
 import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {

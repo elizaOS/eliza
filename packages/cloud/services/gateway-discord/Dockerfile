@@ -46,7 +46,7 @@ ARG OPUS_PREBUILD_NODE_TARGET
 ARG TARGETARCH
 RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
-COPY ${SERVICE_DIR}/scripts/select-opus-prebuild.ts ${SERVICE_DIR}/scripts/
+COPY packages/cloud/scripts/gateway-discord/select-opus-prebuild.ts packages/cloud/scripts/gateway-discord/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
 COPY ${SHARED_DIR}/package.json ${SHARED_DIR}/
 COPY ${CORE_DIR}/package.json ${CORE_DIR}/
@@ -54,7 +54,7 @@ RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).
     && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:"./src/errors.ts"}));' "${CORE_DIR}/package.json" \
     && printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/shared","packages/cloud/services/*","packages/core"]}\n' > package.json \
     && npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
-    && bun "${SERVICE_DIR}/scripts/select-opus-prebuild.ts" "${SERVICE_DIR}" "${TARGETARCH}"
+    && bun "packages/cloud/scripts/gateway-discord/select-opus-prebuild.ts" "${SERVICE_DIR}" "${TARGETARCH}"
 
 # Build stage
 FROM deps AS builder

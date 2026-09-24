@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Keynote signoff is rejected until fact-check passes; embargoed metric never leaks.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalRejectedNoSideEffect,
   expectNoExternalSendDispatch,

@@ -4,7 +4,7 @@
  * sources should converge to the same definition.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

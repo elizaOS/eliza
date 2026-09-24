@@ -6,7 +6,7 @@
 
 import type { Memory, State, UUID, World } from "@elizaos/core";
 import { ChannelType, clearSaltCache, decryptStringValue } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { updateSettingsAction } from "./action.ts";
 import type { SetupSetting } from "./config.ts";

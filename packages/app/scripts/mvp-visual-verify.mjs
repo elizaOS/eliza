@@ -29,7 +29,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { diffAgainstBaseline } from "./mvp-visual-verify/diff.mjs";
 import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.mjs";
 import {

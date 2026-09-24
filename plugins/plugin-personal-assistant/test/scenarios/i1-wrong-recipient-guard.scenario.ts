@@ -3,7 +3,7 @@
  * relationship edge, while the staged outward message is scoped to the intended
  * recipient and excludes the private family detail.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

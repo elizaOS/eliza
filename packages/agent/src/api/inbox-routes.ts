@@ -63,7 +63,7 @@ import {
   setRoomMuteUntil,
   setWorldMuteState,
 } from "@elizaos/plugin-assistant";
-import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
+import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,

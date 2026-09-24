@@ -1,4 +1,3 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * REST API server for the Eliza Control UI.
  *
@@ -10,6 +9,7 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   getViewClientScope,
   runWithViewClient,
@@ -1720,7 +1720,6 @@ async function handleRequestForViewClient(
   if (maybeCapRequestStorm(req, res, pathname)) {
     return;
   }
-
 
   if (
     method !== "OPTIONS" &&

@@ -4,10 +4,10 @@
 
 <!--
 Link the issue, ticket, or Project card. For agent/kanban work, follow
-CONTRIBUTING.md and keep the Project item status current.
+AGENTS.md and keep the Project item status current.
 -->
 
-Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+Definition of Done: full standard in [`AGENTS.md`](../AGENTS.md).
 
 - [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
       with zero conflicts (`git fetch origin && git rebase origin/develop`).
@@ -181,7 +181,7 @@ blocker for this PR.
 ## CI availability record
 
 Write `N/A - applicable checks passed` when all applicable checks passed.
-Otherwise, follow [CI availability](../CONTRIBUTING.md#ci-availability) and
+Otherwise, follow [CI availability](../AGENTS.md) and
 record the evidence below. Explicit repository-owner instructions do not
 require a second authorization or separate bypass actor; GitHub-enforced
 permissions still apply.

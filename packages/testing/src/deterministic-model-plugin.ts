@@ -166,11 +166,14 @@ interface RegisteredFixture extends DeterministicModelFixture {
 }
 
 class DeterministicModelMatchError extends Error {
+  readonly kind: "unmatched" | "ambiguous" | "over-consumed";
+
   constructor(
-    readonly kind: "unmatched" | "ambiguous" | "over-consumed",
+    kind: "unmatched" | "ambiguous" | "over-consumed",
     message: string,
   ) {
     super(message);
+    this.kind = kind;
     this.name = "DeterministicModelMatchError";
   }
 }

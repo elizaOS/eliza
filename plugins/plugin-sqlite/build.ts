@@ -23,7 +23,6 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsEmitDeclarationOnly: true,
-  dtsTolerant: false,
 });
 
 // Static builtin imports avoid Bun's createRequire(import.meta.url) wrapper,

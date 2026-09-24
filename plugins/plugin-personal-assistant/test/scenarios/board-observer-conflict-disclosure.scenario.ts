@@ -8,7 +8,7 @@
  * seed must never surface, and nothing may be dispatched before the owner
  * approves the exact language.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

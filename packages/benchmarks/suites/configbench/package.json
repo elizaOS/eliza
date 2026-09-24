@@ -21,8 +21,8 @@
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-groq": "beta",
     "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/testing": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

@@ -5,10 +5,7 @@
  * rendering of legacy string options alongside typed option objects.
  */
 
-import {
-  createMockRuntime,
-  MOCK_AGENT_ID,
-} from "@elizaos/testing/mock-runtime";
+import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,

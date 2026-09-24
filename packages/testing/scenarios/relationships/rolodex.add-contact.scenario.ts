@@ -4,7 +4,7 @@
  * core/advanced-capabilities). Captured params must reference "Alice".
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Exercises Capacitor bridge ownership across two real AgentRuntime instances.
  * The HTTP server is intentionally unbound: only listener and service lifecycle

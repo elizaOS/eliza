@@ -27,4 +27,3 @@ if (!osName || !archName) {
 fs.mkdirSync(path.join("build", `${envName}-${osName}-${archName}`), {
 	recursive: true,
 });
-

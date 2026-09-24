@@ -13,7 +13,7 @@ import {
   isCapacitorPlatformReady,
   syncPlatformTemplateFiles,
 } from "./lib/capacitor-platform-templates.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const validPlatforms = new Set(["android", "ios"]);
 const platform = process.argv[2];

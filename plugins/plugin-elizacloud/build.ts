@@ -3,18 +3,17 @@
  * Build script for @elizaos/plugin-elizacloud. Orchestration lives in the
  * shared driver; this lists only what differs:
  *   - Node ESM bundle  -> dist/node
- *   - Browser bundle (minified) -> dist/browser
  *   - Node CJS bundle  -> dist/cjs (index.node.js renamed to index.node.cjs)
  *   - per-file subpath glob over src/** (minus the dedicated entrypoints and
  *     tests) that emits under dist/src via `naming`, then is flattened up into
  *     dist/ (and dist/src removed) by the shared driver's `flatten` hook.
  * Declarations come from tsconfig.build.json (emitDeclarationOnly), followed by
- * three hand-written alias shims. The emitted dist/ is byte-identical to the
+ * two hand-written alias shims. The emitted dist/ is byte-identical to the
  * previous hand-rolled build.
  */
 import { buildPlugin } from "../plugin-build";
 
-// Per-file subpath bundles: every src module except the dedicated Node/Browser
+// Per-file subpath bundles: every src module except the dedicated Node
 // entrypoints and tests. Emitted under dist/src (naming "[dir]/[name]"), then
 // flattened up into dist/ by the driver's `flatten` step.
 // Bun.Glob.scanSync yields native separators, so paths must be normalized to
@@ -26,12 +25,7 @@ const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."
   .filter((entry) => {
     if (entry.includes("__tests__/") || entry.endsWith(".test.ts") || entry.endsWith(".test.tsx"))
       return false;
-    if (
-      entry === "src/index.node.ts" ||
-      entry === "src/index.browser.ts" ||
-      entry === "src/host-routes.ts"
-    )
-      return false;
+    if (entry === "src/index.node.ts" || entry === "src/host-routes.ts") return false;
     // View components are vite-only (React/JSX against host-external
     // @elizaos/ui); the per-file bun bundle has no react external and would
     // choke on them. They ship exclusively via `build:views` → dist/views.
@@ -47,7 +41,6 @@ const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."
 // TS maps the .js specifier to the tsc-emitted ../index.node.d.ts / ../index.d.ts.
 const nodeReexport =
   "export * from '../index.node.js';\nexport { default } from '../index.node.js';\n";
-const browserReexport = "export * from '../index.js';\nexport { default } from '../index.js';\n";
 
 await buildPlugin({
   name: "@elizaos/plugin-elizacloud",
@@ -60,14 +53,6 @@ await buildPlugin({
       outSubdir: "node",
       target: "node",
       format: "esm",
-    },
-    {
-      label: "Browser",
-      entry: "src/index.browser.ts",
-      outSubdir: "browser",
-      target: "browser",
-      format: "esm",
-      minify: true,
     },
     {
       label: "Node (CJS)",
@@ -105,7 +90,6 @@ await buildPlugin({
   dtsProject: "tsconfig.build.json",
   dtsShims: [
     { path: "node/index.d.ts", content: nodeReexport },
-    { path: "browser/index.d.ts", content: browserReexport },
     { path: "cjs/index.d.ts", content: nodeReexport },
   ],
   // `register.ts` dynamically imports the renderer, so declaration emit follows

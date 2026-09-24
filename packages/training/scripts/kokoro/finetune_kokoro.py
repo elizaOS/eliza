@@ -38,9 +38,6 @@ Optimizer: APOLLO (apollo_mini by default — same choice as our text fine-tunes
 and the MTP drafter distiller). Mixed precision: bf16 if CUDA available, else
 fp32. Logging goes to TensorBoard via `<run-dir>/tb/`.
 
-Synthetic-smoke mode (`--synthetic-smoke`) runs the full control flow with a
-synthetic CPU model, asserting checkpoint emission and manifest correctness
-without importing torch's CUDA paths. CI uses this to catch pipeline rot.
 """
 
 from __future__ import annotations
@@ -154,70 +151,8 @@ def _build_manifest(
     }
 
 
-def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    """No torch, no GPU. Walks the file layout, writes a tiny checkpoint + manifest."""
-    log.info("synthetic-smoke: skipping real training")
-    run_dir = Path(args.run_dir).resolve()
-    processed = run_dir / "processed"
-
-    # If processed/ is empty, fabricate it. Keeps `pytest -k smoke` self-contained.
-    train_list_path = processed / "train_list.txt"
-    val_list_path = processed / "val_list.txt"
-    if not train_list_path.exists():
-        processed.mkdir(parents=True, exist_ok=True)
-        with train_list_path.open("w") as fh:
-            for i in range(12):
-                fh.write(f"wavs_norm/SMOKE-{i:04d}.wav|hh ah l ow|0\n")
-        with val_list_path.open("w") as fh:
-            fh.write("wavs_norm/SMOKE-9999.wav|hh ah l ow|0\n")
-
-    train_list = _list_lines(train_list_path)
-    val_list = _list_lines(val_list_path)
-
-    ckpt_dir = run_dir / "checkpoints"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    # Minimal valid "checkpoint": a JSON sidecar of dummy weights metadata.
-    # Real runs write torch tensors via torch.save; the smoke variant uses
-    # JSON so we don't drag torch into CI.
-    fake_step_path = ckpt_dir / "step_1.json"
-    fake_step_path.write_text(
-        json.dumps(
-            {
-                "kind": "kokoro-synthetic-checkpoint",
-                "step": 1,
-                "trainLoss": 0.5,
-                "valLoss": 0.6,
-                "baseModel": cfg["base_model"],
-                "mode": cfg["mode"],
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    best_path = ckpt_dir / "best.json"
-    best_path.write_text(fake_step_path.read_text())
-
-    stats = TrainStats(step=1, epoch=1, train_loss=0.5, val_loss=0.6, best_val_loss=0.6, best_step=1)
-    prep_manifest = processed / "prep_manifest.json"
-    prep_sha = _sha256_file(prep_manifest) if prep_manifest.exists() else None
-
-    manifest = _build_manifest(
-        args=args,
-        cfg=cfg,
-        train_list=train_list,
-        val_list=val_list,
-        stats=stats,
-        prep_manifest_sha256=prep_sha,
-        synthetic=True,
-        checkpoint_paths=[str(fake_step_path), str(best_path)],
-    )
-    (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    log.info("synthetic-smoke wrote %s", ckpt_dir / "train_manifest.json")
-    return 0
-
-
 def _import_torch_stack() -> dict[str, Any]:
-    """Import torch + transformers + peft lazily so the smoke path stays import-free."""
+    """Import the training dependencies only when the selected trainer needs them."""
     import torch  # noqa: PLC0415
 
     from torch.utils.data import DataLoader, Dataset  # noqa: PLC0415
@@ -332,7 +267,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     log.info("device=%s mode=%s base=%s", device, cfg["mode"], cfg["base_model"])
     if device == "cpu":
         log.warning(
-            "running on CPU — this is fine for a smoke but will not converge in any "
+            "running on CPU — training will not converge in any "
             "reasonable wall-clock; use a CUDA or MPS device for real training."
         )
 
@@ -538,11 +473,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", type=Path, default=None, help="Checkpoint to resume from.")
     p.add_argument("--epochs", type=int, default=None, help="Override max_steps via N epochs.")
     p.add_argument("--no-tensorboard", action="store_true")
-    p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Run pipeline shape without torch/CUDA (for CI).",
-    )
     return p
 
 
@@ -644,8 +574,6 @@ def main(argv: list[str] | None = None) -> int:
     # Seed.
     random.seed(cfg.get("seed", 1337))
     os.environ.setdefault("PYTHONHASHSEED", str(cfg.get("seed", 1337)))
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args, cfg)
     execution_mode = _resolve_execution_mode(args, cfg)
     if execution_mode == "full-finetune":
         cfg = dict(cfg)

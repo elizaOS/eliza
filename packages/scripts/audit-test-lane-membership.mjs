@@ -28,13 +28,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.mjs";
+import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.ts";
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDeclarations,
-} from "./lib/script-metadata.mjs";
+} from "./lib/script-metadata.ts";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { listPackages } from "./lib/workspaces.ts";
 import { computeTestRoots } from "./test-cloud-run.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -59,7 +59,7 @@ const PLUGINS_DIR = "plugins";
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
     "packages/app/platforms/electrobun",
-    "Native/macOS integration tests run through the package test command on their owning platform; browser-bridge-windows-security.yml owns Windows native-host execution. These platform-specific suites are excluded from the shared Linux lane.",
+    "Native/macOS integration tests run through the package test command on their owning platform. These platform-specific suites are excluded from the shared Linux lane.",
   ],
   [
     "packages/cloud/sdk",

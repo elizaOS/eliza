@@ -12,7 +12,7 @@
  * the turn text, never in `promptInstructions` (root AGENTS.md — one scheduler,
  * structural fields only).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

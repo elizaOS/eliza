@@ -10,7 +10,7 @@ import {
   TaskService,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, expect, it } from "vitest";
 import { LogsRetentionService } from "../src/runtime/logs-retention-service.ts";
 import { MemoryRetentionService } from "../src/runtime/memory-retention-service.ts";

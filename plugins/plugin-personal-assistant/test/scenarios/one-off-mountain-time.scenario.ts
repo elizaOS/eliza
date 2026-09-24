@@ -2,7 +2,7 @@
  * Live-model scenario: a one-off request phrased with an explicit Mountain-time
  * zone persists a single `once` reminder definition resolved to that timezone.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

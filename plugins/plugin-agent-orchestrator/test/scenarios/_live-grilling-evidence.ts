@@ -11,7 +11,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { testOutputPath } from "../../../../packages/scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../../packages/scripts/lib/test-output.ts";
 import {
   makeGrillingRuntime,
   makeScriptedAcp,

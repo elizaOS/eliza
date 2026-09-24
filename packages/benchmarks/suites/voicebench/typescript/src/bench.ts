@@ -17,7 +17,7 @@ import {
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 // Runs VoiceBench TypeScript latency measurement across STT, LLM, and TTS stages.
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 
 type VoicebenchMode = {
   id: string;

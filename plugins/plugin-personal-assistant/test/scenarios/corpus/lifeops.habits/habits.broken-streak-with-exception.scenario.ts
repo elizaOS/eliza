@@ -4,7 +4,7 @@
  * resetting the streak.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

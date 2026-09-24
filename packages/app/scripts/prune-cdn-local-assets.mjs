@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import { APP_DIST_BOOTSTRAP_ASSETS } from "./lib/static-asset-manifest.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {

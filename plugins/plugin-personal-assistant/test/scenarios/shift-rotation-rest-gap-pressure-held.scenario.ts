@@ -7,7 +7,7 @@
  * outbound commitment to a colleague, so it stays held until he confirms with
  * the rest-gap consequence in front of him.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

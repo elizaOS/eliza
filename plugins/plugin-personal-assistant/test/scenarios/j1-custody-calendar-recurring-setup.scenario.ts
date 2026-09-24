@@ -3,7 +3,7 @@
  * The scenario requires the assistant to convert one practical owner request
  * into structural calendar/reminder records without adding relationship advice.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

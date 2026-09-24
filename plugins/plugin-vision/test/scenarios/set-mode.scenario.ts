@@ -11,9 +11,9 @@ import type { AgentRuntime, Provider } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 const VISION = "VISION";
 type R = AgentRuntime & {

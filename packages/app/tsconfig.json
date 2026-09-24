@@ -47,8 +47,6 @@
       ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/ui": ["../src/ui/index.ts"],
-      "@elizaos/ui/*": ["../src/ui/*"],
       "@elizaos/plugin-native-inference/host-bridge": [
         "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
@@ -99,9 +97,6 @@
       ],
       "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
-      ],
-      "@elizaos/plugin-native-inference/bridge": [
-        "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"

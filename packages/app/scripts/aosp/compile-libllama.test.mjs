@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   describeAndroidTargetDryRun,
   ensureZigDrivers,

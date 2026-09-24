@@ -26,7 +26,7 @@
  * Synthetic (Theo Vantablack, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { PAX } from "./_personas";
 
 // PSA / safety-lecture register whiplash.

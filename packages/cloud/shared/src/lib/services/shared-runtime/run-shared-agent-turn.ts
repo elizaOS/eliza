@@ -33,7 +33,7 @@ import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
   type SharedReminderDelivery,
-} from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/plugin-scheduling";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
 import type {

@@ -1,5 +1,5 @@
 // Defines the visa renewal travel blocker LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**

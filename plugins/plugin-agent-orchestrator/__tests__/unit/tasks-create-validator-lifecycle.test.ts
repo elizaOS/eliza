@@ -11,7 +11,7 @@ import {
   type Memory,
   Service,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcpActionService } from "../../src/actions/common.ts";
 import { tasksAction } from "../../src/actions/tasks.ts";

@@ -86,21 +86,6 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "docker",
-      "workflow": ".github/workflows/docker-ci-smoke.yml",
-      "workspacePatterns": [
-        "packages/agent",
-        "packages/core",
-        "packages/shared"
-      ],
-      "inputs": [
-        "Dockerfile",
-        ".dockerignore",
-        "packages/scripts/build-core*.mjs"
-      ],
-      "dependsOn": ["canonical"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core", "packages/shared"],

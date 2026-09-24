@@ -5,7 +5,7 @@
  * follow-ups built on contradictory facts would have the owner showing up on
  * the wrong day for someone already struggling.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

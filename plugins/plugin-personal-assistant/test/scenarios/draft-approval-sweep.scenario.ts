@@ -5,7 +5,7 @@
  * live RESOLVE_REQUEST action and asserts both queue outcomes — one row approved,
  * one rejected with no gated side effect.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalRejectedNoSideEffect,
   expectApprovalResolvedApproved,

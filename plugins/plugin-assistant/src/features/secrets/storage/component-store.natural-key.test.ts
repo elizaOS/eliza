@@ -5,7 +5,7 @@
  * rejects a second insert with the same natural key the way plugin-sql does.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type {
   Component,

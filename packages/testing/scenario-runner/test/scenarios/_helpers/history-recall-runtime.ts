@@ -11,7 +11,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 
 export async function prepareOwnerMemoryRuntime(
   ctx: ScenarioContext,

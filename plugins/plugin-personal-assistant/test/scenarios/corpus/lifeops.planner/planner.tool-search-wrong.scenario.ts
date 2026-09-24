@@ -17,11 +17,7 @@
  * listed NONE; no scenario covers this.
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 
 const FORBIDDEN_BLOCKER_ACTIONS = new Set<string>([
   "WEBSITE_BLOCK",

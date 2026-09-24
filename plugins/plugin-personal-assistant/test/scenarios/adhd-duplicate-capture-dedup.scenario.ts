@@ -13,7 +13,7 @@
  * was captured at all (delta:1), and the judge grades the load-bearing dedup
  * nuance — that the identical re-ask did NOT become a second reminder.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

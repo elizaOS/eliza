@@ -1,5 +1,5 @@
 /**
- * Runtime schema module for `@elizaos/testing/scenario-runner/schema`: the final-check key
+ * Runtime schema module for `@elizaos/testing`: the final-check key
  * table (FINAL_CHECK_KEYS) and the scenario metadata validators for lanes,
  * execution profiles, tiers, and platform deferrals. Scenario files import
  * these at authoring/load boundaries; types live in the paired index.d.ts.

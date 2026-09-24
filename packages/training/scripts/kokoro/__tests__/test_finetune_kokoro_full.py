@@ -1,101 +1,12 @@
-"""Tests for finetune_kokoro_full.py.
-
-Three test suites:
-
-1. Synthetic-smoke pipeline shape (no torch / no kokoro). Asserts the manifest
-   schema is stable across the two finetune scripts and that the checkpoint
-   directory layout is what package_voice_for_release.py expects.
-
-2. Eval gate decision logic — _decide_continue + _update_top_k. Mocks the
-   eval-history input and asserts pass/fail aligns with the spec thresholds.
-
-3. CLI surface — argparse + config loading via load_config('kokoro_same_full.yaml').
-"""
+"""Exercises evaluation stopping rules, checkpoint ranking, and CLI configuration."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 import pytest
 
 import finetune_kokoro_full  # type: ignore  # noqa: E402
-
-
-# ---------------------------------------------------------------------------
-# 1. Synthetic-smoke pipeline shape.
-# ---------------------------------------------------------------------------
-
-
-def test_synthetic_smoke_writes_manifest_and_checkpoints(tmp_path: Path) -> None:
-    """End-to-end smoke: argv-driven, no torch imports."""
-    run_dir = tmp_path / "run"
-    rc = finetune_kokoro_full.main(
-        [
-            "--run-dir",
-            str(run_dir),
-            "--config",
-            "kokoro_same_full.yaml",
-            "--synthetic-smoke",
-        ]
-    )
-    assert rc == 0, f"finetune_kokoro_full exit code {rc}"
-
-    ckpt_dir = run_dir / "checkpoints"
-    train_manifest_path = ckpt_dir / "train_manifest.json"
-    assert train_manifest_path.exists(), "train_manifest.json missing"
-
-    manifest = json.loads(train_manifest_path.read_text())
-    assert manifest["kind"] == "kokoro-finetune-manifest"
-    assert manifest["synthetic"] is True
-    assert manifest["mode"] == "full"
-    assert manifest["baseModel"] == "hexgrad/Kokoro-82M"
-    assert manifest["voiceName"] == "af_same"
-
-    # Hyperparameter block reflects the N2 defaults from kokoro_same_full.yaml.
-    hp = manifest["hyperparameters"]
-    assert hp["optimizer"] in ("apollo", "apollo_mini")
-    assert hp["learningRate"] == pytest.approx(5e-5)
-    assert hp["maxSteps"] == 1500
-    assert hp["earlyStopPatience"] == 3
-    assert hp["keepTopK"] == 3
-    assert hp["anchorWeight"] == pytest.approx(0.001)
-
-    # topK block is the new shape introduced by full FT.
-    assert isinstance(manifest["topK"], list)
-    assert manifest["topK"], "topK should be non-empty after smoke run"
-    for entry in manifest["topK"]:
-        assert "step" in entry
-        assert "path" in entry
-        assert "speaker_similarity" in entry
-
-    # Eval history exists and contains numbers (not strings).
-    assert manifest["training"]["best_speaker_similarity"] > 0
-    assert manifest["training"]["best_speaker_similarity_step"] > 0
-    assert manifest["training"]["eval_history"]
-
-    # Checkpoint files emitted.
-    step_files = list(ckpt_dir.glob("step_*.json"))
-    assert step_files, "no step_*.json checkpoints emitted"
-    assert (ckpt_dir / "best.json").exists(), "best.json missing"
-
-
-def test_synthetic_smoke_creates_processed_lists_when_missing(tmp_path: Path) -> None:
-    """Smoke path fabricates train/val lists when prep hasn't been run."""
-    run_dir = tmp_path / "run-empty"
-    rc = finetune_kokoro_full.main(
-        [
-            "--run-dir",
-            str(run_dir),
-            "--config",
-            "kokoro_same_full.yaml",
-            "--synthetic-smoke",
-        ]
-    )
-    assert rc == 0
-    assert (run_dir / "processed" / "train_list.txt").exists()
-    assert (run_dir / "processed" / "val_list.txt").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +134,6 @@ def test_cli_default_config_is_sam_full() -> None:
     ns = parser.parse_args(["--run-dir", "/tmp/x"])
     assert ns.config == "kokoro_same_full.yaml"
     assert ns.init_from_voice == "af_bella"
-    assert ns.synthetic_smoke is False
 
 
 def test_config_has_full_mode_and_correct_thresholds() -> None:
@@ -244,31 +154,3 @@ def test_config_has_full_mode_and_correct_thresholds() -> None:
     assert "full-finetune" in cfg["voice_tags"]
 
 
-# ---------------------------------------------------------------------------
-# 4. Manifest stability across finetune_kokoro.py and finetune_kokoro_full.py.
-# ---------------------------------------------------------------------------
-
-
-def test_manifest_kind_matches_lora_path(tmp_path: Path) -> None:
-    """Both scripts emit kokoro-finetune-manifest so downstream consumers
-    (package_voice_for_release.py, push_voice_to_hf.py) don't have to branch."""
-    run_dir = tmp_path / "shape"
-    rc = finetune_kokoro_full.main(
-        ["--run-dir", str(run_dir), "--config", "kokoro_same_full.yaml", "--synthetic-smoke"]
-    )
-    assert rc == 0
-    manifest = json.loads((run_dir / "checkpoints" / "train_manifest.json").read_text())
-    assert manifest["kind"] == "kokoro-finetune-manifest"
-    assert manifest["mode"] == "full"
-    # Required keys consumers depend on.
-    for key in (
-        "baseModel",
-        "voiceName",
-        "hyperparameters",
-        "dataset",
-        "training",
-        "checkpoints",
-        "topK",
-        "trainingCommit",
-    ):
-        assert key in manifest, f"manifest missing required key: {key}"

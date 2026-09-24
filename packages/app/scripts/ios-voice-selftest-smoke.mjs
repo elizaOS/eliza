@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
  * reply is AUDIBLE through a real speaker (acoustic output, echo cancellation)
  * requires audio hardware and is covered on the physical-device lane.
  */
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   evaluateVoiceSelfTestReport,
   resolveVoiceSelfTestPollPolicy,

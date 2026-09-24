@@ -74,9 +74,6 @@ type ConnectorActionParams = {
   recentLimit?: number;
   query?: string;
   channelId?: string;
-  browser?: "chrome" | "firefox" | "safari";
-  profileId?: string;
-  profileLabel?: string;
   redirectUrl?: string;
   capabilities?: LifeOpsGoogleCapability[];
 };
@@ -215,7 +212,7 @@ function listKnownConnectorKinds(runtime: IAgentRuntime): string[] {
     ? registry.list().map((contribution) => contribution.kind)
     : [];
   // Verbose dispatcher kinds are always valid (they cover diagnostic verbs
-  // like `health` and `browser_bridge` that aren't connector contributions —
+  // like `health` that aren't connector contributions —
   // those still flow through this action). iMessage is wired through the
   // native macOS bridge; surfacing it on non-darwin would just produce
   // confusing planner suggestions.
@@ -373,29 +370,24 @@ async function dispatchListAll(
       ?.data as { status?: unknown } | undefined;
     return registryStatus?.status ?? (await readStatus());
   };
-  const [
-    google,
-    x,
-    telegram,
-    discord,
-    imessage,
-    whatsapp,
-    health,
-  ] = await Promise.all([
-    service.getGoogleConnectorStatus(INTERNAL_URL),
-    registryOrReadStatus("x", () => service.getXConnectorStatus()),
-    registryOrReadStatus("telegram", () =>
-      service.getTelegramConnectorStatus(),
-    ),
-    registryOrReadStatus("discord", () => service.getDiscordConnectorStatus()),
-    registryOrReadStatus("imessage", () =>
-      service.getIMessageConnectorStatus(),
-    ),
-    registryOrReadStatus("whatsapp", () =>
-      service.getWhatsAppConnectorStatus(),
-    ),
-    service.getHealthDataConnectorStatuses(INTERNAL_URL),
-  ]);
+  const [google, x, telegram, discord, imessage, whatsapp, health] =
+    await Promise.all([
+      service.getGoogleConnectorStatus(INTERNAL_URL),
+      registryOrReadStatus("x", () => service.getXConnectorStatus()),
+      registryOrReadStatus("telegram", () =>
+        service.getTelegramConnectorStatus(),
+      ),
+      registryOrReadStatus("discord", () =>
+        service.getDiscordConnectorStatus(),
+      ),
+      registryOrReadStatus("imessage", () =>
+        service.getIMessageConnectorStatus(),
+      ),
+      registryOrReadStatus("whatsapp", () =>
+        service.getWhatsAppConnectorStatus(),
+      ),
+      service.getHealthDataConnectorStatuses(INTERNAL_URL),
+    ]);
   const known = listKnownConnectorKinds(runtime);
   return {
     success: true,
@@ -1230,7 +1222,6 @@ async function dispatchWeChat(
     }
   }
 }
-
 
 /**
  * Verbose dispatchers cover the rich verify probes (gmail+calendar reads,

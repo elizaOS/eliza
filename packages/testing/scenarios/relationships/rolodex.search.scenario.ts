@@ -3,13 +3,13 @@
  * ask the agent to find everyone from Acme. Expected action: SEARCH_CONTACTS.
  */
 
+import type { ScenarioContext } from "@elizaos/testing";
 import {
   callPayloadBlob,
   describeCalls,
+  scenario,
   successfulCalls,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 function expectAcmeSearchResult(ctx: ScenarioContext): string | undefined {
   if (successfulCalls(ctx, "SEARCH_CONTACTS").length === 0) {

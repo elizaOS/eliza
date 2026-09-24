@@ -2,7 +2,7 @@
 // attachments (TTS via @elizaos/plugin-elevenlabs). This drives the in-chat
 // preview/play/download journey for such an attachment end-to-end, using REAL
 // generated MP3 bytes (produced by a live ElevenLabs round-trip and committed as
-// a base64 fixture — see packages/testing/scenario-runner/scripts/real-service-audio-
+// a base64 fixture — see packages/testing/scripts/scenario-runner/real-service-audio-
 // roundtrip.mjs and fixtures/real-generated-audio.mp3.b64): open /chat, and
 // assert the audio attachment card + native <audio> player render with the
 // served bytes as their source (not a download-only fallback). Recordable via

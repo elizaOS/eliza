@@ -7,7 +7,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "@elizaos/testing/eliza-package-paths";
+} from "@elizaos/testing";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {

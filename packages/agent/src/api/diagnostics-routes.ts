@@ -5,7 +5,7 @@
  * POST `/api/logs/export` (validated JSON/CSV download), GET `/api/agent/events`
  * (replayable autonomy/heartbeat event feed with runId/seq/after cursors), GET
  * `/api/security/audit` (filtered audit feed as a JSON snapshot or a live SSE
- * stream), and GET `/api/extension/status` (browser-bridge relay reachability).
+ * stream).
  * All reads come from process-local buffers/feeds supplied by the caller; the
  * export and audit paths validate and clamp every query/body parameter before
  * it is used.
@@ -81,7 +81,6 @@ export interface DiagnosticsRouteContext
     subscriber: (entry: AuditEntryLike) => void,
   ) => () => void;
 }
-
 
 function isAutonomyEvent(event: StreamEventEnvelopeLike): boolean {
   return event.type === "agent_event" || event.type === "heartbeat_event";
@@ -537,7 +536,6 @@ export async function handleDiagnosticsRoutes(
 
     return true;
   }
-
 
   return false;
 }

@@ -4,7 +4,7 @@
  * every read and metadata mutation still executes against the real SQL adapter.
  */
 
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { UUID } from "../types/primitives";
 import { TaskService } from "./task";
