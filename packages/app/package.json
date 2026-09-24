@@ -428,11 +428,7 @@
     },
     "./desktop-shell": {
       "types": "./dist/desktop-shell.d.ts",
-      "eliza-source": {
-        "types": "./src/desktop-shell.ts",
-        "import": "./src/desktop-shell.ts",
-        "default": "./src/desktop-shell.ts"
-      },
+      "eliza-source": "./src/desktop-shell.ts",
       "import": "./dist/desktop-shell.js",
       "default": "./dist/desktop-shell.js"
     },
@@ -443,16 +439,8 @@
     },
     "./account-pool": {
       "types": "./src/account-pool.ts",
-      "eliza-source": {
-        "types": "./src/account-pool.ts",
-        "import": "./src/account-pool.ts",
-        "default": "./src/account-pool.ts"
-      },
-      "bun": {
-        "types": "./src/account-pool.ts",
-        "import": "./src/account-pool.ts",
-        "default": "./src/account-pool.ts"
-      },
+      "eliza-source": "./src/account-pool.ts",
+      "bun": "./src/account-pool.ts",
       "import": "./dist/account-pool.js",
       "default": "./dist/account-pool.js"
     },
@@ -503,11 +491,7 @@
     },
     "./services/auth-store": {
       "types": "./dist/services/auth-store.d.ts",
-      "eliza-source": {
-        "types": "./src/services/auth-store.ts",
-        "import": "./src/services/auth-store.ts",
-        "default": "./src/services/auth-store.ts"
-      },
+      "eliza-source": "./src/services/auth-store.ts",
       "import": "./dist/services/auth-store.js",
       "default": "./dist/services/auth-store.js"
     },
