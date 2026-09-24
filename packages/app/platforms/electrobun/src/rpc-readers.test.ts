@@ -1,7 +1,13 @@
-import { createServer } from "node:http";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
+import { createDatabaseSnapshot } from "./database";
+import {
+	LaunchOrchestrator,
+	type LaunchOrchestratorOptions,
+} from "./launch/launch-orchestrator";
 import { readSubscriptionStatusViaHttp } from "./subscription-rpc";
+
 async function readSubscriptions(provider: Record<string, unknown>) {
 	const server = createServer((_req, res) => {
 		res.setHeader("Content-Type", "application/json");
@@ -52,11 +58,6 @@ describe("subscription HTTP reader", () => {
 	);
 });
 
-import {
-	LaunchOrchestrator,
-	type LaunchOrchestratorOptions,
-} from "./launch/launch-orchestrator";
-import { createDatabaseSnapshot } from "./database";
 function launch(overrides: Partial<LaunchOrchestratorOptions> = {}) {
 	const status = {
 		state: "running" as const,

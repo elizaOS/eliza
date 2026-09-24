@@ -10,7 +10,6 @@ import {
 	backupPgliteDirectory,
 	classifyDatabaseError,
 	createDatabaseSnapshot,
-	updateDatabaseSnapshotStatus,
 	describePglitePath,
 	ensurePgliteDataDir,
 	inspectDatabaseStartupLock,
@@ -18,6 +17,7 @@ import {
 	resetPgliteDirectory,
 	resolveDatabaseMode,
 	resolveDefaultPgliteDataDir,
+	updateDatabaseSnapshotStatus,
 } from "./index";
 
 const tempDirs: string[] = [];
