@@ -575,6 +575,9 @@
     "@elizaos/plugin-slack#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
     },
+    "@elizaos/plugin-sql#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
     "@elizaos/plugin-sqlite#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
