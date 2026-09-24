@@ -26,10 +26,22 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   loopbackPorts,
+  processGroupHasLiveMembers,
   sandboxCommand,
   scenarioChildEnvironment,
   writeSandboxEnvironment,
 } from "./linux-sandbox.ts";
+
+test("teardown distinguishes exited zombies from live process-group members", () => {
+  expect(processGroupHasLiveMembers(42, " 42 Z\n 42 Zs\n 99 S\n")).toBe(false);
+  for (const state of ["R", "S", "D", "T", "t", "Sl+"]) {
+    expect(processGroupHasLiveMembers(42, `42 Z\n42 ${state}\n`)).toBe(true);
+  }
+  expect(processGroupHasLiveMembers(42, "99 S\n")).toBe(false);
+  expect(() => processGroupHasLiveMembers(42, "unreadable")).toThrow(
+    "Invalid process-group state inventory",
+  );
+});
 
 function resolveRepositoryRoot(start: string): string {
   let candidate = path.resolve(start);

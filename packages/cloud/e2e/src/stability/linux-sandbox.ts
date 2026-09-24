@@ -8,6 +8,23 @@ import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
+/** Zombies have exited and cannot perform effects, even before init reaps them. */
+export function processGroupHasLiveMembers(
+  processGroupId: number,
+  processTable: string,
+): boolean {
+  let live = false;
+  for (const line of processTable.split("\n")) {
+    if (!line.trim()) continue;
+    const match = /^\s*(\d+)\s+([A-Za-z<+]+)\s*$/.exec(line);
+    if (!match) throw new Error("Invalid process-group state inventory");
+    if (Number(match[1]) === processGroupId && !match[2].startsWith("Z")) {
+      live = true;
+    }
+  }
+  return live;
+}
+
 const admittedSourceNames = new Set([
   "ANTHROPIC_BASE_URL",
   "BUN_OPTIONS",
