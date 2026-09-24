@@ -6,16 +6,12 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "sideEffects": [
-    "./src/register.ts",
-    "./dist/register.js"
-  ],
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
@@ -26,27 +22,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    },
-    "./knowledge-graph": {
-      "types": "./dist/knowledge-graph/index.d.ts",
-      "eliza-source": {
-        "types": "./src/knowledge-graph/index.ts",
-        "import": "./src/knowledge-graph/index.ts",
-        "default": "./src/knowledge-graph/index.ts"
-      },
-      "import": "./dist/knowledge-graph/index.js",
-      "default": "./dist/knowledge-graph/index.js"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "assets",
@@ -108,7 +84,9 @@
     "access": "public"
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "export": "registerRelationshipsApp"
+    },
     "app": {
       "displayName": "Relationships",
       "category": "personal"

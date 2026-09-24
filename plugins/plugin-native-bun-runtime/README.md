@@ -13,3 +13,5 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-bun-runtime build  # build
 bun run --cwd plugins/plugin-native-bun-runtime test   # tests
 ```
+
+Build the package before running engine check, build, verify, or smoke commands; these commands use the bundled tools shipped to consumers.

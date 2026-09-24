@@ -2,7 +2,7 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { personalAssistantRoutesPlugin } from "../../src/routes/plugin.js";
 import { googleHandoffFixture } from "./handoff-google.js";
 import type { RealTestRuntimeResult } from "./runtime.js";

@@ -12,7 +12,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,

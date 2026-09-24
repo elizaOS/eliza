@@ -13,7 +13,7 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type { Entity, Relationship } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { actionBundleId, SchoolSourceFactRepository } from "./repository.js";

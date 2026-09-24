@@ -41,7 +41,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "test": "vitest run --config vitest.config.ts",
-    "validate:ios-screen-time": "node ../../packages/scripts/plugins/plugin-native-mobile-signals/validate-ios-screen-time.mjs",
+    "validate:ios-screen-time": "node dist/validate-ios-screen-time.mjs",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && bunx tsc6 -p tsconfig.json && bunx rollup -c rollup.config.mjs && bun build ../../packages/scripts/plugins/plugin-native-mobile-signals/validate-ios-screen-time.mjs --target=node --outfile=dist/validate-ios-screen-time.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",

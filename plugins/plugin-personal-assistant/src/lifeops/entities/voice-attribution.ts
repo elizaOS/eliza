@@ -8,7 +8,7 @@
  * module exists to implement.
  */
 
-import type { EntityStore } from "./store.js";
+import type { EntityStore } from "@elizaos/plugin-relationships";
 import type { SELF_ENTITY_ID } from "./types.js";
 
 /**

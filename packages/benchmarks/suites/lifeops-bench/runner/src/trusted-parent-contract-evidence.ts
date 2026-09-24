@@ -16,7 +16,7 @@ import {
   type ResponsibilityAssignmentDefinition,
   type SourceArtifactInput,
 } from "@elizaos/plugin-personal-assistant";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { type EntityAttribute, SELF_ENTITY_ID } from "@elizaos/shared";
 import type { BenchmarkSession } from "./server-utils.js";
 

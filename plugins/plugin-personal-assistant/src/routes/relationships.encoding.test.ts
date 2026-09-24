@@ -19,7 +19,7 @@ const { get, retire, upsert, list, observe } = vi.hoisted(() => ({
   observe: vi.fn(async (row: unknown) => row),
 }));
 
-vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({
+vi.mock("@elizaos/plugin-relationships", () => ({
   resolveKnowledgeGraphService: () => ({
     getRelationshipStore: () => ({ get, retire, upsert, list, observe }),
   }),

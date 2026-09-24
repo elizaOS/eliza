@@ -7,7 +7,7 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   authenticatedHouseholdInboundIdentity,

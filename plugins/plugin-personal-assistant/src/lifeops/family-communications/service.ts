@@ -10,7 +10,7 @@ import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,

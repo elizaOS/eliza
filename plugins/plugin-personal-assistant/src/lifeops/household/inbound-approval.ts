@@ -14,7 +14,7 @@ import {
   type MessagePayload,
   normalizeConnectorSource,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalRequest,
