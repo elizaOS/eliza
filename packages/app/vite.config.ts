@@ -425,6 +425,9 @@ const json5EsmEntry = path.join(
   path.dirname(_require.resolve("json5/package.json")),
   "dist/index.mjs",
 );
+const ajvEntry = createRequire(
+  path.join(elizaRoot, "packages/shared/package.json"),
+).resolve("ajv");
 const markedEntry = path.join(
   elizaRoot,
   "plugins/plugin-agent-orchestrator/node_modules/marked/lib/marked.esm.js",
@@ -2668,6 +2671,7 @@ export const INVALID_TRACER_PROVIDER = {};
         ),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
+      { find: /^ajv$/, replacement: ajvEntry },
       ...(yamlBrowserEntry
         ? [{ find: /^yaml$/, replacement: yamlBrowserEntry }]
         : []),
@@ -3163,6 +3167,9 @@ export const INVALID_TRACER_PROVIDER = {};
       "nprogress",
       "cookie",
       "yaml",
+      // Shared JSON-schema validation uses Ajv; its CommonJS entry must be
+      // converted to ESM because dependency discovery is disabled in dev.
+      "ajv",
       "uuid",
       "adze",
       // zod is safe to pre-bundle on Vite v8 + Rolldown and collapses roughly 90
