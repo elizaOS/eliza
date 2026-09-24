@@ -1,9 +1,6 @@
 /** Adapts shared MCP resource-selection validation to Cloud plugin result types. */
 import type { State } from "@elizaos/core";
-import {
-  createMcpResourceSelectionFeedback,
-  validateMcpResourceSelection,
-} from "@elizaos/shared/mcp";
+import { createMcpResourceSelectionFeedback, validateMcpResourceSelection } from "@elizaos/shared";
 import { type McpProviderData, type ValidationResult } from "../types";
 
 export interface ResourceSelection {

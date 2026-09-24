@@ -4,12 +4,13 @@
  * Re-exported by the `@elizaos/ui` barrel, which server-side plugins import
  * under plain node inside the production Docker image — so this module must
  * not statically import `@capacitor/core` (not shipped in the server image; a
- * static import made `plugin-task-coordinator` unloadable there). Platform
+ * static import made `plugin-agent-orchestrator` unloadable there). Platform
  * detection reads the bridge-injected `globalThis.Capacitor` instead, which is
  * exactly what the npm module's `getPlatform()`/`isNativePlatform()` consult:
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
+import { userAgentHasElizaOSMarker } from "@elizaos/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
@@ -17,7 +18,6 @@ import {
   Monitor,
   Phone,
   Radio,
-  ScrollText,
   Settings,
   UserRound,
   Wallet,
@@ -27,7 +27,6 @@ import {
   listAppShellPages,
 } from "../app-shell-registry";
 import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
-import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
 import { isDeveloperWorkspaceRoute } from "./developer-route";
 import { resolveDefaultLandingTab } from "./main-tab";
@@ -312,12 +311,6 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
-    label: "Pendant",
-    tabs: ["pendant-transcript"],
-    icon: ScrollText,
-    description: "Realtime transcript from the omi pendant",
-  },
-  {
     // One consolidated surface — workflows, triggers, and scheduled items share
     // the Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
     label: "Automations",
@@ -334,7 +327,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
 ];
 
 // Canonical settings-section metadata (pure data) re-exported here so
-// non-renderer consumers (e.g. app-core's dev-route-catalog parity test) can
+// non-renderer consumers (e.g. app's dev-route-catalog parity test) can
 // assert the QA catalog never drifts from the UI's section list.
 export {
   SETTINGS_SECTION_META,
@@ -644,8 +637,6 @@ export function titleForTab(tab: Tab): string {
       return "Background";
     case "stream":
       return "Stream";
-    case "pendant-transcript":
-      return "Pendant Transcript";
     default:
       // Dynamic plugin tabs — capitalize the tab ID as a fallback title.
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");

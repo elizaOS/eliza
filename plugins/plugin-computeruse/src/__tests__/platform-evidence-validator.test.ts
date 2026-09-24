@@ -15,7 +15,7 @@ const packageRoot = path.resolve(
 );
 const validator = path.join(
   packageRoot,
-  "scripts/validate-platform-evidence.mjs",
+  "../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.mjs",
 );
 
 function runValidator(args: string[] = []) {

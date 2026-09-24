@@ -17,9 +17,8 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState, resourceSelectionTemplate } from "@elizaos/shared";
 import type { McpService } from "../service";
-import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServer, type McpServerInfo } from "../types";
 import { handleMcpError, McpError } from "../utils/error";
 import { handleNoToolAvailable } from "../utils/handler";

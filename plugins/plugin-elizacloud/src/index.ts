@@ -1,5 +1,5 @@
 /**
- * Assembles the browser-safe Eliza Cloud plugin surface: inference handlers,
+ * Assembles the Node-hosted Eliza Cloud plugin surface: inference handlers,
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
  */
 

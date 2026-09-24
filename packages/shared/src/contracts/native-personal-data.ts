@@ -14,13 +14,13 @@
  * the pure projection directly with their live permission and app state.
  */
 
-import { ElizaError } from "@elizaos/common";
 import type {
   CapabilityRiskLevel,
   ConnectedAccount,
   ConnectedAccountCapability,
   ConnectedAccountStatus,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type {
   PermissionId,
   PermissionRestrictedReason,

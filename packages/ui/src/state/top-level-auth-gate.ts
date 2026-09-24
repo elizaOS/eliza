@@ -83,7 +83,7 @@ export interface RemoteAuthGateAccess {
 /**
  * Standalone agents (`bun run start`) reached over a private LAN authenticate
  * via a one-time pairing code that mints a bearer token — not the owner
- * password session LoginView expects from app-core.
+ * password session LoginView expects from app.
  */
 export function shouldShowRemoteAgentPairingGate(args: {
   reason?: "remote_auth_required" | "remote_password_not_configured";

@@ -4,19 +4,12 @@ orchestration action surface.
 The runtime collapsed the old multi-action orchestrator/app/skill surface
 (`SPAWN_AGENT`, `SEND_TO_AGENT`, `STOP_AGENT`, `TASK_CONTROL`, `TASK_HISTORY`,
 `TASK_SHARE`, `FINALIZE_WORKSPACE`, `PROVISION_WORKSPACE`, `MANAGE_ISSUES`,
-plus old PLUGIN / per-leaf skill actions) into four parent actions:
+plus old PLUGIN / per-leaf skill actions) into the TASKS parent action:
 
   - **TASKS**  — sub-ops via the `action` param: create, spawn_agent, send,
     stop_agent, list_agents, cancel, history, control, share,
     provision_workspace, submit_workspace, manage_issues, archive, reopen.
     (`plugins/plugin-agent-orchestrator/src/actions/tasks.ts`)
-  - **APP**    — sub-ops: launch, relaunch, load_from_directory, list, create.
-    (`plugins/plugin-app-control/src/actions/app.ts`)
-  - **USE_SKILL** — invoke an enabled skill by `slug` (`mode` ∈ script|guidance|auto).
-    (`plugins/plugin-agent-skills/src/actions/use-skill.ts`)
-  - **SKILL**  — catalog ops via `action`: search, details, sync, toggle,
-    install, uninstall. (`plugins/plugin-agent-skills/src/actions/skill.ts`)
-
 Each row is one Vercel AI SDK `generateText` planner boundary: a planner-stage
 `request.system` (user_role / contexts / action specs / planner rules), a
 trajectory-shaped `request.messages` (providers block: `provider:ENTITIES`,
@@ -57,14 +50,14 @@ task: Plan next native tool calls.
 
 rules:
 - use only tools from the tools array; smallest grounded queue
-- the action parameter on TASKS/APP/SKILL selects the sub-operation; never invent compound action names
+- the action parameter on TASKS selects the sub-operation; never invent compound action names
 - arguments grounded in user request or prior tool results; array params must be JSON arrays
 - never use empty strings, placeholders, or invented values for required tool arguments
 - when a tool matches the requested operation, call it even if details are missing; the handler owns follow-up questions, drafts, confirmations, refusal
 - do not ask a follow-up via messageToUser when a matching tool exists
 - if no tool fits or task is complete, return no toolCalls and set messageToUser"""
 
-CONTEXT_LINE = "- agents: Coding/task sub-agent lifecycle, workspaces, GitHub issues, apps, and skills."
+CONTEXT_LINE = "- agents: Coding/task sub-agent lifecycle, workspaces, and GitHub issues."
 
 # Per-parent-action one-line spec rendered into the system prompt.
 ACTION_SPECS: dict[str, str] = {
@@ -78,16 +71,7 @@ ACTION_SPECS: dict[str, str] = {
         "workspaceId/prTitle/commitMessage/draft/skipPR/baseBranch (submit_workspace); "
         "issueAction/repo/title/issueNumber/body/labels/state (manage_issues); taskId (archive, reopen)."
     ),
-    "APP": (
-        "- APP — manage apps. action ∈ {launch, relaunch, load_from_directory, list, create}. Sub-args: "
-        "app (launch, relaunch); verify/workdir (relaunch); directory (load_from_directory); intent (create)."
-    ),
-    "USE_SKILL": (
-        "- USE_SKILL — invoke an enabled skill by slug. Args: slug (required), mode ∈ {script, guidance, auto}."
-    ),
-    "SKILL": (
-        "- SKILL — manage the skill catalog. action ∈ {search, details, sync, toggle, install, uninstall}."
-    ),
+
 }
 REPLY_SPEC = "- REPLY — send a direct conversational reply."
 
@@ -312,90 +296,10 @@ TASKS_OPS: dict[str, list[Case]] = {
     ],
 }
 
-APP_OPS: dict[str, list[Case]] = {
-    "launch": [
-        ("open music-player", "User wants an installed app launched.", {"app": "music-player"}),
-        ("launch the companion app", "User wants an installed app launched.", {"app": "companion"}),
-        ("start the workout-logger app", "User wants an installed app launched.", {"app": "workout-logger"}),
-    ],
-    "relaunch": [
-        ("restart the companion app", "User wants the app restarted.", {"app": "companion"}),
-        ("relaunch weather-app and verify it from /Users/me/code/weather-app",
-         "User wants the app restarted and verified.",
-         {"app": "weather-app", "verify": True, "workdir": "/Users/me/code/weather-app"}),
-        ("reload music-player", "User wants the app restarted.", {"app": "music-player"}),
-    ],
-    "load_from_directory": [
-        ("scan /Users/me/code/weather-app for apps and register them", "User wants apps in a directory registered.",
-         {"directory": "/Users/me/code/weather-app"}),
-        ("load the app at /home/me/projects/companion", "User wants an app loaded from a directory.",
-         {"directory": "/home/me/projects/companion"}),
-        ("register the app in /workspace/eliza/apps/app-notes", "User wants an app registered from a directory.",
-         {"directory": "/workspace/eliza/apps/app-notes"}),
-    ],
-    "list": [
-        ("what apps do I have installed?", "User wants the installed-app list.", {}),
-        ("show me my apps", "User wants the installed-app list.", {}),
-        ("list available apps", "User wants the installed-app list.", {}),
-    ],
-    "create": [
-        ("make an app: a workout logger with sets, reps, and a calendar view", "User wants a new app scaffolded and built.",
-         {"intent": "a workout logger with sets, reps, and a calendar view"}),
-        ("build me an app that tracks daily water intake with a weekly chart", "User wants a new app created.",
-         {"intent": "tracks daily water intake with a weekly chart"}),
-        ("create an app: a markdown notes board with tags and search", "User wants a new app scaffolded.",
-         {"intent": "a markdown notes board with tags and search"}),
-    ],
-}
-
-SKILL_OPS: dict[str, list[Case]] = {
-    "search": [
-        ("browse the skill catalog", "User is browsing the skill catalog.", {}),
-        ("search skills for image generation", "User wants to search the skill catalog.", {"query": "image generation"}),
-        ("find a skill for working with notion", "User wants to search the catalog.", {"query": "notion"}),
-    ],
-    "details": [
-        ("tell me more about the yara-authoring skill", "User wants details about a skill.", {"slug": "yara-authoring"}),
-        ("what does the obsidian skill do?", "User wants details about a skill.", {"slug": "obsidian"}),
-        ("show the details for the github skill", "User wants details about a skill.", {"slug": "github"}),
-    ],
-    "sync": [
-        ("update the skill catalog", "User wants the skill catalog refreshed.", {}),
-        ("sync skills from the registry", "User wants the skill catalog synced.", {}),
-        ("refresh available skills", "User wants the skill catalog synced.", {}),
-    ],
-    "toggle": [
-        ("enable the things-mac skill", "User wants a skill enabled.", {"slug": "things-mac", "enabled": True}),
-        ("turn off the spotify-player skill", "User wants a skill disabled.", {"slug": "spotify-player", "enabled": False}),
-        ("toggle the tmux skill on", "User wants a skill enabled.", {"slug": "tmux", "enabled": True}),
-    ],
-    "install": [
-        ("install the weather skill", "User wants a skill installed from the catalog.", {"slug": "weather"}),
-        ("add the slack skill", "User wants a skill installed.", {"slug": "slack"}),
-        ("install nano-banana-pro from the registry", "User wants a skill installed.", {"slug": "nano-banana-pro"}),
-    ],
-    "uninstall": [
-        ("uninstall the tmux skill", "User wants a skill removed.", {"slug": "tmux"}),
-        ("remove the trello skill", "User wants a skill removed.", {"slug": "trello"}),
-        ("delete the canvas skill", "User wants a skill removed.", {"slug": "canvas"}),
-    ],
-}
-
-USE_SKILL_CASES: list[Case] = [
-    ("invoke the weather skill", "User wants an enabled skill invoked.", {"slug": "weather", "mode": "script"}),
-    ("run the github skill in guidance mode", "User wants a skill's guidance, not its script.",
-     {"slug": "github", "mode": "guidance"}),
-    ("use the obsidian skill to file this note", "User wants an enabled skill to do the work.",
-     {"slug": "obsidian", "mode": "auto"}),
-    ("kick off the healthcheck skill", "User wants an enabled skill invoked.", {"slug": "healthcheck", "mode": "script"}),
-    ("invoke plan-my-day", "User wants an enabled skill invoked.", {"slug": "plan-my-day", "mode": "auto"}),
-]
-
-
 # ─── row builder ─────────────────────────────────────────────────────────
 
 def _meta(parent_action: str, op: str, lang: str, idx: int, subtle_null: bool, msg: str) -> dict[str, Any]:
-    synth_op = parent_action if parent_action == "USE_SKILL" else f"{parent_action}/{op}"
+    synth_op = f"{parent_action}/{op}"
     m: dict[str, Any] = {
         "task_type": "tool_call",
         "source_dataset": "synth-agent-orch",
@@ -413,9 +317,7 @@ def _meta(parent_action: str, op: str, lang: str, idx: int, subtle_null: bool, m
 
 def _tool_call_row(parent_action: str, op: str, case: Case, lang: str, idx: int) -> dict[str, Any]:
     user_msg_en, thought, args = case
-    base_args = dict(args)
-    if parent_action != "USE_SKILL":
-        base_args = {"action": op, **base_args}
+    base_args = {"action": op, **args}
     speaker = SPEAKERS[(idx * 7 + len(parent_action)) % len(SPEAKERS)]
     agent = AGENTS[(idx * 3 + len(op)) % len(AGENTS)]
     prior = LEAD_INS[(idx + len(op)) % len(LEAD_INS)]
@@ -450,16 +352,10 @@ def _null_row(parent_action: str, op: str, lang: str, idx: int) -> dict[str, Any
 def _ops_for(parent_action: str) -> dict[str, list[Case]]:
     if parent_action == "TASKS":
         return TASKS_OPS
-    if parent_action == "APP":
-        return APP_OPS
-    if parent_action == "SKILL":
-        return SKILL_OPS
-    if parent_action == "USE_SKILL":
-        return {"USE_SKILL": USE_SKILL_CASES}
     raise KeyError(parent_action)
 
 
-PARENT_ACTIONS = ["TASKS", "APP", "USE_SKILL", "SKILL"]
+PARENT_ACTIONS = ["TASKS"]
 NULL_FRACTION = 0.06  # ~6% subtle-null rows
 
 

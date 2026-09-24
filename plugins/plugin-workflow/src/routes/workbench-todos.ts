@@ -18,8 +18,9 @@ import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
   PutWorkbenchTodoRequestSchema,
+  sendJson,
+  sendJsonError,
 } from '@elizaos/shared';
-import { sendJson, sendJsonError } from '@elizaos/shared/api/http-helpers';
 import {
   isObject,
   isWorkbenchTodoTask,

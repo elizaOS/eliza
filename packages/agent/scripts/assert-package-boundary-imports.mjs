@@ -13,8 +13,7 @@
  * source (#13515). Cross-package code must come through the sibling's package
  * entry (e.g. "@elizaos/core"), which resolves to its built dist.
  *
- * Runs ahead of tsc in `build:dist` / `build:docker-dist`; the same walker is
- * asserted clean by src/__tests__/package-boundary-imports.test.ts.
+ * Runs ahead of tsc in `build:dist` / `build:docker-dist`.
  */
 
 import { readdirSync, readFileSync } from "node:fs";

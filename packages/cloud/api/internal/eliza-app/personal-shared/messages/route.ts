@@ -6,8 +6,8 @@ import {
   ELIZA_FAILURE_STAGE_HEADER,
   ELIZA_RETRYABLE_HEADER,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
-import { ChannelType } from "@elizaos/common";
-import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+import { ChannelType } from "@elizaos/core";
+import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling";
 import { Hono } from "hono";
 import { z } from "zod";
 import {

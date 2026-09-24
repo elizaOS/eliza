@@ -3,6 +3,8 @@
  * from activity signals, schedule regularity, and sleep-cycle state. Gates
  * check-in timing across the sleep domain.
  */
+
+import { parseIsoMs } from "@elizaos/shared";
 import {
   isBuiltinActivitySignalSource,
   type LifeOpsActivitySignal,
@@ -11,7 +13,6 @@ import {
   type LifeOpsSleepCycle,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import { parseIsoMs } from "../util/time-util.js";
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 

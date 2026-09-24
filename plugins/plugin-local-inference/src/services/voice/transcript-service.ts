@@ -13,11 +13,8 @@ import type {
 	TranscriptScope,
 	TranscriptSegment,
 	TranscriptSummary,
-} from "@elizaos/shared/transcripts";
-import {
-	transcriptDurationMs,
-	transcriptSpeakerCount,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
+import { transcriptDurationMs, transcriptSpeakerCount } from "@elizaos/shared";
 import { transcriptKnowledgePayload } from "./transcript-knowledge";
 import {
 	TranscriptStore,

@@ -1,4 +1,4 @@
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 /**
  * Unit coverage for `GoogleGmailAdapter`: message mapping, manage-operation
  * translation, reply drafting/sending, and post-commit mutation receipts
@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRuntime {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", "00000000-0000-0000-0000-000000000001");
   const googleService = {
     listGmailTriageMessages: vi.fn(async () => []),
     searchGmailMessages: vi.fn(async () => []),

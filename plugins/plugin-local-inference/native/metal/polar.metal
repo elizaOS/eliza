@@ -1,6 +1,6 @@
 // HARDWARE VERIFIED on Apple M4 Max (Metal runtime JIT): 8/8 PASS against the
 // fixture harness. Source-level verified against the PolarQuant CPU reference at
-// packages/native-plugins/polarquant-cpu/src/polar_dequantize_ref.c and
+// plugins/plugin-local-inference/native/polarquant-cpu/src/polar_dequantize_ref.c and
 // polar_dot_ref.c (W1-B's authoritative CPU side). The block layout
 // (`block_q4_polar`), centroid LUT (POLAR_Q4_CENTROIDS), QJL residual
 // magnitude (POLAR_QJL_CORRECTION_MAGNITUDE / sqrt(QK_POLAR)), and the
@@ -43,7 +43,7 @@ constant float POLAR_QJL_INV_SQRT_QK = 0.08838834764831845f; // 1/sqrt(128)
 constant float POLAR_INV_QK = 1.0f / float(QK_POLAR);        // (1 / QK_POLAR) Hadamard compensation
 
 // Bit-identical to POLAR_Q4_CENTROIDS in
-// packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h.
+// plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h.
 constant float POLAR_Q4_CENTROIDS[POLAR_Q4_N_LEVELS] = {
     -2.754354807f, -2.093562707f, -1.643041510f, -1.279739752f,
     -0.962640978f, -0.672392117f, -0.397897103f, -0.131757782f,

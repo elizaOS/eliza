@@ -1,18 +1,22 @@
 [
   {
     "file": "packages/scripts/lib/cost-table.ts",
-    "tokens": ["plugins/plugin-assistant"],
+    "tokens": [
+      "plugins/plugin-assistant"
+    ],
     "reason": "offline trajectory validation imports the recorder's canonical versioned pricing implementation; discovering arbitrary plugin metadata would lose the shared price-table contract"
   },
   {
     "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
-    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
+    "tokens": [
+      "@elizaos/plugin-elizacloud",
+      "@elizaos/plugin-sql"
+    ],
     "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
   },
   {
     "file": "packages/scripts/audit-build-typecheck.mjs",
     "tokens": [
-      "plugins/plugin-app-manager",
       "plugins/plugin-build",
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
@@ -24,13 +28,10 @@
     "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
   },
   {
-    "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
-  },
-  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
-    "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
+    "tokens": [
+      "@elizaos/plugin-discord"
+    ],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
   },
   {
@@ -39,9 +40,8 @@
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
-      "plugins/plugin-commands",
       "plugins/plugin-computeruse",
-      "plugins/plugin-documents",
+      "plugins/plugin-knowledge",
       "plugins/plugin-elizacloud",
       "plugins/plugin-github",
       "plugins/plugin-imessage",
@@ -59,23 +59,24 @@
     "reason": "maps each route-wiring plugin to its e2e coverage artifacts; every routed plugin needs an entry or exemption"
   },
   {
-    "file": "packages/scripts/ensure-native-plugins-linked.mjs",
-    "tokens": ["plugins/plugin-native-"],
-    "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
-  },
-  {
     "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
-    "tokens": ["plugins/plugin-workflow"],
+    "tokens": [
+      "plugins/plugin-workflow"
+    ],
     "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root"
   },
   {
     "file": "packages/scripts/ensure-workspace-symlinks.mjs",
-    "tokens": ["@elizaos/plugin-pdf"],
+    "tokens": [
+      "@elizaos/plugin-pdf"
+    ],
     "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
   },
   {
     "file": "packages/scripts/launch-qa/run.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
     "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
   },
   {
@@ -104,27 +105,17 @@
   },
   {
     "file": "packages/scripts/run-scenario-benchmark.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
-  },
-  {
-    "file": "packages/scripts/vitest/default.config.ts",
     "tokens": [
-      "@elizaos/plugin-telegram",
-      "plugins/plugin-browser",
-      "plugins/plugin-finances",
-      "plugins/plugin-health",
-      "plugins/plugin-inbox",
-      "plugins/plugin-sql"
+      "plugins/plugin-personal-assistant"
     ],
-    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
+    "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
   },
   {
     "file": "packages/scripts/vitest/e2e.config.ts",
     "tokens": [
-      "plugins/plugin-documents",
+      "plugins/plugin-knowledge",
       "plugins/plugin-personal-assistant",
-      "plugins/plugin-task-coordinator",
+      "plugins/plugin-agent-orchestrator",
       "plugins/plugin-workflow"
     ],
     "reason": "e2e-lane vitest config enumerates the plugin suites that ship browser-driven e2e specs"
@@ -134,7 +125,6 @@
     "tokens": [
       "@elizaos/plugin-personal-assistant",
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-whatsapp",
       "plugins/plugin-personal-assistant"
     ],
     "reason": "integration-lane vitest config aliases connector plugins whose integration suites resolve source-condition subpaths"
@@ -143,13 +133,10 @@
     "file": "packages/scripts/vitest/real.config.ts",
     "tokens": [
       "@elizaos/plugin-agent-orchestrator",
-      "@elizaos/plugin-agent-skills",
       "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-commands",
       "@elizaos/plugin-discord",
       "@elizaos/plugin-elizacloud",
       "@elizaos/plugin-form",
-      "@elizaos/plugin-google-genai",
       "@elizaos/plugin-local-inference",
       "@elizaos/plugin-openai",
       "@elizaos/plugin-sql",
@@ -165,16 +152,20 @@
   },
   {
     "file": "packages/scripts/vitest/source-aliases.ts",
-    "tokens": ["plugins/plugin-sql"],
+    "tokens": [
+      "plugins/plugin-sql"
+    ],
     "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
   },
   {
     "file": "packages/scripts/vitest/unit.config.ts",
-    "tokens": ["@elizaos/plugin-anthropic"],
+    "tokens": [
+      "@elizaos/plugin-anthropic"
+    ],
     "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {
-    "file": "scripts/check-markdown-links.mjs",
+    "file": "packages/scripts/check-markdown-links.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-computeruse",
@@ -184,20 +175,18 @@
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
   {
-    "file": "scripts/generate-view-heroes.mjs",
+    "file": "packages/scripts/generate-view-heroes.mjs",
     "tokens": [
-      "plugins/plugin-app-control",
       "plugins/plugin-blocker",
       "plugins/plugin-calendar",
       "plugins/plugin-computeruse",
-      "plugins/plugin-documents",
-      "plugins/plugin-finances",
+      "plugins/plugin-knowledge",
       "plugins/plugin-form",
       "plugins/plugin-goals",
       "plugins/plugin-health",
       "plugins/plugin-inbox",
       "plugins/plugin-linear",
-      "plugins/plugin-messages",
+      "plugins/plugin-native-messages",
       "plugins/plugin-native-settings",
       "plugins/plugin-personal-assistant",
       "plugins/plugin-relationships",
@@ -206,59 +195,377 @@
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
   {
-    "file": "scripts/lifeops/connector-paths.mjs",
-    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
+    "file": "packages/scripts/lifeops/connector-paths.mjs",
+    "tokens": [
+      "plugins/plugin-github",
+      "plugins/plugin-personal-assistant"
+    ],
     "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
   },
   {
-    "file": "scripts/lifeops/credential-probes.mjs",
-    "tokens": ["plugins/plugin-github"],
+    "file": "packages/scripts/lifeops/credential-probes.mjs",
+    "tokens": [
+      "plugins/plugin-github"
+    ],
     "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
   },
   {
-    "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
-    "tokens": ["plugins/plugin-github"],
+    "file": "packages/scripts/lifeops/hitl-credential-dashboard.mjs",
+    "tokens": [
+      "plugins/plugin-github"
+    ],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
   },
   {
-    "file": "scripts/portable-linux-fused-inference.mjs",
-    "tokens": ["plugins/plugin-local-inference"],
+    "file": "packages/scripts/portable-linux-fused-inference.mjs",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
     "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
   },
   {
-    "file": "scripts/training-harvest/build-manifest.mjs",
-    "tokens": ["@elizaos/plugin-cli-inference"],
-    "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
+    "file": "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
+    "tokens": [
+      "plugins/plugin-coding-tools"
+    ],
+    "reason": "Package-owned plugin-coding-tools tooling; relocation preserves its explicit source and test roots."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-workflow/run-isolated-tests.mjs",
+    "tokens": [
+      "plugins/plugin-workflow"
+    ],
+    "reason": "Package-owned plugin-workflow tooling; relocation preserves its explicit source and test roots."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator"
+    ],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator"
+    ],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator"
+    ],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/check-account-readiness.ts",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator"
+    ],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/export-ci-account-secrets.ts",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator"
+    ],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/lib/script-test-inventory.mjs",
+    "tokens": [
+      "plugins/plugin-meetings"
+    ],
+    "reason": "The exact script-test exclusion preserves the plugin-meetings test:e2e lane for its browser/audio capture suite after relocation."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/verify-cerebras-wiring.ts",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/verify-live-schedule-data.ts",
+    "tokens": [
+      "@elizaos/plugin-elizacloud"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.mjs",
+    "tokens": [
+      "@elizaos/plugin-personal-assistant",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/translate-action-examples.mjs",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-elizacloud/verify-built-package.mjs",
+    "tokens": [
+      "@elizaos/plugin-elizacloud",
+      "plugins/plugin-elizacloud"
+    ],
+    "reason": "Package-owned plugin-elizacloud published export probe verifies the concrete plugin API after a build."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
+    "tokens": [
+      "plugins/plugin-native-inference"
+    ],
+    "reason": "Package-owned native-inference build guard inspects its Android bridge manifest."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts",
+    "tokens": [
+      "plugins/plugin-vision"
+    ],
+    "reason": "Package-owned vision dependency tooling relocated into the repository script directory."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/native/voice-bench/generate-fixtures.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned native voice fixture generator relocated into repository tooling."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-workbench.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/echo-aec-evidence.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/asr-real-smoke.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-bench-synth-worker.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-voice-stack.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/generate-voice-corpus.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/local-inference-ablation.mjs",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-robustness-asr.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/noise-rejection-real.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/memory-benchmark.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-agent-voice-overlap.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/mixed-real-roundtrip.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-bench-shared.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/local-model-lifecycle-matrix.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/kokoro-real-smoke.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/stt-quant-bench-real.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/meeting-acoustic-stress-real.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/speaker-isolation-real.ts",
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-macos-desktop-evidence.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-windows-desktop-evidence.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-linux-desktop-evidence.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/record-windows-cua-input.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.mjs",
+    "tokens": [
+      "plugins/plugin-computeruse"
+    ],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-native-bun-runtime/engine/engine-paths.mjs",
+    "tokens": [
+      "plugins/plugin-native-bun-runtime"
+    ],
+    "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
+  },
+  {
+    "file": "packages/scripts/vitest/default.config.ts",
+    "tokens": [
+      "@elizaos/plugin-telegram",
+      "plugins/plugin-browser",
+      "plugins/plugin-finances",
+      "plugins/plugin-health",
+      "plugins/plugin-inbox",
+      "plugins/plugin-sql"
+    ],
+    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
   },
   {
     "file": "packages/scripts/lib/progressive-content-production-targets.mjs",
-    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
+    "tokens": [
+      "plugins/plugin-coding-tools",
+      "plugins/plugin-sql"
+    ],
     "reason": "systemic coupling: the canonical progressive-content benchmark and evidence lanes bind fixed production target implementations and forbid caller-selected plugin modules"
   },
   {
     "file": "packages/scripts/produce-content-context-deterministic.mjs",
-    "tokens": ["plugins/plugin-coding-tools"],
+    "tokens": [
+      "plugins/plugin-coding-tools"
+    ],
     "reason": "systemic coupling: the canonical deterministic evidence producer binds the fixed coding-tools production target so evidence cannot be substituted by caller-selected modules"
   },
   {
     "file": "packages/scripts/produce-content-context-postgres.mjs",
-    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
-    "reason": "systemic coupling: the canonical PostgreSQL evidence producer binds fixed coding-tools and SQL implementations for its audited production boundary"
-  },
-  {
-    "file": "packages/scripts/ci-path-gate.mjs",
     "tokens": [
-      "plugins/plugin-app-control",
-      "plugins/plugin-capacitor-bridge",
-      "plugins/plugin-commands",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-github",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-native-filesystem",
-      "plugins/plugin-sql",
-      "plugins/plugin-vision",
-      "plugins/plugin-wallet"
+      "plugins/plugin-coding-tools",
+      "plugins/plugin-sql"
     ],
-    "reason": "systemic coupling: the CI path-gate lane configs enumerate the plugin surfaces whose diffs trigger specific lanes; lane membership is workflow routing policy decided centrally, not discoverable per-package metadata"
+    "reason": "systemic coupling: the canonical PostgreSQL evidence producer binds fixed coding-tools and SQL implementations for its audited production boundary"
   }
 ]

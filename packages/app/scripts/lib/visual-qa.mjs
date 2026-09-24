@@ -3,7 +3,7 @@
  *
  * This adapter preserves the historical report shape consumed by capture lanes,
  * while OCR, dominant-palette, brand-fraction, and pixel-change primitives live
- * in `@elizaos/evidence/visual-primitives`. Reviewers and gates now read the
+ * in `@elizaos/testing/evidence/visual-primitives`. Reviewers and gates now read the
  * same numbers no matter which screenshot pipeline produced the artifact.
  */
 
@@ -13,7 +13,7 @@ import {
   brandColorFractionsFromPng as colorFractions,
   dominantPalette,
   ocrText,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 
 /**

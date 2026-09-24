@@ -12,6 +12,8 @@
 // My Apps deep links pre-select the Apps segment. The panel + shell surface are
 // mocked to isolate the host's composition from the panel's data behavior; the
 // app catalog client is mocked to empty so renders are deterministic.
+
+import { resetUiRegistryHostForTests } from "@elizaos/shared";
 import {
   act,
   cleanup,
@@ -23,7 +25,6 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../../registry-host";
 import { __setAppValueForTests } from "../../state/app-store";
 
 const panelProps = vi.hoisted(() => ({

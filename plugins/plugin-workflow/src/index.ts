@@ -7,7 +7,7 @@
  * services. Default-enabled (opt out with `workflow.enabled: false`).
  */
 import { type IAgentRuntime, logger } from '@elizaos/core';
-import type { HttpPlugin as Plugin } from '@elizaos/shared/api/http-plugin';
+import type { HttpPlugin as Plugin } from '@elizaos/shared';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import { activeWorkflowsProvider, workflowStatusProvider } from './providers/index';

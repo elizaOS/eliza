@@ -6,14 +6,14 @@
  * prompt-optimization passes can cohort by surface contract; bump it when a
  * scope's brief, copy, or live-state shape changes meaningfully.
  */
-import type { PageScope } from "@elizaos/shared/contracts";
+import type { PageScope } from "@elizaos/shared";
 import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export { PAGE_SCOPES, type PageScope } from "@elizaos/shared/contracts";
+export { PAGE_SCOPES, type PageScope } from "@elizaos/shared";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,

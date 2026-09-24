@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Covers AOSP bootstrap helpers and loader ownership. Pure helpers use real
  * filesystem tempdirs and env overrides; service lifecycle uses a real

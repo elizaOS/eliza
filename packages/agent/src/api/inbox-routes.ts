@@ -63,13 +63,13 @@ import {
   setRoomMuteUntil,
   setWorldMuteState,
 } from "@elizaos/plugin-assistant";
-import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
+import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
-import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { z } from "zod";
 
 let discordModulePromise: Promise<{
@@ -186,7 +186,7 @@ export interface InboxRouteCallerAuthorization {
 
 /**
  * A single message in the inbox response. Shape mirrors
- * ConversationMessage on the client (see packages/app-core/src/api/
+ * ConversationMessage on the client (see packages/app/src/api/
  * client-types-chat.ts) so ChatView can render the same component for
  * both feeds without a type dance.
  */

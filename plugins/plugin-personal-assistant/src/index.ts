@@ -37,7 +37,6 @@ export { familyWorkflowsAction } from "./actions/family-workflows.js";
 export { householdCoordinationAction } from "./actions/household-coordination.js";
 export {
   ownerAlarmsAction,
-  ownerFinancesAction,
   ownerGoalsAction,
   ownerHealthAction,
   ownerRemindersAction,
@@ -73,8 +72,6 @@ export type {
   WebsiteBlockerRouteContext,
 } from "./plugin.js";
 export {
-  BrowserBridgePluginService,
-  browserBridgeProvider,
   delegationContractsProvider,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsReminderTask,

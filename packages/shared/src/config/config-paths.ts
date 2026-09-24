@@ -4,7 +4,7 @@
  * are rejected so untrusted override paths cannot walk into the prototype chain.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 
 type PathNode = Record<string, unknown>;
 

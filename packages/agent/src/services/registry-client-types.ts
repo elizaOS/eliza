@@ -62,7 +62,7 @@ export interface RegistryAppMeta {
    * shell. Set via `package.json` → `elizaos.app.mainTab`. Exactly one
    * installed app should declare this; if multiple do, the shell picks
    * the first one deterministically and logs a warning. Consumed by
-   * `getMainTabApp()` in `@elizaos/app-core` at boot.
+   * `getMainTabApp()` in `@elizaos/app` at boot.
    */
   mainTab?: boolean;
   /**

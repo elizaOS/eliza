@@ -6,6 +6,7 @@
  * warnings/errors flow in as props and surface inline.
  */
 
+import { API_KEY_PREFIX_HINTS, autoLabel } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";
@@ -14,13 +15,11 @@ import {
   defaultRegistry,
   useConfigValidation,
 } from "../../components/config-ui/config-renderer.helpers";
-import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
-import { autoLabel } from "../../utils/labels";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";

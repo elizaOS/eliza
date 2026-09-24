@@ -12,9 +12,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 
-// The module under test pulls a value import from app-core's registration seam;
-// stub it so this unit test does not require app-core to be built.
-vi.mock("@elizaos/shared/automation-node-contributors", () => ({
+// The module under test pulls a value import from app's registration seam;
+// stub it so this unit test does not require app to be built.
+vi.mock("@elizaos/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/shared")>()),
   registerAutomationNodeContributor: vi.fn(),
 }));
 

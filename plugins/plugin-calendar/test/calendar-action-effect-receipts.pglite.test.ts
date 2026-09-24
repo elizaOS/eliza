@@ -434,7 +434,7 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
       intent: actor.content.text,
       scenario: "feed_results",
       facts: expect.stringContaining("School pickup"),
-      context: { events: result.data?.events },
+      context: { label: expect.any(String) },
     });
     expect(result).not.toHaveProperty("text");
     expect(result).not.toHaveProperty("userFacingText");

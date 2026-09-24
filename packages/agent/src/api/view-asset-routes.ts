@@ -5,7 +5,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
-} from "./dynamic-view-host-external.mjs";
+} from "./dynamic-view-host-external.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,

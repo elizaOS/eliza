@@ -1,5 +1,5 @@
 /** Translates app-owner notification configuration requests without exposing persisted signing secrets. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

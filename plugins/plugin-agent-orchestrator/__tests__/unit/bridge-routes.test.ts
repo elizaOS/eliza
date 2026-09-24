@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createCredentialTunnelService,
   createSubAgentCredentialBridgeAdapter,
-} from "../../../../packages/app-core/src/services/credential-tunnel-service.ts";
+} from "../../../../packages/app/src/services/credential-tunnel-service.ts";
 import {
   type BridgeCredentialAdapter,
   handleBridgeRoutes,
@@ -247,7 +247,7 @@ describe("bridge-routes — credential bridge", () => {
     });
   });
 
-  it("routes request and child retrieval through the real app-core adapter", async () => {
+  it("routes request and child retrieval through the real app adapter", async () => {
     const tunnel = createCredentialTunnelService();
     const dispatch = createSensitiveRequestDispatchRegistry();
     const deliver = vi.fn(
@@ -654,9 +654,9 @@ describe("bridge-routes — credential bridge", () => {
  * A faithful one-shot adapter backed by an in-memory store, mirroring the
  * production `createSubAgentCredentialBridgeAdapter` semantics (POST mints a
  * scope; a staged value is delivered exactly once; replays are rejected). The
- * real engine + the real adapter are unit-tested in app-core
+ * real engine + the real adapter are unit-tested in app
  * (`credential-tunnel-service.test.ts`); this exercises the ROUTE wiring with
- * realistic round-trip behavior without crossing the plugin → app-core layer
+ * realistic round-trip behavior without crossing the plugin → app layer
  * boundary.
  */
 function makeOneShotAdapter(): BridgeCredentialAdapter & {

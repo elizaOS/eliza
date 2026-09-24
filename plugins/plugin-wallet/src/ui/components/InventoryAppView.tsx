@@ -242,7 +242,7 @@ function writeHiddenTokenIds(next: Set<string>): void {
   // local try/catch would swallow it into silent persistence loss. Route
   // reserved-key writes through the shell-privileged channel — the sanctioned
   // path for every reserved-key writer (surface-realm-broker.ts /
-  // scan-reserved-storage-writers.mjs).
+  // scan-reserved-storage-writers.ts).
   try {
     shellLocalStorage.setItem(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
   } catch {

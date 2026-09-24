@@ -1,6 +1,6 @@
 /** Routes signature-verified Acacia events to durable merchant bindings without trusting event metadata as authority. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";

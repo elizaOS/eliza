@@ -1,5 +1,5 @@
 /** Translates owner session and strict HTTP requests into generic merchant and catalog administration. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

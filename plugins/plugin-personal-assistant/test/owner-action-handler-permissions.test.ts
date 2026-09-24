@@ -28,7 +28,7 @@ vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
   extractActionParamsViaLlm: mocks.extractActionParamsViaLlm,
 }));
 
-vi.mock("@elizaos/plugin-phone/twilio", () => ({
+vi.mock("@elizaos/plugin-native-phone/twilio", () => ({
   readTwilioCredentialsFromEnv: vi.fn(() => null),
   sendTwilioVoiceCall: vi.fn(),
 }));

@@ -6,6 +6,7 @@
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference";
 import {
   act,
   cleanup,
@@ -16,7 +17,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelHubSnapshot } from "../../api/client-local-inference";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 
 const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
@@ -55,10 +55,9 @@ vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>
     selector(appStateMock),
 }));
-vi.mock("../../utils/asset-url", () => ({
+vi.mock("@elizaos/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/shared")>()),
   resolveApiUrl: (path: string) => path,
-}));
-vi.mock("../../utils/eliza-globals", () => ({
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({

@@ -1,12 +1,9 @@
-import {
-	InMemoryDatabaseAdapter,
-	initializeTestRuntime,
-} from "@elizaos/testing/in-memory-adapter";
 /**
  * Provider execution invariants for state composition: sibling providers start
  * concurrently, duplicate in-flight work coalesces, failures stay observable,
  * and turn cancellation reaches provider-owned boundaries.
  */
+import { initializeTestRuntime, SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
@@ -420,7 +417,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("keeps nested model work on the shared execution when its creator cancels", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", ENTITY_ID);
 		await adapter.init();
 		const runtime = await createRuntime({
 			character: { name: "provider-nested-model-owner" } as Character,
@@ -494,7 +491,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("keeps nested provider model tokens out of the visible reply stream", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", ENTITY_ID);
 		await adapter.init();
 		const runtime = await createRuntime({
 			character: { name: "provider-hidden-model-stream" } as Character,
@@ -542,7 +539,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("keeps provider-internal model calls off the streaming path for a caller with no streaming context", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", ENTITY_ID);
 		await adapter.init();
 		const runtime = await createRuntime({
 			character: { name: "provider-nonstreaming-caller" } as Character,

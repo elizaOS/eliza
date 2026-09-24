@@ -1,12 +1,12 @@
 /**
  * Drives the real {@link DefaultMessageService.clearChannel} against a real
- * {@link AgentRuntime} + {@link InMemoryDatabaseAdapter}. Origin getMemoriesByRoomIds
+ * {@link AgentRuntime} + {@link SQLiteDatabaseAdapter}. Origin getMemoriesByRoomIds
  * defaulted limit to 20, so a 25-message room left 5 rows after a successful
  * clear. The bulk deleteAllMemories path must empty the room regardless of that
  * default.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
@@ -21,16 +21,17 @@ const ENTITY_ID = "10000000-0000-0000-0000-0000000000aa" as UUID;
 
 async function seededRuntime(count: number): Promise<{
   runtime: AgentRuntime;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
-  await adapter.initialize();
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: { name: "ClearChannelAgent", bio: "test" } as Character,
-    adapter,
+
     logLevel: "fatal",
   });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
+  await adapter.initialize();
   const memories = Array.from({ length: count }, (_, index) => ({
     memory: {
       id: `30000000-0000-0000-0000-0000000000${String(index).padStart(2, "0")}` as UUID,

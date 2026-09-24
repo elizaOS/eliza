@@ -15,9 +15,9 @@ import {
   SyntheticControlSession,
   type SyntheticResetReceipt,
 } from "@elizaos/shared/synthetic-control";
-import { createScenarioStabilityPlan } from "../../../scenario-runner/src/stability.ts";
-import { executeScenarioStability } from "../../../scenario-runner/src/stability-executor.ts";
-import { ScenarioStabilitySubprocessAdapter } from "../../../scenario-runner/src/stability-subprocess-adapter.ts";
+import { createScenarioStabilityPlan } from "../../../testing/scenario-runner/src/stability.ts";
+import { executeScenarioStability } from "../../../testing/scenario-runner/src/stability-executor.ts";
+import { ScenarioStabilitySubprocessAdapter } from "../../../testing/scenario-runner/src/stability-subprocess-adapter.ts";
 
 const TOKEN = "synthetic-control-test-token-0001";
 const children: Array<ReturnType<typeof Bun.spawn>> = [];

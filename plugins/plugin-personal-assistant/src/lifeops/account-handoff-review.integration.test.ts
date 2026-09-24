@@ -4,7 +4,7 @@ import {
   CalendarService,
   createDefaultCalendarHostGate,
 } from "@elizaos/plugin-calendar";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import {

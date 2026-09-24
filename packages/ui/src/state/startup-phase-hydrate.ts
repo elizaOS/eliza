@@ -4,16 +4,14 @@
  * after the shell can paint, then releases them when the phase is torn down.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
 import {
   isRuntimeManagementOperation,
+  normalizeShellNavigateViewPayload,
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
-} from "@elizaos/shared/contracts/runtime-management";
-import {
-  normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/shared/browser-contracts";
 import { logger } from "@elizaos/shared/logger";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
@@ -80,7 +78,6 @@ export interface HydratingDeps {
   loadWalletConfig: () => Promise<void>;
   loadInventory: () => Promise<void>;
   loadUpdateStatus: (force?: boolean) => Promise<void>;
-  checkExtensionStatus: () => Promise<void>;
   pollCloudCredits: () => void;
   fetchAutonomyReplay: () => Promise<void>;
   setSelectedVrmIndex: (v: number) => void;
@@ -368,7 +365,6 @@ export async function runHydrating(
       void deps.loadSkills();
     }
     if (urlTab === "settings") {
-      void deps.checkExtensionStatus();
       void deps.loadWalletConfig();
       void deps.loadCharacter();
       void deps.loadUpdateStatus();

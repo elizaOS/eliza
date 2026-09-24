@@ -3,13 +3,14 @@
  * the owner's sleep schedule is and derive the per-user baseline from qualifying
  * episodes (non-nap, sufficient duration, ended before now).
  */
+
+import { parseIsoMs } from "@elizaos/shared";
 import type {
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycleType,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import { parseIsoMs } from "../util/time-util.js";
 
 export interface SleepRegularityEpisodeLike {
   startAt: string;

@@ -13,8 +13,8 @@ export default defineConfig({
 				new URL("../../packages/core/src/index.ts", import.meta.url),
 			),
 
-			"@elizaos/plugin-capacitor-bridge": fileURLToPath(
-				new URL("../plugin-capacitor-bridge/src/index.ts", import.meta.url),
+			"@elizaos/plugin-native-inference/host-bridge": fileURLToPath(
+				new URL("../plugin-native-inference/src/bridge.ts", import.meta.url),
 			),
 			"@elizaos/plugin-computeruse": fileURLToPath(
 				new URL("../plugin-computeruse/src/index.ts", import.meta.url),

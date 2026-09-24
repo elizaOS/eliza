@@ -29,11 +29,11 @@ import {
   Service,
   sanitizeTrajectoryJsonValue,
   sanitizeTrajectoryJsonValueInBudget,
+  serializeTrajectoryExport,
   type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
 /**
  * Persists runtime trajectories, step indexes, model calls, and reward metadata
  * for replay, UI inspection, export, and training-data collection.
@@ -66,7 +66,6 @@ type TrajectorySqlExecutor = (sqlText: string) => Promise<TrajectorySqlResult>;
 // ============================================================================
 
 export interface TrajectoryListOptions {
-  roomId?: string;
   limit?: number;
   offset?: number;
   status?: "active" | "completed" | "error" | "timeout" | "terminated";
@@ -1315,7 +1314,7 @@ export class TrajectoriesService extends Service {
 
     const sqlHelper = this.getSqlHelper();
     const dbCandidate = runtime.adapter.db as { execute?: unknown } | undefined;
-    // Adapters without SQL support (e.g. InMemoryDatabaseAdapter used in tests)
+    // Adapters without SQL support (e.g. SQLiteDatabaseAdapter used in tests)
     // expose `db = {}` rather than a Drizzle handle. Treat schema/CRUD calls as
     // no-ops so trajectory logging can degrade gracefully instead of spamming
     // "db.execute is not a function" for every step.
@@ -3252,7 +3251,7 @@ export class TrajectoriesService extends Service {
         created_at, updated_at
       FROM trajectories
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT ${limit} OFFSET ${offset}
     `);
 
@@ -3605,26 +3604,57 @@ export class TrajectoriesService extends Service {
   async exportTrajectoriesZip(
     options: TrajectoryZipExportOptions = {},
   ): Promise<TrajectoryZipExportResult> {
-    let targetIds = Array.isArray(options.trajectoryIds)
+    const targetIds = Array.isArray(options.trajectoryIds)
       ? options.trajectoryIds.filter(
           (id): id is string => typeof id === "string" && id.trim().length > 0,
         )
       : [];
 
     if (targetIds.length === 0) {
-      const list = await this.listTrajectories({
-        limit: 500,
-        source: options.source,
-        status: options.status,
-        search: options.search,
-        runId: options.runId,
-        startDate: options.startDate,
-        endDate: options.endDate,
-        scenarioId: options.scenarioId,
-        traceId: options.traceId,
-        batchId: options.batchId,
-      });
-      targetIds = list.trajectories.map((trajectory) => trajectory.id);
+      const seen = new Set<string>();
+      let expectedTotal: number | undefined;
+      do {
+        const list = await this.listTrajectories({
+          limit: 500,
+          offset: targetIds.length,
+          source: options.source,
+          status: options.status,
+          search: options.search,
+          runId: options.runId,
+          startDate: options.startDate,
+          endDate: options.endDate,
+          scenarioId: options.scenarioId,
+          traceId: options.traceId,
+          batchId: options.batchId,
+        });
+        expectedTotal ??= list.total;
+        if (
+          !Number.isSafeInteger(list.total) ||
+          list.total < 0 ||
+          list.total !== expectedTotal ||
+          list.offset !== targetIds.length ||
+          (list.trajectories.length === 0 && targetIds.length < expectedTotal)
+        ) {
+          throw new ElizaError(
+            "Trajectory export inventory changed or is incomplete; retry the export",
+            {
+              code: "TRAJECTORY_EXPORT_INCOMPLETE",
+            },
+          );
+        }
+        for (const trajectory of list.trajectories) {
+          if (seen.has(trajectory.id) || seen.size >= expectedTotal) {
+            throw new ElizaError(
+              "Trajectory export inventory repeated or changed; retry the export",
+              {
+                code: "TRAJECTORY_EXPORT_INCOMPLETE",
+              },
+            );
+          }
+          seen.add(trajectory.id);
+          targetIds.push(trajectory.id);
+        }
+      } while (targetIds.length < expectedTotal);
     }
 
     const entries: TrajectoryZipEntry[] = [];
@@ -3636,7 +3666,15 @@ export class TrajectoriesService extends Service {
 
     for (const trajectoryId of targetIds) {
       const detail = await this.getTrajectoryDetail(trajectoryId);
-      if (!detail) continue;
+      if (!detail) {
+        throw new ElizaError(
+          "A requested trajectory is unavailable; retry with an accessible export selection",
+          {
+            code: "TRAJECTORY_EXPORT_INCOMPLETE",
+            context: { trajectoryId },
+          },
+        );
+      }
 
       const exportTrajectory =
         options.includePrompts === false

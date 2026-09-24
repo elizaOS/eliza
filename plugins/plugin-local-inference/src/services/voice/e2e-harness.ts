@@ -10,9 +10,9 @@
  * here so existing `./e2e-harness` importers keep working unchanged.
  */
 
-export { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
+export { normalizeWerText, wordErrorRate } from "@elizaos/shared";
 
-import { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
+import { normalizeWerText, wordErrorRate } from "@elizaos/shared";
 import {
 	computeDiarizationErrorRate,
 	type DiarizationSegment,

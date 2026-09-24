@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Documents View app flow using the real
  * renderer fixture.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -105,7 +107,7 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
     test(`documents ${vp.name}`, async ({ page }) => {
       const screenshotDir =
         process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-        path.join(process.cwd(), "test-results", "documents-view");
+        testOutputPath("app", "documents-view");
       await mkdir(screenshotDir, { recursive: true });
 
       const pageErrors: string[] = [];

@@ -224,7 +224,7 @@ function validateRuntimeEnv(env) {
 }
 
 /**
- * Sandbox containers boot a `SandboxRegistry` (packages/app-core) that
+ * Sandbox containers boot a `SandboxRegistry` (packages/app) that
  * publishes `agent:<id>:server` / `server:<name>:url` keys to the shared
  * Upstash so gateway-discord and gateway-webhook can route inbound
  * platform messages to them. The orchestrator reads `KV_REST_API_URL` and
@@ -437,8 +437,8 @@ async function deployWorker(host) {
       'git fetch origin "$DEPLOY_BRANCH"',
       'git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"',
       "sudo chown -R deploy:deploy /opt/eliza",
-      'if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then',
-      '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"',
+      'if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.4.2" ]; then',
+      '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"',
       "fi",
       'export BUN_INSTALL="$HOME/.bun"',
       'export PATH="$BUN_INSTALL/bin:$PATH"',

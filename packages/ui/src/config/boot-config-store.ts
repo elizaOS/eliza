@@ -2,7 +2,7 @@
  * AppBootConfig — typed runtime configuration that replaces window.__* globals.
  *
  * The hosting app (e.g. apps/app) creates an AppBootConfig and passes it via
- * <AppBootProvider>. All app-core code reads from this config instead of
+ * <AppBootProvider>. All app code reads from this config instead of
  * reaching for window globals.
  *
  * React context lives in `boot-config-react.hooks.ts` so Bun/Node can import
@@ -12,7 +12,7 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/personal-assistant";
+} from "@elizaos/shared";
 import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { BrandingConfig } from "./branding";
@@ -147,8 +147,6 @@ export interface AppBootConfig {
   codingAgentControlChip?: ComponentType<Record<string, never>>;
   /** Coding-agent PTY drawer provided by the host app. */
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
-  /** LifeOps browser setup panel provided by the host app. */
-  lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
   /** App blocker settings card provided by the host app. */
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
@@ -212,9 +210,8 @@ function getBootConfigStore(): BootConfigStore {
   const globalObject = getGlobalSlot();
 
   // An established store always wins. The window-key mirror is only a pre-boot
-  // seed and must never replace a store that already exists — see the matching
-  // note in `@elizaos/core`'s boot-env.ts. All three copies (core, shared, ui)
-  // share the same global slot, so they must agree on write-once semantics.
+  // seed and must never replace a store that already exists. Shared and UI
+  // hosts initialize the same slot; core only reads the installed store.
   const existing = globalObject[BOOT_CONFIG_STORE_KEY];
   if (
     existing &&

@@ -12,7 +12,7 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { getConnectorAccountManager } from "@elizaos/core";
-import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-account-catalog";
+import { getConnectorAccountCatalogEntry } from "@elizaos/shared";
 import { OAuth2Client as GoogleIdTokenVerifier } from "google-auth-library";
 import { Auth } from "googleapis";
 

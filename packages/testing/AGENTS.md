@@ -1,3 +1,7 @@
-# Private testing package
+# `@elizaos/testing`
 
-Follow the root repository guide. Keep inference fixtures strict, deterministic and explicit. Production packages must not import this package. Exercise public core contracts; use local PGlite and loopback providers for required tests. Live-provider tests must report opt-in skips honestly.
+Private evidence tooling, deterministic runtime fixtures and repository-wide scenarios consumed by `@elizaos/testing/scenario-runner`.
+
+Keep product-specific scenarios with their owning packages. Deterministic tests must reject unmatched model requests; live-model evidence must come from real calls.
+
+Build, test, and setup: [README.md](README.md).

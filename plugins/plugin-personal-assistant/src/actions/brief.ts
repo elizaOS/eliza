@@ -9,7 +9,7 @@
  *   - `reset_recalibration`  — restore demoted item classes
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
- * money recurring charges, regret-audited commitment-ledger obligations) per
+ * regret-audited commitment-ledger obligations) per
  * the `include` arg, then runs a single LLM
  * compose pass to render a narrative over the structured `LifeOpsBriefing`
  * shape. Briefings are kept in-memory.
@@ -35,7 +35,6 @@ import {
 } from "@elizaos/core";
 import type { MessageRef } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
-import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,
@@ -61,7 +60,6 @@ import type {
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
   LifeOpsBriefingLifeItem,
-  LifeOpsBriefingMoneyItem,
   LifeOpsBriefingPeriod,
   LifeOpsBriefingSections,
 } from "../types/briefing.js";
@@ -137,7 +135,6 @@ interface BriefIncludeFlags {
   calendar?: boolean;
   inbox?: boolean;
   life?: boolean;
-  money?: boolean;
   commitments?: boolean;
 }
 
@@ -235,24 +232,6 @@ function normalizeLifeKind(value: unknown): LifeOpsBriefingLifeItem["kind"] {
     value === "goal"
     ? value
     : "reminder";
-}
-
-function normalizeMoneyCadence(
-  value: unknown,
-): LifeOpsBriefingMoneyItem["cadence"] {
-  switch (value) {
-    case "weekly":
-    case "monthly":
-    case "irregular":
-      return value;
-    case "annual":
-    case "yearly":
-      return "yearly";
-    case "daily":
-      return "daily";
-    default:
-      return "irregular";
-  }
 }
 
 async function loadCalendarFromLifeOps(args: {
@@ -389,29 +368,6 @@ async function loadCompletedTodayFromService(args: {
     args.runtime.reportError("Brief.loadCompletedToday", error, {
       surface: "evening-brief-wins",
     });
-    return [];
-  }
-}
-
-async function loadMoneyFromPayments(args: {
-  runtime: IAgentRuntime;
-}): Promise<readonly LifeOpsBriefingMoneyItem[]> {
-  try {
-    // Recurring-charge data moved out of LifeOpsService to FinancesService
-    // (@elizaos/plugin-finances); call it there directly.
-    const finances = new FinancesService(args.runtime);
-    const charges = await finances.getRecurringCharges({});
-    return charges.map((charge) => ({
-      id: `${charge.merchantNormalized}:${charge.cadence}`,
-      merchant: charge.merchantDisplay,
-      amountUsd: charge.averageAmountUsd,
-      cadence: normalizeMoneyCadence(charge.cadence),
-      nextChargeAt: charge.nextExpectedAt,
-    }));
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] money load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
     return [];
   }
 }
@@ -580,11 +536,6 @@ export interface BriefComposers {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
-  loadMoney: (args: {
-    runtime: IAgentRuntime;
-    period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingMoneyItem[]>;
-  /** Evening/recap wins: owner items completed within the current local day. */
   loadCompletedToday: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
@@ -609,7 +560,6 @@ const defaultComposers: BriefComposers = {
   loadCalendar: loadCalendarFromLifeOps,
   loadInbox: loadInboxFromTriage,
   loadLife: loadLifeFromOverview,
-  loadMoney: loadMoneyFromPayments,
   loadCompletedToday: loadCompletedTodayFromService,
   loadCommitments: loadCommitmentsFromLedger,
   loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
@@ -665,14 +615,12 @@ function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
   calendar: boolean;
   inbox: boolean;
   life: boolean;
-  money: boolean;
   commitments: boolean;
 } {
   return {
     calendar: input?.calendar !== false,
     inbox: input?.inbox !== false,
     life: input?.life !== false,
-    money: input?.money !== false,
     commitments: input?.commitments !== false,
   };
 }
@@ -855,7 +803,6 @@ async function assembleBriefing(args: {
     calendarItems,
     inboxItems,
     lifeItems,
-    moneyItems,
     commitmentItems,
     engagementSummaries,
   ] = await Promise.all([
@@ -868,9 +815,6 @@ async function assembleBriefing(args: {
     args.include.life
       ? composers.loadLife({ runtime: args.runtime, period: args.period })
       : Promise.resolve([] as readonly LifeOpsBriefingLifeItem[]),
-    args.include.money
-      ? composers.loadMoney({ runtime: args.runtime, period: args.period })
-      : Promise.resolve([] as readonly LifeOpsBriefingMoneyItem[]),
     args.include.commitments
       ? composers.loadCommitments({ runtime: args.runtime })
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
@@ -891,7 +835,6 @@ async function assembleBriefing(args: {
     ...(args.include.inbox ? { inbox: inboxItems } : {}),
     ...(args.include.life ? { life: lifeItems } : {}),
     ...(completedToday.length > 0 ? { completedToday } : {}),
-    ...(args.include.money ? { money: moneyItems } : {}),
     ...(args.include.commitments && commitmentItems.length > 0
       ? { commitments: commitmentItems }
       : {}),
@@ -1107,7 +1050,7 @@ export const briefAction: Action & {
     "surface:internal",
   ],
   description:
-    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate (demote repeatedly ignored brief item classes; reversible), reset_recalibration (restore demoted classes).",
+    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate (demote repeatedly ignored brief item classes; reversible), reset_recalibration (restore demoted classes).",
   descriptionCompressed:
     "BRIEF compose_morning|compose_evening|compose_weekly|recalibrate|reset_recalibration; LifeOpsBriefing",
   routingHint:
@@ -1140,8 +1083,7 @@ export const briefAction: Action & {
     },
     {
       name: "include",
-      description:
-        "Include flags, default true: { calendar?, inbox?, life?, money? }.",
+      description: "Include flags, default true: { calendar?, inbox?, life? }.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -1216,7 +1158,7 @@ export const briefAction: Action & {
       `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
 
     logger.info(
-      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
+      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
     );
 
     await callback?.({

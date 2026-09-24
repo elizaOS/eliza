@@ -1,0 +1,22 @@
+[Unit]
+Description=Local Eliza agent
+Documentation=https://elizaos.ai/
+ConditionPathIsExecutable=/opt/elizaos/bin/eliza-agent
+After=graphical-session-pre.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/eliza-agent
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h /var/tmp
+LockPersonality=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=elizaos-session.target

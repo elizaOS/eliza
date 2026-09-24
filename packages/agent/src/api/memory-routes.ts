@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
+  BM25,
   ChannelType,
   compareMemoryIds,
   composeToolDiagnosticRedactor,
@@ -30,16 +31,15 @@ import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
-import { memoryContextQaTemplate } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/prompts/rendering";
-import { BM25 } from "@elizaos/retrieval";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
+  composePrompt,
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
   parseCanonicalInteger,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import { memoryContextQaTemplate } from "./memory-context-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 
 export const HASH_MEMORY_SOURCE = "hash_memory";

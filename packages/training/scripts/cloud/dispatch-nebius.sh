@@ -195,7 +195,7 @@ case "$TASK" in
     log "running build on $SSH_TARGET..."
     ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "cd /opt/training && \
       ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 \
-      node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && \
+      node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && \
       printf '{\"schemaVersion\":1,\"runner\":\"dispatch-nebius build\",\"status\":\"pass\",\"gpu\":\"$GPU\"}\n' > /opt/training/cuda-report.json"
     ;;
   kernel-verify)

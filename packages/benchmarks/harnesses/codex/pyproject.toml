@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-adapter"
+version = "0.1.0"
+description = "Benchmark adapter for the Codex CLI agent harness (multi-account CODEX_HOME rotation)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["codex_adapter*"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"

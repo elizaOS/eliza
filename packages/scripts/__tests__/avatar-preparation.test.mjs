@@ -20,9 +20,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-const scripts = fileURLToPath(
-  new URL("../../app-core/scripts/", import.meta.url),
-);
+const scripts = fileURLToPath(new URL("../../app/scripts/", import.meta.url));
 function fixture(t, nested = false, appName = "app") {
   const root = realpathSync(
     mkdtempSync(path.join(tmpdir(), "avatar-preparation-")),
@@ -35,19 +33,19 @@ function fixture(t, nested = false, appName = "app") {
     workspace,
     app,
     path.join(root, nested ? "apps" : "packages", "app"),
-    path.join(workspace, "packages/app-core"),
+    path.join(workspace, "packages/app"),
     path.join(workspace, "packages/agent"),
   ]) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "package.json"), "{}");
   }
-  const target = path.join(workspace, "packages/app-core/scripts");
+  const target = path.join(workspace, "packages/app/scripts");
   mkdirSync(path.join(target, "lib"), { recursive: true });
   for (const file of [
     "ensure-avatars.mjs",
     "process-vrms.mjs",
     "lib/app-dir.mjs",
-    "lib/repo-root.mjs",
+    "lib/repo-root.ts",
   ])
     cpSync(path.join(scripts, file), path.join(target, file));
   const put = (name, bytes) => {

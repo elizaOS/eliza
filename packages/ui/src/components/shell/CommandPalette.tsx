@@ -28,7 +28,7 @@ import {
   paletteViewEntries,
   type ViewNavEntry,
 } from "../../chat";
-import { reportShortcutFired } from "../../chat/useSlashCommandController";
+import { reportShortcutFired } from "../../chat/shortcut-report";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";

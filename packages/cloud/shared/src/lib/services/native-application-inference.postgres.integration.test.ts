@@ -84,6 +84,7 @@ beforeAll(async () => {
     UPDATE users SET account_lifecycle_state='active',created_at=now(),role='member';`);
   for (const tag of [
     "0373_subscription_authority",
+    "0397_subscription_checkout_contract",
     "0383_subscription_cancellation_result",
     "0384_subscription_cancellation_undo",
     "0438_app_billing_applied_revision",

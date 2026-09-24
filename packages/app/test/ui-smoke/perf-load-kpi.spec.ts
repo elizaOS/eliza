@@ -48,7 +48,7 @@ const READY_SELECTOR =
 
 test.describe("frontend load KPIs", () => {
   test.beforeEach(async ({ page }) => {
-    // Same seeding convention as ui-smoke.spec.ts: default local server +
+    // Use the shared fixture convention: default local server +
     // the default mocked app routes.
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);

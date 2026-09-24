@@ -71,7 +71,10 @@ async function assertControllerInterrupted(
     [
       process.execPath,
       "--conditions=eliza-source",
-      path.resolve(import.meta.dirname, "../../scripts/run-stability-lane.ts"),
+      path.resolve(
+        import.meta.dirname,
+        "../../../scripts/e2e/run-stability-lane.ts",
+      ),
       "--mode",
       "deterministic-mock",
       "--run-id",

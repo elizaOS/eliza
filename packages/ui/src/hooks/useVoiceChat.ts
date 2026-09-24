@@ -13,7 +13,8 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
-import { ElizaError } from "@elizaos/common";
+import { getElizaApiToken } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { logger } from "@elizaos/shared/logger";
 import {
   useCallback,
@@ -39,7 +40,6 @@ import {
 } from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
-import { getElizaApiToken } from "../utils/eliza-globals";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,

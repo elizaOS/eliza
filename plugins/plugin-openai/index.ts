@@ -20,41 +20,30 @@ import type {
   ImageDescriptionParams,
   ImageGenerationParams,
   Plugin,
-  ProcessEnvLike,
   ResearchParams,
   ResearchResult,
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
 import { EventType, logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { handleTextToSpeech, handleTranscription } from "./models/audio";
+import { handleTextEmbedding } from "./models/embedding";
+import { handleImageDescription, handleImageGeneration } from "./models/image";
+import { handleResearch } from "./models/research";
 import {
   handleActionPlanner,
-  handleImageDescription,
-  handleImageGeneration,
-  handleResearch,
   handleResponseHandler,
-  handleTextEmbedding,
   handleTextLarge,
   handleTextMedium,
   handleTextMega,
   handleTextNano,
   handleTextSmall,
-  handleTextToSpeech,
-  handleTokenizerDecode,
-  handleTokenizerEncode,
-  handleTranscription,
-} from "./models";
+} from "./models/text";
+import { handleTokenizerDecode, handleTokenizerEncode } from "./models/tokenizer";
 import type { ImageGenerationResult, TextStreamResult } from "./types";
 import { getApiKey, getAuthHeader, getBaseURL, getSetting, isCerebrasMode } from "./utils/config";
 
-function getProcessEnv(): ProcessEnvLike {
-  if (typeof process === "undefined") {
-    return {};
-  }
-  return process.env as ProcessEnvLike;
-}
-
-const env = getProcessEnv();
+const env = process.env;
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
@@ -199,7 +188,7 @@ const mediaModels: NonNullable<Plugin["models"]> = {
 
 // Cerebras serves text models only: vision chat completions, /audio/transcriptions,
 // /audio/speech, and /images/generations all fail against its endpoint. Mirror the
-// embedding shouldUseLocalEmbeddingFallback gate (models/embedding.ts): in Cerebras
+// embedding endpoint availability gate (models/embedding.ts): in Cerebras
 // mode these capabilities stay unregistered unless an explicit per-capability
 // override points them at an endpoint that serves them, so consumers (e.g.
 // plugin-discord's isImageDescriptionEnabled) skip gracefully instead of failing
@@ -633,3 +622,5 @@ export const openaiPlugin: Plugin = {
 };
 
 export default openaiPlugin;
+
+export * from "./utils/config";

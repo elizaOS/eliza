@@ -5,11 +5,11 @@
  * Runs through a real AgentRuntime with registered event and notification services.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
 import { registerConnectorSourceMetadata } from "../connectors.ts";
-import { AgentRuntime } from "../runtime.ts";
+import type { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import type {
 	ActionEventPayload,
@@ -45,9 +45,9 @@ async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 }> {
 	const withService = opts.withService ?? true;
 	const events: AgentEventPayload[] = [];
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: createCharacter({ name: "AgentEventBridgeIntegrationAgent" }),
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});

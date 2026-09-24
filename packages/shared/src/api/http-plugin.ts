@@ -1,9 +1,9 @@
 /** Optional HTTP host contributions; the runtime kernel owns no route table. */
 
-import type { JsonValue } from "@elizaos/common";
 import type {
   AccessContext,
   IAgentRuntime,
+  JsonValue,
   Plugin,
   PluginAppBridge,
   X402Config,
@@ -131,7 +131,7 @@ interface BaseRoute {
    * Runtime modes where this route is visible. The agent HTTP server hides
    * routes outside this list with 404 before handler logic runs
    * (packages/agent/src/api/runtime-mode/), so every host — the bare agent
-   * and the app-core wrapper — enforces the same visibility contract.
+   * and the app wrapper — enforces the same visibility contract.
    */
   modes?: ReadonlyArray<RouteRuntimeMode>;
   /** Free-form one-liner documenting why the route is scoped to those modes. */

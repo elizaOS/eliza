@@ -11,7 +11,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type http from "node:http";
 import { addLogListener, type LogEntry } from "@elizaos/core";
-import { _resetCloudSecretsForTesting } from "@elizaos/shared/elizacloud";
+import { _resetCloudSecretsForTesting } from "@elizaos/shared";
 import {
   handleCloudSttRoute,
   handleCloudTtsPreviewRoute,

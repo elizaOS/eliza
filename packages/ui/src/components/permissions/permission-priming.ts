@@ -2,7 +2,7 @@
  * Declares the platform-specific permission priming sets, rationale copy, and
  * persisted shown-state for the onboarding soft-ask flow.
  */
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+import type { PermissionId } from "@elizaos/shared";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
@@ -91,7 +91,7 @@ export const PRIMING_COPY: Partial<
  * Explicit per-platform, ordered priming sets. Highest-value first (voice).
  *
  * iOS crash guard: every id here MUST have a declared `NS*UsageDescription` in
- * packages/app-core/platforms/ios/App/App/Info.plist — requesting an unentitled
+ * packages/app/platforms/ios/App/App/Info.plist — requesting an unentitled
  * permission on iOS aborts the process. Verified present for this set:
  * microphone, speech-recognition, notifications, location (When-In-Use). Never
  * add contacts / reminders / bluetooth here (their usage strings are absent).

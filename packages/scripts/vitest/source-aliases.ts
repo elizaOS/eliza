@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listPackages } from "../lib/workspaces.mjs";
+import { listPackages } from "../lib/workspaces.ts";
 
 /** Vite rollup alias shape (structural to avoid duplicate vite typings). */
 export interface SourceAlias {
@@ -234,6 +234,27 @@ export function buildWorkspaceSourceAliases(
     );
 
   return [
+    {
+      find: /^@elizaos\/testing\/scenario-runner$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/scenario-runner/src/index.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/testing\/synthetic-world$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/synthetic-world/src/index.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/testing\/scenario-runner\/(.+)$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/scenario-runner/src/$1",
+      ),
+    },
     {
       find: /^@elizaos\/testing$/,
       replacement: path.join(repoRoot, "packages/testing/src/index.ts"),

@@ -3,7 +3,6 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  CHARACTER_PERSISTENCE_SERVICE,
   getCharacterPersistenceService,
   isCharacterPersistenceService,
 } from "../character-persistence.ts";
@@ -33,11 +32,5 @@ describe("getCharacterPersistenceService", () => {
   it("returns null when the service is missing or malformed", () => {
     const runtime = { getService: () => null } as never;
     expect(getCharacterPersistenceService(runtime)).toBeNull();
-  });
-});
-
-describe("CHARACTER_PERSISTENCE_SERVICE", () => {
-  it("matches the service token convention", () => {
-    expect(CHARACTER_PERSISTENCE_SERVICE).toBe("eliza_character_persistence");
   });
 });

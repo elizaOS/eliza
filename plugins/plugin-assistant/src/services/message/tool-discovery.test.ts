@@ -1,10 +1,9 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -426,10 +425,10 @@ describe("planner tool discovery", () => {
   it.each(["USER", "GUEST"] as const)(
     "admits observed document hints through canonical role gates for %s",
     async (role) => {
-      const actualRuntime = new AgentRuntime({
+      const actualRuntime = createSQLiteTestRuntime({
         plugins: [createAssistantPlugin()],
         character: { name: "Document admission", bio: "test" },
-        adapter: new InMemoryDatabaseAdapter(),
+
         logLevel: "fatal",
       });
       actualRuntime.actions.length = 0;
@@ -695,10 +694,10 @@ describe("planner tool discovery", () => {
   ] as const)(
     "re-admits a requested domain with canonical gates for $role (reference=$deferNameIndex)",
     async ({ role, deferNameIndex }) => {
-      const actualRuntime = new AgentRuntime({
+      const actualRuntime = createSQLiteTestRuntime({
         plugins: [createAssistantPlugin()],
         character: { name: "Discovery gates", bio: "test" },
-        adapter: new InMemoryDatabaseAdapter(),
+
         logLevel: "fatal",
       });
       actualRuntime.actions.length = 0;

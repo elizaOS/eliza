@@ -1,0 +1,70 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	set -eu; \
+	debian/validate-user-units; \
+	for executable in eliza-agent eliza-desktop eliza-doctor; do \
+		test -f "payload/bin/$$executable"; \
+		test ! -L "payload/bin/$$executable"; \
+		test -x "payload/bin/$$executable"; \
+	done; \
+	test -s upstream/desktop-artifact-manifest.json; \
+	test -s upstream/desktop-artifact-manifest.json.sig; \
+	test -s upstream/desktop-signing-public.key; \
+	desktop-file-validate debian/ai.elizaos.app.desktop; \
+	appstreamcli validate --no-net debian/ai.elizaos.app.metainfo.xml; \
+	readelf -h payload/bin/eliza-desktop >/dev/null
+
+override_dh_auto_install:
+	set -eu; \
+	install -d -m 0755 debian/elizaos-app/usr/lib/elizaos; \
+	cp -a payload/. debian/elizaos-app/usr/lib/elizaos/; \
+	for executable in eliza-agent eliza-desktop eliza-doctor eliza-autostart; do \
+		install -D -m 0755 "debian/$$executable" \
+			"debian/elizaos-app/usr/bin/$$executable"; \
+	done
+	install -D -m 0644 debian/elizaos-agent.service \
+		debian/elizaos-app/usr/lib/systemd/user/elizaos-agent.service
+	install -D -m 0644 debian/elizaos-desktop.service \
+		debian/elizaos-app/usr/lib/systemd/user/elizaos-desktop.service
+	install -D -m 0644 debian/elizaos-session.target \
+		debian/elizaos-app/usr/lib/systemd/user/elizaos-session.target
+	install -D -m 0644 debian/80-elizaos.preset \
+		debian/elizaos-app/usr/lib/systemd/user-preset/80-elizaos.preset
+	install -D -m 0644 debian/ai.elizaos.app.desktop \
+		debian/elizaos-app/usr/share/applications/ai.elizaos.app.desktop
+	install -D -m 0644 debian/ai.elizaos.app.metainfo.xml \
+		debian/elizaos-app/usr/share/metainfo/ai.elizaos.app.metainfo.xml
+	install -D -m 0644 debian/elizaos-icon.svg \
+		debian/elizaos-app/usr/share/icons/hicolor/scalable/apps/ai.elizaos.app.svg
+	install -D -m 0644 upstream/desktop-artifact-manifest.json \
+		debian/elizaos-app/usr/share/elizaos/desktop-artifact-manifest.json
+	install -D -m 0644 upstream/desktop-artifact-manifest.json.sig \
+		debian/elizaos-app/usr/share/elizaos/desktop-artifact-manifest.json.sig
+	install -D -m 0644 upstream/desktop-signing-public.key \
+		debian/elizaos-app/usr/share/elizaos/desktop-signing-public.key
+
+override_dh_auto_test:
+	debian/validate-user-units
+	desktop-file-validate debian/ai.elizaos.app.desktop
+	appstreamcli validate --no-net debian/ai.elizaos.app.metainfo.xml
+	readelf -h payload/bin/eliza-desktop >/dev/null
+
+# Vanilla distributions require an explicit desktop-owner choice. Do not let
+# debhelper enable or start user units from package maintainer scripts.
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable
+
+# The upstream archive signature authenticates the exact executable bytes.
+# Debian packaging must not rewrite those native payloads after verification.
+override_dh_strip:
+	true
+
+override_dh_dwz:
+	true
+
+override_dh_auto_clean:
+	dh_auto_clean

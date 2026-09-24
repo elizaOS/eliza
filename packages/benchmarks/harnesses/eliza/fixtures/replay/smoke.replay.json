@@ -1,0 +1,28 @@
+{
+  "events": [
+    {
+      "kind": "llm",
+      "ts": "2026-01-01T00:00:00Z",
+      "llm": {
+        "model": "openai/gpt-oss-120b",
+        "prompt_tokens": 10,
+        "completion_tokens": 5
+      }
+    },
+    {
+      "kind": "decision",
+      "ts": "2026-01-01T00:00:01Z",
+      "decision_type": "reply"
+    },
+    {
+      "kind": "tool",
+      "ts": "2026-01-01T00:00:02Z",
+      "tool_call": {
+        "name": "REPLY"
+      }
+    }
+  ],
+  "outcome": {
+    "success": true
+  }
+}

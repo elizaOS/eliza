@@ -1,5 +1,5 @@
 /** Resolve localhost CLI credentials through the real Cloud account authority. */
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import {
   readStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,

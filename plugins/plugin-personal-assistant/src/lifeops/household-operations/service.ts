@@ -14,7 +14,7 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type { Relationship } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { isHouseholdRole } from "../household/types.js";

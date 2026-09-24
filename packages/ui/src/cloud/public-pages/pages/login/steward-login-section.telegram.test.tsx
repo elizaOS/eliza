@@ -22,7 +22,7 @@ const harness = vi.hoisted(() => ({
   storedToken: null as string | null,
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getSession() {
       return null;

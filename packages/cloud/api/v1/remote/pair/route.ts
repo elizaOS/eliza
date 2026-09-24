@@ -20,7 +20,7 @@ import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { Hono } from "hono";
 import {
   deriveRemotePairingCodeVerifier,

@@ -1,91 +1,85 @@
 {
-	"name": "@elizaos/core",
-	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
-	"homepage": "https://github.com/elizaOS/eliza",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/elizaOS/eliza.git",
-		"directory": "packages/core"
-	},
-	"keywords": [
-		"elizaos",
-		"agent",
-		"runtime",
-		"ai",
-		"llm",
-		"plugins"
-	],
-	"engines": {
-		"node": ">=24.0.0"
-	},
-	"type": "module",
-	"main": "./dist/index.js",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"sideEffects": true,
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"scripts": {
-		"prepublishOnly": "bun run build",
-		"build": "bun run build.ts",
-		"build:watch": "bun run build.ts --watch",
-		"dev": "bun run build:watch",
-		"clean": "node ../scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
-		"perf:providers": "bun run scripts/provider-latency-report.ts",
-		"perf:settings": "bun run scripts/perf-settings.ts",
-		"test": "node ../scripts/run-vitest.mjs run",
-		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",
-		"test:e2e": "npx playwright test",
-		"test:e2e:smoke": "node scripts/run-e2e-smoke.mjs",
-		"test:watch": "node ../scripts/run-vitest.mjs",
-		"lint": "bunx @biomejs/biome check --write ./src",
-		"lint:check": "bunx @biomejs/biome check ./src",
-		"typecheck": "tsc --noEmit -p ./tsconfig.json",
-		"format": "bunx @biomejs/biome format --write ./src",
-		"format:check": "bunx @biomejs/biome format ./src"
-	},
-	"author": "elizaOS",
-	"license": "MIT",
-	"devDependencies": {
-		"@playwright/test": "^1.63.0",
-		"@types/bun": "1.3.14",
-		"@types/node": "^25.0.3",
-		"@vitest/coverage-v8": "^5.0.1",
-		"@typescript/native": "npm:typescript@^7.0.2",
-		"typescript": "^6.0.3",
-		"vitest": "^5.0.1",
-		"tsup": "^8.5.1",
-		"dotenv": "^17.2.3",
-		"@elizaos/prompts": "workspace:*"
-	},
-	"dependencies": {
-		"zod": "^4.6.5",
-		"adze": "^2.2.5",
-		"@elizaos/common": "workspace:*"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
-	"elizaos": {
-		"scripts": {
-			"coreBuild": true,
-			"buildOnInstall": {
-				"sentinel": "dist/index.js",
-				"order": 3
-			},
-			"testLanes": [
-				"server"
-			]
-		}
-	}
+  "name": "@elizaos/core",
+  "version": "2.0.3-beta.7",
+  "description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "elizaos",
+    "agent",
+    "runtime",
+    "ai",
+    "llm",
+    "plugins"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepublishOnly": "bun run build",
+    "build": "bun run build.ts",
+    "build:watch": "bun run build.ts --watch",
+    "dev": "bun run build:watch",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
+    "perf:providers": "bun run scripts/provider-latency-report.ts",
+    "perf:settings": "bun run scripts/perf-settings.ts",
+    "test": "node ../scripts/run-vitest.mjs run",
+    "test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",
+    "test:e2e": "npx playwright test",
+    "test:watch": "node ../scripts/run-vitest.mjs",
+    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint:check": "bunx @biomejs/biome check ./src",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "format": "bunx @biomejs/biome format --write ./src",
+    "format:check": "bunx @biomejs/biome format ./src"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "1.4.2",
+    "@types/node": "^25.0.3",
+    "@vitest/coverage-v8": "^5.0.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
+    "tsup": "^8.5.1",
+    "dotenv": "^17.2.3"
+  },
+  "dependencies": {
+    "zod": "^4.6.5",
+    "adze": "^2.2.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "buildOnInstall": {},
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

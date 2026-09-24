@@ -31,7 +31,6 @@ import {
 	PermissionsBitField,
 	type TextChannel,
 } from "discord.js";
-import { registerCatalogSlashCommands } from "./catalog-commands";
 import type { ICompatRuntime } from "./compat";
 import {
 	buildDiscordEntityMetadata,
@@ -601,11 +600,6 @@ export async function onReady(
 			await service.registerSlashCommands(params.commands);
 		},
 	);
-	// Seed the universal command catalog into the in-process registry before the
-	// built-in registration reads it, so catalog + built-in commands ship in a
-	// single DISCORD_REGISTER_COMMANDS emission. Built-in names always win the
-	// dedupe inside registerCatalogSlashCommands, preserving existing behavior.
-	registerCatalogSlashCommands(service.runtime);
 	await registerBuiltinSlashCommands(service.runtime);
 
 	const auditLogSettingForInvite = service.runtime.getSetting(

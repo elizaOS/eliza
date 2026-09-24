@@ -15,9 +15,13 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: /^@elizaos\/common$/,
-				replacement: new URL("../common/src/index.ts", import.meta.url)
-					.pathname,
+				find: /^@elizaos\/plugin-sqlite$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"plugins",
+					"plugin-sqlite",
+					"index.ts",
+				),
 			},
 			{
 				find: /^@elizaos\/core$/,
@@ -75,7 +79,7 @@ export default defineConfig({
 			// run-all-tests.mjs prints a named skip accounting. The unguarded
 			// live/real files stay excluded in every lane.
 			...(process.env.VITEST_LANE === "post-merge"
-				? ["src/__tests__/read-attachment-action.live.test.ts"]
+				? []
 				: ["**/*.live.test.*", "**/*.real.test.*"]),
 			// Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
 			"e2e/**",

@@ -8,7 +8,7 @@ import {
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
   tierBundleSlug,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import {
   assertAospModelDownloadSize,
   bundleSlugFromModelName,

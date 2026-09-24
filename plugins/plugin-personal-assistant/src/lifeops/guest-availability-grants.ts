@@ -14,7 +14,7 @@ import {
   type CalendarGuestAvailabilityProvider,
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import type { Entity, EntityAttribute, EntityIdentity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {

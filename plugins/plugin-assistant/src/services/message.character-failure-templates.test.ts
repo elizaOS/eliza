@@ -18,8 +18,8 @@
  * what a connector would actually post to the channel.
  */
 
-import type { CharacterFailureTemplates } from "@elizaos/shared/contracts/first-run-options";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import type { CharacterFailureTemplates } from "@elizaos/shared";
+import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";
@@ -204,7 +204,7 @@ async function runTurn(
 ): Promise<string[]> {
   const runtime = makeFailingRuntime(failure, options);
   const deliveries: Content[] = [];
-  await new DefaultMessageService().handleMessage(
+  const result = await new DefaultMessageService().handleMessage(
     runtime,
     makeMessage(),
     async (content) => {
@@ -212,6 +212,7 @@ async function runTurn(
       return [];
     },
   );
+  expect(result.outcome.status).toBe("failed");
   return deliveries
     .map((content) => (typeof content.text === "string" ? content.text : ""))
     .filter((text) => text.trim().length > 0);

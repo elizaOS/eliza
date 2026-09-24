@@ -28,7 +28,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { crc32 } from "node:zlib";
 
-const BUN_VERSION = "1.3.14";
+const BUN_VERSION = "1.4.2";
 const ZIP_NAME = "bun.zip";
 const DEFAULT_ATTEMPTS = 6;
 

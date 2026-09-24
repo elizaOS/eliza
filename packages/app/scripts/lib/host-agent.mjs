@@ -262,8 +262,8 @@ export async function startDeviceE2eHostAgent({
   log = null,
   command = process.execPath,
   args = [
-    path.join(repoRoot, "packages/app-core/scripts/run-node-tsx.mjs"),
-    path.join(repoRoot, "packages/app-core/scripts/serve-real-local-agent.ts"),
+    path.join(repoRoot, "packages/app/scripts/run-node-tsx.mjs"),
+    path.join(repoRoot, "packages/app/scripts/serve-real-local-agent.ts"),
   ],
   env = process.env,
   pairingDisabled = true,

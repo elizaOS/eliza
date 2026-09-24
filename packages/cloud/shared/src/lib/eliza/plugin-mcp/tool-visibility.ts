@@ -4,7 +4,7 @@
  * Tier 2 (discoverable): Only found via SEARCH_ACTIONS using BM25.
  */
 
-import { toActionName } from "./utils/action-naming";
+import { toActionName } from "@elizaos/shared";
 
 /**
  * Map of provider -> list of crucial tool action names.

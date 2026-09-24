@@ -7,7 +7,7 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   type Entity,
   type EntityAttribute,

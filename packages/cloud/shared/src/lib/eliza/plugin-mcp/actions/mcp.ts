@@ -3,20 +3,19 @@
 // search_actions, list_connections. The local plugin-mcp parent additionally
 // handles call_tool — that op is unavailable in the cloud runtime.
 
-import { type Memory } from "@elizaos/common";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
+  type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState, resourceSelectionTemplate } from "@elizaos/shared";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
-import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServerInfo } from "../types";
 import { handleMcpError } from "../utils/error";
 import { checkMcpOAuthAccess } from "../utils/mcp";

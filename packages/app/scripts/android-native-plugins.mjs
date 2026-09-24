@@ -187,7 +187,7 @@ async function main() {
       let build;
       try {
         build = run(
-          path.join(root, "packages/app-core/platforms/android/gradlew"),
+          path.join(root, "packages/app/platforms/android/gradlew"),
           [
             "-p",
             "packages/app/scripts/android-native-plugins-gradle",

@@ -47,7 +47,7 @@
  * added here when they ship so the doc stays complete.
  */
 
-import type { SurfaceIsolationLevel } from "@elizaos/common";
+import type { SurfaceIsolationLevel } from "@elizaos/core";
 
 /** A documented isolation assignment for a family of surfaces. */
 export interface SurfaceIsolationEntry {

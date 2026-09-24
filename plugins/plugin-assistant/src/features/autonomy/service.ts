@@ -25,14 +25,14 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { runAutonomyPostResponse } from "./execution-facade";
 import {
   autonomyContinuousContinueTemplate,
   autonomyContinuousFirstTemplate,
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
-} from "@elizaos/prompts";
-import { v4 as uuidv4 } from "uuid";
-import { runAutonomyPostResponse } from "./execution-facade";
+} from "./prompts.js";
 import type { AutonomyStatus } from "./types.ts";
 
 /**

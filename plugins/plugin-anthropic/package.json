@@ -12,14 +12,9 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": "./index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./endpoint-config": {
-      "types": "./dist/endpoint-config.d.ts",
-      "eliza-source": "./utils/config.ts",
-      "import": "./dist/endpoint-config.js",
-      "default": "./dist/endpoint-config.js"
     },
     "./package.json": "./package.json"
   },
@@ -50,7 +45,7 @@
     "@biomejs/biome": "2.5.14",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1",
@@ -104,12 +99,6 @@
         "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
         "required": false,
         "default": false,
-        "sensitive": false
-      },
-      "ANTHROPIC_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for Anthropic requests (no secrets in the client).",
-        "required": false,
         "sensitive": false
       }
     }

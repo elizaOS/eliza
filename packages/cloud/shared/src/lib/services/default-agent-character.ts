@@ -6,7 +6,7 @@
  * examples accepted by the character API.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
 
 /**

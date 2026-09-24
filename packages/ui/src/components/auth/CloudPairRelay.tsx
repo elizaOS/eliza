@@ -5,22 +5,20 @@
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
   type CloudPairRelaySession,
-  cloudPairTokenKeyForAgent,
-  parseCloudPairRelaySession,
-} from "@elizaos/shared/contracts";
-import {
   classifyElizaHostname,
+  cloudPairTokenKeyForAgent,
   ELIZA_DOMAIN_CONTRACTS,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud";
+  parseCloudPairRelaySession,
+  setElizaApiToken,
+} from "@elizaos/shared";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
 } from "../../utils/cloud-agent-base";
-import { setElizaApiToken } from "../../utils/eliza-globals";
 import { Button } from "../ui/button";
 
 export { cloudPairTokenKeyForAgent };

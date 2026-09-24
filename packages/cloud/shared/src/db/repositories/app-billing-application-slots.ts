@@ -1,6 +1,6 @@
 /** Resolves explicit native product selections against current registration, purchaser and developer billing authority. */
 import type { AppBillingApplicationProduct } from "@elizaos/cloud-sdk/app-billing";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
 import { writeTransaction } from "../helpers";
 import { appBillingAccounts, appBillingScopes, billingMerchants } from "../schemas/app-billing";

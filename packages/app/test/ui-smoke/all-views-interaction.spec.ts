@@ -689,24 +689,6 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
-
-  await page.route("**/api/pendant/sessions/current", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: false,
-        error: {
-          code: "not_found",
-          message: "No active pendant session was found",
-        },
-      }),
-    });
-  });
 }
 
 test.describe("bounded built-in interaction activity smoke", () => {

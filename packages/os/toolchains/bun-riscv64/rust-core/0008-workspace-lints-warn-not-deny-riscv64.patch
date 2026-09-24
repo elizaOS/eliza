@@ -1,0 +1,75 @@
+Subject: [PATCH] riscv64 Rust-core bun: demote warnings-as-errors deny->warn for riscv64
+
+bun's root Cargo.toml [workspace.lints.rust] sets `warnings = "deny"` plus
+dead_code / unreachable_pub / the unused_* + unreachable_* family to "deny". On
+the riscv64gc-unknown-linux-musl cross-build (a target upstream does not
+compile) arch-gated code legitimately leaves items unused on riscv64 — e.g.
+`bun_core::debug::PC_OFFSET` is only read by `return_address()`'s
+`#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]` arm — and the
+build fails:
+
+    error: constant `PC_OFFSET` is never used   (src/bun_core/debug.rs:269)
+    = note: `-D dead-code` implied by `-D warnings`
+
+Demoting only the per-lint family to "warn" is NOT enough: the `warnings` group
+at "deny" re-escalates them (the group override beats the per-lint priority in
+this toolchain, contrary to the block's own comment). So demote the `warnings`
+group itself to "warn" as well. These are true for the lint but false for code
+quality (the items ARE used on the supported arches); rather than scatter
+#[cfg]/#[allow] across dozens of upstream sites, relax warnings-as-errors for
+the riscv64 build tree. Warnings are still printed. Off-riscv64 builds use
+upstream prebuilts and never see this patched tree, so their warnings-as-errors
+discipline is unaffected.
+
+diff --git a/Cargo.toml b/Cargo.toml
+index 99eac8be..146aec19 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -184,7 +184,12 @@ strip = "symbols"
+ # Every rustc warning is an error. Individual lints below can override this
+ # back to "warn" (their priority 0 beats the group's -1) where a warning level
+ # is intentional.
+-warnings = { level = "deny", priority = -1 }
++# riscv64 cross-build (bun-riscv64 rust-core port): demoted deny->warn. The
++# `warnings` group at deny escalates the per-arch dead_code / unused_* that the
++# riscv64 target legitimately produces (arch-gated code unused on the non-built
++# arch), overriding the per-lint "warn" below. Upstream's supported arches keep
++# warnings-as-errors; this patched tree is only ever built for riscv64.
++warnings = { level = "warn", priority = -1 }
+ # `bun_asan` is set via RUSTFLAGS (`--cfg=bun_asan` + `--check-cfg=cfg(bun_asan)`)
+ # by scripts/build/rust.ts for asan builds; register it here so a plain
+ # `cargo build` / `cargo check` (without those flags) doesn't warn.
+@@ -194,20 +199,19 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bun_asan)'] }
+ # there is no linker flag to suppress it. The lint already exempts itself
+ # from `-D warnings`, so this only silences the noise.
+ linker_messages = "allow"
+-dead_code = "deny"
+-# Every crate in this workspace is an internal implementation detail of one
+-# binary, so `pub` is a claim that *another crate* imports the item. If it
+-# doesn't, write `pub(crate)` — that keeps the item under `dead_code` analysis
+-# instead of being exempted as an external API root. Macro-generated items that
+-# must stay `pub` carry `#[allow(unreachable_pub)]` at the expansion site.
+-unreachable_pub = "deny"
+-unused_imports = "deny"
+-unused_variables = "deny"
+-unused_mut = "deny"
+-unused_assignments = "deny"
+-unused_macros = "deny"
+-unreachable_code = "deny"
+-unreachable_patterns = "deny"
++# riscv64 cross-build: the arch-sensitive family is "warn" (not "deny") — see the
++# `warnings` note above. Arch-gated code (#[cfg(any(x86_64, aarch64))]) leaves
++# these items unused on riscv64; that is true for the lint but false for code
++# quality (the items ARE used on the supported arches).
++dead_code = "warn"
++unreachable_pub = "warn"
++unused_imports = "warn"
++unused_variables = "warn"
++unused_mut = "warn"
++unused_assignments = "warn"
++unused_macros = "warn"
++unreachable_code = "warn"
++unreachable_patterns = "warn"
+
+ [workspace.lints.clippy]
+ # == provenance-safe pointer casts ==

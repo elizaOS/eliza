@@ -90,9 +90,7 @@ if (!GATE_SATISFIED) {
     ...(LIVE_ENABLED ? [] : ["ELIZA_LIVE_DOMAIN_PURCHASE=1"]),
     ...(BASE_URL ? [] : ["ELIZA_LIVE_DOMAIN_BASE_URL"]),
     ...(API_KEY ? [] : ["CLOUD_E2E_API_KEY"]),
-    ...(DEPLOY_DOCKERFILE
-      ? []
-      : ["ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE"]),
+    ...(DEPLOY_DOCKERFILE ? [] : ["ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE"]),
   ];
   // Loud, honest skip — a reader of the run output sees exactly what to set.
   console.log(

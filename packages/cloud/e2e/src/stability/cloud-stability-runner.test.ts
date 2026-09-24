@@ -4,8 +4,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createBundle, ingestNamedSilo, verifyBundle } from "@elizaos/evidence";
-import type { ScenarioStabilityExecutionAdapter } from "@elizaos/scenario-runner";
+import {
+  createBundle,
+  ingestNamedSilo,
+  verifyBundle,
+} from "@elizaos/testing/evidence";
+import type { ScenarioStabilityExecutionAdapter } from "@elizaos/testing/scenario-runner";
 import { authorityChildEnvironment } from "./cloud-stability-environment.ts";
 import {
   type CloudStabilityManifest,

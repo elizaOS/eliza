@@ -4,7 +4,7 @@ import type {
   AppBillingMembershipChange,
   AppBillingMembershipSnapshot,
 } from "@elizaos/cloud-sdk/app-billing-membership";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "../../db/client";

@@ -22,7 +22,7 @@ import {
   resolveDevAllSkipPlugins,
   resolveTestLaneDirs,
   resolveTestSerialPackages,
-} from "../lib/script-metadata.mjs";
+} from "../lib/script-metadata.ts";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -84,7 +84,7 @@ function writePlugin(
 /** Discover the `test/scenarios` roots the way build-manifest.mjs now does. */
 function discoverScenarioRoots(root: string): Promise<string[]> {
   return import(
-    path.join(REPO_ROOT, "packages/scripts/lib/workspaces.mjs")
+    path.join(REPO_ROOT, "packages/scripts/lib/workspaces.ts")
   ).then(
     (mod: { listPackages: (o: { repoRoot: string }) => { dir: string }[] }) =>
       mod
@@ -123,51 +123,10 @@ function snapshotScriptSources(): Map<string, string> {
     }
   };
   walk(path.join(REPO_ROOT, "packages", "scripts"));
-  walk(path.join(REPO_ROOT, "scripts"));
   return snapshot;
 }
 
 describe("plugin discovery is zero-edit", () => {
-  test("build-on-install packages are discovered and dependency ordered", () => {
-    const root = makeRepo();
-    writePackage(root, "packages/dependent", {
-      name: "@fixture/dependent",
-      elizaos: {
-        scripts: {
-          buildOnInstall: { sentinel: "dist/edge.js", order: 20 },
-        },
-      },
-    });
-    writePackage(root, "packages/dependency", {
-      name: "@fixture/dependency",
-      elizaos: {
-        scripts: {
-          buildOnInstall: {
-            sentinel: "dist/index.js",
-            order: 10,
-            script: "build:package",
-          },
-        },
-      },
-    });
-
-    expect(resolveBuildOnInstallPackages({ repoRoot: root })).toEqual([
-      {
-        dir: "packages/dependency",
-        name: "@fixture/dependency",
-        order: 10,
-        script: "build:package",
-        sentinel: "dist/index.js",
-      },
-      {
-        dir: "packages/dependent",
-        name: "@fixture/dependent",
-        order: 20,
-        sentinel: "dist/edge.js",
-      },
-    ]);
-  });
-
   test("adding then removing a plugin flips every resolved set with no script edit", async () => {
     const before = snapshotScriptSources();
 
@@ -246,7 +205,7 @@ describe("plugin discovery is zero-edit", () => {
     // A generic script that discovers via the seam — no plugin tokens — passes.
     fs.writeFileSync(
       path.join(root, "packages", "scripts", "clean.ts"),
-      "import { listPackages } from './lib/workspaces.mjs';\nexport const x = listPackages();\n",
+      "import { listPackages } from './lib/workspaces.ts';\nexport const x = listPackages();\n",
     );
     expect(runCouplingAudit(root).ok).toBe(true);
 

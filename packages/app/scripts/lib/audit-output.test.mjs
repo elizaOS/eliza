@@ -12,7 +12,7 @@ describe("resolveAuditAppOutput", () => {
 
   it("resolves the default and an explicit artifact directory", () => {
     expect(resolveAuditAppOutput({ appDir, repoRoot })).toBe(
-      path.join(appDir, "aesthetic-audit-output"),
+      path.join(repoRoot, "test-results", "aesthetic-audit"),
     );
     expect(
       resolveAuditAppOutput({
@@ -22,7 +22,7 @@ describe("resolveAuditAppOutput", () => {
       }),
     ).toBe(path.join(appDir, "evidence/current"));
     expect(resolveAuditCloudOutput({ appDir, repoRoot })).toBe(
-      path.join(appDir, "aesthetic-audit-output-cloud"),
+      path.join(repoRoot, "test-results", "aesthetic-audit-cloud"),
     );
   });
 
@@ -30,6 +30,7 @@ describe("resolveAuditAppOutput", () => {
     for (const configured of [
       path.parse(appDir).root,
       path.dirname(repoRoot),
+      path.join(repoRoot, "test-results"),
       repoRoot,
       path.dirname(appDir),
       appDir,

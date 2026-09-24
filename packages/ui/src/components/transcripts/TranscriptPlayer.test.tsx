@@ -6,7 +6,7 @@
  * play/pause/scrub and the word-synced highlighting.
  */
 
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { TranscriptPlayer } from "./TranscriptPlayer";

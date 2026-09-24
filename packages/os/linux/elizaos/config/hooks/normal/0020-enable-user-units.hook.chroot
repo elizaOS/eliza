@@ -1,0 +1,9 @@
+#!/bin/sh
+# Install the one per-user desktop process into every graphical session.
+set -eu
+
+chmod 0755 /usr/local/lib/elizaos/first-boot.sh \
+           /usr/lib/elizaos/wait-agent-health.sh \
+           /usr/local/lib/elizaos/start-launcher
+
+systemctl --global enable elizaos-launcher.service

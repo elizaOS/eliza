@@ -21,7 +21,7 @@ import {
   readProjectRegistry,
   setActiveProject,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
  * bookkeeping (bookmark, createdAt) is intentionally not surfaced. */

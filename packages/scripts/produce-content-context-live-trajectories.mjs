@@ -8,13 +8,13 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
+import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
 import {
   CONTENT_CONTEXT_FAMILIES,
   CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION,
   CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION,
   contentContextCanonicalEvidenceSha256,
-} from "../corpus-tools/src/progressive-content-evidence.ts";
+} from "../testing/corpus/progressive-content-evidence.ts";
 import {
   createProgressiveContentProductionFactories,
   createProgressiveContentProductionTarget,

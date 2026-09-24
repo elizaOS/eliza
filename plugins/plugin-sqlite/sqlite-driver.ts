@@ -1,26 +1,17 @@
 /** Selects a pinned runtime's native SQLite driver behind the same synchronous SQL contract. */
 import { ElizaError } from "@elizaos/core";
 
-export type SqlValue = string | number | bigint | Uint8Array | null;
-export type SqlRow = Record<string, SqlValue>;
-export interface SqlStatement {
-  get(...values: SqlValue[]): SqlRow | undefined;
-  all(...values: SqlValue[]): SqlRow[];
-  run(...values: SqlValue[]): { changes: number | bigint };
-}
-export interface SqlDatabase {
-  exec(sql: string): void;
-  prepare(sql: string): SqlStatement;
-  close(): void;
-}
+import type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
+
+export type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
 
 export function assertSupportedRuntime(): void {
   const supported = process.versions.bun
-    ? process.versions.bun === "1.3.14"
+    ? process.versions.bun === "1.4.2"
     : process.versions.node === "24.15.0";
   if (!supported) {
     throw new ElizaError(
-      "Run SQLite storage with pinned Node 24.15.0 or Bun 1.3.14",
+      "Run SQLite storage with pinned Node 24.15.0 or Bun 1.4.2",
       {
         code: "SQLITE_RUNTIME_UNSUPPORTED",
       },
@@ -53,3 +44,9 @@ export async function openSqlite(path: string): Promise<SqlDatabase> {
     },
   };
 }
+
+export const nativeSQLiteDriver = {
+  supportsFileSystem: true,
+  assertSupportedRuntime,
+  open: openSqlite,
+};

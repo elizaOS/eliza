@@ -78,7 +78,7 @@ const repoRoot = path.resolve(appRoot, "..", "..");
 const iosEntitlementsRoot = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "platforms",
   "ios",
   "App",
@@ -511,7 +511,7 @@ async function main() {
         path.join(
           repoRoot,
           "packages",
-          "app-core",
+          "app",
           "scripts",
           "run-mobile-build.mjs",
         ),

@@ -249,29 +249,22 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-sql",
-    "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
     "@elizaos/plugin-telegram",
-    "@elizaos/plugin-whatsapp",
-    // Node-only edge-tts backend. app-core's runtime/ensure-text-to-speech-handler.ts
+    // Node-only edge-tts backend. app's runtime/ensure-text-to-speech-handler.ts
     // does `await import("@elizaos/plugin-edge-tts")`; the dist barrel pulls that
     // module into the client graph where it must be stubbed (no browser TTS path).
     "@elizaos/plugin-edge-tts",
     // The cloud plugin's runtime surface (cloud secrets, TTS routes,
-    // ElevenLabs key resolver) is server-only. The app-core dist barrel
+    // ElevenLabs key resolver) is server-only. The app dist barrel
     // re-exports symbols from it via api/server.js — stub the bare
     // specifier so rollup's static named-import scan succeeds.
     "@elizaos/plugin-elizacloud",
-    // Plugin registry owns server-side install/discovery HTTP handlers.
-    // app-core's browser reach-through re-exports api/server.ts, so the
-    // renderer must resolve the symbol surface without bundling the server
-    // registry package and its agent-only dependency graph.
-    "@elizaos/plugin-registry",
     // Vault is server/native-only; browser reaches it through optional
     // autofill paths and must not resolve the OS-keychain dependency graph.
-    "@elizaos/credentials/vault",
+    "@elizaos/auth/vault",
     // Native argon2 bindings (server-side password hashing in
-    // app-core/api/auth/passwords.ts). Pulled into the browser graph
+    // app/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
     // re-exported from argon2's own browser.js — also stub it so rollup
     // doesn't try to resolve a wasm shim package we don't ship.
@@ -523,7 +516,7 @@ export function nativeModuleStubPlugin(
 
       if (strippedId === "@napi-rs/keyring") {
         return [
-          "// Stub: real binding is native-only (@elizaos/credentials/vault master key / OS keychain).",
+          "// Stub: real binding is native-only (@elizaos/auth/vault master key / OS keychain).",
           "export class Entry {",
           "  constructor(_service, _account) {}",
           '  getPassword() { return ""; }',
@@ -625,7 +618,7 @@ export function nativeModuleStubPlugin(
         strippedId === "@node-rs/argon2-wasm32-wasi"
       ) {
         // Argon2 hashing is server-only; the renderer pulls in
-        // app-core's auth passwords module via the dist barrel re-export.
+        // app's auth passwords module via the dist barrel re-export.
         // The argon2 package's own browser.js re-exports from
         // `@node-rs/argon2-wasm32-wasi`, so stub both with the same shape.
         return [
@@ -638,7 +631,7 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/credentials/vault") {
+      if (strippedId === "@elizaos/auth/vault") {
         return [
           "const asyncNull = async () => null;",
           "const asyncFalse = async () => false;",
@@ -656,9 +649,9 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      // @elizaos/plugin-local-inference sub-paths used by app-core sources.
+      // @elizaos/plugin-local-inference sub-paths used by app sources.
       // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
-      // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
+      // app's `api/server.ts` and `runtime/eliza.ts` import named symbols
       // from `/routes`, `/runtime`, and `/services` at module top level. The
       // dist barrel pulls those imports into the renderer graph where Rollup
       // needs a static export shape to satisfy the named-import scan.
@@ -677,7 +670,7 @@ export function nativeModuleStubPlugin(
           // Server-only constants
           "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
           "export const EMBEDDING_PRESETS = {};",
-          // Server-only functions used by app-core/runtime/eliza.ts
+          // Server-only functions used by app/runtime/eliza.ts
           "export const detectEmbeddingPreset = noop;",
           "export const detectEmbeddingTier = noop;",
           "export const selectEmbeddingPresetFromHardware = noop;",
@@ -689,10 +682,10 @@ export function nativeModuleStubPlugin(
           "export const isEmbeddingWarmupReuseDisabled = () => true;",
           "export const shouldEnableMobileLocalInference = () => false;",
           "export const shouldWarmupLocalEmbeddingModel = () => false;",
-          // Server-only routes used by app-core/api/server.ts
+          // Server-only routes used by app/api/server.ts
           "export const handleLocalInferenceCompatRoutes = async () => false;",
           "export const handleLocalInferenceTtsRoute = async () => false;",
-          // Server-only services used by app-core/api/dev-compat-routes.ts +
+          // Server-only services used by app/api/dev-compat-routes.ts +
           // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
           // imported as a type/class). Provide minimal class stubs.
           "export const buildVoiceLatencyDevPayload = () => ({});",
@@ -724,7 +717,7 @@ export function nativeModuleStubPlugin(
       }
 
       if (strippedId === "@elizaos/plugin-elizacloud") {
-        // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
+        // Mirrors packages/app/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
         // Every server-only export resolves to a noop in the renderer; the
         // default export is a Proxy that swallows arbitrary property access
         // so any future call sites do not break the static analysis pass.
@@ -743,23 +736,6 @@ export function nativeModuleStubPlugin(
           "export const DEFAULT_CLOUD_CONFIG = { enabled: false };",
           "export class CloudApiError extends Error {}",
           "export class InsufficientCreditsError extends Error {}",
-          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
-        ].join("\n");
-      }
-
-      if (strippedId === "@elizaos/plugin-registry") {
-        return [
-          "const noop = () => undefined;",
-          "const asyncFalse = async () => false;",
-          "const emptyPluginList = () => ({ plugins: [], categories: [], installed: [] });",
-          "export const buildPluginListResponse = emptyPluginList;",
-          "export const handlePluginRoutes = asyncFalse;",
-          "export const handlePluginsCompatRoutes = asyncFalse;",
-          "export const installAndRestart = noop;",
-          "export const installPlugin = noop;",
-          "export const listInstalledPlugins = () => [];",
-          "export const uninstallAndRestart = noop;",
-          "export const uninstallPlugin = noop;",
           "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
         ].join("\n");
       }
@@ -802,7 +778,7 @@ export function nativeModuleStubPlugin(
       }
 
       // Capacitor native plugins — mobile-only, cloud builds stub them.
-      // Must export the exact named identifiers used in app-core sources.
+      // Must export the exact named identifiers used in app sources.
       if (capacitorNativeScopeRe.test(strippedId)) {
         const capPkg = strippedId.split("/").slice(0, 2).join("/");
         if (capPkg === "@capacitor/haptics") {

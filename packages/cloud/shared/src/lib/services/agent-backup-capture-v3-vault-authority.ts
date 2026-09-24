@@ -5,8 +5,8 @@
  * change restore lock ordering.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { orgKey } from "@elizaos/credentials/kms";
+import { orgKey } from "@elizaos/auth/kms";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { loadCurrentAgentVaultKeyAuthority } from "../../db/repositories/agent-vault-key-authority";

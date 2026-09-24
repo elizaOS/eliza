@@ -77,9 +77,12 @@ export type CacheScope =
  * runtime. The previous `(string & {})` escape — which let a gate name ANY
  * string and silently rank it 0 — is removed: a gate must name a real tier.
  */
-export type { RoleGate, RoleGateRole } from "@elizaos/common";
+export type {
+	RoleGate,
+	RoleGateRole,
+} from "../access-control/role-primitives.js";
 
-import type { RoleGate } from "@elizaos/common";
+import type { RoleGate } from "../access-control/role-primitives.js";
 
 export interface ContextGate {
 	/** Backward-compatible shorthand: any listed context may pass. */

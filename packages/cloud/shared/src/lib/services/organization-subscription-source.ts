@@ -1,5 +1,5 @@
 /** Validates that an infrastructure-only path cannot consume an app subscription or catalog. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 
 type OrganizationSubscription = BillingSubscription & {

@@ -1,5 +1,5 @@
 /** Centralizes MCP endpoint, SSE streaming, and operation-cost configuration. */
-import { parseNonNegativeInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseNonNegativeInteger } from "@elizaos/shared";
 
 /**
  * Request Timeout Configuration

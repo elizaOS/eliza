@@ -318,11 +318,11 @@ export function renderActiveViewContextBlock(
     "# Active View",
     `The user is looking at the "${view.viewLabel}" view (id: ${view.viewId}, ${view.viewType}${view.viewPath ? `, path ${view.viewPath}` : ""}).`,
   ];
-  // Turn-scoped acknowledgement of a just-happened switch (#8788): only on the
-  // immediately-following turn (freshness decays after 15s), so it never lingers.
+  // A recent switch is display context, not a request for a separate reply.
+  // Freshness decays after 15s so it cannot become persistent navigation intent.
   if (isActiveViewSwitchFresh(view)) {
     lines.push(
-      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""} — briefly acknowledge the switch in your reply before doing anything else.`,
+      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""}.`,
     );
   }
   lines.push(

@@ -5,18 +5,22 @@
  * without circular dependency issues.
  */
 
-import { isInferenceTraceId } from "@elizaos/common";
-import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
+  clearElizaApiBase,
+  DELTA_STREAM_PROTOCOL,
+  extractAssistantReplyText,
+  getElizaApiBase,
+  getElizaApiToken,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud";
-import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared/events/index";
-import { logger } from "@elizaos/shared/logger";
-import {
-  extractAssistantReplyText,
+  mergeStreamingText,
+  parseChatTerminalFailure,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+  setElizaApiBase,
   stripAssistantStageDirections,
-} from "@elizaos/shared/utils/assistant-text";
+} from "@elizaos/shared";
+import { isInferenceTraceId } from "@elizaos/shared/browser-contracts";
+import { logger } from "@elizaos/shared/logger";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -46,16 +50,6 @@ import {
   directCloudSharedAgentIdFromBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
-import {
-  clearElizaApiBase,
-  getElizaApiBase,
-  getElizaApiToken,
-  setElizaApiBase,
-} from "../utils/eliza-globals";
-import {
-  DELTA_STREAM_PROTOCOL,
-  mergeStreamingText,
-} from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "./auth/sessions";

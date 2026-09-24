@@ -71,12 +71,6 @@ export interface BuildPluginConfig {
    * re-exports would otherwise stay bare and fail to resolve for NodeNext
    * consumers. Default: false. */
   rewriteDistImports?: boolean;
-  /**
-   * Tolerate a failed `tsc` declaration emit (warn + continue with JS-only
-   * outputs) instead of aborting. Mirrors the per-package fallback some plugins
-   * carried; default false (fail loud).
-   */
-  dtsTolerant?: boolean;
   /** Declaration-alias shim files to write after tsc. */
   dtsShims?: readonly DtsShim[];
   /**
@@ -230,20 +224,10 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     console.log("📝 Generating TypeScript declarations…");
     const project = config.dtsProject;
     const emitDeclOnly = config.dtsEmitDeclarationOnly ?? false;
-    const run = emitDeclOnly
-      ? () =>
-          Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`
-      : () => Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
-    if (config.dtsTolerant) {
-      try {
-        await run();
-      } catch {
-        console.warn(
-          "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only.",
-        );
-      }
+    if (emitDeclOnly) {
+      await Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`;
     } else {
-      await run();
+      await Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
     }
   }
 

@@ -4,11 +4,11 @@
  * AgentRuntime, model registry, and in-memory adapter.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
-} from "@elizaos/testing/mock-runtime";
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ElizaError } from "../../../../../packages/core/src/errors.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -32,8 +32,9 @@ function embeddingFor(text: string): number[] {
 }
 
 async function createRealRuntime(): Promise<AgentRuntime> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", MOCK_AGENT_ID);
   await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(embeddingFor("").length);
   return new AgentRuntime({
     agentId: MOCK_AGENT_ID,
     character: {

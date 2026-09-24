@@ -31,7 +31,7 @@ test("source scenario child exits naturally with zero runtime leaks", async () =
         "--conditions=eliza-source",
         path.resolve(
           import.meta.dirname,
-          "../../scripts/stability-scenario-child.ts",
+          "../../../scripts/e2e/stability-scenario-child.ts",
         ),
         "run",
         path.resolve(import.meta.dirname, "fixtures/natural-exit.scenario.ts"),

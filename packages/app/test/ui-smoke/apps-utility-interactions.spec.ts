@@ -252,7 +252,9 @@ test("wallet inventory controls update visible deterministic state", async ({
     "Wallet DeFi tab",
   );
   await expect(walletSidebar.getByText("ETH / USDC Position")).toBeVisible();
-  await expect(walletSidebar.getByText("Uniswap V3 Liquidity Pool")).toBeVisible();
+  await expect(
+    walletSidebar.getByText("Uniswap V3 Liquidity Pool"),
+  ).toBeVisible();
 
   await clickRequired(
     walletSidebar.getByRole("tab", { name: "NFTs" }),
@@ -271,7 +273,10 @@ test("wallet inventory controls update visible deterministic state", async ({
     walletSidebar.getByRole("button", { name: "Manage USDC" }),
     "Wallet manage token action",
   );
-  await clickRequired(page.getByText("Hide token", { exact: true }), "Hide token");
+  await clickRequired(
+    page.getByText("Hide token", { exact: true }),
+    "Hide token",
+  );
   await expect(walletSidebar.getByText("USDC", { exact: true })).toHaveCount(0);
 
   await clickRequired(

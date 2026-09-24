@@ -45,13 +45,13 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
+import { runSharedToDedicatedUpgradeHandoff } from "@elizaos/ui/cloud/handoff/start-tier-upgrade";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 // Playwright spec marker: `test`/`expect` arrive via the shared fixtures
 // below, but the coverage gate classifies a changed *.spec.ts by grepping for
 // a DIRECT @playwright/test import — without one it would run this file under
 // `bun test`. Type-only and empty, so it costs nothing at runtime.
 import type {} from "@playwright/test";
-import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";

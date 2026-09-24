@@ -22,7 +22,7 @@
 # For linux/riscv64 (no upstream image — oven-sh/bun#6266, #21923), build a local
 # Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and pass
 # --build-arg BUN_BASE=<local-tag>.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 WORKDIR /app
@@ -39,10 +39,7 @@ ARG SERVICE_DIR
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY packages/cloud/sdk/package.json packages/cloud/sdk/
 COPY packages/cloud/services/_common/package.json packages/cloud/services/_common/
-COPY packages/common/package.json packages/common/
 COPY packages/core/package.json packages/core/
-COPY packages/prompts/package.json packages/prompts/
-COPY packages/retrieval/package.json packages/retrieval/
 COPY packages/shared/package.json packages/shared/
 COPY plugins/plugin-assistant/package.json plugins/plugin-assistant/
 COPY plugins/plugin-elizacloud/package.json plugins/plugin-elizacloud/
@@ -50,7 +47,7 @@ COPY plugins/plugin-openai/package.json plugins/plugin-openai/
 COPY plugins/plugin-sql/package.json plugins/plugin-sql/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
 # The headless host does not install test dependencies or optional UI peers.
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/sdk","packages/cloud/services/_common","packages/common","packages/core","packages/prompts","packages/retrieval","packages/shared","plugins/plugin-assistant","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-workflow"]}\n' > package.json \
+RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/sdk","packages/cloud/services/_common","packages/core","packages/shared","plugins/plugin-assistant","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-workflow"]}\n' > package.json \
     && bun -e 'const root = await Bun.file("package.json").json(); for (const dir of root.workspaces) { const path = `${dir}/package.json`; const manifest = await Bun.file(path).json(); delete manifest.devDependencies; for (const [name, meta] of Object.entries(manifest.peerDependenciesMeta ?? {})) { if (meta.optional) delete manifest.peerDependencies?.[name]; } await Bun.write(path, JSON.stringify(manifest)); }' \
     && bun install --production
 
@@ -69,10 +66,7 @@ RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cach
 COPY --from=deps /app/ ./
 COPY packages/cloud/sdk packages/cloud/sdk
 COPY packages/cloud/services/_common packages/cloud/services/_common
-COPY packages/common packages/common
 COPY packages/core packages/core
-COPY packages/prompts packages/prompts
-COPY packages/retrieval packages/retrieval
 COPY packages/shared packages/shared
 COPY plugins/plugin-assistant plugins/plugin-assistant
 COPY plugins/plugin-elizacloud plugins/plugin-elizacloud

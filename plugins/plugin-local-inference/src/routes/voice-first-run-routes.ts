@@ -31,11 +31,7 @@ import crypto from "node:crypto";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime";
 import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings";
 import { VoiceProfileStore } from "../services/voice/profile-store";
@@ -203,7 +199,7 @@ async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
 	if (!libPath) {
 		throw new SpeakerEncoderUnavailableError(
 			"library-missing",
-			"[voice-first-run] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+			"[voice-first-run] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.mjs.",
 		);
 	}
 	const ffi = loadElizaInferenceFfi(libPath);

@@ -56,13 +56,13 @@ export default defineConfig({
 		],
 	},
 	test: {
-		// scripts/ holds the post-build dist probe and its unit test as .mjs so
+		// packages/scripts/plugins/plugin-elizacloud holds the post-build dist probe and its unit test as .mjs so
 		// they run under plain Node during `bun run build`; the glob must include
 		// them or the NODE_OPTIONS-stripping guarantee regresses undetected.
 		include: [
 			"__tests__/**/*.test.ts",
 			"src/**/*.test.{ts,tsx}",
-			"scripts/**/*.test.mjs",
+			"../../packages/scripts/plugins/plugin-elizacloud/**/*.test.mjs",
 		],
 		// dist-packaging drives the real build.ts, which is bun-only
 		// (import.meta.dir); it runs under `bun test` in the cloud sweep and can

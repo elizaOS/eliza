@@ -4,7 +4,7 @@
  * warm, non-clinical, owner-mediated, and does not fabricate an automated
  * crisis-guard side effect.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

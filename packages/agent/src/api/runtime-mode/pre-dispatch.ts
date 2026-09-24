@@ -7,9 +7,9 @@
  * owner.
  *
  * Both the bare `@elizaos/agent` server (`api/server.ts` request dispatch) and
- * the `@elizaos/app-core` compat pipeline call these, so the mode contract
+ * the `@elizaos/app` compat pipeline call these, so the mode contract
  * holds no matter which host binds the port — the gate used to live only in
- * app-core, leaving `bun run start` (the bare agent) ungated.
+ * app, leaving `bun run start` (the bare agent) ungated.
  */
 
 import type http from "node:http";

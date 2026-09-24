@@ -24,17 +24,19 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ChannelKeyError,
-  SCHEDULED_TASK_EDIT_READONLY_KEYS,
-  type ScheduledTask,
   type ScheduledTaskFireResult,
   type ScheduledTaskRunnerHandle,
-} from "../scheduled-task/index.js";
+} from "../scheduled-task/runner.js";
 import {
   scheduledTaskEditPayloadSchema,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSnoozePayloadSchema,
 } from "../scheduled-task/schema.js";
+import {
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
+  type ScheduledTask,
+} from "../scheduled-task/types.js";
 import { ScheduledTaskValidationError } from "../scheduled-task/validation.js";
 
 /**

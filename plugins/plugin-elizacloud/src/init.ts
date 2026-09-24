@@ -1,6 +1,7 @@
+/** Validates configured host credentials against the Cloud model endpoint. */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { resolveCloudApiKeysUrl } from "./cloud/base-url";
-import { getApiKey, getBaseURL, isBrowser } from "./utils/config";
+import { getApiKey, getBaseURL } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 
 export function initializeOpenAI(
@@ -9,7 +10,7 @@ export function initializeOpenAI(
 ): void {
   void (async () => {
     try {
-      if (!getApiKey(runtime) && !isBrowser()) {
+      if (!getApiKey(runtime)) {
         logger.warn(
           "ELIZAOS_CLOUD_API_KEY is not set in environment - ElizaOS Cloud functionality will be limited"
         );

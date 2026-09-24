@@ -4,9 +4,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { createHash, stringToUuid } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 /** Exercises immutable session-summary rollover, CAS, and fail-closed traversal. */
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../plugin-inmemorydb/runtime.ts";
 import {
   loadSessionSummaryContentLedger,
   mergeSessionSummaryMetadata,
@@ -55,7 +55,7 @@ function manifest(
   };
 }
 function harness() {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   const runtime = {
     agentId,
     adapter,
@@ -78,7 +78,7 @@ async function publish(
   return envelope;
 }
 async function mutateFirstShard(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   runtime: IAgentRuntime,
   envelope: Awaited<ReturnType<typeof publish>>,
   mutate: (shard: Record<string, unknown>, shardId: UUID) => void,

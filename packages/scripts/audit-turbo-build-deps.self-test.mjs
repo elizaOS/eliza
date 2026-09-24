@@ -1,6 +1,10 @@
 #!/usr/bin/env node
-// Exercises audit turbo build deps.self test automation behavior with deterministic script fixtures.
+/**
+ * Exercises task validation and workspace cycles through the real audit CLI
+ * against deterministic temporary monorepos.
+ */
 
+import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -148,6 +152,40 @@ try {
   if (passResult.status !== 0) {
     process.stderr.write(passResult.stderr);
     process.exit(passResult.status ?? 1);
+  }
+
+  writeJson(path.join(tempRoot, "packages/bar/package.json"), {
+    name: "@fixture/bar",
+    scripts: { build: "echo build" },
+    peerDependencies: { "@fixture/baz": "workspace:*" },
+  });
+  writeJson(path.join(tempRoot, "packages/baz/package.json"), {
+    name: "@fixture/baz",
+    scripts: { build: "echo build" },
+  });
+  for (const [task, dependency, valid] of [
+    ["typecheck", "baz", true],
+    ["typecheck", "missing", false],
+    ["build", "baz", false],
+  ]) {
+    writeJson(path.join(tempRoot, "turbo.json"), {
+      tasks: {
+        [`@fixture/foo#${task}`]: {
+          dependsOn: [`@fixture/${dependency}#build`],
+        },
+      },
+    });
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: tempRoot,
+      env: { ...process.env, AUDIT_TURBO_REPO_ROOT: tempRoot },
+      encoding: "utf8",
+    });
+    assert.equal(
+      result.status === 0,
+      valid,
+      `${result.stdout}\n${result.stderr}`,
+    );
+    if (!valid) assert.match(result.stderr, /phantom #build edge/);
   }
 
   console.log("audit-turbo-build-deps self-test passed");

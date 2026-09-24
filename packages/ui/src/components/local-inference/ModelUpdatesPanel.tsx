@@ -24,7 +24,7 @@ import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelId,
   type VoiceModelVersion,
-} from "@elizaos/shared/local-inference/voice-models";
+} from "@elizaos/shared";
 import { useId, useMemo } from "react";
 import {
   type TranslationContextValue,

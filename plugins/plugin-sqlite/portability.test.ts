@@ -48,7 +48,7 @@ it("moves complete state both directions and retains Bun transaction semantics",
     '"complete":true',
   );
   expect(child("bun", nodeFirst, "exercise")).toContain(
-    '"runtime":"bun-1.3.14"',
+    '"runtime":"bun-1.4.2"',
   );
   expect(child(process.execPath, nodeFirst, "verify")).toContain(
     '"complete":true',

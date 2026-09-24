@@ -46,11 +46,6 @@ const LAUNCHER_FALLBACK: OcrExpectation = {
   requireAny: ["Projects", "Calendar", "Automations"],
 };
 
-const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
-  requireAll: ["Views", "Refresh"],
-  requireAny: ["ready views", "gui ready"],
-};
-
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
   requireAll: [
     "View unavailable",
@@ -89,14 +84,6 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-stream": expected({
     requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
-  }),
-  "builtin-pendant-transcript": expected({
-    requireAll: ["Pendant Transcript"],
-    requireAny: [
-      "No transcript segments yet",
-      "Local offline cache",
-      "Connect",
-    ],
   }),
   "builtin-apps": expected({
     requireAll: ["Apps"],
@@ -305,18 +292,9 @@ export const VIEW_OCR_POLICIES = {
     ],
     forbid: ["Loading sessions", "unavailable"],
   }),
-  "plugin-finances-gui": expected({
-    requireAny: ["Balance", "Transactions", "Recurring"],
-    forbid: ["Loading"],
-  }),
   "plugin-goals-gui": expected({
     requireAny: ["Active", "needs a review", "paused"],
   }),
-  "plugin-lifeops-live-test-gui": exempt(
-    "unregistered-remote-bundle",
-    "The LifeOps live-test GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
-  ),
   "plugin-health-gui": expected({
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
@@ -343,15 +321,11 @@ export const VIEW_OCR_POLICIES = {
   "plugin-wallet-gui": expected({
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
   }),
-  "plugin-views-manager-gui": expected({
-    requireAll: ["Views", "Refresh"],
-    requireAny: ["ready views", "gui ready"],
-  }),
   "plugin-notes-gui": expected({
     requireAll: ["Launch checklist", "Follow up"],
     requireAny: ["Cloud agent", "demo recording"],
   }),
-  "plugin-task-coordinator-gui": expected({
+  "plugin-agent-orchestrator-tasks-gui": expected({
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
   }),
   "plugin-orchestrator-gui": expected({

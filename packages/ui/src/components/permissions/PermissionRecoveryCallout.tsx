@@ -6,8 +6,8 @@
  * web-flavored surfaces use the shared platform deep-link.
  */
 import { Capacitor } from "@capacitor/core";
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
-import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";
+import type { PermissionId } from "@elizaos/shared";
+import { openPermissionSettings } from "@elizaos/shared";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { cn } from "../../lib/utils";

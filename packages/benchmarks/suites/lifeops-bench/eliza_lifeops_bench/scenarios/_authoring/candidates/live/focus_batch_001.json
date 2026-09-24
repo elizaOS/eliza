@@ -1,0 +1,662 @@
+[
+  {
+    "id": "live.focus.slot_find_01",
+    "name": "Find a 90\u2011minute deep\u2011work slot tomorrow morning",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I need a solid 90\u2011minute block for writing tomorrow before lunch. I\u2019ll tell you which meetings are flexible if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal that the 10\u202fam meeting is non\u2011negotiable if pressed.",
+    "success_criteria": [
+      "Executor proposes at least one concrete 90\u2011minute window on 2026\u201105\u201111 before 12:30.",
+      "Executor asks which meetings can be moved before suggesting a slot.",
+      "Executor creates a calendar_event titled with \"deep work\" after persona acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 between 09:00 and 12:30 with title containing \"deep work\" or \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_02",
+    "name": "Set up a focus block with app blocks",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "i need a 2\u2011hour focus block tonight, block reddit and youtube, and mute notifications. ask before turning anything off.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will later mention that the phone must stay on for an alarm at 7\u202fam.",
+    "success_criteria": [
+      "Executor proposes a specific 2\u2011hour window on 2026\u201105\u201110 after 18:00.",
+      "Executor confirms before applying any app blocks.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for 2026\u201105\u201110 between 18:00 and 20:00 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_03",
+    "name": "Morning focus slot before first meeting",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "need a 1h focus slot before my first meeting tomorrow. give me bullet points of options.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will push back if slot starts before 08:00.",
+    "success_criteria": [
+      "Executor proposes at least one concrete 1\u2011hour window on 2026\u201105\u201111 starting at or after 08:00.",
+      "Executor presents options as bullet points.",
+      "Executor creates the focus event after persona selects a slot."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with start >=08:00 and duration 1h, title containing \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_04",
+    "name": "Evening deep\u2011work with phone silence",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "just set me up for a 3\u2011hour deep\u2011work block tonight, phone on silent, no apps. tell me what you\u2019ll do first.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will later say the alarm at 6\u202fam must stay audible.",
+    "success_criteria": [
+      "Executor outlines the steps (calendar event, phone silent) before taking any action.",
+      "Executor proposes a specific 3\u2011hour window on 2026\u201105\u201110 after 19:00.",
+      "Executor creates a calendar_event with title containing \"deep work\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 between 19:00 and 22:00 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_05",
+    "name": "Afternoon focus after lunch",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I want a 2\u2011hour focus period after lunch tomorrow to finish grant paperwork. I\u2019ll tell you about my kid\u2019s pickup if you need details.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will reveal that the kid\u2019s pickup is at 3\u202fpm and cannot be moved.",
+    "success_criteria": [
+      "Executor asks for the pickup time before suggesting a slot.",
+      "Executor proposes a concrete 2\u2011hour window on 2026\u201105\u201111 that ends before 15:00.",
+      "Executor creates a calendar_event titled with \"grant\" or \"focus\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226415:00 and duration 2h, title mentioning \"grant\" or \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_06",
+    "name": "Nighttime focus with smart\u2011home dim",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "need a 1.5\u2011hour focus block tonight, dim lights via smart\u2011home, and block Slack notifications. ask me before changing any device settings.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will later say the smart\u2011home schedule must stay for a 7\u202fam wake\u2011up routine.",
+    "success_criteria": [
+      "Executor confirms the exact time window on 2026\u201105\u201110 after 20:00.",
+      "Executor asks before adjusting smart\u2011home lighting.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for 2026\u201105\u201110 between 20:00 and 21:30 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_07",
+    "name": "Mid\u2011morning focus before client call",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Please schedule a 45\u2011minute deep\u2011work session tomorrow morning before my 10:30 client call. I\u2019ll disclose any hard constraints if you inquire.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will reveal that the 09:00 internal stand\u2011up cannot be moved.",
+    "success_criteria": [
+      "Executor asks whether the 09:00 stand\u2011up is flexible.",
+      "Executor proposes a concrete 45\u2011minute window on 2026\u201105\u201111 that ends before 10:30 and respects the stand\u2011up.",
+      "Executor creates a calendar_event titled with \"deep work\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with start \u226509:15 and end \u226410:30, duration 45m, title containing \"deep work\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_08",
+    "name": "Weekend focus with email auto\u2011reply",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I would like a 2\u2011hour focus block Saturday morning, and an auto\u2011reply for emails during that time. Confirm before setting the auto\u2011reply.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will later say the auto\u2011reply must mention a gardening activity.",
+    "success_criteria": [
+      "Executor proposes a specific Saturday morning window on 2026\u201105\u201113.",
+      "Executor confirms the auto\u2011reply content before creating it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_personal for 2026\u201105\u201113 with duration 2h and title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_09",
+    "name": "Late\u2011afternoon focus before gym",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I need a 1\u2011hour focus period tomorrow afternoon before I head to the gym at 6\u202fpm. I\u2019ll tell you about any health constraints if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will reveal that she must finish a stretching routine by 5:30\u202fpm.",
+    "success_criteria": [
+      "Executor asks about the stretching deadline before suggesting a slot.",
+      "Executor proposes a concrete 1\u2011hour window on 2026\u201105\u201111 that ends by 5:30.",
+      "Executor creates a calendar_event with title containing \"focus\" after persona confirms."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226417:30, duration 1h, title containing \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_10",
+    "name": "Morning focus with meditation prep",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Please arrange a 75\u2011minute focus block tomorrow morning, and schedule a 10\u2011minute meditation before it. Ask before altering any existing events.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will later say the meditation must start at 07:00 exactly.",
+    "success_criteria": [
+      "Executor confirms the meditation start time before proposing the focus slot.",
+      "Executor proposes a specific 75\u2011minute focus window on 2026\u201105\u201111 starting at 07:10 or later.",
+      "Executor creates two calendar_events: one for meditation, one for focus, after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for meditation on 2026\u201105\u201111 at 07:00\u201107:10, and a second event titled with \"focus\" for 75\u202fmin starting after 07:10."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_11",
+    "name": "Pre\u2011lunch focus for code review",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "need a 1h slot before lunch tomorrow to finish a code review. give me three bullet\u2011point options.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will reject any slot that starts before 09:30.",
+    "success_criteria": [
+      "Executor asks if any meetings before 09:30 are movable.",
+      "Executor proposes at least one 1\u2011hour window on 2026\u201105\u201111 starting at or after 09:30 and ending before 12:00.",
+      "Executor creates a calendar_event with title containing \"code review\" or \"focus\" after confirmation."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with start \u226509:30, end \u226412:00, duration 1h, title mentioning \"code review\" or \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_12",
+    "name": "Night focus with Do\u2011Not\u2011Disturb",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "just set a 2h focus block tonight and turn on Do\u2011Not\u2011Disturb. confirm before enabling DND.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will later mention that an emergency contact must still ring.",
+    "success_criteria": [
+      "Executor proposes a specific 2\u2011hour window on 2026\u201105\u201110 after 20:00.",
+      "Executor confirms the DND activation before applying it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 between 20:00 and 22:00 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_13",
+    "name": "Early\u2011morning focus before commute",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I want a 45\u2011minute focus block tomorrow before I leave for work at 8\u202fam. I\u2019ll tell you about any family obligations if needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona will reveal that the kids need breakfast at 7:15.",
+    "success_criteria": [
+      "Executor asks about the breakfast time before suggesting a slot.",
+      "Executor proposes a concrete 45\u2011minute window on 2026\u201105\u201111 that ends by 07:15.",
+      "Executor creates a calendar_event with title containing \"focus\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226407:15, duration 45m, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_14",
+    "name": "Afternoon focus with browser block",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "need a 1.5h focus block this afternoon, block Twitter and YouTube in the browser. ask before changing any site settings.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will later say the browser must stay logged into work tools.",
+    "success_criteria": [
+      "Executor proposes a specific 1.5\u2011hour window on 2026\u201105\u201110 after 13:00.",
+      "Executor confirms before adding any site blocks.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed period."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 with duration 1.5h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_15",
+    "name": "Late\u2011afternoon focus before dinner prep",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Please find a 1\u2011hour focus window tomorrow afternoon before I start dinner at 5\u202fpm. I\u2019ll disclose any overlapping meetings if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will reveal a 4:30\u202fpm client call that cannot be moved.",
+    "success_criteria": [
+      "Executor asks whether the 4:30\u202fpm call is flexible.",
+      "Executor proposes a concrete 1\u2011hour window on 2026\u201105\u201111 that ends by 17:00 and does not overlap the call.",
+      "Executor creates a calendar_event titled with \"focus\" after persona selects a slot."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226417:00, duration 1h, title containing \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_16",
+    "name": "Evening focus with smart\u2011speaker mute",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I need a 2\u2011hour focus block tonight and want the smart\u2011speaker muted. Confirm before muting the speaker.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Persona will later say the speaker must stay on for a 7\u202fam alarm.",
+    "success_criteria": [
+      "Executor proposes a specific 2\u2011hour window on 2026\u201105\u201110 after 20:00.",
+      "Executor confirms the mute action before applying it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 between 20:00 and 22:00 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_17",
+    "name": "Mid\u2011morning focus before project sync",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "need a 50\u2011minute focus slot tomorrow before my 11:00 project sync. give bullet\u2011point options.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will reject any slot that starts before 09:45.",
+    "success_criteria": [
+      "Executor asks if any meetings before 09:45 can be moved.",
+      "Executor proposes at least one 50\u2011minute window on 2026\u201105\u201111 starting at or after 09:45 and ending before 11:00.",
+      "Executor creates a calendar_event with title containing \"focus\" after confirmation."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with start \u226509:45, end \u226411:00, duration 50m, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_18",
+    "name": "Night focus with email auto\u2011reply",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I would like a 1\u2011hour focus block tonight and an email auto\u2011reply saying I\u2019m offline. Confirm the reply text before setting it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will later request that the auto\u2011reply mentions a garden walk.",
+    "success_criteria": [
+      "Executor proposes a specific 1\u2011hour window on 2026\u201105\u201110 after 20:00.",
+      "Executor confirms the exact auto\u2011reply wording before creating it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_personal for 2026\u201105\u201110 with duration 1h and title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_19",
+    "name": "Late\u2011morning focus before lunch break",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "i need a 1h focus block tomorrow before lunch, maybe around 11am. i\u2019ll tell you if i have any urgent msgs.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will reveal an urgent message arriving at 10:30 that must be read first.",
+    "success_criteria": [
+      "Executor asks whether the 10:30 message can be postponed.",
+      "Executor proposes a concrete 1\u2011hour window on 2026\u201105\u201111 that starts after 10:30 and ends before 12:00.",
+      "Executor creates a calendar_event with title containing \"focus\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201111 with start >10:30, end \u226412:00, duration 1h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_20",
+    "name": "Afternoon focus with phone Do\u2011Not\u2011Disturb",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Arrange a 90\u2011minute focus block tomorrow afternoon and enable phone Do\u2011Not\u2011Disturb. Ask before turning DND on.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will later say the phone must stay audible for a 6\u202fpm medication reminder.",
+    "success_criteria": [
+      "Executor confirms the exact start time on 2026\u201105\u201111 after 13:00.",
+      "Executor asks before enabling phone DND.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed period."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with duration 90m, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_21",
+    "name": "Pre\u2011dinner focus for report finalization",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "just find me a 2\u2011hour slot before dinner at 7\u202fpm to finish the quarterly report. I\u2019ll let you know about any meetings if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will reveal a 5\u202fpm stakeholder call that cannot be moved.",
+    "success_criteria": [
+      "Executor asks whether the 5\u202fpm call is flexible.",
+      "Executor proposes a concrete 2\u2011hour window on 2026\u201105\u201111 that ends by 19:00 and does not conflict with the call.",
+      "Executor creates a calendar_event titled with \"report\" or \"focus\" after confirmation."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226419:00, duration 2h, title mentioning \"report\" or \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_22",
+    "name": "Morning focus with app block list",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "need a 1\u2011hour focus block tomorrow morning, block Slack and Gmail. confirm before applying the block list.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will later say Slack must stay on for a scheduled bot reminder at 09:15.",
+    "success_criteria": [
+      "Executor proposes a specific 1\u2011hour window on 2026\u201105\u201111 after 08:00.",
+      "Executor confirms the block list before implementing it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed time."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201111 with duration 1h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_23",
+    "name": "Late\u2011morning focus before client demo",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need a 45\u2011minute focus block tomorrow before my client demo at 11\u202fam. I\u2019ll share any family commitments if you inquire.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal a school pickup at 10:45 that cannot be moved.",
+    "success_criteria": [
+      "Executor asks about the pickup time before suggesting a slot.",
+      "Executor proposes a concrete 45\u2011minute window on 2026\u201105\u201111 that ends before 10:45.",
+      "Executor creates a calendar_event with title containing \"focus\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226410:45, duration 45m, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_24",
+    "name": "Evening focus with smart\u2011light dim",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I would like a 1.5\u2011hour focus block tonight and have the smart\u2011lights dim to 30% brightness. Confirm before adjusting lighting.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will later say the lights must remain at 70% for a 6\u202fam wake\u2011up routine.",
+    "success_criteria": [
+      "Executor proposes a specific 1.5\u2011hour window on 2026\u201105\u201110 after 20:00.",
+      "Executor confirms the lighting change before applying it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed period."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 between 20:00 and 21:30 with appropriate title."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_25",
+    "name": "Mid\u2011afternoon focus before workout",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Please locate a 1\u2011hour focus slot tomorrow afternoon before my 5\u202fpm workout. I\u2019ll disclose any overlapping commitments if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will reveal a 4:30\u202fpm internal meeting that cannot be moved.",
+    "success_criteria": [
+      "Executor asks whether the 4:30\u202fpm meeting is flexible.",
+      "Executor proposes a concrete 1\u2011hour window on 2026\u201105\u201111 that ends by 17:00 and does not conflict with the meeting.",
+      "Executor creates a calendar_event titled with \"focus\" after persona selects a slot."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with end \u226417:00, duration 1h, title containing \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_26",
+    "name": "Morning focus with email pause",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "need a 2\u2011hour focus block tomorrow morning and want email notifications paused. confirm before pausing email.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will later say an urgent email from a client must still come through.",
+    "success_criteria": [
+      "Executor proposes a specific 2\u2011hour window on 2026\u201105\u201111 after 08:00.",
+      "Executor confirms the email pause before applying it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed window."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with duration 2h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_27",
+    "name": "Late\u2011evening focus before bedtime",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "i want a 30\u2011minute focus block tonight before I go to bed. i\u2019ll let you know if i have any pending chats.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will mention a pending group chat that arrives at 22:00 and must be answered first.",
+    "success_criteria": [
+      "Executor asks whether the pending chat can be delayed.",
+      "Executor proposes a concrete 30\u2011minute window on 2026\u201105\u201110 that ends before 22:00.",
+      "Executor creates a calendar_event with title containing \"focus\" after confirmation."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 with end \u226422:00, duration 30m, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_28",
+    "name": "Afternoon focus with phone silent mode",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "just set a 1\u2011hour focus block tomorrow afternoon and put my phone in silent mode. confirm before silencing the phone.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will later say the phone must stay audible for a 4\u202fpm medication reminder.",
+    "success_criteria": [
+      "Executor proposes a specific 1\u2011hour window on 2026\u201105\u201111 after 13:00.",
+      "Executor confirms the silent mode action before enabling it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed period."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with duration 1h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.slot_find_29",
+    "name": "Mid\u2011morning focus before budget review",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "need a 1\u2011hour focus slot tomorrow before my budget review at 11:30. I\u2019ll tell you about any overlapping meetings if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will reveal a 10:00\u201110:30 internal sync that cannot be moved.",
+    "success_criteria": [
+      "Executor asks whether the 10:00 sync can be shifted.",
+      "Executor proposes a concrete 1\u2011hour window on 2026\u201105\u201111 that starts after 10:30 and ends before 11:30.",
+      "Executor creates a calendar_event with title containing \"focus\" after acceptance."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_work for 2026\u201105\u201111 with start >10:30, end \u226411:30, duration 1h, title mentioning \"focus\"."
+    ]
+  },
+  {
+    "id": "live.focus.block_setup_30",
+    "name": "Evening focus with browser site block",
+    "domain": "focus",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Arrange a 2\u2011hour focus block tonight and block Reddit in the browser. Ask before adding any site blocks.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will later say the browser must stay logged into a work portal that uses Reddit for news feeds.",
+    "success_criteria": [
+      "Executor proposes a specific 2\u2011hour window on 2026\u201105\u201110 after 20:00.",
+      "Executor confirms the Reddit block before applying it.",
+      "Executor creates a calendar_event with title containing \"focus\" for the agreed period."
+    ],
+    "world_assertions": [
+      "If created: a calendar_event on cal_primary for 2026\u201105\u201110 between 20:00 and 22:00 with appropriate title."
+    ]
+  }
+]

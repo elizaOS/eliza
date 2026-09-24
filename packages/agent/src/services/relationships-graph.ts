@@ -1,7 +1,7 @@
-import { getCloudAuthService } from "./cloud-auth-service.ts";
 /**
- * Agent-side wiring for the merged relationships graph in `@elizaos/core`.
- * Import graph types and helpers from `@elizaos/core` directly.
+ * Injects host owner and cloud-account identity resolvers into the assistant's
+ * relationship graph service. Re-exports preserve the host graph API without
+ * creating a second graph implementation or pulling host code into assistant.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -10,6 +10,7 @@ import type {
   RelationshipsServiceLike,
 } from "@elizaos/plugin-assistant";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
+import { getCloudAuthService } from "./cloud-auth-service.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
 export {

@@ -1,5 +1,5 @@
 /** Implements fal.ai video submission, queue polling, and status reconciliation. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { getSupportedVideoModelDefinition } from "../../services/ai-pricing-definitions";
 import { getAiProviderConfigurationError } from "../language-model";

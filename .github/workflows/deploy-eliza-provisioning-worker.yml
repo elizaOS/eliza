@@ -499,7 +499,7 @@ jobs:
         timeout-minutes: 5
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install exact migration dependencies
         if: steps.deploy_config.outputs.configured == 'true'
@@ -943,8 +943,8 @@ jobs:
             # are still running, so generator failure cannot cause downtime.
 
             # Install the canary (Rust) Bun on first install.
-            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.4.2" ]; then
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
@@ -976,7 +976,7 @@ jobs:
             bun run build:core
             timeout --signal=TERM --kill-after=5s 30s \
               node --import tsx --input-type=module \
-              -e 'await import("@elizaos/core"); await import("@elizaos/prompts")'
+              -e 'await import("@elizaos/core"); await import("@elizaos/shared/text/template-rendering")'
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core

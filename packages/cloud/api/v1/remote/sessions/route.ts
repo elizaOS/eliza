@@ -5,7 +5,7 @@
  * scoped to the caller's organization.
  */
 
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/shared/contracts/remote-control";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/shared";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";

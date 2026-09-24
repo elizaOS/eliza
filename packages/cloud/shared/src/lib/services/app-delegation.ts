@@ -7,7 +7,7 @@ import {
   type AppDelegationResult,
   type AppDelegationScope,
 } from "@elizaos/cloud-sdk/app-delegation";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import {
   isRegisteredRedirectUri,

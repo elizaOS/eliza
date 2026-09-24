@@ -11,7 +11,7 @@ kokoro eval on three corrections:
 
 This module pins the math for the three helpers that landed during
 that fix so they cannot regress silently. The pipeline-level eval is
-covered by `test_baseline_eval.py`; here we only exercise the pure
+outside these unit tests; here we exercise the pure
 functions (no torch / kokoro / whisper / speechbrain imports).
 """
 

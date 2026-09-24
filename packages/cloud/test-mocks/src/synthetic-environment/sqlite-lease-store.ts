@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type {
   AcquireSyntheticEnvironmentLeaseInput,
   RefreshSyntheticEnvironmentLeaseInput,
@@ -17,12 +17,12 @@ import type {
   SyntheticEnvironmentLeaseReceipt,
   SyntheticEnvironmentLeaseSnapshot,
   SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
+} from "@elizaos/shared";
 import {
   isSyntheticEnvironmentNamespace,
   SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
   SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
+} from "@elizaos/shared";
 
 interface LeaseRow {
   namespace: string;

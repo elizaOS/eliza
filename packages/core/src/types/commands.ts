@@ -3,9 +3,8 @@
  *
  * The canonical `CommandDefinition` shape and the `CommandRegistryService`
  * runtime contract live here so hosts and plugins can register/read chat
- * commands through the runtime service registry without importing the
- * `@elizaos/plugin-commands` implementation (which owns the concrete registry,
- * parser, actions, and route surface and re-exports these types).
+ * commands through the runtime service registry without depending on a
+ * concrete parser, action collection, or route implementation.
  */
 
 import { Service } from "./service";
@@ -130,8 +129,8 @@ export interface CommandDefinition {
 }
 
 /**
- * Runtime contract for the chat-command registry. `@elizaos/plugin-commands`
- * registers the concrete implementation under service type `"commands"`; hosts
+ * Runtime contract for a chat-command registry registered under service type
+ * `"commands"`; hosts
  * and other plugins contribute commands through
  * `runtime.getService<CommandRegistryService>("commands")` so registrations
  * always land on the loaded plugin instance's per-runtime store (no module-

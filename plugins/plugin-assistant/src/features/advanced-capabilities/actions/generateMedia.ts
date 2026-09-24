@@ -26,6 +26,7 @@ import type {
 } from "@elizaos/core";
 import {
   ContentType,
+  ElizaError,
   hasActionContext,
   logger,
   ModelType,
@@ -296,6 +297,8 @@ function extensionFor(
   mediaType: MediaGenerationMediaType,
 ): string {
   if (url.startsWith("data:image/")) return "png";
+  if (url.startsWith("data:audio/wav;")) return "wav";
+  if (url.startsWith("data:audio/pcm;")) return "pcm";
   if (url.startsWith("data:audio/")) return "mp3";
   if (url.startsWith("data:video/")) return "mp4";
   try {
@@ -437,6 +440,48 @@ async function fallbackGenerateImage(
   };
 }
 
+function hasSpeechGenerationModel(runtime: IAgentRuntime): boolean {
+  return typeof runtime.getModel(ModelType.TEXT_TO_SPEECH) === "function";
+}
+
+async function fallbackGenerateSpeech(
+  runtime: IAgentRuntime,
+  request: MediaGenerationRequest,
+): Promise<MediaGenerationResponse> {
+  const output = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
+    text: request.prompt,
+    ...(request.voice ? { voice: request.voice } : {}),
+    audioStream: false,
+  });
+  const bytes =
+    output instanceof Uint8Array
+      ? output
+      : output instanceof ArrayBuffer
+        ? new Uint8Array(output)
+        : undefined;
+  if (!bytes || bytes.byteLength === 0) {
+    throw new ElizaError("Speech generation returned no audio bytes", {
+      code: "MEDIA_GENERATION_INVALID_AUDIO",
+      context: { mediaType: request.mediaType, audioKind: request.audioKind },
+    });
+  }
+  const mimeType =
+    bytes.length >= 12 &&
+    Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "RIFF" &&
+    Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WAVE"
+      ? "audio/wav"
+      : (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
+          (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)
+        ? "audio/mpeg"
+        : "audio/pcm";
+  return {
+    mediaType: "audio",
+    audioKind: "tts",
+    mimeType,
+    audioUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+  };
+}
+
 async function generateWithService(
   runtime: IAgentRuntime,
   request: MediaGenerationRequest,
@@ -456,6 +501,14 @@ async function generateWithService(
 
   if (request.mediaType === "video" && hasVideoGenerationModel(runtime)) {
     return fallbackGenerateVideo(runtime, request);
+  }
+
+  if (
+    request.mediaType === "audio" &&
+    request.audioKind === "tts" &&
+    hasSpeechGenerationModel(runtime)
+  ) {
+    return fallbackGenerateSpeech(runtime, request);
   }
 
   throw new Error(
@@ -490,7 +543,12 @@ export const generateMediaAction = {
     const canGenerate =
       (service && (await service.canGenerateMedia(request))) ||
       (request.mediaType === "image" && hasImageGenerationModel(runtime)) ||
-      (request.mediaType === "video" && hasVideoGenerationModel(runtime));
+      (request.mediaType === "video" && hasVideoGenerationModel(runtime)) ||
+      (request.mediaType === "audio" &&
+        request.audioKind === "tts" &&
+        hasSpeechGenerationModel(runtime)) ||
+      (!normalizeMediaType(readParams(options).mediaType) &&
+        hasSpeechGenerationModel(runtime));
     if (!canGenerate) {
       logger.debug(
         {
@@ -655,6 +713,7 @@ export const generateMediaAction = {
       url,
       title,
       source: "media-generation",
+      mimeType: result.mimeType ?? defaultMimeType(request.mediaType),
       contentType: contentTypeFor(request.mediaType),
       description: result.revisedPrompt ?? request.prompt,
     };

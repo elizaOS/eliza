@@ -21,7 +21,7 @@ import {
   type State,
   sensitiveRequestEnvironmentFromSettings,
 } from "@elizaos/core";
-import { extractSecretRequestTemplate as extractRequestTemplate } from "@elizaos/prompts";
+import { extractSecretRequestTemplate as extractRequestTemplate } from "../prompts.js";
 import {
   SECRETS_SERVICE_TYPE,
   type SecretsService,

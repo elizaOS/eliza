@@ -15,7 +15,7 @@
  * The deterministic keyless stub tags every reply with this fixture id. A real
  * model turn must never contain it — that is how liveness is proven. Kept here
  * as the one source of truth; the stub emitter
- * (`packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs`) writes the same
+ * (`packages/app/scripts/playwright-ui-smoke-api-stub.mjs`) writes the same
  * literal, so if that fixture id ever changes both sides update together.
  */
 export const STUB_FIXTURE_MARKER = "ui-smoke-assistant-v1";

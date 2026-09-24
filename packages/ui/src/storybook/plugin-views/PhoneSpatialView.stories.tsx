@@ -4,7 +4,7 @@
  * must be verified on Android rather than inferred from these stories.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { PhoneSpatialView } from "../../../../../plugins/plugin-phone/src/components/PhoneSpatialView";
+import { PhoneSpatialView } from "../../../../../plugins/plugin-native-phone/src/components/PhoneSpatialView";
 import { SpatialSurface } from "../../spatial";
 
 const meta = {

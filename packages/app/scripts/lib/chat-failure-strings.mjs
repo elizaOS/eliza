@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
   ANDROID_FAILURE_FRAGMENTS,
   IOS_FAILURE_FRAGMENTS,
-} from "../../../app-core/src/platform/chat-failure-strings.ts";
+} from "../../src/platform/chat-failure-strings.ts";
 
 export function renderSwiftFailureStrings() {
   const swiftArray = (name, fragments) => {
@@ -14,7 +14,7 @@ export function renderSwiftFailureStrings() {
   };
 
   return `// GENERATED FILE — DO NOT EDIT BY HAND.
-// Source of truth: packages/app-core/src/platform/chat-failure-strings.ts
+// Source of truth: packages/app/src/platform/chat-failure-strings.ts
 // Regenerate: node packages/app/scripts/lib/chat-failure-strings.mjs --emit-swift
 // Parity guard: packages/app/scripts/lib/chat-failure-strings.test.mjs
 //

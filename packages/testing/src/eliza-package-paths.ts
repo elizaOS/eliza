@@ -29,10 +29,10 @@ function getRepoLocalWorkspaceRoot(
 
   const relativeRoots: Record<string, string[]> = {
     "@elizaos/agent": ["packages/agent", "eliza/agent", "../eliza/agent"],
-    "@elizaos/app-core": [
-      "packages/app-core",
-      "eliza/packages/app-core",
-      "../eliza/packages/app-core",
+    "@elizaos/app": [
+      "packages/app",
+      "eliza/packages/app",
+      "../eliza/packages/app",
     ],
     "@elizaos/shared": [
       "packages/shared",
@@ -294,7 +294,7 @@ export function getAutonomousSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot = getInstalledPackageRoot("@elizaos/app-core", repoRoot);
+  const packageRoot = getInstalledPackageRoot("@elizaos/app", repoRoot);
   if (!packageRoot) {
     return undefined;
   }

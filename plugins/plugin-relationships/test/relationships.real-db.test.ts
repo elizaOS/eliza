@@ -22,12 +22,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
   resolveKnowledgeGraphService,
-} from "../src/knowledge-graph/index.ts";
+} from "../src/index.ts";
 import { relationshipsPlugin } from "../src/plugin.ts";
 
 // Registering the KG service + schema makes runtime.initialize() start the

@@ -1,33 +1,32 @@
 /**
- * @elizaos/shared — Shared code between agent, app-core, and UI packages.
+ * @elizaos/shared — Shared code between agent, app, and UI packages.
  *
  * Public surface: barrel exports for the shared workspace contract.
  */
 
-export {
-  getDirectAccountProviderForFirstRunProvider,
-  getFirstRunProviderFamily,
-  getFirstRunProviderOption,
-  getFirstRunProviderSignalEnvKeys,
-  getStoredFirstRunProviderId,
-  getStoredSubscriptionProviderForRequest,
-  normalizeFirstRunProviderId,
-  sortFirstRunProviders,
-} from "@elizaos/shared/contracts/first-run-options";
-export {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/shared/contracts/service-routing";
 // Agent-backup size limits — the single source of truth for the maximum
 // RESTORABLE v1 snapshot wire size, imported by every side that retains or
 // consumes a snapshot so a backup can never be retained above what restore
 // accepts (#17172).
 export * from "./agent-backup-limits.js";
 export * from "./api/agent-api-types.js";
+export type {
+  AppRoutePluginLoader,
+  AppRoutePluginRegistryEntry,
+} from "./api/app-route-plugin-registry.js";
 export * from "./api/command-transport-types.js";
 export * from "./api/http-helpers.js";
+export type {
+  HttpPlugin,
+  LegacyRouteHandler,
+  PaymentEnabledRoute,
+  Route,
+  RouteBodyValue,
+  RouteHandlerContext,
+  RouteHandlerResult,
+  RouteRequest,
+  RouteResponse,
+} from "./api/http-plugin.js";
 export * from "./api/route-helpers.js";
 export * from "./app-hero-art.js";
 // Email-classification primitives — canonical two-stage classifier + the
@@ -35,6 +34,13 @@ export * from "./app-hero-art.js";
 // inbox-curation and finance bill-extraction in
 // @elizaos/plugin-personal-assistant.
 export * from "./apps/index.js";
+export type { AudioRedactionSpan, PiiTextSpan } from "./audio-redaction.js";
+export type {
+  RedactionTranscribeInput,
+  RedactionTranscriber,
+  RedactionTranscript,
+  RedactionVerifyResult,
+} from "./audio-redaction-verify.js";
 // Leaf modules (no internal collisions)
 export * from "./automation-node-contributors.js";
 // Awareness + themes barrels
@@ -47,7 +53,7 @@ export * from "./character-presets.js";
 // mirrored by the UI composer. Both sides import these so they cannot drift.
 export * from "./chat-upload-limits.js";
 export * from "./cli/parse-duration.js";
-// Re-export moved app-core modules so consumers can import the package barrel.
+// Re-export moved app modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
 export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
@@ -98,7 +104,6 @@ export type {
   CloudContainerDefaults,
   CloudInferenceMode,
   CloudServiceToggles,
-  CommandsConfig,
   ConfigFileSnapshot,
   ConfigValidationIssue,
   ConnectorConfig,
@@ -218,17 +223,32 @@ export type {
   X402Config,
 } from "./config/types.js";
 export * from "./config/ui-spec.js";
-export * from "./config/wechat-config.js";
 export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
+export {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderFamily,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
+  getStoredSubscriptionProviderForRequest,
+  normalizeFirstRunProviderId,
+  sortFirstRunProviders,
+} from "./contracts/first-run-options.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
+export {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "./contracts/service-routing.js";
 export {
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,
@@ -244,15 +264,23 @@ export {
 // import the runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`,
 // etc.) from `@elizaos/ui`.
 export * from "./contracts/theme.js";
+export * from "./db/carve-out-migration.js";
 // db types — canonical handles for the runtime Drizzle database so consumers
 // don't reverse-import the plugin-sql package for type-only uses.
 export type { DrizzleDatabase } from "./db/drizzle-database.js";
 export * from "./dev-settings-banner-style.js";
 export * from "./dev-settings-figlet-heading.js";
 export * from "./dev-settings-table.js";
+export * from "./discord-dm-policy.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
-// app-core and the agent so they don't reverse-import from plugin-elizacloud.
+// app and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
+export type {
+  ClassifyEmailOptions,
+  EmailCategory,
+  EmailClassification,
+  EmailLikeMessage,
+} from "./email-classification/email-classifier.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
 export * from "./events/index.js";
@@ -280,9 +308,20 @@ export * from "./lifeops-constants/index.js";
 // @elizaos/plugin-personal-assistant via thin re-export shims.
 export * from "./lifeops-normalize/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
-// Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
+// Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app.
 export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
+export * from "./mcp/action-naming.js";
+export * from "./mcp/json.js";
+export * from "./mcp/model-provider.js";
+export * from "./mcp/prompts.js";
+export * from "./mcp/protocol.js";
+export * from "./mcp/provider-projection.js";
+export * from "./mcp/resource-selection.js";
+export * from "./mcp/schema-budget.js";
+export * from "./mcp/schema-converter.js";
+export * from "./mcp/tool-schema-compatibility.js";
+export type { FetchMediaOptions } from "./media/fetch.js";
 export * from "./meeting-artifacts.js";
 export * from "./meetings.js";
 export * from "./platform/eliza-os.js";
@@ -301,8 +340,18 @@ export {
 } from "./settings-debug.js";
 export * from "./speaker-name-inference.js";
 export * from "./spoken-text.js";
+export type {
+  ClearOpts,
+  StewardSessionErrorCode,
+} from "./steward-session-client/index.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
+export * from "./text/template-rendering.js";
+export type {
+  SharedTodoCutoverRecord,
+  SharedTodoCutoverSnapshot,
+  SharedTodoMutationCutoverRecord,
+} from "./todo-cutover.js";
 export * from "./transcripts.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";

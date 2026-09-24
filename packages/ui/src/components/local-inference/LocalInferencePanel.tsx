@@ -5,7 +5,8 @@
  * and falls back to authenticated API snapshots when streaming is unavailable.
  */
 
-import type { VoiceModelId } from "@elizaos/shared/local-inference/voice-models";
+import type { VoiceModelId } from "@elizaos/shared";
+import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -24,8 +25,6 @@ import {
   isSettingsDefaultLocalModel,
 } from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";

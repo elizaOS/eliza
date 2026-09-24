@@ -5,7 +5,7 @@
  * `POST /api/elevenlabs/tts`. Both accept `{ text, voiceId?, modelId? }` with
  * **ElevenLabs** voice and model ids; the cloud runs ElevenLabs server-side.
  *
- * Pure / config-driven helpers live here so consumers in app-core and the
+ * Pure / config-driven helpers live here so consumers in app and the
  * agent can resolve cloud TTS configuration without importing the
  * `@elizaos/plugin-elizacloud` package (reverse-dep boundary). The full
  * upstream proxy request handler (`handleCloudTtsPreviewRoute`) stays in the
@@ -18,7 +18,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts/cloud-topology";
+import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
 import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { getCloudSecret } from "./cloud-secrets.js";
 import {

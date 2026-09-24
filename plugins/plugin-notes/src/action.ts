@@ -555,6 +555,7 @@ export const notesAction: Action = {
         "Required for replacementContent and nonempty PATCH changes: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Literal textEdit may omit it.",
       subactions: ["update", "patch"],
       required: false,
+      requiredForSubactions: ["patch"],
       schema: { type: "integer", minimum: 0 },
     },
     {

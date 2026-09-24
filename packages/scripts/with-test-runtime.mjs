@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Exercises with test runtime automation behavior with deterministic script fixtures.
+/** Runs a command with the repository test runtime environment and propagates its outcome. */
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(here, "..", "..");
 const [command, ...args] = process.argv.slice(2);
 
 if (!command) {

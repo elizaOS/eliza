@@ -9,7 +9,7 @@
     {
       "spec": "provider-config.spec.ts",
       "category": "live-only",
-      "reason": "Provider switching must hit the real app-core provider/runtime pipeline with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless route layer cannot restart the agent or re-derive the active provider and the spec self-skips without the live stack."
+      "reason": "Provider switching must hit the real app provider/runtime pipeline with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless route layer cannot restart the agent or re-derive the active provider and the spec self-skips without the live stack."
     },
     {
       "spec": "vault-routing.spec.ts",

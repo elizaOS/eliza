@@ -17,13 +17,13 @@
  * two halves can never drift.
  */
 
-import type { FusedWakeEventDetail } from "@elizaos/shared/events";
+import type { FusedWakeEventDetail } from "@elizaos/shared";
 import type { WakeFireInfo } from "./wake-word";
 
 export type {
 	FusedWakeEventDetail,
 	FusedWakeStage,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 
 /**
  * Sink the host wires to forward a fused-wake stage to the renderer. The

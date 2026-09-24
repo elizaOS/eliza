@@ -86,7 +86,10 @@ if (import.meta.url === invokedPath) {
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  const html = fs.readFileSync(path.join(appDir, "dist", "index.html"), "utf8");
+  const html = fs.readFileSync(
+    path.join(appDir, "web-dist", "index.html"),
+    "utf8",
+  );
   const target = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
   const content = assertViewportMetaPolicy(html, target);
   console.log(

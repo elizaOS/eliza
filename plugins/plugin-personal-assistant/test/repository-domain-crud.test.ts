@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsBrowserSession,

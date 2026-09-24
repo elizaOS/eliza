@@ -2,7 +2,7 @@
  * Message-handling configuration types: inbound message queue mode/drop policy
  * and group-chat settings. A slice of the `ElizaConfig` tree (see types.eliza.ts).
  */
-import type { GroupChatConfig, NativeCommandsSetting } from "@elizaos/core";
+import type { GroupChatConfig } from "@elizaos/core";
 
 // --- Queue types ---
 
@@ -181,25 +181,4 @@ export type MessagesConfig = {
 /** Audio configuration. Currently open-ended; typed fields will be added as the audio subsystem stabilises. */
 export type AudioConfig = {
   [key: string]: unknown;
-};
-
-export type CommandsConfig = {
-  /** Enable native command registration when supported (default: "auto"). */
-  native?: NativeCommandsSetting;
-  /** Enable native skill command registration when supported (default: "auto"). */
-  nativeSkills?: NativeCommandsSetting;
-  /** Enable text command parsing (default: true). */
-  text?: boolean;
-  /** Allow bash chat command (`!`; `/bash` alias) (default: false). */
-  bash?: boolean;
-  /** How long bash waits before backgrounding (default: 2000; 0 backgrounds immediately). */
-  bashForegroundMs?: number;
-  /** Allow /config command (default: false). */
-  config?: boolean;
-  /** Allow /debug command (default: false). */
-  debug?: boolean;
-  /** Allow restart commands/tools (default: false). */
-  restart?: boolean;
-  /** Enforce access-group allowlists/policies for commands (default: true). */
-  useAccessGroups?: boolean;
 };

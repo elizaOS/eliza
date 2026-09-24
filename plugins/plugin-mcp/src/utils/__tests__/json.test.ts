@@ -4,14 +4,14 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
 import {
   assertMcpJsonSchemaBudget,
   MCP_TOOL_SCHEMA_UNBOUNDED,
   parseJSON,
   parseStructuredModelOutput,
   validateJsonSchema,
-} from "../json";
+} from "@elizaos/shared";
+import { describe, expect, it } from "vitest";
 
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {

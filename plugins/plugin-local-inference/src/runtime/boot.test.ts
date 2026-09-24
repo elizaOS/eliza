@@ -30,7 +30,7 @@ vi.mock("@elizaos/core", () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("@elizaos/shared/runtime-env", () => ({
+vi.mock("@elizaos/shared", () => ({
 	isMobilePlatform: () => isMobilePlatform(),
 }));
 

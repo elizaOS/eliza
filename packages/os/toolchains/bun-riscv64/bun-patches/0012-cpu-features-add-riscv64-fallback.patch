@@ -1,0 +1,13 @@
+diff --git a/src/jsc/bindings/CPUFeatures.cpp b/src/jsc/bindings/CPUFeatures.cpp
+index d1b1560..6f43bcf 100644
+--- a/src/jsc/bindings/CPUFeatures.cpp
++++ b/src/jsc/bindings/CPUFeatures.cpp
+@@ -136,6 +136,8 @@ extern "C" uint8_t bun_cpu_features()
+     return x86_cpu_features();
+ #elif CPU(ARM64)
+     return aarch64_cpu_features();
++#elif CPU(RISCV64)
++    return 0;
+ #else
+ #error "Unknown architecture"
+ #endif

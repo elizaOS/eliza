@@ -1,5 +1,5 @@
 /** Deterministic transcript fixtures shared by transcript component stories. */
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 
 export const TRANSCRIPT_STORY_FIXTURE: Transcript = {
   id: "transcript-story",

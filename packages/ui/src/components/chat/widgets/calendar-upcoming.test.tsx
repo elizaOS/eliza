@@ -52,12 +52,6 @@ vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishMock,
 }));
 
-// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
-// stub it so the click tests isolate the navigation rail (the CustomEvent).
-vi.mock("../../../chat/useSlashCommandController", () => ({
-  reportUserViewSwitch: vi.fn(),
-}));
-
 import type { WidgetProps } from "../../../widgets/types";
 import { CalendarUpcomingWidget } from "./calendar-upcoming";
 

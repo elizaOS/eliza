@@ -22,11 +22,8 @@ import {
   type JsonObject,
   normalizeHostLike,
 } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { decodeUrlPathComponent } from "@elizaos/shared";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared/api/route-helpers";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,

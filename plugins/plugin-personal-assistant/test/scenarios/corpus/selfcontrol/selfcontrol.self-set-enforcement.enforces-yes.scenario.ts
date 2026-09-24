@@ -1,8 +1,7 @@
 /** Scenario fixture for selfcontrol self set enforcement enforces yes; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { callPayloadBlob } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { callPayloadBlob, scenario } from "@elizaos/testing";
 
 function expectConfirmedXBlock(ctx: ScenarioContext): string | undefined {
   const blob = callPayloadBlob(ctx, "WEBSITE_BLOCK");
@@ -25,7 +24,7 @@ export default scenario({
     "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; WEBSITE_BLOCK must fire.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

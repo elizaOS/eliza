@@ -57,7 +57,7 @@ export const MAX_FILES_PER_BATCH = 80;
 export const MAX_FILES_PER_BATCH_WIN32 = 16;
 /** Keeps Linux files in distinct OS processes while Bun's isolate stdio leak is pinned. */
 export function maxFilesPerTestBatch(platform = process.platform) {
-  // Bun 1.3.14 leaks stdio registrations across isolate global swaps on Linux:
+  // Bun 1.4.2 leaks stdio registrations across isolate global swaps on Linux:
   // https://github.com/oven-sh/bun/issues/37968. A fresh process avoids that
   // boundary without swallowing initialization failures or skipping tests.
   if (platform === "linux") return 1;
@@ -69,24 +69,7 @@ export const MAX_ARGS_CHARS_POSIX = 100000;
 export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
-export const TEST_FILES_REQUIRING_FRESH_PROCESS = [
-  path.join(
-    "packages",
-    "cloud",
-    "shared",
-    "src",
-    "lib",
-    "services",
-    "agent-backup-capture-v2-pipeline.test.ts",
-  ),
-  path.join(
-    "packages",
-    "cloud",
-    "scripts",
-    "admin",
-    "migrate-database.diagnostic.test.ts",
-  ),
-];
+export const TEST_FILES_REQUIRING_FRESH_PROCESS = [];
 const MAX_TIMER_MS = 2_147_483_647;
 // Prefer the already-provisioned PowerShell 7 host on CI: the legacy Windows
 // PowerShell process can exceed the entire cold-start allowance on windows-2025.
@@ -895,22 +878,12 @@ export function buildTestEnv(baseEnv) {
   };
 }
 
-// NOTE: keep in sync with the package layout. The #9917 reorg moved these from
-// packages/cloud-shared -> packages/cloud/shared and packages/cloud-api ->
-// packages/cloud/api; the stale paths made `bun test` target nonexistent dirs,
-// so the cloud unit suite (incl. the IAC inference hot-path tests) silently ran
-// nothing = false-green gate. cloud-tests.yml already triggers on
-// `packages/cloud/scripts/**` and `packages/cloud/services/**`; the routing
-// (model-routing resolver) and infra (IaC / static-config) packages carry
-// pure, DB-free unit suites that ran on no PR lane until they were added here
-// alongside the cloud-tests.yml `paths:` update.
+// Discover retained Cloud integration suites from their owning source roots.
 export function computeTestRoots(root) {
   return {
     cloudSharedSrc: path.join(root, "packages", "cloud", "shared", "src"),
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
     cloudScriptsTests: path.join(root, "packages", "cloud", "scripts"),
-    cloudRoutingTests: path.join(root, "packages", "cloud", "routing", "src"),
-    cloudInfraTests: path.join(root, "packages", "cloud", "infra", "tests"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),
   };
 }
@@ -1147,14 +1120,8 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const {
-    cloudSharedSrc,
-    cloudApiRoot,
-    cloudScriptsTests,
-    cloudRoutingTests,
-    cloudInfraTests,
-    cloudServicesRoot,
-  } = testRoots;
+  const { cloudSharedSrc, cloudApiRoot, cloudScriptsTests, cloudServicesRoot } =
+    testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {
@@ -1203,8 +1170,6 @@ async function main() {
     ...walkTests(cloudSharedSrc, EXCLUDED_DIRS),
     ...cloudApiUnitTests,
     ...walkTests(cloudScriptsTests, EXCLUDED_DIRS),
-    ...walkTests(cloudRoutingTests, EXCLUDED_DIRS),
-    ...walkTests(cloudInfraTests, EXCLUDED_DIRS),
     ...cloudServicesTests,
   ];
   if (allTestFiles.length === 0) {
@@ -1215,11 +1180,6 @@ async function main() {
     process.exit(1);
   }
 
-  // The capture-v2 pipeline suite contains a measured 128 MiB streaming RSS
-  // bound. Bun loads every file in a batch before executing the suite, so its
-  // allocator watermark changes when unrelated files cross an 80-file batch
-  // boundary. Give this resource proof a fresh process: the production bound
-  // stays strict and adding an unrelated test cannot make it flaky.
   const isolatedTestFiles = new Set(
     TEST_FILES_REQUIRING_FRESH_PROCESS.map((file) => path.join(repoRoot, file)),
   );

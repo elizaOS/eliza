@@ -14,10 +14,7 @@
  * re-exported here.
  */
 
-import type {
-  ClearOpts,
-  StewardSessionErrorCode,
-} from "@elizaos/shared/steward-session-client";
+import type { ClearOpts, StewardSessionErrorCode } from "@elizaos/shared";
 import {
   clearStewardSession as clearCanonicalStewardSession,
   clearStoredStewardToken,

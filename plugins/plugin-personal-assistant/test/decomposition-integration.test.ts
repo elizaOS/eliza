@@ -2,7 +2,6 @@
 import type { Action, Plugin, Service } from "@elizaos/core";
 import { blockerPlugin } from "@elizaos/plugin-blocker";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
-import { financesPlugin } from "@elizaos/plugin-finances";
 import { goalsPlugin } from "@elizaos/plugin-goals";
 import { healthPlugin } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
@@ -34,7 +33,6 @@ import { personalAssistantPlugin } from "../src/plugin.ts";
 // import. The union below is the full composed surface.
 const SUBPLUGINS: Plugin[] = [
   calendarPlugin,
-  financesPlugin,
   inboxPlugin,
   goalsPlugin,
   healthPlugin,
@@ -50,7 +48,6 @@ function withoutActions(plugin: Plugin): Plugin {
 
 const AUTO_REGISTERED: Plugin[] = [
   withoutActions(calendarPlugin),
-  financesPlugin,
   inboxPlugin,
   withoutActions(goalsPlugin),
   healthPlugin,
@@ -150,7 +147,6 @@ describe("LifeOps decomposition — composed plugin surface", () => {
       "INBOX",
       "CALENDAR",
       "CONFLICT_DETECT",
-      "OWNER_FINANCES",
       "OWNER_GOALS",
       "OWNER_ROUTINES",
       "OWNER_REMINDERS",
@@ -217,7 +213,6 @@ describe("LifeOps decomposition — composed plugin surface", () => {
       // The focus view's domain action is the BLOCK umbrella (list_active /
       // release are now subactions of it, not standalone actions).
       focus: ["BLOCK"],
-      finances: ["OWNER_FINANCES"],
       inbox: ["INBOX"],
       goals: [
         "OWNER_GOALS",

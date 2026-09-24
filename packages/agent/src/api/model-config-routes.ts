@@ -15,7 +15,7 @@
  * without a half-applied config. Coding targets return without restart:
  * sub-agent spawns re-read the config env on every spawn. A coding write may
  * also be a defaultBackend-only body (no `model`), persisting just
- * ELIZA_DEFAULT_AGENT_TYPE — the seam the `/backend` slash command drives.
+ * ELIZA_DEFAULT_AGENT_TYPE — the application backend selection seam.
  * When a touched key
  * already carried a different process-env value that the config did not put
  * there (systemd service.env, shell export), the response lists it in
@@ -35,19 +35,13 @@ import {
   ModelType,
 } from "@elizaos/core";
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
-import {
-  isCerebrasMode,
-  resolveOpenAIBaseURL,
-} from "@elizaos/plugin-openai/endpoint-config";
+import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
@@ -199,7 +193,7 @@ function findEntry(
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
 
-// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app-core's
+// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app's
 // coding-account-bridge.ts. The model catalog may advertise newer effort
 // variants before the managed Codex ACP spawn path supports them end to end;
 // accepting one here would persist a selection the coding backend cannot honor.

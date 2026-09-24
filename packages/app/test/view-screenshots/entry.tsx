@@ -37,10 +37,6 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     import(
       "../../../../plugins/plugin-health/src/components/health/HealthView.tsx"
     ) as Promise<{ default: ComponentType }>,
-  finances: () =>
-    import(
-      "../../../../plugins/plugin-finances/src/components/finances/FinancesView.tsx"
-    ) as Promise<{ default: ComponentType }>,
   inbox: () =>
     import(
       "../../../../plugins/plugin-inbox/src/components/inbox/InboxView.tsx"
@@ -55,7 +51,7 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     ) as Promise<{ default: ComponentType }>,
   documents: () =>
     import(
-      "../../../../plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx"
+      "../../../../plugins/plugin-knowledge/src/components/documents/KnowledgeDocumentsView.tsx"
     ) as Promise<{ default: ComponentType }>,
   relationships: () =>
     import(

@@ -4,8 +4,8 @@
  * built-in union).
  */
 
+import type { ThemeDefinition } from "@elizaos/shared";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
-import type { ThemeDefinition } from "@elizaos/shared/contracts/theme";
 
 /**
  * Custom provider that apps can inject into the first-run setup.

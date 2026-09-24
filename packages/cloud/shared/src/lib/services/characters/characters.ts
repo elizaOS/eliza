@@ -4,8 +4,7 @@
  * PERFORMANCE: Character data is cached in Redis for fast runtime access.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { type Agent } from "@elizaos/core";
+import { type Agent, ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type DbTransaction, dbRead, dbWrite } from "../../../db/client";
 import {

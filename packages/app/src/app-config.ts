@@ -6,7 +6,7 @@
  * CLI name when unset. This is the white-label seam — swap `app.config.ts` to
  * rebrand.
  */
-import { resolveAppBranding } from "@elizaos/app-core";
+import { resolveAppBranding } from "@elizaos/shared";
 import appConfig from "../app.config";
 
 export const APP_CONFIG = appConfig;

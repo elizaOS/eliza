@@ -95,6 +95,7 @@ export async function setupRecordsTest() {
       CREATE TABLE credit_transactions(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));`);
   for (const tag of [
     "0373_subscription_authority",
+    "0397_subscription_checkout_contract",
     "0383_subscription_cancellation_result",
     "0384_subscription_cancellation_undo",
     "0438_app_billing_applied_revision",

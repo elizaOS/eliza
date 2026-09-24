@@ -4,10 +4,7 @@
  * with a typed runtime boundary harness.
  */
 import { Buffer } from "node:buffer";
-import {
-  createMockRuntime,
-  MOCK_AGENT_ID,
-} from "@elizaos/testing/mock-runtime";
+import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../../../../../packages/core/src/errors.ts";
 import type {

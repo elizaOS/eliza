@@ -6,9 +6,9 @@
 // capability. The `client` WS transport is mocked; the surface + registry are real.
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-contacts/src/view-capabilities";
-import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-messages/src/view-capabilities";
-import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-phone/src/view-capabilities";
+import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-contacts/src/view-capabilities";
+import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-messages/src/view-capabilities";
+import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-phone/src/view-capabilities";
 
 const sendWsMessage = vi.fn();
 vi.mock("../../api", () => ({

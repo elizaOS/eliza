@@ -4,7 +4,8 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { VOICE_PROVIDERS } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import {
@@ -18,7 +19,6 @@ import {
   isRealtimeVoiceForceEnabled,
   isRealtimeVoiceSelfHostedEnabled,
 } from "../../voice/realtime-voice-build-flags";
-import { VOICE_PROVIDERS } from "../../voice/types";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";

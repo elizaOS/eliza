@@ -1,7 +1,7 @@
 /**
  * Lists an app's users after validating pagination and access at the HTTP boundary.
  */
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";

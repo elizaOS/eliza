@@ -7,7 +7,7 @@
  * loopback for operators; `POST /api/auth/pair` exchanges a rate-limited,
  * timing-safe pairing code for the configured connection token. These are the
  * entry points a client hits before it is authenticated, so they front the
- * rest of the API surface. In app-core the pair handler is shadowed by the
+ * rest of the API surface. In app the pair handler is shadowed by the
  * compat route that mints a real machine session.
  */
 import crypto from "node:crypto";
@@ -114,7 +114,7 @@ export async function handleAuthRoutes(
     if (isCloudProvisionedContainer()) {
       // Steward-managed cloud containers enforce API auth upstream, but the
       // local pairing flow is intentionally unavailable there. Reporting
-      // required=true would strand app-core clients in PairingView.
+      // required=true would strand app clients in PairingView.
       json(res, {
         required: false,
         pairingEnabled: false,
@@ -161,13 +161,13 @@ export async function handleAuthRoutes(
 
   if (method === "POST" && pathname === "/api/auth/pair") {
     // NOTE: this handler is shadowed by `handleAuthPairingCompatRoutes` in
-    // `@elizaos/app-core` (the compat route mints a real machine session
+    // `@elizaos/app` (the compat route mints a real machine session
     // bound to an identity, which authenticates against
     // `ensureCompatApiAuthorizedAsync`). This agent-only path is kept for
     // standalone agent-server usage; it returns the static connection key,
     // which only authenticates routes that explicitly accept the static
     // token (e.g. `/api/auth/status`). For full route coverage, run via
-    // app-core so the compat handler intercepts first.
+    // app so the compat handler intercepts first.
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostAuthPairRequestSchema.safeParse(rawBody);

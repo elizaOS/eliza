@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "./src",
+    "rewriteRelativeImportExtensions": true,
+    "paths": {
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../shared/dist/*"]
+    },
+    "types": ["node", "bun"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "test/**/*"]
+}

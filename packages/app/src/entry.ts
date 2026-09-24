@@ -1,65 +1,94 @@
+#!/usr/bin/env node
 /**
- * Chooses the renderer boot boundary before the full application module graph
- * evaluates. Hosted public routes load their dedicated shell; every native,
- * desktop, harness, and agent-app route retains the established main entry.
+ * CLI entry point for Eliza.
+ *
+ * This file is compiled into dist/entry.js and invoked by the app entry script.
+ * It bootstraps the CLI: normalizes env, applies profile settings,
+ * and delegates to the Commander-based CLI.
  */
+import process from "node:process";
+import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
+import { bootLap } from "./boot-profile";
+import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
+import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";
 
-import {
-  shouldUseMarketingHomeEntry,
-  shouldUsePublicWebEntry,
-} from "./web-entry-policy";
+bootLap("entry:body (Bun load of entry.js + @elizaos/shared)");
 
-declare const __ELIZA_WEB_SHELL__: boolean | undefined;
-declare const __ELIZA_PUBLIC_WEB_ENTRY__: boolean | undefined;
-declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
+process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
 
-type ShellWindow = Window & {
-  __electrobunWindowId?: number;
-  __electrobunWebviewId?: number;
-  __ELIZA_ELECTROBUN_RPC__?: unknown;
-};
+if (process.argv.includes("--no-color")) {
+  process.env.NO_COLOR = "1";
+  process.env.FORCE_COLOR = "0";
+}
 
-function hasDesktopShellMarker(): boolean {
-  const runtimeWindow = window as ShellWindow;
-  return (
-    typeof runtimeWindow.__electrobunWindowId === "number" ||
-    typeof runtimeWindow.__electrobunWebviewId === "number" ||
-    runtimeWindow.__ELIZA_ELECTROBUN_RPC__ !== undefined
+// Explicit staging and self-hosted launchers may bridge their target-scoped
+// development credential for the cloud plugin. Direct and packaged entrypoints
+// default to production and must not infer authority from NODE_ENV.
+if (promoteLauncherScopedDevCloudApiKey(process.env)) {
+  // Stderr only — logger isn't initialized yet at this point in boot.
+  process.stderr.write(
+    "[entry] launcher-scoped Cloud development credential promoted to ELIZAOS_CLOUD_API_KEY\n",
   );
 }
 
-const entryDecisionInput = {
-  pathname: window.location.pathname,
-  hostname: window.location.hostname,
-  webShellEnabled: __ELIZA_WEB_SHELL__ === true,
-  chatHarnessEnabled: __ELIZA_CHAT_UI_HARNESS__ === true,
-  desktopShell: hasDesktopShellMarker(),
-  forceApexConsole:
-    import.meta.env?.DEV === true &&
-    import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true",
-  forceMarketingHome:
-    import.meta.env?.DEV === true &&
-    import.meta.env?.VITE_FORCE_MARKETING_HOME === "true",
-};
-
-const useMarketingHomeEntry = shouldUseMarketingHomeEntry(entryDecisionInput);
-const usePublicEntry =
-  __ELIZA_PUBLIC_WEB_ENTRY__ === true &&
-  shouldUsePublicWebEntry(entryDecisionInput);
-
-// error-policy:J1 renderer-entry boundary — import failures render the same
-// actionable reload card as failures inside the established main boot.
-async function handleRendererFailure(error: unknown): Promise<void> {
-  const { renderBootFailure } = await import("./boot-failure");
-  renderBootFailure(error);
+// Bridge DATABASE_URL → POSTGRES_URL. Cloud provisioners (docker-sandbox-provider,
+// k8s manifests, Railway env) inject DATABASE_URL, but plugin-sql reads
+// POSTGRES_URL via runtime.getSetting("POSTGRES_URL"). Without this bridge,
+// sandboxes silently fall back to local PGLite instead of connecting to the
+// injected Neon database — losing all memories on container restart and
+// breaking memory transfer / centralized observability.
+if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+  process.env.POSTGRES_URL = process.env.DATABASE_URL;
+  // Stderr only — logger isn't initialized yet at this point in boot.
+  process.stderr.write(
+    "[entry] DATABASE_URL detected: bridged to POSTGRES_URL for plugin-sql\n",
+  );
 }
 
-// Separate import callbacks let Vite attach each renderer's CSS dependencies.
-// A conditional import callback can collapse those lists to shared CSS only.
-if (useMarketingHomeEntry) {
-  void import("./marketing-home-entry").catch(handleRendererFailure);
-} else if (usePublicEntry) {
-  void import("./public-web-entry").catch(handleRendererFailure);
-} else {
-  void import("./main").catch(handleRendererFailure);
+// Keep `npx elizaai` startup readable by default.
+// This runs before CLI/runtime imports so @elizaos/core logger picks it up.
+if (!process.env.LOG_LEVEL) {
+  if (process.argv.includes("--debug")) {
+    process.env.LOG_LEVEL = "debug";
+  } else if (process.argv.includes("--verbose")) {
+    process.env.LOG_LEVEL = "info";
+  } else {
+    process.env.LOG_LEVEL = "error";
+  }
 }
+
+// Keep llama.cpp backend output aligned with Eliza's log level defaults.
+// This suppresses noisy tokenizer warnings in normal startup while still
+// allowing verbose/debug visibility when explicitly requested.
+if (!process.env.NODE_LLAMA_CPP_LOG_LEVEL) {
+  const logLevel = String(process.env.LOG_LEVEL).toLowerCase();
+  process.env.NODE_LLAMA_CPP_LOG_LEVEL =
+    logLevel === "debug" ? "debug" : logLevel === "info" ? "info" : "error";
+}
+
+const parsed = parseCliProfileArgs(process.argv);
+if (!parsed.ok) {
+  console.error(`${getLogPrefix()} ${parsed.error}`);
+  process.exit(2);
+}
+
+if (parsed.profile) {
+  applyCliProfileEnv({ profile: parsed.profile });
+  process.argv = parsed.argv;
+}
+
+// ── Delegate to the Commander-based CLI ──────────────────────────────────────
+
+bootLap("entry:before import(run-main)");
+import("./cli/run-main")
+  .then(({ runCli }) => {
+    bootLap("entry:run-main loaded (CLI graph evaluated)");
+    return runCli(process.argv);
+  })
+  .catch((error) => {
+    console.error(
+      `${getLogPrefix()} Failed to start CLI:`,
+      formatErrorWithStack(error),
+    );
+    process.exit(1);
+  });

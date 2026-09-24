@@ -74,7 +74,7 @@ jobs:
           sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
           test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+            /bin/bash packages/cloud/scripts/e2e/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Expose checkout outside the runner private home
         run: |
@@ -137,7 +137,7 @@ jobs:
           sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
           test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+            /bin/bash packages/cloud/scripts/e2e/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Expose checkout outside the runner private home
         run: |

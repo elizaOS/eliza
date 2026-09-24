@@ -101,6 +101,7 @@ import {
   readMessageContentProjection,
   requireDocumentSourceReadMetadata,
   requireFreshWorldMetadataRevision,
+  rerankMemories,
   resolveMessageContentSourceDescriptor,
   type SetConnectorAccountCredentialRefParams,
   type Task,
@@ -120,7 +121,6 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { rerankMemories } from "@elizaos/retrieval";
 import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {

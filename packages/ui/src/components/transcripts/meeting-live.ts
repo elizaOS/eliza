@@ -9,12 +9,10 @@ import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingTranscriptEvent,
-} from "@elizaos/shared/meetings";
-import { MEETING_PLATFORMS } from "@elizaos/shared/meetings";
-import type {
   Transcript,
   TranscriptSegment,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
+import { MEETING_PLATFORMS } from "@elizaos/shared";
 
 /** The live pane's view of an in-progress meeting transcript. */
 export interface LiveTranscriptState {

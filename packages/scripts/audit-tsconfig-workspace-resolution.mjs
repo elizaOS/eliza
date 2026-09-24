@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const defaultRepoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -83,22 +83,51 @@ function tokenizeShellStatement(statement) {
 function compilerTokenIndex(tokens) {
   return tokens.findIndex((token, index) => {
     const basename = path.basename(token);
-    if (basename === "tsc" || basename === "tsc6") return true;
+    if (basename === "tsc" || basename === "tsc6" || basename === "tsgo")
+      return true;
     return (
       (basename === "bunx" ||
         (basename === "bun" && tokens[index + 1] === "x")) &&
-      /^(?:tsc|tsc6)$/.test(tokens[index + (basename === "bun" ? 2 : 1)] ?? "")
+      /^(?:tsc|tsc6|tsgo)$/.test(
+        tokens[index + (basename === "bun" ? 2 : 1)] ?? "",
+      )
     );
   });
 }
 
 /** Derive every tsconfig consumed by direct compiler invocations in a script. */
-export function discoverTypecheckProjects(packageDir, script) {
+export function discoverTypecheckProjects(
+  packageDir,
+  script,
+  scripts = {},
+  active = new Set(),
+) {
   const projects = [];
   for (const statement of splitShellStatements(script)) {
     const tokens = tokenizeShellStatement(statement);
     const compilerIndex = compilerTokenIndex(tokens);
-    if (compilerIndex < 0) continue;
+    if (compilerIndex < 0) {
+      const bunIndex = tokens.findIndex(
+        (token) => path.basename(token) === "bun",
+      );
+      if (bunIndex >= 0 && tokens[bunIndex + 1] === "run") {
+        const name = tokens[bunIndex + 2];
+        const nested = scripts[name];
+        if (nested) {
+          if (active.has(name))
+            throw new Error(`Cyclic typecheck script: ${name}`);
+          projects.push(
+            ...discoverTypecheckProjects(
+              packageDir,
+              nested,
+              scripts,
+              new Set([...active, name]),
+            ),
+          );
+        }
+      }
+      continue;
+    }
     let foundProject = false;
     for (let index = compilerIndex + 1; index < tokens.length; index += 1) {
       const token = tokens[index];
@@ -143,24 +172,35 @@ function taskDependencies(turbo, taskName) {
   );
 }
 
-function buildClosure(packageName, manifestsByName, turbo, output = new Set()) {
-  if (output.has(packageName)) return output;
+function buildClosure(
+  packageName,
+  manifestsByName,
+  turbo,
+  output = new Set(),
+  task = "build",
+  visited = new Set(),
+) {
+  const taskId = `${packageName}#${task}`;
+  if (visited.has(taskId)) return output;
+  visited.add(taskId);
   output.add(packageName);
   const manifest = manifestsByName.get(packageName);
   if (!manifest) return output;
-  const dependencies = taskDependencies(turbo, `${packageName}#build`);
+  const dependencies = taskDependencies(turbo, taskId);
   for (const dependency of dependencies) {
     if (dependency === "^build") {
       for (const name of dependencyNames(manifest)) {
         if (manifestsByName.has(name))
-          buildClosure(name, manifestsByName, turbo, output);
+          buildClosure(name, manifestsByName, turbo, output, "build", visited);
       }
-    } else if (dependency.endsWith("#build")) {
+    } else if (/#build(?::[\w-]+)?$/.test(dependency)) {
       buildClosure(
-        dependency.slice(0, -"#build".length),
+        dependency.split("#")[0],
         manifestsByName,
         turbo,
         output,
+        dependency.split("#")[1],
+        visited,
       );
     }
   }
@@ -180,12 +220,13 @@ export function builtBeforeTypecheck(packageName, manifestsByName, turbo) {
         if (manifestsByName.has(name))
           buildClosure(name, manifestsByName, turbo, built);
       }
-    } else if (dependency.endsWith("#build")) {
+    } else if (/#build(?::[\w-]+)?$/.test(dependency)) {
       buildClosure(
-        dependency.slice(0, -"#build".length),
+        dependency.split("#")[0],
         manifestsByName,
         turbo,
         built,
+        dependency.split("#")[1],
       );
     }
   }
@@ -385,15 +426,12 @@ function inspectProject({
     moduleHost.getCanonicalFileName,
     parsed.options,
   );
-  const queue = [...parsed.fileNames];
-  const visited = new Set();
+  const queue = new Set(parsed.fileNames.map((file) => path.resolve(file)));
+  const pathPatterns = Object.keys(parsed.options.paths ?? {});
   const ambientWorkspaceModules = new Map();
   const externallyImportedWorkspaceModules = new Map();
   const ownerDir = packageDirsByName.get(packageName);
-  while (queue.length > 0) {
-    const sourcePath = path.resolve(queue.shift());
-    if (visited.has(sourcePath)) continue;
-    visited.add(sourcePath);
+  for (const sourcePath of queue) {
     let sourceAnalysis = sourceFileCache.get(sourcePath);
     if (!sourceAnalysis) {
       const source = host.readFile(sourcePath);
@@ -413,9 +451,7 @@ function inspectProject({
     }
     for (const specifier of sourceAnalysis.ambientWorkspaceModules) {
       if (
-        Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pathPatternMatches(pattern, specifier),
-        )
+        pathPatterns.some((pattern) => pathPatternMatches(pattern, specifier))
       ) {
         ambientWorkspaceModules.set(specifier, sourcePath);
       }
@@ -463,13 +499,11 @@ function inspectProject({
         !resolution.resolvedFileName.includes(`${path.sep}dist${path.sep}`) &&
         !resolution.resolvedFileName.endsWith(".d.ts")
       ) {
-        queue.push(resolution.resolvedFileName);
+        queue.add(path.resolve(resolution.resolvedFileName));
       }
       if (!specifier.startsWith("@elizaos/")) continue;
       if (
-        !Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pattern.startsWith("@elizaos/"),
-        ) ||
+        !targetName &&
         !rootPathPatterns.some((pattern) =>
           pathPatternMatches(pattern, specifier),
         )
@@ -478,14 +512,14 @@ function inspectProject({
       }
       let valid = Boolean(resolution);
       if (targetName) {
-        if (targetName === packageName) valid = true;
-        else {
+        const resolvedToGeneratedOutput =
+          resolution?.resolvedFileName.includes(`${path.sep}dist${path.sep}`) ??
+          false;
+        if (targetName === packageName) {
+          valid = Boolean(resolution) && !resolvedToGeneratedOutput;
+        } else {
           const target = manifestsByName.get(targetName);
           if (declarationEntryIsGenerated(target, specifier, targetName)) {
-            const resolvedToGeneratedOutput =
-              resolution?.resolvedFileName.includes(
-                `${path.sep}dist${path.sep}`,
-              ) ?? false;
             valid =
               (Boolean(resolution) && !resolvedToGeneratedOutput) ||
               builtPackages.has(targetName);
@@ -584,6 +618,7 @@ export function auditTsconfigWorkspaceResolution(options = {}) {
       projectPaths = discoverTypecheckProjects(
         packageDirsByName.get(packageName),
         script,
+        manifest.scripts,
       );
     } catch (error) {
       violations.push(`${packageName} typecheck: ${error.message}`);

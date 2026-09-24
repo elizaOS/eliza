@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Repo root via git, not a fixed level count: native/ moved under
 # plugins/plugin-local-inference/, so the old "$SCRIPT_DIR/../../.." resolved to
-# plugins/ and "$REPO_ROOT/packages/app-core/..." became plugins/packages/... (ENOENT).
+# plugins/ and "$REPO_ROOT/packages/app/..." became plugins/packages/... (ENOENT).
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 cd "$SCRIPT_DIR"
 
@@ -176,7 +176,7 @@ if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" \
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.mjs" \
       --target "$TARGET" \
       --cache-dir "$LLAMA_DIR" \
       --jobs "$MTP_BUILD_JOBS"
@@ -342,7 +342,7 @@ if [[ "${ELIZA_MTP_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_MTP_SKIP_B
   rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" \
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.mjs" \
     --target "$TARGET" \
     --cache-dir "$LLAMA_DIR" \
     --jobs "$MTP_BUILD_JOBS"

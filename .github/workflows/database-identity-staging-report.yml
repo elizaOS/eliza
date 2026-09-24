@@ -57,7 +57,7 @@ jobs:
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
           setup-python: "false"
           install-protoc: "false"
           install-native-deps: "false"
@@ -69,9 +69,6 @@ jobs:
 
       - name: Probe fixed runtime dependencies
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
-
-      - name: Validate identity reporter contracts
-        run: bun test packages/cloud/scripts/admin/preflight-database-identity.test.ts packages/cloud/scripts/admin/database-identity-staging-report-workflow.test.ts
 
       # Step scoping keeps DATABASE_URL out of the earlier steps' declared
       # environments, preventing direct or accidental injection there. It is

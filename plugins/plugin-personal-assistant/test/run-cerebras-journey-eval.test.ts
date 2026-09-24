@@ -14,7 +14,7 @@ import {
   resolveJourneyEvalPaths,
   runCerebrasJourneyEval,
   waitForChild,
-} from "../scripts/run-cerebras-journey-eval.mjs";
+} from "../../../packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs";
 
 const temporaryDirectories: string[] = [];
 
@@ -36,7 +36,7 @@ describe("Cerebras journey eval runner", () => {
   it("resolves the repository and package environment candidates", () => {
     const paths = resolveJourneyEvalPaths(
       new URL(
-        "file:///workspace/eliza/plugins/plugin-personal-assistant/scripts/run.mjs",
+        "file:///workspace/eliza/packages/scripts/plugins/plugin-personal-assistant/run.mjs",
       ),
     );
 

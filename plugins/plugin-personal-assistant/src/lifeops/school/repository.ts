@@ -9,7 +9,7 @@
 import type {
   EntityStore,
   RelationshipStore,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type { Entity, Relationship } from "@elizaos/shared";
 import {
   ACTION_EFFECT_CLASSES,

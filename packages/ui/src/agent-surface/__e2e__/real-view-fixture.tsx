@@ -1,7 +1,7 @@
 /**
  * Real-plugin-view target for the agent-surface e2e. Unlike fixture.tsx (which
  * declares its own synthetic controls), this mounts REAL components from
- * `@elizaos/plugin-task-coordinator` — `TaskCard`, `BackChip`, `TaskSearchInput`
+ * `@elizaos/plugin-agent-orchestrator` — `TaskCard`, `BackChip`, `TaskSearchInput`
  * — inside the host `AgentSurfaceProvider`. Those components call the real
  * `useAgentElement` from `@elizaos/ui/agent-surface`, so the host registry
  * discovers the plugin view's controls exactly the way DynamicViewLoader does in
@@ -17,7 +17,7 @@ import {
   BackChip,
   TaskCard,
   TaskSearchInput,
-} from "../../../../../plugins/plugin-task-coordinator/src/TaskCardList";
+} from "../../../../../plugins/plugin-agent-orchestrator/src/ui/TaskCardList";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AgentElementOverlay } from "../AgentElementOverlay";

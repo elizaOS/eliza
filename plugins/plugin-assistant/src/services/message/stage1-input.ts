@@ -20,9 +20,9 @@ import {
   renderContextObject,
   resolveOptimizedPromptForRuntime,
   segmentBlock,
+  selectHistoricalNavigation,
 } from "@elizaos/core";
-import { messageHandlerTemplate } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/prompts/rendering";
+import { composePrompt } from "@elizaos/shared";
 import { v4 } from "uuid";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import {
@@ -47,6 +47,7 @@ import {
   labelHistorySources,
   shortenHistoryRoleLabels,
 } from "./history-wire.js";
+import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
   composeResponseState,
@@ -90,14 +91,6 @@ export function createContextCatalogReference(
     ? { text, notice, loaded: false }
     : undefined;
 }
-
-export const VOICE_ENGAGEMENT_RULES = [
-  "- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
-  "- This is a one-to-one conversation: respond naturally to acknowledgements, reactions, and brief follow-ups, including disagreement or requests to clarify your previous reply.",
-  "- shouldRespond=IGNORE only for non-speech/noise or ambient speech clearly not addressed to the agent.",
-  "- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
-  "- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
-].join("\n");
 
 export function formatRoleGateForPrompt(
   roleGate: ContextDefinition["roleGate"],
@@ -143,7 +136,6 @@ export function renderMessageHandlerInstructions(
   availableContexts: readonly ContextDefinition[],
   options?: {
     directMessage?: boolean;
-    voiceDirectMessage?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
   },
@@ -164,13 +156,8 @@ export function renderMessageHandlerInstructions(
     },
     template: baseline,
   }).trim();
-  const renderedWithVoiceRules = options?.voiceDirectMessage
-    ? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
-        "\n",
-      )
-    : rendered;
   const renderedWithSharedRules = [
-    renderedWithVoiceRules,
+    rendered,
     "",
     "## Shared Response Quality Rules",
     `- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -193,8 +180,8 @@ export function renderMessageHandlerModelInput(
   availableContexts: readonly ContextDefinition[] = [],
   options?: {
     directMessage?: boolean;
-    voiceDirectMessage?: boolean;
     groupTriage?: boolean;
+    progressiveContext?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
@@ -204,22 +191,31 @@ export function renderMessageHandlerModelInput(
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
 } {
-  const rendered = renderContextObject(context);
-  const completionSources = options?.voiceDirectMessage
-    ? undefined
-    : completionContextSources(context);
+  const completionSources = completionContextSources(context);
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
   );
-  const directText =
-    options?.directMessage &&
-    !options.voiceDirectMessage &&
-    !options.groupTriage;
+  const progressiveContextInput =
+    options?.progressiveContext ??
+    (options?.directMessage && !options.groupTriage);
   const history =
-    directText &&
-    options.history?.sourceSetId === completionSources?.sourceSetId
-      ? options.history
+    progressiveContextInput &&
+    options?.history?.sourceSetId === completionSources?.sourceSetId
+      ? options?.history
       : undefined;
+  const rendered = renderContextObject(
+    history
+      ? selectHistoricalNavigation(
+          context,
+          new Set([
+            ...history.visibleEventIds,
+            ...completionSources.sources
+              .filter(({ id }) => history.loadedSourceIds.has(id))
+              .map(({ event }) => event.id),
+          ]),
+        )
+      : context,
+  );
   const instructions = renderMessageHandlerInstructions(
     runtime,
     availableContexts,
@@ -258,13 +254,21 @@ export function renderMessageHandlerModelInput(
     ),
     completionSourceIds,
   );
+  // Past effects remain complete historical evidence, before the instruction
+  // that establishes the current request. They cannot become pending work by
+  // being regrouped into the current turn's tool/result tail.
+  const historicalNavigationSegments = remainingDynamicSegments.filter(
+    (segment) =>
+      segment.label === "runtime:historical_navigation" ||
+      segment.label === "runtime:historical_navigation_scope",
+  );
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,
   );
   // Availability validation can change this complete, freshly authorized catalog
   // on every request. Keep it after the history prefix so an action appearing or
   // disappearing does not invalidate cached history. Never cache authorization.
-  const actionCatalogSegments = directText
+  const actionCatalogSegments = progressiveContextInput
     ? remainingDynamicSegments.filter(
         (segment) =>
           segment.id === "available-actions" &&
@@ -275,15 +279,17 @@ export function renderMessageHandlerModelInput(
     (segment) =>
       segment.label?.startsWith("prior_message:") !== true &&
       segment.label?.startsWith("provider:") !== true &&
-      !actionCatalogSegments.includes(segment),
+      !actionCatalogSegments.includes(segment) &&
+      !historicalNavigationSegments.includes(segment),
   );
   // The boundary follows untrusted dialogue so stored messages cannot supersede
   // it with structural-looking text. Providers remain adjacent after that
   // boundary, preserving their reusable prefix before the current message.
   const orderedDynamicSegments = [
-    ...(directText
+    ...(progressiveContextInput
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
+    ...historicalNavigationSegments,
     ...actionCatalogSegments,
     ...currentTurnBoundary,
     ...(completionSources?.sources.length
@@ -306,7 +312,8 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ?? (directText ? options?.historyReadEvidence : undefined),
+      history ??
+        (progressiveContextInput ? options?.historyReadEvidence : undefined),
       history?.loadedSourceIds.size
         ? new Set(
             priorDialogueSegments.flatMap((segment) =>

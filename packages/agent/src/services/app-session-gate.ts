@@ -24,9 +24,8 @@ function isRunStatusActive(status: string): boolean {
 
 /**
  * True when an AppManager run exists for this canonical app name and is not
- * stopped. Reads runs from the `@elizaos/plugin-app-manager` AppSessionService
- * registered on the runtime; if the service is absent (plugin not loaded) it
- * fails open to "no active runs" rather than importing the plugin statically.
+ * stopped. Reads the optional AppSessionService registered on the runtime;
+ * an absent service contributes no active runs to the session gate.
  */
 export function hasActiveAppRunForCanonicalName(
   runtime: IAgentRuntime,

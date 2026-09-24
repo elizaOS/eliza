@@ -3,6 +3,34 @@
  * local to avoid a root-barrel cycle during the subpath API migration.
  */
 
+export type {
+  AppDetailExtensionComponent,
+  AppDetailExtensionProps,
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/shared";
+export {
+  autoLabel,
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  ENV_KEY_ACRONYMS,
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+  getAllOverlayApps,
+  getAppDetailExtension,
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isAospAndroid,
+  isDocumentImageFile,
+  isOverlayApp,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+  type OverlayAppAvailabilityContext,
+  overlayAppToRegistryInfo,
+  registerDetailExtension,
+  registerOverlayApp,
+} from "@elizaos/shared";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,
@@ -154,20 +182,12 @@ export {
   DashboardRouteError,
   formatDashboardRouteErrorMessage,
 } from "../cloud-ui/components/primitives";
-export * from "../utils/documents-upload-image";
-export * from "../utils/labels";
-export * from "../utils/trajectory-format";
 export * from "./accounts/EditableAccountLabel";
-export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
 export * from "./apps/extensions/surface.helpers";
-export * from "./apps/extensions/types";
 export * from "./apps/FullscreenView";
 export * from "./apps/FullscreenView.helpers";
 export * from "./apps/GameViewOverlay";
-export * from "./apps/overlay-app-api";
-export * from "./apps/overlay-app-registry";
-export * from "./browser";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";
@@ -178,7 +198,6 @@ export * from "./chat/ConnectorAccountPicker";
 export * from "./chat/connector-send-as";
 export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
-export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export {
   OrchestratorAccountsView,
@@ -216,7 +235,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ConfigPageView";
-// DatabasePageView omitted — App.tsx lazy-loads it by path and app-core imports
+// DatabasePageView omitted — App.tsx lazy-loads it by path and app imports
 // the direct subpath; re-exporting it here forms a barrel cycle with
 // DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";

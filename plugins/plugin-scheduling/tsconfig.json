@@ -2,22 +2,16 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "types": ["node", "vite/client"],
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
       "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
@@ -36,7 +30,8 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-scheduling": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

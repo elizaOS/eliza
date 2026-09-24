@@ -1,45 +1,8 @@
-/**
- * Host trust policy for the white-label app shell: decides whether a given
- * apiBase, deep-link target, or native WebSocket URL is safe to dial, keeping
- * that decision out of the boot orchestration in `main.tsx`. A strict iOS path
- * (App Store / TestFlight builds and cloud-runtime modes, which App Review
- * forbids from reaching non-HTTPS or private-network hosts) and a dev-friendly
- * loopback/private-LAN path live side by side. `createUrlTrustPolicy` closes
- * over a `UrlTrustPolicyContext` and returns the per-URL guards; URL parse
- * failures fail closed (treated as untrusted).
- */
-
+/** Pure host classifiers shared by the live shell network policy. */
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
-import {
-  IOS_LOCAL_AGENT_IPC_BASE,
-  isMobileLocalAgentIpcUrl,
-} from "@elizaos/ui/first-run/mobile-runtime-mode";
-
-export interface UrlTrustPolicyContext {
-  isNative: boolean;
-  isIOS: boolean;
-  /**
-   * True iff the current build is the App Store / TestFlight variant. iOS
-   * App Review forbids any non-HTTPS / private-network access, so we layer
-   * stricter rules on top of the normal dev allowances.
-   */
-  isStoreBuild: boolean;
-  cloudApiBase: string | undefined;
-  /**
-   * `?popout=1` window — these can dial arbitrary HTTPS hosts the user
-   * provided via the apiBase query parameter (used by Electrobun popouts).
-   */
-  isPopoutWindow: boolean;
-  /**
-   * Returns the current iOS runtime mode (local / cloud / cloud-hybrid /
-   * tunnel-to-mobile). This is a callback rather than a value because the
-   * mode can flip at runtime via the mobile runtime mode listener.
-   */
-  getIosRuntimeMode: () => string;
-}
+} from "@elizaos/shared";
 
 export function isTrustedPrivateHttpHost(host: string): boolean {
   return (
@@ -69,12 +32,6 @@ export function isLoopbackApiHost(host: string): boolean {
   );
 }
 
-/**
- * Eliza shared-tier control-plane hosts trusted by strict native builds. The
- * canonical eliza.app family is primary; legacy elizacloud.ai names remain in
- * this boundary-only set while their edge redirects are in service. Dedicated
- * agent subdomains are deliberately excluded and handled by the caller.
- */
 const ELIZA_CLOUD_SHARED_HOSTS: ReadonlySet<string> = new Set([
   ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
     new URL(contract.marketingOrigin).hostname,
@@ -92,7 +49,6 @@ export function isElizaCloudSharedHost(host: string): boolean {
   return ELIZA_CLOUD_SHARED_HOSTS.has(host.toLowerCase());
 }
 
-/** Trust only canonical HTTPS control-plane origins for cloud-only shells. */
 export function isTrustedCloudOnlyApiBaseUrl(
   parsed: URL,
   cloudOnly: boolean,
@@ -104,11 +60,7 @@ export function isTrustedCloudOnlyApiBaseUrl(
   );
 }
 
-function isIosLocalAgentIpcUrl(parsed: URL): boolean {
-  return isMobileLocalAgentIpcUrl(parsed);
-}
-
-function isPrivateOrLoopbackApiHost(host: string): boolean {
+export function isPrivateOrLoopbackApiHost(host: string): boolean {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
   return (
     isLoopbackApiHost(normalized) ||
@@ -119,119 +71,3 @@ function isPrivateOrLoopbackApiHost(host: string): boolean {
     isTrustedPrivateHttpHost(normalized)
   );
 }
-
-export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
-  function isNativeIosStoreBuild(): boolean {
-    return ctx.isNative && ctx.isIOS && ctx.isStoreBuild;
-  }
-
-  function isNativeIosCloudRuntimeMode(): boolean {
-    if (!ctx.isNative || !ctx.isIOS) return false;
-    const mode = ctx.getIosRuntimeMode();
-    return mode === "cloud" || mode === "cloud-hybrid";
-  }
-
-  function usesStrictIosNetworkPolicy(): boolean {
-    return isNativeIosStoreBuild() || isNativeIosCloudRuntimeMode();
-  }
-
-  function canUseIosLocalAgentIpc(): boolean {
-    return ctx.isNative && ctx.isIOS && ctx.getIosRuntimeMode() === "local";
-  }
-
-  function isCurrentOriginHost(host: string): boolean {
-    return typeof window !== "undefined" && host === window.location.hostname;
-  }
-
-  function isConfiguredCloudApiHost(host: string): boolean {
-    if (!ctx.cloudApiBase) return false;
-    try {
-      return host === new URL(ctx.cloudApiBase).hostname;
-    } catch {
-      // error-policy:J3 fail-closed URL parse: a malformed cloudApiBase is not
-      // a trusted host match.
-      return false;
-    }
-  }
-
-  function isTrustedApiBaseUrl(parsed: URL): boolean {
-    if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return false;
-    }
-    const host = parsed.hostname;
-    if (usesStrictIosNetworkPolicy()) {
-      if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
-        return false;
-      }
-      return (
-        isCurrentOriginHost(host) ||
-        isConfiguredCloudApiHost(host) ||
-        isElizaCloudSharedHost(host)
-      );
-    }
-    if (ctx.isPopoutWindow && parsed.protocol === "https:") return true;
-    return (
-      isLoopbackApiHost(host) ||
-      isCurrentOriginHost(host) ||
-      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-      isTrustedPrivateHttpHost(host)
-    );
-  }
-
-  function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
-    if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return false;
-    }
-    const host = parsed.hostname;
-    if (usesStrictIosNetworkPolicy()) {
-      if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
-        return false;
-      }
-      return (
-        isCurrentOriginHost(host) ||
-        (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-        (parsed.protocol === "https:" && isElizaCloudSharedHost(host))
-      );
-    }
-    return (
-      isLoopbackApiHost(host) ||
-      isCurrentOriginHost(host) ||
-      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-      isTrustedPrivateHttpHost(host)
-    );
-  }
-
-  function isTrustedNativeWebSocketUrl(value: string): boolean {
-    try {
-      const parsed = new URL(value);
-      if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
-        return false;
-      }
-      if (!usesStrictIosNetworkPolicy()) return true;
-      return (
-        parsed.protocol === "wss:" &&
-        !isPrivateOrLoopbackApiHost(parsed.hostname)
-      );
-    } catch {
-      // error-policy:J3 fail-closed URL parse: an unparseable WebSocket URL is
-      // never trusted.
-      return false;
-    }
-  }
-
-  return {
-    isTrustedApiBaseUrl,
-    isTrustedDeepLinkApiBaseUrl,
-    isTrustedNativeWebSocketUrl,
-    usesStrictIosNetworkPolicy,
-    isNativeIosStoreBuild,
-  };
-}
-
-export type UrlTrustPolicy = ReturnType<typeof createUrlTrustPolicy>;
-
-// Re-export the IPC base so consumers don't need to depend on @elizaos/ui
-// directly when wiring the policy. Pure convenience.
-export { IOS_LOCAL_AGENT_IPC_BASE };

@@ -3,7 +3,7 @@
  * while treating every response body as untrusted transport input.
  */
 
-import { ElizaError, isElizaError } from "@elizaos/common";
+import { ElizaError, isElizaError } from "@elizaos/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

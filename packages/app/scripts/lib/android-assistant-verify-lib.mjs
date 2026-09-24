@@ -10,7 +10,7 @@
  * part that must be covered off-device).
  *
  * Naming/constants mirror the native surfaces under
- * `packages/app-core/platforms/android/app/src/main/`:
+ * `packages/app/platforms/android/app/src/main/`:
  *   - {@link ASSISTANT_VIS_COMPONENT} — ElizaVoiceInteractionService (ROLE_ASSISTANT).
  *   - {@link ASSISTANT_IME_COMPONENT} — ElizaVoiceInputMethodService (voice IME).
  *   - deep-link source tags — the exact `source=` params the native entry

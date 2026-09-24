@@ -1,7 +1,6 @@
 /** Scenario fixture for subscriptions cancel google play; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectScenarioBrowserTask } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectScenarioBrowserTask, scenario } from "@elizaos/testing";
 import { browserPlugin } from "../../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,

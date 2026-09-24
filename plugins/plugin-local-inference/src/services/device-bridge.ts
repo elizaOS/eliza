@@ -38,7 +38,7 @@ import { ElizaError, logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
 	type GenerationThroughput,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import { localInferenceRoot } from "./paths";
 
@@ -65,7 +65,7 @@ function pairingTokenMatches(
 
 /**
  * `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` is also read by the independent
- * plugin-capacitor-bridge device bridge. Kept as a local resolver (not a
+ * plugin-native-inference device bridge. Kept as a local resolver (not a
  * cross-plugin import) since these are two separately-loadable plugins with
  * their own lifecycles, but the accepted grammar and bounds are the same
  * canonical decimal-integer contract, so the same input is accepted or

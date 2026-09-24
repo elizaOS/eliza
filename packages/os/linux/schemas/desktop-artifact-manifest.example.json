@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+  "version": "0.1.0-beta.1",
+  "architecture": "riscv64",
+  "shell": "gtk-webkit",
+  "archive": "eliza-linux-riscv64-0.1.0-beta.1.tar.zst",
+  "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "signature": "eliza-linux-riscv64-0.1.0-beta.1.tar.zst.sig",
+  "manifestSignature": "desktop-artifact-manifest.json.sig",
+  "entrypoints": {
+    "desktop": "bin/eliza-desktop",
+    "agent": "bin/eliza-agent",
+    "doctor": "bin/eliza-doctor"
+  },
+  "capabilities": {
+    "tray": true,
+    "overlay": true,
+    "wayland": true,
+    "cloudAuth": true,
+    "computerUse": true,
+    "remoteControl": true
+  }
+}

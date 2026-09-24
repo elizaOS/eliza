@@ -1,11 +1,11 @@
 /**
  * Resolves the Node.js runtime for the app Playwright lanes through the shared
- * app-core validator so an invalid ELIZA_NODE_PATH, a Bun executable, or a
+ * app validator so an invalid ELIZA_NODE_PATH, a Bun executable, or a
  * pre-24 Node fails fast before Playwright or its webServer spawns. Consumed by
  * scripts/run-ui-playwright.mjs and the playwright.*.config.ts webServer
  * commands; candidate priority (explicit ELIZA_NODE_PATH → npm_node_execpath →
  * process.execPath → PATH node) matches the historical fail-open ladder, but
- * every candidate must now pass app-core's exists/executable/is-node/version
+ * every candidate must now pass app's exists/executable/is-node/version
  * probe, and the error messages are the resolver's own contract strings.
  */
 import fs from "node:fs";
@@ -13,7 +13,7 @@ import path from "node:path";
 import {
   probeNodeExecutable,
   resolveNodeExecPathFromCandidates,
-} from "../../../app-core/scripts/run-node-runtime.mjs";
+} from "../run-node-runtime.mjs";
 
 /**
  * Finds an executable on PATH, honoring PATHEXT on Windows. Returns the first
@@ -54,9 +54,9 @@ export function resolveExecutableFromPath(
 
 /**
  * Resolves the validated Node.js executable for a Playwright lane. An explicit
- * env.ELIZA_NODE_PATH must validate or this throws app-core's
+ * env.ELIZA_NODE_PATH must validate or this throws app's
  * `Invalid ELIZA_NODE_PATH=...` contract; otherwise the first candidate that
- * probes as real Node.js 24+ wins, and exhaustion throws app-core's
+ * probes as real Node.js 24+ wins, and exhaustion throws app's
  * `No usable Node.js 24+ executable found` contract.
  */
 export function resolvePlaywrightNodeRuntime({

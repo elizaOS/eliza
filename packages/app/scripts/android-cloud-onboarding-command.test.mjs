@@ -139,7 +139,7 @@ test("the build and install aliases dispatch their executable argv", () => {
     {
       tool: "node",
       argv: [
-        "../../packages/app-core/scripts/run-mobile-build.mjs",
+        "../../packages/app/scripts/run-mobile-build.mjs",
         "android-cloud-debug",
       ],
       env: {

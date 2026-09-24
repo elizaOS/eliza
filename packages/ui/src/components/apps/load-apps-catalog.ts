@@ -2,14 +2,15 @@
  * Loads and warms the Apps catalog by merging internal tools, server apps,
  * catalog entries, and overlay app registrations.
  */
+
+import {
+  getAvailableOverlayApps,
+  overlayAppToRegistryInfo,
+} from "@elizaos/shared";
 import { client, type RegistryAppInfo } from "../../api";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { writeAppsCache } from "./apps-cache";
 import { getInternalToolApps } from "./internal-tool-apps";
-import {
-  getAvailableOverlayApps,
-  overlayAppToRegistryInfo,
-} from "./overlay-app-registry";
 
 /**
  * Fetch the merged apps catalog used by AppsView. Internal-tool entries are

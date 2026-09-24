@@ -38,7 +38,7 @@ import type {
 import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
 import type { Entity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { resolveKnowledgeGraphService } from "../knowledge-graph/index.ts";
+import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 
 import {
   ENTITY_OPS,

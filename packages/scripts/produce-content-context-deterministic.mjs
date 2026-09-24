@@ -13,10 +13,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
 import { createPreparedModelRequestGuard } from "../core/src/runtime/prepared-model-request.ts";
-import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
-import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../corpus-tools/src/progressive-content-realization.ts";
-import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
-import { createProgressiveContentExternalMutantExecutors } from "../scenario-runner/src/progressive-content-external-mutants.ts";
+import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../testing/corpus/progressive-content-realization.ts";
+import { runProgressiveContentTargetHarness } from "../testing/corpus/progressive-content-target-harness.ts";
+import { createProgressiveContentExternalMutantExecutors } from "../testing/scenario-runner/src/progressive-content-external-mutants.ts";
 import {
   applyProgressiveContentMutant,
   cleanupProgressiveContentProductionFaults,
@@ -68,7 +68,7 @@ async function writeJson(outputDir, name, value) {
 }
 
 async function runDeterministicScenario(outputDir, commit) {
-  const scenarioRoot = path.join(REPO_ROOT, "packages/scenario-runner");
+  const scenarioRoot = path.join(REPO_ROOT, "packages/testing/scenario-runner");
   const runDir = path.join(outputDir, "scenario-run");
   const report = path.join(outputDir, "scenario.json");
   const native = path.join(outputDir, "scenario-native.jsonl");

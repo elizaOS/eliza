@@ -21,7 +21,7 @@ import type {
   RelationshipSource,
   RelationshipState,
   RelationshipStatus,
-} from "@elizaos/shared/knowledge-graph";
+} from "@elizaos/shared";
 import {
   type GraphRecordRepository,
   graphRecordRepository,

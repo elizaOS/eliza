@@ -5,12 +5,12 @@
  */
 
 import {
-  AgentRuntime,
+  type AgentRuntime,
   getStreamingContext,
   ModelType,
   runWithStreamingContext,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { rewriteActionCallbackInCharacter } from "./delivery";
 import { reviewRecoveredReply } from "./recovery-grounding";
@@ -65,9 +65,9 @@ const cases = [
 ];
 
 function makeRuntime() {
-  return new AgentRuntime({
+  return createSQLiteTestRuntime({
     character: { name: "Recovery", bio: "test", settings: {} },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
 }

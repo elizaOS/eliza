@@ -35,7 +35,7 @@ vi.mock("../../../hooks/useRuntimeMode", () => ({
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "../../../services/local-inference/types";
+} from "@elizaos/shared";
 
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the
@@ -55,18 +55,13 @@ const {
 }));
 vi.mock("../../../api", () => ({
   client: {
+    onReconnect: vi.fn(() => () => {}),
     getBaseUrl: getBaseUrlMock,
     getRestAuthToken: getRestAuthTokenMock,
     getModelsConfig: getModelsConfigMock,
     getLocalInferenceHub: getHubMock,
     startLocalInferenceDownload: startDownloadMock,
   },
-}));
-
-// Isolate the navigation rail — assert the CustomEvent without the slash-command
-// controller side effects.
-vi.mock("../../../chat/useSlashCommandController", () => ({
-  reportUserViewSwitch: vi.fn(),
 }));
 
 // EventSource cannot open in jsdom; the widget already tolerates a null
@@ -142,6 +137,21 @@ function hub(
 }
 
 describe("ModelDownloadWidget", () => {
+  it("removes a stale routing warning after the backend recovers without remounting", async () => {
+    getModelsConfigMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue({ activeChat: { provider: "cerebras" } });
+    render(<ModelDownloadWidget />);
+    await screen.findByText("Model route unavailable");
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Model route unavailable")).toBeNull();
+      },
+      { timeout: 2_500 },
+    );
+    expect(getHubMock).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     authMock.authenticated = true;
     Object.assign(runtimeModeMock, {

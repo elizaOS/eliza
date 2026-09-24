@@ -16,7 +16,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { extractSecretsTemplate } from "@elizaos/prompts";
+import { extractSecretsTemplate } from "../prompts.js";
 import { secretContextFromMessage } from "../secret-context.ts";
 import {
   SECRETS_SERVICE_TYPE,

@@ -20,7 +20,6 @@
   "scripts": {
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
     "start:control-plane": "bun run ./bin/control-plane-mock.ts",
-    "test": "bun --conditions=eliza-source test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check package.json src test bin",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
@@ -30,21 +29,15 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "hono": "4.13.8",
-    "@elizaos/common": "workspace:*"
+    "hono": "4.13.8"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
-    "@elizaos/plugin-whatsapp": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "bun-types": "*"
+    "bun-types": "1.4.2"
   },
   "elizaos": {
-    "scripts": {
-      "testLanes": [
-        "server"
-      ]
-    }
+    "scripts": {}
   }
 }

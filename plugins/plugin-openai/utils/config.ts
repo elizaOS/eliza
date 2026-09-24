@@ -7,12 +7,9 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 
 function getEnvValue(key: string): string | undefined {
-  if (typeof process === "undefined" || !process.env) {
-    return undefined;
-  }
   const value = process.env[key];
   return value === undefined ? undefined : String(value);
 }
@@ -177,7 +174,7 @@ export function getAuthHeader(
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
-function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Record<string, string> {
+function authHeaderForKey(key: string | undefined): Record<string, string> {
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
@@ -264,7 +261,7 @@ export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | unde
 }
 
 export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<string, string> {
-  return authHeaderForKey(runtime, getImageDescriptionApiKey(runtime));
+  return authHeaderForKey(getImageDescriptionApiKey(runtime));
 }
 
 export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {

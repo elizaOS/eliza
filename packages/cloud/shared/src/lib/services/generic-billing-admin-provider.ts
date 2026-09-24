@@ -1,7 +1,7 @@
 /** Creates and recovers merchant/catalog objects under durable app-owner intents through the existing Stripe adapter. */
 
 import type { CreateAppBillingPlanRequest } from "@elizaos/cloud-sdk/app-billing-admin";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { createGenericBillingProvider } from "./generic-billing-provider";

@@ -353,14 +353,14 @@ export function resolveWakeWordModel(opts: {
  *   1. `$ELIZA_WAKEWORD_LIB` (operator override)
  *   2. `<bundleRoot>/wake/libwakeword.{so,dylib,dll}`
  *   3. `<state-dir>/local-inference/wake/libwakeword.{so,dylib,dll}`
- *   4. `packages/native/plugins/wakeword-cpp/build/libwakeword.{so,dylib,dll}`
+ *   4. `plugins/plugin-local-inference/native/wakeword-cpp/build/libwakeword.{so,dylib,dll}`
  *      (developer build tree)
  *
  * Search order for the three GGUFs (per kind in
  * {melspec, embedding, classifier}):
  *   1. `<bundleRoot>/wake/<head>.<kind>.gguf`
  *   2. `<state-dir>/local-inference/wake/<head>.<kind>.gguf`
- *   3. `packages/native/plugins/wakeword-cpp/build/wakeword/<head>.<kind>.gguf`
+ *   3. `plugins/plugin-local-inference/native/wakeword-cpp/build/wakeword/<head>.<kind>.gguf`
  */
 function libExtCandidates(): readonly string[] {
 	switch (process.platform) {
@@ -411,7 +411,7 @@ export function resolveWakeWordStandalonePaths(opts: {
 				"..",
 				"..",
 				"..",
-				"packages/native/plugins/wakeword-cpp/build",
+				"plugins/plugin-local-inference/native/wakeword-cpp/build",
 				`libwakeword${ext}`,
 			),
 		);
@@ -434,7 +434,7 @@ export function resolveWakeWordStandalonePaths(opts: {
 				"..",
 				"..",
 				"..",
-				"packages/native/plugins/wakeword-cpp/build/wakeword",
+				"plugins/plugin-local-inference/native/wakeword-cpp/build/wakeword",
 				fname,
 			),
 		);
@@ -461,7 +461,7 @@ export function resolveWakeWordStandalonePaths(opts: {
  *      `eliza_inference_wakeword_*` ABI. Tried first whenever the bundled GGUF
  *      is on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
  *   2. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the standalone
- *      `packages/native/plugins/wakeword-cpp` build (three GGUFs). Guarded
+ *      `plugins/plugin-local-inference/native/wakeword-cpp` build (three GGUFs). Guarded
  *      fallback for paths where the fused build lacks the wake-word runtime.
  *
  * `ffi` and `ctx` come from the voice lifecycle — they are the same

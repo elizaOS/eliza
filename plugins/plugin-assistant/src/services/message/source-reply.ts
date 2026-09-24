@@ -1,5 +1,6 @@
 /** Native reply parts resolve only against the authorized snapshot sent in this
  * model attempt. Raw provider output and stored dialogue remain unchanged. */
+
 import {
   type Content,
   type ContextObject,
@@ -14,6 +15,7 @@ import {
   sanitizeOutboundTextWithLiterals,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
 import { providerOriginals } from "../../runtime/provider-originals.ts";
 import {
   priorDialogueContent,
@@ -27,7 +29,9 @@ import {
 } from "./source-reply-references";
 
 export const SOURCE_REPLY_INSTRUCTIONS =
-  'Reply parts: replyText is an ordered array. Use one text part for ordinary prose. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use [] when no reply is needed.';
+  ACKNOWLEDGMENT_RULE +
+  "\n" +
+  'Reply parts: replyText is an ordered array. Use a text part for ordinary replies or planning acknowledgments. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use [] when no reply is needed.';
 
 export const SOURCE_REPLY_SCHEMA: JSONSchema = {
   type: "array",

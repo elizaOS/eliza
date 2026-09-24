@@ -13,8 +13,10 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
-import { isLoopbackRemoteAddress } from "@elizaos/shared";
-import { resolveSelfApiCredential } from "@elizaos/shared/runtime-env";
+import {
+  isLoopbackRemoteAddress,
+  resolveSelfApiCredential,
+} from "@elizaos/shared";
 
 // One cold dashboard hydration fans out across the independent product
 // surfaces (chat, views, plugins, approvals, notifications, and settings).

@@ -49,14 +49,6 @@
       "label": "Experimental Telemetry",
       "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
       "advanced": true
-    },
-    "ANTHROPIC_BROWSER_BASE_URL": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Browser Base Url",
-      "help": "Browser-only proxy endpoint base URL for Anthropic requests (no secrets in the client).",
-      "advanced": false
     }
   },
   "render": {

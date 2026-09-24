@@ -15,7 +15,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
@@ -1971,7 +1971,7 @@ export function useCloudState({
   );
 
   const handleCloudSignOut = useCallback(async (): Promise<void> => {
-    // On a backend-backed session (local app-core / agent runtime) the Cloud
+    // On a backend-backed session (local app / agent runtime) the Cloud
     // account is also persisted server-side and re-reported by
     // /api/cloud/status. Clearing only the renderer/Steward token there leaves
     // the backend connected, so a reload or fresh poll would resurface the same

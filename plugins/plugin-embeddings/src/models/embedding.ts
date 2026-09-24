@@ -85,10 +85,7 @@ function requireBaseURL(runtime: IAgentRuntime): string {
     // No silent default endpoint. Without a configured URL we cannot produce a
     // real vector — throw so the runtime falls through to another provider
     // instead of persisting a wrong/garbage vector (Commandment 8).
-    throw new Error(
-      "No embedding endpoint configured. Set EMBEDDING_BASE_URL " +
-        "(or EMBEDDING_BROWSER_URL in a browser build)."
-    );
+    throw new Error("No embedding endpoint configured. Set EMBEDDING_BASE_URL.");
   }
   return baseURL.replace(/\/+$/, "");
 }
@@ -184,7 +181,7 @@ async function requestEmbeddingsFromEndpoint(
     {
       method: "POST",
       headers: {
-        ...getEndpointAuthHeader(runtime, endpoint.apiKey),
+        ...getEndpointAuthHeader(endpoint.apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

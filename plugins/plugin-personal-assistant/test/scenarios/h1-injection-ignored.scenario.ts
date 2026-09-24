@@ -4,8 +4,7 @@
  * and evidence, not from untrusted message text.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { judgeRubric, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

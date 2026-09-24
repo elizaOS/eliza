@@ -15,7 +15,6 @@
 			"build.ts",
 			"index.ts",
 			"index.node.ts",
-			"index.browser.ts",
 			"init.ts",
 			"package.json",
 			"tsconfig.json",

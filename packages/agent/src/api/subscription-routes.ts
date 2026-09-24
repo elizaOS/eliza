@@ -4,38 +4,38 @@
  * endpoint that joins live auth rows with each account's `LinkedAccountConfig`,
  * the OAuth start/exchange endpoints, and a DELETE that revokes a provider and
  * unwires it from config defaults and service routing. Credentials persist
- * through the lazily-loaded `@elizaos/credentials/auth` module and mutate `ElizaConfig`; the
+ * through the lazily-loaded `@elizaos/auth/auth` module and mutate `ElizaConfig`; the
  * Anthropic setup token is stored for task-agent CLI use only, never applied to
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
-import { logger, resolveStateDir } from "@elizaos/core";
 import {
   createRuntimeAccountStoragePolicy,
   updateAccountMetadata,
-} from "@elizaos/credentials/auth/account-storage";
-import type { AnthropicFlow } from "@elizaos/credentials/auth/anthropic";
-import type { CodexFlow } from "@elizaos/credentials/auth/openai-codex";
+} from "@elizaos/auth/auth/account-storage";
+import type { AnthropicFlow } from "@elizaos/auth/auth/anthropic";
+import type { CodexFlow } from "@elizaos/auth/auth/openai-codex";
 import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
-} from "@elizaos/credentials/auth/types";
+} from "@elizaos/auth/auth/types";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
   LinkedAccountUsage,
+  RouteRequestContext,
 } from "@elizaos/shared";
 import {
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
-type AuthModule = typeof import("@elizaos/credentials/auth");
+type AuthModule = typeof import("@elizaos/auth/auth");
 
 export type SubscriptionAuthApi = Pick<
   AuthModule,
@@ -491,14 +491,14 @@ function subscriptionSelectionIdForStoredProvider(
  * Read rich `LinkedAccountConfig` rows from the AccountPool singleton.
  * The pool is the single source of truth — it joins on-disk credential
  * records with the metadata overlay file. Read from the host account pool
- * injected via the agent host bridge — no `@elizaos/app-core` import.
+ * injected via the agent host bridge — no `@elizaos/app` import.
  */
 async function readRichLinkedAccountsFromPool(): Promise<
   Record<string, LinkedAccountConfig>
 > {
   try {
     // Host account pool injected downward via the agent host bridge (see
-    // ../runtime/host-bridge.ts) — agent never imports `@elizaos/app-core`.
+    // ../runtime/host-bridge.ts) — agent never imports `@elizaos/app`.
     const pool = getAgentHostBridge().getDefaultAccountPool() as {
       list(): LinkedAccountConfig[];
     };

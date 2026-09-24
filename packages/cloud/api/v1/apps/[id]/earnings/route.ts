@@ -2,7 +2,7 @@
  * Serves authenticated app-earnings summaries and chart data.
  * It validates the requested chart window before any app or earnings lookup.
  */
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";

@@ -5,7 +5,7 @@
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { localInferencePlugin } from "../provider";
 import {

@@ -1,7 +1,7 @@
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   and,
   asc,

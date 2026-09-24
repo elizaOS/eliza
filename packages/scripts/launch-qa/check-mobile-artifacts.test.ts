@@ -103,7 +103,7 @@ async function makeRepo() {
     JSON.stringify({
       scripts: {
         "build:android:system":
-          "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
+          "node ../../packages/app/scripts/run-mobile-build.mjs android-system",
       },
     }),
   );
@@ -120,41 +120,41 @@ async function makeRepo() {
 
   for (const file of [
     "packages/app/ios/App/Podfile",
-    "packages/app-core/platforms/ios/App/Podfile",
+    "packages/app/platforms/ios/App/Podfile",
   ]) {
     await writeFile(repoRoot, file, podfile());
   }
   for (const file of [
     "packages/app/ios/App/App/Info.plist",
-    "packages/app-core/platforms/ios/App/App/Info.plist",
+    "packages/app/platforms/ios/App/App/Info.plist",
   ]) {
     await writeFile(repoRoot, file, infoPlist());
   }
   for (const file of [
     "packages/app/ios/App/App/App.entitlements",
-    "packages/app-core/platforms/ios/App/App/App.entitlements",
+    "packages/app/platforms/ios/App/App/App.entitlements",
   ]) {
     await writeFile(repoRoot, file, entitlements());
   }
 
   await writeFile(
     repoRoot,
-    "packages/app-core/platforms/android/app/build.gradle",
+    "packages/app/platforms/android/app/build.gradle",
     `android { namespace "ai.elizaos.app" defaultConfig { applicationId "ai.elizaos.app" } }`,
   );
   await writeFile(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
     androidManifest(),
   );
   await writeFile(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/assets/capacitor.config.json",
+    "packages/app/platforms/android/app/src/main/assets/capacitor.config.json",
     JSON.stringify({ appId: "ai.elizaos.app", appName: "elizaOS" }),
   );
   await writeFile(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/assets/capacitor.plugins.json",
+    "packages/app/platforms/android/app/src/main/assets/capacitor.plugins.json",
     JSON.stringify([
       { pkg: "@capacitor/app" },
       { pkg: "@capacitor/keyboard" },
@@ -167,11 +167,11 @@ async function makeRepo() {
     ]),
   );
   for (const file of [
-    "packages/app-core/platforms/android/app/src/main/assets/public/index.html",
-    "packages/app-core/platforms/android/app/src/main/assets/agent/agent-bundle.js",
-    "packages/app-core/platforms/android/app/src/main/assets/agent/launch.sh",
-    "packages/app-core/platforms/android/app/src/main/assets/agent/arm64-v8a/bun",
-    "packages/app-core/platforms/android/app/src/main/assets/agent/x86_64/bun",
+    "packages/app/platforms/android/app/src/main/assets/public/index.html",
+    "packages/app/platforms/android/app/src/main/assets/agent/agent-bundle.js",
+    "packages/app/platforms/android/app/src/main/assets/agent/launch.sh",
+    "packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a/bun",
+    "packages/app/platforms/android/app/src/main/assets/agent/x86_64/bun",
   ]) {
     await writeFile(repoRoot, file, "fixture");
   }
@@ -242,7 +242,7 @@ describe("mobile artifacts gate", () => {
     await fs.rm(
       path.join(
         repoRoot,
-        "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+        "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
       ),
     );
 
@@ -252,7 +252,7 @@ describe("mobile artifacts gate", () => {
     expect(result.errors).toContainEqual(
       expect.objectContaining({
         type: "missing-file",
-        file: "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+        file: "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
       }),
     );
   });

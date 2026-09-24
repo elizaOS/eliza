@@ -12,9 +12,16 @@ import type {
   TriggerWakeMode,
 } from "@elizaos/core";
 import type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ReleaseChannel,
   AgentAutomationMode as SharedAgentAutomationMode,
   ColumnInfo as SharedColumnInfo,
   ConnectionTestResult as SharedConnectionTestResult,
+  ConversationAutomationType as SharedConversationAutomationType,
+  ConversationMetadata as SharedConversationMetadata,
+  ConversationScope as SharedConversationScope,
   CreateTriggerRequest as SharedCreateTriggerRequest,
   DatabaseStatus as SharedDatabaseStatus,
   QueryResult as SharedQueryResult,
@@ -23,24 +30,12 @@ import type {
   StreamEventEnvelope as SharedStreamEventEnvelope,
   StreamEventType as SharedStreamEventType,
   TableInfo as SharedTableInfo,
+  TradePermissionMode as SharedTradePermissionMode,
   TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
   TriggerSummary as SharedTriggerSummary,
   TriggerTaskMetadata as SharedTriggerTaskMetadata,
   UpdateTriggerRequest as SharedUpdateTriggerRequest,
-} from "@elizaos/shared/api/agent-api-types";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
-} from "@elizaos/shared/contracts/config";
-import type {
-  ConversationAutomationType as SharedConversationAutomationType,
-  ConversationMetadata as SharedConversationMetadata,
-  ConversationScope as SharedConversationScope,
-} from "@elizaos/shared/contracts/conversation-routes";
-import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/shared/contracts/wallet-types";
-import type { BrowserBridgeCompanionReleaseManifest } from "./browser-contracts";
+} from "@elizaos/shared";
 
 export type {
   CustomActionDef,
@@ -663,18 +658,6 @@ export interface AgentEventsResponse {
   latestEventId: string | null;
   totalBuffered: number;
   replayed: boolean;
-}
-
-export interface ExtensionStatus {
-  relayReachable: boolean;
-  relayPort: number;
-  extensionPath: string | null;
-  chromeBuildPath?: string | null;
-  chromePackagePath?: string | null;
-  safariWebExtensionPath?: string | null;
-  safariAppPath?: string | null;
-  safariPackagePath?: string | null;
-  releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
 }
 
 // WebSocket

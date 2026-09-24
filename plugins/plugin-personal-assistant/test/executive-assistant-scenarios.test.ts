@@ -5,12 +5,12 @@
  */
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   discoverScenarios,
   loadScenarioFile,
-} from "../../../packages/scenario-runner/src/loader.ts";
+} from "../../../packages/testing/scenario-runner/src/loader.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scenarioDir = resolve(here, "scenarios");

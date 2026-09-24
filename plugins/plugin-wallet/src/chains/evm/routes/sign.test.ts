@@ -7,7 +7,7 @@
  * real signing occurs.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { evmSignRoutes } from "./sign";
 

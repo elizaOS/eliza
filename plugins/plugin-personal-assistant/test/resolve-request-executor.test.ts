@@ -51,7 +51,7 @@ const twilioMocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@elizaos/plugin-phone/twilio", () => twilioMocks);
+vi.mock("@elizaos/plugin-native-phone/twilio", () => twilioMocks);
 
 // The sign_document tests seed a real DocumentRequest through the real
 // OWNER_DOCUMENTS action; only its collaborators (owner gate, approval-queue

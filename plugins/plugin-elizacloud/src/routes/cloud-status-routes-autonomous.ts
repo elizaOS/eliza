@@ -1,7 +1,7 @@
-import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared/contracts/first-run-options";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts/cloud-topology";
+import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import type { AgentRuntime, Service } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { nativeBillingSelection } from "./native-billing-selection";
 import {
   resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,

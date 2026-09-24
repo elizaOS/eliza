@@ -171,7 +171,7 @@ REMOTE_SCRIPT="$(cat <<REMOTE
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get install -y -q git curl ca-certificates build-essential cmake unzip
-curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
 export PATH="\$HOME/.bun/bin:\$PATH"
 nvidia-smi -L
 nvcc --version
@@ -179,7 +179,7 @@ git clone --filter=blob:none "$GIT_REMOTE" eliza
 cd eliza
 git checkout "$GIT_SHA"
 bun install --frozen-lockfile || bun install
-ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
+ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
 )"

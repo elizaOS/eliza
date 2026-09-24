@@ -1,0 +1,16 @@
+diff --git a/scripts/build/flags.ts b/scripts/build/flags.ts
+index df55580..b05828d 100644
+--- a/scripts/build/flags.ts
++++ b/scripts/build/flags.ts
+@@ -56,6 +56,11 @@ export const cpuTargetFlags: Flag[] = [
+     when: c => c.windows && c.arm64,
+     desc: "ARM64 Windows: clang-cl prefix required (/clang: passes to clang)",
+   },
++  {
++    flag: ["-march=rv64gc", "-mabi=lp64d"],
++    when: c => c.linux && c.riscv64,
++    desc: "RISC-V 64 Linux: rv64gc (IMAFDC + Zicsr/Zifencei) + lp64d ABI",
++  },
+   {
+     flag: "-march=nehalem",
+     when: c => c.x64 && c.baseline,

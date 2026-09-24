@@ -1,7 +1,7 @@
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/shared/contracts/service-routing";
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   computeCallCostUsd,

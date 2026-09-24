@@ -1,5 +1,5 @@
 /** Resolves retained billing provenance for an already-authorized user. Identity anchors never replace live-user, lifecycle, or membership authorization checks. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { billingIdentitySubjects } from "../schemas/billing-identities";

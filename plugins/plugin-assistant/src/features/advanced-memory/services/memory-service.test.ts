@@ -1,6 +1,6 @@
 /** Verifies extraction checkpoints distinguish an absent value from cache I/O failure. */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../../../../../packages/core/src/logger.ts";
 import { LongTermMemoryCategory } from "../../../../../../packages/core/src/types/long-term-memory.ts";

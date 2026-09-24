@@ -220,7 +220,7 @@ export function buildAuthSmokeCommand(udid) {
   return {
     cmd: "node",
     args: [
-      "../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs",
+      "../../packages/app/scripts/mobile-auth-simulator-smoke.mjs",
       "--platform",
       "ios",
       "--device",

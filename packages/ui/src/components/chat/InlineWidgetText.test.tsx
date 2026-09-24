@@ -43,7 +43,7 @@ const { clientMock } = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { InlineWidgetText } from "./InlineWidgetText";
-// The task widget is plugin-owned (registered by plugin-task-coordinator at
+// The task widget is plugin-owned (registered by plugin-agent-orchestrator at
 // boot, not a built-in); register it here so this surface renders it too.
 import { registerTaskWidget } from "./widgets/task-widget";
 

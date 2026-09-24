@@ -4,9 +4,9 @@
  * durable output replay and processor-failure reporting use production code.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Evaluator,
   Memory,
@@ -18,10 +18,10 @@ import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";
 
 function harness() {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: { name: "IncrementalEvaluator", bio: "test" },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;

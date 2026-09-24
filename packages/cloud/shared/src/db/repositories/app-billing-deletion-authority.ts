@@ -1,5 +1,5 @@
 /** Validates canonical deletion phase leases for dispatched-command recovery and terminal cancellation of unstarted purchaser intent. This server-only authority never grants a new purchase or provider mutation. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { accountDeletionPhaseReceipts } from "../schemas/account-deletion-phase-receipts";

@@ -4,7 +4,7 @@
  * Escape, and lists the `COMMON_SHORTCUTS` table with platform-formatted keys.
  */
 import { useEffect, useState } from "react";
-import { reportShortcutFired } from "../../chat/useSlashCommandController";
+import { reportShortcutFired } from "../../chat/shortcut-report";
 import { COMMON_SHORTCUTS } from "../../hooks";
 import { SHORTCUT_SHOW_KEYBOARD_SHORTCUTS } from "../../hooks/useKeyboardShortcuts";
 import { useTranslation } from "../../state";

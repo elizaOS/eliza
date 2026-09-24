@@ -178,9 +178,9 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
 
   it("resolves every installed app package before the generic plugin fallback", () => {
     const cases = [
-      ["Contacts", "@elizaos/plugin-contacts", "lucide-users-round"],
-      ["Phone", "@elizaos/plugin-phone", "lucide-phone"],
-      ["WiFi", "@elizaos/plugin-wifi", "lucide-wifi"],
+      ["Contacts", "@elizaos/plugin-native-contacts", "lucide-users-round"],
+      ["Phone", "@elizaos/plugin-native-phone", "lucide-phone"],
+      ["WiFi", "@elizaos/plugin-native-wifi", "lucide-wifi"],
       ["Feed", "@elizaos/plugin-feed", "lucide-rss"],
       ["Hyperliquid", "@elizaos/plugin-hyperliquid", "lucide-trending-up"],
       [
@@ -202,12 +202,12 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
       ["Birdclaw", "@elizaos/plugin-birdclaw", "lucide-bird"],
       ["Focus", "@elizaos/plugin-blocker", "lucide-focus"],
       ["Calendar", "@elizaos/plugin-calendar", "lucide-calendar-days"],
-      ["Documents", "@elizaos/plugin-documents", "lucide-files"],
+      ["Documents", "@elizaos/plugin-knowledge", "lucide-files"],
       ["Finances", "@elizaos/plugin-finances", "lucide-circle-dollar-sign"],
       ["Form", "@elizaos/plugin-form", "lucide-clipboard-list"],
       ["Goals", "@elizaos/plugin-goals", "lucide-target"],
       ["Inbox", "@elizaos/plugin-inbox", "lucide-inbox"],
-      ["Messages", "@elizaos/plugin-messages", "lucide-message-square"],
+      ["Messages", "@elizaos/plugin-native-messages", "lucide-message-square"],
       [
         "Settings",
         "@elizaos/plugin-native-settings",
@@ -221,7 +221,7 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
       ["Relationships", "@elizaos/plugin-relationships", "lucide-network"],
       [
         "Task Coordinator",
-        "@elizaos/plugin-task-coordinator",
+        "@elizaos/plugin-agent-orchestrator",
         "lucide-square-terminal",
       ],
       ["Todos", "@elizaos/plugin-todos", "lucide-list-todo"],
@@ -269,7 +269,7 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
         "lucide-credit-card",
       ],
       ["Knowledge", "documents", "FileText", "lucide-file-text"],
-      ["Documents", "@elizaos/plugin-documents", undefined, "lucide-files"],
+      ["Documents", "@elizaos/plugin-knowledge", undefined, "lucide-files"],
     ] as const;
 
     const glyphs = cases.map(([label, id, icon, expected]) => {

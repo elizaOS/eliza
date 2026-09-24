@@ -11,7 +11,7 @@ name: App Live E2E
 # add network flake. So real coverage MUST live in a secret-gated, non-PR lane.
 #
 # The keystone that makes this possible: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the
-# CI stub-force, so the live stack boots the real @elizaos/app-core runtime and
+# CI stub-force, so the live stack boots the real @elizaos/app runtime and
 # the live-only specs (test.skip'd in keyless CI) un-skip.
 #
 # Runs on demand; never on pull_request.
@@ -54,10 +54,10 @@ permissions:
 env:
   CI: "true"
   # The keystone: opt the live stack out of the CI-based stub force so the real
-  # app-core runtime boots. Without this, CI=true re-forces the stub even with a
+  # app runtime boots. Without this, CI=true re-forces the stub even with a
   # provider key present and every "live" test self-skips.
   ELIZA_UI_SMOKE_LIVE_STACK: "1"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -80,7 +80,7 @@ env:
   ELIZA_UI_SMOKE_BACKEND_LOG_PATH: e2e-recordings/app-live/backend.log
 
 jobs:
-  # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
+  # Real LOCAL chat turn through the live stack: a real app runtime + a real
   # provider model, asserting an exact model-produced marker (APP_LIVE_AGENT_OK).
   # UI-driven counterpart to dev-smoke; proves chat send/stream reaches a real
   # agent from the UI.
@@ -121,7 +121,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
@@ -220,7 +220,7 @@ jobs:
       # expensive dependency install + browser/model walkthrough. Runs after
       # setup-node so it uses the pinned toolchain, not the runner's system node.
       - name: Preflight visual reviewer credentials and credits
-        run: node scripts/ai-qa/reviewer-preflight.mjs
+        run: node packages/scripts/ai-qa/reviewer-preflight.mjs
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
@@ -234,10 +234,10 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
-        run: .github/scripts/install-apt-packages.sh ffmpeg
+        run: packages/scripts/github/install-apt-packages.sh ffmpeg
 
       # Vite resolves linked workspace package exports while loading the app
       # config, before renderer aliases can redirect to source files.
@@ -383,7 +383,7 @@ jobs:
 
       - name: Install Playwright Chromium
         if: ${{ !inputs.production_credential_preflight_only }}
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Cloud-live still builds the same renderer bundle, so it needs the same
       # workspace dists before Vite can load packages/app/vite.config.ts.
@@ -414,7 +414,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-production-progress
-          path: packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -505,7 +505,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Build @elizaos/core + @elizaos/shared browser bundles
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
@@ -642,9 +642,9 @@ jobs:
           name: app-live-e2e-cloud-staging
           path: |
             artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-post-reload-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 
@@ -758,12 +758,12 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright runner
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Build the packaged desktop app (catches build/packaging breaks). Run from
       # the repo root so desktop-build.mjs resolves packages/app.
       - name: Build the Electrobun desktop app
-        run: node packages/app-core/scripts/desktop-build.mjs build
+        run: node packages/app/scripts/desktop-build.mjs build
 
       # Launch + drive the packaged app under a virtual display + software GL.
       - name: Run packaged desktop e2e (xvfb)
@@ -776,7 +776,7 @@ jobs:
           name: app-live-e2e-desktop
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 7
 

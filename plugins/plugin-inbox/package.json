@@ -52,7 +52,6 @@
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/shared": "workspace:*",

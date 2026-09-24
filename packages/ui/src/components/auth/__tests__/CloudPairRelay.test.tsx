@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { clearElizaApiToken, getElizaApiToken } from "@elizaos/shared";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,10 +12,6 @@ import {
   getBootConfig,
   setBootConfig,
 } from "../../../config/boot-config";
-import {
-  clearElizaApiToken,
-  getElizaApiToken,
-} from "../../../utils/eliza-globals";
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,

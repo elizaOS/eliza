@@ -1,0 +1,74 @@
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index fd527a2..00fea58 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -18,7 +18,7 @@ import { cyan, dim, green } from "./tty.ts";
+ import { ZIG_COMMIT } from "./zig.ts";
+ 
+ export type OS = "linux" | "darwin" | "windows" | "freebsd";
+-export type Arch = "x64" | "aarch64";
++export type Arch = "x64" | "aarch64" | "riscv64";
+ export type Abi = "gnu" | "musl" | "android";
+ export type BuildType = "Debug" | "Release" | "RelWithDebInfo" | "MinSizeRel";
+ export type BuildMode = "full" | "cpp-only" | "zig-only" | "link-only";
+@@ -79,6 +79,8 @@ export interface Config {
+   kqueue: boolean;
+   x64: boolean;
+   arm64: boolean;
++  /** RISC-V 64 (rv64gc/lp64d). Cross-compile only — no host build. */
++  riscv64: boolean;
+ 
+   /**
+    * What's running the build. Differs from os/arch/windows (target) in
+@@ -365,9 +367,13 @@ export function detectHost(): Host {
+       ? "x64"
+       : a === "arm64"
+         ? "aarch64"
+-        : (() => {
+-            throw new BuildError(`Unsupported host architecture: ${a}`, { hint: "Bun builds on x64 or arm64" });
+-          })();
++        : a === "riscv64"
++          ? "riscv64"
++          : (() => {
++              throw new BuildError(`Unsupported host architecture: ${a}`, {
++                hint: "Bun builds on x64, arm64, or riscv64",
++              });
++            })();
+ 
+   return { os, arch, exeSuffix: os === "windows" ? ".exe" : "" };
+ }
+@@ -542,6 +548,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const kqueue = darwin || freebsd;
+   const x64 = arch === "x64";
+   const arm64 = arch === "aarch64";
++  const riscv64 = arch === "riscv64";
+ 
+   // Platform file conventions — MSVC style on Windows, Unix everywhere else.
+   const exeSuffix = windows ? ".exe" : "";
+@@ -619,7 +626,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   // TinyCC: off on Windows ARM64 (not supported), Android (no upstream
+   // bionic support; FFI cc() falls back to dlopen-only), and FreeBSD
+   // (oven-sh/tinycc has no FreeBSD target).
+-  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd);
++  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd || riscv64);
+ 
+   const valgrind = partial.valgrind ?? false;
+   const fuzzilli = partial.fuzzilli ?? false;
+@@ -652,6 +659,9 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+ 
+   // ─── Validation ───
+   assert(!baseline || x64, "baseline=true requires arch=x64 (baseline disables AVX which is x64-only)");
++  // riscv64 only supported on linux-musl right now (cross-compile target
++  // for the Android agent; Alpine v3.21 sysroot). Reassess when adding glibc.
++  assert(!riscv64 || (linux && abi === "musl"), "arch=riscv64 currently requires os=linux abi=musl");
+   assert(!valgrind || linux, "valgrind=true requires os=linux");
+   assert(!(asan && valgrind), "Cannot enable both asan and valgrind simultaneously");
+   assert(os !== "linux" || abi !== undefined, "Linux builds require an abi (gnu, musl, or android)");
+@@ -762,6 +772,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     kqueue,
+     x64,
+     arm64,
++    riscv64,
+     host,
+     exeSuffix,
+     objSuffix,

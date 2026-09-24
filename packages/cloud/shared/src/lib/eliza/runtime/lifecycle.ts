@@ -1,6 +1,6 @@
 // Wires hosted Eliza agent lifecycle behavior for cloud runtime services.
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/shared";
 
 const DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS = 10_000;
 // Node coerces larger setTimeout delays to 1 ms and emits an overflow warning.

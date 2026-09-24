@@ -6,8 +6,7 @@
  * class file.
  */
 
-import type { Content, Memory } from "@elizaos/common";
-import type { HandlerCallback, IAgentRuntime, State } from "@elizaos/core";
+import type { Content, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../../types";
 
 export type RuntimeWithEvaluators = IAgentRuntime & {

@@ -13,7 +13,7 @@ import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
   type RuntimeClass,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import type {
   CatalogModel,
   InstalledModel,

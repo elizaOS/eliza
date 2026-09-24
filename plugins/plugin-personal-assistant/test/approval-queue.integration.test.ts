@@ -24,13 +24,13 @@ import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import {
   type DispatchResult,
   schedulingPlugin,
 } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import {

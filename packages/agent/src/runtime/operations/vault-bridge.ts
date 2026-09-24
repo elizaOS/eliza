@@ -6,14 +6,14 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   createManager,
   type SecretsManager,
   type Vault,
   VaultDecryptionError,
   writeSensitiveValueVerified,
-} from "@elizaos/credentials/vault";
+} from "@elizaos/auth/vault";
+import { ElizaError } from "@elizaos/core";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {

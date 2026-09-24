@@ -1,5 +1,5 @@
 /** Account-lifecycle fencing for Personal Shared participant consent. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {

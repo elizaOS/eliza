@@ -1,7 +1,7 @@
 /** Exercises document grant mutation after an intervening membership revocation against real PGlite storage. */
 
 import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { DocumentService } from "./service.ts";
 

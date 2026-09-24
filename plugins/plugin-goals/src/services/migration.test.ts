@@ -4,7 +4,7 @@
  * source-missing, populated-target reconciliation, copy, and collision paths.
  */
 
-import type { CarveOutDatabase } from "@elizaos/plugin-sql";
+import type { CarveOutDatabase } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_GOAL_TABLES,

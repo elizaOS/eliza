@@ -2,11 +2,13 @@
  * Playwright UI-smoke spec for the All Views Aesthetic Audit app flow using
  * the real renderer fixture.
  */
+
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   type AuditOcrControls,
   bindAuditOcrControls,
@@ -186,7 +188,7 @@ async function collectFramedPageGeometryIssues(
  * grind can drive each to `good`), then gates in afterAll: an uncaught page
  * error fails the walk immediately; system-view metric budgets fail the run
  * unconditionally; `broken` verdicts fail under ELIZA_AUDIT_APP_STRICT=1. Output dir:
- * `aesthetic-audit-output/` (override with ELIZA_AUDIT_APP_DIR).
+ * `test-results/aesthetic-audit/` (override with ELIZA_AUDIT_APP_DIR).
  *
  * Built-in views come from `@elizaos/ui` TAB_PATHS; plugin views from
  * `plugin-view-cases.ts` — the union so no view is silently omitted.
@@ -1809,8 +1811,7 @@ async function forceRemoteBundleAuditRoute(
 
 test.describe("all-views aesthetic audit (#8796)", () => {
   const outputDir =
-    process.env.ELIZA_AUDIT_APP_DIR ??
-    path.join(process.cwd(), "aesthetic-audit-output");
+    process.env.ELIZA_AUDIT_APP_DIR ?? testOutputPath("aesthetic-audit");
 
   // The outer Playwright runner resets this directory exactly once. Cleanup
   // cannot live in a test hook because Playwright reruns hooks in replacement

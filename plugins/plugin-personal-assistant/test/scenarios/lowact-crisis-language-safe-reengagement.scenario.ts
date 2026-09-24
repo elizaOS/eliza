@@ -26,7 +26,7 @@
  * load-bearing negative (delta:0) keeps this off the all-actionCalled guard
  * and makes "stand down, don't productivity-push" fail for the real reason.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

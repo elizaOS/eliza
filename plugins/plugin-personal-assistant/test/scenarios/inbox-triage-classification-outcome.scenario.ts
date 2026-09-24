@@ -8,11 +8,8 @@
  * back (InboxRepository.getByClassification) and via the inboxTriage provider
  * surfacing the urgent sender.
  */
-import type {
-  ScenarioCheckResult,
-  ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 // Stable source-message ids so the seed write and the finalCheck readback agree.
 const URGENT_MSG_ID = "scenario-inbox-urgent-outage";
@@ -191,7 +188,7 @@ export default scenario({
   tags: ["lifeops", "inbox", "inbox_triage", "llm-eval", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

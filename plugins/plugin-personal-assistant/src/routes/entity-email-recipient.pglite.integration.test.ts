@@ -7,12 +7,12 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import { AuthStore } from "@elizaos/app/services/auth-store";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
-import { createMachineSession } from "../../../../packages/app-core/src/api/auth/sessions.ts";
+import { createMachineSession } from "../../../../packages/app/src/api/auth/sessions.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { FamilyWorkflowRuntimeService } from "../lifeops/family-workflows/runtime.js";
 

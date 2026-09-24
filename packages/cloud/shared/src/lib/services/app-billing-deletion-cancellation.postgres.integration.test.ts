@@ -91,6 +91,7 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
     `);
     for (const tag of [
       "0373_subscription_authority",
+      "0397_subscription_checkout_contract",
       "0383_subscription_cancellation_result",
       "0384_subscription_cancellation_undo",
       "0374_subscription_funding_transaction_uniqueness",

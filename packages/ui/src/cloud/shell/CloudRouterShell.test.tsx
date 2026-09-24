@@ -1,6 +1,6 @@
 /** Verifies the CloudRouterShell host matrix and its parity with the shared edge redirect contract through the package's configured test harness. */
 // @vitest-environment jsdom
-import { canonicalCloudPathForLegacyDashboard } from "@elizaos/shared/elizacloud";
+import { canonicalCloudPathForLegacyDashboard } from "@elizaos/shared";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";

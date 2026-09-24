@@ -3,10 +3,7 @@
  * credentials across the API and dedicated-agent router boundaries.
  */
 
-import {
-  ELIZA_DOMAIN_CONTRACTS,
-  LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
+import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 
 import {
   APP_SCHEME_ORIGIN_RE,

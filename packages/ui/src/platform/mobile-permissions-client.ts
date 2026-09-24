@@ -8,7 +8,7 @@ import type {
   PermissionId,
   PermissionState,
   PermissionStatus,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 import {
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,

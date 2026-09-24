@@ -6,8 +6,8 @@
  *
  * Loads scenario ids from the filesystem
  * (plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ and
- * packages/test/scenarios/connector-certification/), invokes the
- * `@elizaos/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
+ * packages/testing/scenarios/connector-certification/), invokes the
+ * `@elizaos/testing/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
  * enforces SKIP_REASON + judge thresholds), and emits a markdown report to
  * artifacts/benchmark-report.md plus the raw JSON at
  * artifacts/lifeops-scenario-report.json.
@@ -49,7 +49,7 @@ const CONNECTOR_DIR = path.join(
 );
 const SCENARIO_FILE_GLOBS = [
   "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/*.scenario.ts",
-  "packages/test/scenarios/connector-certification/*.scenario.ts",
+  "packages/testing/scenarios/connector-certification/*.scenario.ts",
 ];
 const REPORT_JSON = path.join(
   REPO_ROOT,
@@ -106,7 +106,7 @@ const runnerEnv = {
   ...process.env,
   ELIZA_LIVE_TEST: "1",
   LIFEOPS_JUDGE_THRESHOLD: process.env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8",
-  SCENARIO_ROOT: "packages/test/scenarios",
+  SCENARIO_ROOT: "packages/testing/scenarios",
   SCENARIO_FILTER: scenariosToRun.join(","),
   REPORT_PATH: REPORT_JSON,
   RUN_DIR: path.join(REPO_ROOT, "artifacts", "scenario-runs", "benchmark"),

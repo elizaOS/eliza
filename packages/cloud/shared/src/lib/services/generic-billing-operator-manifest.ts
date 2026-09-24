@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { appBillingOperatorManifestSchema } from "./generic-billing-import-manifest";
 
 function invalid(message: string): never {

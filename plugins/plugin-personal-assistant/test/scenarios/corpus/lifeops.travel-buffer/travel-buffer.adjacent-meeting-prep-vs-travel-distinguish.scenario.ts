@@ -5,11 +5,7 @@
  * acknowledge the distinction.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   seedCalendarCache,
   seedMeetingPreferences,
@@ -45,7 +41,7 @@ export default scenario({
   domain: "lifeops.travel-buffer",
   tags: ["lifeops", "travel-buffer", "prep-buffer"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

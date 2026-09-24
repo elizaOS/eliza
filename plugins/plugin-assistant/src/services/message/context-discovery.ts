@@ -11,6 +11,7 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
+import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 
 export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
@@ -46,7 +47,8 @@ export function createContextReadTool(
               acknowledgment: {
                 type: "string" as const,
                 description:
-                  "Brief natural progress about the lookup you are starting, or empty when unnecessary. No answer, result, internal reference labels, reasoning, or claims of completed work. This is transient progress, never the final reply.",
+                  ACKNOWLEDGMENT_RULE +
+                  " Return an empty string when no acknowledgment is needed. No internal labels or reasoning; this is progress, not the final answer.",
               },
             }
           : {}),

@@ -5,21 +5,21 @@
  * POST `/api/logs/export` (validated JSON/CSV download), GET `/api/agent/events`
  * (replayable autonomy/heartbeat event feed with runId/seq/after cursors), GET
  * `/api/security/audit` (filtered audit feed as a JSON snapshot or a live SSE
- * stream), and GET `/api/extension/status` (browser-bridge relay reachability).
+ * stream).
  * All reads come from process-local buffers/feeds supplied by the caller; the
  * export and audit paths validate and clamp every query/body parameter before
  * it is used.
  */
 import type http from "node:http";
+import type {
+  ReadJsonBodyOptions,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared";
 import {
   PostLogExportRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
-import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared/api/route-helpers";
 
 interface LogEntryLike {
   timestamp: number;
@@ -66,8 +66,6 @@ export interface DiagnosticsRouteContext
   ) => Promise<T | null>;
   error?: (res: http.ServerResponse, message: string, status?: number) => void;
   eventBuffer: StreamEventEnvelopeLike[];
-  relayPort?: number;
-  checkRelayReachable?: (relayPort: number) => Promise<boolean>;
   initSse?: DiagnosticsSseInit;
   writeSseJson?: DiagnosticsSseWriteJson;
   auditEventTypes: readonly string[];
@@ -82,18 +80,6 @@ export interface DiagnosticsRouteContext
   subscribeAuditFeed: (
     subscriber: (entry: AuditEntryLike) => void,
   ) => () => void;
-}
-
-async function defaultCheckRelayReachable(relayPort: number): Promise<boolean> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${relayPort}/`, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(2000),
-    });
-    return response.ok || response.status < 500;
-  } catch {
-    return false;
-  }
 }
 
 function isAutonomyEvent(event: StreamEventEnvelopeLike): boolean {
@@ -263,8 +249,6 @@ export async function handleDiagnosticsRoutes(
     url,
     logBuffer,
     eventBuffer,
-    relayPort: relayPortOverride,
-    checkRelayReachable,
     initSse,
     writeSseJson,
     auditEventTypes,
@@ -550,27 +534,6 @@ export async function handleDiagnosticsRoutes(
     req.on("aborted", close);
     res.on("close", close);
 
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/extension/status") {
-    const relayPort = relayPortOverride ?? 18792;
-    const relayReachable = await (
-      checkRelayReachable ?? defaultCheckRelayReachable
-    )(relayPort);
-
-    // The headless agent only knows whether the browser-bridge relay is
-    // reachable. Extension build artifacts (chromeBuildPath, packaged Safari
-    // app, etc.) live inside the desktop bundle and are resolved by the
-    // desktop RPC `getExtensionStatus` handler, which the UI prefers. When the
-    // client falls back to this HTTP route there is no desktop bundle to probe,
-    // so the artifact fields are genuinely unavailable here rather than null
-    // file paths.
-    json(res, {
-      relayReachable,
-      relayPort,
-      extensionPath: null,
-    });
     return true;
   }
 

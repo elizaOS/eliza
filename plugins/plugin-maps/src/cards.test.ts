@@ -8,12 +8,12 @@
 
 import {
   type ActionParameters,
-  AgentRuntime,
+  type AgentRuntime,
   createCharacter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import type { MapsProviderAdapter } from "./adapter.js";
@@ -104,10 +104,10 @@ describe("MAPS chat cards", () => {
   let runtime: AgentRuntime;
 
   beforeEach(() => {
-    runtime = new AgentRuntime({
+    runtime = createSQLiteTestRuntime({
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Card Test" }),
-      adapter: new InMemoryDatabaseAdapter(),
+
       logLevel: "fatal",
     });
     const service = new MapsService(runtime);

@@ -40,7 +40,7 @@ function resolveRepositoryRoot(start: string): string {
       existsSync(
         path.join(
           candidate,
-          "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+          "packages/cloud/scripts/e2e/stability-linux-sandbox.sh",
         ),
       )
     ) {
@@ -469,7 +469,7 @@ console.log(JSON.stringify({
 
       const setupScript = path.join(
         repoRoot,
-        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+        "packages/cloud/scripts/e2e/stability-linux-sandbox.sh",
       );
       const missingBwrap = spawnSync(
         "sudo",

@@ -1,76 +1,13 @@
+/** Declares renderer plugin surfaces while retaining exact types for shared host exports. */
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/personal-assistant";
+} from "@elizaos/shared";
 import type { CodingAgentTasksPanelProps } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
+import type { sanitizeCompletionRelay as SanitizeCompletionRelay } from "../../../../plugins/plugin-agent-orchestrator/src/services/transcript-sanitizer";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
-
-declare module "@elizaos/app-core" {
-  export const AppWindowRenderer: ComponentType<{ slug: string }>;
-  export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
-    id: string;
-    label: string;
-  }>;
-  export const DesktopSurfaceNavigationRuntime: ComponentType<
-    Record<string, never>
-  >;
-  export const DesktopTrayRuntime: ComponentType<Record<string, never>>;
-  export const DetachedShellRoot: ComponentType<{ route: unknown }>;
-
-  export interface BuildOnboardingConnectionArgs {
-    firstRunRuntimeTarget?:
-      | ""
-      | "local"
-      | "remote"
-      | "elizacloud"
-      | "elizacloud-hybrid";
-    firstRunCloudApiKey: string;
-    firstRunProvider: string;
-    firstRunApiKey: string;
-    omitRuntimeProvider?: boolean;
-    firstRunVoiceProvider: string;
-    firstRunVoiceApiKey: string;
-    firstRunPrimaryModel: string;
-    firstRunOpenRouterModel: string;
-    firstRunRemoteConnected: boolean;
-    firstRunRemoteApiBase: string;
-    firstRunRemoteToken: string;
-    firstRunNanoModel?: string;
-    firstRunSmallModel?: string;
-    firstRunMediumModel?: string;
-    firstRunLargeModel?: string;
-    firstRunMegaModel?: string;
-    firstRunResponseHandlerModel?: string;
-    firstRunActionPlannerModel?: string;
-    firstRunFeatureTelegram?: boolean;
-    firstRunFeatureDiscord?: boolean;
-    firstRunFeaturePhone?: boolean;
-    firstRunFeatureCrypto?: boolean;
-    firstRunFeatureBrowser?: boolean;
-    firstRunFeatureComputerUse?: boolean;
-    firstRunUseLocalEmbeddings?: boolean;
-  }
-
-  export function buildOnboardingRuntimeConfig(
-    args: BuildOnboardingConnectionArgs,
-  ): {
-    deploymentTarget: unknown;
-    linkedAccounts: unknown;
-    serviceRouting:
-      | {
-          tts?: {
-            transport?: string;
-            backend?: string;
-          };
-        }
-      | undefined;
-    credentialInputs: unknown;
-    needsProviderSetup: boolean;
-    featureSetup: unknown;
-  };
-}
 
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
@@ -91,7 +28,7 @@ declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: EmptyComponent;
 }
 
-declare module "@elizaos/plugin-phone" {
+declare module "@elizaos/plugin-native-phone" {
   export * from "@elizaos/app-phone";
 }
 
@@ -101,7 +38,8 @@ declare module "@elizaos/app-task-coordinator" {
   export const CodingAgentTasksPanel: ComponentType<CodingAgentTasksPanelProps>;
 }
 
-declare module "@elizaos/plugin-task-coordinator" {
+declare module "@elizaos/plugin-agent-orchestrator" {
+  export const sanitizeCompletionRelay: typeof SanitizeCompletionRelay;
   export * from "@elizaos/app-task-coordinator";
 }
 

@@ -1,6 +1,6 @@
 /** Covers `TranscriptStore` persistence. Deterministic, temp store. */
 import type { Memory, UUID } from "@elizaos/core";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
 	TRANSCRIPTS_TABLE,

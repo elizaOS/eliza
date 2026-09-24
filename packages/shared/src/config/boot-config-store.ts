@@ -6,7 +6,7 @@
  * fields used by API clients and asset helpers.
  */
 
-import { resolveEnvAlias } from "@elizaos/common";
+import { resolveEnvAlias } from "@elizaos/shared/browser-contracts";
 import type { BrandingConfig } from "./branding.js";
 
 export function getBootConfigEnvAliases() {
@@ -117,9 +117,8 @@ function getBootConfigStore(): BootConfigStore {
   const globalObject = getGlobalSlot();
 
   // An established store always wins. The window-key mirror is only a pre-boot
-  // seed and must never replace a store that already exists — see the matching
-  // note in `@elizaos/core`'s boot-env.ts. All three copies (core, shared, ui)
-  // share the same global slot, so they must agree on write-once semantics.
+  // seed and must never replace a store that already exists. Core reads the
+  // established process store but does not consume browser bootstrap mirrors.
   const existing = globalObject[BOOT_CONFIG_STORE_KEY];
   if (
     existing &&

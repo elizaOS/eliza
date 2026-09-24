@@ -364,9 +364,9 @@ it("rejects foreign agent access and duplicate idempotency without partial chang
 
 it("keeps domain records out of core collections and rejects unsupported domain schema versions", async () => {
   const adapter = await open();
-  expect(() => adapter.recordStore.set("memories", "unexpected", {})).toThrow(
-    expect.objectContaining({ code: "SQLITE_RECORD_NAMESPACE_INVALID" }),
-  );
+  await expect(
+    adapter.recordStore.set("memories", "unexpected", {}),
+  ).rejects.toMatchObject({ code: "SQLITE_RECORD_NAMESPACE_INVALID" });
   await adapter.recordStore.set("plugin_scheduling_schema", "version", 2);
   const { store } = createSchedulingRecordStores(adapter.recordStore, agentId);
   await expect(store.list()).rejects.toMatchObject({

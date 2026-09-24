@@ -3,9 +3,9 @@
  * WidgetProps the host passes to each widget component.
  */
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
+import type { UiSpec } from "@elizaos/shared";
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
-import type { UiSpec } from "../config/ui-spec";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 
 /** Named injection points where plugin widgets can render. */
@@ -38,7 +38,7 @@ export interface HomeWidgetSunset {
  * Serializable widget metadata declared by a plugin.
  *
  * The canonical shape lives in `@elizaos/core` (`PluginWidgetDeclaration`)
- * so plugins can self-declare without depending on app-core. The client
+ * so plugins can self-declare without depending on app. The client
  * surface adds an optional `uiSpec` for plugins without bundled React
  * components.
  */

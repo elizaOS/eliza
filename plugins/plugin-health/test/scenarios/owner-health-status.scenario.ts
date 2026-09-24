@@ -22,13 +22,11 @@
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
-  successfulActionData,
-  toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  scenario,
+  successfulActionData,
+  toRecord,
 } from "@elizaos/testing";
 
 const OWNER_HEALTH = "OWNER_HEALTH";

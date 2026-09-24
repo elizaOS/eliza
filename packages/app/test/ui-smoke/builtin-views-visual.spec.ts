@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Builtin Views Visual app flow using the
  * real renderer fixture.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -81,7 +83,7 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
       test(`${view.id} ${vp.name}`, async ({ page }) => {
         const screenshotDir =
           process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-          path.join(process.cwd(), "test-results", "builtin-views");
+          testOutputPath("app", "builtin-views");
         await mkdir(screenshotDir, { recursive: true });
 
         // Only uncaught page errors (real crashes) fail the test; stub 501s

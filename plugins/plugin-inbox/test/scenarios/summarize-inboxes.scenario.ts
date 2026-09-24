@@ -13,10 +13,10 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 const INBOX = "INBOX";
 type R = AgentRuntime & {

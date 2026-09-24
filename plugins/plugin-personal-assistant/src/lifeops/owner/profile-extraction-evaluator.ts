@@ -10,7 +10,7 @@ import type {
   ResponseHandlerPatch,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
