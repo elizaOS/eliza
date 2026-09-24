@@ -1,25 +1,15 @@
-# Android (and iOS) device e2e
+# Android device test harnesses
 
-Real-device end-to-end tests that drive the **actual app installed on an
-emulator/simulator**, against the **real backend** — not desktop Chromium with
-mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
+These harnesses drive installed Android applications. Each retained case still requires review against the repository E2E-only policy; running on a device alone does not establish a complete product flow. Stub onboarding, route-render checks and native bridge read probes have been retired.
 
 | Layer | What it proves | Driver |
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
-| `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
-| `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
 | `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
 | `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
 | `lifecycle.android.spec.ts` | #12185 device-lifecycle matrix: app switching (home/recents/other app), camera interruption, mute, low battery + battery saver, forced doze, and force-stop + relaunch — after each event the shell is interactive, the agent loopback answers, and state persists (matrix: `docs/DEVICE_LIFECYCLE_MATRIX.md`) | Playwright Android driver + adb (keyevents, `am`, `dumpsys battery`/`deviceidle`, `cmd media_session`) |
 | `lifecycle-reboot.android.spec.ts` | `adb reboot` → ElizaBootReceiver auto-starts ElizaAgentService from BOOT_COMPLETED without an app launch, then a normal launch reaches a healthy agent with persisted state | plain adb (no WebView fixture — CDP cannot survive a reboot) |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
-| `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
-
-The Playwright Android suite reuses the canonical route enumerations
-(`DIRECT_ROUTE_CASES`, `MANAGER_VISIBLE_VIEW_TILE_CASES` from
-`test/ui-smoke/apps-session-route-cases.ts`) so route coverage stays in lock-step
-with the product.
 
 ## One-shot
 
@@ -35,12 +25,6 @@ start, model won't download/run, a route won't render, cloud won't provision
 Focused slices:
 
 ```bash
-# Fresh remote-connect onboarding through the Android deep-link path.
-bun run --cwd packages/app test:e2e:android:onboarding
-
-# Native Capacitor plugin x WebView smoke against host or local backend.
-bun run --cwd packages/app test:e2e:android:native-plugin-view
-
 # Full #10196 view-runtime telemetry soak against the real Android WebView.
 bun run --cwd packages/app test:e2e:android:view-runtime-soak
 
@@ -55,8 +39,6 @@ bun run --cwd packages/app test:e2e:android:sleep-wake
 bun run --cwd packages/app test:e2e:android:lifecycle
 bun run --cwd packages/app test:e2e:android:lifecycle:reboot
 
-# Route-only/WebView-only pass when the local chat smoke is already done.
-bun run --cwd packages/app test:e2e:android:routes
 ```
 
 ## Prerequisites (env)
@@ -120,46 +102,9 @@ bun run --cwd packages/app test:e2e:android:routes
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
-## CI device lanes
+## CI device coverage
 
-The scheduled and `ci:device`-label-gated Android job in
-`.github/workflows/device-e2e.yml` is a load-bearing x86_64 host-emulator lane:
-
-1. Start `packages/app/scripts/serve-real-local-agent.ts` on a
-   kernel-assigned host port with pairing disabled and deterministic model handlers.
-2. Boot/install the WebView-debuggable APK on the Android emulator.
-3. Run `test/android/onboarding-to-home.android.spec.ts` with
-   `ELIZA_ANDROID_BACKEND=host`, so global setup wires `adb reverse
-   device `tcp:31337` to the selected host port.
-4. Hard-gate the explicit host-safe set: remote onboarding, route rendering,
-   and the native `ElizaSystem` plugin bridge. A newly added Android spec does
-   not enter this set implicitly.
-5. Stop the host agent in `android-e2e.mjs` teardown and upload its log inside
-   the device bundle. Missing bundles are upload failures, not warnings, and
-   artifact names include the Actions run ID and attempt to keep reruns
-   distinct.
-
-Artifacts are written under
-`test-results/app/android-onboarding-to-home/`:
-`home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`; the bundle
-root also includes `inline/`, `logs/`, `summary.json`, and `junit.xml`.
-
-`.github/workflows/android-arm64-local-e2e.yml` is the separate weekly,
-schedule-only local-runtime lane. It targets a self-hosted Linux runner labeled
-`ARM64` and `android-device`, then fails closed unless Node 24.15.0, Bun 1.3.14,
-an authorized booted `arm64-v8a` Android target, Java, and adb are present. It
-runs the real local chat smoke followed by `local-runtime.android.spec.ts` and
-`route-coverage.android.spec.ts`. The repository does not currently provide
-that runner, so a queued job is an infrastructure prerequisite rather than
-device proof. Arbitrary-ref manual dispatch is intentionally unavailable on
-this persistent physical-device runner. Do not cite this workflow as ARM64
-evidence until a completed bundle from the current revision has been inspected.
-Preflight output is retained in the artifact root even when a host, toolchain,
-or target check fails before the bundle runner starts.
-
-Local voice, destructive lifecycle, launcher soak, touch, and sleep/wake are
-not smuggled into either set. Run their focused commands explicitly on hardware
-that satisfies their model, privilege, and lifecycle prerequisites.
+The former host-emulator lane combined stub-backed onboarding and smoke checks. It does not qualify as complete E2E coverage. A retained device lane must drive the real host/runtime, pairing and product effects, with deterministic fixtures limited to inference and media provider boundaries. Hardware execution and inspected artifacts are still required before claiming device coverage.
 
 ## On-device agent: where it runs
 
@@ -189,20 +134,6 @@ The repo-wide app test-auth contract lives in
 automated surface uses pairing-disabled local auth, renderer Steward-session
 seeding, or real Eliza Cloud credentials, and it defines how missing auth
 secrets must be reported in CI.
-
-## Native plugin x WebView smoke
-
-`native-plugin-view-smoke.android.spec.ts` uses the same real WebView fixture as
-route coverage, but asserts a native bridge side effect instead of only render
-safety. It calls `window.Capacitor.Plugins.ElizaSystem.getStatus()` and
-`getDeviceSettings()` and requires values that the desktop Chromium web shim
-cannot produce: `packageName === ai.elizaos.app`, Android role rows from
-`RoleManager`, and the native-only `voiceCall` volume stream.
-
-Artifacts are written under
-`test-results/app/android-native-plugin-view-smoke/`:
-`native-plugin-result.json`, `native-plugin-device.png`,
-`native-plugin-view-smoke.mp4`, `webview-console.log`, and `logcat.txt`.
 
 ## Chat gesture matrix (WebView)
 
