@@ -159,6 +159,7 @@
     "@elizaos/agent#typecheck": {
       "dependsOn": [
         "typecheck:deps",
+        "^build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/ui#build",

@@ -609,6 +609,7 @@ packages/training/vendor/
 
 # Generated run output — never source data.
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
+/plugins/plugin-local-inference/docs/ondevice-grind-report-*.json
 
 # Compiler output belongs in each package's dist directory, never beside source.
 /packages/auth/src/atomic-json.d.ts*

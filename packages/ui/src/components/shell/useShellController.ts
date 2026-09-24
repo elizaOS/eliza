@@ -1076,6 +1076,7 @@ export function useShellController(): ShellController {
       if (
         cached &&
         cached.content === message.text &&
+        cached.planningAcknowledgment === message.planningAcknowledgment &&
         cached.interrupted === (message.interrupted || undefined) &&
         cached.failureKind === message.failureKind &&
         cached.terminalFailure === message.terminalFailure &&
@@ -1095,6 +1096,7 @@ export function useShellController(): ShellController {
         id: message.id,
         role: message.role,
         content: message.text,
+        planningAcknowledgment: message.planningAcknowledgment,
         createdAt: message.timestamp,
         ...(message.interrupted ? { interrupted: true } : {}),
         // Invariant per id (like role/createdAt), so the cache compare above

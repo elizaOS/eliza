@@ -50,6 +50,7 @@ export function isShellPhase(value: unknown): value is ShellPhase {
 }
 
 export interface ShellMessage {
+  planningAcknowledgment?: string;
   id: string;
   role: "user" | "assistant";
   content: string;

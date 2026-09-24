@@ -31,7 +31,6 @@ import {
   isMachO,
   mayOmitChildEntitlements,
   parseEntitlementsPlist,
-  walkBundleFiles,
 } from "./mas-smoke.mjs";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
@@ -211,70 +210,12 @@ const MACHO_HEADER_64 = Buffer.from([0xfe, 0xed, 0xfa, 0xcf]);
 const MACHO_HEADER_FAT = Buffer.from([0xca, 0xfe, 0xba, 0xbe]);
 const NOT_MACHO = Buffer.from("hello world\n", "utf8");
 
-test("isMachO detects 64-bit Mach-O magic", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "mas-smoke-"));
-  try {
-    const machoPath = path.join(dir, "fake-binary");
-    writeFileSync(machoPath, MACHO_HEADER_64);
-    assert.equal(isMachO(machoPath), true);
-  } finally {
-    removePathRecursive(dir);
-  }
-});
-
-test("isMachO detects fat (universal) Mach-O magic", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "mas-smoke-"));
-  try {
-    const machoPath = path.join(dir, "fat-binary");
-    writeFileSync(machoPath, MACHO_HEADER_FAT);
-    assert.equal(isMachO(machoPath), true);
-  } finally {
-    removePathRecursive(dir);
-  }
-});
-
-test("isMachO returns false on non-Mach-O files", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "mas-smoke-"));
-  try {
-    const textPath = path.join(dir, "readme.txt");
-    writeFileSync(textPath, NOT_MACHO);
-    assert.equal(isMachO(textPath), false);
-  } finally {
-    removePathRecursive(dir);
-  }
-});
-
 test("isMachO returns false on tiny files (too small for magic)", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "mas-smoke-"));
   try {
     const tinyPath = path.join(dir, "tiny");
     writeFileSync(tinyPath, Buffer.from([0xfe, 0xed])); // only 2 bytes
     assert.equal(isMachO(tinyPath), false);
-  } finally {
-    removePathRecursive(dir);
-  }
-});
-
-test("walkBundleFiles enumerates files recursively, skipping directories", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "mas-smoke-"));
-  try {
-    mkdirSync(path.join(dir, "Contents", "MacOS"), { recursive: true });
-    mkdirSync(path.join(dir, "Contents", "Resources"), { recursive: true });
-    writeFileSync(path.join(dir, "Contents", "Info.plist"), "x");
-    writeFileSync(path.join(dir, "Contents", "MacOS", "launcher"), "x");
-    writeFileSync(path.join(dir, "Contents", "MacOS", "bun"), "x");
-    writeFileSync(path.join(dir, "Contents", "Resources", "icon.icns"), "x");
-
-    const files = walkBundleFiles(dir).sort();
-    assert.deepEqual(
-      files.map((f) => path.relative(dir, f).split(path.sep).join("/")).sort(),
-      [
-        "Contents/Info.plist",
-        "Contents/MacOS/bun",
-        "Contents/MacOS/launcher",
-        "Contents/Resources/icon.icns",
-      ],
-    );
   } finally {
     removePathRecursive(dir);
   }

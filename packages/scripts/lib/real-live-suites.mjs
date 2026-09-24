@@ -131,10 +131,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "vision-qa CLI backend driving a real claude/codex CLI (ELIZA_VISION_QA_CLI selects); spends operator CLI tokens",
   },
   {
-    file: "plugins/plugin-agent-orchestrator/__tests__/live/native-acp-smoke.live.test.ts",
-    optIn: "RUN_LIVE_NATIVE_ACP",
-  },
-  {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/smithers-codex-subscription.live.test.ts",
     optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
     notes:

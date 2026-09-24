@@ -26,15 +26,6 @@ export * from "../scenario-runner/src/scenario-assertions/browser-task-assertion
 export * from "../scenario-runner/src/scenario-assertions/calendar-assertions.ts";
 export * from "../scenario-runner/src/scenario-assertions/effect-assertions.ts";
 export { contextBenchProvider } from "./benchmark-context-provider.ts";
-// Browser API shims (Storage, Canvas, Media, console patches)
-export {
-  createCanvas2DContext,
-  createMemoryStorage,
-  hasStorageApi,
-  installCanvasShims,
-  installMediaElementShims,
-  suppressReactTestConsoleErrors,
-} from "./browser-mocks.ts";
 export {
   CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
   CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,

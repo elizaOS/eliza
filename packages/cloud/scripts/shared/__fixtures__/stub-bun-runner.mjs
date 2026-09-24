@@ -6,7 +6,13 @@
  * failure, dirty-exit, crash, or wedge output without executing test files.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 const stateDir = process.env.STUB_STATE_DIR;
@@ -17,7 +23,10 @@ if (!stateDir) {
 mkdirSync(stateDir, { recursive: true });
 
 const argv = process.argv.slice(2);
-appendFileSync(path.join(stateDir, "invocations.jsonl"), `${JSON.stringify({ argv })}\n`);
+appendFileSync(
+  path.join(stateDir, "invocations.jsonl"),
+  `${JSON.stringify({ argv })}\n`,
+);
 
 // The real #15785 output tail (run 29041377960, develop@03f8dcdcf9d), verbatim
 // modulo the truncated bun.report token.
@@ -84,12 +93,16 @@ function act(behavior) {
       setInterval(() => {}, 1_000);
       break;
     default:
-      console.error(`[stub-bun-runner] unknown behavior ${JSON.stringify(behavior)}`);
+      console.error(
+        `[stub-bun-runner] unknown behavior ${JSON.stringify(behavior)}`,
+      );
       process.exit(64);
   }
 }
 
-const isMainPass = argv.some((arg) => arg.startsWith("--path-ignore-patterns="));
+const isMainPass = argv.some((arg) =>
+  arg.startsWith("--path-ignore-patterns="),
+);
 if (isMainPass) {
   act(process.env.STUB_MAIN_MODE === "fail" ? "fail" : "pass");
 } else {

@@ -1143,6 +1143,8 @@ async function resolvePersistedAssistantTurn(
         generatedTerminalFailure?.code !== result.terminalFailure.code);
     if (
       generatedText !== text ||
+      generatedTurn.content.planningAcknowledgment !==
+        result.planningAcknowledgment ||
       (userMessageId !== undefined &&
         generatedTurn.content.inReplyTo !== userMessageId) ||
       terminalFailureNeedsReconciliation
@@ -1435,6 +1437,7 @@ export function buildPersistedAssistantContent(
   result:
     | {
         actionCallbackHistory?: string[];
+        planningAcknowledgment?: string;
         responseContent?: Content | null;
         responseMessages?: Array<{ id?: string; content?: Content }>;
         transcriptVisibility?: "internal";
@@ -1486,12 +1489,18 @@ export function buildPersistedAssistantContent(
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(result?.planningAcknowledgment
+          ? { planningAcknowledgment: result.planningAcknowledgment }
+          : {}),
       }
     : {
         text,
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(result?.planningAcknowledgment
+          ? { planningAcknowledgment: result.planningAcknowledgment }
+          : {}),
       };
 }
 
@@ -2301,6 +2310,9 @@ function buildGenerationMessageIdOutcome(
     agentName: result.agentName,
     ...(messageId ? { messageId } : {}),
     ...terminal,
+    // The streamed text does not carry display-only acknowledgment metadata.
+    // Reuse the canonical history refresh after its durable reply is saved.
+    ...(result.planningAcknowledgment ? { historyRefreshRequired: true } : {}),
     ...(result.transcriptVisibility
       ? { transcriptVisibility: result.transcriptVisibility }
       : {}),
@@ -3451,6 +3463,10 @@ async function listConversationMessages(
           id: m.id ?? "",
           role,
           text,
+          ...(role === "assistant" &&
+          typeof content.planningAcknowledgment === "string"
+            ? { planningAcknowledgment: content.planningAcknowledgment }
+            : {}),
           timestamp: m.createdAt ?? 0,
           ...(content.replyRecoveryAvailable === true
             ? { replyRecoveryAvailable: true as const }

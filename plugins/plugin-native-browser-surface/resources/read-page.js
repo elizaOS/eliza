@@ -1,4 +1,5 @@
 /** Reads visible page text through a bundled native operation, not caller-supplied JavaScript. Native hosts wrap this function before invoking it with a CSS selector; page text remains untrusted data. */
+// biome-ignore lint/correctness/noUnusedVariables: Native hosts evaluate this resource as a function expression.
 function readPage(selector) {
   try {
     if (document.readyState === "loading") {
@@ -32,8 +33,7 @@ function readPage(selector) {
       };
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const parts = [];
-    let node;
-    while ((node = walker.nextNode())) {
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!node.parentElement || !visible(node.parentElement)) continue;
       const text = node.textContent.replace(/\s+/g, " ").trim();
       if (!text) continue;

@@ -1583,6 +1583,7 @@ describe("literal Notes edits", () => {
             name: "NOTES_PATCH",
             arguments: {
               target: { kind: "id", value: note.id },
+              expectedRevision: originalSnapshot.revision,
               changes: [],
               textEdit: { field: "body", oldText: "absent", newText: "" },
               eliza_turn_scope: "final",
@@ -1995,6 +1996,7 @@ describe("field patch literal alternative", () => {
       color: "rose",
     });
     const params = {
+      expectedRevision: service.snapshot().revision,
       target: { kind: "id", value: note.id },
       changes: [],
       textEdit: { field: "body", oldText: "violet", newText: "orange" },
@@ -2012,7 +2014,11 @@ describe("field patch literal alternative", () => {
       (
         await execute(runtime, {
           name: "NOTES_PATCH",
-          params: { ...params, changes: [{ field: "body", value: "" }] },
+          params: {
+            ...params,
+            expectedRevision: service.snapshot().revision,
+            changes: [{ field: "body", value: "" }],
+          },
         })
       ).success,
     ).toBe(false);

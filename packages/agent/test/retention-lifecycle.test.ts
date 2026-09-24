@@ -10,8 +10,9 @@ import {
   TaskService,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { createTestRuntime, SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, expect, it } from "vitest";
+import { encodeRecord } from "../../../plugins/plugin-sqlite/record-codec.ts";
 import { LogsRetentionService } from "../src/runtime/logs-retention-service.ts";
 import { MemoryRetentionService } from "../src/runtime/memory-retention-service.ts";
 
@@ -221,4 +222,96 @@ it("rejects a sub-millisecond interval before scheduling or deleting any data", 
   await h.scheduler.runDueTasks();
   expect(await h.runtime.getTasks({ tags: ["queue"] })).toEqual([]);
   expect(await h.runtime.getMemoryById(h.older)).not.toBeNull();
+});
+
+it("plans retention from the complete inventory beyond the old scan ceiling", async () => {
+  const h = await fixture();
+  const template = await h.runtime.getMemoryById(h.older);
+  const [log] = await h.adapter.getLogs({ limit: 1 });
+  if (!template || !log) throw new Error("Missing real storage seed");
+  await h.adapter.close();
+  const db = new DatabaseSync(h.file);
+  try {
+    db.exec("BEGIN");
+    const insert = db.prepare(
+      "INSERT INTO records(collection,id,data) VALUES(?,?,?)",
+    );
+    for (let index = 0; index < 99_999; index++) {
+      const id = `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+      insert.run(
+        "memories",
+        id,
+        encodeRecord({
+          ...template,
+          id,
+          tableName: "messages",
+          createdAt: index + 10,
+        }),
+      );
+      insert.run(
+        "logs",
+        id,
+        encodeRecord({ ...log, id, createdAt: new Date(index + 10) }),
+      );
+    }
+    db.exec("COMMIT");
+  } finally {
+    db.close();
+    await h.adapter.initialize();
+  }
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "100000");
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM", "100000");
+  const memory = await MemoryRetentionService.start(h.runtime);
+  const logs = await LogsRetentionService.start(h.runtime);
+  cleanups.push(
+    () => memory.stop(),
+    () => logs.stop(),
+  );
+  expect(
+    (await memory.sweep()).find((row) => row.partition === "messages"),
+  ).toMatchObject({ scanned: 100001, deleted: 1 });
+  expect(await logs.sweep()).toMatchObject({ scanned: 100001, deleted: 1 });
+  expect(await h.runtime.getMemoryById(h.older)).toBeNull();
+  expect(await h.runtime.getMemoryById(h.newer)).not.toBeNull();
+  const remainingLogs = await h.adapter.getLogs({
+    limit: Number.MAX_SAFE_INTEGER,
+  });
+  expect(remainingLogs).toHaveLength(100000);
+  expect(remainingLogs.some((row) => row.id === log.id)).toBe(true);
+  expect(
+    remainingLogs.some(
+      (row) => row.id === "00000000-0000-4000-8000-000000000000",
+    ),
+  ).toBe(false);
+}, 120_000);
+
+it("applies log retention through the PostgreSQL query contract without its default page limit", async () => {
+  const h = await createTestRuntime({
+    characterName: "LogRetentionAcceptance",
+  });
+  cleanups.push(() => h.cleanup());
+  const roomId = randomUUID() as UUID;
+  await h.runtime.createRooms([
+    {
+      id: roomId,
+      agentId: h.runtime.agentId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  for (let index = 0; index < 12; index++) {
+    await h.runtime.log({
+      entityId: h.runtime.agentId,
+      roomId,
+      type: "retention-acceptance",
+      body: { message: `retention log ${index}` },
+    });
+  }
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM", "10");
+  const logs = await LogsRetentionService.start(h.runtime);
+  cleanups.push(() => logs.stop());
+  expect(await logs.sweep()).toMatchObject({ scanned: 12, deleted: 2 });
+  expect(await h.runtime.adapter.getLogs({ roomId, limit: 100 })).toHaveLength(
+    10,
+  );
 });

@@ -27,7 +27,9 @@ import { JOB_TYPES } from "../../shared/src/lib/services/provisioning-job-types"
 let pass = 0;
 let fail = 0;
 function check(name: string, ok: boolean, detail = ""): void {
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`,
+  );
   ok ? pass++ : fail++;
 }
 
@@ -57,7 +59,10 @@ const created = await containersRepository.create(
     environmentVars: { DATABASE_URL: DSN, PORT: "3000" },
   }),
 );
-check("container row inserts cleanly against the real schema", Boolean(created?.id));
+check(
+  "container row inserts cleanly against the real schema",
+  Boolean(created?.id),
+);
 check(
   "the app's OWN per-tenant DSN landed in environment_vars.DATABASE_URL",
   created.environment_vars?.DATABASE_URL === DSN,
@@ -88,7 +93,9 @@ const meta = (afterRun?.metadata ?? {}) as Record<string, unknown>;
 check("markRunning -> status running", afterRun?.status === "running");
 check(
   "markRunning merged host placement into metadata (appId preserved)",
-  meta.hostContainerId === "host-ctr-1" && meta.hostPort === 21345 && meta.appId === appId,
+  meta.hostContainerId === "host-ctr-1" &&
+    meta.hostPort === 21345 &&
+    meta.appId === appId,
 );
 if (process.env.CONTAINERS_PUBLIC_BASE_DOMAIN) {
   check(
@@ -106,8 +113,13 @@ const job = await containerJobsWriter.insertJob({
   userId,
   data: { containerId: created.id },
 });
-const jobRow = await dbWrite.execute(sql`SELECT type, agent_id FROM jobs WHERE id = ${job.id}`);
-const jr = (jobRow.rows?.[0] ?? {}) as { type?: string; agent_id?: string | null };
+const jobRow = await dbWrite.execute(
+  sql`SELECT type, agent_id FROM jobs WHERE id = ${job.id}`,
+);
+const jr = (jobRow.rows?.[0] ?? {}) as {
+  type?: string;
+  agent_id?: string | null;
+};
 check(
   "CONTAINER_PROVISION job inserted with agent_id NULL",
   jr.type === JOB_TYPES.CONTAINER_PROVISION && (jr.agent_id ?? null) === null,
@@ -122,7 +134,8 @@ check(
 await appContainerStore.markDeleted(created.id);
 check(
   "markDeleted -> status deleted (row no longer counts toward quota)",
-  (await containersRepository.findById(created.id, orgId))?.status === "deleted",
+  (await containersRepository.findById(created.id, orgId))?.status ===
+    "deleted",
 );
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

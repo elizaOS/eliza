@@ -12,7 +12,13 @@ import { missingWhatsAppCredentialRefs } from "./messaging-gateway-preflight-con
 const cliArgs = process.argv.slice(2);
 const args = new Set(cliArgs);
 const strict = args.has("--strict");
-const supportedChannels = ["shared", "telegram", "discord", "whatsapp", "imessage"];
+const supportedChannels = [
+  "shared",
+  "telegram",
+  "discord",
+  "whatsapp",
+  "imessage",
+];
 const supportedChannelSet = new Set(supportedChannels);
 const channelArgs = cliArgs.filter((arg) => arg.startsWith("--channels="));
 const requestedChannels =
@@ -162,7 +168,12 @@ function checkShared() {
     "shared",
     "cloud API base",
     hasConfiguredValue(
-      ["ELIZACLOUD_API_URL", "ELIZA_CLOUD_API_URL", "ELIZA_CLOUD_URL", "PUBLIC_API_BASE_URL"],
+      [
+        "ELIZACLOUD_API_URL",
+        "ELIZA_CLOUD_API_URL",
+        "ELIZA_CLOUD_URL",
+        "PUBLIC_API_BASE_URL",
+      ],
       "HAS_ELIZACLOUD_API_URL",
     ),
     "Cloud API base URL is configured",
@@ -185,7 +196,11 @@ function checkShared() {
     "shared",
     "webhook gateway URL",
     hasConfiguredValue(
-      ["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"],
+      [
+        "ELIZA_APP_WEBHOOK_GATEWAY_URL",
+        "WEBHOOK_GATEWAY_URL",
+        "GATEWAY_WEBHOOK_URL",
+      ],
       "HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL",
     ),
     "Webhook gateway upstream URL is configured",
@@ -204,7 +219,10 @@ function checkShared() {
   addCheck(
     "shared",
     "internal delivery secret",
-    hasConfiguredValue(["GATEWAY_INTERNAL_SECRET"], "HAS_GATEWAY_INTERNAL_SECRET"),
+    hasConfiguredValue(
+      ["GATEWAY_INTERNAL_SECRET"],
+      "HAS_GATEWAY_INTERNAL_SECRET",
+    ),
     "Internal reminder delivery secret is configured",
     "Set GATEWAY_INTERNAL_SECRET consistently on the Cloud Worker and messaging gateways.",
   );
@@ -233,7 +251,9 @@ if (strict && failed.length > 0) {
 }
 
 if (failed.length > 0) {
-  console.log(`\n${failed.length} check(s) missing. Re-run with --strict in CI to fail closed.`);
+  console.log(
+    `\n${failed.length} check(s) missing. Re-run with --strict in CI to fail closed.`,
+  );
 } else {
   console.log("\nAll gateway preflight checks passed.");
 }

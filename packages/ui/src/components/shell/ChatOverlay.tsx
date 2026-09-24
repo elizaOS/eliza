@@ -2513,6 +2513,14 @@ export function ChatOverlay({
           messageId={m.id}
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
+          {m.role === "assistant" && m.planningAcknowledgment ? (
+            <p
+              className="px-2 pt-2 text-sm text-muted"
+              data-testid="chat-acknowledgment"
+            >
+              {m.planningAcknowledgment}
+            </p>
+          ) : null}
           <ChatMessage
             actionAccessory={
               m.id === speakingSourceMessageId ? (

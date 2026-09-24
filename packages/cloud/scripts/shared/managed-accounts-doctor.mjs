@@ -9,7 +9,10 @@
  * capture. Requires bun (imports the TypeScript manifest directly).
  */
 
-import { MANAGED_ACCOUNTS, verifyManagedAccounts } from "../../shared/src/lib/config/managed-accounts.ts";
+import {
+  MANAGED_ACCOUNTS,
+  verifyManagedAccounts,
+} from "../../shared/src/lib/config/managed-accounts.ts";
 
 const args = process.argv.slice(2);
 const strict = args.includes("--strict");
@@ -36,11 +39,18 @@ if (accounts.length === 0) {
   process.exit(2);
 }
 
-const { reports, requiredMissing } = verifyManagedAccounts(process.env, accounts);
+const { reports, requiredMissing } = verifyManagedAccounts(
+  process.env,
+  accounts,
+);
 
 if (asJson) {
   console.log(
-    JSON.stringify({ reports, requiredMissingIds: requiredMissing.map((r) => r.id) }, null, 2),
+    JSON.stringify(
+      { reports, requiredMissingIds: requiredMissing.map((r) => r.id) },
+      null,
+      2,
+    ),
   );
 } else {
   console.log("Managed Cloud provider accounts (issue #19910)");
@@ -49,7 +59,9 @@ if (asJson) {
       report.requirement.kind === "deferred"
         ? `deferred (owner: ${report.requirement.owner})`
         : report.requirement.kind;
-    console.log(`- [${report.state}] ${report.name} (${report.category}, ${requirement})`);
+    console.log(
+      `- [${report.state}] ${report.name} (${report.category}, ${requirement})`,
+    );
     if (report.missingEnvVars.length > 0) {
       console.log(`  missing: ${report.missingEnvVars.join(", ")}`);
     }

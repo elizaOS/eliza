@@ -1,24 +1,9 @@
 #!/usr/bin/env bun
 /**
- * `voice:workbench` CLI (#8785). Runs the Voice Workbench scenario matrix and
- * writes one JSON + Markdown benchmark report.
- *
- * Modes:
- *   --mock  (default)  ground-truth mock services → runs + passes; the CI
- *                      plumbing lane (no model, no network).
- *   --logic            real-decision-logic services → runs the SHIPPED EOT /
- *                      respond / echo / bystander / wake-word gate + name
- *                      extraction over the corpus (no acoustic models). CI-
- *                      runnable; catches a regression in the decision logic.
- *   --real             provisioned real backend: ElevenLabs-generated human
- *                      speech + fused local TTS/ASR + WeSpeaker + pyannote.
- *                      Missing real deps are a hard failure, not a skipped pass.
- *   --out <dir>        output directory (default ./voice-workbench-output).
- *   --baseline <path>  golden report JSON to compare metrics against; exit 1 if
- *                      any metric regressed past tolerance (regression gate).
- *
- * Exit 1 on an overall `fail` OR a metric regression vs the baseline; 0 on
- * `pass` or `skipped`.
+ * Runs the voice scenario matrix and writes scored JSON and Markdown reports.
+ * The default decision-logic lane uses the shipped gates without acoustic models.
+ * --real requires provisioned speech and inference backends; --out selects the
+ * report directory and --baseline compares metrics against a prior report.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,12 +15,16 @@ import {
 import { buildAndRunVoiceWorkbench, writeVoiceWorkbenchResult } from "../../../../plugins/plugin-local-inference/src/services/voice/workbench-entrypoint.ts";
 import { realDecisionLogicServices } from "../../../../plugins/plugin-local-inference/src/services/voice/workbench-logic-services.ts";
 import { createRealVoiceWorkbenchRuntimeFromEnv } from "../../../../plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts";
-import { groundTruthMockServices } from "../../../../plugins/plugin-local-inference/src/services/voice/workbench-scenarios.ts";
 
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const real = args.includes("--real");
-	const logic = args.includes("--logic");
+	if (args.includes("--mock")) {
+		throw new Error("The mock benchmark mode was removed. Use --logic or --real.");
+	}
+	if (real && args.includes("--logic")) {
+		throw new Error("Choose either --logic or --real.");
+	}
 	const outIdx = args.indexOf("--out");
 	const baselineIdx = args.indexOf("--baseline");
 	const baselinePath =
@@ -47,19 +36,12 @@ async function main(): Promise<void> {
 			? path.resolve(args[outIdx + 1])
 			: path.resolve("voice-workbench-output");
 
-	// --real: real-backend (acoustic) services are gated and fail fast when not
-	// provisioned. No all-skipped success: #9147 needs numbers, not skip evidence.
-	// --logic: the real shipped decision logic (no acoustic models).
-	// default (--mock): echoes ground truth so the runner → scorers → report path
-	// runs end-to-end.
 	const realRuntime = real
 		? await createRealVoiceWorkbenchRuntimeFromEnv()
 		: null;
 	const services = realRuntime
 		? realRuntime.services
-		: logic
-			? realDecisionLogicServices()
-			: groundTruthMockServices();
+		: realDecisionLogicServices();
 
 	let result!: Awaited<ReturnType<typeof buildAndRunVoiceWorkbench>>;
 	try {
@@ -109,6 +91,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
+	// error-policy:J1 The CLI reports the failure and exits unsuccessfully.
 	process.stderr.write(`${err instanceof Error ? err.stack : String(err)}\n`);
 	process.exit(1);
 });

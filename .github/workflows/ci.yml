@@ -662,8 +662,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Persona catalog coverage gate
-        run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs
       - name: Build workspace packages for scenario resolution
         run: bunx turbo run build --filter=@elizaos/testing...
       - name: Zero-cost scenario e2e

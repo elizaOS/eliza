@@ -7,8 +7,8 @@
  * `VoiceWorkbenchScenarioRun` lands on `execution.responseBody` for assertions.
  *
  * Backend gating follows the workbench honesty contract: with no `voiceServices`
- * the run is `skipped`; inject `groundTruthMockServices()` for deterministic CI
- * or set `allowVoiceSkip` only for explicitly optional/manual voice coverage.
+ * the run is `skipped`; supply a backend to evaluate voice behavior, or set
+ * `allowVoiceSkip` only for explicitly optional/manual voice coverage.
  */
 
 import path from "node:path";

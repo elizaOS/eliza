@@ -107,7 +107,8 @@ const OPTIONS_WITH_SEPARATE_VALUES = new Set([
  */
 export function hasExplicitTestFileFilter(args) {
   const optionBoundary = args.indexOf("--");
-  const runnerArgs = optionBoundary === -1 ? args : args.slice(0, optionBoundary);
+  const runnerArgs =
+    optionBoundary === -1 ? args : args.slice(0, optionBoundary);
   for (let index = 0; index < runnerArgs.length; index += 1) {
     const arg = runnerArgs[index];
     if (OPTIONS_WITH_SEPARATE_VALUES.has(arg)) {
@@ -145,11 +146,22 @@ export function buildTestBatches(
   const pgliteFiles = testFiles
     .filter((file) => pglite.has(file) && !processIsolated.has(file))
     .sort();
-  const isolatedFiles = testFiles.filter((file) => processIsolated.has(file)).sort();
+  const isolatedFiles = testFiles
+    .filter((file) => processIsolated.has(file))
+    .sort();
   return [
-    ...chunk(ordinaryFiles, batchSizes.ordinary).map((files) => ({ kind: "ordinary", files })),
-    ...chunk(pgliteFiles, batchSizes.pglite).map((files) => ({ kind: "pglite", files })),
-    ...isolatedFiles.map((file) => ({ kind: "process-isolated", files: [file] })),
+    ...chunk(ordinaryFiles, batchSizes.ordinary).map((files) => ({
+      kind: "ordinary",
+      files,
+    })),
+    ...chunk(pgliteFiles, batchSizes.pglite).map((files) => ({
+      kind: "pglite",
+      files,
+    })),
+    ...isolatedFiles.map((file) => ({
+      kind: "process-isolated",
+      files: [file],
+    })),
   ];
 }
 
@@ -165,14 +177,19 @@ function insertTestFilesBeforeOptionBoundary(passthroughArgs, testFiles) {
 
 /** Build one fresh-process invocation while forwarding caller arguments verbatim. */
 export function buildTestBatchArgs(testFiles, passthroughArgs) {
-  return ["--isolate", ...insertTestFilesBeforeOptionBoundary(passthroughArgs, testFiles)];
+  return [
+    "--isolate",
+    ...insertTestFilesBeforeOptionBoundary(passthroughArgs, testFiles),
+  ];
 }
 
 /** Preserve either supported Bun timeout form; otherwise add the package default. */
 export function withDefaultTestTimeout(passthroughArgs) {
   const optionBoundary = passthroughArgs.indexOf("--");
   const runnerArgs =
-    optionBoundary === -1 ? passthroughArgs : passthroughArgs.slice(0, optionBoundary);
+    optionBoundary === -1
+      ? passthroughArgs
+      : passthroughArgs.slice(0, optionBoundary);
   const hasExplicitTimeout = runnerArgs.some(
     (arg) => arg === "--timeout" || arg.startsWith("--timeout="),
   );
@@ -191,7 +208,10 @@ export const CRASH_OUTPUT_PATTERNS = [
   //   panic(main thread): Illegal instruction at address 0x7FF6B271CDB0
   { name: "illegal-instruction", pattern: /illegal instruction/i },
   // Bun panic banner: `panic(main thread): …` / `panic(thread 1234): …`
-  { name: "bun-panic", pattern: /\bpanic\s*\((?:main thread|thread \d+)\)\s*:/i },
+  {
+    name: "bun-panic",
+    pattern: /\bpanic\s*\((?:main thread|thread \d+)\)\s*:/i,
+  },
   // Bun crash-handler banner: "oh no: Bun has crashed. This indicates a bug in Bun…"
   { name: "bun-crash-banner", pattern: /oh no: Bun has crashed/i },
   // Crash-report link the handler prints (https://bun.report/<version>/<trace>)
@@ -200,7 +220,8 @@ export const CRASH_OUTPUT_PATTERNS = [
   { name: "bus-error", pattern: /bus error/i },
   {
     name: "windows-structured-exception",
-    pattern: /EXCEPTION_(?:ILLEGAL_INSTRUCTION|ACCESS_VIOLATION|STACK_OVERFLOW|IN_PAGE_ERROR)/,
+    pattern:
+      /EXCEPTION_(?:ILLEGAL_INSTRUCTION|ACCESS_VIOLATION|STACK_OVERFLOW|IN_PAGE_ERROR)/,
   },
 ];
 
@@ -211,7 +232,9 @@ export const CRASH_OUTPUT_PATTERNS = [
  * codes surfaced by node's spawn (0xC0000005 access violation, 0xC000001D
  * illegal instruction, 0xC0000409 fail-fast/stack-buffer-overrun).
  */
-export const CRASH_EXIT_CODES = new Set([3, 132, 134, 139, 3221225477, 3221225501, 3221226505]);
+export const CRASH_EXIT_CODES = new Set([
+  3, 132, 134, 139, 3221225477, 3221225501, 3221226505,
+]);
 
 /** Termination signals that mean a native crash (not a runner reclaim). */
 export const CRASH_SIGNALS = new Set([
@@ -223,7 +246,8 @@ export const CRASH_SIGNALS = new Set([
   "SIGTRAP",
 ]);
 
-const GITHUB_LOG_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+/;
+const GITHUB_LOG_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+/;
 
 export function stripAnsi(input) {
   let result = "";
@@ -259,7 +283,9 @@ export function getBunFailCounts(output) {
 
 /** True when bun printed its completed-run summary (`Ran N tests across M files.`). */
 export function hasBunRunSummary(output) {
-  return getSummaryLines(output).some((line) => /^Ran \d+ tests? across \d+ files?\./.test(line));
+  return getSummaryLines(output).some((line) =>
+    /^Ran \d+ tests? across \d+ files?\./.test(line),
+  );
 }
 
 export function hasBunPassRecord(output) {
@@ -287,13 +313,17 @@ export function shouldNormalizeBunStatus99({ status, signal, output }) {
   if (!knownPollution && !greenButDirty) return false;
   if (getBunFailCounts(output).some((count) => count !== 0)) return false;
   if (hasBunFailureMarker(output)) return false;
-  return hasBunRunSummary(output) || (greenButDirty && hasBunPassRecord(output));
+  return (
+    hasBunRunSummary(output) || (greenButDirty && hasBunPassRecord(output))
+  );
 }
 
 /** Names of every crash marker present in the output (empty = none). */
 export function findCrashMarkers(output) {
   const plain = stripAnsi(output);
-  return CRASH_OUTPUT_PATTERNS.filter(({ pattern }) => pattern.test(plain)).map(({ name }) => name);
+  return CRASH_OUTPUT_PATTERNS.filter(({ pattern }) => pattern.test(plain)).map(
+    ({ name }) => name,
+  );
 }
 
 /**
@@ -328,7 +358,8 @@ export function classifyBunTestExit({ status, signal, output }) {
     if (!hasBunRunSummary(output)) {
       return {
         kind: "test-failure",
-        reason: "exit code 0 without a completed bun run summary — refusing to count as a pass",
+        reason:
+          "exit code 0 without a completed bun run summary — refusing to count as a pass",
       };
     }
     return { kind: "pass", reason: "exit code 0 with a completed run summary" };
@@ -343,11 +374,18 @@ export function classifyBunTestExit({ status, signal, output }) {
   }
 
   if (signal && CRASH_SIGNALS.has(signal)) {
-    return { kind: "native-crash", reason: `terminated by crash signal ${signal}` };
+    return {
+      kind: "native-crash",
+      reason: `terminated by crash signal ${signal}`,
+    };
   }
 
   const reportedFailures = getBunFailCounts(output).some((count) => count > 0);
-  if (!reportedFailures && exitCode !== null && CRASH_EXIT_CODES.has(exitCode)) {
+  if (
+    !reportedFailures &&
+    exitCode !== null &&
+    CRASH_EXIT_CODES.has(exitCode)
+  ) {
     return {
       kind: "native-crash",
       reason: `native-crash exit code ${exitCode} with no reported test failures`,
@@ -364,7 +402,11 @@ export function classifyBunTestExit({ status, signal, output }) {
  * Retry policy for the quarantined pass: ONLY native crashes retry, and only
  * while attempts remain. A test-failure classification never retries.
  */
-export function shouldRetryQuarantinedSuites(classification, attempt, maxAttempts) {
+export function shouldRetryQuarantinedSuites(
+  classification,
+  attempt,
+  maxAttempts,
+) {
   return classification.kind === "native-crash" && attempt < maxAttempts;
 }
 
@@ -373,12 +415,19 @@ export function shouldRetryQuarantinedSuites(classification, attempt, maxAttempt
  * matching crash markers plus `context` lines around each, capped at
  * `maxLines` (the full output goes to the capture file, not the banner).
  */
-export function extractCrashExcerpt(output, { context = 4, maxLines = 60 } = {}) {
+export function extractCrashExcerpt(
+  output,
+  { context = 4, maxLines = 60 } = {},
+) {
   const lines = stripAnsi(output).split(/\r?\n/);
   const keep = new Set();
   for (let i = 0; i < lines.length; i += 1) {
     if (CRASH_OUTPUT_PATTERNS.some(({ pattern }) => pattern.test(lines[i]))) {
-      for (let j = Math.max(0, i - context); j <= Math.min(lines.length - 1, i + context); j += 1) {
+      for (
+        let j = Math.max(0, i - context);
+        j <= Math.min(lines.length - 1, i + context);
+        j += 1
+      ) {
         keep.add(j);
       }
     }
@@ -425,7 +474,8 @@ export function resolveMaxAttempts(env) {
  */
 export function resolveAttemptTimeoutMs(env) {
   const raw = env.ELIZA_PGLITE_QUARANTINE_TIMEOUT_MS;
-  if (raw === undefined || raw === "") return DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS;
+  if (raw === undefined || raw === "")
+    return DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isInteger(parsed) || parsed < 1_000) {
     return DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS;
@@ -438,7 +488,11 @@ export function resolveAttemptTimeoutMs(env) {
  * `--path-ignore-patterns` must be repeated per pattern — a comma-joined value
  * is treated as one glob and silently matches nothing (verified on bun 1.4.0).
  */
-export function buildMainPassArgs(quarantinedSuites, passthroughArgs, testFiles = []) {
+export function buildMainPassArgs(
+  quarantinedSuites,
+  passthroughArgs,
+  testFiles = [],
+) {
   const forwarded = [];
   for (let index = 0; index < passthroughArgs.length; index += 1) {
     const arg = passthroughArgs[index];

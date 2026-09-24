@@ -233,7 +233,6 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/build-experimental-exact-window-helper.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
-      "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
       "scripts/android-pglite-staging.test.mjs",

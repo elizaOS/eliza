@@ -75,7 +75,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/entry.ts",
   "scripts/ffi-stub/Makefile",
   "scripts/ffi-stub/README.md",
-  "scripts/ffi-stub/asr-ffi-smoke.ts",
   "scripts/ffi-stub/ffi-stub.c",
   "scripts/ffi-stub/ffi.h",
   "scripts/ffi-stub/tts-stream-ffi-smoke.ts",

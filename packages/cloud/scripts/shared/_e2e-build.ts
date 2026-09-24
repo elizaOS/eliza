@@ -8,12 +8,17 @@
  */
 
 import { spawn } from "node:child_process";
-import { AppImageBuilder, type BuildExec } from "../../shared/src/lib/services/app-image-builder";
+import {
+  AppImageBuilder,
+  type BuildExec,
+} from "../../shared/src/lib/services/app-image-builder";
 
 const localExec: BuildExec = {
   exec: (command) =>
     new Promise<string>((resolve, reject) => {
-      const p = spawn("sudo", ["sh", "-c", command], { stdio: ["ignore", "pipe", "pipe"] });
+      const p = spawn("sudo", ["sh", "-c", command], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       let out = "";
       p.stdout.on("data", (d) => {
         out += d;
@@ -22,7 +27,9 @@ const localExec: BuildExec = {
         out += d;
       });
       p.on("close", (code) =>
-        code === 0 ? resolve(out) : reject(new Error(`build exit ${code}:\n${out.slice(-800)}`)),
+        code === 0
+          ? resolve(out)
+          : reject(new Error(`build exit ${code}:\n${out.slice(-800)}`)),
       );
     }),
 };
