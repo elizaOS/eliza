@@ -138,7 +138,7 @@ def test_turns_preserve_context_and_capture_usage(tmp_path, monkeypatch):
             json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "recorded"}}),
             json.dumps({"type": "turn.completed", "usage": {"input_tokens": 100, "output_tokens": 5}}),
         ]))
-    monkeypatch.setattr("codex_adapter.client.subprocess.run", run)
+    monkeypatch.setattr("codex_adapter.client._run_codex_process", run)
     client = CodexClient(accounts=_accounts(tmp_path, "a"), codex_bin="/usr/bin/true")
     client.reset("task", "memory")
     first = client.send_message("remember", {"observation": "complete context"})
@@ -160,7 +160,7 @@ def test_turns_preserve_context_and_capture_usage(tmp_path, monkeypatch):
     {"type": "item.completed", "item": {"type": "agent_message", "text": "incomplete"}},
 ])
 def test_zero_exit_without_successful_terminal_event_is_failure(tmp_path, monkeypatch, event):
-    monkeypatch.setattr("codex_adapter.client.subprocess.run", lambda *_a, **_kw:
+    monkeypatch.setattr("codex_adapter.client._run_codex_process", lambda *_a, **_kw:
         SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(event)))
     client = CodexClient(accounts=_accounts(tmp_path, "a"), codex_bin="/usr/bin/true")
     with pytest.raises(RuntimeError):
@@ -176,3 +176,31 @@ def test_coding_workspace_and_reasoning_are_explicit(tmp_path):
     assert "workspace-write" in command
     assert 'model_reasoning_effort="high"' in command
     assert client.cwd == tmp_path.resolve()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX process-group cleanup")
+@pytest.mark.parametrize("leader_exits", [False, True])
+def test_timeout_stops_pipe_holding_process_group_and_preserves_output(tmp_path, leader_exits):
+    import os
+    import subprocess
+    import sys
+    import time
+    from codex_adapter.client import _run_codex_process
+
+    # Both variants leave a real descendant holding the captured pipes. Killing
+    # only the parent would block output collection for thirty seconds.
+    script = (
+        "import subprocess,sys,time; "
+        "subprocess.Popen([sys.executable,'-c',"
+        "\"import time; print('descendant-ready', flush=True); time.sleep(30)\"]); "
+        "print('parent-ready', flush=True); print('diagnostic',file=sys.stderr,flush=True); "
+        + ("sys.exit(0)" if leader_exits else "time.sleep(30)")
+    )
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired) as exc:
+        _run_codex_process([sys.executable, "-c", script], input="", env=dict(os.environ),
+                           cwd=tmp_path, timeout=1)
+    assert time.monotonic() - started < 10
+    assert "parent-ready" in exc.value.output
+    assert "descendant-ready" in exc.value.output
+    assert "diagnostic" in exc.value.stderr
