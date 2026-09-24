@@ -18,8 +18,6 @@ import { RetentionTask } from "./retention-task.ts";
 export const MEMORY_RETENTION_SERVICE = "eliza_memory_retention";
 
 const DEFAULT_INTERVAL_MINUTES = 360; // 6h
-/** Upper bound on rows scanned per partition per sweep (memory safety). */
-const SCAN_LIMIT = 100_000;
 
 /**
  * The memory partitions this sweep governs. Mirrors the canonical partition
@@ -137,7 +135,7 @@ export class MemoryRetentionService extends Service {
         const rows = await adapter.getMemories({
           agentId: this.runtime.agentId,
           tableName: partition,
-          limit: SCAN_LIMIT,
+          includeEmbedding: false,
           orderBy: "createdAt",
           orderDirection: "asc",
         });

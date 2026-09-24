@@ -12,7 +12,6 @@ import {
   type RetainableRow,
   resolveRetentionConfigWithPrefix,
 } from "./memory-retention.ts";
-
 import { RetentionTask } from "./retention-task.ts";
 
 export const LOGS_RETENTION_SERVICE = "eliza_logs_retention";
@@ -21,8 +20,6 @@ export const LOGS_RETENTION_SERVICE = "eliza_logs_retention";
 export const LOGS_RETENTION_PREFIX = "ELIZA_LOGS_RETENTION";
 
 const DEFAULT_INTERVAL_MINUTES = 360; // 6h
-/** Upper bound on rows scanned per sweep (memory safety on the fetch). */
-const SCAN_LIMIT = 100_000;
 /** Stable bucket key for logs that carry no roomId (count bound still applies). */
 const NULL_ROOM_KEY = "__no_room__";
 
@@ -112,7 +109,10 @@ export class LogsRetentionService extends Service {
     try {
       const adapter = this.runtime.adapter;
 
-      const rows = await adapter.getLogs({ limit: SCAN_LIMIT });
+      // One query avoids unstable offset pages while log writers remain active.
+      // This exceeds JavaScript's maximum array length, so every representable
+      // inventory fits without imposing a retention scan ceiling.
+      const rows = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
 
       const retainable: RetainableRow[] = [];
       for (const r of rows) {
