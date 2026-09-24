@@ -5,6 +5,7 @@ export interface MlKitTextWord {
   top: number;
   width: number;
   height: number;
+  /** Actual engine confidence on a 0–100 scale, including fractional values. */
   confidence: number;
   block: number;
   par: number;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Exercises sync review controls with deterministic adapters; no provider requests are sent. */
-import type { LifeOpsLinkedCalendarControl } from "@elizaos/shared";
+import { type LifeOpsLinkedCalendarControl } from "@elizaos/core/contracts/calendar";
 import {
   act,
   cleanup,

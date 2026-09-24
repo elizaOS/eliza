@@ -42,8 +42,7 @@ import {
   type SignedRemoteCommand,
   type SignedRemoteCommandResult,
   type SignedRemoteCommandStartReceipt,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/remote-control";
 export type RemoteCommandRejection =
   | "malformed"
   | "unknown_controller"
@@ -60,11 +59,15 @@ export type RemoteCommandRejection =
   | "ttl_too_long"
   | "payload_digest_mismatch"
   | "invalid_signature";
-
 export type RemoteCommandAuthenticity =
-  | { ok: true; commandDigest: string }
-  | { ok: false; reason: RemoteCommandRejection };
-
+  | {
+      ok: true;
+      commandDigest: string;
+    }
+  | {
+      ok: false;
+      reason: RemoteCommandRejection;
+    };
 export interface VerifyRemoteCommandAuthenticityOptions {
   command: SignedRemoteCommand;
   identity: RemoteControllerPublicIdentity | null;
@@ -75,18 +78,15 @@ export interface VerifyRemoteCommandAuthenticityOptions {
   expectedTargetRuntimeId: string;
   now?: number;
 }
-
 export interface RemoteControlEnvelopeExpectation extends RemoteCommandBinding {
   messageKind: RemoteControlMessageKind;
   senderKeyId: string;
   recipientKeyId: string;
 }
-
 export type OpenedRemoteControlMessage =
   | SignedRemoteCommand
   | SignedRemoteCommandStartReceipt
   | SignedRemoteCommandResult;
-
 function remoteCryptoError(
   message: string,
   code: string,
@@ -100,28 +100,23 @@ function remoteCryptoError(
     severity: "fatal",
   });
 }
-
 export function digestRemoteControlValue(value: unknown): string {
   return createHash("sha256")
     .update(canonicalizeRemoteControlValue(value))
     .digest("base64url");
 }
-
 export function digestRemotePayload(payload: RemoteJsonValue): string {
   return digestRemoteControlValue(payload);
 }
-
 export function digestRemoteCommand(command: SignedRemoteCommand): string {
   return digestRemoteControlValue(command.body);
 }
-
 export function digestRemoteResultValue(
   result: RemoteJsonValue | undefined,
   errorCode: string | undefined,
 ): string {
   return digestRemoteControlValue({ result, errorCode });
 }
-
 function signatureFor(value: unknown, privateKeyJwk: JsonWebKey): string {
   return sign(
     "sha256",
@@ -129,7 +124,6 @@ function signatureFor(value: unknown, privateKeyJwk: JsonWebKey): string {
     createPrivateKey({ key: privateKeyJwk, format: "jwk" }),
   ).toString("base64url");
 }
-
 function hasValidSignature(
   value: unknown,
   signature: string,
@@ -147,7 +141,6 @@ function hasValidSignature(
     return false;
   }
 }
-
 export function signRemoteCommand(
   body: RemoteCommandBody,
   signingPrivateKeyJwk: JsonWebKey,
@@ -158,7 +151,6 @@ export function signRemoteCommand(
     signature: signatureFor(body, signingPrivateKeyJwk),
   };
 }
-
 export function signRemoteCommandStartReceipt(
   body: RemoteCommandStartReceipt,
   signingPrivateKeyJwk: JsonWebKey,
@@ -169,7 +161,6 @@ export function signRemoteCommandStartReceipt(
     signature: signatureFor(body, signingPrivateKeyJwk),
   };
 }
-
 export function signRemoteCommandResult(
   body: RemoteCommandResult,
   signingPrivateKeyJwk: JsonWebKey,
@@ -180,7 +171,6 @@ export function signRemoteCommandResult(
     signature: signatureFor(body, signingPrivateKeyJwk),
   };
 }
-
 function bindingMatches(
   actual: RemoteCommandBinding,
   expected: RemoteCommandBinding,
@@ -198,7 +188,6 @@ function bindingMatches(
     actual.commandId === expected.commandId
   );
 }
-
 /** Performs every static authorization/signature check without consuming replay state. */
 export function verifyRemoteCommandAuthenticity(
   options: VerifyRemoteCommandAuthenticityOptions,
@@ -280,7 +269,6 @@ export function verifyRemoteCommandAuthenticity(
   }
   return { ok: true, commandDigest: digestRemoteCommand(options.command) };
 }
-
 /** Verifies a target-signed start receipt against the original command. */
 export function verifyRemoteCommandStartReceipt(
   signed: SignedRemoteCommandStartReceipt,
@@ -302,7 +290,6 @@ export function verifyRemoteCommandStartReceipt(
     )
   );
 }
-
 /** Verifies a target-signed terminal result and all original command bindings. */
 export function verifyRemoteCommandResult(
   signed: SignedRemoteCommandResult,
@@ -326,7 +313,6 @@ export function verifyRemoteCommandResult(
     )
   );
 }
-
 type RemoteControlEnvelopeHeader = RemoteCommandBinding & {
   algorithm: typeof REMOTE_CONTROL_ENVELOPE_ALGORITHM;
   senderKeyId: string;
@@ -340,13 +326,13 @@ type RemoteControlEnvelopeHeader = RemoteCommandBinding & {
         issuedAt: number;
         expiresAt: number;
       }
-    | { messageKind: "start_receipt" | "result" }
+    | {
+        messageKind: "start_receipt" | "result";
+      }
   );
-
 function envelopeAad(envelope: RemoteControlEnvelopeHeader): Buffer {
   return Buffer.from(canonicalizeRemoteControlValue(envelope));
 }
-
 function envelopeHeader(
   scope: RemoteControlEnvelopeExpectation,
   message: OpenedRemoteControlMessage,
@@ -385,7 +371,6 @@ function envelopeHeader(
   }
   return { ...common, messageKind: scope.messageKind };
 }
-
 function authenticatedEnvelopeHeader(
   envelope: EncryptedRemoteControlEnvelope,
 ): RemoteControlEnvelopeHeader {
@@ -417,7 +402,6 @@ function authenticatedEnvelopeHeader(
   }
   return { ...common, messageKind: envelope.messageKind };
 }
-
 function messageMatchesKind(
   messageKind: RemoteControlMessageKind,
   message: unknown,
@@ -428,7 +412,6 @@ function messageMatchesKind(
   }
   return isSignedRemoteCommandResult(message);
 }
-
 function envelopeKeyDirectionMatches(
   scope: RemoteControlEnvelopeExpectation,
 ): boolean {
@@ -438,7 +421,6 @@ function envelopeKeyDirectionMatches(
     : scope.senderKeyId === scope.targetKeyId &&
         scope.recipientKeyId === scope.controllerKeyId;
 }
-
 /** Encrypts one signed protocol message for exactly one recipient and scope. */
 export function sealRemoteControlMessage(
   message: OpenedRemoteControlMessage,
@@ -503,7 +485,6 @@ export function sealRemoteControlMessage(
     ),
   };
 }
-
 function expectationMatches(
   envelope: EncryptedRemoteControlEnvelope,
   expected: RemoteControlEnvelopeExpectation,
@@ -515,7 +496,6 @@ function expectationMatches(
     bindingMatches(envelope, expected)
   );
 }
-
 /**
  * Authenticates the complete relay header, decrypts, and verifies that the
  * signed plaintext repeats the same authority/recipient binding.

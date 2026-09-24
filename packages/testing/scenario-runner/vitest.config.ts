@@ -50,28 +50,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/shared\/brand$/,
-        replacement: path.join(repoRoot, "packages/shared/src/brand/index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/brand-classic$/,
-        replacement: path.join(
-          repoRoot,
-          "packages/shared/src/brand-classic/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/steward-session-client$/,
-        replacement: path.join(
-          repoRoot,
-          "packages/shared/src/steward-session-client/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/types$/,
-        replacement: path.join(repoRoot, "packages/shared/src/types/index.ts"),
-      },
-      {
         find: /^@elizaos\/ui\/agent-surface$/,
         replacement: path.join(
           repoRoot,
@@ -90,7 +68,7 @@ export default defineConfig({
       ...entry,
       // vite `resolve.alias` replacements must be POSIX forward-slash paths.
       // `path.join` yields backslashes on Windows, which break vite's alias
-      // matching (specifiers like `@elizaos/shared/local-inference` then fall
+      // matching (specifiers like `@elizaos/plugin-native-inference/model-catalog` then fall
       // through to Node and fail with "Cannot find package"). No-op on POSIX.
       replacement: entry.replacement.split("\\").join("/"),
     })),

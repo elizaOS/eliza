@@ -1,3 +1,4 @@
+/** Supplies pending room choices without adding placeholder text for healthy empty results. */
 import type {
   IAgentRuntime,
   Memory,
@@ -49,9 +50,9 @@ export const choiceProvider: Provider = {
           tasks: [],
         },
         values: {
-          tasks: "No pending choices for the moment.",
+          tasks: "",
         },
-        text: "No pending choices for the moment.",
+        text: "",
       };
     }
     // Filter tasks that have options
@@ -64,9 +65,9 @@ export const choiceProvider: Provider = {
           tasks: [],
         },
         values: {
-          tasks: "No pending choices for the moment.",
+          tasks: "",
         },
-        text: "No pending choices for the moment.",
+        text: "",
       };
     }
     // Format tasks into a readable list

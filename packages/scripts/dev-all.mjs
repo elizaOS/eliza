@@ -353,14 +353,6 @@ function buildDefaultPrepareCommands() {
   ];
 
   const buildCommands = [];
-  if (!packageDistReady("packages/shared", ["dist/index.js"])) {
-    buildCommands.push({
-      label: "shared package build",
-      cwd: "packages/shared",
-      command: [bunBin, "run", "build:dist"],
-      env: commonEnv,
-    });
-  }
   if (
     !packageDistReady("packages/ui", [
       "dist/index.js",

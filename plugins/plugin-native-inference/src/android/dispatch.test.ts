@@ -5,21 +5,21 @@
  * fake route kernel, proving the loopback buffered envelope and incremental
  * streaming sink lifecycle without booting a runtime or device.
  */
-
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   createCharacter,
   ElizaError,
+  type IAgentRuntime,
   NotificationService,
+  type Plugin,
   type Service,
   ServiceType,
   stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
-import type { RouteHandlerResult } from "@elizaos/shared";
+import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
+import { type StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
   type AndroidCoreRouteDeps,
   type AndroidDispatchRoute,
@@ -29,14 +29,16 @@ import {
 } from "./dispatch.ts";
 
 const runtime = {} as IAgentRuntime;
-
 async function createNotificationRuntime(
   services: NonNullable<Plugin["services"]> = [],
   adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(
     ":memory:",
     sqliteTestAgentId("AndroidNotificationDispatchTest"),
   ),
-): Promise<{ runtime: AgentRuntime; cleanup: () => Promise<void> }> {
+): Promise<{
+  runtime: AgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
   const runtime = new AgentRuntime({
     character: createCharacter({ name: "AndroidNotificationDispatchTest" }),
     adapter,
@@ -59,7 +61,6 @@ async function createNotificationRuntime(
     },
   };
 }
-
 /** A dispatchRoute that returns a fixed buffered result for the matched path. */
 function fixedRoute(result: RouteHandlerResult | null): {
   route: AndroidDispatchRoute;
@@ -72,7 +73,6 @@ function fixedRoute(result: RouteHandlerResult | null): {
   };
   return { route, calls };
 }
-
 function collectSink(): {
   sink: StdioBridgeStreamSink;
   events: Array<Record<string, unknown>>;
@@ -86,7 +86,6 @@ function collectSink(): {
   };
   return { sink, events };
 }
-
 function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
   deps: AndroidCoreRouteDeps;
   saved: AndroidElizaConfigLike[];
@@ -104,7 +103,6 @@ function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
   };
   return { deps, saved };
 }
-
 describe("dispatchBufferedRequest", () => {
   it("runs authenticated Android internal wakes through TaskService", async () => {
     const previousToken = process.env.ELIZA_API_TOKEN;
@@ -122,7 +120,7 @@ describe("dispatchBufferedRequest", () => {
         headers: { Authorization: `Bearer ${"a".repeat(64)}` },
         body: JSON.stringify({
           kind: "refresh",
-          deadlineMs: Date.now() + 5_000,
+          deadlineMs: Date.now() + 5000,
         }),
       });
       expect(response.status).toBe(200);
@@ -138,7 +136,6 @@ describe("dispatchBufferedRequest", () => {
       else process.env.ELIZA_API_TOKEN = previousToken;
     }
   });
-
   it("rejects unauthenticated and invalid Android internal wakes", async () => {
     const previousToken = process.env.ELIZA_API_TOKEN;
     process.env.ELIZA_API_TOKEN = "b".repeat(64);
@@ -151,10 +148,9 @@ describe("dispatchBufferedRequest", () => {
       const unauthorized = await dispatchBufferedRequest(wakeRuntime, route, {
         method: "POST",
         path: "/api/internal/wake",
-        body: { kind: "refresh", deadlineMs: Date.now() + 5_000 },
+        body: { kind: "refresh", deadlineMs: Date.now() + 5000 },
       });
       expect(unauthorized.status).toBe(401);
-
       const invalid = await dispatchBufferedRequest(wakeRuntime, route, {
         method: "POST",
         path: "/api/internal/wake",
@@ -162,7 +158,6 @@ describe("dispatchBufferedRequest", () => {
         body: "not-json",
       });
       expect(invalid.status).toBe(400);
-
       const expired = await dispatchBufferedRequest(wakeRuntime, route, {
         method: "POST",
         path: "/api/internal/wake",
@@ -180,7 +175,6 @@ describe("dispatchBufferedRequest", () => {
       else process.env.ELIZA_API_TOKEN = previousToken;
     }
   });
-
   it("returns a typed unavailable boundary and resets after TaskService failure", async () => {
     const previousToken = process.env.ELIZA_API_TOKEN;
     process.env.ELIZA_API_TOKEN = "c".repeat(64);
@@ -189,7 +183,7 @@ describe("dispatchBufferedRequest", () => {
       method: "POST",
       path: "/api/internal/wake",
       headers: { authorization: `Bearer ${"c".repeat(64)}` },
-      body: { kind: "processing", deadlineMs: Date.now() + 5_000 },
+      body: { kind: "processing", deadlineMs: Date.now() + 5000 },
     };
     try {
       const unavailable = await dispatchBufferedRequest(
@@ -202,7 +196,6 @@ describe("dispatchBufferedRequest", () => {
         ok: false,
         error: "task_service_unavailable",
       });
-
       const runDueTasks = vi
         .fn()
         .mockRejectedValueOnce(new Error("task store unavailable"))
@@ -229,7 +222,6 @@ describe("dispatchBufferedRequest", () => {
       else process.env.ELIZA_API_TOKEN = previousToken;
     }
   });
-
   it("coalesces concurrent wakes per runtime without skipping a replacement runtime", async () => {
     const previousToken = process.env.ELIZA_API_TOKEN;
     process.env.ELIZA_API_TOKEN = "d".repeat(64);
@@ -250,7 +242,7 @@ describe("dispatchBufferedRequest", () => {
       method: "POST",
       path: "/api/internal/wake",
       headers: { authorization: `Bearer ${"d".repeat(64)}` },
-      body: { kind: "refresh", deadlineMs: Date.now() + 5_000 },
+      body: { kind: "refresh", deadlineMs: Date.now() + 5000 },
     };
     try {
       const first = dispatchBufferedRequest(firstRuntime, route, payload);
@@ -278,7 +270,6 @@ describe("dispatchBufferedRequest", () => {
       else process.env.ELIZA_API_TOKEN = previousToken;
     }
   });
-
   it("serves Android local startup app routes before dispatchRoute", async () => {
     const { route, calls } = fixedRoute(null);
     const { deps } = coreDeps({
@@ -299,7 +290,6 @@ describe("dispatchBufferedRequest", () => {
       cloudProvisioned: false,
       deploymentTarget: "local",
     });
-
     const auth = await dispatchBufferedRequest(runtime, route, {
       method: "GET",
       path: "/api/auth/me",
@@ -310,10 +300,8 @@ describe("dispatchBufferedRequest", () => {
       session: { id: "local", kind: "local" },
       access: { mode: "local" },
     });
-
     expect(calls).toHaveLength(0);
   });
-
   it("reports first-run incomplete on a fresh Android install", async () => {
     const { route, calls } = fixedRoute(null);
     const { deps } = coreDeps({ configFileExists: () => false });
@@ -334,7 +322,6 @@ describe("dispatchBufferedRequest", () => {
     });
     expect(calls).toHaveLength(0);
   });
-
   it("persists first-run completion and fails closed on write errors", async () => {
     const { route } = fixedRoute(null);
     const { deps, saved } = coreDeps({ configFileExists: () => false });
@@ -350,7 +337,6 @@ describe("dispatchBufferedRequest", () => {
     expect(ok.status).toBe(200);
     expect(JSON.parse(ok.body)).toMatchObject({ ok: true, complete: true });
     expect(saved[0]?.meta?.firstRunComplete).toBe(true);
-
     const failing = coreDeps({
       saveElizaConfig: () => {
         throw new Error("disk full");
@@ -368,7 +354,6 @@ describe("dispatchBufferedRequest", () => {
     expect(failed.status).toBe(500);
     expect(JSON.parse(failed.body).error).toContain("disk full");
   });
-
   it("returns a non-404 response for Android local auth-bootstrap exchange", async () => {
     const { route, calls } = fixedRoute(null);
     const res = await dispatchBufferedRequest(runtime, route, {
@@ -383,7 +368,6 @@ describe("dispatchBufferedRequest", () => {
     });
     expect(calls).toHaveLength(0);
   });
-
   it("preserves real kernel health failures instead of reporting synthetic readiness", async () => {
     const { route, calls } = fixedRoute({
       status: 503,
@@ -403,7 +387,6 @@ describe("dispatchBufferedRequest", () => {
     });
     expect(calls).toHaveLength(1);
   });
-
   it("returns the loopback-shaped envelope for a JSON route", async () => {
     const { route, calls } = fixedRoute({
       status: 200,
@@ -426,7 +409,6 @@ describe("dispatchBufferedRequest", () => {
     expect(calls[0]?.inProcess).toBe(true);
     expect(calls[0]?.path).toBe("/api/custom-health");
   });
-
   it("splits query params off the path", async () => {
     const { route, calls } = fixedRoute({ status: 204 });
     await dispatchBufferedRequest(runtime, route, {
@@ -436,7 +418,6 @@ describe("dispatchBufferedRequest", () => {
     expect(calls[0]?.path).toBe("/api/memories");
     expect(calls[0]?.query).toEqual({ table: "facts", limit: "5" });
   });
-
   it("returns a 404 envelope when no route matches", async () => {
     const { route } = fixedRoute(null);
     const res = await dispatchBufferedRequest(runtime, route, {
@@ -446,7 +427,6 @@ describe("dispatchBufferedRequest", () => {
     expect(res.status).toBe(404);
     expect(JSON.parse(res.body).code).toBe("not_found");
   });
-
   it("rejects an absolute or unsafe path", async () => {
     const { route } = fixedRoute({ status: 200 });
     await expect(
@@ -462,7 +442,6 @@ describe("dispatchBufferedRequest", () => {
       }),
     ).rejects.toThrow(/path that starts with/);
   });
-
   it("preserves raw binary bytes losslessly through bodyBase64", async () => {
     // A non-UTF-8 byte sequence (e.g. WAV/PNG) must survive the bridge.
     const raw = Buffer.from([0xff, 0x00, 0x80, 0x7f]);
@@ -473,7 +452,6 @@ describe("dispatchBufferedRequest", () => {
     });
     expect(Buffer.from(res.bodyBase64, "base64").equals(raw)).toBe(true);
   });
-
   it("serves the /api/notifications inbox from the runtime service over the UDS (#13550)", async () => {
     // The dashboard notification center hydrates from GET /api/notifications;
     // these routes are server-level (not runtime.routes), so without this the
@@ -505,7 +483,6 @@ describe("dispatchBufferedRequest", () => {
           : null,
     } as unknown as IAgentRuntime;
     const { route, calls } = fixedRoute(null);
-
     const list = await dispatchBufferedRequest(notifierRuntime, route, {
       method: "GET",
       path: "/api/notifications?limit=100",
@@ -518,7 +495,6 @@ describe("dispatchBufferedRequest", () => {
     });
     // Served inline — the plugin dispatcher was never consulted.
     expect(calls).toHaveLength(0);
-
     const read = await dispatchBufferedRequest(notifierRuntime, route, {
       method: "POST",
       path: "/api/notifications/n1/read",
@@ -526,26 +502,27 @@ describe("dispatchBufferedRequest", () => {
     expect(read.status).toBe(200);
     expect(JSON.parse(read.body)).toEqual({ ok: true });
     expect(readCalls).toEqual(["n1"]);
-
     const clearRes = await dispatchBufferedRequest(notifierRuntime, route, {
       method: "DELETE",
       path: "/api/notifications",
     });
     expect(clearRes.status).toBe(200);
     expect(cleared).toBe(true);
-
     // Push-token registration is NOT ours — it must fall through.
     const push = await dispatchBufferedRequest(notifierRuntime, route, {
       method: "GET",
       path: "/api/notifications/push-tokens",
     });
     expect(calls).toHaveLength(1);
-    expect((calls[0] as { path?: string }).path).toBe(
-      "/api/notifications/push-tokens",
-    );
+    expect(
+      (
+        calls[0] as {
+          path?: string;
+        }
+      ).path,
+    ).toBe("/api/notifications/push-tokens");
     void push;
   });
-
   it("serves an explicitly disabled inbox when notification support is unregistered", async () => {
     const disabled = await createNotificationRuntime();
     try {
@@ -564,7 +541,6 @@ describe("dispatchBufferedRequest", () => {
       await disabled.cleanup();
     }
   });
-
   it("serves the real notification service once registration is ready", async () => {
     const ready = await createNotificationRuntime([NotificationService]);
     try {
@@ -584,7 +560,6 @@ describe("dispatchBufferedRequest", () => {
       await ready.cleanup();
     }
   });
-
   it("returns typed retryable 503 while the notification service is registering", async () => {
     let releaseStart = () => {};
     const startGate = new Promise<void>((resolve) => {
@@ -592,7 +567,6 @@ describe("dispatchBufferedRequest", () => {
     });
     class SlowNotificationService extends NotificationService {
       static override serviceType = ServiceType.NOTIFICATION;
-
       static override async start(runtime: IAgentRuntime): Promise<Service> {
         await startGate;
         return NotificationService.start(runtime);
@@ -624,11 +598,9 @@ describe("dispatchBufferedRequest", () => {
       await registering.cleanup();
     }
   });
-
   it("recovers a failed service once and then serves its persisted rows", async () => {
     class TransientCacheAdapter extends SQLiteDatabaseAdapter {
       readAttempts = 0;
-
       override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
         this.readAttempts += 1;
         if (this.readAttempts === 1)
@@ -675,7 +647,6 @@ describe("dispatchBufferedRequest", () => {
       );
       expect(failed.status).toBe(503);
       expect(JSON.parse(failed.body).code).toBe("NOTIFICATION_SERVICE_FAILED");
-
       await failedRuntime.runtime.getServiceLoadPromise(
         ServiceType.NOTIFICATION,
       );
@@ -695,7 +666,6 @@ describe("dispatchBufferedRequest", () => {
     }
   });
 });
-
 describe("dispatchStreamingRequest", () => {
   it("streams Android direct startup route responses without dispatchRoute", async () => {
     const { route, calls } = fixedRoute(null);
@@ -718,7 +688,6 @@ describe("dispatchStreamingRequest", () => {
     });
     expect(calls).toHaveLength(0);
   });
-
   it("emits response head then base64 chunks for a return-shape stream", async () => {
     async function* frames(): AsyncGenerator<string> {
       yield "data: hello\n\n";
@@ -742,7 +711,6 @@ describe("dispatchStreamingRequest", () => {
       Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
     ).toBe("data: hello\n\n");
   });
-
   it("forwards a legacy SSE handler's res.write fragments live via onChunk", async () => {
     // Simulate a legacy handler: dispatchRoute flushes fragments through the
     // onChunk sink before resolving (the real chat-stream handler's shape).
@@ -766,7 +734,6 @@ describe("dispatchStreamingRequest", () => {
       Buffer.from(chunks[0]?.dataBase64 as string, "base64").toString("utf8"),
     ).toBe("data: a\n\n");
   });
-
   it("streams a non-streaming buffered result as a single chunk", async () => {
     const { route } = fixedRoute({
       status: 200,
@@ -789,7 +756,6 @@ describe("dispatchStreamingRequest", () => {
       ),
     ).toEqual({ done: true });
   });
-
   it("emits a 404 head + body when no route matches a stream", async () => {
     const { route } = fixedRoute(null);
     const { sink, events } = collectSink();

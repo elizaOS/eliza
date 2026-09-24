@@ -14,12 +14,11 @@ import {
   activeWordIndex,
   flattenTranscriptWords,
   type Transcript,
-} from "@elizaos/shared";
+} from "@elizaos/core/transcripts";
 import * as React from "react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
-
 export interface TranscriptBodyProps {
   transcript: Transcript;
   /** Current playback position (ms from audio start) driving the highlight. */
@@ -27,7 +26,6 @@ export interface TranscriptBodyProps {
   /** Seek to a position when a word / untimed segment is clicked. */
   onSeekMs?: (ms: number) => void;
 }
-
 /** Last segment whose start is ≤ `ms` (segment-level fallback highlight). */
 function segmentAt(segments: Transcript["segments"], ms: number): number {
   let found = -1;
@@ -37,7 +35,6 @@ function segmentAt(segments: Transcript["segments"], ms: number): number {
   }
   return found;
 }
-
 interface TranscriptWordProps {
   text: string;
   startMs: number;
@@ -45,7 +42,6 @@ interface TranscriptWordProps {
   testId: string;
   onSeek: (startMs: number) => void;
 }
-
 // Memoized so that, as playback advances, only the word whose active-state flips
 // re-renders — not every word button in the transcript on every audio frame.
 // `onSeek` is stable (ref-backed in the parent), so `isActive` is the only prop
@@ -72,7 +68,6 @@ const TranscriptWord = React.memo(function TranscriptWord({
     </>
   );
 });
-
 export function TranscriptBody({
   transcript,
   currentTimeMs,
@@ -92,7 +87,6 @@ export function TranscriptBody({
     (ms: number) => onSeekRef.current?.(ms),
     [],
   );
-
   return (
     <div className="space-y-4 leading-relaxed text-txt">
       {transcript.segments.map((seg, si) => {

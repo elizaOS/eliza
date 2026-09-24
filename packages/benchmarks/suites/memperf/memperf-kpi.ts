@@ -37,16 +37,20 @@
  */
 
 import { join } from "node:path";
-import type {
-  BackendGenerateArgs as GenerateArgs,
-  InstalledModel,
-} from "@elizaos/plugin-local-inference/services";
+import type { InstalledModel } from "@elizaos/core/contracts/local-inference";
+import { type Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import type { GenerateArgs } from "../../../../plugins/plugin-local-inference/src/services/backend.ts";
 import type {
   ArbiterCapability,
   ArbiterEvent,
-} from "@elizaos/plugin-local-inference/services/memory-arbiter";
-import type { Eliza1TierId } from "@elizaos/shared";
+} from "../../../../plugins/plugin-local-inference/src/services/memory-arbiter.ts";
 import { loadBudgets, ms, REPO_ROOT, recordResult, rssMb } from "./lib.mjs";
+import {
+  METRIC_SCHEMA,
+  MODALITIES,
+  skippedModalityRow,
+  THROUGHPUT_UNIT,
+} from "./metric-schema.mjs";
 
 // The measured code is the ELIZA_REPO_DIR checkout's source, imported directly
 // from that tree so its own workspace node_modules resolve its dependencies.
@@ -76,24 +80,17 @@ const { listInstalledModels } = await import(
   join(REPO_ROOT, "plugins/plugin-local-inference/src/services/registry.ts")
 );
 const { ELIZA_1_TIER_IDS } = await import(
-  join(REPO_ROOT, "packages/shared/src/local-inference/catalog.ts")
+  join(
+    REPO_ROOT,
+    "plugins/plugin-native-inference/src/model-catalog/catalog.ts",
+  )
 );
-
 // metric-schema + lib are plain ESM; import via relative path so this file is
 // self-contained and the schema is literally the one #8800 reads.
-import {
-  METRIC_SCHEMA,
-  MODALITIES,
-  skippedModalityRow,
-  THROUGHPUT_UNIT,
-} from "./metric-schema.mjs";
-
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");
 const MAX_TOKENS = Number(process.env.MEMPERF_MAX_TOKENS ?? 24);
-
 type Modality = (typeof MODALITIES)[number];
-
 interface ModalityMetric {
   tier: string;
   modality: Modality;
@@ -109,7 +106,6 @@ interface ModalityMetric {
   peakRssMb: number | null;
   estimatedMb: number | null;
 }
-
 interface CoResidencyMetric {
   measured: boolean;
   mode: "real" | "self-check";
@@ -125,11 +121,11 @@ interface CoResidencyMetric {
     estimatedMb: number;
   }>;
 }
-
 /** Continuously sample RSS while `fn` runs; return its result + the peak RSS (MB) observed. */
-async function withPeakRss<T>(
-  fn: () => Promise<T>,
-): Promise<{ result: T; peakMb: number }> {
+async function withPeakRss<T>(fn: () => Promise<T>): Promise<{
+  result: T;
+  peakMb: number;
+}> {
   let peak = rssMb();
   let sampling = true;
   const sampler = (async () => {
@@ -149,13 +145,11 @@ async function withPeakRss<T>(
     await sampler;
   }
 }
-
 /** Rough token count for tok/s — the engine `generate` returns text only. */
 function estimateTokens(text: string): number {
   // ~4 chars/token is the conventional estimate; never below 1 for a non-empty string.
   return Math.max(text.length > 0 ? 1 : 0, Math.round(text.length / 4));
 }
-
 /**
  * Measure the TEXT modality for an installed Eliza-1 tier: real engine load,
  * RSS before/after/peak, then a real generation to derive tok/s. Returns a
@@ -174,18 +168,14 @@ async function measureText(
     const budget = resolveRamBudget(catalog, installed);
     estimatedMb = budget.recommendedMb;
   }
-
   const rssBeforeMb = rssMb();
-
   const overrides = installed
     ? await resolveLocalInferenceLoadArgs(installed, {}).catch(() => undefined)
     : undefined;
-
   const { result, peakMb } = await withPeakRss(async () => {
     const loadStart = performance.now();
     await localInferenceEngine.load(installedPath, overrides);
     const loadMs = performance.now() - loadStart;
-
     const genStart = performance.now();
     const genArgs: GenerateArgs = {
       prompt: "Reply with a single short sentence about memory.",
@@ -202,7 +192,6 @@ async function measureText(
         genMs > 0 ? Number(((tokens / genMs) * 1000).toFixed(2)) : null,
     };
   });
-
   const rssAfterMb = rssMb();
   return {
     tier,
@@ -219,7 +208,6 @@ async function measureText(
     estimatedMb,
   };
 }
-
 /**
  * The scripted co-residency sequence (load text → load vision → load voice →
  * force pressure) against a REAL MemoryArbiter, reading the eviction count from
@@ -241,7 +229,6 @@ async function measureText(
  * exceeds it, forcing a fit-eviction without allocating real memory.
  */
 const SELF_CHECK_BUDGET_MB = 1000; // two ~600 MB roles already exceed this → eviction
-
 /** estimatedMb per capability — mirrors the production registrations in service.ts. */
 const SELF_CHECK_SIZES: Record<ArbiterCapability, number> = {
   text: 1200,
@@ -250,11 +237,9 @@ const SELF_CHECK_SIZES: Record<ArbiterCapability, number> = {
   "image-gen": 1100,
   transcribe: 250,
 };
-
 async function runCoResidency(): Promise<CoResidencyMetric> {
   const events: ArbiterEvent[] = [];
   const sequence: string[] = [];
-
   // A standalone arbiter on a fresh registry — never the engine's live arbiter,
   // so a benchmark run cannot evict a model the running agent is using.
   const pressure = capacitorPressureSource();
@@ -266,7 +251,6 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
   });
   const off = arbiter.onEvent((e: ArbiterEvent) => events.push(e));
   arbiter.start();
-
   for (const cap of Object.keys(SELF_CHECK_SIZES) as ArbiterCapability[]) {
     arbiter.registerCapability({
       capability: cap,
@@ -276,7 +260,6 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
       run: async () => ({}),
     });
   }
-
   try {
     // load text (pinned target) → vision → voice(transcribe). Each `acquire`
     // runs the fit-to-budget path; on the self-check budget the 2nd/3rd non-text
@@ -300,11 +283,16 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
     off();
     await arbiter.shutdown();
   }
-
   const evictions = events
     .filter(
-      (e): e is Extract<ArbiterEvent, { type: "eviction" }> =>
-        e.type === "eviction",
+      (
+        e,
+      ): e is Extract<
+        ArbiterEvent,
+        {
+          type: "eviction";
+        }
+      > => e.type === "eviction",
     )
     .map((e) => ({
       capability: e.capability,
@@ -312,7 +300,6 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
       reason: e.reason,
       estimatedMb: e.estimatedMb,
     }));
-
   return {
     measured: false,
     mode: "self-check",
@@ -324,7 +311,6 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
     evictions,
   };
 }
-
 interface BudgetCheck {
   name: string;
   value: number | null;
@@ -332,14 +318,12 @@ interface BudgetCheck {
   unit: string;
   pass: boolean;
 }
-
 function checkBudgets(
   rows: ModalityMetric[],
   co: CoResidencyMetric,
 ): BudgetCheck[] {
   const b = loadBudgets();
   const checks: BudgetCheck[] = [];
-
   // Per-tier peak RSS budget — only enforced on MEASURED text rows (the only
   // modality with a per-tier peak-RSS budget today; others are recorded but
   // not yet gated). A skipped row never fails a budget.
@@ -355,7 +339,6 @@ function checkBudgets(
       pass: row.peakRssMb != null && row.peakRssMb <= tierBudget,
     });
   }
-
   // Co-residency eviction budget. The self-check has its own (looser) gate: it
   // must produce AT LEAST one eviction (proving the telemetry counts), and the
   // real path must stay AT OR BELOW the configured ceiling for a known-fitting
@@ -381,10 +364,8 @@ function checkBudgets(
       pass: co.evictionCount >= minEvict,
     });
   }
-
   return checks;
 }
-
 async function main(): Promise<void> {
   const probe = await probeHardware();
   const tierAssessment = classifyDeviceTier(probe);
@@ -392,12 +373,10 @@ async function main(): Promise<void> {
     .available()
     .catch(() => false);
   const installed = await listInstalledModels();
-
   const tierFilter = (process.env.MEMPERF_TIERS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-
   // Map installed curated Eliza-1 tier bundles by id. External LM-Studio/Ollama/HF
   // scans are NOT Eliza-1 tiers and are deliberately not measured as such.
   const installedTierPath = new Map<Eliza1TierId, string>();
@@ -406,14 +385,15 @@ async function main(): Promise<void> {
       installedTierPath.set(m.id as Eliza1TierId, m.path);
     }
   }
-
   const rows: ModalityMetric[] = [];
-  const skips: Array<{ tier: string; modality: string; reason: string }> = [];
-
+  const skips: Array<{
+    tier: string;
+    modality: string;
+    reason: string;
+  }> = [];
   const tiersToConsider = (
     tierFilter.length > 0 ? tierFilter : (ELIZA_1_TIER_IDS as readonly string[])
   ) as Eliza1TierId[];
-
   for (const tier of tiersToConsider) {
     const path = installedTierPath.get(tier);
     for (const modality of MODALITIES) {
@@ -455,13 +435,10 @@ async function main(): Promise<void> {
       skips.push({ tier, modality, reason });
     }
   }
-
   const coResidency = await runCoResidency();
   const checks = checkBudgets(rows, coResidency);
-
   const measuredCount = rows.filter((r) => r.measured).length;
   const pass = checks.every((c) => c.pass);
-
   const result = {
     schema: METRIC_SCHEMA,
     summary: {
@@ -483,15 +460,12 @@ async function main(): Promise<void> {
     checks,
     pass,
   };
-
   const { file } = recordResult("memperf", result, NOW);
-
   if (JSON_ONLY) {
     console.log(JSON.stringify({ ...result, file }, null, 2));
     process.exit(pass ? 0 : 1);
     return;
   }
-
   console.log("\n=== Memory-Benchmark KPI (#8809) ===");
   console.log(
     `host tier:   ${tierAssessment.tier}  (${result.summary.host.totalRamGb} GB RAM, ` +
@@ -513,7 +487,6 @@ async function main(): Promise<void> {
       console.log(`  ${row.tier} / ${row.modality}: SKIP — ${row.skipReason}`);
     }
   }
-
   console.log("\n-- co-residency (text → vision → voice → pressure) --");
   console.log(`  mode:          ${coResidency.mode}`);
   console.log(`  sequence:      ${coResidency.sequence.join(" → ")}`);
@@ -526,7 +499,6 @@ async function main(): Promise<void> {
       `    evicted ${e.capability}/${e.modelKey} reason=${e.reason} (~${e.estimatedMb} MB)`,
     );
   }
-
   console.log("\n-- budget checks --");
   if (checks.length === 0) {
     console.log("  (none — no measured rows produced a gated metric)");
@@ -543,7 +515,6 @@ async function main(): Promise<void> {
       `  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${v} / ${cmp} ${c.budget} ${c.unit}`,
     );
   }
-
   console.log(`\nresult: ${pass ? "PASS" : "FAIL"}   recorded -> ${file}`);
   if (measuredCount === 0) {
     console.log(
@@ -552,7 +523,6 @@ async function main(): Promise<void> {
   } else {
     console.log("");
   }
-
   // Exit 2 (skipped) when there was nothing to measure AND the self-check is the
   // only thing that ran; otherwise 0/1 by budget. The self-check still asserts
   // the arbiter counts evictions, so a broken telemetry path fails LOUDLY (1),
@@ -562,7 +532,6 @@ async function main(): Promise<void> {
   }
   process.exit(pass ? 0 : 1);
 }
-
 main().catch((err) => {
   console.error(
     `[memperf-kpi] fatal: ${err instanceof Error ? err.stack : String(err)}`,

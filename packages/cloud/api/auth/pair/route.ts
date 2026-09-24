@@ -10,7 +10,7 @@
 import {
   type CloudPairExchangeResponse,
   isCloudPairAgentId,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/cloud-pair";
 import { Hono } from "hono";
 import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -20,30 +20,25 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
 app.use("*", rateLimit(RateLimitPresets.STRICT));
-
 const NATIVE_PAIRING_ERROR_CODE = {
   cloudAuthRequired: "cloud_auth_required",
   invalidRequest: "invalid_native_pairing_request",
   pairingTokenInvalid: "pairing_token_invalid",
   sandboxCredentialUnavailable: "sandbox_credential_unavailable",
 } as const;
-
 function nativePairingError(
   error: string,
   code: (typeof NATIVE_PAIRING_ERROR_CODE)[keyof typeof NATIVE_PAIRING_ERROR_CODE],
 ) {
   return { success: false as const, error, code };
 }
-
 function isPlausiblePairingToken(token: string): boolean {
   return /^[A-Za-z0-9_-]{43}$/.test(token);
 }
-
 function normalizeHttpOrigin(value: string): string | null {
   try {
     const url = new URL(value);
@@ -56,7 +51,6 @@ function normalizeHttpOrigin(value: string): string | null {
     return null;
   }
 }
-
 function isLoopbackHttpOrigin(value: string): boolean {
   const normalizedOrigin = normalizeHttpOrigin(value);
   if (!normalizedOrigin) return false;
@@ -76,11 +70,9 @@ function isLoopbackHttpOrigin(value: string): boolean {
     return false;
   }
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 app.post("/", async (c) => {
   try {
     // error-policy:J3 malformed JSON is expected client input; the null
@@ -92,11 +84,9 @@ app.post("/", async (c) => {
       isRecord(body) && typeof body.agentId === "string"
         ? body.agentId.trim()
         : "";
-
     if (!token || !isCloudPairAgentId(agentId)) {
       return c.json({ error: "Pairing code and agent identity required" }, 400);
     }
-
     const origin = c.req.header("origin") ?? null;
     if (!origin) {
       return c.json({ error: "Origin header required" }, 400);
@@ -110,11 +100,9 @@ app.post("/", async (c) => {
         403,
       );
     }
-
     if (!isPlausiblePairingToken(token)) {
       return c.json({ error: "Invalid or expired pairing code" }, 401);
     }
-
     const tokenService = getPairingTokenService();
     const claim = await tokenService.claimBrowserToken(token, {
       agentId,
@@ -127,7 +115,6 @@ app.post("/", async (c) => {
       logger.error("[auth/pair] sandbox API token unavailable", { agentId });
       return c.json({ error: "Pairing credential unavailable" }, 503);
     }
-
     const response: CloudPairExchangeResponse = {
       message: "Paired successfully",
       apiKey: claim.apiKey,
@@ -144,7 +131,6 @@ app.post("/", async (c) => {
     return c.json({ error: "Pairing failed" }, 500);
   }
 });
-
 /**
  * Authenticated native pairing exchange.
  *
@@ -175,7 +161,6 @@ app.post("/native", async (c) => {
         401,
       );
     }
-
     const auth = await requireAuthOrApiKeyWithOrg(c.req.raw);
     if (auth.authMethod !== "session" && auth.authMethod !== "api_key") {
       return c.json(
@@ -188,7 +173,6 @@ app.post("/native", async (c) => {
     }
     c.set("user", auth.user);
     c.set("authMethod", auth.authMethod);
-
     // error-policy:J3 malformed JSON is expected client input; the null
     // sentinel maps it to the explicit 400 native-request response below.
     const body: unknown = await c.req.json().catch(() => null);
@@ -201,14 +185,12 @@ app.post("/native", async (c) => {
         400,
       );
     }
-
     const token = typeof body.token === "string" ? body.token.trim() : "";
     const agentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
     const expectedOrigin =
       typeof body.expectedOrigin === "string"
         ? normalizeHttpOrigin(body.expectedOrigin.trim())
         : null;
-
     if (
       !isPlausiblePairingToken(token) ||
       !isCloudPairAgentId(agentId) ||
@@ -222,7 +204,6 @@ app.post("/native", async (c) => {
         400,
       );
     }
-
     const tokenService = getPairingTokenService();
     const claim = await tokenService.claimAuthenticatedNativeToken(token, {
       userId: auth.user.id,
@@ -252,7 +233,6 @@ app.post("/native", async (c) => {
         410,
       );
     }
-
     const response: CloudPairExchangeResponse = {
       message: "Paired successfully",
       apiKey: claim.apiKey,
@@ -278,5 +258,4 @@ app.post("/native", async (c) => {
     return errorToResponse(err);
   }
 });
-
 export default app;

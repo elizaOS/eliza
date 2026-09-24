@@ -20,13 +20,13 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { EventType, runWithTrajectoryContext } from "@elizaos/core";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
   manageMessageAction,
   respondToMessageAction,
 } from "@elizaos/plugin-assistant";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   afterAll,
   beforeAll,
@@ -1352,6 +1352,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       searchGmailMessages: vi.fn(),
       getGmailMessage: vi.fn(async () => null),
       getGmailMessageDetail: vi.fn(),
+      getGmailMessageRevision: vi.fn(async () => null),
       sendGmailReply: vi.fn(),
       sendGmailMessage: vi.fn(),
       modifyGmailMessages: vi.fn(),
@@ -1464,6 +1465,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
                 metadata: {},
               })),
               getGmailMessageDetail: vi.fn(),
+              getGmailMessageRevision: vi.fn(async () => null),
               sendGmailReply,
               sendGmailMessage: vi.fn(),
               modifyGmailMessages,

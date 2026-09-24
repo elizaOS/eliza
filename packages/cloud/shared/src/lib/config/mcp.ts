@@ -1,12 +1,10 @@
 /** Centralizes MCP endpoint, SSE streaming, and operation-cost configuration. */
-import { parseNonNegativeInteger } from "@elizaos/shared";
-
+import { parseNonNegativeInteger } from "@elizaos/core/utils/number-parsing";
 /**
  * Request Timeout Configuration
  */
 export const MCP_REQUEST_TIMEOUT = parseNonNegativeInteger(process.env.MCP_TIMEOUT, 60);
 export const SSE_MAX_DURATION = parseNonNegativeInteger(process.env.SSE_MAX_DURATION, 300);
-
 /**
  * SSE (Server-Sent Events) Configuration
  */
@@ -16,7 +14,6 @@ export const SSE_HEARTBEAT_INTERVAL = parseNonNegativeInteger(
   30,
 ); // Send heartbeat every N polls
 export const SSE_CONNECTION_TIMEOUT_MS = SSE_MAX_DURATION * 1000; // 5 minutes default
-
 /**
  * SSE Connection Limits and Backoff Configuration
  * SECURITY FIX: Prevent resource exhaustion attacks
@@ -33,7 +30,6 @@ export const SSE_BACKOFF_MAX_MS = parseNonNegativeInteger(process.env.SSE_BACKOF
 export const SSE_BACKOFF_MULTIPLIER = Number.parseFloat(
   process.env.SSE_BACKOFF_MULTIPLIER || "1.5",
 );
-
 /**
  * Credit Costs for MCP Operations (in USD)
  * These are micro-operations and should be very affordable
@@ -48,7 +44,6 @@ export const CONVERSATION_CLONE_COST = 0.02; // $0.02 - Clone conversation
 export const CONVERSATION_EXPORT_COST = 0.05; // $0.05 - Export conversation
 export const CONTEXT_OPTIMIZATION_COST = 0.05; // $0.05 - Optimize context
 export const MEMORY_ANALYSIS_COST = 0.1; // $0.10 - Analyze memories
-
 /**
  * Agent and Chat Configuration (in USD)
  * Token-based pricing for actual AI usage
@@ -58,7 +53,6 @@ export const AGENT_CHAT_INPUT_TOKEN_COST = 0.000001; // $0.000001 per input toke
 export const AGENT_CHAT_OUTPUT_TOKEN_COST = 0.000003; // $0.000003 per output token
 export const CONVERSATION_SUMMARY_BASE_COST = 0.01; // $0.01 base
 export const CONVERSATION_SUMMARY_MAX_COST = 0.1; // $0.10 max
-
 /**
  * Supported MCP Event Types for SSE Streaming
  */
@@ -67,5 +61,4 @@ export const MCP_EVENT_TYPES = {
   CREDITS: "credits",
   CONTAINER: "container",
 } as const;
-
 export type MCPEventType = (typeof MCP_EVENT_TYPES)[keyof typeof MCP_EVENT_TYPES];

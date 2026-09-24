@@ -1,11 +1,10 @@
 /** Verifies the real next-event projection over a supplied multi-event feed;
  * source freshness must never imply that its single result is a full agenda. */
-
 import { AgentRuntime, type Memory } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../actions/calendar-handler.js";
 import { CalendarService } from "./CalendarService.js";
@@ -60,13 +59,11 @@ describe("next-event read coverage", () => {
       });
       const service = new CalendarService(runtime);
       vi.spyOn(service, "getCalendarFeed").mockResolvedValue(feed);
-
       const result = await service.getNextCalendarEventContext(
         new URL("http://localhost/"),
         { timeZone: "UTC" },
         now,
       );
-
       expect(result.event).toEqual(events[0] ?? null);
       expect(result.calendarFeedState).toBe(state);
       expect(result.readScope).toEqual({
@@ -76,7 +73,6 @@ describe("next-event read coverage", () => {
         exhaustive: false,
       });
       expect(feed).toEqual(original);
-
       runtime.services.set(CalendarService.serviceType, [service]);
       const unexpectedModel = async () => {
         throw new Error("Unexpected model call");

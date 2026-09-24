@@ -9,15 +9,12 @@
  * State dir resolution honours `ELIZA_STATE_DIR` > XDG state home.
  * The default cache TTL is 6h per the plan.
  */
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
-
+import { type RuntimeEnvRecord } from "@elizaos/core/runtime-env";
 export const DEFAULT_JWKS_TTL_MS = 6 * 60 * 60 * 1000;
 const JWKS_CACHE_FILENAME = "cloud-jwks.json";
-
 export interface JwksKey {
   kty: string;
   kid?: string;
@@ -31,17 +28,14 @@ export interface JwksKey {
   k?: string;
   [otherProperty: string]: string | undefined;
 }
-
 export interface JwksDocument {
   keys: JwksKey[];
 }
-
 interface JwksCacheEnvelope {
   fetchedAt: number;
   issuer: string;
   jwks: JwksDocument;
 }
-
 /**
  * Resolve the eliza state directory.
  *
@@ -52,7 +46,6 @@ export function resolveElizaStateDir(
 ): string {
   return resolveStateDir(env as NodeJS.ProcessEnv);
 }
-
 /**
  * Resolve the on-disk path for the JWKS cache.
  *
@@ -63,23 +56,19 @@ export function resolveJwksCachePath(
 ): string {
   return path.join(resolveElizaStateDir(env), "auth", JWKS_CACHE_FILENAME);
 }
-
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
-
 function isJwksKey(value: unknown): value is JwksKey {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return typeof candidate.kty === "string";
 }
-
 function isJwksDocument(value: unknown): value is JwksDocument {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return Array.isArray(candidate.keys) && candidate.keys.every(isJwksKey);
 }
-
 function parseEnvelope(raw: string): JwksCacheEnvelope | null {
   let parsed: unknown;
   try {
@@ -103,7 +92,6 @@ function parseEnvelope(raw: string): JwksCacheEnvelope | null {
     jwks: candidate.jwks,
   };
 }
-
 /**
  * Read the cached JWKS for `issuer`.
  *
@@ -133,10 +121,9 @@ export async function readCachedJwks(
   const envelope = parseEnvelope(raw);
   if (!envelope) return null;
   if (envelope.issuer !== issuer) return null;
-  if (now - envelope.fetchedAt > ttlMs) return null;
+  if (envelope.fetchedAt > now || now - envelope.fetchedAt > ttlMs) return null;
   return envelope.jwks;
 }
-
 /**
  * Write the JWKS document to disk. The parent directory is created with mode
  * 0700 to keep cached keys out of unrelated reads.
@@ -144,7 +131,10 @@ export async function readCachedJwks(
 export async function writeCachedJwks(
   issuer: string,
   jwks: JwksDocument,
-  options: { env?: RuntimeEnvRecord; now?: number } = {},
+  options: {
+    env?: RuntimeEnvRecord;
+    now?: number;
+  } = {},
 ): Promise<void> {
   const env = options.env ?? process.env;
   const now = options.now ?? Date.now();

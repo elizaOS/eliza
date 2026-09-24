@@ -13,7 +13,11 @@ const root = path.resolve(import.meta.dirname, "../../..");
 export function inventory(repoRoot = root) {
   return fs
     .readdirSync(path.join(repoRoot, "plugins"))
-    .filter((name) => name.startsWith("plugin-native-"))
+    .filter(
+      (name) =>
+        name.startsWith("plugin-native-") &&
+        fs.existsSync(path.join(repoRoot, "plugins", name, "package.json")),
+    )
     .sort()
     .map((directory) => {
       const dir = path.join(repoRoot, "plugins", directory);
@@ -170,10 +174,26 @@ async function main() {
   const hardware = adb("shell", "getprop", "ro.hardware").trim();
   if (!/^(ranchu|goldfish|cutf_cvm)$/.test(hardware))
     throw new Error(`Expected an emulator, got ro.hardware=${hardware}`);
+  const networkTransitions = args.includes("--network-transitions");
+  if (networkTransitions) {
+    if (
+      !/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-network-policy"
+    )
+      throw new Error(
+        "Network transitions require a stock isolated emulator and --plugin plugin-native-network-policy",
+      );
+    if (adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
+      throw new Error(
+        "Network transitions require an emulator without the user app installed",
+      );
+  }
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
   const report = {
     serial,
     hardware,
+    networkTransitions,
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -182,6 +202,11 @@ async function main() {
     results: [],
   };
   try {
+    report.device = {
+      sdk: adb("shell", "getprop", "ro.build.version.sdk").trim(),
+      fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
+      webView: adb("shell", "dumpsys", "webviewupdate").trim(),
+    };
     if (!args.includes("--no-build")) {
       console.log(`Building ${selected.length} Android native test APKs`);
       let build;
@@ -196,6 +221,11 @@ async function main() {
             ...selected.map(
               (plugin) => `:${plugin.project}:assembleDebugAndroidTest`,
             ),
+            ...(selected.some(
+              (plugin) => plugin.directory === "plugin-native-appblocker",
+            )
+              ? [":native-block-target:assembleDebug"]
+              : []),
           ],
           1200000,
         );
@@ -218,7 +248,19 @@ async function main() {
       };
       report.results.push(entry);
       let applicationId;
+      let fixtureInstalled = false;
       try {
+        if (plugin.directory === "plugin-native-appblocker") {
+          const fixture = path.join(
+            root,
+            "packages/app/scripts/android-native-plugins-gradle/native-block-target/build/outputs/apk/debug/native-block-target-debug.apk",
+          );
+          entry.fixtureApkSha256 = createHash("sha256")
+            .update(fs.readFileSync(fixture))
+            .digest("hex");
+          fixtureInstalled = true;
+          adb("install", "-r", "-t", fixture);
+        }
         if (!plugin.tests.length)
           throw new Error("No Android device tests exist");
         const apkDir = path.join(
@@ -237,7 +279,19 @@ async function main() {
         entry.apkSha256 = createHash("sha256")
           .update(fs.readFileSync(apk))
           .digest("hex");
-        adb("install", "-r", "-t", "-g", apk);
+        if (plugin.directory === "plugin-native-camera") {
+          // The real microphone-denial test owns its prompt; pregrant only camera access.
+          adb("install", "-r", "-t", apk);
+          adb(
+            "shell",
+            "pm",
+            "grant",
+            applicationId,
+            "android.permission.CAMERA",
+          );
+        } else {
+          adb("install", "-r", "-t", "-g", apk);
+        }
         if (plugin.directory === "plugin-native-mobile-signals")
           adb(
             "shell",
@@ -251,14 +305,22 @@ async function main() {
         // the activity even though its WebView can still answer JavaScript.
         adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
         adb("shell", "wm", "dismiss-keyguard");
-        const output = adb(
-          "shell",
-          "am",
-          "instrument",
-          "-w",
-          "-r",
-          `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
-        );
+        const output = run(
+          "adb",
+          [
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "instrument",
+            "-w",
+            "-r",
+            ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
+            `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
+          ],
+          300000,
+        ); // Includes real one-minute expiry/replacement contracts.
+
         fs.writeFileSync(
           path.join(outputDir, `${plugin.directory}.log`),
           output,
@@ -289,6 +351,14 @@ async function main() {
             error.stdout,
           );
       } finally {
+        if (fixtureInstalled) {
+          try {
+            adb("uninstall", "ai.eliza.testing.blocktarget");
+          } catch (error) {
+            entry.pass = false;
+            entry.problems.push(`fixture cleanup: ${error}`);
+          }
+        }
         if (applicationId?.endsWith(".test")) {
           try {
             adb("uninstall", applicationId);

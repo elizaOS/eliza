@@ -12,30 +12,26 @@
  * file so spec and code never drift.
  */
 
-import { parseIsoMs } from "@elizaos/shared";
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsCircadianRuleFiring,
-  LifeOpsCircadianState,
-  LifeOpsPersonalBaseline,
-  LifeOpsRegularityClass,
+import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import {
+  type LifeOpsActivitySignal,
+  type LifeOpsCircadianRuleFiring,
+  type LifeOpsCircadianState,
+  type LifeOpsPersonalBaseline,
+  type LifeOpsRegularityClass,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
-
-export const MIN_STABILITY_WINDOW_MS = 5 * 60_000;
-export const WAKE_CONFIRM_WINDOW_MS = 10 * 60_000;
-export const SLEEP_ONSET_WINDOW_MS = 20 * 60_000;
-const AWAKE_EVIDENCE_MAX_AGE_MS = 20 * 60_000;
-const NAP_MAX_DURATION_MS = 4 * 60 * 60_000;
-
+import { type LifeOpsActivityWindow } from "./sleep-cycle.js";
+export const MIN_STABILITY_WINDOW_MS = 5 * 60000;
+export const WAKE_CONFIRM_WINDOW_MS = 10 * 60000;
+export const SLEEP_ONSET_WINDOW_MS = 20 * 60000;
+const AWAKE_EVIDENCE_MAX_AGE_MS = 20 * 60000;
+const NAP_MAX_DURATION_MS = 4 * 60 * 60000;
 export type CircadianRuleFiring = LifeOpsCircadianRuleFiring;
-
 export interface CircadianScorerResult {
   firings: CircadianRuleFiring[];
   totals: Record<LifeOpsCircadianState, number>;
 }
-
 interface ScorerInputs {
   nowMs: number;
   timezone: string;
@@ -48,17 +44,14 @@ interface ScorerInputs {
   lastSleepEndedAtMs: number | null;
   currentEpisodeLikelyNap: boolean;
 }
-
 function localHour(nowMs: number, timezone: string): number {
   const parts = getZonedDateParts(new Date(nowMs), timezone);
   return parts.hour + parts.minute / 60;
 }
-
 function isOvernight(nowMs: number, timezone: string): boolean {
   const hour = localHour(nowMs, timezone);
   return hour >= 22 || hour < 6;
 }
-
 function signalAge(
   signal: LifeOpsActivitySignal,
   nowMs: number,
@@ -66,13 +59,14 @@ function signalAge(
   const observedAt = parseIsoMs(signal.observedAt);
   return observedAt === null ? null : nowMs - observedAt;
 }
-
 type Rule = (inputs: ScorerInputs) => CircadianRuleFiring | null;
-
 function findSignal(
   inputs: ScorerInputs,
   predicate: (signal: LifeOpsActivitySignal) => boolean,
-): { signal: LifeOpsActivitySignal; ageMs: number } | null {
+): {
+  signal: LifeOpsActivitySignal;
+  ageMs: number;
+} | null {
   for (const signal of inputs.signals) {
     if (!predicate(signal)) continue;
     const ageMs = signalAge(signal, inputs.nowMs);
@@ -81,7 +75,6 @@ function findSignal(
   }
   return null;
 }
-
 /**
  * The canonical rule set. Ordered by runtime cost (cheap predicates first).
  * Each rule is a pure function with no shared state — tests can exercise
@@ -95,7 +88,7 @@ const RULES: readonly Rule[] = [
       (s) =>
         s.platform === "manual_override" && s.metadata.userAttested === true,
     );
-    if (!hit || hit.ageMs > 4 * 60 * 60_000) return null;
+    if (!hit || hit.ageMs > 4 * 60 * 60000) return null;
     const kind = String(hit.signal.metadata.manualOverrideKind ?? "");
     return {
       name: "manual.override",
@@ -105,7 +98,6 @@ const RULES: readonly Rule[] = [
       reason: `user attested ${kind}`,
     };
   },
-
   // healthkit.isSleepingNow — any fresh sleep sample.
   function healthkitSleep(inputs) {
     const hit = findSignal(
@@ -113,7 +105,7 @@ const RULES: readonly Rule[] = [
       (s) =>
         s.source === "mobile_health" && s.health?.sleep.isSleeping === true,
     );
-    if (!hit || hit.ageMs > 2 * 60 * 60_000) return null;
+    if (!hit || hit.ageMs > 2 * 60 * 60000) return null;
     return {
       name: "healthkit.isSleepingNow",
       contributes: "sleeping",
@@ -122,7 +114,6 @@ const RULES: readonly Rule[] = [
       reason: "HealthKit reports isSleeping=true",
     };
   },
-
   // hid.idleGt20m — HID idle past the awake-evidence timeout.
   function hidIdle(inputs) {
     const hit = findSignal(
@@ -143,14 +134,13 @@ const RULES: readonly Rule[] = [
       reason: `HID idle >=20 min (${hit.signal.idleTimeSeconds}s)`,
     };
   },
-
   // desktop.lockedGt30m — session lock sustained past 30 min.
   function desktopLocked(inputs) {
     const hit = findSignal(
       inputs,
       (s) => s.source === "desktop_power" && s.state === "locked",
     );
-    if (!hit || hit.ageMs < 30 * 60_000) return null;
+    if (!hit || hit.ageMs < 30 * 60000) return null;
     return {
       name: "desktop.lockedGt30m",
       contributes: isOvernight(inputs.nowMs, inputs.timezone)
@@ -161,7 +151,6 @@ const RULES: readonly Rule[] = [
       reason: "session locked >=30 min",
     };
   },
-
   // desktop.wakeNotification — recent system wake event.
   function desktopWake(inputs) {
     const hit = findSignal(
@@ -181,7 +170,6 @@ const RULES: readonly Rule[] = [
       reason: "recent NSWorkspace wake notification",
     };
   },
-
   // message.outboundRecent — outbound owner message in the last 10 minutes.
   function messageOutbound(inputs) {
     const hit = findSignal(
@@ -192,7 +180,7 @@ const RULES: readonly Rule[] = [
           (s.metadata.eventType === "MESSAGE_RECEIVED" ||
             s.metadata.direction === "outbound_by_owner")),
     );
-    if (!hit || hit.ageMs > 10 * 60_000) return null;
+    if (!hit || hit.ageMs > 10 * 60000) return null;
     return {
       name: "message.outboundRecent",
       contributes: "awake",
@@ -201,7 +189,6 @@ const RULES: readonly Rule[] = [
       reason: "outbound message within 10 min",
     };
   },
-
   // continuity.iphoneDisconnected — paired iPhone absent overnight.
   function continuityIPhone(inputs) {
     if (!isOvernight(inputs.nowMs, inputs.timezone)) return null;
@@ -213,7 +200,7 @@ const RULES: readonly Rule[] = [
         s.platform.startsWith("macos_continuity") &&
         s.state !== "active",
     );
-    if (!hit || hit.ageMs > 60 * 60_000) return null;
+    if (!hit || hit.ageMs > 60 * 60000) return null;
     return {
       name: "continuity.iphoneDisconnected",
       contributes: "sleeping",
@@ -222,24 +209,22 @@ const RULES: readonly Rule[] = [
       reason: "paired iPhone disconnected overnight",
     };
   },
-
   // gap.noSignalsGt2hOvernight — no activity windows for 2h+ at night.
   function activityGap(inputs) {
     const latestWindow = inputs.windows[inputs.windows.length - 1];
     if (!latestWindow) return null;
     const gapMs = inputs.nowMs - latestWindow.endMs;
-    if (gapMs < 2 * 60 * 60_000) return null;
+    if (gapMs < 2 * 60 * 60000) return null;
     const hour = localHour(inputs.nowMs, inputs.timezone);
     if (!(hour >= 22 || hour < 10)) return null;
     return {
       name: "gap.noSignalsGt2hOvernight",
       contributes: "sleeping",
-      weight: Math.min(0.9, 0.3 + gapMs / (8 * 60 * 60_000)),
+      weight: Math.min(0.9, 0.3 + gapMs / (8 * 60 * 60000)),
       observedAt: new Date(latestWindow.endMs).toISOString(),
-      reason: `no activity for ${Math.round(gapMs / 60_000)} min overnight`,
+      reason: `no activity for ${Math.round(gapMs / 60000)} min overnight`,
     };
   },
-
   // baseline.currentHourLikely[Asleep|Awake] — personal bedtime prior.
   function baselinePrior(inputs) {
     if (!inputs.baseline) return null;
@@ -287,7 +272,6 @@ const RULES: readonly Rule[] = [
     }
     return null;
   },
-
   // active.signalRecent — generic active presence within 5 min.
   function activeSignalRecent(inputs) {
     const latest = [...inputs.signals]
@@ -298,8 +282,10 @@ const RULES: readonly Rule[] = [
       .filter(
         (
           candidate,
-        ): candidate is { signal: LifeOpsActivitySignal; ageMs: number } =>
-          candidate !== null,
+        ): candidate is {
+          signal: LifeOpsActivitySignal;
+          ageMs: number;
+        } => candidate !== null,
       )
       .sort((left, right) => {
         const leftAge =
@@ -313,7 +299,7 @@ const RULES: readonly Rule[] = [
         return leftAge - rightAge;
       })[0];
     if (!latest) return null;
-    if (latest.signal.state !== "active" || latest.ageMs > 5 * 60_000) {
+    if (latest.signal.state !== "active" || latest.ageMs > 5 * 60000) {
       return null;
     }
     return {
@@ -324,7 +310,6 @@ const RULES: readonly Rule[] = [
       reason: "active signal within 5 min",
     };
   },
-
   // episode.(sleep|nap)InProgress — current sleep episode.
   function currentEpisode(inputs) {
     if (
@@ -344,7 +329,6 @@ const RULES: readonly Rule[] = [
       reason: isNap ? "nap episode in progress" : "sleep episode in progress",
     };
   },
-
   // episode.justWoke — wake anchor inside the confirm window.
   function justWoke(inputs) {
     if (inputs.lastSleepEndedAtMs === null) return null;
@@ -359,7 +343,6 @@ const RULES: readonly Rule[] = [
     };
   },
 ];
-
 function emptyTotals(): Record<LifeOpsCircadianState, number> {
   return {
     awake: 0,
@@ -370,7 +353,6 @@ function emptyTotals(): Record<LifeOpsCircadianState, number> {
     unclear: 0,
   };
 }
-
 /**
  * Evaluate every rule in the table and aggregate firings by state.
  *

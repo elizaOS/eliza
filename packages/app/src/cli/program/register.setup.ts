@@ -12,17 +12,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath } from "@elizaos/agent";
-import { formatDocsLink, theme } from "@elizaos/shared";
-import type { Command } from "commander";
+import { type Command } from "commander";
 import JSON5 from "json5";
+import { formatDocsLink } from "../../terminal/links.js";
+import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
-
 // ---------------------------------------------------------------------------
 // Provider menu — shown when no key is configured yet
 // ---------------------------------------------------------------------------
-
 const PROVIDERS = [
   {
     label: "Anthropic (Claude)",
@@ -45,20 +44,16 @@ const PROVIDERS = [
   },
   { label: "Skip for now", key: null, keyHint: "" },
 ] as const;
-
 type PromptFn = (prompt: string) => Promise<string>;
-
 type ProviderWizardOptions = {
   ask?: PromptFn;
   askSecret?: PromptFn;
   env?: Record<string, string | undefined>;
   log?: (message: string) => void;
 };
-
 // ---------------------------------------------------------------------------
 // readline helpers
 // ---------------------------------------------------------------------------
-
 async function ask(prompt: string): Promise<string> {
   if (!process.stdin.isTTY) return "";
   const { createInterface } = await import("node:readline");
@@ -70,7 +65,6 @@ async function ask(prompt: string): Promise<string> {
     });
   });
 }
-
 async function askSecret(prompt: string): Promise<string> {
   if (!process.stdin.isTTY) return "";
   // readline doesn't natively hide input; we suppress echo via raw mode
@@ -84,7 +78,6 @@ async function askSecret(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let value = "";
     let closed = false;
-
     const cleanup = () => {
       if (closed) return;
       closed = true;
@@ -92,13 +85,11 @@ async function askSecret(prompt: string): Promise<string> {
       process.stdin.removeListener("data", handler);
       rl.close();
     };
-
     const finish = () => {
       cleanup();
       process.stdout.write("\n");
       resolve(value);
     };
-
     const handler = (chunk: Buffer | string) => {
       try {
         const char = chunk.toString();
@@ -119,7 +110,6 @@ async function askSecret(prompt: string): Promise<string> {
         reject(error);
       }
     };
-
     try {
       process.stdin.setRawMode(true);
       process.stdin.on("data", handler);
@@ -129,24 +119,19 @@ async function askSecret(prompt: string): Promise<string> {
     }
   });
 }
-
 async function readStdinValue(): Promise<string> {
   if (process.stdin.isTTY) return "";
-
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
   }
-
   return Buffer.concat(chunks).toString("utf-8").trim();
 }
 
 // ---------------------------------------------------------------------------
 // Config read/write
 // ---------------------------------------------------------------------------
-
 export { resolveConfigPath };
-
 export function loadConfig(configPath: string): Record<string, unknown> {
   if (!fs.existsSync(configPath)) return {};
   const raw = fs.readFileSync(configPath, "utf-8");
@@ -163,7 +148,6 @@ export function loadConfig(configPath: string): Record<string, unknown> {
     ? (parsed as Record<string, unknown>)
     : {};
 }
-
 export function saveConfig(
   configPath: string,
   config: Record<string, unknown>,
@@ -172,7 +156,6 @@ export function saveConfig(
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 }
-
 function resolveLaunchCommand(cwd = process.cwd()): string {
   const localEntry = path.join(cwd, "eliza.mjs");
   const localPackage = path.join(cwd, "package.json");
@@ -180,7 +163,6 @@ function resolveLaunchCommand(cwd = process.cwd()): string {
     ? "node eliza.mjs start"
     : "eliza start";
 }
-
 function getEnvSection(
   config: Record<string, unknown>,
 ): Record<string, string> {
@@ -190,7 +172,6 @@ function getEnvSection(
   }
   return {};
 }
-
 export function hasModelKey(
   env: Record<string, string | undefined>,
 ): string | null {
@@ -218,11 +199,9 @@ export function hasModelKey(
   ];
   return keys.find((k) => env[k]?.trim()) ?? null;
 }
-
 // ---------------------------------------------------------------------------
 // Interactive provider wizard
 // ---------------------------------------------------------------------------
-
 export async function runProviderWizard(
   configPath: string,
   options: ProviderWizardOptions = {},
@@ -238,7 +217,6 @@ export async function runProviderWizard(
     string | undefined
   >;
   const existingKey = hasModelKey(combinedEnv);
-
   if (existingKey) {
     log(
       `\n${theme.success("✓")} Model API key already set: ${theme.command(existingKey)}`,
@@ -246,23 +224,18 @@ export async function runProviderWizard(
     const reconfigure = await prompt(`  Reconfigure? ${theme.muted("(y/N) ")}`);
     if (reconfigure.toLowerCase() !== "y") return;
   }
-
   log(`\n${theme.heading("Model Provider Setup")}\n`);
   log("  Choose your AI model provider:\n");
-
   PROVIDERS.forEach((p, i) => {
     const num = theme.muted(`${i + 1}.`);
     log(`  ${num} ${p.label}`);
   });
-
   const choice = await prompt(`\n  Provider ${theme.muted("[1]")} `);
   const index = choice === "" ? 0 : Number(choice) - 1;
-
   if (Number.isNaN(index) || index < 0 || index >= PROVIDERS.length) {
     log(`${theme.warn("⚠")}  Invalid choice. Skipping model setup.`);
     return;
   }
-
   const provider = PROVIDERS[index];
   if (provider.key === null) {
     log(
@@ -270,13 +243,11 @@ export async function runProviderWizard(
     );
     return;
   }
-
   const hint = provider.keyHint
     ? ` ${theme.muted(`(e.g. ${provider.keyHint})`)}`
     : "";
   const isUrl = provider.key === "OLLAMA_BASE_URL";
   const valueLabel = isUrl ? "Base URL" : "API key";
-
   let value: string;
   if (isUrl) {
     value = await prompt(
@@ -286,26 +257,21 @@ export async function runProviderWizard(
   } else {
     value = await promptSecret(`  ${valueLabel}${hint}: `);
   }
-
   if (!value) {
     log(`${theme.warn("⚠")}  No value entered. Skipping.`);
     return;
   }
-
   // Write into config env section
   envSection[provider.key] = value;
   config.env = envSection;
   saveConfig(configPath, config);
-
   log(
     `${theme.success("✓")} Saved ${theme.command(provider.key)} to ${configPath}`,
   );
 }
-
 // ---------------------------------------------------------------------------
 // Command registration
 // ---------------------------------------------------------------------------
-
 export function registerSetupCommand(program: Command) {
   program
     .command("setup")
@@ -335,19 +301,15 @@ export function registerSetupCommand(program: Command) {
           const { loadElizaConfig } = await import("@elizaos/agent");
           const { ensureAgentWorkspace, resolveDefaultAgentWorkspaceDir } =
             await import("@elizaos/agent");
-
           const configPath = resolveConfigPath();
           const keyFromStdin = opts.keyStdin ? await readStdinValue() : "";
           const keyValue = opts.key ?? keyFromStdin;
-
           if (opts.key && opts.keyStdin) {
             throw new Error("Use either --key or --key-stdin, not both.");
           }
-
           if (opts.keyStdin && !keyFromStdin) {
             throw new Error("No API key or URL received on stdin.");
           }
-
           // ── Non-interactive provider set via flags ───────────────────────
           if (opts.provider && keyValue) {
             const providerQuery = opts.provider.toLowerCase();
@@ -372,12 +334,10 @@ export function registerSetupCommand(program: Command) {
               );
             }
           }
-
           // ── Interactive wizard (TTY only, skipped with --no-wizard) ──────
           if (opts.wizard !== false && process.stdin.isTTY && !opts.provider) {
             await runProviderWizard(configPath);
           }
-
           // ── Workspace bootstrap ──────────────────────────────────────────
           let config: Record<string, unknown> = {};
           try {
@@ -392,7 +352,6 @@ export function registerSetupCommand(program: Command) {
               throw err;
             }
           }
-
           const agents = config.agents as
             | Record<string, Record<string, string>>
             | undefined;
@@ -400,15 +359,12 @@ export function registerSetupCommand(program: Command) {
             opts.workspace ??
             agents?.defaults?.workspace ??
             resolveDefaultAgentWorkspaceDir();
-
           await ensureAgentWorkspace({
             dir: workspaceDir,
           });
-
           console.log(
             `${theme.success("✓")} Agent workspace ready: ${workspaceDir}`,
           );
-
           // ── Final doctor summary ─────────────────────────────────────────
           if (process.stdin.isTTY) {
             console.log(

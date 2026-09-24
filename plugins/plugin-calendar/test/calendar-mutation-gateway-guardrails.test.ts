@@ -3,7 +3,7 @@
  * source context is unavailable; provider CRUD is never a fallback.
  */
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

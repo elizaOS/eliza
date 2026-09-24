@@ -1,11 +1,15 @@
 /** Exercises the canonical graph against real single-agent SQLite files, transactions and restart recovery. */
+
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime, type UUID } from "@elizaos/core";
+import {
+  type Entity,
+  type EntityIdentity,
+} from "@elizaos/core/knowledge-graph/entity-types";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
-import type { Entity, EntityIdentity } from "@elizaos/shared";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { LegacyRelationshipsSchemaAuditService } from "../services/legacy-schema-audit.ts";
 import { KnowledgeGraphService } from "./service.ts";
@@ -14,7 +18,6 @@ const agentId = randomUUID() as UUID;
 const time = "2026-09-23T12:00:00.000Z";
 let directory: string;
 const opened: SQLiteDatabaseAdapter[] = [];
-
 async function open(file = "agent.sqlite", owner = agentId) {
   const adapter = SQLiteDatabaseAdapter.create(join(directory, file), owner);
   opened.push(adapter);
@@ -34,7 +37,6 @@ async function open(file = "agent.sqlite", owner = agentId) {
     relationships: service.getRelationshipStore(),
   };
 }
-
 function entity(
   id: string,
   identities: EntityIdentity[] = [],
@@ -64,7 +66,6 @@ function identity(
     evidence: [`synthetic:${handle}`],
   };
 }
-
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "canonical-graph-sqlite-"));
 });
@@ -72,7 +73,6 @@ afterEach(async () => {
   for (const adapter of opened.splice(0)) await adapter.close();
   await rm(directory, { recursive: true, force: true });
 });
-
 it("preserves full graph records, identity evidence, retirement and audit after native close/reopen", async () => {
   const graph = await open();
   await graph.entities.ensureSelf();
@@ -130,7 +130,6 @@ it("preserves full graph records, identity evidence, retirement and audit after 
     }),
   ).toEqual([original]);
 });
-
 it("serializes concurrent identity observations and edge strengthening without losing evidence", async () => {
   const { entities, relationships } = await open();
   const observations = await Promise.all(
@@ -164,7 +163,6 @@ it("serializes concurrent identity observations and edge strengthening without l
   expect(edge.state.interactionCount).toBe(12);
   expect(edge.evidence).toHaveLength(12);
 });
-
 it("merges through the shared engine, retargets both edge ends and rolls back the whole graph on failure", async () => {
   const { adapter, entities, relationships } = await open();
   const target = await entities.upsert(
@@ -208,7 +206,6 @@ it("merges through the shared engine, retargets both edge ends and rolls back th
     evidence: ["kept"],
   });
 });
-
 it("denies another agent's graph selection and preserves independent same-ID records", async () => {
   const a = await open();
   const otherId = randomUUID() as UUID;
@@ -220,7 +217,6 @@ it("denies another agent's graph selection and preserves independent same-ID rec
   expect(await a.entities.get("same")).toMatchObject({ preferredName: "A" });
   expect(await b.entities.get("same")).toMatchObject({ preferredName: "B" });
 });
-
 it("confirms a recipient once under concurrency and rejects ambiguity, stale review and conflicting identity", async () => {
   const { entities } = await open();
   const request = {
@@ -252,7 +248,6 @@ it("confirms a recipient once under concurrency and rejects ambiguity, stale rev
     entities.confirmEmailRecipient({ ...request, address: "bad\naddress" }),
   ).rejects.toMatchObject({ code: "ENTITY_RECIPIENT_INVALID" });
 });
-
 it("returns the complete graph unless a caller requests pagination and refuses unsupported schema versions", async () => {
   const { entities, adapter, runtime } = await open();
   for (let i = 0; i < 125; i++)

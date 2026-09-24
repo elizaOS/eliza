@@ -9,7 +9,7 @@
  * agent). `.strict()` throughout, so unknown keys surface as validation errors.
  */
 
-import { parseDurationMs } from "@elizaos/shared";
+import { parseDurationMs } from "@elizaos/core/cli/parse-duration";
 import * as zod from "zod";
 import {
   BlockStreamingChunkSchema,

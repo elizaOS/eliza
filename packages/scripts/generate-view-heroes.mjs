@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Generate clean, brand-consistent SVG hero images for plugin views that lack
  * one. Heroes are probed at request time from `<pluginDir>/assets/hero.<ext>`
@@ -6,26 +10,19 @@
  * extension). All existing real heroes are 1024x1024.
  *
  * The art itself (frame, palette, icon glyphs) is the shared, single source of
- * truth in `@elizaos/shared` (`view-hero-art.ts`) — the same generator the
+ * truth in `@elizaos/ui/view-hero-art` (`view-hero-art.ts`) — the same generator the
  * agent uses for its runtime hero fallback and that view scaffolding uses to
  * seed a new plugin's icon. This script owns curated fallback config and checks
  * the full manifest-derived app catalog so hero omissions cannot silently ship.
  *
  * Output is deterministic: re-running produces byte-identical files. Run with
- * `node packages/scripts/generate-view-heroes.mjs` (requires `@elizaos/shared` built).
+ * `node packages/scripts/generate-view-heroes.mjs` (requires `@elizaos/ui/view-hero-art` built).
  */
-
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/shared";
-
+import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/ui/view-hero-art";
 export const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-
 export function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     repoRoot: DEFAULT_REPO_ROOT,
@@ -33,10 +30,8 @@ export function parseArgs(argv = process.argv.slice(2)) {
     check: false,
     help: false,
   };
-
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-
     if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg === "--dry-run") {
@@ -64,10 +59,8 @@ export function parseArgs(argv = process.argv.slice(2)) {
       throw new Error(`[generate-view-heroes] Unknown option: ${arg}`);
     }
   }
-
   return options;
 }
-
 export function printHelp() {
   console.log(`Usage: node packages/scripts/generate-view-heroes.mjs [options]
 
@@ -79,7 +72,6 @@ Options:
   --check             Verify all app plugins ship a hero asset without generating
   --help, -h          Show this help message`);
 }
-
 /**
  * Discover every plugin that declares an Eliza app surface (`elizaos.app` in its
  * package.json) by scanning the plugins manifest — the same source the view
@@ -102,14 +94,12 @@ export function scanAppPluginDirs(repoRoot = DEFAULT_REPO_ROOT) {
   }
   return dirs.sort();
 }
-
 /** True when a plugin dir already ships a hero asset (svg or png). */
 export function pluginHasHeroAsset(pluginDir, repoRoot = DEFAULT_REPO_ROOT) {
   const assetsDir = path.join(repoRoot, "plugins", pluginDir, "assets");
   if (!existsSync(assetsDir)) return false;
   return readdirSync(assetsDir).some((f) => /^hero.*\.(svg|png)$/.test(f));
 }
-
 /**
  * Curated fallback config. The manifest coverage check below is the source of
  * truth for completeness; this list controls generated art for app plugins that
@@ -215,17 +205,14 @@ export const views = [
     icon: VIEW_HERO_ICONS.todos,
   },
 ];
-
 export async function main(args = process.argv.slice(2)) {
   const options = parseArgs(args);
   if (options.help) {
     printHelp();
     return { writtenCount: 0, missingCount: 0, help: true };
   }
-
   const repoRoot = options.repoRoot;
   const written = [];
-
   if (!options.check) {
     for (const view of views) {
       const svg = renderViewHeroSvg({
@@ -241,7 +228,6 @@ export async function main(args = process.argv.slice(2)) {
       }
       written.push({ path: view.out, bytes: Buffer.byteLength(svg, "utf8") });
     }
-
     for (const entry of written) {
       console.log(`${String(entry.bytes).padStart(6)}  ${entry.path}`);
     }
@@ -249,7 +235,6 @@ export async function main(args = process.argv.slice(2)) {
       `\n${options.dryRun ? "Would write" : "Wrote"} ${written.length} hero SVG files.`,
     );
   }
-
   const curatedDirs = new Set(
     views.map((v) => v.out.split("/")[1]).filter(Boolean),
   );
@@ -257,7 +242,6 @@ export async function main(args = process.argv.slice(2)) {
   const missing = appPlugins.filter(
     (dir) => !pluginHasHeroAsset(dir, repoRoot) && !curatedDirs.has(dir),
   );
-
   console.log(
     `\nManifest scan: ${appPlugins.length} app plugins, ${appPlugins.length - missing.length} with a hero asset.`,
   );
@@ -275,10 +259,8 @@ export async function main(args = process.argv.slice(2)) {
       missing,
     };
   }
-
   return { writtenCount: written.length, missingCount: 0 };
 }
-
 export async function runCli(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -288,12 +270,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   const result = await main(argv);
   return result.missingCount > 0 ? 1 : 0;
 }
-
 const invokedDirectly =
   import.meta.main ||
   (Boolean(process.argv[1]) &&
     path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
-
 if (invokedDirectly) {
   runCli().then(
     (code) => {

@@ -21,8 +21,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/capacitor-bun-runtime": [
@@ -33,6 +31,51 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/plugin-sql/database-utils/carve-out-migration": [
+        "../plugin-sql/src/database-utils/carve-out-migration.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/recommendation": [
+        "../plugin-native-inference/src/model-catalog/recommendation.ts"
+      ],
+      "@elizaos/plugin-sql/database-utils/sql-compat": [
+        "../plugin-sql/src/database-utils/sql-compat.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/catalog": [
+        "../plugin-native-inference/src/model-catalog/catalog.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../plugin-native-inference/src/model-catalog/routing-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../plugin-native-inference/src/model-catalog/voice-models.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/verify": [
+        "../plugin-native-inference/src/model-catalog/verify.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-sql/database-utils/raw-sql": [
+        "../plugin-sql/src/database-utils/raw-sql.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/cloud-sdk/app-billing": [
+        "../../packages/cloud/sdk/src/app-billing.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/base-url": [
+        "../plugin-elizacloud/src/cloud-config/base-url.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets": [
+        "../plugin-elizacloud/src/cloud-config/cloud-secrets.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
       ]
     }
   },

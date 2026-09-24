@@ -12,11 +12,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type CharacterSettings, logger } from "@elizaos/core";
-import type { AgentConfig } from "@elizaos/shared";
-import {
-  normalizeFirstRunProviderId,
-  resolveElizaPackageRootSync,
-} from "@elizaos/shared";
+import { type AgentConfig } from "@elizaos/core/config/types";
+import { normalizeFirstRunProviderId } from "@elizaos/core/contracts/first-run-options";
+import { resolveElizaPackageRootSync } from "@elizaos/core/utils/eliza-root";
 import type { ElizaConfig } from "../config/config.ts";
 
 /** Injectable local-file seam used by deterministic character-loader tests. */

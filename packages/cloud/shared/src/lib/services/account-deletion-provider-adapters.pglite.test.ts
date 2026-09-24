@@ -282,7 +282,23 @@ describe("account deletion restrictive-grant terminal absence", () => {
         "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
       )
     ).rows;
-    expect(retiredSubjects[0]).toMatchObject({ retired_at: expect.any(Date) });
+    expect(retiredFunding).toHaveLength(3);
+    expect(retiredSubjects).toHaveLength(2);
+    for (const subject of retiredSubjects)
+      expect(subject).toMatchObject({ retired_at: expect.any(Date) });
+    const reservationsBefore = (
+      await getPgliteClientForTests().query(
+        "SELECT * FROM billing_funding_reservations ORDER BY id",
+      )
+    ).rows;
+    const allocationsBefore = (
+      await getPgliteClientForTests().query("SELECT * FROM billing_funding_allocations ORDER BY id")
+    ).rows;
+    expect(reservationsBefore).toHaveLength(3);
+    expect(allocationsBefore).toHaveLength(1);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_billing_records")).rows,
+    ).toHaveLength(1);
     const recoveryBefore = (
       await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts")
     ).rows;
@@ -321,6 +337,14 @@ describe("account deletion restrictive-grant terminal absence", () => {
     const revisionsBefore = await getPgliteClientForTests().query(
       "SELECT * FROM billing_subscription_revisions",
     );
+    // A real restrictive reference catches accidental deletion of retained notices.
+    expect(before.rows).toHaveLength(1);
+    await getPgliteClientForTests().exec(`
+      CREATE TABLE notice_erasure_restrict_probe(
+        notice_id uuid NOT NULL REFERENCES subscription_notice_intents(id) ON DELETE RESTRICT
+      );
+      INSERT INTO notice_erasure_restrict_probe SELECT id FROM subscription_notice_intents;
+    `);
     await adapter.execute(context, "delete-local-grants-retain-financial-evidence");
     expect(
       (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_intents")).rows,
@@ -352,14 +376,31 @@ describe("account deletion restrictive-grant terminal absence", () => {
     expect(
       (await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id"))
         .rows,
-    ).toEqual(retiredFunding);
+    ).toEqual([]);
     expect(
       (
         await getPgliteClientForTests().query(
           "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
         )
       ).rows,
-    ).toEqual(retiredSubjects);
+    ).toEqual([]);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_billing_records")).rows,
+    ).toEqual([]);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM billing_funding_reservations ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(reservationsBefore);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM billing_funding_allocations ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(allocationsBefore);
     await getPgliteClientForTests().exec("DROP TABLE notice_erasure_restrict_probe");
     await adapter.execute(context, "delete-local-grants-once");
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });

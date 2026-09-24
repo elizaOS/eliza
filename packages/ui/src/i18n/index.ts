@@ -1,8 +1,9 @@
 /**
  * Barrel for i18n: message catalogs, translator factory, region helpers, and
- * re-exported language-code primitives owned by @elizaos/shared.
+ * re-exported language-code primitives owned by @elizaos/core.
  */
-import { normalizeLanguage } from "@elizaos/shared";
+
+import { normalizeLanguage } from "@elizaos/core/i18n/language";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,
@@ -13,13 +14,11 @@ import {
 } from "./messages";
 
 // `normalizeLanguage` (and the language-code constants below) are owned by
-// @elizaos/shared so Node route handlers can normalize without the renderer's
+// @elizaos/core so Node route handlers can normalize without the renderer's
 // message dictionaries. Re-exported here to preserve the `@elizaos/ui/i18n`
 // public surface.
 export { normalizeLanguage };
-
 export type TranslationVars = Record<string, unknown>;
-
 function interpolate(template: string, vars?: TranslationVars): string {
   if (!vars) return template;
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
@@ -28,11 +27,9 @@ function interpolate(template: string, vars?: TranslationVars): string {
     return String(raw);
   });
 }
-
 function messageForLanguage(lang: UiLanguage): MessageDict {
   return MESSAGES[lang] ?? MESSAGES[DEFAULT_UI_LANGUAGE];
 }
-
 export function t(
   lang: UiLanguage | string | null | undefined,
   key: string,
@@ -48,7 +45,6 @@ export function t(
   const template = localized[key] ?? english[key] ?? defaultValue ?? key;
   return interpolate(template, vars);
 }
-
 export function createTranslator(
   lang: UiLanguage | string | null | undefined,
   defaultVars?: TranslationVars,
@@ -60,7 +56,6 @@ export function createTranslator(
     return t(normalized, key, merged);
   };
 }
-
 export {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,

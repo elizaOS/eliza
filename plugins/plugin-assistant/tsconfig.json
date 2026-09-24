@@ -4,9 +4,10 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/plugin-assistant": ["./src/index.ts"],
-      "@elizaos/shared/utils/filesystem": [
-        "../../packages/shared/src/utils/filesystem.ts"
-      ]
+      "@elizaos/core/utils/filesystem": [
+        "../../packages/core/src/utils/filesystem.ts"
+      ],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
     },
     "outDir": "./dist"
   },

@@ -3302,7 +3302,7 @@ jobs:
         with:
           setup-python: "true"
           bun-version: "1.4.2"
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -3311,10 +3311,10 @@ jobs:
       - name: Install Playwright Chromium
         run: packages/scripts/github/install-playwright-browsers.sh chromium
 
-      # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
+      # cloud-live-origin.ts imports @elizaos/core/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Run deployed Personal identity, chat, and continuity trajectory
         id: deployed-browser

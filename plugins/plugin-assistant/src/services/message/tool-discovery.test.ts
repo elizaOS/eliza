@@ -24,6 +24,28 @@ import {
 const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
+describe("canonical discovery surface", () => {
+  it("exposes one canonical native schema while retaining the legacy simile", async () => {
+    const domain: Action = {
+      name: "READ_RECORD",
+      description: "Read records",
+      parameters: [],
+    };
+    const loaded: Action[][] = [];
+    const action = createPlannerToolDiscoveryAction([domain], (actions) =>
+      loaded.push(actions),
+    );
+    const tools = buildPlannerToolsFromActions([action]);
+    expect(tools.map((tool) => tool.name)).toEqual(["DISCOVER_ACTIONS"]);
+    expect(action.similes).toContain("DISCOVER_TOOLS");
+    const result = await action.handler?.(runtime, message, undefined, {
+      parameters: { names: ["READ_RECORD"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded).toEqual([[domain]]);
+  });
+});
+
 describe("planner tool discovery", () => {
   it("returns exact parameter evidence only for fresh named descriptions", async () => {
     let loads = 0;
@@ -987,8 +1009,6 @@ describe("planner tool discovery", () => {
           {
             name: "NOTES_READ",
             description: childDetail,
-            contexts: ["notes"],
-            similes: ["READ_SAVED_NOTE"],
           },
         ],
       }),
@@ -1020,23 +1040,35 @@ describe("planner tool discovery", () => {
     },
   );
 
-  it("returns admitted exact retry names without loading a partial or rejected request", async () => {
+  it("refreshes admission for known names and loads only after reauthorization", async () => {
     const loads: Action[][] = [];
+    const document: Action = {
+      name: "DOCUMENT",
+      description: "Read documents",
+    };
+    let admitted: Action[] = [];
     const discovery = createPlannerToolDiscoveryAction(
-      [{ name: "DOCUMENT", description: "Read documents" }],
+      [document],
       (actions) => loads.push(actions),
-      async () => [],
+      async () => admitted,
     );
     const rejected = await discovery.handler?.(runtime, message, undefined, {
       parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
     });
     expect(rejected?.success).toBe(false);
     expect(loads).toEqual([]);
-    expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
+    expect(rejected?.data?.coachingFailure).toBe(true);
+    expect(rejected?.data?.availableNames).toBeUndefined();
     const retry = await discovery.handler?.(runtime, message, undefined, {
       parameters: { names: ["DOCUMENT"] },
     });
-    expect(retry?.success).toBe(true);
+    expect(retry?.success).toBe(false);
+    expect(loads).toEqual([]);
+    admitted = [document];
+    const allowed = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["DOCUMENT"] },
+    });
+    expect(allowed?.success).toBe(true);
     expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
   });
 
@@ -1077,12 +1109,15 @@ describe("planner tool discovery", () => {
     expect(loaded).toEqual(["MESSAGE"]);
   });
 
-  it("rejects a registered action using the reserved discovery protocol name", () => {
-    expect(() =>
-      createPlannerToolDiscoveryAction(
-        [{ name: "DISCOVER_TOOLS", description: "Collision" }],
-        () => undefined,
-      ),
-    ).toThrow("conflicts");
-  });
+  it.each(["DISCOVER_ACTIONS", "DISCOVER_TOOLS"])(
+    "rejects a registered action using reserved protocol name %s",
+    (name) => {
+      expect(() =>
+        createPlannerToolDiscoveryAction(
+          [{ name, description: "Collision" }],
+          () => undefined,
+        ),
+      ).toThrow("conflicts");
+    },
+  );
 });

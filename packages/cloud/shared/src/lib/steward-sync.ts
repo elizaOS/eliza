@@ -15,14 +15,14 @@
  */
 
 import { ElizaError, isElizaError } from "@elizaos/core";
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import {
   type CommitPhoneTelegramConvergenceResult,
   usersRepository,
 } from "../db/repositories/users";
-import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
+import { type RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
@@ -39,17 +39,16 @@ import {
   releasePersonalProvisionalHistoryConvergence,
 } from "./services/shared-runtime/conversation-coordinator";
 import { personalSharedAgentId } from "./services/shared-runtime/personal-shared-agent";
-import type { SignupGrantWithheldReason } from "./services/signup-grant-guard";
+import { type SignupGrantWithheldReason } from "./services/signup-grant-guard";
 import { ensureStewardTenant } from "./services/steward-tenant-config";
 import { usersService } from "./services/users";
 import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
-import type { UserWithOrganization } from "./types";
+import { type UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
 import { isValidE164, normalizePhoneNumber } from "./utils/phone-normalization";
 import { settleOffResponsePath } from "./utils/settle-off-response-path";
-
 export interface SignupWelcomeBonusMetadata {
   initialCreditsGranted?: boolean;
   initialFreeCreditsUsd?: number;
@@ -57,7 +56,6 @@ export interface SignupWelcomeBonusMetadata {
   welcomeBonusWithheldReason?: SignupGrantWithheldReason;
   welcomeBonusWithheldMessage?: string;
 }
-
 export type StewardSyncedUser = UserWithOrganization &
   SignupWelcomeBonusMetadata & {
     /**
@@ -66,14 +64,11 @@ export type StewardSyncedUser = UserWithOrganization &
      */
     postCommitProvisioningDeferred?: true;
   };
-
 export interface StewardSyncExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
-
 const STEWARD_IDENTITY_UNIQUE_CONSTRAINT = "user_identities_steward_user_id_unique";
 const ORGANIZATION_SLUG_UNIQUE_CONSTRAINT = "organizations_slug_unique";
-
 function extractErrorMetadata(candidate: unknown): {
   code?: string;
   constraint?: string;
@@ -83,14 +78,12 @@ function extractErrorMetadata(candidate: unknown): {
   if (!candidate || typeof candidate !== "object") {
     return { message: String(candidate ?? "") };
   }
-
   const typedCandidate = candidate as {
     code?: unknown;
     constraint?: unknown;
     detail?: unknown;
     message?: unknown;
   };
-
   return {
     code: typeof typedCandidate.code === "string" ? typedCandidate.code : undefined,
     constraint:
@@ -100,14 +93,12 @@ function extractErrorMetadata(candidate: unknown): {
       typeof typedCandidate.message === "string" ? typedCandidate.message : String(candidate),
   };
 }
-
 /** True for a Postgres unique-constraint violation (23505), directly or via `cause`. */
 export function isUniqueViolation(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   if (extractErrorMetadata(error).code === "23505") return true;
   return "cause" in error && extractErrorMetadata(error.cause).code === "23505";
 }
-
 /**
  * One-line description of a sync failure with the Postgres fields
  * (code/constraint/detail) inlined, falling through to `cause` for wrapped
@@ -133,41 +124,33 @@ export function describeSyncError(error: unknown): string {
   }
   return parts.join(" ");
 }
-
 function isRecoverableStewardProjectionConflict(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
   }
-
   const errorMetadata = extractErrorMetadata(error);
   const causeMetadata = "cause" in error ? extractErrorMetadata(error.cause) : { message: "" };
   const isUniqueViolation = errorMetadata.code === "23505" || causeMetadata.code === "23505";
   const hasExactStewardConstraint =
     errorMetadata.constraint === STEWARD_IDENTITY_UNIQUE_CONSTRAINT ||
     causeMetadata.constraint === STEWARD_IDENTITY_UNIQUE_CONSTRAINT;
-
   return isUniqueViolation && hasExactStewardConstraint;
 }
-
 function isInferenceRevocationBoundaryUnavailable(error: unknown): boolean {
   return isElizaError(error) && error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
 }
-
 function isOrganizationSlugConflict(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
   }
-
   const errorMetadata = extractErrorMetadata(error);
   const causeMetadata = "cause" in error ? extractErrorMetadata(error.cause) : { message: "" };
   const isUniqueViolation = errorMetadata.code === "23505" || causeMetadata.code === "23505";
   const hasExactSlugConstraint =
     errorMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT ||
     causeMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT;
-
   return isUniqueViolation && hasExactSlugConstraint;
 }
-
 async function recoverCanonicalStewardUser(
   expectedUserId: string,
   stewardUserId: string,
@@ -177,27 +160,22 @@ async function recoverCanonicalStewardUser(
   if (!isRecoverableStewardProjectionConflict(error)) {
     return false;
   }
-
   const projection = await usersService.getStewardIdentityForWrite(stewardUserId);
   if (!projection || projection.user_id !== expectedUserId) {
     return false;
   }
-
   const user = await usersService.getByStewardIdForWrite(stewardUserId);
   if (!user || user.id !== expectedUserId) {
     return false;
   }
-
   logger.warn("[StewardSync] Recovered from stale Steward identity projection conflict", {
     context,
     expectedUserId,
     stewardUserId,
     error: error instanceof Error ? error.message : String(error),
   });
-
   return true;
 }
-
 async function rollbackCreatedUserSafely(
   userId: string,
   context: "invite" | "signup",
@@ -214,7 +192,6 @@ async function rollbackCreatedUserSafely(
     });
   }
 }
-
 async function restorePreviousStewardUserIdSafely(
   userId: string,
   previousStewardUserId: string,
@@ -234,7 +211,6 @@ async function restorePreviousStewardUserIdSafely(
     });
   }
 }
-
 /**
  * Generates a unique organization slug from an email address.
  */
@@ -245,7 +221,6 @@ function generateSlugFromEmail(email: string): string {
   const timestamp = Date.now().toString(36).slice(-4);
   return `${sanitized}-${timestamp}${random}`;
 }
-
 /**
  * Generates a unique organization slug from a wallet address.
  */
@@ -256,14 +231,12 @@ function generateSlugFromWallet(walletAddress: string): string {
   const timestamp = Date.now().toString(36).slice(-4);
   return `wallet-${sanitized}-${timestamp}${random}`;
 }
-
 function generateSlugFromName(name: string): string {
   const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
   const random = Math.random().toString(36).substring(2, 8);
   const timestamp = Date.now().toString(36).slice(-4);
   return `${sanitized}-${timestamp}${random}`;
 }
-
 export interface StewardSyncParams {
   stewardUserId: string;
   email?: string;
@@ -287,12 +260,10 @@ export interface StewardSyncParams {
    */
   afterRequiredSignupProvisioning?: (user: UserWithOrganization) => Promise<void>;
 }
-
 type DirectSignupProvisioningOperation = {
   name: "default character" | "Steward tenant";
   run: () => Promise<unknown>;
 };
-
 function reportDeferredSignupProvisioningFailure(
   operation: DirectSignupProvisioningOperation["name"],
   userId: string,
@@ -306,12 +277,10 @@ function reportDeferredSignupProvisioningFailure(
     );
     return;
   }
-
   logger.error(
     `[StewardSync] Deferred ${operation} provisioning failed for new user ${userId} in org ${organizationId}: ${detail}`,
   );
 }
-
 async function provisionDirectSignupResources(input: {
   userId: string;
   organizationId: string;
@@ -319,18 +288,15 @@ async function provisionDirectSignupResources(input: {
   afterRequiredSignupProvisioning?: () => Promise<void>;
 }): Promise<void> {
   const { userId, organizationId, executionCtx, afterRequiredSignupProvisioning } = input;
-
   // A default API key is required account readiness, and no durable outbox or
   // restart-safe reconciler owns it. Keep this strict and on the response path
   // for Worker and non-Worker callers alike. The route can therefore prime its
   // verified session cache only after required key readiness has succeeded.
   await apiKeysService.provisionDefaultApiKey(userId, organizationId);
-
   // The Cloud auth boundary uses this barrier to prime the verified session
   // projection before optional character/tenant subrequests begin. Keeping the
   // hook here makes that ordering explicit without weakening API-key readiness.
   await afterRequiredSignupProvisioning?.();
-
   if (!executionCtx) {
     // Preserve the non-Worker contract: character and tenant provisioning keep
     // their prior inline order, and tenant failure remains fail-open.
@@ -344,7 +310,6 @@ async function provisionDirectSignupResources(input: {
     }
     return;
   }
-
   const operations: DirectSignupProvisioningOperation[] = [
     {
       name: "default character",
@@ -356,7 +321,6 @@ async function provisionDirectSignupResources(input: {
     },
   ];
   const startedAtMs = Date.now();
-
   await settleOffResponsePath(executionCtx, async () => {
     const outcomes = await Promise.allSettled(operations.map((operation) => operation.run()));
     for (const [index, outcome] of outcomes.entries()) {
@@ -380,18 +344,14 @@ async function provisionDirectSignupResources(input: {
     });
   });
 }
-
 export class StewardPhoneAccountConflictError extends Error {
   override readonly name = "StewardPhoneAccountConflictError";
-
   constructor(readonly reason: string) {
     super(`Verified phone account could not be claimed: ${reason}`);
   }
 }
-
 export class StewardTelegramAccountClaimError extends ElizaError {
   override readonly name = "StewardTelegramAccountClaimError";
-
   constructor(readonly reason: string) {
     super(`Telegram personal account could not be claimed: ${reason}`, {
       code: "STEWARD_TELEGRAM_ACCOUNT_CLAIM_CONFLICT",
@@ -400,9 +360,7 @@ export class StewardTelegramAccountClaimError extends ElizaError {
     });
   }
 }
-
 const PROVISIONAL_CONVERGENCE_LEASE_MS = 5 * 60 * 1000;
-
 function historyConvergencePlan(input: {
   token: string;
   sourceAgentId: string;
@@ -420,12 +378,12 @@ function historyConvergencePlan(input: {
     leaseMs: PROVISIONAL_CONVERGENCE_LEASE_MS,
   };
 }
-
 type CommittedPhoneTelegramConvergence = Extract<
   CommitPhoneTelegramConvergenceResult,
-  { status: "committed" | "already_committed" }
+  {
+    status: "committed" | "already_committed";
+  }
 >;
-
 async function completePhoneTelegramHistoryConvergence(input: {
   convergence: Pick<CommittedPhoneTelegramConvergence, "receipt" | "user" | "organization">;
   namespace?: RuntimeDurableObjectNamespace;
@@ -437,7 +395,6 @@ async function completePhoneTelegramHistoryConvergence(input: {
   if (!input.namespace) {
     throw new StewardPhoneAccountConflictError("history_coordinator_unavailable");
   }
-
   const { receipt, user, organization } = input.convergence;
   const expectedSourceAgentId = personalSharedAgentId({
     userId: receipt.source_user_id,
@@ -460,7 +417,6 @@ async function completePhoneTelegramHistoryConvergence(input: {
   ) {
     throw new StewardTelegramAccountClaimError("identity_projection_conflict");
   }
-
   const plan =
     input.prepared?.plan ??
     historyConvergencePlan({
@@ -484,15 +440,12 @@ async function completePhoneTelegramHistoryConvergence(input: {
   if (!completed) {
     throw new Error("Personal account convergence receipt disappeared during recovery");
   }
-
   return { ...user, organization };
 }
-
 type ConvergenceConflictStatus = Exclude<
   CommitPhoneTelegramConvergenceResult["status"],
   "committed" | "already_committed"
 >;
-
 function throwConvergenceConflict(status: ConvergenceConflictStatus): never {
   if (
     status === "phone_account_mature" ||
@@ -503,7 +456,6 @@ function throwConvergenceConflict(status: ConvergenceConflictStatus): never {
   }
   throw new StewardTelegramAccountClaimError(status);
 }
-
 async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: string): Promise<void> {
   try {
     const linked = await usersRepository.linkVerifiedPhone(userId, phoneNumber);
@@ -523,7 +475,6 @@ async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: stri
   }
   await invalidateBoundPersonalDeliveryProjection("phone", phoneNumber);
 }
-
 /**
  * Finds the row that already holds this wallet, matching the way the address was
  * STORED.
@@ -543,7 +494,6 @@ async function findUserByStoredWalletAddress(
     ? await usersService.getByWalletAddressWithOrganization(walletAddress)
     : await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
 }
-
 /**
  * Sync a Steward user to the local database.
  * Creates user and organization if they don't exist.
@@ -579,7 +529,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     ? normalizeWallet(params.walletAddress, walletChainType)
     : undefined;
   const resolvedWalletChainType = walletAddress ? (walletChainType ?? "ethereum") : walletChainType;
-
   // Resolve display name with fallbacks
   let name = params.name;
   if (!name && email) {
@@ -591,9 +540,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   } else if (!name) {
     name = `user-${stewardUserId.substring(0, 8)}`;
   }
-
   let claimedTelegramUser: UserWithOrganization | undefined;
-
   // A Telegram-authenticated Steward JWT is already proof of the exact sender
   // id. Resolve that sender through the same locked personal-account primitive
   // used by inbound DMs, then promote the resulting synthetic subject. This
@@ -624,7 +571,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       organization: promotion.organization,
     };
   }
-
   // Once the database merge commits, the authenticated Steward subject is the
   // durable retry authority. A repeated phone claim narrows that authority but
   // is not required, and a stale one-time continuation cannot strand repair.
@@ -642,7 +588,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       namespace: params.sharedRuntimeConversationNamespace,
     });
   }
-
   // A Telegram DM creates the canonical rowless account before a browser
   // session exists. The opaque, account-bound continuation is validated first,
   // then the provisional `telegram:<id>` subject is atomically promoted before
@@ -670,7 +615,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       });
       throw new StewardTelegramAccountClaimError("invalid_continuation");
     }
-
     if (verifiedPhone) {
       const proof = {
         phoneNumber: verifiedPhone,
@@ -681,7 +625,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       };
       const inspection =
         await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
-
       if (inspection.status === "eligible") {
         const namespace = params.sharedRuntimeConversationNamespace;
         if (!namespace) {
@@ -706,7 +649,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         const preparedHistory = await preparePersonalProvisionalHistoryConvergence(historyPlan, {
           namespace,
         });
-
         let databaseCommitted = false;
         try {
           const convergence = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
@@ -754,7 +696,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         throwConvergenceConflict(inspection.status);
       }
     }
-
     if (!claimedTelegramUser) {
       const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
         telegramId: claim.telegramId,
@@ -771,11 +712,9 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       };
     }
   }
-
   if (claimedTelegramUser?.telegram_id) {
     await invalidateBoundPersonalDeliveryProjection("telegram", claimedTelegramUser.telegram_id);
   }
-
   // ── 1. Existing user by steward_user_id ──────────────────────────────
   // The canonical subject is resolved before phone-account promotion:
   // promotion claims only a synthetic `phone:<E.164>` account for a subject
@@ -784,7 +723,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // and 409 the first verified-phone session (#19365). An existing user links
   // the unowned verified phone through the existing-user path below instead.
   let user = claimedTelegramUser ?? inspectedCanonicalUser;
-
   // A signed inbound text creates a phone-only personal account before any
   // browser session exists. SMS login may claim only that exact synthetic
   // account. Stable user/org ids keep its Shared history attached.
@@ -816,7 +754,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       throw new StewardPhoneAccountConflictError(promotion.status);
     }
   }
-
   if (user) {
     // Telegram promotion updates canonical and projected ownership in one
     // transaction. Ordinary existing accounts retain the repair pass because
@@ -835,7 +772,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         );
       }
     }
-
     if (verifiedPhone) {
       await linkVerifiedPhoneForStewardSync(user.id, verifiedPhone);
       const phoneLinkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
@@ -844,7 +780,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       }
       user = phoneLinkedUser;
     }
-
     // Update user fields if anything changed
     const shouldUpdate =
       user.name !== name ||
@@ -852,7 +787,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       user.wallet_address !== walletAddress ||
       (email && !user.email_verified) ||
       (walletAddress && !user.wallet_verified);
-
     if (shouldUpdate) {
       try {
         await usersService.update(user.id, {
@@ -864,7 +798,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           wallet_verified: walletAddress ? true : user.wallet_verified,
           updated_at: new Date(),
         });
-
         // Re-read from primary to avoid replica lag
         user = (await usersService.getByStewardIdForWrite(stewardUserId))!;
       } catch (error) {
@@ -885,7 +818,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         );
       }
     }
-
     // Self-heal missing Steward tenants on sign-in for orgs created before
     // #14869's eager new-signup provisioning. `ensureStewardTenant` reads the
     // org first and returns immediately when a tenant already exists, so the
@@ -908,17 +840,13 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         }
       });
     }
-
     return user;
   }
-
   // ── 2. Pending invite by email ───────────────────────────────────────
   if (email) {
     const pendingInvite = await invitesService.findPendingInviteByEmail(email);
-
     if (pendingInvite) {
       let newUser: Awaited<ReturnType<typeof usersService.create>> | undefined;
-
       try {
         newUser = await usersService.create({
           steward_user_id: stewardUserId,
@@ -940,7 +868,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         const recovered =
           newUser &&
           (await recoverCanonicalStewardUser(newUser.id, stewardUserId, "invite", error));
-
         if (newUser && !recovered) {
           await rollbackCreatedUserSafely(newUser.id, "invite", error);
         }
@@ -951,17 +878,13 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           throw error;
         }
       }
-
       const userWithOrg = await usersService.getByStewardIdForWrite(stewardUserId);
-
       if (!userWithOrg) {
         throw new Error(
           `Failed to fetch newly created user (steward: ${stewardUserId}) after accepting invite`,
         );
       }
-
       await organizationInvitesRepository.markAsAccepted(pendingInvite.id, userWithOrg.id);
-
       // Log to Discord (fire-and-forget)
       discordService
         .logUserSignup({
@@ -978,7 +901,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         .catch((error) => {
           logger.error("[StewardSync] Discord log failed:", { error });
         });
-
       // Same personal default-key mint as the direct-signup branch below —
       // without it an invited user cannot use inference until manually keyed.
       // Awaited for the same Workers-cancellation reason (see the note above
@@ -987,30 +909,24 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         userWithOrg.id,
         userWithOrg.organization?.id || "",
       );
-
       return userWithOrg;
     }
   }
-
   // ── 3. Email already taken (account linking) ─────────────────────────
   if (email) {
     const existingByEmail = await usersService.getByEmailWithOrganization(email);
-
     if (existingByEmail && existingByEmail.steward_user_id !== stewardUserId) {
       logger.info(
         `[StewardSync] Linking Steward account for ${email}: ${existingByEmail.steward_user_id} → ${stewardUserId}`,
       );
       const previousStewardUserId = existingByEmail.steward_user_id;
-
       if (verifiedPhone) {
         await linkVerifiedPhoneForStewardSync(existingByEmail.id, verifiedPhone);
       }
-
       await usersService.update(existingByEmail.id, {
         steward_user_id: stewardUserId,
         updated_at: new Date(),
       });
-
       try {
         await usersService.upsertStewardIdentity(existingByEmail.id, stewardUserId);
       } catch (error) {
@@ -1020,7 +936,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         );
         throw error;
       }
-
       const linkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
       if (!linkedUser) {
         throw new Error(`Failed to fetch user after Steward account linking for ${email}`);
@@ -1028,22 +943,17 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       return linkedUser;
     }
   }
-
   // ── 4. Wallet-only Steward session (SIWE or SIWS) ────────────────────
   if (walletAddress && !email) {
     const existingByWallet = await findUserByStoredWalletAddress(walletAddress);
-
     if (existingByWallet && existingByWallet.steward_user_id !== stewardUserId) {
       logger.info(
         `[StewardSync] Linking Steward wallet account for ${walletAddress}: ${existingByWallet.steward_user_id} → ${stewardUserId}`,
       );
-
       if (verifiedPhone) {
         await linkVerifiedPhoneForStewardSync(existingByWallet.id, verifiedPhone);
       }
-
       await usersService.linkStewardId(existingByWallet.id, stewardUserId);
-
       if (
         !existingByWallet.wallet_verified ||
         existingByWallet.wallet_chain_type !== resolvedWalletChainType
@@ -1053,7 +963,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           wallet_chain_type: resolvedWalletChainType || existingByWallet.wallet_chain_type,
         });
       }
-
       try {
         await usersService.upsertStewardIdentity(existingByWallet.id, stewardUserId);
       } catch (error) {
@@ -1067,7 +976,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         );
         throw error;
       }
-
       const linkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
       if (!linkedUser) {
         throw new Error(
@@ -1077,16 +985,13 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       return linkedUser;
     }
   }
-
   // ── 5. Create new user + organization ────────────────────────────────
-
   const generateOrganizationSlug = (): string => {
     if (email) return generateSlugFromEmail(email);
     if (walletAddress) return generateSlugFromWallet(walletAddress);
     if (name) return generateSlugFromName(name);
     throw new Error(`Cannot generate organization slug for Steward user ${stewardUserId}`);
   };
-
   // The database's unique constraint is the authority. Avoid a redundant
   // preflight read (and its TOCTOU window); retry only the exact slug
   // constraint, never unrelated organization insert failures.
@@ -1107,20 +1012,16 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       orgSlug = generateOrganizationSlug();
     }
   }
-
   if (!organization) {
     throw new Error(`Failed to create organization for Steward user ${stewardUserId}`);
   }
-
   // Identity creation cannot fund compute or inference.
   const initialCreditsGranted = false;
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
-
   // Create user, handle race conditions
   let createdUser:
     | Awaited<ReturnType<typeof usersService.createFreshStewardSignupUser>>
     | undefined;
-
   try {
     createdUser = await usersService.createFreshStewardSignupUser({
       steward_user_id: stewardUserId,
@@ -1141,23 +1042,18 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     if (isUniqueViolation(error)) {
       let existingUser: UserWithOrganization | undefined;
       const maxRetries = 3;
-
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         if (attempt > 0) {
           await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** (attempt - 1)));
         }
-
         existingUser = await usersService.getByStewardIdForWrite(stewardUserId);
         if (existingUser) break;
-
         if (email) {
           existingUser = await usersService.getByEmailWithOrganization(email);
         }
-
         if (!existingUser && walletAddress) {
           existingUser = await findUserByStoredWalletAddress(walletAddress);
         }
-
         if (existingUser) {
           if (verifiedPhone) {
             await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
@@ -1199,28 +1095,23 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           break;
         }
       }
-
       if (existingUser) {
         await organizationsService.delete(organization.id);
         return existingUser;
       }
-
       logger.error(
         `[StewardSync] Duplicate key error but user (steward: ${stewardUserId}) not found after ${maxRetries} retries`,
       );
       await organizationsService.delete(organization.id);
     }
-
     logger.error(
       `[StewardSync] Failed to create user for ${stewardUserId}: ${describeSyncError(error)}`,
     );
     throw error;
   }
-
   if (!createdUser) {
     throw new Error(`Failed to create user for Steward user ${stewardUserId}`);
   }
-
   // Initialize the identity projection from the exact row returned by the
   // fresh insert. The direct-signup lookups above proved this subject absent,
   // so the generic link path's prior-state reads and cache invalidations would
@@ -1237,7 +1128,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       "signup",
       error,
     );
-
     if (!recovered) {
       if (isInferenceRevocationBoundaryUnavailable(error)) {
         // error-policy:J2 The user and Steward projection committed before the
@@ -1265,7 +1155,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       throw error;
     }
   }
-
   // Both inserts and the identity projection have committed successfully. Use
   // their primary RETURNING rows instead of immediately reading the same user
   // and organization back through the database and cache.
@@ -1273,7 +1162,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     ...createdUser,
     organization,
   };
-
   // Identity is committed above, but the default API key remains required
   // readiness and is awaited strictly before this function can return. Only
   // the default character and Steward tenant have proven deterministic repair
@@ -1292,7 +1180,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       ? () => afterRequiredSignupProvisioning(userWithOrg)
       : undefined,
   });
-
   // Start best-effort notifications only after required key readiness, the
   // caller's session-cache barrier, and waitUntil registration have completed.
   // This keeps external notification subrequests from contending with the
@@ -1313,7 +1200,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       walletAddress,
     });
   }
-
   discordService
     .logUserSignup({
       userId: userWithOrg.id,
@@ -1329,7 +1215,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     .catch((error) => {
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
-
   return {
     ...userWithOrg,
     initialCreditsGranted,
@@ -1337,7 +1222,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     ...(params.executionCtx ? { postCommitProvisioningDeferred: true as const } : {}),
   };
 }
-
 /**
  * Ensures an account has a default Eliza character and matching runtime
  * mirror, seeding from the default template when the organization has none.
@@ -1361,12 +1245,10 @@ export async function ensureDefaultCharacter(
     logger.warn("[StewardSync] Invalid userId or organizationId, skipping default character");
     return;
   }
-
   try {
     if (await charactersService.hasHealthyCloudCharacterMirror(organizationId)) {
       return;
     }
-
     const defaultData = getDefaultElizaCharacterData();
     await charactersService.create(
       {
@@ -1376,7 +1258,6 @@ export async function ensureDefaultCharacter(
       },
       { policy: { mode: "bootstrap" } },
     );
-
     logger.info(`[StewardSync] Ensured default Eliza character for user ${userId}`);
   } catch (error) {
     // error-policy:J1 provisioning boundary: a default-character failure
@@ -1390,7 +1271,6 @@ export async function ensureDefaultCharacter(
     });
   }
 }
-
 /**
  * Queues a welcome email for a new Steward user.
  */

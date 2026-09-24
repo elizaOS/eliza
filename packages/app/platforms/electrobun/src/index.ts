@@ -5,11 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { formatError } from "@elizaos/core";
-import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
-import type { BrowserWindow } from "electrobun/bun";
+import {
+	resolveApiToken,
+	resolveDesktopApiPort,
+} from "@elizaos/core/runtime-env";
 import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
+	type BrowserWindow,
 	BuildConfig,
 	Screen,
 	Updater,
@@ -17,6 +20,11 @@ import Electrobun, {
 	WGPU,
 	webgpu,
 } from "electrobun/bun";
+import {
+	isAgentReady,
+	onAgentReadyChange,
+	setAgentReady,
+} from "./agent-ready-state";
 import {
 	resolveDesktopRuntimeModeWithDeployment,
 	resolveInitialApiBase,
@@ -58,6 +66,7 @@ import {
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
+import { shutdownAfterFatalError } from "./fatal-shutdown";
 import {
 	appendKioskShellModeParam,
 	appendShellModeParam,
@@ -73,6 +82,11 @@ import {
 } from "./lifecycle/desktop-session-prime";
 import { reloadRendererAfterDesktopSessionPrime } from "./lifecycle/desktop-session-renderer-ready";
 import { logger } from "./logger";
+import {
+	clearCurrentMainWindow,
+	setCurrentMainWindow,
+	updateCurrentMainWindowEffectsState,
+} from "./main-window-runtime";
 import {
 	resolveBootstrapShellRenderer,
 	resolveBootstrapViewRenderer,
@@ -93,7 +107,6 @@ import {
 	getStartupDiagnosticsSnapshot,
 	getStartupStatusPath,
 } from "./native/agent";
-
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -103,6 +116,15 @@ import {
 	setWindowShadow,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
+import {
+	isStewardLocalEnabled,
+	onStewardStatusChange,
+	resetSteward,
+	restartSteward,
+	setStewardSendToWebview,
+	startSteward,
+	stopSteward,
+} from "./native/steward";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
@@ -160,27 +182,6 @@ const BRAND = getBrandConfig();
 const CONFIG_EXPORT_FILE_NAME = BRAND.configExportFileName;
 const STARTUP_CRASH_REPORT_FILE = "startup-crash-report-latest.md";
 const STARTUP_CRASH_PROMPT_MARKER_FILE = "startup-crash-last-prompted.txt";
-
-import {
-	isAgentReady,
-	onAgentReadyChange,
-	setAgentReady,
-} from "./agent-ready-state";
-import {
-	clearCurrentMainWindow,
-	setCurrentMainWindow,
-	updateCurrentMainWindowEffectsState,
-} from "./main-window-runtime";
-import {
-	isStewardLocalEnabled,
-	onStewardStatusChange,
-	resetSteward,
-	restartSteward,
-	setStewardSendToWebview,
-	startSteward,
-	stopSteward,
-} from "./native/steward";
-
 function resolveDesktopAppIconPath(): string {
 	return path.join(
 		import.meta.dir,
@@ -189,7 +190,6 @@ function resolveDesktopAppIconPath(): string {
 			: "../assets/appIcon.png",
 	);
 }
-
 /**
  * Menu-bar/tray icon. On macOS this is a dedicated template asset (alpha-only
  * glyph, tinted by the system to match light/dark menu bars) — reusing the
@@ -219,11 +219,9 @@ function resolveDesktopTrayIconOptions(): {
 		title: BRAND.appName,
 	};
 }
-
 function shouldUseBrowserDevtoolsFallback(): boolean {
 	return false;
 }
-
 function setupApplicationMenu(): void {
 	const isMac = process.platform === "darwin";
 	const menu = buildApplicationMenu({
@@ -236,9 +234,7 @@ function setupApplicationMenu(): void {
 		menu as Parameters<typeof ApplicationMenu.setApplicationMenu>[0],
 	);
 }
-
 onAgentReadyChange(() => setupApplicationMenu());
-
 /**
  * Resolve the desktop runtime mode, consulting both the env vars and the
  * persisted deployment target (`eliza.json` `deploymentTarget.runtime`). A
@@ -247,7 +243,6 @@ onAgentReadyChange(() => setupApplicationMenu());
  * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
  */
 let preparedDesktopRuntime: DesktopRuntimeBootResolution | null = null;
-
 function resolveDesktopRuntime(): DesktopRuntimeBootResolution {
 	return (
 		preparedDesktopRuntime ??
@@ -257,14 +252,12 @@ function resolveDesktopRuntime(): DesktopRuntimeBootResolution {
 		)
 	);
 }
-
 function summarizeDesktopActionError(error: unknown, fallback: string): string {
 	const message = error instanceof Error ? error.message : fallback;
 	const trimmed = message.trim();
 	if (!trimmed) return fallback;
 	return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
 }
-
 function buildApiRequestHeaders(
 	targetUrl: string,
 	contentType?: string,
@@ -291,7 +284,6 @@ function buildApiRequestHeaders(
 	}
 	return headers;
 }
-
 function resolveLoopbackApiBase(): string | null {
 	const port = getAgentManager().getStatus().port;
 	if (typeof port === "number" && port > 0) {
@@ -299,7 +291,6 @@ function resolveLoopbackApiBase(): string | null {
 	}
 	return resolveInitialApiBase(process.env);
 }
-
 /**
  * Picks a loopback API base the main process can actually reach.
  *
@@ -332,7 +323,6 @@ async function resolveReachableApiBaseForMainReset(): Promise<string | null> {
 	}
 	return base;
 }
-
 /**
  * App menu "Reset the app…" — confirm + HTTP reset + restart in the **main process**.
  *
@@ -355,7 +345,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 				`[Main][reset] showWindow failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
 			);
 		});
-
 	const autoConfirm =
 		process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
 		process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
@@ -373,7 +362,11 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 				cancelId: 1,
 			}).then((box) =>
 				box && typeof box === "object" && "response" in box
-					? (box as { response: number }).response
+					? (
+							box as {
+								response: number;
+							}
+						).response
 					: typeof box === "number"
 						? box
 						: 1,
@@ -382,7 +375,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 		logger.info("[Main][reset] User cancelled native confirm");
 		return;
 	}
-
 	const apiBase = await resolveReachableApiBaseForMainReset();
 	if (!apiBase) {
 		Utils.showNotification({
@@ -391,10 +383,8 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 		});
 		return;
 	}
-
 	try {
 		const runtimeMode = resolveDesktopRuntime();
-
 		await runMainMenuResetAfterApiBaseResolved({
 			apiBase,
 			fetchImpl: fetch,
@@ -451,7 +441,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 		});
 	}
 }
-
 const MAC_TRAFFIC_LIGHTS_X = 14;
 const MAC_TRAFFIC_LIGHTS_Y = 12;
 /** Left inset of the drag strip so it clears the traffic lights. */
@@ -462,7 +451,6 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
  * titlebar buttons continue to receive clicks.
  */
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
-
 /**
  * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
  * native layout whenever the window or webview subtree may have reordered so
@@ -479,13 +467,15 @@ function applyMacOSWindowEffects(
 	nativeInteractiveChrome: boolean,
 ): void {
 	if (process.platform !== "darwin") return;
-
-	const ptr = (win as { ptr?: unknown }).ptr;
+	const ptr = (
+		win as {
+			ptr?: unknown;
+		}
+	).ptr;
 	if (!ptr) {
 		logger.warn("[MacEffects] win.ptr unavailable — skipping native effects");
 		return;
 	}
-
 	const shadowConfigured = setWindowShadow(
 		ptr as Parameters<typeof setWindowShadow>[0],
 		nativeShadow,
@@ -494,7 +484,6 @@ function applyMacOSWindowEffects(
 		vibrancyEnabled: false,
 		shadowEnabled: shadowConfigured ? nativeShadow : null,
 	});
-
 	const alignButtons = () =>
 		setTrafficLightsPosition(
 			ptr as Parameters<typeof setTrafficLightsPosition>[0],
@@ -516,7 +505,6 @@ function applyMacOSWindowEffects(
 		disableBackForwardNavigationGestures(
 			ptr as Parameters<typeof disableBackForwardNavigationGestures>[0],
 		);
-
 	const alignChrome = () => {
 		if (nativeInteractiveChrome) {
 			alignButtons();
@@ -524,11 +512,9 @@ function applyMacOSWindowEffects(
 		}
 		disableSwipeBackGesture();
 	};
-
 	alignChrome();
 	setTimeout(alignChrome, 120);
 	const chromeRefreshTimer = setInterval(alignChrome, 1000);
-
 	win.on("resize", alignChrome);
 	win.on("focus", alignChrome);
 	win.on("blur", () => {
@@ -540,7 +526,6 @@ function applyMacOSWindowEffects(
 	// Display (NSScreen) changes without a resize edge case — depth uses window.screen.
 	win.on("move", alignChrome);
 	win.on("close", () => clearInterval(chromeRefreshTimer));
-
 	// WKWebView is often inserted or reordered after first layout; restack native
 	// views so drag/resize strips stay hit-testable above the page.
 	try {
@@ -553,14 +538,12 @@ function applyMacOSWindowEffects(
 		// webview may not accept listeners yet in some embed paths
 	}
 }
-
 interface WindowState {
 	x: number;
 	y: number;
 	width: number;
 	height: number;
 }
-
 /**
  * Fresh-install default: a generous 1440x900 window centered-ish
  * near the top-left of the primary display. Maximize-on-launch (see
@@ -574,7 +557,6 @@ const DEFAULT_WINDOW_STATE: WindowState = {
 	width: 1440,
 	height: 900,
 };
-
 /**
  * Marker value we stamp into the saved state when we'd like the next
  * launch to open maximized. Kept as a synthetic "pending-maximize" flag
@@ -582,12 +564,10 @@ const DEFAULT_WINDOW_STATE: WindowState = {
  * width/height/x/y schema without a migration.
  */
 const MAXIMIZE_ON_LAUNCH_SENTINEL = 1;
-
 interface PersistedWindowState extends WindowState {
 	/** When truthy, call win.maximize() right after creation. */
 	shouldMaximize?: number;
 }
-
 function loadWindowState(statePath: string): PersistedWindowState {
 	try {
 		if (fs.existsSync(statePath)) {
@@ -619,9 +599,7 @@ function loadWindowState(statePath: string): PersistedWindowState {
 	// maximize themselves; subsequent launches restore their last size.
 	return { ...DEFAULT_WINDOW_STATE };
 }
-
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
 function scheduleStateSave(statePath: string, win: BrowserWindow): void {
 	if (saveTimer) clearTimeout(saveTimer);
 	saveTimer = setTimeout(() => {
@@ -647,7 +625,6 @@ function scheduleStateSave(statePath: string, win: BrowserWindow): void {
 		}
 	}, 500);
 }
-
 /**
  * Per-slug app-window bounds persistence. Survives across launches so an
  * app re-opened later restores to the user's last position+size.
@@ -660,7 +637,6 @@ function createAppWindowBoundsStore(): BoundsStore {
 	const storePath = path.join(Utils.paths.userData, "app-window-bounds.json");
 	type Blob = Record<string, ManagedWindowFrame>;
 	let cache: Blob | null = null;
-
 	function isFrame(value: unknown): value is ManagedWindowFrame {
 		if (!value || typeof value !== "object") return false;
 		const f = value as Record<string, unknown>;
@@ -675,7 +651,6 @@ function createAppWindowBoundsStore(): BoundsStore {
 			f.y > -16000
 		);
 	}
-
 	function readCache(): Blob {
 		if (cache) return cache;
 		try {
@@ -696,7 +671,6 @@ function createAppWindowBoundsStore(): BoundsStore {
 		cache = {};
 		return cache;
 	}
-
 	function writeCache(): void {
 		if (!cache) return;
 		try {
@@ -707,7 +681,6 @@ function createAppWindowBoundsStore(): BoundsStore {
 			/* ignore — bounds save must never break the window */
 		}
 	}
-
 	return {
 		load: (slug) => {
 			const blob = readCache();
@@ -721,7 +694,6 @@ function createAppWindowBoundsStore(): BoundsStore {
 		},
 	};
 }
-
 let currentWindow: BrowserWindow | null = null;
 let currentSendToWebview: SendToWebview | null = null;
 let surfaceWindowManager: SurfaceWindowManager | null = null;
@@ -729,12 +701,10 @@ let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
 let quitRequestPromise: Promise<void> | null = null;
-
 function requestAppQuit(): Promise<void> {
 	if (quitRequestPromise) {
 		return quitRequestPromise;
 	}
-
 	isQuitting = true;
 	quitRequestPromise = (async () => {
 		await runShutdownCleanup("explicit-quit").catch((err) => {
@@ -746,7 +716,6 @@ function requestAppQuit(): Promise<void> {
 	})();
 	return quitRequestPromise;
 }
-
 /**
  * True for packaged desktop builds, false for the in-repo dev runtime.
  * The compiled bundle no longer runs out of a `/src/` directory, so its
@@ -757,20 +726,21 @@ function requestAppQuit(): Promise<void> {
 function isPackagedDesktopBuild(): boolean {
 	return !import.meta.dir.replaceAll("\\", "/").includes("/src/");
 }
-
 const cleanupFns: Array<() => void | Promise<void>> = [];
 let shutdownCleanupPromise: Promise<void> | null = null;
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
-
 async function openBrowserDevtoolsFallback(
 	targetWindow: ManagedWindowLike | BrowserWindow | null,
 ): Promise<void> {
 	const currentUrl = (
-		targetWindow?.webview as { url?: string | null } | undefined
+		targetWindow?.webview as
+			| {
+					url?: string | null;
+			  }
+			| undefined
 	)?.url;
 	const url = currentUrl?.trim() || (await resolveRendererUrl());
-
 	if (!/^https?:\/\//i.test(url)) {
 		Utils.showNotification({
 			title: "Developer Tools Unavailable",
@@ -778,14 +748,12 @@ async function openBrowserDevtoolsFallback(
 		});
 		return;
 	}
-
 	Utils.openExternal(url);
 	Utils.showNotification({
 		title: "Opened Renderer in Browser",
 		body: "Native macOS Electrobun devtools are disabled due to a WKWebView crash/layout bug. Use browser devtools instead.",
 	});
 }
-
 function sendToActiveRenderer(message: string, payload?: unknown): void {
 	currentSendToWebview?.(message, payload);
 	if (!currentSendToWebview) {
@@ -798,13 +766,11 @@ function sendToActiveRenderer(message: string, payload?: unknown): void {
 		);
 	}
 }
-
 function sendManagedWindowsChanged(): void {
 	sendToActiveRenderer("desktopManagedWindowsChanged", {
 		windows: surfaceWindowManager?.listWindows() ?? [],
 	});
 }
-
 function shouldRestoreWindowBeforeMenuAction(
 	action: string | undefined,
 ): boolean {
@@ -813,7 +779,6 @@ function shouldRestoreWindowBeforeMenuAction(
 	}
 	return action !== "quit";
 }
-
 /**
  * Serve the renderer dist over HTTP so WKWebView can load it without
  * file:// CORS restrictions (crossorigin ES modules break over file://).
@@ -825,20 +790,19 @@ async function startRendererServer(): Promise<string> {
 		logger.warn("[Renderer] renderer dir not found:", rendererDir);
 		return "";
 	}
-
 	// Find a free port starting at 5174 (5173 reserved for Vite dev)
 	const getPort = (start: number): Promise<number> =>
 		new Promise((resolve) => {
 			const srv = createNetServer();
 			srv.listen(start, "127.0.0.1", () => {
-				const { port } = srv.address() as { port: number };
+				const { port } = srv.address() as {
+					port: number;
+				};
 				srv.close(() => resolve(port));
 			});
 			srv.on("error", () => resolve(getPort(start + 1)));
 		});
-
 	const port = await getPort(5174);
-
 	// Seed the api-base-owner singleton with the initial value so the
 	// HTML-inject path and the RPC push path both read the same source of
 	// truth. Without this seeding, the static server would inject one value
@@ -861,7 +825,6 @@ async function startRendererServer(): Promise<string> {
 				resolveQualifiedExternalToken(initialRuntime, initialApiBase) ??
 				"");
 	apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
-
 	const resolveRendererCacheControl = (
 		pathname: string,
 		mimeExt: string,
@@ -903,10 +866,8 @@ async function startRendererServer(): Promise<string> {
 		}
 		return "public, max-age=0, must-revalidate";
 	};
-
 	const rendererProxyIdleTimeoutSeconds =
 		resolveRendererProxyIdleTimeoutSeconds(process.env);
-
 	Bun.serve({
 		port,
 		hostname: "127.0.0.1",
@@ -918,7 +879,6 @@ async function startRendererServer(): Promise<string> {
 		async fetch(req) {
 			const url = new URL(req.url);
 			const pathname = url.pathname;
-
 			// Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
 			// dev-server proxy in apps/app/vite.config.ts so the renderer can rely
 			// on same-origin /api fetches whether it's loaded via Vite (watch mode)
@@ -952,14 +912,12 @@ async function startRendererServer(): Promise<string> {
 					);
 				}
 			}
-
 			const { filePath, isGzipped, mimeExt } = resolveRendererAsset({
 				rendererDir,
 				urlPath: pathname,
 				existsSync: fs.existsSync,
 				statSync: fs.statSync,
 			});
-
 			try {
 				const content = fs.readFileSync(filePath);
 				// Inject API base into HTML responses
@@ -973,7 +931,6 @@ async function startRendererServer(): Promise<string> {
 						},
 					});
 				}
-
 				const headers: Record<string, string> = {
 					"Content-Type": getRendererAssetContentType(mimeExt),
 					"Access-Control-Allow-Origin": "*",
@@ -981,11 +938,9 @@ async function startRendererServer(): Promise<string> {
 					"Accept-Ranges": "bytes",
 					"Content-Length": String(content.byteLength),
 				};
-
 				if (isGzipped) {
 					headers["Content-Encoding"] = "gzip";
 				}
-
 				const byteRange = isGzipped
 					? null
 					: resolveRendererAssetByteRange(
@@ -1002,29 +957,24 @@ async function startRendererServer(): Promise<string> {
 						headers,
 					});
 				}
-
 				return new Response(content, { headers });
 			} catch {
 				return new Response("Not found", { status: 404 });
 			}
 		},
 	});
-
 	console.log(`[Renderer] Static server on http://127.0.0.1:${port}`);
 	return `http://127.0.0.1:${port}`;
 }
-
 async function resolveRendererUrl(): Promise<string> {
 	// Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.mjs watch mode).
 	// Why: Vite HMR only works against the dev server; serving pre-built dist from this static
 	// server would force a full rebuild for every UI change.
 	let rendererUrl = resolveRendererUrlFromEnv();
-
 	if (!rendererUrl) {
 		rendererUrlPromise ??= startRendererServer();
 		rendererUrl = await rendererUrlPromise;
 	}
-
 	if (!rendererUrl) {
 		// Last resort: file:// (may have CORS issues with crossorigin module scripts).
 		// pathToFileURL builds a valid file:///C:/… URL on Windows; `file://${winPath}`
@@ -1036,10 +986,8 @@ async function resolveRendererUrl(): Promise<string> {
 			"[Main] Falling back to file:// renderer URL — CORS issues possible",
 		);
 	}
-
 	return rendererUrl;
 }
-
 function appendApiBaseParam(rendererUrl: string, apiBase: string): string {
 	try {
 		const url = new URL(rendererUrl);
@@ -1051,12 +999,10 @@ function appendApiBaseParam(rendererUrl: string, apiBase: string): string {
 		return rendererUrl;
 	}
 }
-
 function appendRuntimeChooserTestParam(rendererUrl: string): string {
 	if (process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER !== "1") {
 		return rendererUrl;
 	}
-
 	try {
 		const url = new URL(rendererUrl);
 		url.searchParams.set("enableRuntimeChooser", "1");
@@ -1065,7 +1011,6 @@ function appendRuntimeChooserTestParam(rendererUrl: string): string {
 		return rendererUrl;
 	}
 }
-
 async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
 	const rendererUrl = await resolveRendererUrl();
 	const runtime = resolveDesktopRuntime();
@@ -1078,7 +1023,6 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
 	}
 	return appendRuntimeChooserTestParam(rendererUrl);
 }
-
 async function resolveMainWindowRendererUrl(): Promise<string> {
 	const presentation = resolveDesktopShellWindowPresentation();
 	const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
@@ -1094,7 +1038,6 @@ async function resolveMainWindowRendererUrl(): Promise<string> {
 	}
 	return baseRendererUrl;
 }
-
 /**
  * Resolve the chromeless bottom-bar window frame from the primary display's
  * usable work area. Falls back to a 1080p estimate if the Screen API is
@@ -1119,7 +1062,6 @@ function resolveBottomBarFrame(): {
 	}
 	return computeBottomBarFrame(workArea);
 }
-
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	const presentation = resolveDesktopShellWindowPresentation();
 	const kiosk = presentation.mode === "kiosk";
@@ -1136,10 +1078,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	if (mainWindowPartition) {
 		logger.info(`[Main] Using main window partition ${mainWindowPartition}`);
 	}
-
 	const statePath = path.join(Utils.paths.userData, "window-state.json");
 	const state = loadWindowState(statePath);
-
 	let preload: string;
 	try {
 		preload = readResolvedPreloadScript(import.meta.dir);
@@ -1157,7 +1097,6 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		);
 		preload = "// preload unavailable";
 	}
-
 	const windowFrame = bottomBar
 		? resolveBottomBarFrame()
 		: {
@@ -1189,13 +1128,11 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		forceMainWindowCef,
 		buildInfo,
 	});
-
 	if (forceMainWindowCef && !canUseCefView) {
 		logger.warn(
 			"[Main] ELIZA_DESKTOP_FORCE_CEF=1 requested, but this Electrobun build does not bundle the CEF renderer. Falling back to the native renderer.",
 		);
 	}
-
 	let win: BrowserWindow;
 	if (useIsolatedMainView) {
 		// Shell window with the empty default webview. The actual content
@@ -1251,7 +1188,6 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 			...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
 		});
 	}
-
 	// Kiosk mode: the app IS the GUI. Go fullscreen and skip the bounds
 	// persistence + maximize ergonomics — the window is fixed fullscreen and
 	// must never restore to a smaller frame.
@@ -1265,7 +1201,6 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		}
 		return win;
 	}
-
 	// Bottom-bar shell: pin always-on-top and apply the macOS chrome (with its
 	// native shadow disabled, plus the drag region; no vibrancy, so the pill is
 	// the only painted surface). The bar
@@ -1274,7 +1209,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	if (bottomBar) {
 		try {
 			(
-				win as typeof win & { setAlwaysOnTop?: (flag: boolean) => void }
+				win as typeof win & {
+					setAlwaysOnTop?: (flag: boolean) => void;
+				}
 			).setAlwaysOnTop?.(true);
 		} catch (err) {
 			logger.warn(
@@ -1307,7 +1244,6 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		getDesktopManager().enableBottomBarReanchor();
 		return win;
 	}
-
 	applyMacOSWindowEffects(
 		win,
 		presentation.nativeShadow,
@@ -1315,7 +1251,6 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	);
 	win.on("resize", () => scheduleStateSave(statePath, win));
 	win.on("move", () => scheduleStateSave(statePath, win));
-
 	// First-launch ergonomics: when there's no saved state (or the
 	// saved state was garbage and we're falling back to defaults), open
 	// the window maximized so the user gets a full workspace instead of
@@ -1324,7 +1259,11 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	// real persisted dimensions without the shouldMaximize sentinel.
 	if (state.shouldMaximize === MAXIMIZE_ON_LAUNCH_SENTINEL) {
 		try {
-			(win as typeof win & { maximize?: () => void }).maximize?.();
+			(
+				win as typeof win & {
+					maximize?: () => void;
+				}
+			).maximize?.();
 		} catch (err) {
 			// Non-fatal — if maximize() isn't available on this electrobun
 			// build, the window still opens at the default dimensions.
@@ -1333,10 +1272,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 			);
 		}
 	}
-
 	return win;
 }
-
 function attachMainWindow(
 	win: BrowserWindow,
 	rpc: ElizaDesktopRpc,
@@ -1359,18 +1296,18 @@ function attachMainWindow(
 	getDesktopManager().setMainWindowFullWindow(
 		presentation.mode !== "bottom-bar",
 	);
-
 	win.webview.on("dom-ready", () => {
 		injectApiBase(win);
 	});
-
 	// Prevent the main webview from navigating to external URLs.
 	// The renderer is always served from localhost — any other navigation
 	// (e.g. from a compromised plugin) should open in the default browser.
 	win.webview.on("will-navigate", (event: unknown) => {
 		const e = event as {
 			url?: string;
-			data?: { detail?: string };
+			data?: {
+				detail?: string;
+			};
 			preventDefault?: () => void;
 		};
 		const url = readNavigationEventUrl(e);
@@ -1401,17 +1338,19 @@ function attachMainWindow(
 			e.preventDefault?.();
 		}
 	});
-
 	win.on("close", (event: unknown) => {
 		// Kiosk mode: the app is the entire GUI under a single-window compositor.
 		// The window must never close — block every close request and keep it up.
 		if (isKioskShellMode() && !isQuitting) {
-			const closeEvent = event as { preventDefault?: () => void } | undefined;
+			const closeEvent = event as
+				| {
+						preventDefault?: () => void;
+				  }
+				| undefined;
 			closeEvent?.preventDefault?.();
 			logger.info("[Main] Kiosk window close blocked — staying fullscreen");
 			return;
 		}
-
 		// On Linux with no tray configured, minimizing-to-tray (or running in the
 		// background) strands an invisible process: there is no dock reopen like
 		// macOS and no StatusNotifier item to restore from. Quit cleanly in that
@@ -1431,9 +1370,12 @@ function attachMainWindow(
 			void requestAppQuit();
 			return;
 		}
-
 		if (!isQuitting && process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY !== "0") {
-			const closeEvent = event as { preventDefault?: () => void } | undefined;
+			const closeEvent = event as
+				| {
+						preventDefault?: () => void;
+				  }
+				| undefined;
 			if (typeof closeEvent?.preventDefault === "function") {
 				closeEvent.preventDefault();
 				void getDesktopManager()
@@ -1451,7 +1393,6 @@ function attachMainWindow(
 				"[Main] Window close requested - agent continues in background",
 			);
 		}
-
 		if (currentWindow?.id === win.id) {
 			currentWindow = null;
 			currentSendToWebview = null;
@@ -1459,27 +1400,22 @@ function attachMainWindow(
 		releaseShellSync();
 		clearCurrentMainWindow(win);
 		getDesktopManager().clearMainWindow(win);
-
 		if (!isQuitting) {
 			void ensureBackgroundWindow();
 		}
 	});
-
 	return win;
 }
-
 async function ensureBackgroundWindow(): Promise<void> {
 	if (isQuitting || currentWindow) {
 		return;
 	}
-
 	// Don't recreate the window — just keep the process alive in the
 	// background (exitOnLastWindowClosed is false in electrobun.config.ts).
 	// The dock icon click fires the "reopen" event which restores the window.
 	logger.info("[Main] Window closed — agent continues in background");
 	showBackgroundRunNoticeOnce();
 }
-
 /** Restore or recreate the main window (called on dock icon click). */
 async function restoreWindow(): Promise<void> {
 	if (currentWindow) {
@@ -1512,7 +1448,6 @@ async function restoreWindow(): Promise<void> {
 	});
 	await backgroundWindowPromise;
 }
-
 function showBackgroundRunNoticeOnce(): void {
 	try {
 		showBackgroundNoticeOnce({
@@ -1528,12 +1463,10 @@ function showBackgroundRunNoticeOnce(): void {
 		);
 	}
 }
-
 async function createSettingsWindow(tabHint?: string): Promise<void> {
 	if (!surfaceWindowManager) return;
 	await surfaceWindowManager.openSettingsWindow(tabHint);
 }
-
 async function showMainSurface(surface: string): Promise<void> {
 	if (!currentWindow) {
 		await restoreWindow();
@@ -1543,12 +1476,10 @@ async function showMainSurface(surface: string): Promise<void> {
 		itemId: `show-main:${surface}`,
 	});
 }
-
 function resolveDefaultDialogPath(): string {
 	const downloadsPath = path.join(os.homedir(), "Downloads");
 	return fs.existsSync(downloadsPath) ? downloadsPath : os.homedir();
 }
-
 async function exportConfigFromMenu(): Promise<void> {
 	const apiBase = resolveLoopbackApiBase();
 	if (!apiBase) {
@@ -1558,7 +1489,6 @@ async function exportConfigFromMenu(): Promise<void> {
 		});
 		return;
 	}
-
 	try {
 		const configUrl = `${apiBase}/api/config`;
 		const response = await fetch(configUrl, {
@@ -1567,7 +1497,6 @@ async function exportConfigFromMenu(): Promise<void> {
 		if (!response.ok) {
 			throw new Error(`Config fetch failed (${response.status})`);
 		}
-
 		const config = await response.json();
 		const dialog = await getDesktopManager().showSaveDialog({
 			defaultPath: resolveDefaultDialogPath(),
@@ -1576,14 +1505,12 @@ async function exportConfigFromMenu(): Promise<void> {
 		if (dialog.canceled || dialog.filePaths.length === 0) {
 			return;
 		}
-
 		const outputPath = path.join(dialog.filePaths[0], CONFIG_EXPORT_FILE_NAME);
 		fs.writeFileSync(
 			outputPath,
 			`${JSON.stringify(config, null, 2)}\n`,
 			"utf8",
 		);
-
 		Utils.showNotification({
 			title: "Config Exported",
 			body: `Saved to ${outputPath}`,
@@ -1595,7 +1522,6 @@ async function exportConfigFromMenu(): Promise<void> {
 		});
 	}
 }
-
 async function importConfigFromMenu(): Promise<void> {
 	const apiBase = resolveLoopbackApiBase();
 	if (!apiBase) {
@@ -1605,7 +1531,6 @@ async function importConfigFromMenu(): Promise<void> {
 		});
 		return;
 	}
-
 	try {
 		const dialog = await getDesktopManager().showOpenDialog({
 			defaultPath: resolveDefaultDialogPath(),
@@ -1617,7 +1542,6 @@ async function importConfigFromMenu(): Promise<void> {
 		if (dialog.canceled || dialog.filePaths.length === 0) {
 			return;
 		}
-
 		const inputPath = dialog.filePaths[0];
 		const rawConfig = fs.readFileSync(inputPath, "utf8");
 		const parsedConfig = JSON.parse(rawConfig) as unknown;
@@ -1628,7 +1552,6 @@ async function importConfigFromMenu(): Promise<void> {
 		) {
 			throw new Error("Config file must contain a JSON object");
 		}
-
 		const configUrl = `${apiBase}/api/config`;
 		const response = await fetch(configUrl, {
 			method: "PUT",
@@ -1638,7 +1561,6 @@ async function importConfigFromMenu(): Promise<void> {
 		if (!response.ok) {
 			throw new Error(`Config import failed (${response.status})`);
 		}
-
 		Utils.showNotification({
 			title: "Config Imported",
 			body: `Loaded ${path.basename(inputPath)}`,
@@ -1650,12 +1572,15 @@ async function importConfigFromMenu(): Promise<void> {
 		});
 	}
 }
-
 function trackFocusedWindow(window: ManagedWindowLike): void {
 	lastFocusedWindow = window;
 	window.on("focus", () => {
 		lastFocusedWindow = window;
-		const windowId = (window as { id?: number }).id;
+		const windowId = (
+			window as {
+				id?: number;
+			}
+		).id;
 		if (
 			process.platform === "darwin" &&
 			typeof windowId === "number" &&
@@ -1667,13 +1592,16 @@ function trackFocusedWindow(window: ManagedWindowLike): void {
 		}
 	});
 	window.on("close", () => {
-		const windowId = (window as { id?: number }).id;
+		const windowId = (
+			window as {
+				id?: number;
+			}
+		).id;
 		if (typeof windowId === "number") {
 			macOpenedDevtoolsWindowIds.delete(windowId);
 		}
 	});
 }
-
 function toggleFocusedWindowDevTools(): void {
 	const targetWindow = lastFocusedWindow ?? currentWindow;
 	const webview = targetWindow?.webview as
@@ -1682,12 +1610,10 @@ function toggleFocusedWindowDevTools(): void {
 				openDevTools?: () => void;
 		  }
 		| undefined;
-
 	if (shouldUseBrowserDevtoolsFallback()) {
 		void openBrowserDevtoolsFallback(targetWindow);
 		return;
 	}
-
 	if (typeof webview?.toggleDevTools === "function") {
 		webview.toggleDevTools();
 		scheduleDevtoolsLayoutRefresh(
@@ -1695,7 +1621,6 @@ function toggleFocusedWindowDevTools(): void {
 		);
 		return;
 	}
-
 	if (typeof webview?.openDevTools === "function") {
 		webview.openDevTools();
 		scheduleDevtoolsLayoutRefresh(
@@ -1703,13 +1628,11 @@ function toggleFocusedWindowDevTools(): void {
 		);
 		return;
 	}
-
 	Utils.showNotification({
 		title: "Developer Tools Unavailable",
 		body: "The focused window does not expose Electrobun devtools controls.",
 	});
 }
-
 /**
  * The exact rpc object that BrowserView.defineRPC<ElizaDesktopRPCSchema>
  * returns. Carries the schema generic so call sites get typed `request`
@@ -1718,7 +1641,6 @@ function toggleFocusedWindowDevTools(): void {
 type ElizaDesktopRpc = ReturnType<
 	typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
 >;
-
 /**
  * Internal: type-erased view of the rpc shape that
  * `wireBrowserWorkspaceCaller` consumes. The handler module declares its
@@ -1727,19 +1649,15 @@ type ElizaDesktopRpc = ReturnType<
  */
 // biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
 type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
-
 function asRpcRequestProxy(request: unknown): RpcRequestProxy {
 	return request as RpcRequestProxy;
 }
-
 function asRpcSend(
 	send: unknown,
 ): (message: string, payload?: unknown) => void {
 	return send as (message: string, payload?: unknown) => void;
 }
-
-const MAX_RPC_REQUEST_TIME_MS = 600_000;
-
+const MAX_RPC_REQUEST_TIME_MS = 600000;
 /**
  * Build a typed RPC instance plus its `sendToWebview` companion, ready to
  * be passed to a `BrowserWindow` / `BrowserView` constructor via the `rpc`
@@ -1762,7 +1680,6 @@ function createDesktopRpc(label: string): {
 	releaseShellSync: () => void;
 } {
 	let rpc: ElizaDesktopRpc | undefined;
-
 	const sendToWebview: SendToWebview = (message, payload) => {
 		if (!rpc) {
 			logger.warn(
@@ -1783,18 +1700,15 @@ function createDesktopRpc(label: string): {
 			);
 		}
 	};
-
 	type BunRpcRequestsHandlers = NonNullable<
 		Parameters<
 			typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
 		>[0]["handlers"]
 	>["requests"];
-
 	// Register this window with the main-process shell-controller authority
 	// (#16442). Every renderer flows through this factory, so ownership,
 	// generations, commands, and targeted capture results share one boundary.
 	const shellSyncEndpoint = registerShellSyncEndpoint(label, sendToWebview);
-
 	rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
 		maxRequestTime: MAX_RPC_REQUEST_TIME_MS,
 		handlers: {
@@ -1804,10 +1718,8 @@ function createDesktopRpc(label: string): {
 			}) as BunRpcRequestsHandlers,
 		},
 	});
-
 	return { rpc, sendToWebview, releaseShellSync: shellSyncEndpoint.release };
 }
-
 /**
  * Wire main-window-only side effects after the BrowserWindow has been
  * constructed with its pre-built RPC.
@@ -1833,7 +1745,6 @@ function wireMainWindowAfterCreate(
 		request: asRpcRequestProxy(rpc.request),
 	});
 }
-
 /**
  * Wire RPC for a secondary window (e.g. settings) after constructor-time
  * injection. Does NOT call `initializeNativeModules` — that would
@@ -1848,16 +1759,13 @@ function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
 		request: asRpcRequestProxy(rpc.request),
 	});
 }
-
 function injectApiBase(win: BrowserWindow): void {
 	const runtimeResolution = resolveDesktopRuntime();
-
 	if (runtimeResolution.externalApi.invalidSources.length > 0) {
 		logger.warn(
 			`[Main] Invalid API base env vars: ${runtimeResolution.externalApi.invalidSources.join(", ")}`,
 		);
 	}
-
 	if (
 		runtimeResolution.mode === "external" &&
 		runtimeResolution.externalApi.base
@@ -1875,7 +1783,6 @@ function injectApiBase(win: BrowserWindow): void {
 		setAgentReady(runtimeResolution.externalReachability !== "unavailable");
 		return;
 	}
-
 	if (runtimeResolution.mode === "disabled") {
 		// Runtime-less consumer bundle: there is no embedded agent, so minting a
 		// local API token here would be worse than useless — the renderer's cloud
@@ -1893,7 +1800,6 @@ function injectApiBase(win: BrowserWindow): void {
 		setAgentReady(true);
 		return;
 	}
-
 	const agent = getAgentManager();
 	const port = agent.getPort() ?? resolveDesktopApiPort(process.env);
 	const apiToken = configureDesktopLocalApiAuth();
@@ -1907,21 +1813,17 @@ function injectApiBase(win: BrowserWindow): void {
 	);
 	setAgentReady(true);
 }
-
 function injectApiBaseIntoOpenRendererWindows(): void {
 	if (currentWindow) {
 		injectApiBase(currentWindow);
 	}
-
 	surfaceWindowManager?.forEachWindow((w) => {
 		injectApiBase(w as BrowserWindow);
 	});
-
 	getDesktopManager().forEachTrayPopoverWindow((w) => {
 		injectApiBase(w);
 	});
 }
-
 /**
  * Snapshot of every currently-open renderer window the agent API base should
  * be pushed to. Mirrors the window set in injectApiBaseIntoOpenRendererWindows.
@@ -1940,7 +1842,6 @@ function collectOpenRendererWindows(): BrowserWindow[] {
 	});
 	return windows;
 }
-
 /**
  * Push real OS permission states into the agent REST API so the renderer's
  * PermissionsSection shows correct statuses and capability toggles unlock.
@@ -1965,7 +1866,6 @@ async function syncPermissionsToRestApi(
 		);
 	}
 }
-
 function isDesktopLoopbackApiBase(apiBase: string): boolean {
 	try {
 		const url = new URL(apiBase);
@@ -1983,10 +1883,8 @@ function isDesktopLoopbackApiBase(apiBase: string): boolean {
 		return false;
 	}
 }
-
 async function _startAgent(): Promise<void> {
 	const runtimeResolution = resolveDesktopRuntime();
-
 	if (runtimeResolution.mode !== "local") {
 		logger.info(
 			`[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
@@ -2014,16 +1912,13 @@ async function _startAgent(): Promise<void> {
 		injectApiBaseIntoOpenRendererWindows();
 		return;
 	}
-
 	recordStartupPhase("autostart_requested", {
 		pid: process.pid,
 		exec_path: process.execPath,
 		bundle_path: resolveStartupBundlePath(process.execPath),
 	});
-
 	try {
 		const status = await getAgentManager().start();
-
 		if (status.state === "running" && status.port) {
 			const apiBase = `http://127.0.0.1:${status.port}`;
 			const rendererBase = resolveRendererFacingApiBase(
@@ -2062,9 +1957,7 @@ async function _startAgent(): Promise<void> {
 					// error-policy:J1 remote authority remains stopped when its secure
 					// enrollment or durable journal cannot be validated at startup.
 					logger.error(
-						`[RemoteTarget] Startup resume blocked: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
+						`[RemoteTarget] Startup resume blocked: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				});
 			// Sync real OS permission states to the REST API so the renderer
@@ -2079,7 +1972,6 @@ async function _startAgent(): Promise<void> {
 		);
 	}
 }
-
 async function setupUpdater(): Promise<void> {
 	const runUpdateCheck = async (notifyOnNoUpdate = false): Promise<void> => {
 		try {
@@ -2098,7 +1990,6 @@ async function setupUpdater(): Promise<void> {
 				}
 				return;
 			}
-
 			const updateResult = await Updater.checkForUpdate();
 			if (updateResult.updateAvailable) {
 				Updater.downloadUpdate().catch((err: unknown) => {
@@ -2108,7 +1999,6 @@ async function setupUpdater(): Promise<void> {
 				});
 				return;
 			}
-
 			if (notifyOnNoUpdate) {
 				Utils.showNotification({
 					title: `${BRAND.appName} Up To Date`,
@@ -2127,7 +2017,6 @@ async function setupUpdater(): Promise<void> {
 			}
 		}
 	};
-
 	try {
 		// Subscribe to update status changes so we can notify the renderer
 		// at the right lifecycle points.
@@ -2148,7 +2037,6 @@ async function setupUpdater(): Promise<void> {
 				});
 			}
 		});
-
 		const triggerManualUpdateCheck = () => {
 			Utils.showNotification({
 				title: "Checking for Updates",
@@ -2156,7 +2044,6 @@ async function setupUpdater(): Promise<void> {
 			});
 			void runUpdateCheck(true);
 		};
-
 		const handleUpdateAndConfigMenuAction = async (
 			action: string | undefined,
 		): Promise<boolean> => {
@@ -2184,7 +2071,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleMainWindowMenuAction = (
 			action: string | undefined,
 		): boolean => {
@@ -2214,7 +2100,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleSettingsMenuAction = (action: string | undefined): boolean => {
 			if (action === "open-secrets-manager") {
 				void restoreWindow();
@@ -2227,7 +2112,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleSurfaceMenuAction = (action: string | undefined): boolean => {
 			const workspaceOptions = resolveDesktopWorkspaceWindowOptions(action);
 			if (workspaceOptions) {
@@ -2281,7 +2165,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleStewardMenuAction = (action: string | undefined): boolean => {
 			if (action === "restart-steward" && isStewardLocalEnabled()) {
 				restartSteward().catch((err: unknown) => {
@@ -2309,7 +2192,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleAppEntryMenuAction = async (
 			action: string | undefined,
 		): Promise<boolean> => {
@@ -2336,7 +2218,6 @@ async function setupUpdater(): Promise<void> {
 			});
 			return true;
 		};
-
 		const handleRuntimeMenuAction = (action: string | undefined): boolean => {
 			if (action === "relaunch") {
 				void getDesktopManager().relaunch();
@@ -2379,7 +2260,6 @@ async function setupUpdater(): Promise<void> {
 			}
 			return false;
 		};
-
 		const handleApplicationMenuAction = async (
 			action: string | undefined,
 		): Promise<void> => {
@@ -2394,29 +2274,33 @@ async function setupUpdater(): Promise<void> {
 			if (await handleAppEntryMenuAction(action)) return;
 			handleRuntimeMenuAction(action);
 		};
-
 		setApplicationMenuActionHandler(handleApplicationMenuAction);
-
 		Electrobun.events.on(
 			"application-menu-clicked",
-			(e: { data?: { action?: string } }) => {
+			(e: {
+				data?: {
+					action?: string;
+				};
+			}) => {
 				void handleApplicationMenuAction(e.data?.action);
 			},
 		);
-
 		// Route tray app entries (`tray-app-<slug>`) into the same handler as the
 		// OS menu bar. WHY: the desktop manager forwards every tray click to the
 		// renderer, but spawning native windows must happen on the bun side.
 		Electrobun.events.on(
 			"tray-clicked",
-			(e: { data?: { action?: string } }) => {
+			(e: {
+				data?: {
+					action?: string;
+				};
+			}) => {
 				const action = e.data?.action;
 				if (typeof action === "string" && action.startsWith("tray-app-")) {
 					void handleApplicationMenuAction(action);
 				}
 			},
 		);
-
 		Electrobun.events.on("context-menu-clicked", (action: string) => {
 			if (action === "check-for-updates") {
 				triggerManualUpdateCheck();
@@ -2424,7 +2308,6 @@ async function setupUpdater(): Promise<void> {
 				void getDesktopManager().relaunch();
 			}
 		});
-
 		await runUpdateCheck(false);
 	} catch (err) {
 		logger.warn(
@@ -2432,7 +2315,6 @@ async function setupUpdater(): Promise<void> {
 		);
 	}
 }
-
 /**
  * Handle a `<scheme>://...` deep link. Recognized routes:
  *   - `<scheme>://apps/<slug>` → open or focus the matching app window
@@ -2467,10 +2349,8 @@ async function handleDeepLink(url: string): Promise<void> {
 			return;
 		}
 	}
-
 	await forwardDeepLinkToRenderer(url);
 }
-
 async function forwardDeepLinkToRenderer(url: string): Promise<void> {
 	await restoreWindow();
 	// Assistant/Siri/Shortcuts links deliberately stay renderer-owned. LifeOps
@@ -2478,7 +2358,6 @@ async function forwardDeepLinkToRenderer(url: string): Promise<void> {
 	// ScheduledTask records instead of creating native macOS-only state.
 	sendToActiveRenderer("shareTargetReceived", { url });
 }
-
 function setupDeepLinks(): void {
 	Electrobun.events.on("open-url", (event: unknown) => {
 		const url = readOpenUrlEventUrl(event);
@@ -2489,18 +2368,15 @@ function setupDeepLinks(): void {
 		void handleDeepLink(url);
 	});
 }
-
 function setupDockReopen(): void {
 	Electrobun.events.on("reopen", () => {
 		void restoreWindow();
 	});
 }
-
 async function runShutdownCleanup(reason: string): Promise<void> {
 	if (shutdownCleanupPromise) {
 		return shutdownCleanupPromise;
 	}
-
 	shutdownCleanupPromise = (async () => {
 		logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
 		isQuitting = true;
@@ -2524,22 +2400,17 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 			await disposeNativeModules();
 		} catch (error) {
 			logger.warn(
-				`[Main] Native module disposal failed during shutdown: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`[Main] Native module disposal failed during shutdown: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	})();
-
 	return shutdownCleanupPromise;
 }
-
 function setupShutdown(): void {
 	Electrobun.events.on("before-quit", () => {
 		void runShutdownCleanup("before-quit");
 	});
 }
-
 /**
  * Load repo-root and state-dir `.env` into `process.env` (non-destructive) so the
  * main process can send the same `ELIZA_API_TOKEN` as `dev-server.ts` when
@@ -2557,7 +2428,6 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
 	if (isPackagedBuild) {
 		return;
 	}
-
 	try {
 		const { config } = await import("dotenv");
 		const repoRootGuess = path.resolve(
@@ -2586,7 +2456,6 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
 		/* dotenv may be unavailable in minimal installs */
 	}
 }
-
 function initializeBundledWebGPU(): void {
 	if (!WGPU.native.available) {
 		logger.info(
@@ -2594,11 +2463,9 @@ function initializeBundledWebGPU(): void {
 		);
 		return;
 	}
-
 	webgpu.install();
 	logger.info(`[WebGPU] Native Dawn runtime ready at ${WGPU.native.path}`);
 }
-
 /**
  * Check WebGPU availability in the webview browser and push status to renderer.
  *
@@ -2625,13 +2492,11 @@ function checkWebGpuBrowserSupport(rendererType: "native" | "cef"): void {
 			);
 		}
 	}
-
 	// Push status to renderer after a short delay to allow window creation.
 	setTimeout(() => {
 		sendToActiveRenderer("webgpu:browserStatus", status);
 	}, 2000);
 }
-
 async function main(): Promise<void> {
 	recordStartupPhase("main_start", {
 		pid: process.pid,
@@ -2696,11 +2561,9 @@ async function main(): Promise<void> {
 	console.log(
 		`[Env] desktopRuntimeMode=${runtimeResolution.mode} externalApi=${runtimeResolution.externalApi.base ?? "none"}`,
 	);
-
 	printElectrobunDevSettingsBanner(
 		process.env as Record<string, string | undefined>,
 	);
-
 	// Don't block first paint on the crash-recovery prompt. The common path is a
 	// couple of stat reads that early-return; the only blocking case is a modal
 	// shown after a *prior* launch crashed, which can safely overlap the window.
@@ -2770,7 +2633,6 @@ async function main(): Promise<void> {
 			);
 		}
 	}
-
 	initializeBundledWebGPU();
 	recordStartupPhase("webgpu_initialized", {
 		pid: process.pid,
@@ -2818,7 +2680,6 @@ async function main(): Promise<void> {
 	if (stopDesktopTestBridgeServer) {
 		cleanupFns.push(stopDesktopTestBridgeServer);
 	}
-
 	// WHY push API base on every status tick with a port: embedded startup can
 	// settle on a different loopback port than env/static HTML (allocation + stdout).
 	// Detached surfaces must not keep a stale boot-config apiBase while the main
@@ -2855,7 +2716,6 @@ async function main(): Promise<void> {
 			}
 		}),
 	);
-
 	// Create window first — on Windows (CEF) the UI message loop must be
 	// running before any synchronous FFI calls like setApplicationMenu().
 	// Calling setupApplicationMenu() before createMainWindow() deadlocks.
@@ -2897,7 +2757,6 @@ async function main(): Promise<void> {
 	recordStartupPhase("window_ready", {
 		pid: process.pid,
 	});
-
 	// A successful manual SSH Start is durable desired-state. Restore only those
 	// tunnels, revalidating secure host trust and the live host key inside the
 	// SSH runtime boundary. Shutdown disposes processes but deliberately retains
@@ -2918,17 +2777,13 @@ async function main(): Promise<void> {
 		})
 		.catch((error) => {
 			logger.warn(
-				`[SSH runtime] Failed to read restart intents; all SSH tunnels remain stopped: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`[SSH runtime] Failed to read restart intents; all SSH tunnels remain stopped: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		});
-
 	// Per-window RPC tracking: surface windows each get their own typed
 	// RPC built up front via createDesktopRpc, baked into the BrowserWindow
 	// constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
 	const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
-
 	surfaceWindowManager = new SurfaceWindowManager({
 		createWindow: (options) => {
 			const { rpc, releaseShellSync } = createDesktopRpc("surface");
@@ -2976,7 +2831,6 @@ async function main(): Promise<void> {
 	if (stopScreenshotDevServer) {
 		cleanupFns.push(stopScreenshotDevServer);
 	}
-
 	// Wire detached window callbacks so menus and RPC can open them.
 	getDesktopManager().setOpenSettingsCallback((tabHint) => {
 		void createSettingsWindow(tabHint);
@@ -3006,7 +2860,6 @@ async function main(): Promise<void> {
 	getDesktopManager().setManagedWindowAlwaysOnTopCallback((id, flag) => {
 		return surfaceWindowManager?.setWindowAlwaysOnTop(id, flag) ?? false;
 	});
-
 	// If launched with --hidden (e.g. auto-launch with openAsHidden), minimize immediately.
 	// In tray-first mode there is no window yet (mainWin is null) — nothing to minimize.
 	if (mainWin && process.argv.includes("--hidden")) {
@@ -3018,10 +2871,8 @@ async function main(): Promise<void> {
 			);
 		}
 	}
-
 	setupDeepLinks();
 	setupDockReopen();
-
 	const desktop = getDesktopManager();
 	if (shouldCreateDesktopTray(process.env)) {
 		try {
@@ -3036,7 +2887,6 @@ async function main(): Promise<void> {
 				tooltip: BRAND.appName,
 				...resolveDesktopTrayIconOptions(),
 			});
-
 			if (dockless) {
 				if (desktop.hasVisibleTrayStatusItem()) {
 					desktop.setTrayFirstMode(true);
@@ -3059,7 +2909,7 @@ async function main(): Promise<void> {
 						logger.info(
 							"[Main] Menu-bar icon recovered — pill-only dockless mode enabled",
 						);
-					}, 5_000);
+					}, 5000);
 					trayRecoveryTimer.unref?.();
 					cleanupFns.push(() => clearInterval(trayRecoveryTimer));
 				}
@@ -3072,7 +2922,6 @@ async function main(): Promise<void> {
 				`[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
-
 		// Tray popover (#9953 Phase 4): when enabled, a tray click opens a widget
 		// popover instead of restoring the full window. macOS-only today (see
 		// shouldEnableTrayPopover); Win/Linux keep the text context menu.
@@ -3109,7 +2958,6 @@ async function main(): Promise<void> {
 	} else {
 		logger.info("[Main] Desktop tray disabled by environment");
 	}
-
 	// ── Steward sidecar startup (must happen BEFORE agent) ────────────
 	// When STEWARD_LOCAL=true, start the steward sidecar first so it can
 	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The the app agent's
@@ -3117,14 +2965,12 @@ async function main(): Promise<void> {
 	if (isStewardLocalEnabled()) {
 		logger.info("[Main] STEWARD_LOCAL=true — starting steward sidecar...");
 		cleanupFns.push(() => stopSteward());
-
 		// Listen for steward status changes and push to renderer
 		cleanupFns.push(
 			onStewardStatusChange((status) => {
 				sendToActiveRenderer("stewardStatusUpdate", status);
 			}),
 		);
-
 		try {
 			const stewardResult = await startSteward();
 			if (stewardResult.state === "running") {
@@ -3150,7 +2996,6 @@ async function main(): Promise<void> {
 			// Don't block agent startup — steward is optional
 		}
 	}
-
 	// Both runtime modes establish loopback session authority before publishing
 	// the API connection. Local mode starts the embedded agent first;
 	// apiBaseOwner.injectIntoHtml()
@@ -3169,32 +3014,28 @@ async function main(): Promise<void> {
 			console.error(`title: "${BRAND.appName} startup failed"`);
 		});
 	}
-
 	void setupUpdater();
 	cleanupFns.push(() => getAgentManager().stop());
 	setupShutdown();
 }
-
 function resolveStartupCrashReportPath(): string {
 	return path.join(
 		path.dirname(getDiagnosticLogPath()),
 		STARTUP_CRASH_REPORT_FILE,
 	);
 }
-
 function resolveStartupCrashPromptMarkerPath(): string {
 	return path.join(
 		path.dirname(getDiagnosticLogPath()),
 		STARTUP_CRASH_PROMPT_MARKER_FILE,
 	);
 }
-
 function buildStartupCrashDiscordReport(options: {
 	source: "startup-recovery" | "fatal-startup";
 	error: string | null;
 }): string {
 	const diagnostics = getStartupDiagnosticsSnapshot();
-	const startupLogTail = getStartupDiagnosticLogTail(8_000).trim();
+	const startupLogTail = getStartupDiagnosticLogTail(8000).trim();
 	const appVersion = process.env.npm_package_version?.trim() || "unknown";
 	const appRuntime = `electrobun/${Bun.version}`;
 	const reportLines = [
@@ -3216,7 +3057,6 @@ function buildStartupCrashDiscordReport(options: {
 		"",
 		startupLogTail ? "Startup Log Tail:" : "Startup Log Tail: unavailable",
 	];
-
 	if (startupLogTail) {
 		reportLines.push("```");
 		reportLines.push(startupLogTail);
@@ -3224,11 +3064,13 @@ function buildStartupCrashDiscordReport(options: {
 	}
 	return `${reportLines.join("\n")}\n`;
 }
-
 function persistStartupCrashReport(options: {
 	source: "startup-recovery" | "fatal-startup";
 	error: string | null;
-}): { report: string; reportPath: string } {
+}): {
+	report: string;
+	reportPath: string;
+} {
 	const report = buildStartupCrashDiscordReport(options);
 	const primaryReportPath = resolveStartupCrashReportPath();
 	const fallbackReportPath = path.join(os.tmpdir(), STARTUP_CRASH_REPORT_FILE);
@@ -3252,7 +3094,6 @@ function persistStartupCrashReport(options: {
 	}
 	return { report, reportPath };
 }
-
 function wasStartupCrashAlreadyPrompted(updatedAt: string): boolean {
 	try {
 		const markerPath = resolveStartupCrashPromptMarkerPath();
@@ -3262,7 +3103,6 @@ function wasStartupCrashAlreadyPrompted(updatedAt: string): boolean {
 		return false;
 	}
 }
-
 function markStartupCrashPrompted(updatedAt: string): void {
 	try {
 		fs.writeFileSync(resolveStartupCrashPromptMarkerPath(), updatedAt, "utf8");
@@ -3272,7 +3112,6 @@ function markStartupCrashPrompted(updatedAt: string): void {
 		logger.warn("[Main][startup-crash] failed to persist prompt marker", err);
 	}
 }
-
 async function maybePromptStartupCrashReport(): Promise<void> {
 	if (
 		process.env.ELIZA_DESKTOP_SKIP_STARTUP_CRASH_PROMPT === "1" ||
@@ -3280,7 +3119,6 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 	) {
 		return;
 	}
-
 	const diagnostics = getStartupDiagnosticsSnapshot();
 	const looksLikeStartupFailure =
 		diagnostics.state === "error" &&
@@ -3292,13 +3130,11 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 	if (wasStartupCrashAlreadyPrompted(diagnostics.updatedAt)) {
 		return;
 	}
-
 	const { report, reportPath } = persistStartupCrashReport({
 		source: "startup-recovery",
 		error: diagnostics.lastError,
 	});
 	markStartupCrashPrompted(diagnostics.updatedAt);
-
 	const dialog = await Utils.showMessageBox({
 		type: "warning",
 		title: `${BRAND.appName} recovered after a startup failure`,
@@ -3312,11 +3148,14 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 	});
 	const response =
 		dialog && typeof dialog === "object" && "response" in dialog
-			? (dialog as { response: number }).response
+			? (
+					dialog as {
+						response: number;
+					}
+				).response
 			: typeof dialog === "number"
 				? dialog
 				: 2;
-
 	if (response === 0) {
 		try {
 			Utils.clipboardWriteText(report);
@@ -3339,7 +3178,6 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 		}
 	}
 }
-
 main().catch((err) => {
 	const msg = `[Main] Fatal error during startup: ${err?.stack ?? err}`;
 	console.error(msg);
@@ -3389,7 +3227,5 @@ main().catch((err) => {
 	}
 	void runShutdownCleanup("fatal-startup").finally(shutdownAfterFatalError);
 });
-
-import { shutdownAfterFatalError } from "./fatal-shutdown";
 
 export { shutdownAfterFatalError };

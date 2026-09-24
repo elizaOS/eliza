@@ -2,8 +2,8 @@
  * Unit tests for selectV5PlannerStateProviderNames, the v5 planner
  * state-provider selection (#13203): a provider's FULL declared contextGate
  * (anyOf/allOf/noneOf) must gate its planner inclusion, undeclared providers
- * resolve through the provider-context catalog, and `alwaysInResponseState`
- * providers (RECENT_ERRORS) are composed on every turn. Deterministic fake
+ * resolve through the provider-context catalog, and diagnostic records load
+ * only for their system context. Deterministic fake
  * runtime with literal provider fixtures — no live model or database.
  */
 import { describe, expect, it } from "vitest";
@@ -152,24 +152,18 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
     );
   });
 
-  it("composes RECENT_ERRORS on every turn via alwaysInResponseState (#13203)", () => {
-    // RECENT_ERRORS is uncataloged and declares no contexts; without the
-    // always-on opt-in it would resolve to ["general"] and miss the narrow
-    // planner/tool turns where failures matter most.
-    expect(recentErrorsProvider.alwaysInResponseState).toBe(true);
-    expect(select([recentErrorsProvider], ["code"])).toContain("RECENT_ERRORS");
-    expect(select([recentErrorsProvider], [])).toContain("RECENT_ERRORS");
+  it("loads diagnostics for system work, not unrelated planner turns", () => {
+    expect(select([recentErrorsProvider], ["system"])).toContain(
+      "RECENT_ERRORS",
+    );
+    expect(select([recentErrorsProvider], ["code"])).not.toContain(
+      "RECENT_ERRORS",
+    );
+    expect(select([recentErrorsProvider], [])).not.toContain("RECENT_ERRORS");
   });
 });
 
-/**
- * The ambient RECENT_ERRORS exclusion must own the planner recompose, not
- * just Stage 1: the always-on re-add above would otherwise restore internal
- * diagnostics exactly on the ambient turns routed to planning — the turns
- * this exclusion exists for (tj-f8249b30e986d6). Classification is
- * structural (channel type + addressing + source metadata), never message
- * text, and fails open to the full provider set.
- */
+/** Ambient routing cannot reintroduce diagnostics outside their declared domain. */
 describe("selectV5PlannerStateProviderNames — ambient-turn exclusions", () => {
   function groupMsg(content: Record<string, unknown>): Memory {
     return {
@@ -193,18 +187,21 @@ describe("selectV5PlannerStateProviderNames — ambient-turn exclusions", () => 
     expect(selectFor({ channelType: "GROUP" })).not.toContain("RECENT_ERRORS");
   });
 
-  it("keeps RECENT_ERRORS on an addressed group turn (platform mention)", () => {
+  it("does not add system diagnostics merely because a group turn addresses the agent", () => {
     expect(
       selectFor({
         channelType: "GROUP",
         mentionContext: { isMention: true, isReply: false, isThread: false },
       }),
-    ).toContain("RECENT_ERRORS");
+    ).not.toContain("RECENT_ERRORS");
   });
 
-  it("keeps RECENT_ERRORS on DM and unknown-channel turns (fail open)", () => {
-    expect(selectFor({ channelType: "DM" })).toContain("RECENT_ERRORS");
-    expect(selectFor({})).toContain("RECENT_ERRORS");
+  it("keeps diagnostics out of ordinary private and unknown-channel conversation", () => {
+    expect(selectFor({ channelType: "DM" })).not.toContain("RECENT_ERRORS");
+    expect(selectFor({ channelType: "VOICE_DM" })).not.toContain(
+      "RECENT_ERRORS",
+    );
+    expect(selectFor({})).not.toContain("RECENT_ERRORS");
   });
 
   it("keeps the Stage-1-only exclusions out of scope: the planner still re-adds ENTITIES", () => {

@@ -8,7 +8,7 @@
  * route modules call these to normalize inbound bodies.
  */
 import { createHash } from "node:crypto";
-import { asRecord } from "@elizaos/shared";
+import { asRecord } from "@elizaos/core/type-guards";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : "";

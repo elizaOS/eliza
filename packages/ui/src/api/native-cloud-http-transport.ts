@@ -9,7 +9,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { decodeNativeBase64 } from "./native-http-codec";
 import {
@@ -25,7 +25,6 @@ const DIRECT_CLOUD_API_HOSTS = new Set([
   "api.eliza.app",
   "api-staging.eliza.app",
 ]);
-
 function parseUrl(url: string): URL | null {
   try {
     return new URL(url);
@@ -35,7 +34,6 @@ function parseUrl(url: string): URL | null {
     return null;
   }
 }
-
 function isNativeDirectCloudApiUrl(url: string): boolean {
   const parsed = parseUrl(url);
   return (
@@ -45,7 +43,6 @@ function isNativeDirectCloudApiUrl(url: string): boolean {
     DIRECT_CLOUD_API_HOSTS.has(parsed.hostname.toLowerCase())
   );
 }
-
 /**
  * A dedicated agent subdomain (`<agentId>.cloud.eliza.app`) on a native build —
  * NOT the central `api.eliza.app` host. Only these serve CORS for the app
@@ -63,7 +60,6 @@ function isNativeCloudAgentSubdomain(url: string): boolean {
   const host = parsed.hostname.toLowerCase();
   return isElizaDedicatedAgentHostname(host);
 }
-
 function isNativeCloudHttpsUrl(url: string): boolean {
   const parsed = parseUrl(url);
   if (!parsed || !Capacitor.isNativePlatform()) return false;
@@ -74,7 +70,6 @@ function isNativeCloudHttpsUrl(url: string): boolean {
     isElizaDedicatedAgentHostname(host)
   );
 }
-
 /**
  * A user-selected remote-Mac endpoint is allowed to bypass WKWebView CORS only
  * after the canonical runtime-mode and private-network trust gates agree. The
@@ -99,12 +94,10 @@ function isNativeTrustedRemoteAgentUrl(url: string): boolean {
   if (parsed.username || parsed.password) return false;
   return isTrustedRestoreApiBaseUrl(parsed.origin);
 }
-
 type NativeWebFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
-
 /**
  * The original, un-patched browser `fetch` that Capacitor preserves as
  * `CapacitorWebFetch` when its HTTP plugin patches the global `fetch`. Using it
@@ -112,22 +105,22 @@ type NativeWebFetch = (
  * dedicated agent subdomains, which serve CORS for the app origin.
  */
 function nativeWebFetch(): NativeWebFetch | null {
-  const candidate = (globalThis as { CapacitorWebFetch?: unknown })
-    .CapacitorWebFetch;
+  const candidate = (
+    globalThis as {
+      CapacitorWebFetch?: unknown;
+    }
+  ).CapacitorWebFetch;
   return typeof candidate === "function" ? (candidate as NativeWebFetch) : null;
 }
-
 function hasBearerAuthorization(headers: HeadersInit | undefined): boolean {
   const authorization = new Headers(headers ?? {}).get("authorization");
   return authorization?.trim().toLowerCase().startsWith("bearer ") ?? false;
 }
-
 function responseBody(data: unknown): string {
   if (data === null || data === undefined) return "";
   if (typeof data === "string") return data;
   return JSON.stringify(data);
 }
-
 /** CapacitorHttp expects JSON as a structured bridge value, not serialized text. */
 function nativeRequestData(
   body: BodyInit | null | undefined,
@@ -135,7 +128,6 @@ function nativeRequestData(
 ): unknown {
   const serialized = bodyToString(body) ?? undefined;
   if (serialized === undefined) return undefined;
-
   const contentType = new Headers(headers ?? {})
     .get("content-type")
     ?.split(";", 1)[0]
@@ -144,7 +136,6 @@ function nativeRequestData(
   if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
     return serialized;
   }
-
   try {
     return JSON.parse(serialized);
   } catch {
@@ -153,13 +144,11 @@ function nativeRequestData(
     return serialized;
   }
 }
-
 /** CapacitorHttp returns arraybuffer responses as base64 across the native bridge. */
 function responseBytes(data: unknown): ArrayBuffer {
   if (typeof data !== "string" || data.length === 0) return new ArrayBuffer(0);
   return decodeNativeBase64(data);
 }
-
 const nativeCloudHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     // SSE chat streams to a dedicated agent subdomain must bypass CapacitorHttp
@@ -192,7 +181,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
         return webFetch(url, init);
       }
     }
-
     // Session-cookie-only remote-agent requests, including SSE, must remain on
     // CapacitorHttp. Its native cookie jar carries the HttpOnly SameSite session
     // established by password login; a cross-site WebView fetch cannot reliably
@@ -204,7 +192,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     if (!isDirectApi && !isRemoteAgent && !(wantsBinary && isCloudHost)) {
       return fetchAgentTransport.request(url, init, context);
     }
-
     const method = init.method ?? "GET";
     // CapacitorHttp crosses a JSON bridge: send JSON as a structured value so
     // iOS serializes the request object once instead of quoting the JSON text.
@@ -212,7 +199,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     if (init.body != null && data === undefined) {
       return fetchAgentTransport.request(url, init, context);
     }
-
     const result = await CapacitorHttp.request({
       url,
       method,
@@ -233,7 +219,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
           }
         : {}),
     });
-
     // CapacitorHttp ignores the requested `arraybuffer` responseType for
     // `application/json` responses and delivers a parsed object instead of
     // base64. That happens exactly on the failure path (e.g. a 400/401/403
@@ -256,7 +241,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     );
   },
 };
-
 export function nativeCloudHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {

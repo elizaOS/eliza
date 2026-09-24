@@ -16,7 +16,10 @@ import {
   ModelType,
   validateUuid,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin, Route } from "@elizaos/shared";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/core/api/http-plugin";
 import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";

@@ -17,7 +17,7 @@ import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
 
 /**

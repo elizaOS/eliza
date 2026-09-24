@@ -6,35 +6,34 @@
  * exported from the package root.
  */
 
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  Plugin,
-  UUID,
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type Plugin,
+  type UUID,
 } from "@elizaos/core";
-import type {
-  MeetingBillingState,
-  MeetingEndReason,
-  MeetingParticipant,
-  MeetingPlatform,
-  MeetingSessionStatus,
-  TranscriptSegment,
-} from "@elizaos/shared";
+import {
+  type MeetingBillingState,
+  type MeetingEndReason,
+  type MeetingParticipant,
+  type MeetingPlatform,
+  type MeetingSessionStatus,
+} from "@elizaos/core/meetings";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import {
   type MeetingPipelineInstance,
   MeetingService,
   type MeetingServiceDependencies,
 } from "./service.js";
-import type {
-  MeetingBillingSession,
-  MeetingBotSession,
-  MeetingPipelineOptions,
-  MeetingPlatformAdapter,
-  PipelineTranscriptUpdate,
+import {
+  MeetingBillingError,
+  type MeetingBillingSession,
+  type MeetingBotSession,
+  type MeetingPipelineOptions,
+  type MeetingPlatformAdapter,
+  type PipelineTranscriptUpdate,
 } from "./types.js";
-import { MeetingBillingError } from "./types.js";
-
 export interface FakeRuntime {
   runtime: IAgentRuntime;
   memories: Map<string, Memory>;
@@ -44,11 +43,17 @@ export interface FakeRuntime {
   entities: Array<Record<string, unknown>>;
   broadcasts: object[];
   documents: Array<Record<string, unknown>>;
-  events: Array<{ event: string | string[]; payload: unknown }>;
-  reportedErrors: Array<{ scope: string; error: unknown; context?: unknown }>;
+  events: Array<{
+    event: string | string[];
+    payload: unknown;
+  }>;
+  reportedErrors: Array<{
+    scope: string;
+    error: unknown;
+    context?: unknown;
+  }>;
   settings: Record<string, string>;
 }
-
 export function makeFakeRuntime(): FakeRuntime {
   const memories = new Map<string, Memory>();
   const tables = new Map<string, string>();
@@ -57,14 +62,16 @@ export function makeFakeRuntime(): FakeRuntime {
   const entities: Array<Record<string, unknown>> = [];
   const broadcasts: object[] = [];
   const documents: Array<Record<string, unknown>> = [];
-  const events: Array<{ event: string | string[]; payload: unknown }> = [];
+  const events: Array<{
+    event: string | string[];
+    payload: unknown;
+  }> = [];
   const reportedErrors: Array<{
     scope: string;
     error: unknown;
     context?: unknown;
   }> = [];
   const settings: Record<string, string> = {};
-
   const connectorSetup = {
     broadcastWs: (data: object) => {
       broadcasts.push(data);
@@ -76,7 +83,6 @@ export function makeFakeRuntime(): FakeRuntime {
       return { storedDocumentMemoryId: crypto.randomUUID() as UUID };
     },
   };
-
   const runtime = {
     agentId: "00000000-0000-0000-0000-00000000a9e7" as UUID,
     character: { name: "Eliza" },
@@ -102,7 +108,11 @@ export function makeFakeRuntime(): FakeRuntime {
       return memory.id as UUID;
     },
     getMemoryById: async (id: UUID) => memories.get(id) ?? null,
-    updateMemory: async (patch: Partial<Memory> & { id: UUID }) => {
+    updateMemory: async (
+      patch: Partial<Memory> & {
+        id: UUID;
+      },
+    ) => {
       const existing = memories.get(patch.id);
       if (!existing) return false;
       memories.set(patch.id, { ...existing, ...patch });
@@ -115,7 +125,6 @@ export function makeFakeRuntime(): FakeRuntime {
       reportedErrors.push({ scope, error, context });
     },
   } as unknown as IAgentRuntime;
-
   return {
     runtime,
     memories,
@@ -130,20 +139,24 @@ export function makeFakeRuntime(): FakeRuntime {
     settings,
   };
 }
-
 /** A scripted pipeline the test drives directly. */
 export class ScriptedPipeline implements MeetingPipelineInstance {
   updates: Array<(update: PipelineTranscriptUpdate) => void> = [];
-  pushed: Array<{ speakerKey: string; samples: Float32Array }> = [];
+  pushed: Array<{
+    speakerKey: string;
+    samples: Float32Array;
+  }> = [];
   named = new Map<string, string>();
   flushed: string[] = [];
   joined: MeetingParticipant[] = [];
-  left: Array<{ participantId: string; atMs: number }> = [];
+  left: Array<{
+    participantId: string;
+    atMs: number;
+  }> = [];
   finalSegments: TranscriptSegment[] = [];
   finalizeError: Error | null = null;
   audioWav: Buffer | null = null;
   finalized = false;
-
   pushSpeakerAudio(speakerKey: string, samples: Float32Array): void {
     this.pushed.push({ speakerKey, samples });
   }
@@ -180,13 +193,12 @@ export class ScriptedPipeline implements MeetingPipelineInstance {
     return this.audioWav;
   }
 }
-
 export class FakeMeetingBillingSession implements MeetingBillingSession {
   readonly state: MeetingBillingState = {
     status: "reserved",
     reservedMs: 0,
     consumedMs: 0,
-    capMs: 60_000,
+    capMs: 60000,
     reservationIds: [] as string[],
   };
   initialReserveError: Error | null = null;
@@ -194,19 +206,19 @@ export class FakeMeetingBillingSession implements MeetingBillingSession {
   failAfterConsumedMs: number | null = null;
   reserveInitialCalls = 0;
   reconcileCalls: MeetingEndReason[] = [];
-
-  constructor(options?: { capMs?: number; reservedMs?: number }) {
+  constructor(options?: {
+    capMs?: number;
+    reservedMs?: number;
+  }) {
     this.state.capMs = options?.capMs ?? this.state.capMs;
     this.state.reservedMs = options?.reservedMs ?? 0;
   }
-
   async reserveInitial(): Promise<void> {
     this.reserveInitialCalls += 1;
     if (this.initialReserveError) throw this.initialReserveError;
-    if (this.state.reservedMs === 0) this.state.reservedMs = 15_000;
+    if (this.state.reservedMs === 0) this.state.reservedMs = 15000;
     this.state.reservationIds?.push(`reserve-${this.reserveInitialCalls}`);
   }
-
   async ensureTranscriptionWindow(durationMs: number): Promise<void> {
     const nextConsumed = this.state.consumedMs + durationMs;
     if (
@@ -222,13 +234,12 @@ export class FakeMeetingBillingSession implements MeetingBillingSession {
     }
     this.state.consumedMs = nextConsumed;
     while (this.state.reservedMs < nextConsumed) {
-      this.state.reservedMs += 15_000;
+      this.state.reservedMs += 15000;
       this.state.reservationIds?.push(
         `reserve-${this.state.reservationIds.length + 1}`,
       );
     }
   }
-
   async reconcile(reason: MeetingEndReason) {
     this.reconcileCalls.push(reason);
     if (this.reconcileError) throw this.reconcileError;
@@ -236,7 +247,6 @@ export class FakeMeetingBillingSession implements MeetingBillingSession {
     return this.state;
   }
 }
-
 /** An adapter whose lifecycle the test resolves/queues explicitly. */
 export class ScriptedAdapter implements MeetingPlatformAdapter {
   session: MeetingBotSession | null = null;
@@ -244,13 +254,11 @@ export class ScriptedAdapter implements MeetingPlatformAdapter {
   private rejectRun!: (err: Error) => void;
   readonly started: Promise<MeetingBotSession>;
   private markStarted!: (session: MeetingBotSession) => void;
-
   constructor(readonly platform: MeetingPlatform) {
     this.started = new Promise((resolve) => {
       this.markStarted = resolve;
     });
   }
-
   run(session: MeetingBotSession): Promise<MeetingEndReason> {
     this.session = session;
     this.markStarted(session);
@@ -259,7 +267,6 @@ export class ScriptedAdapter implements MeetingPlatformAdapter {
       this.rejectRun = reject;
     });
   }
-
   report(status: MeetingSessionStatus): void {
     this.session?.reportStatus(status);
   }
@@ -270,7 +277,6 @@ export class ScriptedAdapter implements MeetingPlatformAdapter {
     this.rejectRun(err);
   }
 }
-
 export function segment(
   id: string,
   speaker: string,
@@ -280,7 +286,6 @@ export function segment(
 ): TranscriptSegment {
   return { id, speakerLabel: speaker, startMs, endMs, text, words: [] };
 }
-
 // ---------------------------------------------------------------------------
 // Mock injection seam for the scenario-runner (browser-free, ASR-free E2E).
 //
@@ -303,7 +308,6 @@ export function segment(
 //      before runtime initialization constructs MeetingService. Scenario seeds
 //      only populate exact scripts; they never mutate plugin initialization.
 // ---------------------------------------------------------------------------
-
 /** A scripted speaker turn the mock pipeline emits as a confirmed segment. */
 export interface MockSpeakerTurn {
   speakerKey: string;
@@ -312,7 +316,6 @@ export interface MockSpeakerTurn {
   startMs: number;
   endMs: number;
 }
-
 /** Behavior of one mocked meeting, keyed by canonical native meeting id. */
 export interface MockMeetingScript {
   /** Exact production adapter expected to receive this meeting id. */
@@ -327,9 +330,7 @@ export interface MockMeetingScript {
   /** Exact adapter-call cardinality. Defaults to one. */
   times?: number;
 }
-
-const MOCK_AUDIO_SAMPLE_RATE = 16_000;
-
+const MOCK_AUDIO_SAMPLE_RATE = 16000;
 /** Default 16 kHz mono PCM chunk a scripted turn "captures" (deterministic). */
 function fakePcm(ms: number): Float32Array {
   const samples = Math.max(1, Math.round((MOCK_AUDIO_SAMPLE_RATE * ms) / 1000));
@@ -337,7 +338,6 @@ function fakePcm(ms: number): Float32Array {
   for (let i = 0; i < samples; i++) pcm[i] = Math.sin(i / 8) * 0.1;
   return pcm;
 }
-
 /** Two speakers, one exchange — the canned transcript most scenarios assert. */
 export const DEFAULT_MOCK_TURNS: MockSpeakerTurn[] = [
   {
@@ -345,17 +345,16 @@ export const DEFAULT_MOCK_TURNS: MockSpeakerTurn[] = [
     displayName: "Alice",
     text: "Hi everyone, thanks for joining the sync.",
     startMs: 0,
-    endMs: 2_500,
+    endMs: 2500,
   },
   {
     speakerKey: "s2",
     displayName: "Bob",
     text: "Happy to be here — let us review the roadmap.",
-    startMs: 2_600,
-    endMs: 5_400,
+    startMs: 2600,
+    endMs: 5400,
   },
 ];
-
 /**
  * Registry the mock adapter + pipeline read at run time, keyed by canonical
  * native meeting id. Every meeting must have one exact seeded expectation;
@@ -365,12 +364,10 @@ export type MockMeetingExpectation = {
   script: MockMeetingScript;
   consumed: number;
 };
-
 export type MockMeetingProviderState = {
   scripts: Map<string, MockMeetingExpectation>;
   calls: MockMeetingProviderCall[];
 };
-
 export interface MockMeetingProviderCall {
   sequence: number;
   platform: MeetingPlatform;
@@ -378,12 +375,10 @@ export interface MockMeetingProviderCall {
   matched: boolean;
   reason?: string;
 }
-
 const mockProviderStates = new WeakMap<
   IAgentRuntime,
   MockMeetingProviderState
 >();
-
 function mockProviderState(runtime: IAgentRuntime): MockMeetingProviderState {
   const existing = mockProviderStates.get(runtime);
   if (existing) return existing;
@@ -394,7 +389,6 @@ function mockProviderState(runtime: IAgentRuntime): MockMeetingProviderState {
   mockProviderStates.set(runtime, created);
   return created;
 }
-
 export function setMockMeetingScript(
   runtime: IAgentRuntime,
   nativeMeetingId: string,
@@ -417,18 +411,15 @@ export function setMockMeetingScript(
     consumed: 0,
   });
 }
-
 export function clearMockMeetingScripts(runtime: IAgentRuntime): void {
   const state = mockProviderState(runtime);
   state.scripts.clear();
   state.calls.length = 0;
 }
-
 /** Drop the runtime-owned state when its companion plugin is disposed. */
 export function disposeMockMeetingProviderState(runtime: IAgentRuntime): void {
   mockProviderStates.delete(runtime);
 }
-
 function scriptFor(
   state: MockMeetingProviderState,
   platform: MeetingPlatform,
@@ -478,7 +469,6 @@ function scriptFor(
   });
   return expectation.script;
 }
-
 /** Serializable exact-call ledger emitted into scenario action evidence. */
 export function getMockMeetingProviderLedger(runtime: IAgentRuntime): {
   expectations: Array<{
@@ -514,7 +504,6 @@ export function getMockMeetingProviderLedger(runtime: IAgentRuntime): {
     problems,
   };
 }
-
 /** Assert exact completeness and then erase this runtime's synthetic provider state. */
 export function finalizeMockMeetingProviderLedger(
   runtime: IAgentRuntime,
@@ -525,7 +514,6 @@ export function finalizeMockMeetingProviderLedger(
     ? undefined
     : `strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}; ledger=${JSON.stringify(ledger)}`;
 }
-
 /**
  * Mock transcription pipeline: buffers nothing, emits the scripted turns as
  * confirmed segments (so the live update + persistence path fires) and returns
@@ -535,7 +523,6 @@ export class MockTranscriptionPipeline implements MeetingPipelineInstance {
   private listeners: Array<(u: PipelineTranscriptUpdate) => void> = [];
   private readonly confirmed: TranscriptSegment[] = [];
   private readonly names = new Set<string>();
-
   pushSpeakerAudio(): void {}
   setSpeakerName(_speakerKey: string, displayName: string): void {
     this.names.add(displayName);
@@ -545,14 +532,12 @@ export class MockTranscriptionPipeline implements MeetingPipelineInstance {
     this.names.add(participant.displayName);
   }
   participantLeft(): void {}
-
   onUpdate(listener: (u: PipelineTranscriptUpdate) => void): () => void {
     this.listeners.push(listener);
     return () => {
       this.listeners = this.listeners.filter((l) => l !== listener);
     };
   }
-
   /**
    * Publish one scripted line as a confirmed segment — the mock ASR "resolving"
    * a flushed speaker buffer. Driven by the adapter, which owns the script.
@@ -572,7 +557,6 @@ export class MockTranscriptionPipeline implements MeetingPipelineInstance {
       listener({ confirmed: [seg], pending: [] });
     }
   }
-
   async finalize(): Promise<TranscriptSegment[]> {
     return [...this.confirmed];
   }
@@ -583,7 +567,6 @@ export class MockTranscriptionPipeline implements MeetingPipelineInstance {
     return null;
   }
 }
-
 /**
  * Mock platform adapter: reports joining → active, drives the sink with the
  * scripted participants + turns (which flow into the real service roster/entity
@@ -597,7 +580,6 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
     private readonly nextPipeline: () => MockTranscriptionPipeline,
     private readonly providerState: MockMeetingProviderState,
   ) {}
-
   async run(session: MeetingBotSession): Promise<MeetingEndReason> {
     const script = scriptFor(
       this.providerState,
@@ -608,7 +590,6 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
     const pipeline = this.nextPipeline();
     session.reportStatus("joining");
     session.reportStatus("active");
-
     const speakers = new Set<string>();
     for (const turn of script.turns) {
       if (!speakers.has(turn.speakerKey)) {
@@ -628,7 +609,6 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
       // The mock ASR "resolves" the flushed line into a confirmed segment.
       pipeline.emitTurn(turn);
     }
-
     if (!script.holdUntilLeave) {
       return "normal_completion";
     }
@@ -640,7 +620,6 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
     return "requested_stop";
   }
 }
-
 /**
  * Build the mock MeetingServiceDependencies. `createPipeline` enqueues each new
  * pipeline; the adapter (whose `run` the service calls right after, on the same
@@ -679,7 +658,6 @@ export function mockMeetingDependencies(
     },
   };
 }
-
 /**
  * Overwrite MeetingService.dependencyFactory with the mock. Call AFTER the real
  * plugin module has been imported (so its module-load real assignment already
@@ -688,9 +666,7 @@ export function mockMeetingDependencies(
 export function installMockMeetingDependencies(runtime: IAgentRuntime): void {
   MeetingService.setRuntimeDependencyFactory(runtime, mockMeetingDependencies);
 }
-
 export const ASSERT_MEETING_MOCK_LEDGER = "ASSERT_MEETING_MOCK_LEDGER";
-
 const assertMeetingMockLedgerAction: Action = {
   name: ASSERT_MEETING_MOCK_LEDGER,
   description:
@@ -708,7 +684,6 @@ const assertMeetingMockLedgerAction: Action = {
     };
   },
 };
-
 /**
  * A tiny companion plugin whose only job is to install the mock dependency
  * factory during `init` — an alternative to the seed path for hosts that load
@@ -726,7 +701,6 @@ export const mockMeetingsCompanionPlugin: Plugin = {
     MeetingService.clearRuntimeDependencyFactory(runtime);
   },
 };
-
 /** One-line factory: pipeline + deps for a MeetingService under test. */
 export function scriptedDeps(
   adapters: MeetingPlatformAdapter[],

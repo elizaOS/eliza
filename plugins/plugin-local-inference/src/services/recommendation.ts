@@ -3,14 +3,13 @@
  * projects validated on-disk manifest budgets into browser-safe policy input
  * and retains only runtime-specific bundle eligibility checks.
  */
-
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
 	assessCatalogModelFit as assessSharedCatalogModelFit,
 	catalogDownloadSizeBytes,
 	catalogDownloadSizeGb,
 	chooseSmallerFallbackModel as chooseSharedSmallerFallbackModel,
 	classifyRecommendationPlatform,
-	MODEL_CATALOG,
 	type RecommendationPlatformClass,
 	type RecommendedModelSelection,
 	RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
@@ -18,7 +17,7 @@ import {
 	type RecommendationOptions as SharedRecommendationOptions,
 	selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
 	selectRecommendedModels as selectSharedRecommendedModels,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import {
 	canSetAsDefault,
 	type Eliza1Backend,
@@ -47,13 +46,11 @@ export {
 	classifyRecommendationPlatform,
 	recommendForFirstRun,
 };
-
 export interface RecommendationOptions {
 	binaryKernels?: Partial<Record<string, boolean>> | null;
 	installed?: ReadonlyArray<InstalledModel>;
 	manifestLoader?: ManifestLoader;
 }
-
 function sharedOptions(
 	catalog: readonly CatalogModel[],
 	options: RecommendationOptions,
@@ -79,12 +76,14 @@ function sharedOptions(
 		policy: RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
 	};
 }
-
 export function assessCatalogModelFit(
 	hardware: HardwareProbe,
 	model: CatalogModel,
 	catalog: CatalogModel[] = MODEL_CATALOG,
-	options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
+	options: {
+		installed?: InstalledModel;
+		manifestLoader?: ManifestLoader;
+	} = {},
 ): HardwareFitLevel {
 	const runtimeOptions: RecommendationOptions = {
 		installed: options.installed ? [options.installed] : [],
@@ -97,7 +96,6 @@ export function assessCatalogModelFit(
 		sharedOptions(catalog, runtimeOptions),
 	);
 }
-
 export function selectRecommendedModelForSlot(
 	slot: TextGenerationSlot,
 	hardware: HardwareProbe,
@@ -111,7 +109,6 @@ export function selectRecommendedModelForSlot(
 		sharedOptions(catalog, options),
 	);
 }
-
 export function selectRecommendedModels(
 	hardware: HardwareProbe,
 	catalog: CatalogModel[] = MODEL_CATALOG,
@@ -123,7 +120,6 @@ export function selectRecommendedModels(
 		sharedOptions(catalog, options),
 	);
 }
-
 export function chooseSmallerFallbackModel(
 	currentModelId: string,
 	hardware: HardwareProbe,
@@ -139,7 +135,6 @@ export function chooseSmallerFallbackModel(
 		sharedOptions(catalog, options),
 	);
 }
-
 export function selectBestQuantizationVariant(
 	model: CatalogModel,
 ): CatalogQuantizationVariant | null {
@@ -154,7 +149,6 @@ export function selectBestQuantizationVariant(
 		null
 	);
 }
-
 export function deviceCapsFromProbe(hardware: HardwareProbe): Eliza1DeviceCaps {
 	const backends: Eliza1Backend[] =
 		hardware.arch === "arm64" || hardware.arch === "arm"
@@ -169,9 +163,10 @@ export function deviceCapsFromProbe(hardware: HardwareProbe): Eliza1DeviceCaps {
 		cpuFeatures: hardware.cpuFeatures,
 	};
 }
-
 export type BundleDefaultEligibility =
-	| { canBeDefault: true }
+	| {
+			canBeDefault: true;
+	  }
 	| {
 			canBeDefault: false;
 			reason:
@@ -182,11 +177,12 @@ export type BundleDefaultEligibility =
 				| "not-verified-on-device";
 			detail: string;
 	  };
-
 export function canBundleBeDefaultOnDevice(
 	installed: InstalledModel,
 	hardware: HardwareProbe,
-	options: { manifestLoader?: ManifestLoader } = {},
+	options: {
+		manifestLoader?: ManifestLoader;
+	} = {},
 ): BundleDefaultEligibility {
 	const loader = options.manifestLoader ?? defaultManifestLoader;
 	const manifest: Eliza1Manifest | null = loader(installed.id, installed);

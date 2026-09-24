@@ -27,8 +27,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/shared";
-import { StreamingEchoDelayCalibrator } from "@elizaos/shared/voice/aec";
+import { resolvePlatform } from "@elizaos/core/runtime-env";
+import { StreamingEchoDelayCalibrator } from "@elizaos/core/voice/aec";
 import {
 	type AttributedTurn,
 	type AttributionPipelineLike,

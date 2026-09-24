@@ -18,7 +18,7 @@ import {
   canActionRun,
   captureToolStageIO,
   createUnavailableGroundedActionReply,
-  DISCOVER_TOOLS_NAME,
+  DISCOVER_ACTIONS_NAME,
   ElizaError,
   extractReplyTextFromTranscript,
   finalizeTrajectoryRecording,
@@ -27,6 +27,7 @@ import {
   getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
+  isDiscoveryActionName,
   isProviderContextOverflowFailure,
   isObjectRecord as isRecord,
   isTrajectoryRecordingEnabled,
@@ -65,7 +66,6 @@ import {
   routeMessageHandlerOutput,
 } from "../../runtime/message-handler";
 import {
-  isTerminalPlannerToolName,
   type PlannerLoopResult,
   type PlannerRuntime,
   type PlannerToolCall,
@@ -81,6 +81,7 @@ import {
   resolveRuntimeAction,
 } from "./action-identifiers.js";
 import {
+  actionDiscoveryContexts,
   buildV5PlannerActionSurface,
   CODING_SUB_AGENT_CONTEXTS,
   collectV5PlannerCandidateActions,
@@ -88,20 +89,21 @@ import {
   getMessageHandlerParentActionHints,
   mergeAgentContexts,
   privacyDenialReplyForReasons,
+  retrieveContextualPlannerActions,
   stringArrayProperty,
 } from "./action-surface.js";
 import {
   isAmbientStage1Turn,
   isStage1AmbientHardGated,
-  listAvailableContextsForRole,
   messageChallengesPriorAgentReply,
   messageContinuesAfterRecentAgentCorrection,
   messageExplicitlyAddressesAgent,
   resolveStage1ReplyGateMode,
   resolveStage1SenderRole,
 } from "./addressing.js";
-import { isProgressiveContextChannel } from "./channel-protocol";
+import { isProgressiveContextChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
+import { listAvailableContextsForTurn } from "./context-catalog.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
@@ -227,8 +229,10 @@ export async function runV5MessageRuntimeStage1(
     (await timeInferenceSpan("message:stage1:sender-role", () =>
       resolveStage1SenderRole(args.runtime, args.message),
     ));
-  const availableContexts = listAvailableContextsForRole(
-    args.runtime.contexts,
+  const availableContexts = await listAvailableContextsForTurn(
+    args.runtime,
+    args.message,
+    args.state,
     senderRole,
   );
   const directMessageChannel =
@@ -269,9 +273,7 @@ export async function runV5MessageRuntimeStage1(
   const context = await timeInferenceSpan("message:stage1:context", () =>
     createV5MessageContextObject({
       ...args,
-      // Catalog loading is independent of history/engagement channel policy.
-      // Ordinary handlers route work; the planner owns full tool discovery.
-      includeActionDiscovery: args.codingMode ? true : "reference",
+      includeActionDiscovery: false,
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,
@@ -511,7 +513,16 @@ export async function runV5MessageRuntimeStage1(
     // fire-and-forget side-effect (like facts/addressedTo): it persists the
     // room's running topic list for the CHANNEL_TOPICS provider and must
     // never block or break the turn.
-    const topics = messageHandler.extract?.topics ?? [];
+    const topics = [
+      ChannelType.GROUP,
+      ChannelType.VOICE_GROUP,
+      ChannelType.THREAD,
+      ChannelType.WORLD,
+      ChannelType.FORUM,
+      ChannelType.FEED,
+    ].some((channel) => channel === args.message.content.channelType)
+      ? (messageHandler.extract?.topics ?? [])
+      : [];
     if (!args.stage1DecisionOnly && topics.length > 0 && args.message.roomId) {
       const channelTopics = args.runtime.getService<ChannelTopicsService>(
         ChannelTopicsService.serviceType,
@@ -985,6 +996,8 @@ export async function runV5MessageRuntimeStage1(
     // so it is re-checked here as defense in depth: no ack may leak from a
     // gated turn regardless of how routing evolves upstream.
     const earlyReplyEligible =
+      !args.onPlanningAcknowledgment &&
+      !contextReadAcknowledgmentSent &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       earlyReplyText.length > 0 &&
@@ -994,8 +1007,8 @@ export async function runV5MessageRuntimeStage1(
       earlyReplyEligible &&
       typeof onResponseHandlerEarlyReply === "function"
     ) {
-      // The consumer owns the final delivery decision (the voice fast path
-      // gates on async-handoff candidates); an explicit `false` means it
+      // The consumer gates durable early delivery on async handoffs. An
+      // explicit `false` means it
       // dropped the event, so downstream dedupe/rescue bookkeeping must
       // treat the turn as having no delivered early reply.
       const delivered = await onResponseHandlerEarlyReply({
@@ -1215,23 +1228,27 @@ export async function runV5MessageRuntimeStage1(
     const selectedActionFamilies =
       args.codingMode === true || deterministicPlanSelection
         ? []
-        : collectBudgetedStageOneCandidateActions({
-            actions: plannerCandidateActions,
-            candidateActions: stageOneCandidates,
-            contexts: selectedContexts,
-            deferUnselectedContexts: true,
-            deferParentHints: true,
-          });
+        : stageOneCandidates.length === 0
+          ? retrieveContextualPlannerActions({
+              actions: plannerCandidateActions,
+              query: getUserMessageText(args.message),
+              intents: messageHandler.plan.intents,
+              contexts: selectedContexts,
+            })
+          : collectBudgetedStageOneCandidateActions({
+              actions: plannerCandidateActions,
+              candidateActions: stageOneCandidates,
+              contexts: selectedContexts,
+              deferUnselectedContexts: true,
+              deferParentHints: true,
+            });
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.
-    const requestsToolDiscovery = stageOneCandidates.some(
-      (name) =>
-        normalizeActionIdentifier(name) ===
-        normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
+    const requestsToolDiscovery = stageOneCandidates.some((name) =>
+      isDiscoveryActionName(name),
     );
-    const discoverWithoutActionHints =
-      progressiveContextChannel && stageOneCandidates.length === 0;
+    const discoverWithoutActionHints = stageOneCandidates.length === 0;
     const canUseProgressiveActions =
       args.codingMode !== true &&
       !deterministicPlanSelection &&
@@ -1249,20 +1266,9 @@ export async function runV5MessageRuntimeStage1(
       : [];
     // A complete selection of the routed slice is not a complete catalog.
     // Misrouted or invented hints still need access to other authorized families.
-    const progressiveActions =
-      canUseProgressiveActions &&
-      (requestsToolDiscovery ||
-        selectedActionFamilies.length < discoveryCatalogActions.length ||
-        (discoveryCatalogActions.length > 0 &&
-          stageOneCandidates.some(
-            (name) =>
-              !exposedActionMatches(
-                selectedActionFamilies,
-                normalizeActionIdentifier(name),
-              ),
-          )))
-        ? selectedActionFamilies
-        : undefined;
+    const progressiveActions = canUseProgressiveActions
+      ? selectedActionFamilies
+      : undefined;
     if (progressiveActions) {
       progressiveActions.push(
         createPlannerToolDiscoveryAction(
@@ -1278,7 +1284,9 @@ export async function runV5MessageRuntimeStage1(
                 routing.primaryContext ?? selectedContexts[0] ?? "general",
               secondaryContexts: mergeAgentContexts(
                 routing.secondaryContexts,
-                ...discoveredActions.map((action) => action.contexts),
+                ...discoveredActions.map((action) =>
+                  actionDiscoveryContexts(action),
+                ),
               ),
             };
             const existingNames = new Set(
@@ -1301,7 +1309,7 @@ export async function runV5MessageRuntimeStage1(
             );
             plannerTools.splice(0, plannerTools.length, ...expandedTools);
           },
-          (names) =>
+          async (names) =>
             collectV5PlannerCandidateActions({
               runtime: args.runtime,
               message: args.message,
@@ -1311,22 +1319,13 @@ export async function runV5MessageRuntimeStage1(
                 names.length > 0
                   ? names
                   : args.runtime.actions.map((action) => action.name),
-              userRoles: [senderRole],
+              userRoles: [
+                await resolveStage1SenderRole(args.runtime, args.message),
+              ],
             }),
           {
             catalogIndex: providerDiscoveryEnabled,
-            deferNameIndex:
-              providerDiscoveryEnabled &&
-              !requestsToolDiscovery &&
-              stageOneCandidates.every((name) =>
-                exposedActionMatches(
-                  selectedActionFamilies,
-                  normalizeActionIdentifier(name),
-                ),
-              ) &&
-              selectedActionFamilies.some(
-                (action) => !isTerminalPlannerToolName(action.name),
-              ),
+            deferNameIndex: true,
           },
         ),
       );
@@ -1354,15 +1353,13 @@ export async function runV5MessageRuntimeStage1(
       // it out of the tier-A parent summary rendered into the planner context.
       actionSurface.summary.tierAParents =
         actionSurface.summary.tierAParents.filter(
-          (name) =>
-            normalizeActionIdentifier(name) !==
-            normalizeActionIdentifier("DISCOVER_TOOLS"),
+          (name) => !isDiscoveryActionName(name),
         );
     }
     if (progressiveActions) {
       actionSurface.summary.discoverableActionCount =
         discoveryCatalogActions.length;
-      actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
+      actionSurface.summary.discoveryToolName = DISCOVER_ACTIONS_NAME;
     }
     const exposedPlannerActions = (
       progressiveActions ?? plannerCandidateActions
@@ -1554,7 +1551,7 @@ export async function runV5MessageRuntimeStage1(
       },
     );
     // No dispatch-budget preflight: the planner receives every authorized
-    // action the progressive surface exposes plus DISCOVER_TOOLS, and the model
+    // action the progressive surface exposes plus DISCOVER_ACTIONS, and the model
     // transport rejects at its real input boundary. An estimate is diagnostic,
     // not permission to discard authorized tools (message-runtime-umbrella-budget).
     const budgetedPlannerContextWithDecision = plannerContextWithDecision;

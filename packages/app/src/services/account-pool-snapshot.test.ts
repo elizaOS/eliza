@@ -24,6 +24,10 @@ import {
   getDefaultAccountPool,
   type Strategy,
 } from "./account-pool";
+import {
+  __resetAccountPoolStatusForTests,
+  getPublicAccountPoolStatus,
+} from "./account-pool-status";
 
 let root: string;
 let previousHome: string | undefined;
@@ -52,12 +56,52 @@ beforeEach(() => {
   }
 });
 afterEach(() => {
+  __resetAccountPoolStatusForTests();
   __resetDefaultAccountPoolForTests();
   if (previousHome === undefined) delete process.env.ELIZA_HOME;
   else process.env.ELIZA_HOME = previousHome;
   if (previousState === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = previousState;
   rmSync(root, { recursive: true, force: true });
+});
+
+it("does not publish a fresh cache entry when its snapshot cannot be persisted", async () => {
+  const existing = getDefaultAccountPool().get("personal", "anthropic-api");
+  if (!existing) throw new Error("Missing stored fixture account");
+  const pool = new AccountPool({
+    readAccounts: () => ({
+      personal: { ...existing, providerId: "anthropic-subscription" },
+    }),
+    writeAccount: async () => {},
+  });
+  let queries = 0;
+  __resetAccountPoolStatusForTests({
+    pool,
+    stateDir: () => root,
+    queryConsumerUsage: async () => {
+      queries += 1;
+      // History was read already; fail the following directory/publication step.
+      writeFileSync(path.join(root, "account-pool"), "not a directory");
+      return {
+        totals: {
+          requests: 0,
+          tokens: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          errors: 0,
+          latencyMs: 0,
+        },
+        byDay: {},
+        byConsumer: {},
+        records: [],
+      };
+    },
+  });
+  await expect(getPublicAccountPoolStatus()).rejects.toThrow();
+  await expect(getPublicAccountPoolStatus()).rejects.toThrow();
+  expect(queries).toBe(2);
 });
 
 it("preserves all strategy projections and refreshes disabled eligibility only in the next snapshot", async () => {

@@ -13,15 +13,12 @@ import {
   MESSAGE_SOURCE_SUB_AGENT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "@elizaos/core";
-/**
- * Text group-ish channel types eligible for ambient-turn classification. Private channels
- * (DM/API/SELF) take the direct-message template; voice rooms have their own
- * turn-taking pipeline and are deliberately excluded. Shared with the
- * bot-noise TEXT_SMALL gate, which scopes the same channel set further down
- * to positively bot-authored traffic.
- */
+/** Group audiences share admission regardless of text or speech transport.
+ * The exported name is retained for callers; speech turn timing remains in the
+ * voice adapter and cannot change completed-turn audience classification. */
 export const TEXT_GROUP_CHANNEL_TYPES: ReadonlySet<string> = new Set([
   String(ChannelType.GROUP),
+  String(ChannelType.VOICE_GROUP),
   String(ChannelType.THREAD),
   String(ChannelType.WORLD),
   String(ChannelType.FORUM),
@@ -45,7 +42,7 @@ function metadataRecord(value: unknown): Record<string, unknown> | undefined {
 
 /**
  * Structural classifier: is this a group-channel turn that does NOT address
- * the agent? Only positively-identified unaddressed text-group traffic
+ * the agent? Only positively-identified unaddressed group traffic
  * qualifies; autonomous self-turns, sub-agent relays, client-chat sources,
  * and unknown/missing channel types all fail OPEN (return false) so callers
  * keep full-rule behavior for them.
@@ -83,7 +80,7 @@ export function isUnaddressedTextGroupTurn(
     return false;
   }
 
-  // Only known text group-ish channels; unknown/missing channel type fails open.
+  // Only known group channels; unknown/missing channel type fails open.
   const channelType =
     typeof message.content?.channelType === "string"
       ? message.content.channelType.trim().toUpperCase()

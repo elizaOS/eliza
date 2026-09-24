@@ -1,7 +1,7 @@
 /**
  * Audio PII redaction — execution ops (#14807).
  *
- * Turns merged redaction windows (`@elizaos/shared/audio-redaction`) into
+ * Turns merged redaction windows (`@elizaos/core/audio-redaction`) into
  * redacted audio bytes with the DURATION PRESERVED, so every transcript word
  * anchor stays valid against the redacted variant:
  *
@@ -37,22 +37,19 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import type { AudioRedactionSpan } from "@elizaos/shared";
+import { type AudioRedactionSpan } from "@elizaos/core/audio-redaction";
 import {
   AudioRedactionChildError,
   runAudioRedactionChild,
 } from "./audio-redaction-child.ts";
-
 /** How a window is made inaudible. */
 export type AudioRedactionMode = "mute" | "bleep";
-
 /** Bleep tone frequency (both lanes use the same tone). */
 export const BLEEP_FREQUENCY_HZ = 1000;
 /** Bleep amplitude on the pure-TS lane (fraction of full scale). */
 export const BLEEP_AMPLITUDE = 0.25;
 /** AAC encodes in 1024-sample frames; M4A may carry one extra trailing frame. */
 export const AAC_FRAME_SAMPLES = 1024;
-
 /** Containers the ffmpeg lane accepts, mapped to their encoder. */
 const FFMPEG_CODEC_BY_EXT: Record<string, string> = {
   wav: "pcm_s16le",
@@ -66,14 +63,11 @@ const FFMPEG_CODEC_BY_EXT: Record<string, string> = {
   mp3: "libmp3lame",
   flac: "flac",
 };
-
 /** Containers whose encoder may append trailing padding frames. */
 const FRAME_PADDED_EXTS = new Set(["m4a", "aac", "mp4", "mp3"]);
-
 // ---------------------------------------------------------------------------
 // Capability probing
 // ---------------------------------------------------------------------------
-
 /** Resolve an executable on PATH (with the Windows extension list). */
 function whichBin(bin: string): string | null {
   const pathEnv = process.env.PATH ?? "";
@@ -88,10 +82,8 @@ function whichBin(bin: string): string | null {
   }
   return null;
 }
-
 let cachedFfmpeg: string | null | undefined;
 let cachedFfprobe: string | null | undefined;
-
 /**
  * Locate ffmpeg: `ELIZA_FFMPEG_PATH` override, else PATH probe (same pattern
  * as the mic recorder resolution in plugin-local-inference). Cached; pass
@@ -105,7 +97,6 @@ export function resolveFfmpegPath(refresh = false): string | null {
   }
   return cachedFfmpeg;
 }
-
 /** Locate ffprobe (ships beside ffmpeg; needed to probe lossy containers). */
 export function resolveFfprobePath(refresh = false): string | null {
   if (cachedFfprobe === undefined || refresh) {
@@ -115,7 +106,6 @@ export function resolveFfprobePath(refresh = false): string | null {
   }
   return cachedFfprobe;
 }
-
 /** What this host can redact. WAV/PCM16 always works; lossy needs ffmpeg. */
 export interface AudioRedactionCapability {
   /** Pure-TS PCM16 WAV lane — available on every runtime. */
@@ -125,7 +115,6 @@ export interface AudioRedactionCapability {
   ffmpegPath: string | null;
   ffprobePath: string | null;
 }
-
 /** Probe the host's redaction capability (desktop/server has ffmpeg; mobile
  *  and workers do not — their lossy redaction fails typed, never silently). */
 export function audioRedactionCapability(): AudioRedactionCapability {
@@ -138,11 +127,9 @@ export function audioRedactionCapability(): AudioRedactionCapability {
     ffprobePath,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Pure-TS PCM16 WAV lane
 // ---------------------------------------------------------------------------
-
 /** Parsed PCM16 WAV geometry (throws typed on anything else). */
 export interface WavPcm16Info {
   sampleRate: number;
@@ -155,14 +142,12 @@ export interface WavPcm16Info {
   frameCount: number;
   durationMs: number;
 }
-
 function invalidInput(message: string, context?: Record<string, unknown>) {
   return new ElizaError(`audio redaction input invalid: ${message}`, {
     code: "AUDIO_REDACTION_INPUT_INVALID",
     context,
   });
 }
-
 /**
  * Strict RIFF/WAVE parse for 16-bit PCM (format tag 1, or EXTENSIBLE with the
  * PCM subformat). Walks the chunk list, so files with LIST/fact chunks parse.
@@ -280,7 +265,6 @@ export function parseWavPcm16(bytes: Buffer): WavPcm16Info {
     durationMs: (frameCount / sampleRate) * 1000,
   };
 }
-
 /**
  * Redact a PCM16 WAV entirely in TypeScript: samples inside each window are
  * zeroed (mute) or replaced with a {@link BLEEP_FREQUENCY_HZ} sine (bleep) on
@@ -325,7 +309,6 @@ export function redactWavPcm16(
   }
   return out;
 }
-
 function assertSpanOverlapsDuration(
   span: AudioRedactionSpan,
   durationMs: number,
@@ -337,17 +320,14 @@ function assertSpanOverlapsDuration(
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // ffmpeg lane
 // ---------------------------------------------------------------------------
-
 interface SpawnResult {
   code: number | null;
   stdout: string;
   stderr: string;
 }
-
 async function run(
   bin: string,
   args: readonly string[],
@@ -367,14 +347,12 @@ async function run(
     });
   }
 }
-
 /** Probed stream geometry of an audio file. */
 export interface ProbedAudio {
   durationMs: number;
   sampleRate: number;
   channels: number;
 }
-
 /** Probe duration/rate/channels with ffprobe (throws typed on failure). */
 export async function probeAudioFile(filePath: string): Promise<ProbedAudio> {
   const ffprobe = resolveFfprobePath();
@@ -445,8 +423,13 @@ export async function probeAudioFile(filePath: string): Promise<ProbedAudio> {
     });
   }
   const root = parsed as {
-    streams?: Array<{ sample_rate?: string; channels?: number }>;
-    format?: { duration?: string };
+    streams?: Array<{
+      sample_rate?: string;
+      channels?: number;
+    }>;
+    format?: {
+      duration?: string;
+    };
   };
   const stream = root.streams?.[0];
   const sampleRate = Number.parseInt(stream?.sample_rate ?? "", 10);
@@ -464,7 +447,6 @@ export async function probeAudioFile(filePath: string): Promise<ProbedAudio> {
   }
   return { durationMs: durationSec * 1000, sampleRate, channels };
 }
-
 /** Sum-of-`between()` timeline expression over the merged windows. */
 function betweenExpression(spans: readonly AudioRedactionSpan[]): string {
   return spans
@@ -474,7 +456,6 @@ function betweenExpression(spans: readonly AudioRedactionSpan[]): string {
     )
     .join("+");
 }
-
 function ffmpegArgs(
   inPath: string,
   outPath: string,
@@ -527,11 +508,9 @@ function ffmpegArgs(
     outPath,
   ];
 }
-
 // ---------------------------------------------------------------------------
 // Duration preservation contract
 // ---------------------------------------------------------------------------
-
 /**
  * Allowed |output − input| duration drift for a container. WAV and ogg/opus
  * re-encode to the exact duration (measured); frame-padded encoders (AAC in
@@ -545,7 +524,6 @@ export function durationToleranceMs(ext: string, sampleRate: number): number {
   }
   return probeSlackMs;
 }
-
 /** Assert the redacted variant kept the original duration (throws typed). */
 export function assertDurationPreserved(
   inputDurationMs: number,
@@ -567,11 +545,9 @@ export function assertDurationPreserved(
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
-
 /** Request for {@link redactAudioBytes}. */
 export interface RedactAudioRequest {
   /** Original audio bytes (from the content-addressed media store). */
@@ -582,7 +558,6 @@ export interface RedactAudioRequest {
   spans: readonly AudioRedactionSpan[];
   mode: AudioRedactionMode;
 }
-
 /** Result of one redaction op. */
 export interface RedactAudioResult {
   bytes: Buffer;
@@ -592,7 +567,6 @@ export interface RedactAudioResult {
   containerExt: string;
   sampleRate: number;
 }
-
 /**
  * Redact the given audio: PCM16 WAV rides the pure-TS lane (deterministic,
  * duration byte-exact, works on every runtime); everything else rides ffmpeg
@@ -620,7 +594,6 @@ export async function redactAudioBytes(
       );
     }
   }
-
   // Pure-TS WAV lane first: deterministic and dependency-free.
   if (ext === "wav") {
     try {
@@ -654,7 +627,6 @@ export async function redactAudioBytes(
       );
     }
   }
-
   const ffmpeg = resolveFfmpegPath();
   if (!ffmpeg || !resolveFfprobePath()) {
     throw new ElizaError(
@@ -663,7 +635,6 @@ export async function redactAudioBytes(
       { code: "AUDIO_REDACTION_UNSUPPORTED", context: { ext } },
     );
   }
-
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-pii-audio-"));
   const inPath = path.join(workDir, `in.${ext}`);
   const outPath = path.join(workDir, `out.${ext}`);

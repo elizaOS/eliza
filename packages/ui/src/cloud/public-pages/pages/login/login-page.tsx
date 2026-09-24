@@ -13,10 +13,10 @@
  * therefore be dead code that immediately falls back to this same page.
  */
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { BRAND_PATHS, LOGO_FILES } from "../../../../brand/index.js";
 import { Button } from "../../../../components/primitives";
 import { isLoopbackStagingStewardDevelopment } from "../../../../state/loopback-steward-development";
 import {

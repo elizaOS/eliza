@@ -19,7 +19,7 @@
 import {
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AuthAccessInfo,

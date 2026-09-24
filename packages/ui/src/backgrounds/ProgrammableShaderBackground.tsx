@@ -22,7 +22,7 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+} from "@elizaos/core/utils/unicode";
 import type * as React from "react";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";

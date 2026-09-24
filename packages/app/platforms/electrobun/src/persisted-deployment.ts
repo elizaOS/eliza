@@ -2,12 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir, resolveUserPath } from "@elizaos/core";
-import { normalizeDeploymentTargetConfig } from "@elizaos/shared";
+import { normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
 import type { PersistedDeployment } from "./api-base";
 import { logger } from "./logger";
 
 const CONFIG_FILENAME = "eliza.json";
-
 /**
  * Resolve the canonical `eliza.json` path the agent persists its config to.
  * Mirrors `@elizaos/agent`'s `resolveConfigPath` (state-dir + filename, with
@@ -24,7 +23,6 @@ function resolveElizaConfigPath(
 	}
 	return path.join(resolveStateDir(env as NodeJS.ProcessEnv), CONFIG_FILENAME);
 }
-
 /**
  * Read the persisted `deploymentTarget` from `eliza.json` as a
  * {@link PersistedDeployment} (runtime plus the cloud-hosted/external agent's
@@ -54,7 +52,6 @@ export function readPersistedDeployment(
 		);
 		return null;
 	}
-
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -64,9 +61,12 @@ export function readPersistedDeployment(
 		);
 		return null;
 	}
-
 	const deploymentTarget = normalizeDeploymentTargetConfig(
-		(parsed as { deploymentTarget?: unknown } | null)?.deploymentTarget,
+		(
+			parsed as {
+				deploymentTarget?: unknown;
+			} | null
+		)?.deploymentTarget,
 	);
 	if (!deploymentTarget) {
 		return null;
@@ -77,9 +77,7 @@ export function readPersistedDeployment(
 		remoteAccessToken: deploymentTarget.remoteAccessToken ?? null,
 	};
 }
-
 let cachedDeployment: PersistedDeployment | null | undefined;
-
 /**
  * Cached read of the persisted deployment for the lifetime of the desktop
  * process. The deployment target only changes via a first-run flow that

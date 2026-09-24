@@ -6,11 +6,9 @@
  */
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import {
-  isLoopbackRemoteAddress,
-  parseCanonicalInteger,
-} from "@elizaos/shared";
+import { isLoopbackRemoteAddress } from "@elizaos/agent/api/loopback-trust";
+import { type AccountPoolBrokerSnapshot } from "@elizaos/core";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import {
   AccountPoolBroker,
   parseBrokerLeaseRequest,
@@ -35,13 +33,10 @@ import { sendJson } from "./response.js";
 // proxies surface that as 503 "broker unavailable".
 const ROUTE_PREFIX = "/api/internal/account-pool/v1";
 const MIN_BROKER_SECRET_LENGTH = 32;
-
 let brokerSingleton: AccountPoolBroker | null = null;
-
 export function __resetAccountPoolBrokerRoutesForTests(): void {
   brokerSingleton = null;
 }
-
 function brokerEnabled(): boolean {
   const enabled =
     process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED?.trim().toLowerCase();
@@ -55,12 +50,10 @@ function brokerEnabled(): boolean {
   }
   return brokerSecret() !== null;
 }
-
 function brokerSecret(): string | null {
   const secret = process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET?.trim();
   return secret && secret.length >= MIN_BROKER_SECRET_LENGTH ? secret : null;
 }
-
 function readBearer(req: http.IncomingMessage): string | null {
   const header = req.headers.authorization;
   const raw = Array.isArray(header) ? header[0] : header;
@@ -68,7 +61,6 @@ function readBearer(req: http.IncomingMessage): string | null {
   if (!raw.toLowerCase().startsWith("bearer ")) return null;
   return raw.slice(7).trim();
 }
-
 // Compare fixed-length SHA-256 digests so neither content nor secret length
 // leaks through timing.
 function safeEqual(a: string, b: string): boolean {
@@ -77,16 +69,13 @@ function safeEqual(a: string, b: string): boolean {
     crypto.createHash("sha256").update(b).digest(),
   );
 }
-
 function broker(): AccountPoolBroker {
   brokerSingleton ??= new AccountPoolBroker();
   return brokerSingleton;
 }
-
 export function getAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot {
   return brokerSingleton?.snapshot() ?? { accounts: {}, providers: {} };
 }
-
 function sendBrokerJson(
   res: http.ServerResponse,
   status: number,
@@ -95,7 +84,6 @@ function sendBrokerJson(
   res.setHeader("Cache-Control", "no-store");
   sendJson(res, status, body);
 }
-
 function methodAllowed(
   method: string,
   expected: "GET" | "POST" | "PATCH",
@@ -105,12 +93,10 @@ function methodAllowed(
   sendBrokerJson(res, 405, { ok: false, error: "method_not_allowed" });
   return false;
 }
-
 function parseOptionalMs(value: string | null): number | undefined | null {
   const parsed = parseCanonicalInteger(value);
   return parsed === "invalid" ? null : parsed;
 }
-
 function decodeRouteSegment(value: string): string | null {
   try {
     return decodeURIComponent(value);
@@ -120,7 +106,6 @@ function decodeRouteSegment(value: string): string | null {
     return null;
   }
 }
-
 export async function handleAccountPoolBrokerRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -129,27 +114,22 @@ export async function handleAccountPoolBrokerRoute(
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!url.pathname.startsWith(ROUTE_PREFIX)) return false;
   if (!brokerEnabled()) return false;
-
   res.setHeader("Cache-Control", "no-store");
-
   if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
     sendBrokerJson(res, 403, { ok: false, error: "loopback_only" });
     return true;
   }
-
   const expected = brokerSecret();
   const presented = readBearer(req);
   if (!expected || !presented || !safeEqual(presented, expected)) {
     sendBrokerJson(res, 401, { ok: false, error: "unauthorized" });
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/health`) {
     if (!methodAllowed(method, "GET", res)) return true;
     sendBrokerJson(res, 200, broker().health());
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/lease`) {
     if (!methodAllowed(method, "POST", res)) return true;
     const body = await readCompatJsonBody(req, res);
@@ -173,7 +153,6 @@ export async function handleAccountPoolBrokerRoute(
     }
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/report`) {
     if (!methodAllowed(method, "POST", res)) return true;
     const body = await readCompatJsonBody(req, res);
@@ -187,7 +166,6 @@ export async function handleAccountPoolBrokerRoute(
     sendBrokerJson(res, result.ok ? 200 : 404, result);
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/release`) {
     if (!methodAllowed(method, "POST", res)) return true;
     const body = await readCompatJsonBody(req, res);
@@ -200,7 +178,6 @@ export async function handleAccountPoolBrokerRoute(
     sendBrokerJson(res, 200, broker().release(parsed));
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/consumer-keys`) {
     if (method === "GET") {
       sendBrokerJson(res, 200, {
@@ -223,7 +200,6 @@ export async function handleAccountPoolBrokerRoute(
     sendBrokerJson(res, 201, { ok: true, ...created });
     return true;
   }
-
   const consumerKeyMatch = url.pathname.match(
     new RegExp(`^${ROUTE_PREFIX}/consumer-keys/([^/]+)(/rotate)?$`),
   );
@@ -267,7 +243,6 @@ export async function handleAccountPoolBrokerRoute(
     sendBrokerJson(res, 200, { ok: true, consumer: updated });
     return true;
   }
-
   if (url.pathname === `${ROUTE_PREFIX}/usage`) {
     if (!methodAllowed(method, "GET", res)) return true;
     const startMs = parseOptionalMs(url.searchParams.get("startMs"));
@@ -286,7 +261,6 @@ export async function handleAccountPoolBrokerRoute(
     sendBrokerJson(res, 200, { ok: true, usage });
     return true;
   }
-
   sendBrokerJson(res, 404, { ok: false, error: "not_found" });
   return true;
 }

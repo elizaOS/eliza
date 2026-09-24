@@ -41,6 +41,8 @@ import {
   findElectrobunBrowserWindowEntrypoints,
 } from "./lib/electrobun-browser-window-entrypoints.mjs";
 
+import { patchElectrobunBrowserWindowSource } from "./lib/electrobun-browser-window-partition.mjs";
+
 const requirePatch = process.argv.includes("--require");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
@@ -51,10 +53,6 @@ const patchedSha256 =
   "40ba72d0cc6e38d04cd2ea29a650f5b3976673b2facb09fedae003b26bfdc971";
 const patchSha256 =
   "b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430";
-const browserWindowOriginalSha256 =
-  "8c172878fd77bd2119d7958a1c2c8280bf9642c78abf8a1cbcb67fa3b03226cf";
-const browserWindowPatchedSha256 =
-  "583aa653d89eb01d55e9ee5b3f90c021e924827c811d119a2bf6100432e938bd";
 const patchPath = path.join(
   repoRoot,
   "packages",
@@ -79,34 +77,15 @@ function patchBrowserWindow(targetPath) {
   if (!existsSync(targetPath)) {
     fail(`Electrobun BrowserWindow entrypoint is missing: ${targetPath}`);
   }
-  const beforeHash = sha256(targetPath);
-  if (beforeHash === browserWindowPatchedSha256) return false;
-  if (beforeHash !== browserWindowOriginalSha256) {
-    fail(
-      `Refusing to patch unexpected BrowserWindow.ts (${beforeHash}) at ${targetPath}.`,
-    );
-  }
-
   const original = readFileSync(targetPath, "utf8");
-  const withPartitionType = original.replace(
-    "\tviewsRoot: string | null;\n\trenderer:",
-    "\tviewsRoot: string | null;\n\tpartition?: string | null;\n\trenderer:",
-  );
-  const withPartitionView = withPartitionType.replace(
-    "\t\t\tviewsRoot: this.viewsRoot,\n\t\t\t// frame:",
-    "\t\t\tviewsRoot: this.viewsRoot,\n\t\t\tpartition: partition || null,\n\t\t\t// frame:",
-  );
-  const patched = withPartitionView.replace(
-    "\t\tactivate,\n\t}: Partial<WindowOptionsType<T>>) {",
-    "\t\tactivate,\n\t\tpartition,\n\t}: Partial<WindowOptionsType<T>>) {",
-  );
-  if (patched === original) {
-    fail(`BrowserWindow partition anchors were not found at ${targetPath}.`);
+  let patched;
+  try {
+    patched = patchElectrobunBrowserWindowSource(original);
+  } catch (error) {
+    fail(String(error));
   }
+  if (patched === original) return false;
   writeFileSync(targetPath, patched);
-  if (sha256(targetPath) !== browserWindowPatchedSha256) {
-    fail(`Patched BrowserWindow hash mismatch at ${targetPath}.`);
-  }
   return true;
 }
 

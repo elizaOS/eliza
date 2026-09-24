@@ -9,16 +9,19 @@
  */
 import path from "node:path";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import { type AgentRuntime, type UUID } from "@elizaos/core";
+import {
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core/api/route-helpers";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
-} from "@elizaos/shared";
+} from "@elizaos/core/character-presets";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { type AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";

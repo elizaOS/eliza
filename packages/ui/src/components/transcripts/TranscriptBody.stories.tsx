@@ -1,5 +1,6 @@
 /** Word-synced and untimed transcript reading states. */
-import type { Transcript } from "@elizaos/shared";
+
+import type { Transcript } from "@elizaos/core/transcripts";
 import type { Meta, StoryObj } from "@storybook/react";
 import { assert } from "../../storybook/home-widget-decorator";
 import { TranscriptBody } from "./TranscriptBody";
@@ -12,16 +13,14 @@ const meta = {
   parameters: { layout: "padded" },
   args: {
     transcript: TRANSCRIPT_STORY_FIXTURE,
-    currentTimeMs: 1_100,
+    currentTimeMs: 1100,
     onSeekMs: (ms: number) => {
       seekTarget = ms;
     },
   },
 } satisfies Meta<typeof TranscriptBody>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const WordSynced: Story = {
   play: async ({ canvasElement }) => {
     seekTarget = -1;
@@ -38,7 +37,6 @@ export const WordSynced: Story = {
     assert(seekTarget === 950, "word activation seeks to its start");
   },
 };
-
 const untimedTranscript: Transcript = {
   ...TRANSCRIPT_STORY_FIXTURE,
   segments: [
@@ -46,13 +44,12 @@ const untimedTranscript: Transcript = {
       id: "untimed",
       speakerLabel: "Maya",
       startMs: 0,
-      endMs: 4_000,
+      endMs: 4000,
       text: "This transcript is available without word-level timing.",
       words: [],
     },
   ],
 };
-
 export const Untimed: Story = {
-  args: { transcript: untimedTranscript, currentTimeMs: 1_000 },
+  args: { transcript: untimedTranscript, currentTimeMs: 1000 },
 };

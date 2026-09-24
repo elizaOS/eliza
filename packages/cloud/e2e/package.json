@@ -25,7 +25,6 @@
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
@@ -35,6 +34,7 @@
     "@types/node": "^22.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^5.5.0",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   }
 }

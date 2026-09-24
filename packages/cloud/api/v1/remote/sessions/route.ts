@@ -5,20 +5,19 @@
  * scoped to the caller's organization.
  */
 
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/shared";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../host-auth";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;
 const GRANT_TTL_SECONDS = 8 * 60 * 60;
-
 function generatePairingCode(): string {
-  const codeSpace = 1_000_000;
+  const codeSpace = 1000000;
   const acceptedRange = Math.floor(2 ** 32 / codeSpace) * codeSpace;
   const buf = new Uint32Array(1);
   let sample: number;
@@ -28,9 +27,7 @@ function generatePairingCode(): string {
   } while (sample >= acceptedRange);
   return (sample % codeSpace).toString().padStart(6, "0");
 }
-
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   try {
     const credential = parseRemoteHostCredential(c.req.raw);
@@ -57,8 +54,8 @@ app.post("/", async (c) => {
     const sessionId = crypto.randomUUID();
     const grantId = crypto.randomUUID();
     const code = generatePairingCode();
-    const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_SECONDS * 1_000);
-    const grantExpiresAt = new Date(Date.now() + GRANT_TTL_SECONDS * 1_000);
+    const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_SECONDS * 1000);
+    const grantExpiresAt = new Date(Date.now() + GRANT_TTL_SECONDS * 1000);
     const session =
       await remoteSessionsRepository.createPendingForAuthenticatedHost({
         id: sessionId,
@@ -96,11 +93,9 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-
     const agentId = c.req.query("agentId")?.trim() ?? "";
     const hostId = c.req.query("hostId")?.trim() ?? "";
     if (Boolean(agentId) === Boolean(hostId)) {
@@ -118,7 +113,6 @@ app.get("/", async (c) => {
         400,
       );
     }
-
     const sessions = hostId
       ? await remoteSessionsRepository.listByOwnedHost(
           hostId,
@@ -133,7 +127,6 @@ app.get("/", async (c) => {
     if (!sessions) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
-
     return c.json({
       success: true,
       data: {
@@ -161,5 +154,4 @@ app.get("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

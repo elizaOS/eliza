@@ -9,9 +9,10 @@
  * keeps holding the UI port; Windows tree-kills via taskkill /t /f.
  */
 
-import type { ChildProcess } from "node:child_process";
-import { resolveDesktopUiPort, theme } from "@elizaos/shared";
-import type { Command } from "commander";
+import { type ChildProcess } from "node:child_process";
+import { resolveDesktopUiPort } from "@elizaos/core/runtime-env";
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
 
 async function isPortListening(
   port: number,
@@ -37,7 +38,6 @@ async function isPortListening(
     socket.connect(port, host);
   });
 }
-
 async function openInBrowser(url: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const isWin = process.platform === "win32";
@@ -52,7 +52,6 @@ async function openInBrowser(url: string): Promise<void> {
   });
   child.unref();
 }
-
 /**
  * Build the dev-server teardown used by `eliza dashboard`.
  *
@@ -85,7 +84,6 @@ export function createDevServerTeardown(
       }
     }
   };
-
   let cleaned = false;
   return () => {
     if (cleaned) return;
@@ -100,11 +98,10 @@ export function createDevServerTeardown(
     killGroup("SIGTERM");
     // Escalate if the group survives a graceful SIGTERM (e.g. a wedged Vite
     // worker ignoring the signal).
-    const escalation = setTimeout(() => killGroup("SIGKILL"), 2_000);
+    const escalation = setTimeout(() => killGroup("SIGKILL"), 2000);
     escalation.unref();
   };
 }
-
 export function registerDashboardCommand(program: Command) {
   const defaultPort = resolveDesktopUiPort(process.env);
   program
@@ -118,20 +115,17 @@ export function registerDashboardCommand(program: Command) {
         Number.isFinite(rawPort) && rawPort > 0 && rawPort <= 65535
           ? rawPort
           : defaultPort;
-
       if (opts.url) {
         console.log(`${theme.muted("→")} Opening Control UI: ${opts.url}`);
         openInBrowser(opts.url);
         return;
       }
-
       if (await isPortListening(port)) {
         const url = `http://localhost:${port}`;
         console.log(`${theme.muted("→")} Opening Control UI: ${url}`);
         openInBrowser(url);
         return;
       }
-
       if (port !== defaultPort && (await isPortListening(defaultPort))) {
         const url = `http://localhost:${defaultPort}`;
         console.log(
@@ -140,29 +134,24 @@ export function registerDashboardCommand(program: Command) {
         openInBrowser(url);
         return;
       }
-
       console.log(
         `${theme.muted("→")} Server not running on port ${port}; starting app dev server…`,
       );
-
       const path = await import("node:path");
       const fs = await import("node:fs");
       const { resolveElizaPackageRootSync } = await import(
         "../../utils/eliza-root"
       );
-
       const pkgRoot = resolveElizaPackageRootSync({
         cwd: process.cwd(),
         argv1: process.argv[1],
         moduleUrl: import.meta.url,
       });
-
       if (!pkgRoot) {
         console.log(theme.error("Could not locate eliza package root."));
         process.exitCode = 1;
         return;
       }
-
       const appDir = [
         path.join(pkgRoot, "packages", "app"),
         path.join(pkgRoot, "apps", "app"),
@@ -184,7 +173,6 @@ export function registerDashboardCommand(program: Command) {
         process.exitCode = 1;
         return;
       }
-
       const { spawn, spawnSync } = await import("node:child_process");
       // On POSIX, `bun run dev` executes the `dev` script (Vite) as a separate
       // grandchild. `detached: true` makes the child the leader of its own
@@ -197,9 +185,7 @@ export function registerDashboardCommand(program: Command) {
         env: { ...process.env },
         detached: process.platform !== "win32",
       });
-
       let opened = false;
-
       const tryOpen = () => {
         if (opened) return;
         opened = true;
@@ -207,7 +193,6 @@ export function registerDashboardCommand(program: Command) {
         console.log(`${theme.muted("→")} Opening Control UI: ${devUrl}`);
         openInBrowser(devUrl);
       };
-
       child.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         process.stdout.write(text);
@@ -215,20 +200,16 @@ export function registerDashboardCommand(program: Command) {
           tryOpen();
         }
       });
-
       child.stderr.on("data", (chunk: Buffer) => {
         process.stderr.write(chunk.toString());
       });
-
       child.on("error", (err) => {
         console.log(
           theme.error(`Failed to start app dev server: ${err.message}`),
         );
         process.exitCode = 1;
       });
-
-      setTimeout(tryOpen, 10_000);
-
+      setTimeout(tryOpen, 10000);
       const cleanup = createDevServerTeardown(child, spawnSync);
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);

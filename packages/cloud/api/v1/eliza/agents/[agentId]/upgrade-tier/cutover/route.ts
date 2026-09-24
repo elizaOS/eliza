@@ -8,7 +8,7 @@
 import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/core/todo-cutover";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { usersRepository } from "@/db/repositories/users";

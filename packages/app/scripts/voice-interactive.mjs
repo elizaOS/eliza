@@ -45,7 +45,6 @@
  *   →audio-played=Wms         vad-trigger → audio-first-played (the headline TTAP)
  *   mtp-accept=N%          MTP draft token-acceptance rate (from llama-server /metrics)
  */
-
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -55,7 +54,6 @@ import readline from "node:readline";
 // ---------------------------------------------------------------------------
 // CLI parsing
 // ---------------------------------------------------------------------------
-
 function parseArgs(argv) {
   const out = {
     listActive: false,
@@ -85,11 +83,9 @@ function parseArgs(argv) {
   }
   return out;
 }
-
 function shouldPrewarmAfterTurn(args) {
   return args.say == null && args.wav == null;
 }
-
 function decodeWavForPush(wavBytes, decodeMonoPcm16Wav) {
   const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
   if (!(decoded.pcm instanceof Float32Array)) {
@@ -97,7 +93,6 @@ function decodeWavForPush(wavBytes, decodeMonoPcm16Wav) {
   }
   return decoded;
 }
-
 async function feedPcmAtCaptureCadence(
   source,
   pcm,
@@ -116,12 +111,10 @@ async function feedPcmAtCaptureCadence(
       await wait(frameDurationMs);
     }
   };
-
   await feed(pcm);
   await feed(new Float32Array(trailingSilenceSamples));
 }
-
-function createOneShotTurnCompletion(timeoutMs = 90_000) {
+function createOneShotTurnCompletion(timeoutMs = 90000) {
   let timer;
   let resolveTurn;
   let rejectTurn;
@@ -136,21 +129,18 @@ function createOneShotTurnCompletion(timeoutMs = 90_000) {
       );
     }, timeoutMs);
   });
-
   const settle = (callback) => (value) => {
     if (timer === undefined) return;
     clearTimeout(timer);
     timer = undefined;
     callback(value);
   };
-
   return {
     promise,
     complete: settle(resolveTurn),
     fail: settle(rejectTurn),
   };
 }
-
 function bindOneShotTerminalEvents(events, turnCompletion) {
   return {
     ...events,
@@ -185,7 +175,6 @@ function bindOneShotTerminalEvents(events, turnCompletion) {
     },
   };
 }
-
 const USAGE = `Usage: bun run --cwd packages/app voice:interactive [-- <options>]
 
   --list-active        print which optimizations are active, then exit
@@ -200,17 +189,14 @@ const USAGE = `Usage: bun run --cwd packages/app voice:interactive [-- <options>
   --room <id>          conversation/room id (default: voice-interactive)
   -h, --help           this help
 `;
-
 function bundleDirName(modelId) {
   return `${modelId.replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`;
 }
-
 function bundlePrimaryTextPath(catalogEntry, bundleRoot) {
   const rel = catalogEntry?.ggufFile;
   if (typeof rel !== "string" || rel.trim().length === 0) return null;
   return path.join(bundleRoot, rel);
 }
-
 function resolveInstalledBundleRoot(catalogEntry, modelsDir) {
   const modelId = catalogEntry?.id ?? "eliza-1-2b";
   const candidate = path.join(modelsDir, bundleDirName(modelId));
@@ -221,7 +207,6 @@ function resolveInstalledBundleRoot(catalogEntry, modelsDir) {
       expectedPath: candidate,
     };
   }
-
   const textPath = bundlePrimaryTextPath(catalogEntry, candidate);
   if (!textPath) {
     return {
@@ -237,14 +222,11 @@ function resolveInstalledBundleRoot(catalogEntry, modelsDir) {
       expectedPath: textPath,
     };
   }
-
   return { bundleRoot: candidate, textPath };
 }
-
 // ---------------------------------------------------------------------------
 // Pretty printing
 // ---------------------------------------------------------------------------
-
 const C = {
   reset: "\x1b[0m",
   dim: "\x1b[2m",
@@ -265,11 +247,9 @@ function log(s) {
 function tag(t, color, msg) {
   log(`${c(color, `[${t}]`)} ${msg}`);
 }
-
 // ---------------------------------------------------------------------------
 // Active optimizations report
 // ---------------------------------------------------------------------------
-
 /**
  * Inspect the runtime/env and report which voice optimizations are wired
  * on. Returns `{ active: [{name, on, detail}], missing: [{what, fix}] }`.
@@ -278,13 +258,12 @@ function tag(t, color, msg) {
 async function inspectActiveOptimizations(args) {
   const active = [];
   const missing = [];
-
   // ── Catalog entry for eliza-1-2b ─────────────────────────────────────
   let catalogEntry = null;
   let drafterEntry = null;
   try {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
-      "../../shared/src/local-inference/catalog.ts"
+      "@elizaos/plugin-native-inference/model-catalog/catalog"
     );
     // The duet harness passes `args.modelId` (e.g. `eliza-1-2b`); the
     // interactive harness leaves it unset → the first-run default.
@@ -296,7 +275,7 @@ async function inspectActiveOptimizations(args) {
   } catch (err) {
     missing.push({
       what: `resolve the eliza-1-2b catalog entry (${err instanceof Error ? err.message : String(err)})`,
-      fix: "ensure @elizaos/shared is built: bun run build (or turbo run build --filter=@elizaos/shared)",
+      fix: "build the inference catalog: bun run --cwd plugins/plugin-native-inference build",
     });
   }
   if (catalogEntry) {
@@ -312,13 +291,12 @@ async function inspectActiveOptimizations(args) {
       detail: kernels.join(", ") || "(none declared)",
     });
   }
-
   // ── Bundle installed? ──────────────────────────────────────────────────
   let bundleRoot = null;
   let bundleInstallIssue = null;
   try {
     const { elizaModelsDir } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const resolved = resolveInstalledBundleRoot(catalogEntry, elizaModelsDir());
     bundleRoot = resolved.bundleRoot;
@@ -342,7 +320,6 @@ async function inspectActiveOptimizations(args) {
       fix: "download it (run the harness without --list-active for the auto-download prompt) or follow docs/eliza-1-pipeline/06-test-matrix.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
-
   // ── Native MTP metadata ─────────────────────────────────────────────
   if (args?.noMtp) {
     active.push({
@@ -361,11 +338,10 @@ async function inspectActiveOptimizations(args) {
     } else {
       missing.push({
         what: `${catalogEntry?.id ?? "eliza-1"} does not declare native MTP metadata`,
-        fix: "update packages/shared/src/local-inference/catalog.ts so every eliza-1 tier has runtime.mtp",
+        fix: "update plugins/plugin-native-inference/src/model-catalog/catalog.ts so every eliza-1 tier has runtime.mtp",
       });
     }
   }
-
   // ── TTS backend (fused libelizainference vs stub) ──────────────────────
   // Probe the same locations the engine bridge's `locateBundleLibrary` does:
   // explicit env paths, the bundle's `lib/`, and the managed fused-runtime
@@ -385,7 +361,7 @@ async function inspectActiveOptimizations(args) {
       let liRoot = null;
       try {
         liRoot = (
-          await import("../../shared/src/local-inference/paths.ts")
+          await import("@elizaos/plugin-native-inference/model-catalog/paths")
         ).localInferenceRoot();
       } catch {
         /* ignore */
@@ -438,7 +414,6 @@ async function inspectActiveOptimizations(args) {
         "no fused build — the stub backend emits silence and is rejected by startVoiceSession",
     });
   }
-
   // ── ASR backend (eligible local ASR via libelizainference only) ─────────
   let asrBackend = null;
   if (bundleRoot && existsSync(path.join(bundleRoot, "asr"))) {
@@ -452,7 +427,6 @@ async function inspectActiveOptimizations(args) {
       fix: "rebuild or download a libelizainference bundle that ships an eligible local ASR region (asr/ subdirectory).",
     });
   }
-
   // ── Silero VAD model ───────────────────────────────────────────────────
   let vadPath = null;
   try {
@@ -483,7 +457,6 @@ async function inspectActiveOptimizations(args) {
       detail: "Silero model not found",
     });
   }
-
   // ── Mic ────────────────────────────────────────────────────────────────
   const wantsMic = !args?.say && !args?.wav;
   if (wantsMic) {
@@ -492,7 +465,7 @@ async function inspectActiveOptimizations(args) {
       const { resolveDesktopRecorder } = await import(
         "@elizaos/plugin-local-inference/services/voice/mic-source"
       );
-      const rec = resolveDesktopRecorder(16_000);
+      const rec = resolveDesktopRecorder(16000);
       recorderName = rec ? rec.program : null;
     } catch {
       /* ignore */
@@ -521,7 +494,6 @@ async function inspectActiveOptimizations(args) {
       });
     }
   }
-
   // ── Always-wired pipeline pieces (these are structural, not gated) ─────
   active.push({
     name: "forced-JSON-structure grammar (Stage-1 envelope)",
@@ -559,7 +531,6 @@ async function inspectActiveOptimizations(args) {
     detail:
       "voiceLatencyTracer — vad-trigger → audio-first-played checkpoints; derived TTFT/TTFA/TTAP; printed per-turn + as a histogram on 'p'",
   });
-
   return {
     active,
     missing,
@@ -571,7 +542,6 @@ async function inspectActiveOptimizations(args) {
     vadPath,
   };
 }
-
 function printActive(report, _args) {
   log("");
   log(c("bold", "Eliza-1 interactive voice — active optimizations"));
@@ -605,11 +575,9 @@ function printActive(report, _args) {
     log("");
   }
 }
-
 // ---------------------------------------------------------------------------
 // Cross-platform voice support matrix
 // ---------------------------------------------------------------------------
-
 /**
  * The static cross-platform support matrix for the Eliza-1 voice pipeline:
  * for each {platform × GPU backend}, what runtime path it uses
@@ -840,7 +808,6 @@ const PLATFORM_MATRIX = [
     ],
   },
 ];
-
 /** Inspect what the *host* would actually use, for the local row callout. */
 async function inspectHostPeripherals() {
   const out = { recorder: null, player: null };
@@ -848,7 +815,7 @@ async function inspectHostPeripherals() {
     const { resolveDesktopRecorder } = await import(
       "@elizaos/plugin-local-inference/services/voice/mic-source"
     );
-    const rec = resolveDesktopRecorder(16_000);
+    const rec = resolveDesktopRecorder(16000);
     out.recorder = rec ? rec.program : null;
   } catch {
     /* ignore */
@@ -857,13 +824,12 @@ async function inspectHostPeripherals() {
     const { resolveSystemPlayerName } = await import(
       "@elizaos/plugin-local-inference/services/voice/system-audio-sink"
     );
-    out.player = resolveSystemPlayerName(24_000);
+    out.player = resolveSystemPlayerName(24000);
   } catch {
     /* ignore */
   }
   return out;
 }
-
 async function printPlatformReport() {
   log("");
   log(c("bold", "Eliza-1 voice — cross-platform support matrix"));
@@ -917,16 +883,14 @@ async function printPlatformReport() {
   );
   log("");
 }
-
 // ---------------------------------------------------------------------------
 // Auto-download helpers (gated; never faked)
 // ---------------------------------------------------------------------------
-
 async function tryAutoDownloadVad(_bundleRoot) {
   // Silero v5 VAD GGUF (MIT, public).
   try {
     const { localInferenceRoot } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const dest = path.join(localInferenceRoot(), "vad", "silero-vad-v5.gguf");
     if (existsSync(dest)) return dest;
@@ -949,7 +913,6 @@ async function tryAutoDownloadVad(_bundleRoot) {
     return null;
   }
 }
-
 async function tryAutoDownloadBundle(catalogEntry) {
   if (!catalogEntry) return null;
   try {
@@ -957,7 +920,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
       "@elizaos/plugin-local-inference/services/downloader"
     );
     const { elizaModelsDir } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const dest = path.join(
       elizaModelsDir(),
@@ -995,11 +958,9 @@ async function tryAutoDownloadBundle(catalogEntry) {
     return null;
   }
 }
-
 // ---------------------------------------------------------------------------
 // System audio sink: shell aplay / afplay / paplay (or write a rolling WAV)
 // ---------------------------------------------------------------------------
-
 async function makeAudioSink(opts) {
   const { sampleRate, noAudio } = opts;
   const { SystemAudioSink, WavFileAudioSink } = await import(
@@ -1035,11 +996,9 @@ async function makeAudioSink(opts) {
     finalize: async () => sink.dispose(),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Bundle registration
 // ---------------------------------------------------------------------------
-
 /**
  * Ensure the eliza-1-2b bundle on disk is registered in the local-inference
  * registry (so `listInstalledModels()` returns it and the engine can activate
@@ -1057,7 +1016,6 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   const installed = await listInstalledModels();
   const already = installed.find((m) => m.id === catalogEntry.id);
   if (already?.path && existsSync(already.path)) return already;
-
   const { upsertElizaModel } = await import(
     "@elizaos/plugin-local-inference/services/registry"
   );
@@ -1098,7 +1056,6 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     "blue",
     `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
   );
-
   if (catalogEntry.runtime?.mtp?.enabled) {
     tag(
       "setup",
@@ -1108,11 +1065,9 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   }
   return model;
 }
-
 // ---------------------------------------------------------------------------
 // Standalone runtime bootstrap
 // ---------------------------------------------------------------------------
-
 /**
  * Boot a minimal standalone AgentRuntime with the local-inference handler
  * registered and `eliza-1-2b` assigned to TEXT_SMALL. Returns
@@ -1137,10 +1092,8 @@ async function bootStandaloneRuntime({ roomId }) {
       `@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-
   // In-memory DB; assign the eliza-1-2b model to TEXT_SMALL.
   process.env.PGLITE_DATA_DIR = process.env.PGLITE_DATA_DIR || "memory://";
-
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -1155,7 +1108,6 @@ async function bootStandaloneRuntime({ roomId }) {
     plugins: [sqlPlugin],
   });
   await runtime.initialize();
-
   const persistedRoomId = stringToUuid(roomId);
   const entityId = stringToUuid(`${persistedRoomId}:user`);
   const worldId = stringToUuid(`${persistedRoomId}:world`);
@@ -1169,14 +1121,12 @@ async function bootStandaloneRuntime({ roomId }) {
     channelId: persistedRoomId,
     type: "VOICE_DM",
   });
-
   // Register the local-inference model handlers (TEXT_SMALL / TEXT_LARGE /
   // TRANSCRIPTION / TEXT_TO_SPEECH) + prewarmResponseHandler / prewarmSystemPrefix.
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
     "@elizaos/plugin-local-inference/runtime/ensure-local-inference-handler"
   );
   await ensureLocalInferenceHandler(runtime);
-
   // Ensure the eliza-1-2b model is assigned to TEXT_SMALL (the eliza-1
   // tiers route through the mtp llama-server). Best-effort: if no model
   // is installed this throws downstream and the caller reports it.
@@ -1192,7 +1142,6 @@ async function bootStandaloneRuntime({ roomId }) {
   } catch {
     /* the handler may auto-assign; reported later if generation fails */
   }
-
   // The `generate` callback for the voice turn controller.
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
@@ -1259,7 +1208,6 @@ async function bootStandaloneRuntime({ roomId }) {
       ...(request.turn ? { turn: request.turn } : {}),
     };
   };
-
   return {
     runtime,
     generate,
@@ -1267,23 +1215,18 @@ async function bootStandaloneRuntime({ roomId }) {
     roomId: persistedRoomId,
   };
 }
-
 // ---------------------------------------------------------------------------
 // MTP acceptance-rate readout
 // ---------------------------------------------------------------------------
-
 async function readMtpAcceptance() {
   return null;
 }
-
 // ---------------------------------------------------------------------------
 // Latency trace formatting
 // ---------------------------------------------------------------------------
-
 function fmtMs(v) {
   return v == null ? "—" : `${Math.round(v)}ms`;
 }
-
 async function printTurnLatency(_roomId) {
   try {
     const { voiceLatencyTracer } = await import(
@@ -1304,7 +1247,6 @@ async function printTurnLatency(_roomId) {
     /* tracer unavailable — skip */
   }
 }
-
 async function printLatencyHistogram() {
   try {
     const { voiceLatencyTracer } = await import(
@@ -1336,25 +1278,21 @@ async function printLatencyHistogram() {
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     log(USAGE);
     process.exit(0);
   }
-
   // Cross-platform support matrix — pure inspection, never starts a model
   // or a session. Always exits 0 (it's a status report).
   if (args.platformReport) {
     await printPlatformReport();
     process.exit(0);
   }
-
   // AGENTS.md §4: disabling MTP is a developer-only kill switch and must
   // warn loudly on every generation. Set it up-front so the engine sees it.
   if (args.noMtp) {
@@ -1366,15 +1304,12 @@ async function main() {
       ),
     );
   }
-
   // ── Preflight ──────────────────────────────────────────────────────────
   let report = await inspectActiveOptimizations(args);
-
   if (args.listActive) {
     printActive(report, args);
     process.exit(0);
   }
-
   // Auto-download cheap prereqs (VAD GGUF). These never fake — a failed
   // download is a missing prereq, not silence.
   if (!report.vadPath) {
@@ -1387,11 +1322,9 @@ async function main() {
     const br = await tryAutoDownloadBundle(report.catalogEntry);
     if (br) report.bundleRoot = br;
   }
-
   // Re-inspect after any auto-download.
   report = await inspectActiveOptimizations(args);
   printActive(report, args);
-
   if (report.missing.length > 0) {
     log(
       c(
@@ -1407,7 +1340,6 @@ async function main() {
     );
     process.exit(1);
   }
-
   // ── Register the bundle in the local-inference registry (if not already) ─
   try {
     await ensureBundleRegistered(report.catalogEntry, report.bundleRoot);
@@ -1420,7 +1352,6 @@ async function main() {
     );
     process.exit(1);
   }
-
   // ── Boot runtime ───────────────────────────────────────────────────────
   tag(
     "boot",
@@ -1457,13 +1388,11 @@ async function main() {
     "green",
     `runtime ready — agent=${runtime.character?.name ?? "Eliza"}`,
   );
-
   // ── Engine + voice bridge ──────────────────────────────────────────────
   const { localInferenceEngine } = await import(
     "@elizaos/plugin-local-inference/services/engine"
   );
   const engine = localInferenceEngine;
-
   // Load the eliza-1-2b model into the engine (this activates the bundle).
   try {
     const { listInstalledModels } = await import(
@@ -1483,14 +1412,12 @@ async function main() {
     );
     process.exit(1);
   }
-
   // Sample rate from the bridge default (24 kHz).
-  const SAMPLE_RATE = 24_000;
+  const SAMPLE_RATE = 24000;
   const audio = await makeAudioSink({
     sampleRate: SAMPLE_RATE,
     noAudio: args.noAudio,
   });
-
   // Start + arm voice (fused backend).
   try {
     engine.startVoice({
@@ -1510,14 +1437,12 @@ async function main() {
     process.exit(1);
   }
   tag("voice", "green", `armed — TTS=fused, audio sink=${audio.describe()}`);
-
   // ── State for keyboard controls ────────────────────────────────────────
   let micMuted = false;
   let micSource = null;
   let controller = null;
   let shuttingDown = false;
   let lastCtrlC = 0;
-
   const shutdown = async (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
@@ -1556,7 +1481,6 @@ async function main() {
     log(c("green", "[shutdown] done."));
     process.exit(code);
   };
-
   const forceStop = () => {
     tag(
       "barge-in",
@@ -1569,7 +1493,6 @@ async function main() {
       /* ignore */
     }
   };
-
   // ── Live UI wiring (turn controller events + scheduler/barge-in) ───────
   const bridge = engine.voice();
   if (bridge?.scheduler?.bargeIn?.onSignal) {
@@ -1587,7 +1510,6 @@ async function main() {
   } catch {
     /* not on a fused build with a context — fine */
   }
-
   // The `generate` callback wrapped so it streams replyText to stdout +
   // logs the structured envelope fields as they close. The actual TTS
   // streaming happens inside `engine.generate` (voiceStreamingArgs wires
@@ -1606,7 +1528,6 @@ async function main() {
     process.stdout.write("\n");
     return outcome;
   };
-
   const events = {
     onSpeculativeStart: (transcript) =>
       tag("speculative", "dim", `generating off partial: "${transcript}"`),
@@ -1639,7 +1560,6 @@ async function main() {
       ),
     onError: (err) => tag("error", "red", err?.message ?? String(err)),
   };
-
   // ── Modes ──────────────────────────────────────────────────────────────
   if (args.say != null) {
     // Text mode: inject the text directly as a finalized transcript — tests
@@ -1676,7 +1596,6 @@ async function main() {
     await shutdown(0);
     return;
   }
-
   if (args.wav != null) {
     // WAV mode: feed a WAV file through the same path once.
     const wavPath = path.resolve(args.wav);
@@ -1739,7 +1658,6 @@ async function main() {
     await shutdown(0);
     return;
   }
-
   // ── Real mic interactive ───────────────────────────────────────────────
   tag(
     "mode",
@@ -1795,7 +1713,6 @@ async function main() {
     await shutdown(1);
     return;
   }
-
   // Keyboard controls (raw mode).
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
@@ -1847,14 +1764,12 @@ async function main() {
       }
     });
   }
-
   // Fire an initial idle phrase-cache prewarm.
   void engine.prewarmIdleVoicePhrases().catch((error) => {
     // error-policy:J7 Phrase-cache warming is optional; the CLI reports the
     // failure while the live conversation remains usable.
     tag("prewarm", "yellow", error?.message ?? String(error));
   });
-
   // Keep the process alive; shutdown happens via 'q' / Ctrl-C / signals.
   process.on("SIGINT", () => {
     void shutdown(0);

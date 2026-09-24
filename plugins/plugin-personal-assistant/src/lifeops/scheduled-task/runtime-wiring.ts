@@ -25,6 +25,7 @@ import {
   logger,
   ServiceType,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
@@ -64,7 +65,6 @@ import {
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
@@ -681,7 +681,7 @@ function applyDispatchPolicy(result: DispatchResult): DispatchResult {
 
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
-  /** Test seam; production persists through LifeOpsRepository. */
+  /** Test seam; production persists through the runner-owned guarded callback. */
   persistDispatchAttempt?: (
     record: ScheduledTaskDispatchRecord,
     message: string,
@@ -826,43 +826,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
           existingDispatchKey.trim().length > 0
             ? existingDispatchKey.trim()
             : `${record.taskId}:${record.firedAtIso}`;
-        if (opts.persistDispatchAttempt) {
+        if (record.persistPreparedDelivery) {
+          await record.persistPreparedDelivery(message, dispatchIdempotencyKey);
+        } else if (opts.persistDispatchAttempt) {
           await opts.persistDispatchAttempt(
             record,
             message,
             dispatchIdempotencyKey,
           );
         } else {
-          const repository = new LifeOpsRepository(opts.runtime);
-          const current = await repository.getScheduledTask(
-            opts.runtime.agentId,
-            record.taskId,
-          );
-          if (!current) {
-            return applyDispatchPolicy({
-              ok: false,
-              reason: "transport_error",
-              acceptance: "not_accepted",
-              userActionable: false,
-              message:
-                "Scheduled task disappeared before dispatch preparation.",
-            });
-          }
-          const attemptMetadata = {
-            dispatchPreparedMessage: message,
-            dispatchIdempotencyKey,
-            dispatchAttempt: {
-              status: "prepared",
-              preparedAtIso: new Date().toISOString(),
-              firedAtIso: record.firedAtIso,
-            },
-          };
-          current.metadata = {
-            ...(current.metadata ?? {}),
-            ...attemptMetadata,
-          };
-          await repository.upsertScheduledTask(opts.runtime.agentId, current);
-          if (record.metadata) Object.assign(record.metadata, attemptMetadata);
+          return applyDispatchPolicy({
+            ok: false,
+            reason: "transport_error",
+            acceptance: "not_accepted",
+            userActionable: false,
+            message:
+              "Scheduled delivery preparation requires the guarded task runner.",
+          });
         }
       }
 

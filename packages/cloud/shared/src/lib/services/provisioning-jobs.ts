@@ -2855,6 +2855,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedLifecycleRevision?: number;
     restoreBackupId?: string;
     forceFreshBoot?: boolean;
   }): Promise<EnqueueAgentWakeResult> {
@@ -2876,6 +2877,22 @@ export class ProvisioningJobService {
       // Fresh provision + state restore.
       estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_wake",
+      // Automatic recovery must not outlive the observed stop generation.
+      validateSandbox:
+        params.expectedLifecycleRevision !== undefined
+          ? (sandbox) => {
+              if (sandbox.lifecycle_revision !== params.expectedLifecycleRevision)
+                throw new ElizaError("Agent state changed while waking", {
+                  code: "AGENT_WAKE_AUTHORITY_CHANGED",
+                  context: {
+                    agentId: params.agentId,
+                    organizationId: params.organizationId,
+                    expectedLifecycleRevision: params.expectedLifecycleRevision,
+                    actualLifecycleRevision: sandbox.lifecycle_revision,
+                  },
+                });
+            }
+          : undefined,
       // Reusing an in-flight wake keeps ITS params and drops the caller's. A
       // bare retry ("wake me") may ride whatever is already running, but a
       // request that names a restore point or forces a fresh boot is a

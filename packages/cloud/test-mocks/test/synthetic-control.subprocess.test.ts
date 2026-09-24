@@ -14,7 +14,7 @@ import {
   SyntheticControlProtocolError,
   SyntheticControlSession,
   type SyntheticResetReceipt,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 import { createScenarioStabilityPlan } from "../../../testing/scenario-runner/src/stability.ts";
 import { executeScenarioStability } from "../../../testing/scenario-runner/src/stability-executor.ts";
 import { ScenarioStabilitySubprocessAdapter } from "../../../testing/scenario-runner/src/stability-subprocess-adapter.ts";

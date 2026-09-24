@@ -1,5 +1,5 @@
 /** Covers the resident-memory benchmark report planner against synthetic catalog/probe data. Deterministic. */
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { describe, expect, it } from "vitest";
 import {
 	buildMemoryBenchmarkPlan,
@@ -21,7 +21,6 @@ function hardware(freeRamGb: number): HardwareProbe {
 		source: "os-fallback",
 	};
 }
-
 describe("memory benchmark report", () => {
 	it("marks the device-fit Eliza-1 tier and records curated resident estimates", () => {
 		const plan = buildMemoryBenchmarkPlan({
@@ -31,9 +30,9 @@ describe("memory benchmark report", () => {
 					id: "eliza-1-2b",
 					displayName: "Eliza-1 2B",
 					path: "/tmp/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-					sizeBytes: 1_500_000_000,
+					sizeBytes: 1500000000,
 					bundleRoot: "/tmp/eliza-1-2b.bundle",
-					bundleSizeBytes: 2_000_000_000,
+					bundleSizeBytes: 2000000000,
 					source: "eliza-download",
 					installedAt: "2026-06-22T00:00:00.000Z",
 					lastUsedAt: null,
@@ -41,7 +40,6 @@ describe("memory benchmark report", () => {
 			],
 			hardware: hardware(4.5),
 		});
-
 		const twoB = plan.find((model) => model.modelId === "eliza-1-2b");
 		expect(twoB?.installed).toBe(true);
 		expect(twoB?.selectedByDeviceFit).toBe(true);
@@ -49,15 +47,12 @@ describe("memory benchmark report", () => {
 		// shared-KV is already minimal; the head_dim=128 QJL kernel is retired).
 		expect(twoB?.plannedKvQuant).toBe("q8_0");
 		expect(twoB?.estimatedResidentMb).toBeGreaterThan(0);
-
 		const larger = plan.find((model) => model.modelId === "eliza-1-9b");
 		expect(larger?.fit).toBe("tight");
 		expect(larger?.selectedByDeviceFit).toBe(false);
-
 		const largest = plan.find((model) => model.modelId === "eliza-1-27b-256k");
 		expect(largest?.fit).toBe("wontfit");
 	});
-
 	it("summarizes load and telemetry counts", async () => {
 		const report = await buildMemoryBenchmarkReport(
 			{
@@ -83,7 +78,6 @@ describe("memory benchmark report", () => {
 				},
 			],
 		);
-
 		expect(report.deviceFit.modelId).toBeNull();
 		expect(report.telemetry.modelLoads).toBe(1);
 		expect(report.telemetry.evictions).toBe(1);

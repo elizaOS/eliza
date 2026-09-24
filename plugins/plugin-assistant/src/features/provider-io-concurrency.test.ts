@@ -195,7 +195,7 @@ describe("provider database I/O concurrency", () => {
 
     for (const pending of candidatePools.values()) pending.resolve([]);
     await expect(resultPromise).resolves.toMatchObject({
-      text: "No facts available.",
+      text: "",
     });
   });
 

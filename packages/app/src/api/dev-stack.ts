@@ -12,11 +12,12 @@
  * desktop dev; embedded Electrobun also syncs env after bind.
  */
 
-import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
+import {
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
+} from "@elizaos/core/runtime-env";
 import { isAllowedDevConsoleLogPath } from "./dev-console-log";
-
 export const ELIZA_DEV_STACK_SCHEMA = "elizaos.dev.stack/v1" as const;
-
 export type DevStackPayload = {
   schema: typeof ELIZA_DEV_STACK_SCHEMA;
   api: {
@@ -47,7 +48,6 @@ export type DevStackPayload = {
   };
   hints: string[];
 };
-
 /**
  * Build the JSON body for `GET /api/dev/stack`.
  */
@@ -59,7 +59,6 @@ export function resolveDevStackFromEnv(
   // same uiPort clients actually use. The previous inline ELIZA_PORT fallback
   // conflated the server/API-only port with the UI port.
   const uiPort = resolveDesktopUiPort(env);
-
   const rendererUrl = env.ELIZA_RENDERER_URL?.trim() || null;
   const desktopApiBase = env.ELIZA_DESKTOP_API_BASE?.trim() || null;
   const screenshotUpstream =
@@ -68,7 +67,6 @@ export function resolveDevStackFromEnv(
   const devLogPathAllowed =
     configuredDevLogPath !== null &&
     isAllowedDevConsoleLogPath(configuredDevLogPath);
-
   return {
     schema: ELIZA_DEV_STACK_SCHEMA,
     api: {

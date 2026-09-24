@@ -7,18 +7,13 @@
 
 import { createServer } from "node:http";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { Evaluator, Memory, PromptSegment } from "../../../packages/core/src/types";
 import { ModelType } from "../../../packages/core/src/types";
 import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { handleTextSmall } from "../models/text";
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
-});
-
-it.each([
+it.for([
   { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: false },
   { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: true },
   {
@@ -31,9 +26,25 @@ it.each([
   { finishReason: "length", malformed: false, succeeds: false },
   { finishReason: "content_filter", malformed: false, succeeds: false },
   { finishReason: "stop", malformed: true, succeeds: false },
+  {
+    finishReason: "stop",
+    malformed: false,
+    succeeds: false,
+    nativeSchema: true,
+    cancelRequest: true,
+  },
 ])(
-  "processes only complete SDK evaluator output ($finishReason, malformed=$malformed)",
-  async ({ finishReason, malformed, succeeds, nativeSchema, rejectSchema }) => {
+  "processes only complete SDK evaluator output ($finishReason, malformed=$malformed, native=$nativeSchema, reject=$rejectSchema, cancel=$cancelRequest)",
+  async (
+    { finishReason, malformed, succeeds, nativeSchema, rejectSchema, cancelRequest },
+    { signal, onTestFinished }
+  ) => {
+    const finished = Promise.withResolvers<void>();
+    // A timed-out callback keeps running until its owned provider work settles.
+    // Drain it before the next case changes process-wide provider settings.
+    onTestFinished(() => finished.promise);
+    const requestAbort = new AbortController();
+    const providerSignal = AbortSignal.any([signal, requestAbort.signal]);
     const bodies: Array<{
       model: string;
       response_format?: { type: string; json_schema?: { schema: unknown } };
@@ -47,6 +58,10 @@ it.each([
       request.on("end", () => {
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as (typeof bodies)[number];
         bodies.push(body);
+        if (cancelRequest) {
+          requestAbort.abort(new DOMException("Fixture cancellation", "AbortError"));
+          return;
+        }
         if (rejectSchema && body.response_format?.type === "json_schema") {
           response.writeHead(400, { "content-type": "application/json" });
           response.end(
@@ -96,8 +111,8 @@ it.each([
         );
       });
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("No loopback address");
       const originalFetch = globalThis.fetch;
@@ -138,7 +153,13 @@ it.each([
         data: {},
         text: "Complete provider context remains here.",
       });
-      runtime.registerModel(ModelType.TEXT_SMALL, handleTextSmall, "openai", 100);
+      runtime.registerModel(
+        ModelType.TEXT_SMALL,
+        (modelRuntime, params) =>
+          handleTextSmall(modelRuntime, { ...params, signal: providerSignal }),
+        "openai",
+        100
+      );
       const stable = "Extract the complete latest message including its final reference.\n\n";
       const segments = (text: string): PromptSegment[] => [
         { content: stable, stable: true },
@@ -181,7 +202,13 @@ it.each([
         ],
       };
       runtime.registerEvaluator(evaluator);
-      for (const text of [`${"A".repeat(140_000)}-FIRST-END`, "second-SECOND-END"]) {
+      // Keep the complete 140K-character payload without making this wire
+      // contract depend on expensive BPE work for one enormous synthetic word.
+      const longText = "Complete Unicode 🧭 context remains unchanged.\n"
+        .repeat(4000)
+        .slice(0, 140_000);
+      expect(longText).toHaveLength(140_000);
+      for (const text of [`${longText}-FIRST-END`, "second-SECOND-END"]) {
         const message: Memory = {
           id: crypto.randomUUID() as Memory["id"],
           entityId: crypto.randomUUID() as Memory["entityId"],
@@ -194,6 +221,7 @@ it.each([
           expect(result.processedEvaluators).toEqual([]);
           expect(saved).toEqual([]);
           expect(bodies.length).toBeGreaterThan(0);
+          if (cancelRequest) expect(bodies).toHaveLength(1);
           return;
         }
         expect(result.errors).toEqual([]);
@@ -268,10 +296,19 @@ it.each([
         );
       }
     } finally {
+      requestAbort.abort();
       server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve()))
-      );
+      try {
+        if (server.listening) {
+          await new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve()))
+          );
+        }
+      } finally {
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+        finished.resolve();
+      }
     }
   },
   30_000

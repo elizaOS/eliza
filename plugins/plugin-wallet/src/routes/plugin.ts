@@ -10,9 +10,11 @@
  *
  * Migrated from packages/app/src/api/wallet-market-overview-route.ts.
  */
-
 import type http from "node:http";
-import type { HttpPlugin as Plugin, Route } from "@elizaos/shared";
+import {
+  type HttpPlugin as Plugin,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
 async function marketOverviewHandler(
@@ -24,7 +26,6 @@ async function marketOverviewHandler(
   const httpRes = res as http.ServerResponse;
   await handleWalletMarketOverviewRoute(httpReq, httpRes);
 }
-
 const walletHttpRoutes: Route[] = [
   // GET /api/wallet/market-overview — public cached market overview for
   // wallet empty states and cloud feeds. The handler also responds to
@@ -40,7 +41,6 @@ const walletHttpRoutes: Route[] = [
     handler: marketOverviewHandler,
   },
 ];
-
 export const walletRoutePlugin: Plugin = {
   name: "@elizaos/plugin-wallet:routes",
   description:

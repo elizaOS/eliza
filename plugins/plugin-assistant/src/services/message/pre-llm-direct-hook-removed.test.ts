@@ -146,6 +146,10 @@ function makeRuntime() {
     startRun: vi.fn(() => RUN_ID),
     getCurrentRunId: vi.fn(() => RUN_ID),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: vi.fn(async (memory: Memory) => {
       createdMemories.push(memory);
       return memory.id ?? MESSAGE_ID;

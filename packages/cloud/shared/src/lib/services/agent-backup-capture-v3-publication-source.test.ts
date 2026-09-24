@@ -11,8 +11,8 @@ import {
   type AgentBackupCaptureV2ComponentDescriptor,
   type AgentBackupCaptureV2Frame,
   type AgentBackupCaptureV2Request,
-  canonicalizeAgentBackupOperationKeyBundleContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { canonicalizeAgentBackupOperationKeyBundleContext } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
 import {
   type AgentBackupCaptureV3Artifacts,

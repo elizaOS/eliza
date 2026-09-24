@@ -14,20 +14,22 @@
  * (#9948).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { LegacyRouteHandler, Route, RouteRequest, RouteResponse } from "@elizaos/shared";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type {
+  LegacyRouteHandler,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import type { SolanaService } from "../service";
 
 class SolanaSignInputError extends Error {}
-
 function routeErrorStatus(error: unknown): number {
   return error instanceof SolanaSignInputError ? 400 : 500;
 }
-
 function isLoopbackOrigin(origin: string): boolean {
   try {
     const host = new URL(origin).hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -42,7 +44,6 @@ function isLoopbackOrigin(origin: string): boolean {
     return false;
   }
 }
-
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   // Only reflect a loopback Origin; never echo an arbitrary cross-origin
   // attacker origin and never combine it with credentialed CORS. These are
@@ -60,7 +61,6 @@ function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   );
   res.setHeader?.("Access-Control-Max-Age", "600");
 }
-
 function readSignToken(runtime: IAgentRuntime): string | null {
   const fromRuntime = runtime.getSetting("WALLET_BROWSER_SIGN_TOKEN");
   if (typeof fromRuntime === "string" && fromRuntime.trim().length >= 16) {
@@ -72,7 +72,6 @@ function readSignToken(runtime: IAgentRuntime): string | null {
   }
   return null;
 }
-
 function readBearer(req: RouteRequest): string | null {
   const auth = req.headers?.authorization as string | undefined;
   if (auth?.startsWith("Bearer ")) {
@@ -82,7 +81,6 @@ function readBearer(req: RouteRequest): string | null {
   if (typeof x === "string" && x.length > 0) return x.trim();
   return null;
 }
-
 function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): boolean {
   setCorsHeaders(req, res);
   if (req.method === "OPTIONS") {
@@ -101,7 +99,6 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
   }
   return true;
 }
-
 function decodeBase64(s: string): Uint8Array {
   const normalized = s.trim();
   if (
@@ -118,11 +115,9 @@ function decodeBase64(s: string): Uint8Array {
   }
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
-
 function encodeBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
-
 function decodeTransaction(b64: string): Transaction | VersionedTransaction {
   const raw = decodeBase64(b64);
   // Try versioned first; fall back to legacy.
@@ -136,14 +131,12 @@ function decodeTransaction(b64: string): Transaction | VersionedTransaction {
     }
   }
 }
-
 function serializeTransaction(tx: Transaction | VersionedTransaction): Uint8Array {
   if (tx instanceof VersionedTransaction) {
     return tx.serialize();
   }
   return new Uint8Array(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
 }
-
 const pubkeyHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
@@ -159,11 +152,12 @@ const pubkeyHandler: LegacyRouteHandler = async (req, res, runtime) => {
     res.status(500).json({ error: (err as Error).message });
   }
 };
-
 const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
-    const body = (req.body ?? {}) as { transactionBase64?: unknown };
+    const body = (req.body ?? {}) as {
+      transactionBase64?: unknown;
+    };
     if (typeof body.transactionBase64 !== "string") {
       res.status(400).json({ error: "transactionBase64 required" });
       return;
@@ -181,11 +175,12 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
     res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
-
 const signAllTransactionsHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
-    const body = (req.body ?? {}) as { transactionsBase64?: unknown };
+    const body = (req.body ?? {}) as {
+      transactionsBase64?: unknown;
+    };
     if (
       !Array.isArray(body.transactionsBase64) ||
       !body.transactionsBase64.every((s) => typeof s === "string")
@@ -206,11 +201,12 @@ const signAllTransactionsHandler: LegacyRouteHandler = async (req, res, runtime)
     res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
-
 const signMessageHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
-    const body = (req.body ?? {}) as { messageBase64?: unknown };
+    const body = (req.body ?? {}) as {
+      messageBase64?: unknown;
+    };
     if (typeof body.messageBase64 !== "string") {
       res.status(400).json({ error: "messageBase64 required" });
       return;
@@ -229,7 +225,6 @@ const signMessageHandler: LegacyRouteHandler = async (req, res, runtime) => {
     res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
-
 const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
@@ -245,19 +240,16 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
     const signed = await signer.signTransaction(tx);
-
     const solanaService = runtime.getService<SolanaService>("chain_solana");
     const rpcUrl =
       (runtime.getSetting("SOLANA_RPC_URL") as string | undefined) ??
       process.env.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com";
     const conn = solanaService?.getConnection() ?? new Connection(rpcUrl, "confirmed");
-
     const sendOptions: SendOptions =
       body.sendOptions && typeof body.sendOptions === "object"
         ? (body.sendOptions as SendOptions)
         : { skipPreflight: false, maxRetries: 3 };
-
     const signature = await conn.sendRawTransaction(serializeTransaction(signed), sendOptions);
     res.status(200).json({
       signature,
@@ -268,7 +260,6 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
     res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
-
 export const solanaSignRoutes: Route[] = [
   {
     type: "GET",

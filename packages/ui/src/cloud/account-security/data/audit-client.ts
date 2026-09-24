@@ -9,7 +9,7 @@
  * gracefully: this helper never throws and returns `false` when delivery fails.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { apiFetch } from "../../lib/api-client";
 
 /**

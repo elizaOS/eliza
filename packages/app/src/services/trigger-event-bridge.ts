@@ -131,7 +131,8 @@ export function startTriggerEventBridge(
   options: TriggerEventBridgeOptions = {},
 ): TriggerEventBridgeHandle {
   const minIntervalMs = options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS;
-  const events = options.events ?? EXPOSED_EVENTS;
+  const events = new Set(options.events ?? EXPOSED_EVENTS);
+  let stopped = false;
   const listTriggers = options.listTriggers ?? listTriggerTasks;
   const dispatch = options.dispatch ?? executeTriggerTask;
   const now = options.now ?? Date.now;
@@ -155,6 +156,7 @@ export function startTriggerEventBridge(
       return cachedTasks;
     }
     const tasks = await listTriggers(runtime);
+    if (stopped) return [];
     cachedTasks = tasks;
     cacheTimestamp = current;
     // Rebuild the set of event types that have enabled triggers
@@ -187,7 +189,7 @@ export function startTriggerEventBridge(
 
   const buildHandler = (eventType: EventType): BridgeHandler => {
     return async (payload: EventPayload) => {
-      if (!triggersFeatureEnabled(runtime)) return;
+      if (stopped || !triggersFeatureEnabled(runtime)) return;
       if (isPassiveConnectorEvent(runtime, payload)) return;
 
       // Short-circuit: skip DB query if we know (from cached data) there are no triggers for this event type
@@ -199,6 +201,7 @@ export function startTriggerEventBridge(
       try {
         tasks = await getCachedTriggers();
       } catch (err) {
+        runtime.reportError("trigger-event-bridge.list", err);
         runtime.logger.error(
           {
             src: "trigger-event-bridge",
@@ -209,9 +212,11 @@ export function startTriggerEventBridge(
         );
         return;
       }
+      if (stopped) return;
       const forwardedPayload = stripRuntimeFields(payload);
 
       for (const task of tasks) {
+        if (stopped) return;
         const trigger = readTriggerConfig(task);
         if (!trigger) continue;
         if (!trigger.enabled) continue;
@@ -242,6 +247,7 @@ export function startTriggerEventBridge(
             event: { kind: eventType, payload: forwardedPayload },
           });
         } catch (err) {
+          runtime.reportError("trigger-event-bridge.dispatch", err);
           runtime.logger.error(
             {
               src: "trigger-event-bridge",
@@ -264,6 +270,7 @@ export function startTriggerEventBridge(
 
   return {
     stop: () => {
+      stopped = true;
       for (const [eventType, handler] of registered.entries()) {
         runtime.unregisterEvent(eventType, handler);
       }

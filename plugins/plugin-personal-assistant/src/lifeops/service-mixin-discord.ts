@@ -3,12 +3,13 @@
  * `withDiscord` mixin that composes the Discord domain's DM-inbox, search, and
  * connector-verification methods onto the LifeOpsService base.
  */
+
+import {
+  type LifeOpsConnectorSide,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsOwnerBrowserAccessSource,
+} from "@elizaos/core/contracts/personal-assistant";
 import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
-import type {
-  LifeOpsConnectorSide,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsOwnerBrowserAccessSource,
-} from "@elizaos/shared";
 import type {
   DiscordConnectorVerification,
   DiscordSendMessageResult,

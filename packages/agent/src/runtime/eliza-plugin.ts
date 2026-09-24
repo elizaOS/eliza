@@ -3,14 +3,15 @@
  * and concrete services. Assistant policy is registered separately; this plugin
  * supplies host storage, permissions, media and runtime integration.
  */
-
-import type { IAgentRuntime, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
+  type IAgentRuntime,
   NotificationService,
   PairingService,
   promoteSubactionsToActions,
+  type ServiceClass,
 } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import {
   ApprovalService,
   GlobalPauseService,
@@ -21,7 +22,6 @@ import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
 } from "@elizaos/plugin-relationships";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -83,43 +83,36 @@ import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
-
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
   agentId?: string;
 };
-
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
     config?.workspaceDir ?? resolveDefaultAgentWorkspaceDir();
   const agentId = config?.agentId ?? "main";
   const sessionStorePath =
     config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
-
   const baseProviders = [
     createWorkspaceProvider({ workspaceDir }),
     adminTrustProvider,
     adminPanelProvider,
-
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
     pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),
   ];
-
   const plugin: Plugin = {
     name: "eliza",
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
     // migrates the runtime data model whenever the agent runs.
     schema: {
       ...knowledgeGraphSchema,
     },
-
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,
@@ -154,7 +147,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // (#14710) and every non-whitelisted DM sender is denied.
       PairingService as ServiceClass,
     ],
-
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       registerErrorEscalation(runtime);
@@ -173,20 +165,16 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       registerAttachmentKnowledgeBackfillWorker(runtime);
       registerImportedConversationEmbeddingWorker(runtime);
     },
-
     providers: [
       ...baseProviders,
-
       automationTerminalBridgeProvider,
       pageScopedContextProvider,
       recentConversationsProvider,
       relevantConversationsProvider,
       rolodexProvider,
-
       roleBackfillProvider,
       escalationTriggerProvider,
     ],
-
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
     routes: [
@@ -195,7 +183,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundUploadImageRoute,
       ...filesRoutes,
     ],
-
     actions: [
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
@@ -303,7 +290,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
       // CODE umbrella).
     ],
-
     async dispose(runtime) {
       await runtime
         .getService<PermissionRegistry>(PermissionRegistry.serviceType)
@@ -323,6 +309,5 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         ?.stop();
     },
   };
-
   return preparePluginForSelectedDatabase(plugin);
 }

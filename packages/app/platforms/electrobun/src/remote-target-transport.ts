@@ -3,7 +3,6 @@
  * process. Host and owner bearers are placed in request headers, never URLs or
  * returned diagnostics, and response bodies are rejected above a fixed limit.
  */
-
 import { ElizaError } from "@elizaos/core";
 import {
 	canonicalizeRemoteControlValue,
@@ -12,20 +11,18 @@ import {
 	isRemoteControllerPublicIdentity,
 	REMOTE_TARGET_PAIRING_CAPABILITIES,
 	type RemoteControllerPublicIdentity,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import type { RemoteTargetManagedNetworkEnrollment } from "./remote-target-managed-network";
 import type { EnrolledRemoteTargetVaultRecord } from "./remote-target-vault";
 
-const RESPONSE_LIMIT_BYTES = 1_048_576;
-const REQUEST_TIMEOUT_MS = 10_000;
+const RESPONSE_LIMIT_BYTES = 1048576;
+const REQUEST_TIMEOUT_MS = 10000;
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export type RemoteTargetFetch = (
 	input: string | URL | Request,
 	init?: RequestInit,
 ) => Promise<Response>;
-
 export class RemoteTargetTransportError extends Error {
 	constructor(
 		readonly code: string,
@@ -41,7 +38,6 @@ export class RemoteTargetTransportError extends Error {
 		this.name = "RemoteTargetTransportError";
 	}
 }
-
 export interface RemoteTargetEnrollmentRequest {
 	apiBaseUrl: string;
 	ownerAccessToken: string;
@@ -54,7 +50,6 @@ export interface RemoteTargetEnrollmentRequest {
 	encryptionPublicKeyJwk: JsonWebKey;
 	managedNetwork?: boolean;
 }
-
 export interface RemoteTargetEnrollmentResponse {
 	hostId: string;
 	hostToken: string;
@@ -64,7 +59,6 @@ export interface RemoteTargetEnrollmentResponse {
 	recovered: boolean;
 	managedNetworkEnrollment?: RemoteTargetManagedNetworkEnrollment;
 }
-
 export interface RemoteTargetActivationResponse {
 	sessionId: string;
 	grantId: string;
@@ -76,7 +70,6 @@ export interface RemoteTargetActivationResponse {
 	grantExpiresAt: number;
 	status: "activating";
 }
-
 export interface RemoteTargetPairingChallenge {
 	sessionId: string;
 	code: string;
@@ -84,7 +77,6 @@ export interface RemoteTargetPairingChallenge {
 	capabilities: string[];
 	status: "pending";
 }
-
 export interface RemoteTargetPairingChallengeStatus {
 	sessionId: string;
 	status: "pending" | "claimed" | "denied" | "expired";
@@ -95,19 +87,16 @@ export interface RemoteTargetPairingChallengeStatus {
 		"deviceId" | "keyId" | "displayName" | "platform"
 	>;
 }
-
 export interface RemoteTargetActivationCompensationResponse {
 	sessionId: string;
 	status: "denied" | "revoked";
 	alreadyCompensated: boolean;
 }
-
 export interface RemoteTargetActivationCommitResponse {
 	sessionId: string;
 	status: "active";
 	alreadyCommitted: boolean;
 }
-
 export interface RemoteTargetClaim {
 	commandId: string;
 	sequence: number;
@@ -116,14 +105,16 @@ export interface RemoteTargetClaim {
 	claimToken: string;
 	claimExpiresAt: number;
 }
-
 export interface RemoteTargetHostRevocationPage {
 	hostId: string;
 	status: "revoked";
 	alreadyRevoked: boolean;
-	cleanup: { sessions: number; commands: number; more: boolean };
+	cleanup: {
+		sessions: number;
+		commands: number;
+		more: boolean;
+	};
 }
-
 export interface RemoteTargetRelayTransport {
 	enroll(
 		input: RemoteTargetEnrollmentRequest,
@@ -131,7 +122,9 @@ export interface RemoteTargetRelayTransport {
 	activateManagedNetwork(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		expectedHostname: string;
-	}): Promise<{ hostname: string }>;
+	}): Promise<{
+		hostname: string;
+	}>;
 	activate(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId?: string;
@@ -180,21 +173,18 @@ export interface RemoteTargetRelayTransport {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 	}): Promise<RemoteTargetHostRevocationPage>;
 }
-
 function requireObject(value: unknown): Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error("Remote relay response is invalid.");
 	}
 	return value as Record<string, unknown>;
 }
-
 function requireUuid(value: unknown): string {
 	if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
 		throw new Error("Remote relay response contains an invalid identifier.");
 	}
 	return value;
 }
-
 function requireTimestamp(value: unknown): number {
 	const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
 	if (!Number.isSafeInteger(parsed) || parsed <= 0) {
@@ -202,7 +192,6 @@ function requireTimestamp(value: unknown): number {
 	}
 	return parsed;
 }
-
 function requirePairingCapabilities(value: unknown): string[] {
 	if (
 		!Array.isArray(value) ||
@@ -215,7 +204,6 @@ function requirePairingCapabilities(value: unknown): string[] {
 	}
 	return [...REMOTE_TARGET_PAIRING_CAPABILITIES];
 }
-
 function parseActivationResponse(
 	data: Record<string, unknown>,
 	expectedSessionId: string,
@@ -261,7 +249,6 @@ function parseActivationResponse(
 		status: "activating",
 	};
 }
-
 export function normalizeRemoteTargetApiBase(value: string): string {
 	let url: URL;
 	try {
@@ -288,7 +275,6 @@ export function normalizeRemoteTargetApiBase(value: string): string {
 	url.pathname = url.pathname.replace(/\/+$/, "");
 	return url.toString().replace(/\/$/, "");
 }
-
 async function readBoundedJson(response: Response): Promise<unknown> {
 	const declared = Number(response.headers.get("content-length") ?? "0");
 	if (Number.isFinite(declared) && declared > RESPONSE_LIMIT_BYTES) {
@@ -326,7 +312,6 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 		throw new Error("Remote relay response is invalid JSON.");
 	}
 }
-
 export class HttpRemoteTargetRelayTransport
 	implements RemoteTargetRelayTransport
 {
@@ -334,7 +319,6 @@ export class HttpRemoteTargetRelayTransport
 		private readonly fetchImpl: RemoteTargetFetch = globalThis.fetch,
 		private readonly requestTimeoutMs = REQUEST_TIMEOUT_MS,
 	) {}
-
 	private async request(
 		apiBaseUrl: string,
 		path: string,
@@ -386,7 +370,6 @@ export class HttpRemoteTargetRelayTransport
 			clearTimeout(timeout);
 		}
 	}
-
 	async enroll(
 		input: RemoteTargetEnrollmentRequest,
 	): Promise<RemoteTargetEnrollmentResponse> {
@@ -481,7 +464,6 @@ export class HttpRemoteTargetRelayTransport
 		) {
 			throw new Error("Remote host enrollment response is invalid.");
 		}
-
 		const listed = requireObject(
 			await this.request(input.apiBaseUrl, "/api/v1/remote/hosts", {
 				method: "GET",
@@ -546,11 +528,12 @@ export class HttpRemoteTargetRelayTransport
 			...(managedNetworkEnrollment ? { managedNetworkEnrollment } : {}),
 		};
 	}
-
 	async activateManagedNetwork(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		expectedHostname: string;
-	}): Promise<{ hostname: string }> {
+	}): Promise<{
+		hostname: string;
+	}> {
 		const hostId = requireUuid(input.enrollment.identity.runtimeId);
 		const data = requireObject(
 			await this.request(
@@ -576,7 +559,6 @@ export class HttpRemoteTargetRelayTransport
 		}
 		return { hostname: data.hostname };
 	}
-
 	async activate(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId?: string;
@@ -606,7 +588,6 @@ export class HttpRemoteTargetRelayTransport
 		}
 		return parseActivationResponse(data, sessionId);
 	}
-
 	async createPairingChallenge(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 	}): Promise<RemoteTargetPairingChallenge> {
@@ -632,7 +613,6 @@ export class HttpRemoteTargetRelayTransport
 			status: "pending",
 		};
 	}
-
 	async readPairingChallenge(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -685,7 +665,6 @@ export class HttpRemoteTargetRelayTransport
 			...(controller ? { controller } : {}),
 		};
 	}
-
 	async confirmPairing(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -700,7 +679,6 @@ export class HttpRemoteTargetRelayTransport
 		);
 		return parseActivationResponse(data, sessionId);
 	}
-
 	async commitActivation(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -729,7 +707,6 @@ export class HttpRemoteTargetRelayTransport
 			alreadyCommitted: data.alreadyCommitted,
 		};
 	}
-
 	async compensateActivation(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -758,7 +735,6 @@ export class HttpRemoteTargetRelayTransport
 			alreadyCompensated: data.alreadyCompensated,
 		};
 	}
-
 	async claimNext(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -802,7 +778,6 @@ export class HttpRemoteTargetRelayTransport
 			claimExpiresAt: requireTimestamp(body.claimExpiresAt),
 		};
 	}
-
 	async recordStart(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -813,7 +788,6 @@ export class HttpRemoteTargetRelayTransport
 	}): Promise<void> {
 		await this.commandMutation("start", input);
 	}
-
 	async complete(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 		sessionId: string;
@@ -824,7 +798,6 @@ export class HttpRemoteTargetRelayTransport
 	}): Promise<void> {
 		await this.commandMutation("complete", input);
 	}
-
 	async revokeHost(input: {
 		enrollment: EnrolledRemoteTargetVaultRecord;
 	}): Promise<RemoteTargetHostRevocationPage> {
@@ -866,7 +839,6 @@ export class HttpRemoteTargetRelayTransport
 			},
 		};
 	}
-
 	private async commandMutation(
 		operation: "start" | "complete",
 		input: {
@@ -892,7 +864,6 @@ export class HttpRemoteTargetRelayTransport
 			},
 		);
 	}
-
 	private hostHeaders(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		json = false,
@@ -904,7 +875,6 @@ export class HttpRemoteTargetRelayTransport
 		};
 	}
 }
-
 export const remoteTargetTransportInternals = {
 	RESPONSE_LIMIT_BYTES,
 	normalizeRemoteTargetApiBase,

@@ -23,7 +23,7 @@ import type {
   Service,
 } from "@elizaos/core";
 import { logger, ServiceType } from "@elizaos/core";
-import type { EntityResolveCandidate } from "@elizaos/shared";
+import { type EntityResolveCandidate } from "@elizaos/core/knowledge-graph/entity-types";
 import { loadInboxTriageConfig } from "./config.ts";
 import { extractAsciiEmailAddress } from "./email-address.ts";
 import {

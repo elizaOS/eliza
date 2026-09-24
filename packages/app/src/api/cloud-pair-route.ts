@@ -16,33 +16,36 @@
  * gateway range. Every CIDR entry widens token redemption to that LAN/VPC
  * segment, so keep the list as narrow as the deployment allows.
  */
-
 import type http from "node:http";
+import {
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+} from "@elizaos/agent/api/loopback-trust";
 import { logger } from "@elizaos/core";
 import {
   type CloudPairRelaySession,
-  classifyElizaHostname,
-  ELIZA_DOMAIN_CONTRACTS,
-  isLoopbackRemoteAddress,
-  isRemoteAddressInCidrList,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
-  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
   resolveCloudPairAgentIdFromEnv,
+} from "@elizaos/core/contracts/cloud-pair";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
-const RELAY_TIMEOUT_MS = 15_000;
+const RELAY_TIMEOUT_MS = 15000;
 const pairingRelayLimiter = getSensitiveLimiter("cloud.pair.relay");
-
 function resolveCloudApiBaseUrl(): string {
   return resolveCanonicalCloudApiBaseUrl(
     process.env.NEXT_PUBLIC_API_URL,
   ).replace(/\/+$/, "");
 }
-
 function resolveCloudAuthRoot(): string {
   // Cloud-api mounts `/api/auth/pair` at the site root, not under `/api/v1`.
   // ELIZAOS_CLOUD_BASE_URL is the `/api/v1` URL, so strip the suffix to land
@@ -50,7 +53,6 @@ function resolveCloudAuthRoot(): string {
   const base = resolveCloudApiBaseUrl();
   return base.replace(/\/api\/v1\/?$/, "");
 }
-
 function resolveDirectRequestOrigin(req: http.IncomingMessage): string {
   // The origin forwarded to the Cloud exchange is built from direct request
   // metadata only — X-Forwarded-Host/X-Forwarded-Proto are client-controlled
@@ -62,20 +64,17 @@ function resolveDirectRequestOrigin(req: http.IncomingMessage): string {
   const host = req.headers.host?.split(",", 1)[0]?.trim();
   return host ? `${proto}://${host}` : "";
 }
-
 interface CloudPairRelayPolicy {
   readonly directRelayEnabled: boolean;
   readonly allowedPeerCidrs: string | undefined;
   readonly agentEnv: Readonly<Record<string, string | undefined>>;
 }
-
 function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
   const authority = resolveDevCloudEnvAuthority();
   const read = (key: string): string | undefined =>
     authority ? resolveDevCloudAuthorityEnvValue(key) : process.env[key];
   const activationBlocked =
     authority === "staging-default" || authority === "offline";
-
   return Object.freeze({
     directRelayEnabled:
       !activationBlocked && read("ELIZA_CLOUD_PAIR_DIRECT_RELAY") === "1",
@@ -86,7 +85,6 @@ function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
     }),
   });
 }
-
 function canUseManagedDirectRelay(
   req: http.IncomingMessage,
   policy: CloudPairRelayPolicy,
@@ -104,7 +102,6 @@ function canUseManagedDirectRelay(
     isRemoteAddressInCidrList(peer, policy.allowedPeerCidrs)
   );
 }
-
 function escapeHtml(value: string): string {
   return value.replace(/[<>&"]/g, (character) => {
     if (character === "<") return "&lt;";
@@ -113,7 +110,6 @@ function escapeHtml(value: string): string {
     return "&quot;";
   });
 }
-
 function resolveCloudConsoleUrl(): string {
   try {
     const classified = classifyElizaHostname(
@@ -128,7 +124,6 @@ function resolveCloudConsoleUrl(): string {
   }
   return `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud/agents`;
 }
-
 function renderErrorHtml(title: string, message: string): string {
   // Static error page — no token or inline user data, only a canonical
   // environment-aware recovery link so staging failures never cross to prod.
@@ -179,7 +174,6 @@ function renderErrorHtml(title: string, message: string): string {
 </body>
 </html>`;
 }
-
 function sendHtml(
   res: http.ServerResponse,
   status: number,
@@ -199,7 +193,6 @@ function sendHtml(
   });
   res.end(body);
 }
-
 export async function handleCloudPairRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -209,7 +202,6 @@ export async function handleCloudPairRoute(
   if (method !== "GET" || url.pathname !== "/pair") {
     return false;
   }
-
   // Capture every authority-owned relay input once per request. Later env
   // writes cannot enable a blocked relay or redirect an admitted exchange.
   const relayPolicy = resolveCloudPairRelayPolicy();
@@ -224,7 +216,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   const ip = req.socket.remoteAddress ?? null;
   if (!pairingRelayLimiter.consume(ip)) {
     sendHtml(
@@ -237,7 +228,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   const token = url.searchParams.get("token")?.trim();
   if (!token) {
     sendHtml(
@@ -250,7 +240,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   const origin = resolveDirectRequestOrigin(req);
   if (!origin) {
     sendHtml(
@@ -263,7 +252,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   const agentId = resolveCloudPairAgentIdFromEnv(relayPolicy.agentEnv);
   if (!agentId) {
     sendHtml(
@@ -276,13 +264,10 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
     const resp = await fetch(exchangeUrl, {
       method: "POST",
       headers: {
@@ -290,9 +275,8 @@ export async function handleCloudPairRoute(
         origin,
       },
       body: JSON.stringify({ token, agentId }),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
     });
-    clearTimeout(timeoutId);
     status = resp.status;
     if (resp.ok) {
       // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed
@@ -319,7 +303,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   if (status === 401 || status === 403 || status === 410) {
     sendHtml(
       res,
@@ -331,7 +314,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   if (status === 429) {
     sendHtml(
       res,
@@ -343,7 +325,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   if (!exchanged) {
     sendHtml(
       res,
@@ -355,7 +336,6 @@ export async function handleCloudPairRoute(
     );
     return true;
   }
-
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );

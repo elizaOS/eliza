@@ -1,5 +1,5 @@
 /**
- * Exercises core's inactive-field schema through the real response handler and
+ * Exercises the assistant's inactive-field omission through the real response handler and
  * AI SDK transport. The rejecting provider fixture reproduces the structured-enum
  * admission failure; accepted calls preserve the complete prompt and tool result.
  */
@@ -7,17 +7,17 @@
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import type { JSONSchema } from "../../../packages/core/src/types/model";
-import { withInactiveArrayFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";
+import { withoutInactiveFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";
 import { handleResponseHandler } from "../models/text";
 
 afterEach(() => vi.restoreAllMocks());
 
-it("admits an inactive array without losing the prompt or weakening the active tool", async () => {
+it("omits an inactive array without losing the prompt or weakening the active tool", async () => {
   const bodies: Array<{
     messages: Array<{ role: string; content: string }>;
     tools: Array<{ function: { parameters: JSONSchema } }>;
   }> = [];
-  const returned = { replyText: "Complete reply 🧭", threadOps: [] };
+  const returned = { replyText: "Complete reply 🧭" };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url
@@ -27,8 +27,7 @@ it("admits an inactive array without losing the prompt or weakening the active t
     const body: (typeof bodies)[number] = JSON.parse(init.body);
     bodies.push(body);
     const field = body.tools[0].function.parameters.properties?.threadOps;
-    if (!field) throw new Error("Missing threadOps contract");
-    const rejected = Array.isArray(field.enum) && field.enum.some(Array.isArray);
+    const rejected = Array.isArray(field?.enum) && field.enum.some(Array.isArray);
     return new Response(
       JSON.stringify(
         rejected
@@ -108,7 +107,7 @@ it("admits an inactive array without losing the prompt or weakening the active t
       })
     ).rejects.toThrow(/structured enum/);
     expect(bodies).toHaveLength(1);
-    const result = await call(withInactiveArrayFields(active, ["threadOps"]));
+    const result = await call(withoutInactiveFields(active, ["threadOps"]));
     expect(typeof result).not.toBe("string");
     if (typeof result === "string") throw new Error("Expected native tool result");
     expect(await result.toolCalls).toEqual([
@@ -122,9 +121,10 @@ it("admits an inactive array without losing the prompt or weakening the active t
     for (const body of bodies)
       expect(body.messages.find((message) => message.role === "user")?.content).toBe(prompt);
     const wire = bodies[1].tools[0].function.parameters;
-    expect(wire.required).toEqual(active.required);
+    expect(wire.required).toEqual(["replyText"]);
     expect(wire.properties?.replyText).toEqual(active.properties?.replyText);
-    expect(wire.properties?.threadOps?.description).toContain("at most 0 items");
+    expect(wire.properties).not.toHaveProperty("threadOps");
+    expect(active.required).toEqual(["replyText", "threadOps"]);
     expect(active.properties?.threadOps).toEqual({ type: "array", items: { type: "string" } });
   } finally {
     await runtime.stop();

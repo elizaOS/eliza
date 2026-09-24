@@ -3,7 +3,7 @@
  * dependency. Classifies a boot error as retryable or terminal: fatal PGlite
  * conditions (data-dir in use, corrupt data, manual-reset-required) stop retries
  * immediately, otherwise callers back off via `nextRuntimeBootRetryDelayMs`
- * (exponential, capped at 30s) and flip to the terminal error state once the
+ * (exponential, capped at 30s) and expose an error state while retrying once the
  * attempt-count or elapsed-duration threshold is crossed.
  */
 const FATAL_PGLITE_CODES = new Set([
@@ -51,19 +51,12 @@ export function resolveRuntimeBootstrapFailure(params: {
   // A blocked destructive migration cannot succeed on retry: the schema on
   // disk is older than the database. Retrying for five minutes hid the real
   // cause behind "Runtime bootstrap failed" (live 2026-09-12, ~12 min outage).
-  if (/Destructive migration blocked/i.test(lastError)) {
-    return {
-      lastError,
-      phase: "runtime-error",
-      shouldRetry: false,
-      state: "error",
-    };
-  }
   if (
-    typeof params.err === "object" &&
-    params.err !== null &&
-    "code" in params.err &&
-    FATAL_PGLITE_CODES.has(String((params.err as { code?: unknown }).code))
+    /Destructive migration blocked/i.test(lastError) ||
+    (typeof params.err === "object" &&
+      params.err !== null &&
+      "code" in params.err &&
+      FATAL_PGLITE_CODES.has(String(params.err.code)))
   ) {
     return {
       lastError,

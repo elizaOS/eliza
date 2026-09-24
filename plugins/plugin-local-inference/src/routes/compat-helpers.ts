@@ -13,11 +13,8 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
-import {
-	isLoopbackBindHost,
-	readAliasedEnv,
-	resolveApiToken,
-} from "@elizaos/shared";
+import { isLoopbackBindHost, resolveApiToken } from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 const MAX_BODY_BYTES = 1_048_576;
 

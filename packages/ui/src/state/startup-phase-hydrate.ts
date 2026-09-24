@@ -6,20 +6,23 @@
 
 import {
   isRuntimeManagementOperation,
-  normalizeShellNavigateViewPayload,
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
-} from "@elizaos/shared";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
-import type { AgentStatus, WalletAddresses } from "../api";
+} from "@elizaos/core/contracts/runtime-management";
 import {
+  normalizeShellNavigateViewPayload,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/core/events";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/types/message-source";
+import { logger } from "@elizaos/ui/logger";
+import {
+  type AgentStatus,
   type CodingAgentSession,
   type Conversation,
   type ConversationMessage,
   client,
   type StreamEventEnvelope,
+  type WalletAddresses,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
@@ -58,7 +61,6 @@ import {
 } from "./internal";
 import type { StartupEvent } from "./startup-coordinator";
 import { switchRuntimeNonDestructive } from "./switch-runtime";
-
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
   setFirstRunLoading: (v: boolean) => void;
@@ -86,16 +88,13 @@ export interface HydratingDeps {
   setTabRaw: (t: Tab) => void;
   initialTabSetRef: React.MutableRefObject<boolean>;
 }
-
 const ACTIVE_CONVERSATION_STORAGE_KEY = "eliza:chat:activeConversationId";
 const DIRECT_CLOUD_HYDRATION_RETRY_MS = 500;
-
 function waitForDirectCloudHydrationRetry(): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, DIRECT_CLOUD_HYDRATION_RETRY_MS);
   });
 }
-
 export interface ReadyPhaseDeps {
   setAgentStatusIfChanged: (v: AgentStatus) => void;
   setPendingRestart: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -144,7 +143,6 @@ export interface ReadyPhaseDeps {
     busy?: boolean,
   ) => void;
 }
-
 function normalizeAppEmoteEvent(
   data: Record<string, unknown>,
 ): AppEmoteEventDetail | null {
@@ -167,7 +165,6 @@ function normalizeAppEmoteEvent(
     showOverlay: data.showOverlay !== false,
   };
 }
-
 /**
  * Runs the hydrating phase.
  * Loads initial conversation state, wallet, avatar, plugins, and sets the tab.
@@ -176,7 +173,9 @@ function normalizeAppEmoteEvent(
 export async function runHydrating(
   deps: HydratingDeps,
   dispatch: (event: StartupEvent) => void,
-  _cancelled: { current: boolean },
+  _cancelled: {
+    current: boolean;
+  },
 ): Promise<void> {
   const warn = (scope: string, err: unknown) => {
     if (isTransientOptionalFetchFailure(err)) return;
@@ -184,7 +183,6 @@ export async function runHydrating(
       `[eliza][startup:init] ${scope}: ${err instanceof Error ? err.message : String(err)}`,
     );
   };
-
   deps.setStartupError(null);
   // Start the WS bridge before history hydration finishes so restored-session
   // flows regain live updates without waiting for conversation restore.
@@ -209,7 +207,6 @@ export async function runHydrating(
       initialHydrationFailed = true;
       warn("conversation history", error);
     }
-
     if (
       initialHydrationFailed ||
       (!deps.activeConversationIdRef.current && persistedConversationId)
@@ -217,7 +214,6 @@ export async function runHydrating(
       await waitForDirectCloudHydrationRetry();
       await hydrateConversation();
     }
-
     const activeConversationId = deps.activeConversationIdRef.current;
     if (
       !activeConversationId ||
@@ -225,7 +221,6 @@ export async function runHydrating(
     ) {
       return;
     }
-
     const firstLoad = await deps.loadConversationMessages(activeConversationId);
     if (
       firstLoad.ok ||
@@ -234,7 +229,6 @@ export async function runHydrating(
     ) {
       return;
     }
-
     await waitForDirectCloudHydrationRetry();
     const retryConversationId = deps.activeConversationIdRef.current;
     if (
@@ -244,7 +238,6 @@ export async function runHydrating(
       await deps.loadConversationMessages(retryConversationId);
     }
   };
-
   if (appShellRoutesSupported) {
     await hydrateConversation();
   } else {
@@ -257,7 +250,6 @@ export async function runHydrating(
     });
   }
   deps.setFirstRunLoading(false);
-
   if (appShellRoutesSupported) {
     void deps.loadWorkbench();
     void deps.loadPlugins();
@@ -265,16 +257,13 @@ export async function runHydrating(
   if (appShellRoutesSupported) {
     void deps.loadCharacter();
   }
-
   if (appShellRoutesSupported) {
     // Warm the apps catalog cache so the Apps tab opens with the real
     // sections instead of the placeholder skeleton. Fire-and-forget; the
     // Apps view also loads on its own mount as a fallback.
     void prefetchAppsCatalog();
   }
-
   void deps.pollCloudCredits();
-
   // Shell-decoration fetches (wallet addresses, avatar/VRM selection, autonomy
   // replay) are not needed to reach first paint: the composer only needs the
   // active conversation, restored above. Run them AFTER HYDRATION_COMPLETE so
@@ -293,7 +282,6 @@ export async function runHydrating(
         }
       })();
     }
-
     if (appShellRoutesSupported)
       void (async () => {
         // Avatar / VRM selection — resolve from server config, then stream
@@ -334,7 +322,6 @@ export async function runHydrating(
         // probes were removed with the 3D companion feature, #10434.)
         if (resolvedIdx === 0) deps.setSelectedVrmIndex(1);
       })();
-
     void (async () => {
       try {
         await deps.fetchAutonomyReplay();
@@ -343,7 +330,6 @@ export async function runHydrating(
       }
     })();
   };
-
   // Tab routing. A root open lands on the default tab; a URL that names a
   // specific view is an explicit deep link and wins via the `setTabRaw(urlTab)`
   // pass below. Cloud-only onboarding lands the user straight in chat (#14362):
@@ -374,7 +360,6 @@ export async function runHydrating(
       void deps.loadCharacter();
     if (urlTab === "inventory") void deps.loadInventory();
   }
-
   // HYDRATION_COMPLETE is the only signal that advances the coordinator out of
   // the "hydrating" phase. It must fire even if this run was cancelled: the
   // `cancelled` flag only guards against re-running side effects, but the
@@ -386,12 +371,10 @@ export async function runHydrating(
   // the pre-agent home shell mounted and prevents /chat and /settings content
   // from ever rendering.
   dispatch({ type: "HYDRATION_COMPLETE" });
-
   // Decorate the shell after the ready gate so wallet/avatar/autonomy-replay
   // fetches no longer delay first paint.
   decorateShellAfterReady();
 }
-
 /**
  * Sets up persistent WebSocket bindings and the navigation listener.
  * Returns a cleanup function that unbinds everything.
@@ -402,7 +385,6 @@ export function bindReadyPhase(
 ): () => void {
   let ptyPollInterval: ReturnType<typeof setInterval> | null = null;
   let handleVis: (() => void) | null = null;
-
   const doHydratePty = () => {
     if (!depsRef.current?.codingAgentsEnabledRef.current) return;
     const baseUrl =
@@ -471,10 +453,8 @@ export function bindReadyPhase(
     hydrateOnRunning(running);
     reconcileConversationAfterReconnect(running);
     if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
-  }, 5_000);
-
+  }, 5000);
   client.connectWs();
-
   const unbindEmotes = client.onWsEvent(
     "emote",
     (data: Record<string, unknown>) => {
@@ -520,12 +500,10 @@ export function bindReadyPhase(
         });
     },
   );
-
   handleVis = () => {
     if (document.visibilityState === "visible") hydratePty();
   };
   document.addEventListener("visibilitychange", handleVis);
-
   const unbindStatus = client.onWsEvent(
     "status",
     (data: Record<string, unknown>) => {
@@ -560,7 +538,6 @@ export function bindReadyPhase(
       }
     },
   );
-
   const unbindRestart = client.onWsEvent(
     "restart-required",
     (data: Record<string, unknown>) => {
@@ -573,7 +550,6 @@ export function bindReadyPhase(
       }
     },
   );
-
   const unbindShellNavigateView = client.onWsEvent(
     SHELL_NAVIGATE_VIEW_WS_EVENT,
     (data: Record<string, unknown>) => {
@@ -582,7 +558,6 @@ export function bindReadyPhase(
       dispatchCompletedActionNavigation(payload);
     },
   );
-
   // Agent-driven text-inference switch (#12178). The server has already applied
   // the routing change over loopback before broadcasting; this handler surfaces
   // the user-facing confirmation. Download progress (local target, missing
@@ -623,7 +598,6 @@ export function bindReadyPhase(
       );
     },
   );
-
   // Agent-driven runtime-profile switch (#12178). The server owns no profile
   // registry (profiles are client-persisted), so it broadcasts the request with
   // a `requestId`; the shell resolves the profile, applies it via the canonical
@@ -638,7 +612,6 @@ export function bindReadyPhase(
         typeof data.requestId === "string" ? data.requestId : null;
       const query = typeof data.profile === "string" ? data.profile : "";
       if (!requestId) return;
-
       const originBase =
         typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
       const reportResult = (body: {
@@ -656,7 +629,6 @@ export function bindReadyPhase(
           // means the agent's HTTP call times out (it degrades to "no-shell").
         });
       };
-
       const profile = resolveAgentProfileByQuery(
         query,
         loadAgentProfileRegistry(),
@@ -665,7 +637,6 @@ export function bindReadyPhase(
         reportResult({ ok: false, reason: "not-found" });
         return;
       }
-
       const result = switchRuntimeNonDestructive(profile.id);
       if (!result.ok) {
         reportResult({ ok: false, reason: result.reason });
@@ -698,7 +669,6 @@ export function bindReadyPhase(
       );
     },
   );
-
   // Owner-approved Devices & Runtimes operations use an explicit first-shell
   // claim before execution. This prevents two connected renderer tabs from
   // applying the same pairing/revoke/SSH mutation after one agent request.
@@ -723,7 +693,6 @@ export function bindReadyPhase(
       const request = rawRequest as unknown as RuntimeManagementRequest;
       const originBase =
         typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
-
       void (async () => {
         const claimResponse = await fetchWithCsrf(
           `${originBase}/api/runtime/manage/claim`,
@@ -736,14 +705,16 @@ export function bindReadyPhase(
         const claim = (await claimResponse.json().catch(() => {
           // error-policy:J3 an invalid claim response remains explicitly invalid.
           return null;
-        })) as { claimed?: boolean; claimToken?: string } | null;
+        })) as {
+          claimed?: boolean;
+          claimToken?: string;
+        } | null;
         if (!claimResponse.ok) {
           throw new Error("The runtime operation could not claim this app.");
         }
         if (claim?.claimed !== true || !claim.claimToken) {
           return;
         }
-
         let result: RuntimeManagementResult;
         try {
           const { executeRuntimeManagementCommand } = await import(
@@ -797,14 +768,11 @@ export function bindReadyPhase(
           "error",
         );
         logger.warn(
-          `[startup-phase-hydrate] runtime management bridge failed: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
+          `[startup-phase-hydrate] runtime management bridge failed: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
       });
     },
   );
-
   const unbindViewEvent = client.onWsEvent(
     "view:event",
     (data: Record<string, unknown>) => {
@@ -820,7 +788,6 @@ export function bindReadyPhase(
       emitViewEvent(viewEventType, payload, "agent");
     },
   );
-
   const unbindViewInteract = client.onWsEvent(
     "view:interact",
     (data: Record<string, unknown>) => {
@@ -861,7 +828,6 @@ export function bindReadyPhase(
         });
     },
   );
-
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
@@ -869,7 +835,11 @@ export function bindReadyPhase(
       // stream; re-dispatch them to the shell as a window event (the agent→shell
       // bridge) rather than treating them as autonomous trajectory events.
       if (data.stream === "voice-control") {
-        const payload = data.payload as { command?: unknown } | undefined;
+        const payload = data.payload as
+          | {
+              command?: unknown;
+            }
+          | undefined;
         if (payload?.command === "start" || payload?.command === "stop") {
           dispatchVoiceControl({ command: payload.command });
         }
@@ -891,7 +861,6 @@ export function bindReadyPhase(
       }
     },
   );
-
   const unbindProactive = client.onWsEvent(
     "proactive-message",
     (data: Record<string, unknown>) => {
@@ -952,7 +921,6 @@ export function bindReadyPhase(
       });
     },
   );
-
   const unbindConvUp = client.onWsEvent(
     "conversation-updated",
     (data: Record<string, unknown>) => {
@@ -985,7 +953,6 @@ export function bindReadyPhase(
         });
     },
   );
-
   const unbindPty = client.onWsEvent(
     "pty-session-event",
     (data: Record<string, unknown>) => {
@@ -1113,7 +1080,6 @@ export function bindReadyPhase(
       }
     },
   );
-
   // Navigation listener
   const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
   const handleNav = () => {
@@ -1121,7 +1087,6 @@ export function bindReadyPhase(
     if (t) depsRef.current?.setTabRaw(t);
   };
   if (typeof window !== "undefined") window.addEventListener(navEvt, handleNav);
-
   return () => {
     if (typeof window !== "undefined")
       window.removeEventListener(navEvt, handleNav);

@@ -16,7 +16,7 @@ import {
   type CarveOutDatabase,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { getRuntimeDb } from "./sql.js";
 
 export const SCHEDULING_MIGRATION_SERVICE_TYPE = "scheduling_migration";

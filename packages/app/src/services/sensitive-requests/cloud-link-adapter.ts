@@ -9,17 +9,15 @@
  * expiresAt, or delivered:false with a reason when cloud is not paired or a
  * payment request is missing its appId.
  */
-import type {
-  DeliveryResult,
-  DispatchSensitiveRequest as SensitiveRequest,
-  SensitiveRequestDeliveryAdapter,
-} from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  normalizeCloudSiteUrl,
-  readAliasedEnv,
-} from "@elizaos/shared";
 
+import {
+  type DeliveryResult,
+  type DispatchSensitiveRequest as SensitiveRequest,
+  type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 export interface CloudLinkAdapterDeps {
   /**
    * Resolves the cloud site base URL (for example, `https://cloud.eliza.app`) when
@@ -31,11 +29,9 @@ export interface CloudLinkAdapterDeps {
    */
   resolveCloudBase?: (runtime: unknown) => string | null;
 }
-
 interface RuntimeWithSettings {
   getSetting?: (key: string) => unknown;
 }
-
 function readSetting(runtime: unknown, key: string): string | undefined {
   const candidate = (
     runtime as RuntimeWithSettings | null | undefined
@@ -44,7 +40,6 @@ function readSetting(runtime: unknown, key: string): string | undefined {
     ? candidate.trim()
     : undefined;
 }
-
 function defaultResolveCloudBase(runtime: unknown): string | null {
   const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
   if (authoritySnapshot) {
@@ -60,19 +55,16 @@ function defaultResolveCloudBase(runtime: unknown): string | null {
     const normalized = normalizeCloudSiteUrl(rawBase);
     return normalized || null;
   }
-
   const apiKey =
     readSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
     readAliasedEnv("ELIZAOS_CLOUD_API_KEY");
   if (!apiKey) return null;
-
   const rawBase =
     readSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
     readAliasedEnv("ELIZAOS_CLOUD_BASE_URL");
   const normalized = normalizeCloudSiteUrl(rawBase);
   return normalized || null;
 }
-
 function readPaymentAppId(request: SensitiveRequest): string | undefined {
   const target = request.target as Record<string, unknown>;
   const targetAppId = target.appId;
@@ -87,11 +79,16 @@ function readPaymentAppId(request: SensitiveRequest): string | undefined {
   }
   return undefined;
 }
-
 function buildUrl(
   cloudBase: string,
   request: SensitiveRequest,
-): { url: string } | { error: string } {
+):
+  | {
+      url: string;
+    }
+  | {
+      error: string;
+    } {
   const id = encodeURIComponent(request.id);
   if (request.kind === "payment") {
     const appId = readPaymentAppId(request);
@@ -104,12 +101,10 @@ function buildUrl(
   }
   return { url: `${cloudBase}/sensitive-requests/${id}` };
 }
-
 export function createCloudLinkSensitiveRequestAdapter(
   deps: CloudLinkAdapterDeps = {},
 ): SensitiveRequestDeliveryAdapter {
   const resolveCloudBase = deps.resolveCloudBase ?? defaultResolveCloudBase;
-
   return {
     target: "cloud_authenticated_link",
     async deliver({ request, runtime }): Promise<DeliveryResult> {
@@ -138,6 +133,5 @@ export function createCloudLinkSensitiveRequestAdapter(
     },
   };
 }
-
 export const cloudLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
   createCloudLinkSensitiveRequestAdapter();

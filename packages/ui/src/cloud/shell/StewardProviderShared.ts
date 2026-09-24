@@ -3,14 +3,14 @@
  * session/refresh endpoints the Steward auth provider uses.
  */
 
-import { clearElizaApiToken } from "@elizaos/shared";
+import { clearElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   StewardTokenRemovalError,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { createContext } from "react";
 import { client } from "../../api";
 import {
@@ -22,7 +22,6 @@ import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account
 import { decodeJwtPayload } from "../lib/jwt";
 import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
-
 export function isPlaceholderValue(value: string | undefined): boolean {
   if (!value) return true;
   const normalized = value.trim().toLowerCase();
@@ -34,11 +33,9 @@ export function isPlaceholderValue(value: string | undefined): boolean {
     normalized.includes("placeholder")
   );
 }
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
-
 // On canonical Eliza UI hosts, session-sync and refresh stay same-origin via
 // the Pages/Worker proxy. Steward cookies are host-only, so sending these calls
 // directly to api.eliza.app would plant cookies on the API host and make them
@@ -48,17 +45,14 @@ function directCloudApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   return ELIZA_CLOUD_DIRECT_API_BY_HOST[window.location.hostname.toLowerCase()];
 }
-
 function directStewardSessionEndpoint(): string | undefined {
   const base = directCloudApiBase();
   return base ? `${base}${STEWARD_SESSION_ENDPOINT}` : undefined;
 }
-
 function directStewardRefreshEndpoint(): string | undefined {
   const base = directCloudApiBase();
   return base ? `${base}${STEWARD_REFRESH_ENDPOINT}` : undefined;
 }
-
 export type LocalStewardAuthValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -74,12 +68,13 @@ export type LocalStewardAuthValue = {
   verifyEmailCallback: (
     token: string,
     email: string,
-  ) => Promise<{ token: string; refreshToken?: string }>;
+  ) => Promise<{
+    token: string;
+    refreshToken?: string;
+  }>;
 };
-
 export const LocalStewardAuthContext =
   createContext<LocalStewardAuthValue | null>(null);
-
 function configuredApiBase(): string | undefined {
   return (
     import.meta.env?.VITE_API_URL ||
@@ -89,7 +84,6 @@ function configuredApiBase(): string | undefined {
       : undefined)
   );
 }
-
 export function configuredSessionEndpoint(): string {
   const direct = directStewardSessionEndpoint();
   if (direct) {
@@ -101,7 +95,6 @@ export function configuredSessionEndpoint(): string {
   }
   return STEWARD_SESSION_ENDPOINT;
 }
-
 export function configuredRefreshEndpoint(): string {
   const direct = directStewardRefreshEndpoint();
   if (direct) {
@@ -113,7 +106,6 @@ export function configuredRefreshEndpoint(): string {
   }
   return STEWARD_REFRESH_ENDPOINT;
 }
-
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
@@ -123,7 +115,6 @@ function stewardSessionClearUrls(): string[] {
   }
   return [...urls];
 }
-
 export function clearServerStewardSessionCookies(): void {
   // Invalidate before issuing any best-effort DELETE: a rejected request must
   // never leave a proof that can suppress a later session-establishing POST.
@@ -138,7 +129,6 @@ export function clearServerStewardSessionCookies(): void {
     }).catch(() => undefined);
   }
 }
-
 export function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -148,7 +138,6 @@ export function readStoredToken(): string | null {
     return null;
   }
 }
-
 export function tokenIsExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload) return true;
@@ -161,13 +150,11 @@ export function tokenIsExpired(token: string): boolean {
   }
   return payload.exp * 1000 < Date.now();
 }
-
 export function tokenSecsRemaining(token: string): number | null {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return null;
   return payload.exp - Date.now() / 1000;
 }
-
 export async function clearStaleStewardSession(): Promise<void> {
   if (typeof window === "undefined") return;
   // This is deliberately before protected-storage removal. That operation can

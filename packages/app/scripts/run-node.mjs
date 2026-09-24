@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" with {
   type: "json",
 };
 import { registerRestartAndShouldAbort } from "./lib/restart-guard.mjs";

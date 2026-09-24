@@ -1,5 +1,4 @@
 {
-  "extends": "../tsconfig.workspace.json",
   "compilerOptions": {
     "target": "es2023",
     "module": "ESNext",
@@ -15,5 +14,6 @@
     "lib": ["ES2024", "DOM"],
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "extends": "../tsconfig.workspace.json"
 }

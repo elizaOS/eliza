@@ -8,7 +8,7 @@ import {
   STEWARD_ACTIVE_SCOPE_KEY,
   STEWARD_TOKEN_KEY,
   STEWARD_TOKEN_SCOPE_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { Page } from "@playwright/test";
 
 export const STEWARD_SESSION_TOKEN_KEY = STEWARD_TOKEN_KEY;

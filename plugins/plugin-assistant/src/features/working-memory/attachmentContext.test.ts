@@ -4,17 +4,15 @@
  * text or original URLs. The harness stubs runtime memory/world access; no live
  * model or database is involved.
  */
+
+import { fetchRemoteMedia } from "@elizaos/core/media";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getLocalServerUrl } from "../../../../../packages/core/src/utils/node.ts";
-import { fetchRemoteMedia } from "../../../../../packages/shared/src/media/fetch.ts";
 
-vi.mock(
-  "../../../../../packages/shared/src/media/fetch.ts",
-  async (importOriginal) => {
-    const actual = await importOriginal<typeof import("@elizaos/core")>();
-    return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
-  },
-);
+vi.mock("@elizaos/core/media", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
+});
 
 import type {
   IAgentRuntime,

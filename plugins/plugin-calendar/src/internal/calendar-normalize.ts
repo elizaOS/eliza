@@ -9,10 +9,12 @@ import {
   type CreateLifeOpsCalendarEventRequest,
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
   type LifeOpsCalendarEvent,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
+import {
   type LifeOpsConnectorGrant,
   type LifeOpsGmailMessageSummary,
-  type LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
   GOOGLE_GMAIL_READ_SCOPE,

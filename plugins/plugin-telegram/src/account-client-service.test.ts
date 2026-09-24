@@ -11,15 +11,15 @@ import {
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/shared";
+import {
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { Api, TelegramClient } from "telegram";
 import { AuthKey } from "telegram/crypto/AuthKey.js";
 import { readBigIntFromBuffer } from "telegram/Helpers.js";
 import { StringSession } from "telegram/sessions/index.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", async () => vi.importActual("@elizaos/core"));
-
 import { searchTelegramMessagesWithRuntimeService } from "../../plugin-personal-assistant/src/lifeops/runtime-service-delegates";
 import {
   loadTelegramAccountSessionString,
@@ -32,6 +32,7 @@ import {
 import { telegramAccountRoutes } from "./account-setup-routes";
 import { createTelegramConnectorAccountProvider } from "./connector-account-provider";
 
+vi.mock("@elizaos/core", async () => vi.importActual("@elizaos/core"));
 const userId = readBigIntFromBuffer(Buffer.from([71]));
 const oldEnvironment = { ...process.env };
 const directories: string[] = [];
@@ -48,10 +49,12 @@ afterEach(() => {
   for (const directory of directories.splice(0))
     fs.rmSync(directory, { recursive: true, force: true });
 });
-
 async function harness(
   binding = true,
-  options: { connectionError?: Error; identity?: Api.User } = {},
+  options: {
+    connectionError?: Error;
+    identity?: Api.User;
+  } = {},
 ) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "tg-personal-"));
   directories.push(directory);
@@ -158,7 +161,6 @@ async function harness(
   manager.registerProvider(createTelegramConnectorAccountProvider(runtime));
   return { runtime, storage, service, clients, deps };
 }
-
 const target = {
   source: "telegram",
   accountId: "me:personal",
@@ -194,7 +196,6 @@ describe("personal service account-bound history", () => {
     expect(clients[0].disconnect).toHaveBeenCalled();
     expect(service.isConnected("me:personal")).toBe(false);
   });
-
   it("refuses an unbound owner before history RPC", async () => {
     const { runtime, service, clients } = await harness(false);
     await service.refreshAccount("me:personal");
@@ -207,7 +208,6 @@ describe("personal service account-bound history", () => {
     expect(clients[0].invoke).not.toHaveBeenCalled();
     await service.stop();
   });
-
   it("rejects conflicting account selection and refuses reads after stop", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
@@ -235,7 +235,13 @@ describe("personal service account-bound history", () => {
     );
     await service.stop();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: { me: { personal: { session?: string } } };
+      accounts: {
+        me: {
+          personal: {
+            session?: string;
+          };
+        };
+      };
     };
     delete telegram.accounts.me.personal.session;
     const replacement = new TelegramAccountService(runtime, deps);
@@ -253,7 +259,6 @@ describe("personal service account-bound history", () => {
     expect(second.at(-1)?.content.text).toBe("final-page owner fact");
     await replacement.stop();
   });
-
   it("does not return a partial result if disconnect commits during an RPC", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
@@ -271,7 +276,6 @@ describe("personal service account-bound history", () => {
       ),
     ).rejects.toMatchObject({ code: "TELEGRAM_ACCOUNT_NOT_CONNECTED" });
   });
-
   it("searches the complete peer before applying the requested match count", async () => {
     const { runtime, service } = await harness();
     await service.refreshAccount("me:personal");
@@ -284,7 +288,6 @@ describe("personal service account-bound history", () => {
     ]);
     await service.stop();
   });
-
   it("does not turn an unsupported room-only scope into an account-wide search", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
@@ -299,7 +302,6 @@ describe("personal service account-bound history", () => {
     expect(clients[0].invoke).not.toHaveBeenCalled();
     await service.stop();
   });
-
   it("rejects conflicting context and request targets before history RPCs", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
@@ -356,11 +358,16 @@ describe("personal service account-bound history", () => {
       await service.stop();
     }
   });
-
   it("projects a migrated application hash into the actual personal client", async () => {
     const { runtime, service, clients } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: { me: { personal: { appHash: string } } };
+      accounts: {
+        me: {
+          personal: {
+            appHash: string;
+          };
+        };
+      };
     };
     telegram.accounts.me.personal.appHash =
       "vault://connector.host.telegramAccount.default.appHash";
@@ -375,11 +382,16 @@ describe("personal service account-bound history", () => {
       await service.stop();
     }
   });
-
   it("fails a migrated application credential without a resolved projection", async () => {
     const { runtime, service, clients } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: { me: { personal: { appHash: string } } };
+      accounts: {
+        me: {
+          personal: {
+            appHash: string;
+          };
+        };
+      };
     };
     telegram.accounts.me.personal.appHash = "vault://missing-projection";
     await expect(service.refreshAccount("me:personal")).rejects.toMatchObject({
@@ -388,7 +400,6 @@ describe("personal service account-bound history", () => {
     expect(clients).toHaveLength(0);
     expect(service.getAccountStatus("me:personal")).toBe("error");
   });
-
   it("classifies connection failure and tears down the unusable client", async () => {
     const cause = new Error("fixture connection rejected");
     const { runtime, service, clients } = await harness(true, {
@@ -409,7 +420,6 @@ describe("personal service account-bound history", () => {
       await service.stop();
     }
   });
-
   it.each([
     {
       field: "phone",
@@ -441,11 +451,16 @@ describe("personal service account-bound history", () => {
       }
     },
   );
-
   it("reports invalid configured credentials as account error", async () => {
     const { runtime, service, clients } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: { me: { personal: { appId: string } } };
+      accounts: {
+        me: {
+          personal: {
+            appId: string;
+          };
+        };
+      };
     };
     telegram.accounts.me.personal.appId = "invalid";
     await expect(service.refreshAccount("me:personal")).rejects.toMatchObject({
@@ -454,11 +469,15 @@ describe("personal service account-bound history", () => {
     expect(service.getAccountStatus("me:personal")).toBe("error");
     expect(clients).toHaveLength(0);
   });
-
   it("persists personal disconnect across reconstruction despite fallback character credentials", async () => {
     const { runtime, service, clients, deps } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: Record<string, { personal: Record<string, unknown> }>;
+      accounts: Record<
+        string,
+        {
+          personal: Record<string, unknown>;
+        }
+      >;
     };
     telegram.accounts.default = structuredClone(telegram.accounts.me);
     const stateDir = process.env.ELIZA_STATE_DIR;
@@ -529,11 +548,17 @@ describe("personal service account-bound history", () => {
       await service.stop();
     }
   });
-
   it("never adopts the unscoped legacy session automatically", async () => {
     const { runtime, service, clients } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: Record<string, { personal: { session?: string } }>;
+      accounts: Record<
+        string,
+        {
+          personal: {
+            session?: string;
+          };
+        }
+      >;
     };
     const saved = telegram.accounts.me.personal.session;
     if (!saved) throw new Error("Session fixture missing");
@@ -546,7 +571,6 @@ describe("personal service account-bound history", () => {
     expect(service.isConnected("default:personal")).toBe(false);
     expect(loadTelegramAccountSessionString()).toBe(saved);
   });
-
   it("routes an actual PA personal search to MTProto and refuses a conflicting grant", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
@@ -580,11 +604,17 @@ describe("personal service account-bound history", () => {
     expect(vi.mocked(clients[0].invoke).mock.calls).toHaveLength(calls);
     await service.stop();
   });
-
   it("keeps identical peer/message numbers distinct across explicitly configured accounts", async () => {
     const { runtime, service } = await harness();
     const telegram = runtime.character.settings?.telegram as {
-      accounts: Record<string, { personal: { session?: string } }>;
+      accounts: Record<
+        string,
+        {
+          personal: {
+            session?: string;
+          };
+        }
+      >;
     };
     telegram.accounts.other = structuredClone(telegram.accounts.me);
     await service.refreshAccount("me:personal");

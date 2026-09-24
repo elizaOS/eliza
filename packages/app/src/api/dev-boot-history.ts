@@ -5,16 +5,13 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-
 import {
   type FailedPluginDetail,
   getLastFailedPluginDetails,
 } from "@elizaos/agent";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
-import { isDevApiWatchEnabled } from "@elizaos/shared";
-
+import { isDevApiWatchEnabled } from "@elizaos/core/runtime-env";
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
-
 export interface BootHistoryPayload {
   schema: typeof ELIZA_DEV_BOOT_HISTORY_SCHEMA;
   generatedAtEpochMs: number;
@@ -32,7 +29,6 @@ export interface BootHistoryPayload {
   failedPlugins: FailedPluginDetail[];
   hints: string[];
 }
-
 async function readJson(filePath: string): Promise<unknown> {
   let raw: string;
   try {
@@ -58,21 +54,17 @@ async function readJson(filePath: string): Promise<unknown> {
     });
   }
 }
-
 export async function buildBootHistoryPayload(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BootHistoryPayload> {
   const tel = (...segments: string[]): string =>
     path.join(resolveStateDir(env), "telemetry", ...segments);
-
   const [latestBoot, memory, restarts] = await Promise.all([
     readJson(tel("boot", "latest.json")),
     readJson(tel("memory", "latest.json")),
     readJson(tel("restart", "events.json")),
   ]);
-
   const spawnAt = Number(env.ELIZA_API_PROCESS_SPAWNED_AT_MS);
-
   return {
     schema: ELIZA_DEV_BOOT_HISTORY_SCHEMA,
     generatedAtEpochMs: Date.now(),

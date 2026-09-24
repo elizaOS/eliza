@@ -8,9 +8,8 @@
 import type {
   ContentPackColorScheme,
   ResolvedContentPack,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/content-pack";
 import { applyThemeToDocument } from "../themes/apply-theme";
-
 /** Minimal state setters needed to apply a content pack. */
 export interface ContentPackApplyDeps {
   setCustomVrmUrl: (url: string) => void;
@@ -23,7 +22,6 @@ export interface ContentPackApplyDeps {
   setCustomCatchphrase: (phrase: string) => void;
   setCustomVoicePresetId: (id: string) => void;
 }
-
 /**
  * Apply a content pack to the app state.
  * Call this from first-run setup after the user selects a pack.
@@ -42,15 +40,12 @@ export function applyContentPack(
     deps.setCustomVrmPreviewUrl(pack.vrmPreviewUrl ?? "");
     deps.setSelectedVrmIndex(0); // 0 = custom VRM
   }
-
   // Background
   if (pack.backgroundUrl) {
     deps.setCustomBackgroundUrl(pack.backgroundUrl);
   }
-
   // Companion world scene
   deps.setCustomWorldUrl(pack.worldUrl ?? "");
-
   // Personality
   if (pack.personality?.name) {
     deps.setFirstRunName(pack.personality.name);
@@ -65,9 +60,7 @@ export function applyContentPack(
     deps.setFirstRunStyle(pack.manifest.id);
   }
 }
-
 // ── Color scheme CSS variable application ───────────────────────────
-
 const COLOR_SCHEME_CSS_MAP: Record<
   keyof Omit<ContentPackColorScheme, "customProperties">,
   string
@@ -79,7 +72,6 @@ const COLOR_SCHEME_CSS_MAP: Record<
   text: "--pack-text",
   textMuted: "--pack-text-muted",
 };
-
 /**
  * Apply a content pack's color scheme as CSS custom properties on the
  * document root. Returns a cleanup function that removes them.
@@ -100,12 +92,9 @@ export function applyColorScheme(
         : "dark";
     return applyThemeToDocument(pack.manifest.assets.theme, mode);
   }
-
   if (!scheme || typeof document === "undefined") return () => {};
-
   const root = document.documentElement;
   const applied: string[] = [];
-
   for (const [key, cssVar] of Object.entries(COLOR_SCHEME_CSS_MAP)) {
     const value = scheme[key as keyof typeof COLOR_SCHEME_CSS_MAP];
     if (value) {
@@ -113,7 +102,6 @@ export function applyColorScheme(
       applied.push(cssVar);
     }
   }
-
   if (scheme.customProperties) {
     for (const [key, value] of Object.entries(scheme.customProperties)) {
       // Sanitize: reject values containing url() to prevent external
@@ -124,7 +112,6 @@ export function applyColorScheme(
       applied.push(cssVar);
     }
   }
-
   return () => {
     for (const cssVar of applied) {
       root.style.removeProperty(cssVar);

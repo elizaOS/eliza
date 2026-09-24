@@ -18,8 +18,7 @@
  * global constraint. `cadence_days` is surfaced as a column-level shortcut for
  * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
-
-import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   boolean,
   index,
@@ -29,9 +28,7 @@ import {
   text,
   unique,
 } from "drizzle-orm/pg-core";
-
 export const appLifeopsPgSchema = pgSchema("app_lifeops");
-
 export const lifeEntities = appLifeopsPgSchema.table(
   "life_entities",
   {
@@ -56,7 +53,6 @@ export const lifeEntities = appLifeopsPgSchema.table(
     index("life_entities_agent_name_idx").on(t.agentId, t.preferredName),
   ],
 );
-
 export const lifeEntityIdentities = appLifeopsPgSchema.table(
   "life_entity_identities",
   {
@@ -91,7 +87,6 @@ export const lifeEntityIdentities = appLifeopsPgSchema.table(
     ),
   ],
 );
-
 export const lifeEntityAttributes = appLifeopsPgSchema.table(
   "life_entity_attributes",
   {
@@ -109,7 +104,6 @@ export const lifeEntityAttributes = appLifeopsPgSchema.table(
     index("life_entity_attributes_lookup_idx").on(t.agentId, t.entityId),
   ],
 );
-
 export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
   "life_relationships_v2",
   {
@@ -150,7 +144,6 @@ export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
     ),
   ],
 );
-
 export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
   "life_relationship_audit_events",
   {
@@ -168,7 +161,6 @@ export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
     ),
   ],
 );
-
 /** Complete current-source snapshots; repeated archival replaces one agent's rows. */
 export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
   "core_relationships_source_records",
@@ -182,7 +174,6 @@ export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
   },
   (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)],
 );
-
 /**
  * Aggregate schema registered by the runtime "eliza" plugin so the SQL
  * plugin migrates these tables whenever the runtime runs.

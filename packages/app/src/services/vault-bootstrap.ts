@@ -36,7 +36,7 @@ import {
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
 import { logger } from "@elizaos/core";
-import { loadRegistry } from "@elizaos/shared/catalog";
+import { loadRegistry } from "@elizaos/core/catalog";
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,

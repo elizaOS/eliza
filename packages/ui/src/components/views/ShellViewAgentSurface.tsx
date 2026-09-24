@@ -12,7 +12,7 @@ import type { SurfaceManifest, ViewCapability } from "@elizaos/core";
  * controls opt in with `useAgentElement`.
  */
 
-import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import { type ReactNode, useEffect, useRef } from "react";
 import {
   AgentElementOverlay,

@@ -10,7 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { isRegistryCacheFresh } from "@elizaos/shared/catalog/runtime-kernel";
+import { isRegistryCacheFresh } from "@elizaos/core/catalog/runtime-kernel";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";

@@ -9,7 +9,7 @@
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import type { MeetingPlatform } from "@elizaos/shared";
+import { type MeetingPlatform } from "@elizaos/core/meetings";
 import type {
   ScenarioCleanupStep,
   ScenarioContext,

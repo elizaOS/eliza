@@ -49,7 +49,15 @@ function startCaptureServer(): Promise<string> {
       response.writeHead(200, { "content-type": "application/json" });
       // When the request includes response_format (structured output), the AI
       // SDK parses the response content as JSON; return valid JSON for those.
-      const hasStructuredOutput = raw.includes("response_format");
+      const requestBody = JSON.parse(raw) as {
+        response_format?: unknown;
+        tool_choice?: { type?: string; function?: { name?: string } };
+      };
+      const hasStructuredOutput = requestBody.response_format !== undefined;
+      const requiredToolName =
+        requestBody.tool_choice?.type === "function"
+          ? requestBody.tool_choice.function?.name
+          : undefined;
       const content = hasStructuredOutput ? JSON.stringify({ goodField: "value" }) : "ok";
       response.end(
         JSON.stringify({
@@ -60,8 +68,25 @@ function startCaptureServer(): Promise<string> {
           choices: [
             {
               index: 0,
-              message: { role: "assistant", content },
-              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content,
+                ...(requiredToolName
+                  ? {
+                      tool_calls: [
+                        {
+                          id: "wire-tool-call",
+                          type: "function",
+                          function: {
+                            name: requiredToolName,
+                            arguments: JSON.stringify({ "field�": "value" }),
+                          },
+                        },
+                      ],
+                    }
+                  : {}),
+              },
+              finish_reason: requiredToolName ? "tool_calls" : "stop",
             },
           ],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },

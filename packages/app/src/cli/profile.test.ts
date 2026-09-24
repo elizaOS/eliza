@@ -49,4 +49,22 @@ describe("CLI profile selection", () => {
       ELIZA_GATEWAY_PORT: "4321",
     });
   });
+  it("preserves flags after the option terminator", () => {
+    expect(parseCliProfileArgs(argv("--", "--profile=inner"))).toEqual({
+      ok: true,
+      profile: null,
+      argv: argv("--", "--profile=inner"),
+    });
+  });
+
+  it.each(["", "../escape", "a/b"])(
+    "rejects invalid direct profile %j before mutating env",
+    (profile) => {
+      const env = {};
+      expect(() => applyCliProfileEnv({ profile, env })).toThrow(
+        "Invalid profile name",
+      );
+      expect(env).toEqual({});
+    },
+  );
 });

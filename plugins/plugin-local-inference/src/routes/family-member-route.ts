@@ -36,12 +36,15 @@
  * itself does not call IAgentRuntime because HTTP route handlers in this
  * plugin do not hold a runtime reference.
  */
-
 import crypto from "node:crypto";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/core/api/http-helpers";
 import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime.js";
 import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings.js";
 import { VoiceProfileStore } from "../services/voice/profile-store.js";
@@ -54,35 +57,27 @@ import {
 	WESPEAKER_SAMPLE_RATE,
 } from "../services/voice/speaker/encoder.js";
 import { FusedSpeakerEncoder } from "../services/voice/speaker/encoder-fused.js";
-
 // ---------------------------------------------------------------------------
 // Injectable test hooks (mirrors voice-first-run-routes.ts)
 // ---------------------------------------------------------------------------
-
 export type FamilyMemberEncoderFactory = () => Promise<SpeakerEncoder>;
-
 let encoderFactoryOverride: FamilyMemberEncoderFactory | null = null;
 let cachedEncoder: SpeakerEncoder | null = null;
-
 export function setFamilyMemberEncoderFactory(
 	factory: FamilyMemberEncoderFactory | null,
 ): void {
 	encoderFactoryOverride = factory;
 	cachedEncoder = null;
 }
-
 let profileStoreOverride: VoiceProfileStore | null = null;
-
 export function setFamilyMemberProfileStore(
 	store: VoiceProfileStore | null,
 ): void {
 	profileStoreOverride = store;
 }
-
 // ---------------------------------------------------------------------------
 // Loader helpers
 // ---------------------------------------------------------------------------
-
 async function loadEncoder(): Promise<SpeakerEncoder> {
 	if (cachedEncoder) return cachedEncoder;
 	if (encoderFactoryOverride) {
@@ -92,7 +87,6 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 	cachedEncoder = await loadFusedSpeakerEncoder();
 	return cachedEncoder;
 }
-
 /**
  * Load the fused speaker encoder through the `eliza_inference_speaker_*` ABI —
  * the sole on-device speaker runtime. Probes the speaker ABI up front: a build
@@ -118,7 +112,6 @@ async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
 	const ctx = ffi.create(bundleRoot);
 	return FusedSpeakerEncoder.load({ ffi, ctx });
 }
-
 async function getProfileStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
 	const store = new VoiceProfileStore({
@@ -127,11 +120,9 @@ async function getProfileStore(): Promise<VoiceProfileStore> {
 	await store.init();
 	return store;
 }
-
 // ---------------------------------------------------------------------------
 // Request body validation
 // ---------------------------------------------------------------------------
-
 interface FamilyMemberBody {
 	audioBase64: string;
 	durationMs: number;
@@ -139,43 +130,35 @@ interface FamilyMemberBody {
 	relationship: string;
 	ownerEntityId?: string | null;
 }
-
 function parseFamilyMemberBody(
 	raw: Record<string, unknown>,
 ): FamilyMemberBody | string {
 	const audioBase64 =
 		typeof raw.audioBase64 === "string" ? raw.audioBase64.trim() : null;
 	if (!audioBase64) return "audioBase64 is required";
-
 	const durationMs =
 		typeof raw.durationMs === "number" && raw.durationMs > 0
 			? raw.durationMs
 			: null;
 	if (durationMs === null) return "durationMs must be a positive number";
-
 	const displayName =
 		typeof raw.displayName === "string" && raw.displayName.trim().length > 0
 			? raw.displayName.trim()
 			: null;
 	if (!displayName) return "displayName is required";
-
 	const relationship =
 		typeof raw.relationship === "string" && raw.relationship.trim().length > 0
 			? raw.relationship.trim()
 			: "family";
-
 	const ownerEntityId =
 		typeof raw.ownerEntityId === "string" && raw.ownerEntityId.trim()
 			? raw.ownerEntityId.trim()
 			: null;
-
 	return { audioBase64, durationMs, displayName, relationship, ownerEntityId };
 }
-
 // ---------------------------------------------------------------------------
 // PCM decode
 // ---------------------------------------------------------------------------
-
 function decodeBase64ToPcm(audioBase64: string): Float32Array | string {
 	let rawBuf: Buffer;
 	try {
@@ -197,14 +180,11 @@ function decodeBase64ToPcm(audioBase64: string): Float32Array | string {
 	}
 	return out;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 /** Relationship tag written to profile metadata and echoed in response. */
 export const FAMILY_OF_TAG = "family_of" as const;
-
 export interface FamilyMemberResult {
 	profileId: string;
 	entityId: string;
@@ -213,7 +193,6 @@ export interface FamilyMemberResult {
 	relationshipTag: typeof FAMILY_OF_TAG;
 	ownerEntityId: string | null;
 }
-
 /**
  * Handle `POST /v1/voice/first-run/family-member`.
  *
@@ -227,23 +206,18 @@ export async function handleFamilyMemberRoute(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-
 	if (method !== "POST" || pathname !== "/v1/voice/first-run/family-member") {
 		return false;
 	}
-
 	const raw = await readJsonBody<Record<string, unknown>>(req, res);
 	if (!raw) return true; // readJsonBody already sent a 4xx
-
 	const parsed = parseFamilyMemberBody(raw);
 	if (typeof parsed === "string") {
 		sendJsonError(res, parsed, 400);
 		return true;
 	}
-
 	const { audioBase64, durationMs, displayName, relationship, ownerEntityId } =
 		parsed;
-
 	// Decode audio.
 	const pcmOrError = decodeBase64ToPcm(audioBase64);
 	if (typeof pcmOrError === "string") {
@@ -251,7 +225,6 @@ export async function handleFamilyMemberRoute(
 		return true;
 	}
 	const pcm = pcmOrError;
-
 	if (pcm.length < WESPEAKER_MIN_SAMPLES) {
 		sendJsonError(
 			res,
@@ -260,7 +233,6 @@ export async function handleFamilyMemberRoute(
 		);
 		return true;
 	}
-
 	// Encode via WeSpeaker.
 	let encoder: SpeakerEncoder;
 	try {
@@ -272,7 +244,6 @@ export async function handleFamilyMemberRoute(
 		}
 		throw err;
 	}
-
 	let centroid: Float32Array;
 	try {
 		centroid = await encoder.encode(pcm);
@@ -283,7 +254,6 @@ export async function handleFamilyMemberRoute(
 		}
 		throw err;
 	}
-
 	if (centroid.length !== WESPEAKER_EMBEDDING_DIM) {
 		sendJsonError(
 			res,
@@ -292,10 +262,8 @@ export async function handleFamilyMemberRoute(
 		);
 		return true;
 	}
-
 	// Generate a stable entity ID for the family member.
 	const entityId = crypto.randomUUID();
-
 	// Store the profile in VoiceProfileStore.
 	const store = await getProfileStore();
 	let profile: Awaited<ReturnType<VoiceProfileStore["createProfile"]>>;
@@ -333,7 +301,6 @@ export async function handleFamilyMemberRoute(
 		);
 		return true;
 	}
-
 	const result: FamilyMemberResult = {
 		profileId: profile.profileId,
 		entityId,
@@ -342,7 +309,6 @@ export async function handleFamilyMemberRoute(
 		relationshipTag: FAMILY_OF_TAG,
 		ownerEntityId: ownerEntityId ?? null,
 	};
-
 	sendJson(res, result);
 	return true;
 }

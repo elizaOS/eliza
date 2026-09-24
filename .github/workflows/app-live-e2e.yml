@@ -115,7 +115,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -125,9 +125,9 @@ jobs:
 
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
-      # @elizaos/core and @elizaos/shared subpaths.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      # @elizaos/core and @elizaos/core subpaths.
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       # Prebuild the renderer dist so the live stack reuses a fresh bundle
       # instead of a cold in-harness vite build (viteRendererBuildNeeded check).
@@ -228,7 +228,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -241,8 +241,8 @@ jobs:
 
       # Vite resolves linked workspace package exports while loading the app
       # config, before renderer aliases can redirect to source files.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       # Prebuild the renderer dist so the live stack reuses a fresh bundle
       # instead of a cold in-harness vite build.
@@ -376,7 +376,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -387,9 +387,9 @@ jobs:
 
       # Cloud-live still builds the same renderer bundle, so it needs the same
       # workspace dists before Vite can load packages/app/vite.config.ts.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
+      - name: Build runtime contracts and provider exports
         if: ${{ !inputs.production_credential_preflight_only }}
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Build app renderer bundle
         if: ${{ !inputs.production_credential_preflight_only }}
@@ -499,7 +499,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -507,8 +507,8 @@ jobs:
       - name: Install Playwright Chromium
         run: packages/scripts/github/install-playwright-browsers.sh chromium
 
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Build app renderer bundle
         # The renderer resolves its Cloud base at BUILD time from
@@ -688,7 +688,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -752,7 +752,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

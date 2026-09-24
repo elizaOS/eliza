@@ -7,7 +7,7 @@
  * production default and can provision against the wrong Cloud API origin.
  */
 
-import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
+import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { resolveIosRuntimeConfig } from "./ios-runtime";
 

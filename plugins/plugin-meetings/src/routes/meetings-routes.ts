@@ -8,16 +8,18 @@
  * Thin proxy layer over MeetingService — no business logic here.
  */
 
-import type { UUID } from "@elizaos/core";
-import type {
-  MeetingJoinRequest,
-  MeetingPlatform,
-  MeetingSession,
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared";
-import { parseMeetingUrl } from "@elizaos/shared";
+import { type UUID } from "@elizaos/core";
+import {
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+} from "@elizaos/core/api/http-plugin";
+import {
+  type MeetingJoinRequest,
+  type MeetingPlatform,
+  type MeetingSession,
+  parseMeetingUrl,
+} from "@elizaos/core/meetings";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 import { selectSessionForViewer } from "../session-disclosure.js";
@@ -25,12 +27,10 @@ import { selectSessionForViewer } from "../session-disclosure.js";
 function service(ctx: RouteHandlerContext): MeetingService | null {
   return ctx.runtime.getService<MeetingService>("meetings");
 }
-
 const unavailable: RouteHandlerResult = {
   status: 503,
   body: { error: "meetings service is not running" },
 };
-
 /** Per-viewer session DTO selection lives in the use-case module (#14781). */
 function sessionForViewer(
   ctx: RouteHandlerContext,
@@ -38,7 +38,6 @@ function sessionForViewer(
 ): Promise<MeetingSession> {
   return selectSessionForViewer(ctx.runtime, ctx.accessContext, session);
 }
-
 /** The body POST /api/meetings accepts. */
 export interface CreateMeetingRequest {
   meetingUrl: string;
@@ -50,7 +49,6 @@ export interface CreateMeetingRequest {
   maxDurationMs?: number;
   calendarEventId?: string;
 }
-
 const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   invalid_url: 400,
   unsupported_platform: 422,
@@ -60,7 +58,6 @@ const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   invalid_duration_cap: 400,
   insufficient_credits: 402,
 };
-
 const createRoute: Route = {
   type: "POST",
   path: "/api/meetings",
@@ -117,7 +114,6 @@ const createRoute: Route = {
     }
   },
 };
-
 const listRoute: Route = {
   type: "GET",
   path: "/api/meetings",
@@ -136,7 +132,6 @@ const listRoute: Route = {
     return { status: 200, body: { sessions } };
   },
 };
-
 /** Private authenticated body accepted by the Zoom cloud-import boundary. */
 export interface ImportZoomMeetingRequest {
   meetingId: string;
@@ -146,7 +141,6 @@ export interface ImportZoomMeetingRequest {
   maxFileBytes?: number;
   maxTotalBytes?: number;
 }
-
 const importZoomRoute: Route = {
   type: "POST",
   path: "/api/meetings/import/zoom",
@@ -196,7 +190,6 @@ const importZoomRoute: Route = {
     }
   },
 };
-
 const getRoute: Route = {
   type: "GET",
   path: "/api/meetings/:id",
@@ -212,7 +205,6 @@ const getRoute: Route = {
     };
   },
 };
-
 const deleteRoute: Route = {
   type: "DELETE",
   path: "/api/meetings/:id",
@@ -233,7 +225,6 @@ const deleteRoute: Route = {
     };
   },
 };
-
 export const meetingsRoutes: Route[] = [
   createRoute,
   listRoute,

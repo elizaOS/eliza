@@ -22,19 +22,21 @@
  * metadata records; callers resolve ciphertext via SecretsService at use time.
  */
 
-import type { LinkedAccountConfig, LinkedAccountHealth } from "@elizaos/shared";
+import {
+  type LinkedAccountConfig,
+  type LinkedAccountHealth,
+} from "@elizaos/core/contracts/service-routing";
 import {
   type PooledCredential,
   pooledCredentialsRepository,
 } from "../../../db/repositories/pooled-credentials";
 import { logger } from "../../utils/logger";
 import { secretsService } from "../secrets/secrets";
-import type { AccountPoolDeps, PoolProviderId } from "./account-pool-contract";
+import { type AccountPoolDeps, type PoolProviderId } from "./account-pool-contract";
 
 function poolRecordKey(providerId: string, accountId: string): string {
   return `${providerId}:${accountId}`;
 }
-
 function rowToLinkedAccount(row: PooledCredential): LinkedAccountConfig {
   return {
     id: row.id,
@@ -52,14 +54,11 @@ function rowToLinkedAccount(row: PooledCredential): LinkedAccountConfig {
     ...(row.contributed_by ? { userId: row.contributed_by } : {}),
   };
 }
-
 export class DrizzleAccountPoolDeps implements AccountPoolDeps {
   private snapshot: Record<string, LinkedAccountConfig> = {};
   private rowsById = new Map<string, PooledCredential>();
   private loadedAt = 0;
-
   constructor(readonly organizationId: string) {}
-
   /** Reload the org's credential rows into the in-memory snapshot. */
   async refresh(): Promise<void> {
     const rows = await pooledCredentialsRepository.listByOrganization(this.organizationId);
@@ -73,20 +72,16 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
     this.rowsById = rowsById;
     this.loadedAt = Date.now();
   }
-
   isStale(ttlMs: number): boolean {
     return Date.now() - this.loadedAt > ttlMs;
   }
-
   /** Secret id backing a credential (for use-time ciphertext resolution). */
   secretIdFor(credentialId: string): string | null {
     return this.rowsById.get(credentialId)?.secret_id ?? null;
   }
-
   readAccounts(): Record<string, LinkedAccountConfig> {
     return this.snapshot;
   }
-
   async writeAccount(account: LinkedAccountConfig): Promise<void> {
     // Pool-owned columns ONLY. The pool spreads `...account` from a snapshot
     // that may be stale; persisting label/enabled/priority here would clobber
@@ -111,7 +106,6 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
     this.snapshot[poolRecordKey(updated.provider, updated.id)] = rowToLinkedAccount(updated);
     this.rowsById.set(updated.id, updated);
   }
-
   async deleteAccount(providerId: PoolProviderId, accountId: string): Promise<void> {
     const row =
       this.rowsById.get(accountId) ??

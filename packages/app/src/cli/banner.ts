@@ -5,7 +5,7 @@
  * stays silent for non-TTY output and for `--json` / `--version` invocations so
  * machine-readable output is never polluted.
  */
-import { isRich, theme } from "@elizaos/shared";
+import { isRich, theme } from "../terminal/theme.js";
 import { resolveCommitHash } from "./git-commit";
 
 type BannerOptions = {
@@ -14,9 +14,7 @@ type BannerOptions = {
   commit?: string | null;
   richTty?: boolean;
 };
-
 let bannerEmitted = false;
-
 export function formatCliBannerLine(
   version: string,
   options: BannerOptions = {},
@@ -24,15 +22,13 @@ export function formatCliBannerLine(
   const commit = options.commit ?? resolveCommitHash({ env: options.env });
   const commitLabel = commit ?? "unknown";
   const rich = options.richTty ?? isRich();
-  const title =
-    (options.env?.APP_CLI_NAME ?? "eliza").charAt(0).toUpperCase() +
-    (options.env?.APP_CLI_NAME ?? "eliza").slice(1);
+  const name = (options.env ?? process.env).APP_CLI_NAME ?? "eliza";
+  const title = name.charAt(0).toUpperCase() + name.slice(1);
   if (rich) {
     return `${theme.heading(title)} ${theme.info(version)} ${theme.muted(`(${commitLabel})`)}`;
   }
   return `${title} ${version} (${commitLabel})`;
 }
-
 export function emitCliBanner(version: string, options: BannerOptions = {}) {
   if (bannerEmitted) {
     return;
@@ -51,7 +47,6 @@ export function emitCliBanner(version: string, options: BannerOptions = {}) {
   process.stdout.write(`${line}\n\n`);
   bannerEmitted = true;
 }
-
 export function hasEmittedCliBanner(): boolean {
   return bannerEmitted;
 }

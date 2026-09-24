@@ -7,7 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import {
   normalizeScreenCaptureRequestContract,
   type ScreenCaptureRequestContract,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/screen-capture";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 
@@ -23,11 +23,8 @@ import { fetchWithDeadline } from "../utils/fetch-with-deadline";
  * keeps the agent's 30s capture timeout decoupled from the 10s JNI
  * fetch-timeout.
  */
-
 const POLL_INTERVAL_MS = 1500;
-
-const SCREEN_CAPTURE_HOP_TIMEOUT_MS = 15_000;
-
+const SCREEN_CAPTURE_HOP_TIMEOUT_MS = 15000;
 /**
  * Once this many polls fail in a row, stop hammering the route every 1500ms and
  * back off exponentially. The common cause is a `404` — the vision plugin isn't
@@ -38,8 +35,7 @@ const SCREEN_CAPTURE_HOP_TIMEOUT_MS = 15_000;
  * recovers. (#10724)
  */
 const BACKOFF_AFTER_FAILURES = 5;
-const MAX_BACKOFF_MS = 60_000;
-
+const MAX_BACKOFF_MS = 60000;
 /**
  * Poll delay (ms) for the current consecutive-failure streak: the fast interval
  * until the streak crosses {@link BACKOFF_AFTER_FAILURES}, then exponential
@@ -50,9 +46,7 @@ export function computePollDelayMs(consecutiveFailures: number): number {
   const over = consecutiveFailures - BACKOFF_AFTER_FAILURES + 1;
   return Math.min(MAX_BACKOFF_MS, POLL_INTERVAL_MS * 2 ** over);
 }
-
 type CaptureRequest = ScreenCaptureRequestContract;
-
 /** Normalize queued requests from both pre-contract and current agents. */
 export function normalizeCaptureRequests(value: unknown): CaptureRequest[] {
   if (!Array.isArray(value)) return [];
@@ -61,24 +55,20 @@ export function normalizeCaptureRequests(value: unknown): CaptureRequest[] {
     return normalized ? [normalized] : [];
   });
 }
-
 let started = false;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let pollGeneration = 0;
 let activePollController: AbortController | null = null;
-
 /** Frugal screen-understanding defaults: half-res, q70 → tens of KB per frame. */
 function clampScale(scale: number): number {
   if (!Number.isFinite(scale)) return 0.5;
   return Math.min(1, Math.max(0.1, scale));
 }
-
 function clampQuality(quality: number): number {
   if (!Number.isFinite(quality)) return 70;
   return Math.min(100, Math.max(1, Math.round(quality)));
 }
-
 function isNativeMobile(): boolean {
   try {
     const platform = Capacitor.getPlatform();
@@ -88,7 +78,6 @@ function isNativeMobile(): boolean {
     return false;
   }
 }
-
 async function postScreenFrame(
   body: Record<string, unknown>,
   signal: AbortSignal,
@@ -108,7 +97,6 @@ async function postScreenFrame(
     { signal, timeoutMs: SCREEN_CAPTURE_HOP_TIMEOUT_MS },
   );
 }
-
 async function serveRequest(
   request: CaptureRequest,
   signal: AbortSignal,
@@ -157,7 +145,6 @@ async function serveRequest(
     ).catch(() => undefined);
   }
 }
-
 async function poll(signal: AbortSignal): Promise<void> {
   let requests: CaptureRequest[];
   try {
@@ -168,7 +155,9 @@ async function poll(signal: AbortSignal): Promise<void> {
         if (!response.ok) {
           throw new Error(`Capture-request poll failed (${response.status})`);
         }
-        const data = (await response.json()) as { requests?: unknown };
+        const data = (await response.json()) as {
+          requests?: unknown;
+        };
         return normalizeCaptureRequests(data.requests);
       },
       { signal, timeoutMs: SCREEN_CAPTURE_HOP_TIMEOUT_MS },
@@ -186,7 +175,6 @@ async function poll(signal: AbortSignal): Promise<void> {
     await serveRequest(request, signal);
   }
 }
-
 /**
  * Idempotent boot: start the capture-request poller on Android/iOS native.
  * No-op on web/desktop and on repeat calls.
@@ -205,7 +193,6 @@ function scheduleNextPoll(delayMs: number, generation: number): void {
     });
   }, delayMs);
 }
-
 export function initScreenCaptureBridge(): void {
   if (started) return;
   if (!isNativeMobile()) return;
@@ -214,7 +201,6 @@ export function initScreenCaptureBridge(): void {
   pollGeneration += 1;
   scheduleNextPoll(POLL_INTERVAL_MS, pollGeneration);
 }
-
 /** Test-only reset hook. */
 export function __resetScreenCaptureBridgeForTests(): void {
   pollGeneration += 1;

@@ -8,17 +8,18 @@
  * send is mocked at the ConnectorRegistry seam; the production default channel
  * pack registered by the plugin does the delegation.
  */
+
 import { randomUUID } from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import type { ConnectorSendPayload } from "../connectors/_helpers.js";
+import { type ConnectorSendPayload } from "../connectors/_helpers.js";
 import {
   type ConnectorStatus,
   createConnectorRegistry,
@@ -35,11 +36,9 @@ describe("household discord party route — real PGlite", () => {
   let runtime: AgentRuntime;
   const discordSends: ConnectorSendPayload[] = [];
   let telegramSendAttempts = 0;
-
   function status(state: ConnectorStatus["state"]): ConnectorStatus {
     return { state, observedAt: new Date().toISOString() };
   }
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -90,15 +89,16 @@ describe("household discord party route — real PGlite", () => {
       },
     });
     registerConnectorRegistry(runtime, connectors);
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   async function person(input: {
     label: string;
-    identities?: ReadonlyArray<{ platform: string; handle: string }>;
+    identities?: ReadonlyArray<{
+      platform: string;
+      handle: string;
+    }>;
   }): Promise<string> {
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
@@ -122,7 +122,6 @@ describe("household discord party route — real PGlite", () => {
     });
     return entity.entityId;
   }
-
   async function pendingProposal(partyEntityId: string): Promise<{
     proposalId: string;
     proposalVersion: number;
@@ -175,7 +174,6 @@ describe("household discord party route — real PGlite", () => {
       approvalRequestId: approval.approvalRequestId,
     };
   }
-
   it("delivers the party prompt as a user-typed discord DM target, past the dead telegram route", async () => {
     const discordUserId = "111111111111111111";
     const coParentId = await person({
@@ -188,7 +186,6 @@ describe("household discord party route — real PGlite", () => {
       ],
     });
     const pending = await pendingProposal(coParentId);
-
     expect(telegramSendAttempts).toBe(0);
     const delivered = discordSends.find(
       (send) => send.target === discordUserId,
@@ -211,7 +208,6 @@ describe("household discord party route — real PGlite", () => {
       approvalRequestId: pending.approvalRequestId,
       partyEntityId: coParentId,
     });
-
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     expect(
       await queue.byId(pending.approvalRequestId, coParentId),
@@ -220,7 +216,6 @@ describe("household discord party route — real PGlite", () => {
       state: "pending",
     });
   });
-
   it("keeps the owner-relay internal fallback when every verified route is dead", async () => {
     const sendsBefore = discordSends.length;
     const coParentId = await person({
@@ -228,7 +223,6 @@ describe("household discord party route — real PGlite", () => {
       identities: [{ platform: "telegram", handle: `tg-${randomUUID()}` }],
     });
     const pending = await pendingProposal(coParentId);
-
     expect(telegramSendAttempts).toBe(0);
     expect(discordSends).toHaveLength(sendsBefore);
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });

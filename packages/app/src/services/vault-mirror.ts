@@ -16,7 +16,7 @@ import {
   type Vault,
 } from "@elizaos/auth/vault";
 import { logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
+import { asRecord } from "@elizaos/core/type-guards";
 
 // The process-wide SecretsManager facade, constructed once on first use. The
 // former circular-import chain (vault-bootstrap.ts → loadRegistry → … → back
@@ -25,16 +25,13 @@ import { asRecord } from "@elizaos/shared";
 // runtime/host-bridge.ts), so a plain lazy `let` is safe: there is no
 // re-entrant ESM evaluation and thus no temporal-dead-zone hazard to guard.
 let cachedManager: SecretsManager | null = null;
-
 export function sharedSecretsManager(): SecretsManager {
   if (!cachedManager) cachedManager = createManager();
   return cachedManager;
 }
-
 export function sharedVault(): Vault {
   return sharedSecretsManager().vault;
 }
-
 /**
  * Test-only: drop the cached vault so the next `sharedVault()` call
  * re-initializes from the (possibly newly configured) environment.
@@ -43,7 +40,6 @@ export function sharedVault(): Vault {
 export function _resetSharedVaultForTesting(next: Vault | null = null): void {
   cachedManager = next ? createManager({ vault: next }) : null;
 }
-
 /**
  * Write-through mirror to @elizaos/auth/vault. Iterates the plugin's
  * declared parameters, finds sensitive ones, and writes whatever
@@ -60,11 +56,22 @@ export function _resetSharedVaultForTesting(next: Vault | null = null): void {
  * and lets the read-side hydration round-trip cleanly.
  */
 export async function mirrorPluginSensitiveToVault(
-  plugin: { parameters: Array<{ key: string; sensitive: boolean }> },
+  plugin: {
+    parameters: Array<{
+      key: string;
+      sensitive: boolean;
+    }>;
+  },
   body: unknown,
-): Promise<{ failures: string[] }> {
+): Promise<{
+  failures: string[];
+}> {
   const failures: string[] = [];
-  const config = (asRecord(body) as { config?: unknown })?.config;
+  const config = (
+    asRecord(body) as {
+      config?: unknown;
+    }
+  )?.config;
   const configRecord = asRecord(config);
   if (!configRecord) return { failures };
   const sensitiveKeys = plugin.parameters
@@ -87,9 +94,7 @@ export async function mirrorPluginSensitiveToVault(
     } catch (err) {
       failures.push(key);
       logger.warn(
-        `[plugins-compat] vault mirror for ${key} failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[plugins-compat] vault mirror for ${key} failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

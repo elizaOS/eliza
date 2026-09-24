@@ -33,23 +33,20 @@
  *   DELETE /api/notifications
  *     Clear the inbox. Returns `{ ok }`.
  */
-
 import type http from "node:http";
-import type {
-  NotificationCategory,
-  NotificationInput,
-  NotificationPriority,
-  NotificationServiceLifecycleRuntime,
+import {
+  type NotificationCategory,
+  type NotificationInput,
+  type NotificationPriority,
+  NotificationService,
+  type NotificationServiceLifecycleRuntime,
+  ServiceType,
 } from "@elizaos/core";
-import { NotificationService, ServiceType } from "@elizaos/core";
-import type { RouteHelpers } from "@elizaos/shared";
-
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
 export interface NotificationRouteState {
   runtime: NotificationServiceLifecycleRuntime | null;
 }
-
 const NOTIFICATION_RETRY_AFTER_SECONDS = 1;
-
 const CATEGORIES: NotificationCategory[] = [
   "reminder",
   "task",
@@ -62,7 +59,6 @@ const CATEGORIES: NotificationCategory[] = [
   "general",
 ];
 const PRIORITIES: NotificationPriority[] = ["low", "normal", "high", "urgent"];
-
 /**
  * The dev/test seed spread: every priority tier, a breadth of categories, a
  * long body (exercises the widget's two-line clamp), safe deep links, and a
@@ -131,12 +127,10 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     groupKey: "dev-seed:deploy",
   },
 ];
-
 function getService(state: NotificationRouteState): NotificationService | null {
   const svc = state.runtime?.getService(ServiceType.NOTIFICATION);
   return svc instanceof NotificationService ? svc : null;
 }
-
 function respondServiceUnavailable(
   res: http.ServerResponse,
   state: NotificationRouteState,
@@ -158,7 +152,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   const availability = NotificationService.getAvailability(runtime);
   if (availability === "disabled") {
     if (method === "GET" && pathname === "/api/notifications") {
@@ -179,7 +172,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   if (availability === "failed") {
     const recovery = NotificationService.requestRecovery(runtime);
     res.setHeader("Retry-After", String(recovery.retryAfterSeconds));
@@ -194,7 +186,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   res.setHeader("Retry-After", String(NOTIFICATION_RETRY_AFTER_SECONDS));
   helpers.json(
     res,
@@ -207,7 +198,6 @@ function respondServiceUnavailable(
   );
   return true;
 }
-
 function parseLimit(raw: string | null): number | null | undefined {
   if (raw === null || raw === "") return undefined;
   // Strict decimal digits only. Number.parseInt("1e2", 10) === 1 would
@@ -217,18 +207,22 @@ function parseLimit(raw: string | null): number | null | undefined {
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
-
 function parseCategory(raw: string | null): NotificationCategory | undefined {
   if (raw && CATEGORIES.includes(raw as NotificationCategory)) {
     return raw as NotificationCategory;
   }
   return undefined;
 }
-
 /** Coerce an untrusted request body into a NotificationInput. */
-function parseNotificationInput(
-  body: Record<string, unknown>,
-): { ok: true; input: NotificationInput } | { ok: false; message: string } {
+function parseNotificationInput(body: Record<string, unknown>):
+  | {
+      ok: true;
+      input: NotificationInput;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (!title) {
     return { ok: false, message: "title is required" };
@@ -270,7 +264,6 @@ function parseNotificationInput(
   };
   return { ok: true, input };
 }
-
 export async function handleNotificationRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -280,9 +273,12 @@ export async function handleNotificationRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/notifications")) return false;
-
   let listRequest:
-    | { url: URL; limit: number | undefined; unreadOnly: boolean }
+    | {
+        url: URL;
+        limit: number | undefined;
+        unreadOnly: boolean;
+      }
     | undefined;
   if (method === "GET" && pathname === "/api/notifications") {
     const url = new URL(req.url ?? pathname, "http://localhost");
@@ -305,12 +301,10 @@ export async function handleNotificationRoute(
     }
     listRequest = { url, limit, unreadOnly: requestedUnread === "true" };
   }
-
   const service = getService(state);
   if (!service) {
     return respondServiceUnavailable(res, state, method, pathname, helpers);
   }
-
   // ── GET /api/notifications ────────────────────────────────────────
   if (listRequest) {
     const { url, limit, unreadOnly } = listRequest;
@@ -326,7 +320,6 @@ export async function handleNotificationRoute(
     });
     return true;
   }
-
   // ── POST /api/notifications ───────────────────────────────────────
   if (method === "POST" && pathname === "/api/notifications") {
     const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
@@ -342,14 +335,12 @@ export async function handleNotificationRoute(
     helpers.json(res, { notification }, 201);
     return true;
   }
-
   // ── POST /api/notifications/read-all ──────────────────────────────
   if (method === "POST" && pathname === "/api/notifications/read-all") {
     const changed = await service.markAllRead();
     helpers.json(res, { changed });
     return true;
   }
-
   // ── POST /api/notifications/dev/seed ──────────────────────────────
   if (method === "POST" && pathname === "/api/notifications/dev/seed") {
     // 404 (not 403) in production so the route's existence isn't advertised.
@@ -364,7 +355,6 @@ export async function handleNotificationRoute(
     helpers.json(res, { count: notifications.length, notifications }, 201);
     return true;
   }
-
   // ── POST /api/notifications/:id/read ──────────────────────────────
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
   if (method === "POST" && readMatch) {
@@ -380,14 +370,12 @@ export async function handleNotificationRoute(
     helpers.json(res, { ok });
     return true;
   }
-
   // ── DELETE /api/notifications ─────────────────────────────────────
   if (method === "DELETE" && pathname === "/api/notifications") {
     await service.clear();
     helpers.json(res, { ok: true });
     return true;
   }
-
   // ── DELETE /api/notifications/:id ─────────────────────────────────
   const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (method === "DELETE" && idMatch) {
@@ -403,7 +391,6 @@ export async function handleNotificationRoute(
     helpers.json(res, { ok });
     return true;
   }
-
   helpers.error(res, "notification route not found", 404);
   return true;
 }

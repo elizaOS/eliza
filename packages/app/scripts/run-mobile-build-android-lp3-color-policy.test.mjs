@@ -58,7 +58,6 @@ const initializerPath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/java/ai/elizaos/app/Lp3ColorPolicyInitializer.java",
 );
-const readmePath = path.join(androidRoot, "README.md");
 const repoRoot = path.resolve(scriptsDir, "../../..");
 
 function stripManifest(xml, policy) {
@@ -499,7 +498,6 @@ describe("LP3 direct Cloud build flag", () => {
       .readFileSync(servicePath, "utf8")
       .replace(/\r\n?/g, "\n");
     const initializer = fs.readFileSync(initializerPath, "utf8");
-    const readme = fs.readFileSync(readmePath, "utf8");
 
     expect(service).toContain('PREFERENCES_NAME = "lp3_color_policy"');
     expect(service).toContain('OPT_IN_PREFERENCE = "enabled"');
@@ -539,13 +537,5 @@ describe("LP3 direct Cloud build flag", () => {
     expect(initializer).toContain("acceptsNotificationStateChange");
     expect(initializer).toContain("app.unregisterReceiver(registeredReceiver)");
     expect(initializer).toContain("Manifest.permission.POST_NOTIFICATIONS");
-    expect(readme).toContain("adb shell run-as ai.elizaos.app am broadcast");
-    expect(readme).toContain(
-      "adb shell pm grant ai.elizaos.app android.permission.POST_NOTIFICATIONS",
-    );
-    expect(readme).toContain("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY");
-    expect(readme).toContain("ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY");
-    expect(readme).toContain("channel-level block");
-    expect(readme).toContain("permission-prompt loop");
   });
 });

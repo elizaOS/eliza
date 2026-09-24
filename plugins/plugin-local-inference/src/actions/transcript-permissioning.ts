@@ -4,7 +4,6 @@
  * grants on the original row so routes can disclose full or redacted content
  * through the existing artifact-disclosure predicate.
  */
-
 import {
 	type AccessContext,
 	type Action,
@@ -23,13 +22,13 @@ import {
 	type ProviderDataRecord,
 	type UUID,
 } from "@elizaos/core";
-import type {
-	PiiTextSpan,
-	Transcript,
-	TranscriptCaptureSharingState,
-	TranscriptSharingState,
-} from "@elizaos/shared";
-import { transcriptCapturePrivacyState } from "@elizaos/shared";
+import type { PiiTextSpan } from "@elizaos/core/audio-redaction";
+import {
+	type Transcript,
+	type TranscriptCaptureSharingState,
+	type TranscriptSharingState,
+	transcriptCapturePrivacyState,
+} from "@elizaos/core/transcripts";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import type { TranscriptServiceRuntime } from "../services/voice/transcript-service.js";
 import {
@@ -43,11 +42,9 @@ type RoleName = "USER" | "ADMIN";
 const AUDIO_REDACTION_SERVICE_TYPE = "audio-redaction";
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 interface HandlerOptions {
 	parameters?: Record<string, unknown>;
 }
-
 interface TranscriptPermissioningInput {
 	transcriptId: UUID;
 	entityId?: UUID;
@@ -55,38 +52,34 @@ interface TranscriptPermissioningInput {
 	mode?: ArtifactShareGrantMode;
 	redactForAll?: boolean;
 }
-
 interface AudioRedactionServiceLike {
 	redactAndVerify(input: {
 		originalAudioUrl: string;
 		durationMs: number;
 		words: Transcript["segments"][number]["words"];
 		piiSpans: readonly PiiTextSpan[];
-	}): Promise<{ url: string }>;
+	}): Promise<{
+		url: string;
+	}>;
 }
-
 function paramsFromOptions(options: unknown): Record<string, unknown> {
 	const maybe = options as HandlerOptions | undefined;
 	return maybe?.parameters && typeof maybe.parameters === "object"
 		? maybe.parameters
 		: {};
 }
-
 function nonEmptyString(value: unknown): string | null {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
 		: null;
 }
-
 function parseMode(value: unknown): ArtifactShareGrantMode | null {
 	return value === "full" || value === "redacted" ? value : null;
 }
-
 function parseUuid(value: unknown): UUID | null {
 	const text = nonEmptyString(value);
 	return text && UUID_PATTERN.test(text) ? (text as UUID) : null;
 }
-
 function parseInput(
 	parameters: Record<string, unknown>,
 	options: {
@@ -121,11 +114,9 @@ function parseInput(
 		...(redactForAll ? { redactForAll: true } : {}),
 	};
 }
-
 function transcriptStore(runtime: IAgentRuntime): TranscriptStore {
 	return new TranscriptStore(runtime as TranscriptStoreRuntime);
 }
-
 function runtimePiiRecognizer(
 	runtime: IAgentRuntime,
 ): PiiEntityRecognizer | undefined {
@@ -134,7 +125,6 @@ function runtimePiiRecognizer(
 	) as Partial<PiiEntityRecognizerService> | null;
 	return service?.getRecognizer?.() ?? undefined;
 }
-
 async function transcriptPiiSpans(
 	transcript: Transcript,
 	recognizer?: PiiEntityRecognizer,
@@ -158,7 +148,6 @@ async function transcriptPiiSpans(
 	}
 	return [...unique.values()];
 }
-
 async function verifiedRedactedAudioUrl(
 	runtime: IAgentRuntime,
 	transcript: Transcript,
@@ -186,12 +175,10 @@ async function verifiedRedactedAudioUrl(
 	});
 	return result.url;
 }
-
 function isRedactedVariantRow(row: Memory | null | undefined): boolean {
 	const metadata = row?.metadata as Record<string, unknown> | undefined;
 	return typeof metadata?.redactionOf === "string";
 }
-
 function hasTranscriptRoleAccess(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -199,7 +186,6 @@ function hasTranscriptRoleAccess(
 ): Promise<boolean> {
 	return hasRoleAccess(runtime, message, requiredRole);
 }
-
 async function canManageTranscript(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -213,7 +199,6 @@ async function canManageTranscript(
 	if (isRedactedVariantRow(row)) return false;
 	return row?.entityId === message.entityId;
 }
-
 async function accessContextForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -238,11 +223,9 @@ async function accessContextForMessage(
 			: {}),
 	};
 }
-
 function fail(error: string, text: string): ActionResult {
 	return { success: false, error, text, data: { error } };
 }
-
 function ok(text: string, data: ProviderDataRecord): ActionResult {
 	return {
 		success: true,
@@ -252,7 +235,6 @@ function ok(text: string, data: ProviderDataRecord): ActionResult {
 		data,
 	};
 }
-
 function auditDenied(
 	runtime: IAgentRuntime,
 	action: string,
@@ -280,7 +262,6 @@ function auditDenied(
 		"[transcript-permissioning] denied transcript privacy action",
 	);
 }
-
 function participantEntityIds(transcript: Transcript): UUID[] {
 	const participants = transcript.metadata?.participants;
 	if (!Array.isArray(participants)) return [];
@@ -288,13 +269,16 @@ function participantEntityIds(transcript: Transcript): UUID[] {
 	for (const participant of participants) {
 		if (!participant || typeof participant !== "object") continue;
 		const entityId = parseUuid(
-			(participant as { entityId?: unknown }).entityId,
+			(
+				participant as {
+					entityId?: unknown;
+				}
+			).entityId,
 		);
 		if (entityId) ids.add(entityId);
 	}
 	return [...ids];
 }
-
 async function requireFullTranscript(
 	runtime: IAgentRuntime,
 	store: TranscriptStore,
@@ -325,7 +309,6 @@ async function requireFullTranscript(
 	}
 	return null;
 }
-
 export const redactTranscriptAction: Action = {
 	name: "REDACT_TRANSCRIPT",
 	similes: [
@@ -374,7 +357,6 @@ export const redactTranscriptAction: Action = {
 			await callback?.({ text: result.text, actions: ["REDACT_TRANSCRIPT"] });
 			return result;
 		}
-
 		try {
 			const store = transcriptStore(runtime);
 			const accessContext = await accessContextForMessage(
@@ -430,7 +412,6 @@ export const redactTranscriptAction: Action = {
 	},
 	examples: [],
 };
-
 export const shareTranscriptAction: Action = {
 	name: "SHARE_TRANSCRIPT",
 	similes: [
@@ -502,7 +483,6 @@ export const shareTranscriptAction: Action = {
 			await callback?.({ text: result.text, actions: ["SHARE_TRANSCRIPT"] });
 			return result;
 		}
-
 		const requiresAdmin = input.mode === "full" || input.redactForAll === true;
 		const canShare = requiresAdmin
 			? await hasTranscriptRoleAccess(runtime, message, "ADMIN")
@@ -518,7 +498,6 @@ export const shareTranscriptAction: Action = {
 			await callback?.({ text: result.text, actions: ["SHARE_TRANSCRIPT"] });
 			return result;
 		}
-
 		try {
 			const store = transcriptStore(runtime);
 			const accessContext = await accessContextForMessage(
@@ -641,7 +620,6 @@ export const shareTranscriptAction: Action = {
 	},
 	examples: [],
 };
-
 const MANAGEABLE_ARTIFACTS = [
 	"transcript",
 	"notes",
@@ -654,7 +632,6 @@ const MANAGEABLE_SHARING_STATES = [
 	"shared",
 	"disabled",
 ] as const;
-
 /** Semantic twin for the Transcripts view's artifact privacy controls. */
 export const manageTranscriptPrivacyAction: Action = {
 	name: "MANAGE_TRANSCRIPT_PRIVACY",
@@ -742,7 +719,6 @@ export const manageTranscriptPrivacyAction: Action = {
 			});
 			return result;
 		}
-
 		try {
 			const privacy = new TranscriptPrivacyService(
 				runtime as TranscriptServiceRuntime,

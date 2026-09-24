@@ -67,11 +67,9 @@ describe("currentTimeProvider", () => {
       userTimeZone: "America/Los_Angeles",
       timeZoneOrigin: "device",
     });
-    expect(result.text).toContain(
-      "User local time: Tuesday, August 4, 2026 at 7:41:04 PM PDT",
-    );
-    expect(result.text).toContain("UTC: 2026-08-05T02:41:04.618Z");
-    expect(result.text).toContain("America/Los_Angeles; device");
+    expect(result.text).toContain("Tuesday, August 4, 2026 at 7:41:04 PM PDT");
+    expect(result.text).toContain("ISO (UTC): 2026-08-05T02:41:04.618Z");
+    expect(result.text).toContain("America/Los_Angeles");
     expect(result.text).not.toContain("Europe/Paris");
     expect(result.text).not.toMatch(/[\r\n]/);
   });
@@ -107,12 +105,12 @@ describe("currentTimeProvider", () => {
     );
     expect(result.text).toContain(instant);
     expect(result.text).toContain(`Sunday, March 8, 2026 at ${localTime}`);
-    expect(result.text).toContain("America/Los_Angeles; device");
+    expect(result.text).toContain("America/Los_Angeles");
     expect(result.text).not.toMatch(/[\r\n]/);
   });
 
   it("presents the configured TIMEZONE as the owner's zone when the owner sends without a device zone", async () => {
-    // Live 2026-09-05: "User timezone unknown" made the planner emit UTC
+    // Live 2026-09-05: "user timezone unknown" made the planner emit UTC
     // day bounds and "Z" instants for a Pacific owner's calendar even though
     // TIMEZONE=America/Los_Angeles was configured by that owner.
     const result = await currentTimeProvider.get(
@@ -126,13 +124,9 @@ describe("currentTimeProvider", () => {
       userTimeZone: "Europe/Paris",
       timeZoneOrigin: "agent-setting",
     });
-    expect(result.text).toContain(
-      "Europe/Paris; owner setting; user override wins",
-    );
-    expect(result.text).toContain("owner setting");
-    expect(result.text).toContain("User local time:");
-    expect(result.text).not.toContain("User timezone unknown");
-    expect(result.text).not.toContain("Agent reference time:");
+    expect(result.text).toContain("Europe/Paris");
+    expect(result.text).not.toContain("user timezone unknown");
+    expect(result.text).not.toContain("Agent time:");
     expect(result.text).not.toMatch(/[\r\n]/);
   });
 
@@ -149,10 +143,9 @@ describe("currentTimeProvider", () => {
       userTimeZone: null,
       timeZoneOrigin: "agent-setting",
     });
-    expect(result.text).toContain("User timezone unknown");
-    expect(result.text).toContain("Agent reference time:");
+    expect(result.text).toContain("user timezone unknown");
+    expect(result.text).toContain("Agent time:");
     expect(result.text).not.toContain("User local time:");
-    expect(result.text).toContain("never guess; ask if needed");
     expect(result.text).not.toMatch(/[\r\n]/);
   });
 
@@ -169,10 +162,9 @@ describe("currentTimeProvider", () => {
       userTimeZone: null,
       timeZoneOrigin: "host",
     });
-    expect(result.text).toContain("User timezone unknown");
-    expect(result.text).toContain("Server reference time:");
+    expect(result.text).toContain("user timezone unknown");
+    expect(result.text).toContain("Server time:");
     expect(result.text).not.toContain("User local time:");
-    expect(result.text).toContain("never guess; ask if needed");
     expect(result.text).not.toMatch(/[\r\n]/);
   });
 

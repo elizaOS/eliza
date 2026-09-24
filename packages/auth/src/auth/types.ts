@@ -1,13 +1,11 @@
 /**
  * Subscription auth types for eliza.
  */
-
 import {
   codingProviderEnrollmentAvailability,
   codingProviderSubscriptionAuthMode,
   codingProviderSubscriptionBillingMode,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 export interface OAuthCredentials {
   access: string;
   refresh: string;
@@ -20,7 +18,6 @@ export interface OAuthCredentials {
    */
   idToken?: string;
 }
-
 export type SubscriptionProvider =
   | "anthropic-subscription"
   | "openai-codex"
@@ -28,17 +25,12 @@ export type SubscriptionProvider =
   | "zai-coding"
   | "kimi-coding"
   | "deepseek-coding";
-
 export type OAuthSubscriptionProvider =
   | "anthropic-subscription"
   | "openai-codex";
-
 export type CodingPlanKeySubscriptionProvider = "zai-coding" | "kimi-coding";
-
 export type ExternalCliSubscriptionProvider = "gemini-cli";
-
 export type UnavailableSubscriptionProvider = "deepseek-coding";
-
 export type DirectAccountProvider =
   | "anthropic-api"
   | "openai-api"
@@ -48,11 +40,9 @@ export type DirectAccountProvider =
   | "cerebras-api"
   | "openrouter-api"
   | "xai-api";
-
 export type AccountCredentialProvider =
   | SubscriptionProvider
   | DirectAccountProvider;
-
 export const SUBSCRIPTION_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
@@ -61,25 +51,20 @@ export const SUBSCRIPTION_PROVIDER_IDS = [
   "kimi-coding",
   "deepseek-coding",
 ] as const satisfies readonly SubscriptionProvider[];
-
 export const OAUTH_SUBSCRIPTION_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
 ] as const satisfies readonly OAuthSubscriptionProvider[];
-
 export const CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS = [
   "zai-coding",
   "kimi-coding",
 ] as const satisfies readonly CodingPlanKeySubscriptionProvider[];
-
 export const EXTERNAL_CLI_SUBSCRIPTION_PROVIDER_IDS = [
   "gemini-cli",
 ] as const satisfies readonly ExternalCliSubscriptionProvider[];
-
 export const UNAVAILABLE_SUBSCRIPTION_PROVIDER_IDS = [
   "deepseek-coding",
 ] as const satisfies readonly UnavailableSubscriptionProvider[];
-
 export const DIRECT_ACCOUNT_PROVIDER_IDS = [
   "anthropic-api",
   "openai-api",
@@ -90,12 +75,10 @@ export const DIRECT_ACCOUNT_PROVIDER_IDS = [
   "openrouter-api",
   "xai-api",
 ] as const satisfies readonly DirectAccountProvider[];
-
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [
   ...SUBSCRIPTION_PROVIDER_IDS,
   ...DIRECT_ACCOUNT_PROVIDER_IDS,
 ] as const satisfies readonly AccountCredentialProvider[];
-
 export function isSubscriptionProvider(
   value: unknown,
 ): value is SubscriptionProvider {
@@ -104,7 +87,6 @@ export function isSubscriptionProvider(
     (SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
-
 export function isDirectAccountProvider(
   value: unknown,
 ): value is DirectAccountProvider {
@@ -113,7 +95,6 @@ export function isDirectAccountProvider(
     (DIRECT_ACCOUNT_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
-
 export function isOAuthSubscriptionProvider(
   value: unknown,
 ): value is OAuthSubscriptionProvider {
@@ -122,7 +103,6 @@ export function isOAuthSubscriptionProvider(
     (OAUTH_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
-
 export function isCodingPlanKeySubscriptionProvider(
   value: unknown,
 ): value is CodingPlanKeySubscriptionProvider {
@@ -133,7 +113,6 @@ export function isCodingPlanKeySubscriptionProvider(
     )
   );
 }
-
 export function isExternalCliSubscriptionProvider(
   value: unknown,
 ): value is ExternalCliSubscriptionProvider {
@@ -144,7 +123,6 @@ export function isExternalCliSubscriptionProvider(
     )
   );
 }
-
 export function isUnavailableSubscriptionProvider(
   value: unknown,
 ): value is UnavailableSubscriptionProvider {
@@ -153,7 +131,6 @@ export function isUnavailableSubscriptionProvider(
     (UNAVAILABLE_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
-
 export function isAccountCredentialProvider(
   value: unknown,
 ): value is AccountCredentialProvider {
@@ -162,7 +139,6 @@ export function isAccountCredentialProvider(
     (ACCOUNT_CREDENTIAL_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
-
 export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
   DirectAccountProvider,
   string
@@ -176,7 +152,6 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
   "openrouter-api": "OPENROUTER_API_KEY",
   "xai-api": "XAI_API_KEY",
 };
-
 /** Direct accounts served through the OpenAI-compatible credential bridge. */
 export const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
@@ -185,7 +160,6 @@ export const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   "openrouter-api": "https://openrouter.ai/api/v1",
   "xai-api": "https://api.x.ai/v1",
 };
-
 /** Maps subscription provider IDs to their model provider short names. */
 export const SUBSCRIPTION_PROVIDER_MAP: Record<SubscriptionProvider, string> = {
   "anthropic-subscription": "anthropic",
@@ -195,7 +169,6 @@ export const SUBSCRIPTION_PROVIDER_MAP: Record<SubscriptionProvider, string> = {
   "kimi-coding": "kimi-coding",
   "deepseek-coding": "deepseek-coding",
 };
-
 export const CODING_PLAN_PROVIDER_BASE_URL: Record<
   CodingPlanKeySubscriptionProvider,
   string
@@ -203,22 +176,18 @@ export const CODING_PLAN_PROVIDER_BASE_URL: Record<
   "zai-coding": "https://api.z.ai/api/coding/paas/v4",
   "kimi-coding": "https://api.kimi.com/coding/v1",
 };
-
 export type SubscriptionProviderAuthMode =
   | "oauth"
   | "external-cli"
   | "coding-plan-key"
   | "unavailable";
-
 export type SubscriptionProviderBillingMode =
   | "subscription-coding-plan"
   | "subscription-coding-cli";
-
 export type SubscriptionProviderAvailability =
   | "available"
   | "external"
   | "unavailable";
-
 export interface SubscriptionProviderMetadata {
   providerId: SubscriptionProvider;
   displayName: string;
@@ -233,7 +202,6 @@ export interface SubscriptionProviderMetadata {
   probePath?: string;
   availabilityReason?: string;
 }
-
 export const SUBSCRIPTION_PROVIDER_METADATA: Record<
   SubscriptionProvider,
   SubscriptionProviderMetadata
@@ -318,13 +286,11 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
       "No first-party DeepSeek coding subscription surface is available to integrate without substituting general API billing.",
   },
 } as const;
-
 export function getSubscriptionProviderMetadata(
   provider: SubscriptionProvider,
 ): SubscriptionProviderMetadata {
   return SUBSCRIPTION_PROVIDER_METADATA[provider];
 }
-
 export interface StoredCredentials {
   provider: AccountCredentialProvider;
   credentials: OAuthCredentials;

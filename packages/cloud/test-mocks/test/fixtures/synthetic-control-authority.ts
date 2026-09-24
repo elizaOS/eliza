@@ -9,7 +9,7 @@ import {
   type SyntheticFault,
   type SyntheticManifest,
   type SyntheticResetReceipt,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 import { startControlPlaneMock } from "../../src/control-plane/index.js";
 
 const token = process.env.SYNTHETIC_CONTROL_TOKEN;

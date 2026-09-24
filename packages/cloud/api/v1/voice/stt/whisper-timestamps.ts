@@ -3,7 +3,7 @@
  * for the cloud `/api/v1/voice/stt` route (#14806). The route requests
  * `response_format=verbose_json` + word/segment `timestamp_granularities[]`;
  * this module converts the seconds-based OpenAI shapes into the millisecond
- * convention every elizaOS transcript consumer uses (@elizaos/shared
+ * convention every elizaOS transcript consumer uses (@elizaos/core
  * transcripts), so a caller can chunk on segment boundaries and map text spans
  * back onto audio time.
  *
@@ -18,14 +18,12 @@
  * timestamp arrays yield absent DTO keys because providers may ignore the
  * optional timestamp request.
  */
-
 /** One timed span in ms-from-audio-start (`text` is a word or segment body). */
 export interface SttTimedSpan {
   text: string;
   startMs: number;
   endMs: number;
 }
-
 export interface WhisperTimestamps {
   /** Segment-level spans, present only when at least one valid entry parsed. */
   segments?: SttTimedSpan[];
@@ -34,7 +32,6 @@ export interface WhisperTimestamps {
   /** Present provider fields that cannot be represented without data loss. */
   invalidFields: Array<"segments" | "words">;
 }
-
 function toSpan(
   text: unknown,
   start: unknown,
@@ -53,7 +50,6 @@ function toSpan(
     endMs: Math.round(end * 1000),
   };
 }
-
 /**
  * Extract ms-based segment/word spans from a ROUTE-VALIDATED `verbose_json`
  * record. Accepts the OpenAI shapes (`segments[]{text,start,end}`,
@@ -68,7 +64,10 @@ export function parseWhisperTimestamps(
   const parseArray = (
     value: unknown,
     textKey: "text" | "word",
-  ): { spans: SttTimedSpan[]; invalid: boolean } => {
+  ): {
+    spans: SttTimedSpan[];
+    invalid: boolean;
+  } => {
     if (value === undefined) return { spans: [], invalid: false };
     if (!Array.isArray(value)) return { spans: [], invalid: true };
     const spans: SttTimedSpan[] = [];
@@ -87,13 +86,11 @@ export function parseWhisperTimestamps(
     }
     return { spans, invalid };
   };
-
   const segments = parseArray(record.segments, "text");
   const words = parseArray(record.words, "word");
   const invalidFields: Array<"segments" | "words"> = [];
   if (segments.invalid) invalidFields.push("segments");
   if (words.invalid) invalidFields.push("words");
-
   return {
     ...(!segments.invalid && segments.spans.length > 0
       ? { segments: segments.spans }

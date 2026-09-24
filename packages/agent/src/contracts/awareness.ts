@@ -9,4 +9,4 @@ export {
   SELF_STATUS_SCHEMA_VERSION,
   SUMMARY_CHAR_LIMIT,
   SUMMARY_TOTAL_CHAR_LIMIT,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/awareness";

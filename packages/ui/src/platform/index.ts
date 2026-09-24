@@ -1,9 +1,8 @@
 /** Platform utilities — platform initialization helpers. */
-
 export {
   isAospElizaUserAgent,
   userAgentHasElizaOSMarker,
-} from "@elizaos/shared";
+} from "@elizaos/core/platform/aosp-user-agent";
 export * from "./android-runtime";
 export {
   ASSISTANT_LAUNCH_PARAM_KEYS,

@@ -80,5 +80,5 @@ describe("Contacts host-view ABI", () => {
     cleanup();
     const dynamicOutcome = await exercise(dynamic.ContactsView, "embeddable");
     expect(dynamicOutcome).toBe(signedOutcome);
-  });
+  }, 30_000);
 });

@@ -21,7 +21,7 @@ import {
   fetchRemoteMedia,
   MediaFetchError,
   readResponseWithLimit,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import {
   linkShareOwnText,
   looksLikeBareLinkShare,

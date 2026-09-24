@@ -4,7 +4,7 @@
  * check-in timing across the sleep domain.
  */
 
-import { parseIsoMs } from "@elizaos/shared";
+import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
 import {
   isBuiltinActivitySignalSource,
   type LifeOpsActivitySignal,
@@ -13,26 +13,22 @@ import {
   type LifeOpsSleepCycle,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
+import { type LifeOpsActivityWindow } from "./sleep-cycle.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
 function round(value: number): number {
   return Math.round(clamp(value, 0, 1) * 100) / 100;
 }
-
 function logistic(value: number): number {
   return 1 / (1 + Math.exp(-value));
 }
-
 function localHour(nowMs: number, timezone: string): number {
   const parts = getZonedDateParts(new Date(nowMs), timezone);
   return parts.hour + parts.minute / 60;
 }
-
 export function computeAwakeProbability(args: {
   nowMs: number;
   timezone: string;
@@ -51,7 +47,6 @@ export function computeAwakeProbability(args: {
 }): LifeOpsAwakeProbability {
   const contributors: LifeOpsAwakeProbability["contributingSources"] = [];
   let llr = 0;
-
   const latestSignal = [...args.signals]
     .map((signal) => ({
       signal,
@@ -60,8 +55,10 @@ export function computeAwakeProbability(args: {
     .filter(
       (
         candidate,
-      ): candidate is { signal: LifeOpsActivitySignal; observedAtMs: number } =>
-        candidate.observedAtMs !== null,
+      ): candidate is {
+        signal: LifeOpsActivitySignal;
+        observedAtMs: number;
+      } => candidate.observedAtMs !== null,
     )
     .sort((left, right) => {
       const rightTime =
@@ -76,11 +73,10 @@ export function computeAwakeProbability(args: {
           : 0;
       return rightTime - leftTime;
     })[0];
-
   const hasConcurrentOwnerInteraction = args.signals.some((signal) => {
     const observedAt = parseIsoMs(signal.observedAt);
     if (observedAt === null) return false;
-    if (args.nowMs - observedAt > 5 * 60_000) return false;
+    if (args.nowMs - observedAt > 5 * 60000) return false;
     if (signal.source === "desktop_interaction") return true;
     if (signal.source === "mobile_device" && signal.state === "active") {
       return true;
@@ -99,7 +95,6 @@ export function computeAwakeProbability(args: {
     }
     return false;
   });
-
   // The built-in logistic model only scores the closed built-in sources; a
   // plugin-contributed source (browser activity, view usage, …) is skipped
   // here rather than fed a fabricated weight — it would need to also teach this
@@ -124,13 +119,13 @@ export function computeAwakeProbability(args: {
       scale *= 0.25;
     }
     let baseWeight = 0;
-    if (state === "active" && ageMs <= 5 * 60_000) {
+    if (state === "active" && ageMs <= 5 * 60000) {
       baseWeight = 2.4;
-    } else if (state === "active" && ageMs <= 15 * 60_000) {
+    } else if (state === "active" && ageMs <= 15 * 60000) {
       baseWeight = 1.4;
     } else if (
       (state === "idle" || state === "locked" || state === "sleeping") &&
-      ageMs <= 90 * 60_000
+      ageMs <= 90 * 60000
     ) {
       baseWeight =
         state === "sleeping" ? -2.2 : state === "locked" ? -1.2 : -0.8;
@@ -144,7 +139,6 @@ export function computeAwakeProbability(args: {
       llr += scaledWeight;
     }
   }
-
   const currentSleepStartMs = parseIsoMs(args.sleepCycle.currentSleepStartedAt);
   if (
     args.sleepCycle.sleepStatus === "sleeping_now" &&
@@ -172,10 +166,9 @@ export function computeAwakeProbability(args: {
     });
     llr += sleepWeight;
   }
-
   const wakeAtMs = parseIsoMs(args.sleepCycle.lastSleepEndedAt);
   if (wakeAtMs !== null) {
-    const minutesSinceWake = (args.nowMs - wakeAtMs) / 60_000;
+    const minutesSinceWake = (args.nowMs - wakeAtMs) / 60000;
     if (minutesSinceWake >= 0 && minutesSinceWake <= 120) {
       contributors.push({
         source: "health",
@@ -184,7 +177,6 @@ export function computeAwakeProbability(args: {
       llr += 1.6;
     }
   }
-
   const latestWindowEndMs =
     args.windows.length > 0
       ? (args.windows[args.windows.length - 1]?.endMs ?? null)
@@ -192,7 +184,7 @@ export function computeAwakeProbability(args: {
   if (latestWindowEndMs !== null) {
     const gapMinutes = Math.max(
       0,
-      Math.round((args.nowMs - latestWindowEndMs) / 60_000),
+      Math.round((args.nowMs - latestWindowEndMs) / 60000),
     );
     if (gapMinutes >= 180) {
       const sleepGapWeight = -clamp(gapMinutes / 240, 0.8, 1.8);
@@ -209,7 +201,6 @@ export function computeAwakeProbability(args: {
       llr += 0.8;
     }
   }
-
   if (
     args.regularity.regularityClass === "regular" ||
     args.regularity.regularityClass === "very_regular"
@@ -225,7 +216,6 @@ export function computeAwakeProbability(args: {
     });
     llr += scaledWeight;
   }
-
   const signalCoverage = clamp(args.signals.length / 12, 0, 1);
   const windowCoverage = args.windows.length > 0 ? 1 : 0;
   let evidenceCoverage = clamp(
@@ -237,10 +227,7 @@ export function computeAwakeProbability(args: {
   );
   if (args.sleepCycle.sleepStatus === "sleeping_now") {
     evidenceCoverage = Math.max(evidenceCoverage, 0.9);
-  } else if (
-    wakeAtMs !== null &&
-    args.nowMs - wakeAtMs <= 2 * 60 * 60 * 1_000
-  ) {
+  } else if (wakeAtMs !== null && args.nowMs - wakeAtMs <= 2 * 60 * 60 * 1000) {
     evidenceCoverage = Math.max(evidenceCoverage, 0.75);
   }
   const pKnown = round(evidenceCoverage);
@@ -249,7 +236,6 @@ export function computeAwakeProbability(args: {
   const pAsleep = round((1 - awakeKnown) * pKnown);
   const pUnknown = round(clamp(1 - pKnown, 0, 1));
   const total = pAwake + pAsleep + pUnknown;
-
   if (total <= 0) {
     return {
       pAwake: 0,
@@ -259,7 +245,6 @@ export function computeAwakeProbability(args: {
       computedAt: new Date(args.nowMs).toISOString(),
     };
   }
-
   return {
     pAwake: round(pAwake / total),
     pAsleep: round(pAsleep / total),

@@ -15,7 +15,7 @@
  *   ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun run --cwd packages/app test -- coding-account-bridge.live
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
@@ -25,12 +25,10 @@ import { getCodingAgentSelectorBridge } from "./coding-account-bridge.js";
 
 const LIVE = process.env.ORCHESTRATOR_LIVE_MULTI_ACCOUNT === "1";
 const d = LIVE ? describe : describe.skip;
-
 const CODING_PROVIDERS: LinkedAccountProviderId[] = [
   "anthropic-subscription",
   "openai-codex",
 ];
-
 d("multi-account live (real linked accounts)", () => {
   it("rotates least-used across distinct real accounts and resolves tokens", async () => {
     __resetDefaultAccountPoolForTests();
@@ -38,7 +36,6 @@ d("multi-account live (real linked accounts)", () => {
     const bridge = getCodingAgentSelectorBridge();
     expect(bridge).not.toBeNull();
     if (!bridge) return;
-
     const multiProvider = CODING_PROVIDERS.find(
       (p) => pool.list(p).filter((a) => a.enabled).length >= 2,
     );
@@ -49,20 +46,17 @@ d("multi-account live (real linked accounts)", () => {
     }
     const agentType =
       multiProvider === "anthropic-subscription" ? "claude" : "codex";
-
     // Round-robin two selections with the just-picked account excluded: the
     // pool must hand out a different real account, each with a usable token.
     const first = await bridge.select(agentType, { strategy: "least-used" });
     expect(first?.accountId).toBeTruthy();
     expect(Object.keys(first?.envPatch ?? {}).length).toBeGreaterThan(0);
-
     const second = await bridge.select(agentType, {
       strategy: "least-used",
       exclude: first ? [first.accountId] : [],
     });
     expect(second?.accountId).toBeTruthy();
     expect(second?.accountId).not.toBe(first?.accountId);
-
     // Every credential the bridge returns must be a real, non-empty secret.
     for (const sel of [first, second]) {
       for (const value of Object.values(sel?.envPatch ?? {})) {
@@ -71,7 +65,6 @@ d("multi-account live (real linked accounts)", () => {
       }
     }
   });
-
   it("reports live session/weekly usage for each connected account", async () => {
     __resetDefaultAccountPoolForTests();
     const pool = getDefaultAccountPool();

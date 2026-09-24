@@ -10,7 +10,7 @@
  * automation- or page-scoped.
  */
 import type { JsonValue, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
 import type {
   ConversationMeta,
   ConversationMetadata,

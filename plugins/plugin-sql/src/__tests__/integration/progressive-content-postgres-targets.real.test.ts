@@ -8,7 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { runProgressiveContentTargetConformance } from "@elizaos/testing";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createProgressivePostgresSqlTargetFactories } from "../../testing/progressive-content-sql-targets";
+import { createProgressivePostgresSqlTargetFactories } from "../support/progressive-content-sql-targets";
 
 const baseUrl = process.env.POSTGRES_URL;
 const describePostgres = baseUrl ? describe : describe.skip;

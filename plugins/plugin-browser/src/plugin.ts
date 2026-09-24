@@ -1,14 +1,13 @@
 /** Composes the browser workspace, optional Stagehand target, and owner-authorized browser actions. */
-import type { ServiceClass } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+
+import { promoteSubactionsToActions, type ServiceClass } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { browserAction } from "./actions/browser.js";
 import { BrowserService } from "./browser-service.js";
 import { browserWorkspaceProvider } from "./providers/workspace.js";
 import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
 import { browserBridgeSchema } from "./schema.js";
 import { preflightStagehandServer } from "./targets/stagehand-target.js";
-
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
@@ -31,7 +30,11 @@ export const browserPlugin: Plugin = {
         f === true ||
         (typeof f === "object" &&
           f !== null &&
-          (f as { enabled?: unknown }).enabled !== false)
+          (
+            f as {
+              enabled?: unknown;
+            }
+          ).enabled !== false)
       );
     },
   },

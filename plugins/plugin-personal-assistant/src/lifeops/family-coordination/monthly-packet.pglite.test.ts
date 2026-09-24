@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalEnqueueInput,

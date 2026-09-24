@@ -4,14 +4,14 @@ import type {
   CatalogModel,
   HardwareProbe,
   TextGenerationSlot,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/local-inference";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeBytes,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel as chooseSharedSmallerFallbackModel,
   classifyRecommendationPlatform,
-  MODEL_CATALOG,
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,
@@ -19,8 +19,7 @@ import {
   selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
   selectRecommendedModels as selectSharedRecommendedModels,
   UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 export type RecommendationOptions = Omit<SharedRecommendationOptions, "policy">;
 export type { RecommendationPlatformClass, RecommendedModelSelection };
 export {
@@ -36,7 +35,6 @@ function uiOptions(
 ): SharedRecommendationOptions {
   return { ...options, policy: UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY };
 }
-
 export function selectRecommendedModelForSlot(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
@@ -50,7 +48,6 @@ export function selectRecommendedModelForSlot(
     uiOptions(options),
   );
 }
-
 export function selectRecommendedModels(
   hardware: HardwareProbe,
   catalog: readonly CatalogModel[] = MODEL_CATALOG,
@@ -58,7 +55,6 @@ export function selectRecommendedModels(
 ): Record<TextGenerationSlot, RecommendedModelSelection> {
   return selectSharedRecommendedModels(hardware, catalog, uiOptions(options));
 }
-
 export function chooseSmallerFallbackModel(
   currentModelId: string,
   hardware: HardwareProbe,

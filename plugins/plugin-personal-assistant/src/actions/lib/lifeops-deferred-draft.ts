@@ -16,12 +16,12 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  getRecentMessagesData,
   ModelType,
   parseJsonModelRecord,
   recentConversationTexts,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,

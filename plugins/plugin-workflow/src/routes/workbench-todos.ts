@@ -7,20 +7,18 @@
  * already uses to surface workbench tasks in `/api/automations`.
  *
  * The response DTO, the `workbench-todo` tag convention, and the validation
- * schemas are shared with the rest of the platform (`@elizaos/shared`
+ * schemas are shared with the rest of the platform (`@elizaos/core`
  * `contracts/workbench-routes`), so the endpoints behave identically to the
  * previous host-side implementations.
  */
-
 import type http from 'node:http';
 import { type AgentRuntime, logger, type Task, type UUID } from '@elizaos/core';
+import { sendJson, sendJsonError } from '@elizaos/core/api/http-helpers';
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
   PutWorkbenchTodoRequestSchema,
-  sendJson,
-  sendJsonError,
-} from '@elizaos/shared';
+} from '@elizaos/core/contracts/workbench-routes';
 import {
   isObject,
   isWorkbenchTodoTask,
@@ -29,7 +27,6 @@ import {
   readTaskMetadata,
   WORKBENCH_TODO_TAG,
 } from '../lib/automations-types';
-
 export interface WorkbenchTodoView {
   id: string;
   name: string;
@@ -39,7 +36,6 @@ export interface WorkbenchTodoView {
   isCompleted: boolean;
   type: string;
 }
-
 export interface WorkbenchTodosRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -47,9 +43,7 @@ export interface WorkbenchTodosRouteContext {
   pathname: string;
   runtime: AgentRuntime | null;
 }
-
 type WorkbenchTodoMutation = 'created' | 'updated' | 'completed' | 'deleted';
-
 interface AgentEventEmitterLike {
   emit(event: {
     runId: string;
@@ -58,7 +52,6 @@ interface AgentEventEmitterLike {
     agentId?: string;
   }): void;
 }
-
 function parseNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -68,7 +61,6 @@ function parseNullableNumber(value: unknown): number | null {
   }
   return null;
 }
-
 function normalizeTags(value: unknown, required: string[] = []): string[] {
   const next = new Set<string>([
     ...normalizeStringArray(value),
@@ -76,7 +68,6 @@ function normalizeTags(value: unknown, required: string[] = []): string[] {
   ]);
   return [...next];
 }
-
 function decodePathComponent(
   raw: string,
   res: http.ServerResponse,
@@ -89,7 +80,6 @@ function decodePathComponent(
     return null;
   }
 }
-
 function readTodoMeta(task: Task): Record<string, unknown> {
   const metadata = readTaskMetadata(task);
   return (
@@ -98,7 +88,6 @@ function readTodoMeta(task: Task): Record<string, unknown> {
     {}
   );
 }
-
 export function toWorkbenchTodoView(task: Task): WorkbenchTodoView | null {
   if (!isWorkbenchTodoTask(task)) return null;
   const id = typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
@@ -120,17 +109,19 @@ export function toWorkbenchTodoView(task: Task): WorkbenchTodoView | null {
       typeof todoMeta.type === 'string' && todoMeta.type.trim().length > 0 ? todoMeta.type : 'task',
   };
 }
-
 function readJsonObjectBody(req: http.IncomingMessage): Record<string, unknown> {
   // The runtime plugin-route dispatcher pre-reads and JSON-parses the request
   // body onto `req.body` (rejecting malformed/non-object bodies before this
   // handler runs). An absent body (e.g. GET, or a bodyless POST) surfaces as
   // undefined, which we treat as an empty object.
-  const parsed = (req as { body?: unknown }).body;
+  const parsed = (
+    req as {
+      body?: unknown;
+    }
+  ).body;
   if (isObject(parsed)) return parsed;
   return {};
 }
-
 function getAgentEventEmitter(runtime: AgentRuntime): AgentEventEmitterLike | null {
   const runtimeWithServices = runtime as {
     getService?: (serviceType: string) => unknown;
@@ -144,7 +135,6 @@ function getAgentEventEmitter(runtime: AgentRuntime): AgentEventEmitterLike | nu
   }
   return null;
 }
-
 function emitWorkbenchTodoChanged(
   runtime: AgentRuntime,
   operation: WorkbenchTodoMutation,
@@ -153,12 +143,15 @@ function emitWorkbenchTodoChanged(
 ): void {
   const emitter = getAgentEventEmitter(runtime);
   if (!emitter) return;
-
   try {
     emitter.emit({
       runId: 'workbench-todos',
       stream: 'workbench',
-      agentId: (runtime as { agentId?: string }).agentId,
+      agentId: (
+        runtime as {
+          agentId?: string;
+        }
+      ).agentId,
       data: {
         type: 'workbench.todo.changed',
         operation,
@@ -176,7 +169,6 @@ function emitWorkbenchTodoChanged(
     );
   }
 }
-
 /**
  * Handle `/api/workbench/todos` CRUD. Returns `true` when the request matched a
  * todos endpoint (and a response was written), `false` otherwise.
@@ -185,11 +177,9 @@ export async function handleWorkbenchTodosRoutes(
   ctx: WorkbenchTodosRouteContext
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime } = ctx;
-
   if (pathname !== '/api/workbench/todos' && !pathname.startsWith('/api/workbench/todos/')) {
     return false;
   }
-
   // ── GET /api/workbench/todos ─────────────────────────────────────────
   if (method === 'GET' && pathname === '/api/workbench/todos') {
     if (!runtime) {
@@ -204,7 +194,6 @@ export async function handleWorkbenchTodosRoutes(
     sendJson(res, { todos });
     return true;
   }
-
   // ── POST /api/workbench/todos ────────────────────────────────────────
   if (method === 'POST' && pathname === '/api/workbench/todos') {
     if (!runtime) {
@@ -224,7 +213,6 @@ export async function handleWorkbenchTodosRoutes(
     const isUrgent = body.isUrgent === true;
     const type =
       typeof body.type === 'string' && body.type.trim().length > 0 ? body.type.trim() : 'task';
-
     const metadata = {
       isCompleted,
       workbenchTodo: {
@@ -251,7 +239,6 @@ export async function handleWorkbenchTodosRoutes(
     sendJson(res, { todo }, 201);
     return true;
   }
-
   // ── POST /api/workbench/todos/:id/complete ──────────────────────────
   const todoCompleteMatch = /^\/api\/workbench\/todos\/([^/]+)\/complete$/.exec(pathname);
   if (method === 'POST' && todoCompleteMatch) {
@@ -290,7 +277,6 @@ export async function handleWorkbenchTodosRoutes(
     sendJson(res, { ok: true });
     return true;
   }
-
   // ── GET/PUT/DELETE /api/workbench/todos/:id ──────────────────────────
   const todoItemMatch = /^\/api\/workbench\/todos\/([^/]+)$/.exec(pathname);
   if (todoItemMatch && ['GET', 'PUT', 'DELETE'].includes(method)) {
@@ -300,7 +286,6 @@ export async function handleWorkbenchTodosRoutes(
     }
     const decodedTodoId = decodePathComponent(todoItemMatch[1], res, 'todo id');
     if (!decodedTodoId) return true;
-
     if (method === 'GET') {
       const todoTask = await runtime.getTask(decodedTodoId as UUID);
       const todoView = todoTask ? toWorkbenchTodoView(todoTask) : null;
@@ -311,7 +296,6 @@ export async function handleWorkbenchTodosRoutes(
       sendJson(res, { todo: todoView });
       return true;
     }
-
     if (method === 'DELETE') {
       const todoTask = await runtime.getTask(decodedTodoId as UUID);
       if (!todoTask?.id || !toWorkbenchTodoView(todoTask)) {
@@ -323,7 +307,6 @@ export async function handleWorkbenchTodosRoutes(
       sendJson(res, { ok: true });
       return true;
     }
-
     // PUT
     const parsedPut = PutWorkbenchTodoRequestSchema.safeParse(readJsonObjectBody(req));
     if (!parsedPut.success) {
@@ -331,14 +314,12 @@ export async function handleWorkbenchTodosRoutes(
       return true;
     }
     const body = parsedPut.data;
-
     const todoTask = await runtime.getTask(decodedTodoId as UUID);
     const todoView = todoTask ? toWorkbenchTodoView(todoTask) : null;
     if (!todoTask?.id || !todoView) {
       sendJsonError(res, 'Todo not found', 404);
       return true;
     }
-
     const update: Partial<Task> = {};
     if (typeof body.name === 'string') {
       const name = body.name.trim();
@@ -354,7 +335,6 @@ export async function handleWorkbenchTodosRoutes(
     if (body.tags !== undefined) {
       update.tags = normalizeTags(body.tags, [WORKBENCH_TODO_TAG, 'todo']);
     }
-
     const metadata = readTaskMetadata(todoTask);
     const existingTodoMeta = readTodoMeta(todoTask);
     const nextTodoMeta: Record<string, unknown> = {
@@ -372,7 +352,6 @@ export async function handleWorkbenchTodosRoutes(
     if (typeof body.type === 'string' && body.type.trim().length > 0) {
       nextTodoMeta.type = body.type.trim();
     }
-
     let isCompleted = readTaskCompleted(todoTask);
     if (typeof body.isCompleted === 'boolean') {
       isCompleted = body.isCompleted;
@@ -383,7 +362,6 @@ export async function handleWorkbenchTodosRoutes(
       isCompleted,
       workbenchTodo: nextTodoMeta,
     };
-
     await runtime.updateTask(todoTask.id, update);
     const refreshed = await runtime.getTask(todoTask.id);
     const refreshedTodo = refreshed ? toWorkbenchTodoView(refreshed) : null;
@@ -395,6 +373,5 @@ export async function handleWorkbenchTodosRoutes(
     sendJson(res, { todo: refreshedTodo });
     return true;
   }
-
   return false;
 }

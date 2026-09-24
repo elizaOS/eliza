@@ -25,7 +25,7 @@
 // getConversationMessages resolves on command — reproducing the exact race.
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

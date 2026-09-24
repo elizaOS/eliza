@@ -2,14 +2,13 @@
  * Returns an explicit retirement notice on the former community registry hosts.
  * Other hosts fall through to the normal Worker router; no artifact is fetched.
  */
-import { ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/shared";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 type RegistryHostBindings = Pick<
   AppEnv["Bindings"],
   "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
 >;
-
 export async function serveRegistryHostRequest(
   request: Request,
   url: URL,
@@ -22,7 +21,6 @@ export async function serveRegistryHostRequest(
     ELIZA_SERVICE_DOMAIN_CONTRACTS[environment].pluginRegistryOrigin,
   ).hostname;
   if (url.hostname.toLowerCase() !== hostname) return null;
-
   const body = JSON.stringify({
     success: false,
     code: "registry_retired",

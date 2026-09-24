@@ -11,7 +11,8 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { asRecord, readViewInteractionClientId } from "@elizaos/shared";
+import { asRecord } from "@elizaos/core/type-guards";
+import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
 import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,

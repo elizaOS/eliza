@@ -358,6 +358,13 @@ async function ingestSilo(
  */
 const SILO_DEFINITIONS: SiloDefinition[] = [
   {
+    silo: "android-native-agent",
+    source: "android-native-agent",
+    producedBy: "packages/app/scripts/android-native-agent.mjs",
+    lane: "native",
+    roots: [{ label: "runs", dir: "test-results/android-native-agent/runs" }],
+  },
+  {
     silo: "android-native-plugins",
     source: "android-native-plugins",
     producedBy: "packages/app/scripts/android-native-plugins.mjs",

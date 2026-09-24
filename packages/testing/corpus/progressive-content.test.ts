@@ -3,12 +3,15 @@
  * as a deterministic checksum, coordinate, authorization, and scale oracle.
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
   lstat,
   mkdir,
   mkdtemp,
+  open,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -18,7 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   generateProgressiveContentCorpus,
   PROGRESSIVE_CONTENT_BOUNDARY_BYTES,
@@ -69,6 +72,29 @@ function signManifest(
 }
 
 describe("progressive content corpus", () => {
+  it("generates identical format fixture bytes across timezones", () => {
+    const moduleUrl = new URL(
+      "./progressive-content-formats.ts",
+      import.meta.url,
+    ).href;
+    const script = `import { generateProgressiveFormatFixtures } from ${JSON.stringify(moduleUrl)};
+      console.log(JSON.stringify(await generateProgressiveFormatFixtures({
+        rootSeed: "progressive-test-seed", publish: async () => {}
+      })));`;
+    const results = ["UTC", "America/Los_Angeles", "Asia/Tokyo"].map((TZ) =>
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "-e", script],
+        {
+          env: { ...process.env, TZ },
+          encoding: "utf8",
+        },
+      ),
+    );
+    expect(results[1]).toBe(results[0]);
+    expect(results[2]).toBe(results[0]);
+  });
+
   it("derives family-stable identifiers without cross-family perturbation", () => {
     expect(progressiveContentObjectId("seed", "file", 3)).toBe(
       progressiveContentObjectId("seed", "file", 3),
@@ -101,7 +127,7 @@ describe("progressive content corpus", () => {
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
     // Frozen before the native-fill optimization: generator bytes and identities
-    // must remain compatible with existing published corpus manifests.
+    // remain compatible with published corpora, independent of host timezone.
     expect(first.manifestSha256).toBe(
       "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
     );
@@ -159,6 +185,34 @@ describe("progressive content corpus", () => {
       if (object.format === "no-final-newline" && object.byteLength > 0) {
         expect(bytes.at(-1)).not.toBe(0x0a);
       }
+    }
+  });
+
+  it("removes unpublished temporary objects when writing fails", async () => {
+    const root = await makeRoot();
+    const probe = await open(path.join(root, "probe"), "w");
+    const prototype = Object.getPrototypeOf(probe);
+    await probe.close();
+    const failure = new Error("injected corpus write failure");
+    const write = vi
+      .spyOn(prototype, "writeFile")
+      .mockRejectedValueOnce(failure);
+    try {
+      await expect(
+        generateProgressiveContentCorpus({
+          outDir: root,
+          profile: "micro",
+          rootSeed: "write-failure",
+          generatorRevision: "test-revision",
+        }),
+      ).rejects.toBe(failure);
+      expect(
+        (await readdir(root, { recursive: true })).filter((entry) =>
+          entry.endsWith(".tmp"),
+        ),
+      ).toEqual([]);
+    } finally {
+      write.mockRestore();
     }
   });
 

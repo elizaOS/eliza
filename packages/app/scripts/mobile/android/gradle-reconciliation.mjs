@@ -15,8 +15,8 @@ import { androidDir } from "../context.mjs";
  * libllama-cpp-arm64.so. Leaving the gradle project in only made gradle configure
  * its CMake — which built a no-op stub and used to require the
  * ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out. Dropping the project removes the
- * stub build outright (no flag needed). iOS is untouched: ios-local-agent-kernel
- * loads the package via a dynamic import, so the npm dependency stays.
+ * stub build outright (no flag needed). iOS native inference still
+ * loads the Capacitor adapter, so the npm dependency stays.
  *
  * Opt back into the full second library (not the stub) with
  * ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. Idempotent.

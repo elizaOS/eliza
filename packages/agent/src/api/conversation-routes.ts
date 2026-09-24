@@ -15,7 +15,6 @@
  *   PATCH  /api/conversations/:id         – update/rename
  *   DELETE /api/conversations/:id         – delete
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -25,6 +24,7 @@ import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   authorizeOwnerExclusiveDisclosure,
+  bindIncomingMessagePersistence,
   ChannelType,
   type Content,
   composeToolDiagnosticRedactor,
@@ -62,6 +62,35 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  isChatFailureKind,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/core/contracts/chat";
+import {
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+} from "@elizaos/core/contracts/conversation-routes";
+import {
+  conversationClientUserMemoryId,
+  type DurableConversationChatMarker,
+  readDurableConversationChatMarker,
+} from "@elizaos/core/conversation-chat-marker";
+import {
+  parseSharedTodoCutoverSnapshot,
+  TodoCutoverContractError,
+} from "@elizaos/core/todo-cutover";
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+} from "@elizaos/core/voice";
 import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
@@ -74,33 +103,6 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type {
-  ChatFailureKind,
-  ChatTerminalFailure,
-  RouteRequestContext,
-} from "@elizaos/shared";
-import {
-  isChatFailureKind,
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-  parsePositiveInteger,
-} from "@elizaos/shared";
-import {
-  conversationClientUserMemoryId,
-  type DurableConversationChatMarker,
-  readDurableConversationChatMarker,
-} from "@elizaos/shared/conversation-chat-marker";
-import {
-  parseSharedTodoCutoverSnapshot,
-  TodoCutoverContractError,
-} from "@elizaos/shared/todo-cutover";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -113,22 +115,20 @@ import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
 } from "./attachment-disclosure.ts";
-import type {
-  AccountConnectRequest,
-  ChatGenerationResult,
-  ChatMessageIdOutcome,
-  ChatMessageIdReservation,
-  LogEntry,
-} from "./chat-routes.ts";
 import {
+  type AccountConnectRequest,
   admitChatMessageId,
+  type ChatGenerationResult,
   ChatIdempotencyWaitAbortedError,
+  type ChatMessageIdOutcome,
+  type ChatMessageIdReservation,
   classifyChatFailure,
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
   getChatMessageIdOutcome,
   isIntentionalNoResponseResult,
+  type LogEntry,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
@@ -202,7 +202,6 @@ interface DiscordProfileLike {
   rawUserId?: string;
   username?: string;
 }
-
 // Lazy memoized loader: @elizaos/plugin-discord (and its transitive deps) loads
 // only when a conversation actually contains Discord-sourced messages. A
 // module-scope `await import` would load it on every agent boot.
@@ -227,7 +226,6 @@ type DiscordConversationModule = {
     entityId: string | undefined,
   ) => Promise<DiscordProfileLike | null>;
 };
-
 let discordConversationPromise: Promise<DiscordConversationModule> | null =
   null;
 function getDiscordConversationApi(): Promise<DiscordConversationModule> {
@@ -236,11 +234,9 @@ function getDiscordConversationApi(): Promise<DiscordConversationModule> {
   ) as Promise<unknown> as Promise<DiscordConversationModule>;
   return discordConversationPromise;
 }
-
 function mayNeedDiscordMessageEnrichment(source: unknown): boolean {
   return typeof source === "string" && source.toLowerCase().includes("discord");
 }
-
 function chunkVisibleTextForSse(text: string): string[] {
   const chunks: string[] = [];
   let cursor = 0;
@@ -259,20 +255,16 @@ function chunkVisibleTextForSse(text: string): string[] {
   }
   return chunks;
 }
-
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
 // ---------------------------------------------------------------------------
-
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
 const MAX_DELETED_CONVERSATION_IDS = 5000;
-
 interface DeletedConversationsStateFile {
   version: 1;
   updatedAt: string;
   ids: string[];
 }
-
 function _readDeletedConversationIdsFromState(): Set<string> {
   const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
   if (!fs.existsSync(filePath)) return new Set();
@@ -295,35 +287,29 @@ function _readDeletedConversationIdsFromState(): Set<string> {
     });
   }
 }
-
 function persistDeletedConversationIdsToState(ids: Set<string>): void {
   const dir = resolveStateDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-
   const normalized = Array.from(ids)
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
     .slice(-MAX_DELETED_CONVERSATION_IDS);
-
   const payload: DeletedConversationsStateFile = {
     version: 1,
     updatedAt: new Date().toISOString(),
     ids: normalized,
   };
-
   fs.writeFileSync(
     path.join(dir, DELETED_CONVERSATIONS_FILENAME),
     JSON.stringify(payload, null, 2),
     { encoding: "utf-8", mode: 0o600 },
   );
 }
-
 // ---------------------------------------------------------------------------
 // State interface required by conversation routes
 // ---------------------------------------------------------------------------
-
 export interface ConversationRouteState {
   runtime: AgentRuntime | null;
   config: ElizaConfig;
@@ -339,23 +325,30 @@ export interface ConversationRouteState {
   /** Wallet trade permission mode for wallet-mode guidance replies. */
   tradePermissionMode?: string;
 }
-
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
   callerAuthorization?: AgentHttpRequestAuthorization;
   todoCutoverImporter?: typeof importSharedTodoCutover;
 }
-
 interface LocalVoiceRuntimeFence {
   runtime: AgentRuntime;
 }
-
 type LocalVoiceRuntimeFenceResolution =
-  | { kind: "absent" }
-  | { kind: "invalid"; message: string }
-  | { kind: "conflict"; message: string }
-  | { kind: "valid"; fence: LocalVoiceRuntimeFence };
-
+  | {
+      kind: "absent";
+    }
+  | {
+      kind: "invalid";
+      message: string;
+    }
+  | {
+      kind: "conflict";
+      message: string;
+    }
+  | {
+      kind: "valid";
+      fence: LocalVoiceRuntimeFence;
+    };
 function readCanonicalSingleHeader(
   req: Pick<http.IncomingMessage, "headers">,
   name: string,
@@ -372,7 +365,6 @@ function readCanonicalSingleHeader(
   }
   return value;
 }
-
 function resolveLocalVoiceRuntimeFence(
   req: Pick<http.IncomingMessage, "headers">,
   state: ConversationRouteState,
@@ -415,7 +407,6 @@ function resolveLocalVoiceRuntimeFence(
   }
   return { kind: "valid", fence: { runtime } };
 }
-
 function isLocalVoiceRuntimeFenceCurrent(
   state: ConversationRouteState,
   fence: LocalVoiceRuntimeFence | null,
@@ -429,7 +420,6 @@ function isLocalVoiceRuntimeFenceCurrent(
           !state.deletedConversationIds.has(conversation.id))))
   );
 }
-
 function assertLocalVoiceTurnFenceCurrent(
   state: ConversationRouteState,
   fence: LocalVoiceRuntimeFence | null,
@@ -452,7 +442,6 @@ function assertLocalVoiceTurnFenceCurrent(
     });
   }
 }
-
 function readViewInteractionClientId(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
@@ -465,7 +454,7 @@ function readViewInteractionClientId(
   return null;
 }
 
-function withViewInteractionClient(
+export function withViewInteractionClient(
   message: Memory,
   req: Pick<http.IncomingMessage, "headers">,
 ): Memory {
@@ -477,7 +466,6 @@ function withViewInteractionClient(
     !Array.isArray(message.content.metadata)
       ? message.content.metadata
       : {};
-
   // The routing identity is request-scoped rather than persisted chat content:
   // a device capability must return to the shell that initiated this turn,
   // while history remains portable across reconnects and devices.
@@ -492,7 +480,6 @@ function withViewInteractionClient(
     },
   };
 }
-
 function beginActiveChatTurn(state: ConversationRouteState): () => void {
   state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount) + 1;
   let ended = false;
@@ -502,13 +489,22 @@ function beginActiveChatTurn(state: ConversationRouteState): () => void {
     state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount - 1);
   };
 }
-
 type ConversationChatAdmission =
-  | { kind: "owner"; reservation: ChatMessageIdReservation | null }
-  | { kind: "settled"; outcome: ChatMessageIdOutcome }
-  | { kind: "conflict"; error: ElizaError }
-  | { kind: "aborted" };
-
+  | {
+      kind: "owner";
+      reservation: ChatMessageIdReservation | null;
+    }
+  | {
+      kind: "settled";
+      outcome: ChatMessageIdOutcome;
+    }
+  | {
+      kind: "conflict";
+      error: ElizaError;
+    }
+  | {
+      kind: "aborted";
+    };
 function canonicalChatFingerprintValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((entry) => canonicalChatFingerprintValue(entry));
@@ -525,7 +521,6 @@ function canonicalChatFingerprintValue(value: unknown): unknown {
   }
   return value;
 }
-
 /**
  * Idempotency identity for one chat turn. Exported so the canonical key
  * ordering it depends on can be pinned by test.
@@ -543,7 +538,6 @@ export function buildConversationChatFingerprint(input: {
     .update(JSON.stringify(canonicalChatFingerprintValue(input)))
     .digest("hex");
 }
-
 function buildConversationChatIdempotencyScope(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -551,20 +545,17 @@ function buildConversationChatIdempotencyScope(
 ): string {
   return `${runtime.agentId}:${roomId}:${principalId}`;
 }
-
 function isRoomQueueBackpressureError(error: unknown): boolean {
   return (
     error instanceof RoomHandlerQueueSaturatedError ||
     error instanceof RoomHandlerQueueGlobalSaturatedError
   );
 }
-
 function roomQueueAdmissionStatus(error: unknown): number {
   if (isRoomQueueBackpressureError(error)) return 429;
   if (error instanceof RoomHandlerQueueClosedError) return 503;
   return 500;
 }
-
 async function awaitConversationChatAdmission(
   scope: string,
   clientMessageId: string | null,
@@ -598,29 +589,23 @@ async function awaitConversationChatAdmission(
     }
   }
 }
-
 // ---------------------------------------------------------------------------
 // Closure-lifted helpers
 // ---------------------------------------------------------------------------
-
 export function resolveConversationAdminEntityId(
   state: ConversationRouteState,
 ): UUID {
   return resolveClientChatAdminEntityId(state);
 }
-
 type StreamEventListener = (...args: unknown[]) => void;
-
 interface StreamEventSource {
   on?: (event: string, listener: StreamEventListener) => unknown;
   off?: (event: string, listener: StreamEventListener) => unknown;
 }
-
 type StreamSocketLike = StreamEventSource & {
   destroyed?: boolean;
   writable?: boolean;
 };
-
 interface ConversationStreamDisconnectTracker {
   signal: AbortSignal;
   abort: (reason?: unknown) => void;
@@ -629,14 +614,12 @@ interface ConversationStreamDisconnectTracker {
   isAborted: () => boolean;
   markCompleted: () => void;
 }
-
 interface RequestDisconnectAbortTracker {
   signal: AbortSignal;
   dispose: () => void;
   isAborted: () => boolean;
   markCompleted: () => void;
 }
-
 function isStreamEventSource(value: unknown): value is StreamEventSource {
   return (
     typeof value === "object" &&
@@ -644,11 +627,9 @@ function isStreamEventSource(value: unknown): value is StreamEventSource {
     typeof (value as StreamEventSource).on === "function"
   );
 }
-
 function isStreamSocketLike(value: unknown): value is StreamSocketLike {
   return typeof value === "object" && value !== null;
 }
-
 function createRequestDisconnectAbortTracker({
   req,
   res,
@@ -666,7 +647,6 @@ function createRequestDisconnectAbortTracker({
   }> = [];
   let aborted = false;
   let completed = false;
-
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
     aborted = true;
@@ -674,7 +654,6 @@ function createRequestDisconnectAbortTracker({
       reason instanceof Error ? reason : new Error(`${operation} aborted`),
     );
   };
-
   const register = (
     source: unknown,
     event: string,
@@ -684,21 +663,22 @@ function createRequestDisconnectAbortTracker({
     source.on?.(event, listener);
     registrations.push({ source, event, listener });
   };
-
   const onClientGone = () =>
     abort(new Error(`${operation} client disconnected`));
   const onResponseClose = () => {
     const ended = Boolean(
-      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+      (
+        res as http.ServerResponse & {
+          writableEnded?: boolean;
+        }
+      ).writableEnded,
     );
     if (!ended) onClientGone();
   };
-
   register(req, "aborted", onClientGone);
   register(req, "error", onClientGone);
   register(res, "close", onResponseClose);
   register(res, "error", onClientGone);
-
   return {
     signal: abortController.signal,
     dispose: () => {
@@ -713,7 +693,6 @@ function createRequestDisconnectAbortTracker({
     },
   };
 }
-
 function createConversationStreamDisconnectTracker({
   req,
   res,
@@ -733,25 +712,40 @@ function createConversationStreamDisconnectTracker({
   }> = [];
   let aborted = false;
   let completed = false;
-
   const requestSocket = isStreamSocketLike(
-    (req as http.IncomingMessage & { socket?: unknown }).socket,
+    (
+      req as http.IncomingMessage & {
+        socket?: unknown;
+      }
+    ).socket,
   )
-    ? ((req as http.IncomingMessage & { socket?: StreamSocketLike }).socket ??
-      null)
+    ? ((
+        req as http.IncomingMessage & {
+          socket?: StreamSocketLike;
+        }
+      ).socket ?? null)
     : null;
   const responseSocket = isStreamSocketLike(
-    (res as http.ServerResponse & { socket?: unknown }).socket,
+    (
+      res as http.ServerResponse & {
+        socket?: unknown;
+      }
+    ).socket,
   )
-    ? ((res as http.ServerResponse & { socket?: StreamSocketLike }).socket ??
-      null)
+    ? ((
+        res as http.ServerResponse & {
+          socket?: StreamSocketLike;
+        }
+      ).socket ?? null)
     : null;
-
   const responseEnded = () =>
     Boolean(
-      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+      (
+        res as http.ServerResponse & {
+          writableEnded?: boolean;
+        }
+      ).writableEnded,
     );
-
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
     aborted = true;
@@ -761,7 +755,6 @@ function createConversationStreamDisconnectTracker({
     );
     abortController.abort(reason ?? new Error("Client disconnected"));
   };
-
   const checkConnectionClosed = () => {
     const socketClosed =
       requestSocket?.destroyed === true ||
@@ -769,15 +762,17 @@ function createConversationStreamDisconnectTracker({
       (requestSocket?.writable === false && !responseEnded()) ||
       (responseSocket?.writable === false && !responseEnded());
     const responseClosed =
-      (res as http.ServerResponse & { destroyed?: boolean }).destroyed ===
-        true && !responseEnded();
+      (
+        res as http.ServerResponse & {
+          destroyed?: boolean;
+        }
+      ).destroyed === true && !responseEnded();
     if (socketClosed || responseClosed) {
       abort(new Error("Client disconnected"));
       return true;
     }
     return false;
   };
-
   const register = (
     source: unknown,
     event: string,
@@ -787,14 +782,12 @@ function createConversationStreamDisconnectTracker({
     source.on?.(event, listener);
     registrations.push({ source, event, listener });
   };
-
   const onRequestClose = () => {
     checkConnectionClosed();
   };
   const onClientGone = () => {
     abort(new Error("Client disconnected"));
   };
-
   // Bun's node:http shim emits req.close when the POST body finishes, before
   // the SSE response is complete. Socket events must be attached before that
   // point; listeners added after body parsing can miss later client exits.
@@ -809,7 +802,6 @@ function createConversationStreamDisconnectTracker({
     register(responseSocket, "close", onClientGone);
     register(responseSocket, "error", onClientGone);
   }
-
   return {
     signal: abortController.signal,
     abort,
@@ -826,7 +818,6 @@ function createConversationStreamDisconnectTracker({
     },
   };
 }
-
 function writeConversationStreamHeartbeat(
   res: http.ServerResponse,
   disconnectTracker: ConversationStreamDisconnectTracker,
@@ -838,17 +829,19 @@ function writeConversationStreamHeartbeat(
     disconnectTracker.abort(new Error("Client disconnected"));
   }
 }
-
 function isTurnAbortError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  const code = (err as Error & { code?: unknown }).code;
+  const code = (
+    err as Error & {
+      code?: unknown;
+    }
+  ).code;
   return (
     code === "TURN_ABORTED" ||
     err.name === "TurnAbortedError" ||
     err.message.startsWith("Turn aborted:")
   );
 }
-
 function ensureAdminEntityIdForRuntime(
   state: ConversationRouteState,
   runtime: AgentRuntime | null,
@@ -867,11 +860,9 @@ function ensureAdminEntityIdForRuntime(
   }
   return ownerId;
 }
-
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
   return ensureAdminEntityIdForRuntime(state, state.runtime);
 }
-
 /**
  * The identity a conversation turn acts as: the minted/mapped entity, the
  * boundary role its world grant records, the display name, and the audit
@@ -883,7 +874,6 @@ export interface ConversationCaller {
   userName: string;
   grantSource: RoleGrantSource;
 }
-
 /**
  * Exported for the machine-session conversation-attribution regression suite;
  * runtime callers are the conversation route handlers in this module.
@@ -905,7 +895,6 @@ export function resolveConversationCaller(
       grantSource: "connector_admin",
     };
   }
-
   if (
     principal.kind === "owner_session" ||
     principal.kind === "owner_api_token"
@@ -917,7 +906,6 @@ export function resolveConversationCaller(
       grantSource: "owner",
     };
   }
-
   if (principal.kind === "service_gateway" && principal.sessionRole) {
     // A paired device's machine session authenticates at boundary role USER.
     // Mirror the compat chat ingress grant (grantSessionUserWorldRole in
@@ -931,7 +919,6 @@ export function resolveConversationCaller(
       grantSource: "session",
     };
   }
-
   return {
     entityId: stringToUuid(`conversation-external:${principal.principalId}`),
     role: "GUEST",
@@ -939,16 +926,13 @@ export function resolveConversationCaller(
     grantSource: "connector_admin",
   };
 }
-
 function normalizeWaifuWallet(address: string | undefined): string | null {
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
   return address.toLowerCase();
 }
-
 function getWaifuChatOwnerWallet(conv: ConversationMeta): string | null {
   return normalizeWaifuWallet(conv.metadata?.waifuChatOwnerWallet);
 }
-
 function addWaifuConversationOwnerMetadata(
   req: http.IncomingMessage,
   metadata: ConversationMeta["metadata"],
@@ -961,7 +945,6 @@ function addWaifuConversationOwnerMetadata(
     waifuChatRole: access.role,
   };
 }
-
 function canWaifuAccessConversation(
   access: WaifuChatAccess | null,
   conv: ConversationMeta,
@@ -969,7 +952,6 @@ function canWaifuAccessConversation(
   if (!access || access.role === "admin") return true;
   return getWaifuChatOwnerWallet(conv) === access.walletAddress.toLowerCase();
 }
-
 function rejectWaifuConversationAccessIfNeeded(
   req: http.IncomingMessage,
   conv: ConversationMeta,
@@ -981,7 +963,6 @@ function rejectWaifuConversationAccessIfNeeded(
   error(res, "Conversation not found", 404);
   return true;
 }
-
 function rejectWaifuNonAdminMutationIfNeeded(
   req: http.IncomingMessage,
   error: ConversationRouteContext["error"],
@@ -992,7 +973,6 @@ function rejectWaifuNonAdminMutationIfNeeded(
   error(res, "Forbidden", 403);
   return true;
 }
-
 async function ensureWorldOwnershipAndRoles(
   runtime: AgentRuntime,
   worldId: UUID,
@@ -1027,7 +1007,11 @@ async function ensureWorldOwnershipAndRoles(
   if (
     !world.metadata.ownership ||
     typeof world.metadata.ownership !== "object" ||
-    (world.metadata.ownership as { ownerId?: string }).ownerId !== ownerId
+    (
+      world.metadata.ownership as {
+        ownerId?: string;
+      }
+    ).ownerId !== ownerId
   ) {
     world.metadata.ownership = { ownerId };
     needsUpdate = true;
@@ -1066,9 +1050,9 @@ async function ensureWorldOwnershipAndRoles(
     assertCurrent?.();
   }
 }
-
-type PersistedAssistantMemory = Memory & { id: UUID };
-
+type PersistedAssistantMemory = Memory & {
+  id: UUID;
+};
 function findPersistedGeneratedAssistantTurn(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1094,14 +1078,12 @@ function findPersistedGeneratedAssistantTurn(
   }
   return { ...candidate, id: candidate.id as UUID };
 }
-
 class AssistantReplyPersistenceError extends Error {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
     this.name = "AssistantReplyPersistenceError";
   }
 }
-
 async function resolvePersistedAssistantTurn(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1113,8 +1095,15 @@ async function resolvePersistedAssistantTurn(
   userMessageId?: UUID,
   assertCurrent?: () => void,
 ): Promise<
-  | { kind: "durable"; id: UUID; text: string }
-  | { kind: "ephemeral"; text: string }
+  | {
+      kind: "durable";
+      id: UUID;
+      text: string;
+    }
+  | {
+      kind: "ephemeral";
+      text: string;
+    }
 > {
   const generatedTurn = findPersistedGeneratedAssistantTurn(
     runtime,
@@ -1171,7 +1160,6 @@ async function resolvePersistedAssistantTurn(
     }
     return { kind: "durable", id: generatedTurn.id as UUID, text };
   }
-
   const content = buildPersistedAssistantContent(text, result, userMessageId);
   if (
     shouldSkipResponseMemoryPersistence({
@@ -1182,7 +1170,6 @@ async function resolvePersistedAssistantTurn(
   ) {
     return { kind: "ephemeral", text };
   }
-
   let persisted: Memory | null;
   try {
     persisted = await persistAssistantConversationMemory(
@@ -1210,7 +1197,6 @@ async function resolvePersistedAssistantTurn(
   }
   return { kind: "durable", id: persisted.id as UUID, text };
 }
-
 function markConversationDeleted(
   state: ConversationRouteState,
   conversationId: string,
@@ -1218,17 +1204,14 @@ function markConversationDeleted(
   const normalizedId = conversationId.trim();
   if (!normalizedId) return;
   if (state.deletedConversationIds.has(normalizedId)) return;
-
   state.deletedConversationIds.add(normalizedId);
   while (state.deletedConversationIds.size > MAX_DELETED_CONVERSATION_IDS) {
     const oldest = state.deletedConversationIds.values().next().value;
     if (!oldest) break;
     state.deletedConversationIds.delete(oldest);
   }
-
   persistDeletedConversationIdsToState(state.deletedConversationIds);
 }
-
 async function deleteConversationRoomData(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1245,12 +1228,10 @@ async function deleteConversationRoomData(
           };
         };
       };
-
       if (typeof runtimeWithDelete.deleteRoom === "function") {
         await runtimeWithDelete.deleteRoom(roomId);
         return;
       }
-
       const dbDeleteRoom = runtimeWithDelete.adapter.db.deleteRoom;
       if (typeof dbDeleteRoom === "function") {
         await dbDeleteRoom.call(runtimeWithDelete.adapter.db, roomId);
@@ -1258,7 +1239,6 @@ async function deleteConversationRoomData(
     },
   );
 }
-
 function captureConversationConnection(
   state: ConversationRouteState,
   runtime: AgentRuntime,
@@ -1286,7 +1266,6 @@ function captureConversationConnection(
     requestFence,
   });
 }
-
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
 ): Promise<void> {
@@ -1316,7 +1295,6 @@ async function establishConversationConnection(
   );
   descriptor.requestFence?.();
 }
-
 /**
  * Exported for the machine-session conversation-attribution regression suite;
  * runtime callers are the conversation route handlers in this module.
@@ -1339,7 +1317,6 @@ export async function ensureConversationRoom(
   assertConversationConnectionRuntime(state.runtime, descriptor);
   return descriptor;
 }
-
 async function syncConversationRoomState(
   state: ConversationRouteState,
   conv: ConversationMeta,
@@ -1348,7 +1325,6 @@ async function syncConversationRoomState(
   const runtime = state.runtime;
   const room = await runtime.getRoom(conv.roomId);
   if (!room) return;
-
   const ownerId = ensureAdminEntityId(state);
   const nextMetadata = buildConversationRoomMetadata(
     conv,
@@ -1358,25 +1334,21 @@ async function syncConversationRoomState(
   const nextName = conv.title;
   const metadataChanged =
     JSON.stringify(room.metadata ?? null) !== JSON.stringify(nextMetadata);
-
   if (room.name === nextName && !metadataChanged) {
     return;
   }
-
   const adapter = runtime.adapter as {
     updateRoom?: (nextRoom: typeof room) => Promise<void>;
   };
   if (typeof adapter.updateRoom !== "function") {
     return;
   }
-
   await adapter.updateRoom({
     ...room,
     name: nextName,
     metadata: nextMetadata,
   });
 }
-
 async function waitForConversationRestore(
   state: ConversationRouteState,
 ): Promise<void> {
@@ -1384,12 +1356,10 @@ async function waitForConversationRestore(
   if (!pending) return;
   await pending;
 }
-
 export function normalizeActionCallbackHistory(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
-
   const history: string[] = [];
   for (const entry of value) {
     if (typeof entry !== "string") {
@@ -1404,17 +1374,14 @@ export function normalizeActionCallbackHistory(value: unknown): string[] {
     }
     history.push(normalized);
   }
-
   return history;
 }
-
 function mergeActionCallbackHistory(
   existing: readonly string[],
   incoming: readonly string[],
 ): string[] {
   return normalizeActionCallbackHistory([...existing, ...incoming]);
 }
-
 export function formatConversationMessageText(
   text: string,
   actionCallbackHistory: readonly string[] = [],
@@ -1423,15 +1390,12 @@ export function formatConversationMessageText(
   if (history.length === 0) {
     return text;
   }
-
   const trimmedText = text.trim();
   if (trimmedText.length > 0) {
     return text;
   }
-
   return history.join("\n");
 }
-
 export function buildPersistedAssistantContent(
   text: string,
   result:
@@ -1439,7 +1403,10 @@ export function buildPersistedAssistantContent(
         actionCallbackHistory?: string[];
         planningAcknowledgment?: string;
         responseContent?: Content | null;
-        responseMessages?: Array<{ id?: string; content?: Content }>;
+        responseMessages?: Array<{
+          id?: string;
+          content?: Content;
+        }>;
         transcriptVisibility?: "internal";
       }
     | null
@@ -1480,7 +1447,6 @@ export function buildPersistedAssistantContent(
     persistedResponseContent.inReplyTo ??
     persistedResponseMessageContent.inReplyTo ??
     undefined;
-
   return responseContent || responseMessageContent
     ? {
         ...persistedResponseMessageContent,
@@ -1503,7 +1469,6 @@ export function buildPersistedAssistantContent(
           : {}),
       };
 }
-
 type DurableConversationReplyRecovery = NonNullable<
   ChatGenerationResult["replyRecovery"]
 > & {
@@ -1511,9 +1476,12 @@ type DurableConversationReplyRecovery = NonNullable<
   userContentHash: string;
   assistantContentHash: string;
   /** Prepared before updating the assistant row so a restart reuses this prose. */
-  reply?: { text: string; effectReceiptIds: string[]; contentHash: string };
+  reply?: {
+    text: string;
+    effectReceiptIds: string[];
+    contentHash: string;
+  };
 };
-
 function conversationReplyContentHash(content: Content): string {
   const request = { ...content };
   delete request.chatIdempotency;
@@ -1522,7 +1490,6 @@ function conversationReplyContentHash(content: Content): string {
     .update(JSON.stringify(canonicalChatFingerprintValue(request)))
     .digest("hex");
 }
-
 /** A grounded successful reply replaces only the original failure markers. */
 function clearRecoveredReplyFailureMarkers<T extends object>(record: T): T {
   const recovered = { ...record } as T & Record<string, unknown>;
@@ -1537,7 +1504,6 @@ function clearRecoveredReplyFailureMarkers<T extends object>(record: T): T {
       delete recovered[key];
   return recovered;
 }
-
 function parseDurableConversationReplyRecovery(
   serialized: string,
 ): DurableConversationReplyRecovery | null {
@@ -1619,7 +1585,6 @@ function parseDurableConversationReplyRecovery(
     return null;
   }
 }
-
 function conversationReplyRecoveryIsEligible(
   recovery: DurableConversationReplyRecovery,
 ): boolean {
@@ -1653,7 +1618,6 @@ function conversationReplyRecoveryIsEligible(
     )
   );
 }
-
 async function persistConversationReplyRecovery(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1758,12 +1722,18 @@ async function persistConversationReplyRecovery(
     return false;
   }
 }
-
 type DurableConversationChatRecovery =
-  | { kind: "none" }
-  | { kind: "conflict"; error: ElizaError }
-  | { kind: "settled"; outcome: ChatMessageIdOutcome };
-
+  | {
+      kind: "none";
+    }
+  | {
+      kind: "conflict";
+      error: ElizaError;
+    }
+  | {
+      kind: "settled";
+      outcome: ChatMessageIdOutcome;
+    };
 const INCOMPLETE_CHAT_RECOVERY_TEXT =
   "The previous attempt ended before its final response was saved. It was not run again; send a new message if you want to retry.";
 const MAX_DURABLE_CHAT_OUTCOME_BYTES = 256 * 1024;
@@ -1786,18 +1756,15 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "interrupted",
   "replyRecoveryAvailable",
 ]);
-
 function isChannelType(value: unknown): value is ChannelType {
   return (
     typeof value === "string" &&
     Object.values(ChannelType).includes(value as ChannelType)
   );
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
-
 function isDurableChatUsage(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const numericFields = [
@@ -1834,7 +1801,6 @@ function isDurableChatUsage(value: unknown): boolean {
     (value.provider === undefined || typeof value.provider === "string")
   );
 }
-
 function isDurableChatActionResult(value: unknown): boolean {
   if (!isRecord(value) || typeof value.success !== "boolean") return false;
   return (
@@ -1844,7 +1810,6 @@ function isDurableChatActionResult(value: unknown): boolean {
     (value.values === undefined || isRecord(value.values))
   );
 }
-
 function parseDurableConversationChatOutcome(
   serialized: string,
 ): ChatMessageIdOutcome | null {
@@ -1963,9 +1928,10 @@ function parseDurableConversationChatOutcome(
       : {}),
   };
 }
-
 function buildRecoveredConversationChatOutcome(
-  memory: Memory & { id: UUID },
+  memory: Memory & {
+    id: UUID;
+  },
   userMessageId: UUID,
   agentName: string,
 ): ChatMessageIdOutcome {
@@ -2004,7 +1970,6 @@ function buildRecoveredConversationChatOutcome(
       : {}),
   };
 }
-
 async function persistDurableConversationChatOutcome(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2064,7 +2029,6 @@ async function persistDurableConversationChatOutcome(
   });
   assertCurrent?.();
 }
-
 async function recoverDurableConversationChatOutcome(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2125,7 +2089,6 @@ async function recoverDurableConversationChatOutcome(
     }
     return { kind: "settled", outcome };
   }
-
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
@@ -2137,7 +2100,11 @@ async function recoverDurableConversationChatOutcome(
   const transformedUserMessageId = createUniqueUuid(runtime, userMessageId);
   const assistant = memories
     .filter(
-      (memory): memory is Memory & { id: UUID } =>
+      (
+        memory,
+      ): memory is Memory & {
+        id: UUID;
+      } =>
         typeof memory.id === "string" &&
         memory.entityId === runtime.agentId &&
         memory.agentId === runtime.agentId &&
@@ -2239,7 +2206,6 @@ async function recoverDurableConversationChatOutcome(
   );
   return { kind: "settled", outcome };
 }
-
 function bindClientUserMemoryId(
   clientMessageId: string | null | undefined,
   scope: string,
@@ -2259,7 +2225,6 @@ function bindClientUserMemoryId(
   messages.userMessage.content.chatIdempotency = marker;
   messages.messageToStore.content.chatIdempotency = marker;
 }
-
 async function persistClientUserMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
@@ -2283,7 +2248,6 @@ async function persistClientUserMemory(
     assertCurrent,
   );
 }
-
 function writeConversationDoneSse(
   res: http.ServerResponse,
   outcome: ChatMessageIdOutcome,
@@ -2295,7 +2259,6 @@ function writeConversationDoneSse(
     fullText: text,
   });
 }
-
 function buildGenerationMessageIdOutcome(
   result: ChatGenerationResult,
   text: string,
@@ -2332,7 +2295,6 @@ function buildGenerationMessageIdOutcome(
       : {}),
   };
 }
-
 function buildConversationJsonOutcome(
   outcome: ChatMessageIdOutcome,
 ): ChatMessageIdOutcome {
@@ -2368,7 +2330,6 @@ function buildConversationJsonOutcome(
     ...(outcome.interrupted ? { interrupted: true } : {}),
   };
 }
-
 function isCallbackHistoryPersistenceError(
   error: unknown,
 ): error is ElizaError {
@@ -2377,7 +2338,6 @@ function isCallbackHistoryPersistenceError(
     error.code === "CONVERSATION_CALLBACK_HISTORY_WRITE_FAILED"
   );
 }
-
 export async function persistRecentAssistantActionCallbackHistory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2393,7 +2353,6 @@ export async function persistRecentAssistantActionCallbackHistory(
   if (normalizedHistory.length === 0) {
     return false;
   }
-
   const persist = async (): Promise<boolean> => {
     const recent = targetMemoryId
       ? await runtime.getMemoriesByIds([targetMemoryId], "messages")
@@ -2402,7 +2361,6 @@ export async function persistRecentAssistantActionCallbackHistory(
           tableName: "messages",
         });
     assertCurrent?.();
-
     const target = recent
       .filter(
         (memory) =>
@@ -2411,7 +2369,11 @@ export async function persistRecentAssistantActionCallbackHistory(
           memory.entityId === runtime.agentId,
       )
       .filter((memory) => {
-        const content = memory.content as { text?: unknown } | undefined;
+        const content = memory.content as
+          | {
+              text?: unknown;
+            }
+          | undefined;
         const createdAt = memory.createdAt ?? 0;
         return (
           typeof memory.id === "string" &&
@@ -2424,7 +2386,6 @@ export async function persistRecentAssistantActionCallbackHistory(
       })
       .sort(compareMemoriesByCreatedAt)
       .at(-1);
-
     if (!target || typeof target.id !== "string") {
       if (targetMemoryId) {
         throw new ElizaError(
@@ -2437,7 +2398,6 @@ export async function persistRecentAssistantActionCallbackHistory(
       }
       return false;
     }
-
     const content =
       target.content && typeof target.content === "object"
         ? (target.content as Content)
@@ -2449,14 +2409,12 @@ export async function persistRecentAssistantActionCallbackHistory(
       existingHistory,
       normalizedHistory,
     );
-
     if (
       mergedHistory.length === existingHistory.length &&
       mergedHistory.every((entry, index) => entry === existingHistory[index])
     ) {
       return true;
     }
-
     assertCurrent?.();
     await runtime.updateMemory({
       id: target.id as UUID,
@@ -2466,10 +2424,8 @@ export async function persistRecentAssistantActionCallbackHistory(
       } as Content,
     });
     assertCurrent?.();
-
     return true;
   };
-
   try {
     if (runtime.roomHandlerQueue.ownsLease(roomId, roomHandlerLease)) {
       return await runtime.roomHandlerQueue.runInLease(
@@ -2489,7 +2445,6 @@ export async function persistRecentAssistantActionCallbackHistory(
     });
   }
 }
-
 async function getConversationWithRestore(
   state: ConversationRouteState,
   convId: string,
@@ -2499,10 +2454,8 @@ async function getConversationWithRestore(
   await waitForConversationRestore(state);
   return state.conversations.get(convId);
 }
-
 /** Default recent-window size for GET /messages (the newest N turns). */
 const CONVERSATION_MESSAGE_WINDOW = 200;
-
 /**
  * Default page size for the `?before=<cursor>` load-older path (infinite
  * upward scroll, #13532). Smaller than the initial recent window: each
@@ -2510,13 +2463,11 @@ const CONVERSATION_MESSAGE_WINDOW = 200;
  * keeps the prefetch ahead of the reader without a large single reflow.
  */
 const CONVERSATION_OLDER_PAGE_SIZE = 50;
-
 /**
  * How many messages on EACH side of an `?around=<id>` pivot to load. The
  * centered window is roughly 2× this plus the pivot itself.
  */
 const CONVERSATION_AROUND_RADIUS = 100;
-
 /**
  * Load a window of messages CENTERED on `aroundMessageId` for the jump-to-message
  * flow (#9955). The default GET /messages window is the most-recent
@@ -2578,7 +2529,6 @@ async function loadConversationMessagesAround(
   }
   return Array.from(byId.values());
 }
-
 /**
  * Parse the `?before=<createdAt>` cursor: a positive integer millisecond
  * timestamp (the createdAt of the client's current oldest message). Returns
@@ -2592,7 +2542,6 @@ function parseBeforeCursor(raw: string | null): number | null {
   const value = Number(trimmed);
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
-
 /**
  * Clamp the `?limit=N` older-page size to a sane range. Defaults to
  * CONVERSATION_OLDER_PAGE_SIZE and caps at CONVERSATION_MESSAGE_WINDOW so a
@@ -2606,7 +2555,6 @@ function clampOlderPageLimit(raw: string | null): number {
   }
   return Math.min(Math.floor(parsed), CONVERSATION_MESSAGE_WINDOW);
 }
-
 /**
  * Load one page of messages STRICTLY OLDER than the `before` cursor for the
  * infinite upward scroll (#13532). `before` is the createdAt of the oldest
@@ -2625,7 +2573,10 @@ async function loadConversationMessagesBefore(
   roomId: UUID,
   before: number,
   limit: number,
-): Promise<{ memories: Memory[]; hasMore: boolean }> {
+): Promise<{
+  memories: Memory[];
+  hasMore: boolean;
+}> {
   // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
   // client already holds the message at `before`, we want strictly older.
   const rows = await runtime.getMemories({
@@ -2639,9 +2590,10 @@ async function loadConversationMessagesBefore(
   const hasMore = rows.length > limit;
   return { memories: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
-
 function extractConversationMetaString(
-  memory: { metadata?: unknown },
+  memory: {
+    metadata?: unknown;
+  },
   key: string,
 ): string | undefined {
   const meta =
@@ -2704,7 +2656,6 @@ type ConversationRouteMessageRecord = {
    */
   interrupted?: boolean;
 };
-
 // Greeting lookup and persistence share the room's history-writer boundary.
 // This keeps concurrent hydration/create callers behind the same committed row
 // without publishing a separate single-flight promise that can invert ownership.
@@ -2740,7 +2691,6 @@ async function ensureConversationGreetingStored(
     ensureConversationGreetingStoredUnlocked(state, conv, lang, lease),
   );
 }
-
 async function ensureConversationGreetingStoredUnlocked(
   state: ConversationRouteState,
   conv: ConversationMeta,
@@ -2762,7 +2712,6 @@ async function ensureConversationGreetingStoredUnlocked(
       persisted: false,
     };
   }
-
   let memories: Awaited<ReturnType<AgentRuntime["getMemories"]>>;
   try {
     memories = await runtime.getMemories({
@@ -2778,7 +2727,6 @@ async function ensureConversationGreetingStoredUnlocked(
       context: { conversationId: conv.id },
     });
   }
-
   memories.sort(compareMemoriesByCreatedAt);
   const existingGreeting = memories.find((memory) => {
     const content = memory.content as Record<string, unknown> | undefined;
@@ -2800,7 +2748,6 @@ async function ensureConversationGreetingStoredUnlocked(
       persisted: false,
     };
   }
-
   if (memories.length > 0) {
     return {
       text: "",
@@ -2809,35 +2756,28 @@ async function ensureConversationGreetingStoredUnlocked(
       persisted: false,
     };
   }
-
   // Character examples are prompt material, never fabricated assistant turns.
   // New conversations wait for a real turn through the Eliza pipeline.
   return { text: "", agentName, generated: false, persisted: false };
 }
-
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-
 const MESSAGE_SEARCH_DEFAULT_LIMIT = 20;
 const MESSAGE_SEARCH_MAX_LIMIT = 50;
 const MESSAGE_SEARCH_SNIPPET_RADIUS = 72;
-
 function clampMessageSearchLimit(value: string | null): number {
   const parsed = parsePositiveInteger(value, MESSAGE_SEARCH_DEFAULT_LIMIT);
   return Math.min(parsed, MESSAGE_SEARCH_MAX_LIMIT);
 }
-
 function normalizeMessageSearchQuery(value: string | null): string {
   return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
-
 function isLegacyViewsInventoryContent(
   content: Record<string, unknown>,
 ): boolean {
   const text = typeof content.text === "string" ? content.text.trim() : "";
   if (!/^available_views:\s*(?:\n|$)/.test(text)) return false;
-
   const callbackHistory = normalizeActionCallbackHistory(
     content.actionCallbackHistory,
   );
@@ -2849,7 +2789,6 @@ function isLegacyViewsInventoryContent(
     /^\s*count:\s*0\s*$/m.test(text)
   );
 }
-
 /**
  * Parse an optional `since`/`until` search param into epoch ms. Accepts a
  * non-negative epoch-ms integer or any `Date.parse`-able string (ISO 8601).
@@ -2869,7 +2808,6 @@ function parseMessageSearchTime(
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? "invalid" : parsed;
 }
-
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
 function buildMessageSearchSnippet(text: string, query: string): string {
   const normalizedText = text.replace(/\s+/g, " ").trim();
@@ -2889,13 +2827,11 @@ function buildMessageSearchSnippet(text: string, query: string): string {
   const suffix = end < normalizedText.length ? "..." : "";
   return `${prefix}${normalizedText.slice(start, end).trim()}${suffix}`;
 }
-
 interface ConversationHandlerContext extends ConversationRouteContext {
   requestStartedAt: number;
   requestUrl: URL;
   trustedApiPrincipal: ReturnType<typeof resolveTrustedApiPrincipal>;
 }
-
 // Match the method and path once. Handlers retain their domain authorization,
 // room leases and effect/delivery ownership; dispatch grants no authority.
 const conversationEndpoints = [
@@ -2971,7 +2907,6 @@ const conversationEndpoints = [
     handle: deleteConversation,
   },
 ];
-
 export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
@@ -2993,7 +2928,6 @@ export async function handleConversationRoutes(
     ),
   });
 }
-
 async function listConversations(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3007,7 +2941,6 @@ async function listConversations(
   json(res, { conversations: convos });
   return true;
 }
-
 async function searchConversationMessages(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3139,7 +3072,6 @@ async function searchConversationMessages(
     return true;
   }
 }
-
 async function seedConversationMessages(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3215,7 +3147,6 @@ async function seedConversationMessages(
   });
   return true;
 }
-
 async function createConversation(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3261,7 +3192,6 @@ async function createConversation(
         persisted: boolean;
       }
     | undefined;
-
   const runtime = state.runtime;
   if (runtime) {
     try {
@@ -3309,7 +3239,6 @@ async function createConversation(
   json(res, { conversation: conv, ...(greeting ? { greeting } : {}) });
   return true;
 }
-
 async function listConversationMessages(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3432,7 +3361,11 @@ async function listConversationMessages(
         const role = m.entityId === agentId ? "assistant" : "user";
         const interrupted = content.interrupted === true;
         const rawText = formatConversationMessageText(
-          (m.content as { text?: string })?.text ?? "",
+          (
+            m.content as {
+              text?: string;
+            }
+          )?.text ?? "",
           actionCallbackHistory,
         );
         // An interrupted receipt may intentionally have no model text. Keep
@@ -3571,7 +3504,6 @@ async function listConversationMessages(
         if (!discord.isCanonicalDiscordSource(message.source)) {
           return;
         }
-
         try {
           const storedSenderProfile =
             await discord.resolveStoredDiscordEntityProfile(
@@ -3587,7 +3519,6 @@ async function listConversationMessages(
           if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
             message.avatarUrl = storedSenderProfile.avatarUrl;
           }
-
           const messageAuthorProfile =
             message.rawDiscordChannelId && message.rawDiscordMessageId
               ? await discord.resolveDiscordMessageAuthorProfile(
@@ -3605,7 +3536,6 @@ async function listConversationMessages(
           if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
             message.avatarUrl = messageAuthorProfile.avatarUrl;
           }
-
           const rawSenderId =
             message.rawSenderId ??
             storedSenderProfile?.rawUserId ??
@@ -3627,7 +3557,6 @@ async function listConversationMessages(
               }
             }
           }
-
           message.avatarUrl = await discord.cacheDiscordAvatarForRuntime(
             runtime,
             message.avatarUrl,
@@ -3663,7 +3592,6 @@ async function listConversationMessages(
   }
   return true;
 }
-
 async function importConversation(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -3817,14 +3745,12 @@ async function importConversation(
       return true;
     }
   }
-
   const runtime = state.runtime;
   if (!runtime) {
     error(res, "Agent is not running", 503);
     return true;
   }
   await waitForConversationRestore(state);
-
   let conv = state.conversations.get(convId);
   let createdConversation = false;
   if (!conv) {
@@ -3842,7 +3768,6 @@ async function importConversation(
     state.conversations.set(convId, conv);
     createdConversation = true;
   }
-
   const caller = resolveConversationCaller(
     req,
     state,
@@ -3908,7 +3833,6 @@ async function importConversation(
     if (createdConversation) {
       evictOldestConversation(state.conversations, 500);
     }
-
     if (!exactImport && importTasks.length === 0 && !todoSnapshot) {
       // Legacy imports predate source ids. Preserve their room-level
       // idempotency while exact cloud cutovers use per-message identities.
@@ -3929,7 +3853,6 @@ async function importConversation(
         return true;
       }
     }
-
     let todoReceipt: SharedTodoImportReceipt | null = null;
     if (todoSnapshot && cutoverToken) {
       try {
@@ -3949,7 +3872,6 @@ async function importConversation(
         return true;
       }
     }
-
     // Preserve original ordering: assign strictly increasing timestamps,
     // anchored to the provided ones when present.
     if (importMessages.length > 0) {
@@ -4132,7 +4054,6 @@ async function importConversation(
     await historyLease.release();
   }
 }
-
 async function truncateConversationMessagesRoute(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -4149,7 +4070,6 @@ async function truncateConversationMessagesRoute(
     return true;
   }
   if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
-
   const rawTrunc = await readJsonBody<Record<string, unknown>>(req, res);
   if (rawTrunc === null) return true;
   const parsedTrunc = PostConversationTruncateRequestSchema.safeParse(rawTrunc);
@@ -4162,13 +4082,11 @@ async function truncateConversationMessagesRoute(
     return true;
   }
   const { messageId, inclusive } = parsedTrunc.data;
-
   const runtime = state.runtime;
   if (!runtime) {
     error(res, "Agent is not running", 503);
     return true;
   }
-
   const truncateAbortTracker = createRequestDisconnectAbortTracker({
     req,
     res,
@@ -4218,8 +4136,16 @@ async function truncateConversationMessagesRoute(
     json(res, { ok: true, deletedCount: result.deletedCount });
   } catch (err) {
     const status =
-      typeof (err as { status?: number }).status === "number"
-        ? (err as { status: number }).status
+      typeof (
+        err as {
+          status?: number;
+        }
+      ).status === "number"
+        ? (
+            err as {
+              status: number;
+            }
+          ).status
         : 500;
     error(res, getErrorMessage(err), status);
   } finally {
@@ -4227,7 +4153,6 @@ async function truncateConversationMessagesRoute(
   }
   return true;
 }
-
 async function deleteConversationMessageRoute(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -4252,13 +4177,11 @@ async function deleteConversationMessageRoute(
     return true;
   }
   if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
-
   const runtime = state.runtime;
   if (!runtime) {
     error(res, "Agent is not running", 503);
     return true;
   }
-
   const deleteMessageAbortTracker = createRequestDisconnectAbortTracker({
     req,
     res,
@@ -4305,8 +4228,16 @@ async function deleteConversationMessageRoute(
     json(res, { ok: true, deletedCount: result.deletedCount });
   } catch (err) {
     const status =
-      typeof (err as { status?: number }).status === "number"
-        ? (err as { status: number }).status
+      typeof (
+        err as {
+          status?: number;
+        }
+      ).status === "number"
+        ? (
+            err as {
+              status: number;
+            }
+          ).status
         : 500;
     error(res, getErrorMessage(err), status);
   } finally {
@@ -4314,7 +4245,6 @@ async function deleteConversationMessageRoute(
   }
   return true;
 }
-
 async function retryConversationReply(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -4836,7 +4766,6 @@ async function retryConversationReply(
   }
   return true;
 }
-
 async function streamConversationMessage(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -4889,7 +4818,6 @@ async function streamConversationMessage(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
-
   const disconnectTracker = createConversationStreamDisconnectTracker({
     req,
     res,
@@ -4903,7 +4831,6 @@ async function streamConversationMessage(
       res.end();
     }
   };
-
   const chatPayload = await readChatRequestPayload(req, res, {
     runtime: state.runtime,
     readJsonBody,
@@ -4938,7 +4865,6 @@ async function streamConversationMessage(
     writeChatTokenSse,
     writeSse,
   });
-
   // The SSE channel opens as soon as the request is validated — before
   // runtime resolution, room setup, and user-message persistence — so the
   // client sees headers, an immediate `thinking` status, and heartbeats
@@ -4974,14 +4900,12 @@ async function streamConversationMessage(
       finishStreamResponse();
       return true;
     };
-
     // Runtime readiness is a lifecycle/API boundary. A chat request must fail
     // immediately when capability is absent instead of occupying an SSE socket
     // behind a hidden boot timer.
     if (!runtime) {
       return failStream("Agent is not running");
     }
-
     const inferenceTimer =
       getInferenceTimer() ??
       new InferenceTurnTimer({
@@ -5145,7 +5069,6 @@ async function streamConversationMessage(
           : `Failed to serialize conversation turn: ${getErrorMessage(err)}`,
       );
     }
-
     try {
       if (
         state.conversations.get(conv.id) !== conv ||
@@ -5249,7 +5172,6 @@ async function streamConversationMessage(
         userMessages,
       );
       const { userMessage, messageToStore } = userMessages;
-
       const connectionDescriptor = captureConversationConnection(
         state,
         runtime,
@@ -5277,7 +5199,6 @@ async function streamConversationMessage(
         );
         return handled;
       }
-
       const routedUserMessage = withViewInteractionClient(userMessage, req);
       const turnStartedAt = Date.now();
       try {
@@ -5307,10 +5228,10 @@ async function streamConversationMessage(
         return handled;
       }
 
+      bindIncomingMessagePersistence(routedUserMessage, messageToStore);
+
       // ── Local runtime path (streaming) ───────────────────────
-
       const endActiveChatTurn = beginActiveChatTurn(state);
-
       // Completion callbacks belong to this acquired lease, not the mutable
       // cleanup slot that is cleared when the request finally releases it.
       const generationLease = runtimeTurnLease;
@@ -5322,7 +5243,9 @@ async function streamConversationMessage(
       let lastStatusSignature = JSON.stringify({ kind: "thinking" });
       // The early callback can settle a reply before generation later throws.
       // Keep that shared result readable by the terminal recovery path.
-      const generation: { result: ChatGenerationResult | null } = {
+      const generation: {
+        result: ChatGenerationResult | null;
+      } = {
         result: null,
       };
       let resolvedGenerationText: string | undefined;
@@ -5379,7 +5302,6 @@ async function streamConversationMessage(
               state.runtime,
               connectionDescriptor,
             );
-
             conv.updatedAt = new Date().toISOString();
             if (result.noResponseReason !== "ignored") {
               const resolvedText =
@@ -5625,7 +5547,6 @@ async function streamConversationMessage(
         } catch (runtimeError) {
           terminalError = runtimeError;
         }
-
         if (isConversationConnectionError(terminalError)) {
           logger.warn(
             {
@@ -6024,7 +5945,6 @@ async function streamConversationMessage(
     finishStreamResponse();
   }
 }
-
 async function sendConversationMessage(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -6198,7 +6118,6 @@ async function sendConversationMessage(
     }
     admissionDisconnectTracker.markCompleted();
     admissionDisconnectTracker.dispose();
-
     try {
       if (
         state.conversations.get(conv.id) !== conv ||
@@ -6244,7 +6163,6 @@ async function sendConversationMessage(
         );
         return true;
       }
-
       let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
       try {
         userMessages = await buildUserMessages({
@@ -6288,10 +6206,8 @@ async function sendConversationMessage(
         );
         return true;
       }
-
       const routedUserMessage = withViewInteractionClient(userMessage, req);
       const turnStartedAt = Date.now();
-
       try {
         assertConversationConnectionRuntime(
           state.runtime,
@@ -6317,6 +6233,8 @@ async function sendConversationMessage(
         return true;
       }
 
+      bindIncomingMessagePersistence(routedUserMessage, messageToStore);
+
       const endActiveChatTurn = beginActiveChatTurn(state);
       let generationDelivered = false;
       try {
@@ -6331,7 +6249,6 @@ async function sendConversationMessage(
               state.runtime,
               connectionDescriptor,
             );
-
             conv.updatedAt = new Date().toISOString();
             if (result.noResponseReason !== "ignored") {
               const resolvedText = normalizeChatResponseText(
@@ -6531,7 +6448,6 @@ async function sendConversationMessage(
     if (!reservationSettled) releaseTurnReservation();
   }
 }
-
 async function greetConversation(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -6550,7 +6466,6 @@ async function greetConversation(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
-
   const runtime = state.runtime;
   if (!runtime) {
     error(res, "Agent is not running", 503);
@@ -6558,7 +6473,6 @@ async function greetConversation(
   }
   const url = new URL(req.url ?? "", `http://${req.headers.host}`);
   const lang = url.searchParams.get("lang") ?? "en";
-
   const greetingAbortTracker = createRequestDisconnectAbortTracker({
     req,
     res,
@@ -6626,7 +6540,6 @@ async function greetConversation(
   }
   return true;
 }
-
 async function patchConversation(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -6655,7 +6568,6 @@ async function patchConversation(
     return true;
   }
   const body = parsedPatch.data;
-
   if (body.generate) {
     if (!state.runtime) {
       error(res, "Agent is not running", 503);
@@ -6673,7 +6585,6 @@ async function patchConversation(
     if (lastUserMemory?.content?.text) {
       prompt = String(lastUserMemory.content.text);
     }
-
     const titleAbortTracker = createRequestDisconnectAbortTracker({
       req,
       res,
@@ -6692,7 +6603,6 @@ async function patchConversation(
       titleAbortTracker.dispose();
     }
     if (titleAbortTracker.isAborted()) return true;
-
     const fallbackTitle = prompt
       .replace(/\s+/g, " ")
       .trim()
@@ -6701,7 +6611,6 @@ async function patchConversation(
       .join(" ")
       .trim();
     const resolvedTitle = newTitle ?? fallbackTitle;
-
     if (resolvedTitle) {
       conv.title = resolvedTitle;
       conv.updatedAt = new Date().toISOString();
@@ -6712,7 +6621,6 @@ async function patchConversation(
     conv.updatedAt = new Date().toISOString();
     await syncConversationRoomState(state, conv);
   }
-
   if (body.metadata !== undefined) {
     const nextMetadata = sanitizeConversationMetadata(body.metadata);
     if (nextMetadata) {
@@ -6726,7 +6634,6 @@ async function patchConversation(
   json(res, { conversation: conv });
   return true;
 }
-
 async function cleanupEmptyConversations(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {
@@ -6818,7 +6725,6 @@ async function cleanupEmptyConversations(
   json(res, { deleted });
   return true;
 }
-
 async function deleteConversation(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {

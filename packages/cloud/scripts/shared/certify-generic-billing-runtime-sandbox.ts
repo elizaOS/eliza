@@ -34,7 +34,8 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
   process.env.LOCAL_PG_POOL_MAX = "4";
   process.env.APP_BILLING_UI_ORIGIN = "https://cloud.example.test";
   const receiptPath =
-    config.receiptPath ?? join(tmpdir(), "eliza-billing-runtime", `${runId}.json`);
+    config.receiptPath ??
+    join(tmpdir(), "eliza-billing-runtime", `${runId}.json`);
   const progress = {
     runId,
     schema,
@@ -53,13 +54,18 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
   let receiptWrites = Promise.resolve();
   const record = () => {
     const payload = `${JSON.stringify(progress, null, 2)}\n`;
-    receiptWrites = receiptWrites.then(() => writeFile(receiptPath, payload, { mode: 0o600 }));
+    receiptWrites = receiptWrites.then(() =>
+      writeFile(receiptPath, payload, { mode: 0o600 }),
+    );
     return receiptWrites;
   };
   const intent = async (operation: string) => {
     progress.pendingOperation = operation;
     await record();
-    return { ...options, idempotencyKey: `billing-runtime-sandbox:${runId}:${operation}` };
+    return {
+      ...options,
+      idempotencyKey: `billing-runtime-sandbox:${runId}:${operation}`,
+    };
   };
   const result = async (operation: string, id: string) => {
     progress.objects[operation] = id;
@@ -78,7 +84,9 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       fetch: (request) => handleRequest(request),
     });
     await db.connect();
-    await db.query("CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public");
+    await db.query(
+      "CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public",
+    );
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     // Retain this schema and receipt on failure: provider outcomes must be reconciled before disposal.
@@ -92,7 +100,9 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
     const { appBillingQueries: queries } = await import(
       "../../shared/src/db/repositories/app-billing-queries"
     );
-    const { GenericBillingRuntime } = await import("../../shared/src/lib/services/generic-billing-runtime");
+    const { GenericBillingRuntime } = await import(
+      "../../shared/src/lib/services/generic-billing-runtime"
+    );
     const { AppBillingReconciliation } = await import(
       "../../shared/src/lib/services/app-billing-reconciliation"
     );
@@ -103,19 +113,35 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       planId = randomUUID();
     await db.query("INSERT INTO organizations(id) VALUES($1)", [org]);
     await db.query("INSERT INTO users(id) VALUES($1)", [actorUserId]);
-    await db.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [appId, org]);
+    await db.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [
+      appId,
+      org,
+    ]);
     await db.query(
       "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES($1,$2,$3,$4,false,true)",
-      [merchant, org, config.kind === "platform" ? "platform" : config.account, config.account],
+      [
+        merchant,
+        org,
+        config.kind === "platform" ? "platform" : config.account,
+        config.account,
+      ],
     );
     let clockId: string | null = null;
     const product = await stripe.products.create(
-      { name: `Cloud billing sandbox ${runId}`, metadata: { eliza_billing_sandbox_run: runId } },
+      {
+        name: `Cloud billing sandbox ${runId}`,
+        metadata: { eliza_billing_sandbox_run: runId },
+      },
       await intent("product"),
     );
     await result("product", product.id);
     const price = await stripe.prices.create(
-      { product: product.id, currency: "usd", unit_amount: 100, recurring: { interval: "month" } },
+      {
+        product: product.id,
+        currency: "usd",
+        unit_amount: 100,
+        recurring: { interval: "month" },
+      },
       await intent("price"),
     );
     await result("price", price.id);
@@ -137,7 +163,10 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       livemode: false,
       clientRegistrationId: null,
     };
-    const scope = await authority.resolveScope({ ...identity, merchantId: merchant });
+    const scope = await authority.resolveScope({
+      ...identity,
+      merchantId: merchant,
+    });
     await result("scope", scope.scopeId);
     // Only fixture addition: attach the clock while the real provider creates its customer.
     // Runtime still owns command intent, request metadata, provider dispatch and durable binding.
@@ -160,7 +189,10 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       );
       clockId = clock.id;
       await result("clock", clock.id);
-      return createCustomer({ ...params, test_clock: clock.id }, requestOptions);
+      return createCustomer(
+        { ...params, test_clock: clock.id },
+        requestOptions,
+      );
     };
     const provider = async (merchantId: string, livemode: boolean) => {
       if (merchantId !== merchant || livemode)
@@ -169,7 +201,12 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
         });
       return createGenericBillingProvider(
         stripe,
-        { merchantId, stripeAccountId: config.account, kind: config.kind, livemode: false },
+        {
+          merchantId,
+          stripeAccountId: config.account,
+          kind: config.kind,
+          livemode: false,
+        },
         appBillingProviderBindings,
       );
     };
@@ -178,14 +215,17 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       provider,
       reconcileCommand: (input) => runtime.reconcileCommand(input),
     });
-    const { createRuntimeSandboxIngress } = await import("./billing-sandbox-ingress");
+    const { createRuntimeSandboxIngress } = await import(
+      "./billing-sandbox-ingress"
+    );
     handleRequest = createRuntimeSandboxIngress({
       stripe,
       account: config.account,
       webhookSecret: config.webhookSecret,
       reconciler,
       onProcessed: async (eventId) => {
-        if (!progress.signedEvents.includes(eventId)) progress.signedEvents.push(eventId);
+        if (!progress.signedEvents.includes(eventId))
+          progress.signedEvents.push(eventId);
         await record();
       },
     });
@@ -208,13 +248,20 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
         code: "BILLING_SANDBOX_TRIAL_PENDING",
       });
     const trial = await queries.snapshot(identity);
-    if (trial.kind !== "subscription" || trial.subscription.status !== "trialing")
+    if (
+      trial.kind !== "subscription" ||
+      trial.subscription.status !== "trialing"
+    )
       throw new ElizaError("Trial snapshot is not authoritative", {
         code: "BILLING_SANDBOX_TRIAL_STATE",
       });
     const subscriptionId = trial.subscription.stripe_subscription_id;
     await result("subscription", subscriptionId);
-    const observed = await stripe.subscriptions.retrieve(subscriptionId, {}, options);
+    const observed = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      {},
+      options,
+    );
     if (
       observed.livemode ||
       observed.trial_end === null ||
@@ -241,10 +288,21 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
       if (
         current.kind === "subscription" &&
         current.subscription.status === "paused" &&
-        (await hasCompletedSandboxEvent(db, subscriptionId, "customer.subscription.paused"))
+        (await hasCompletedSandboxEvent(
+          db,
+          subscriptionId,
+          "customer.subscription.paused",
+        ))
       ) {
-        const providerState = await stripe.subscriptions.retrieve(subscriptionId, {}, options);
-        if (providerState.status !== "paused" || providerState.trial_end !== observed.trial_end)
+        const providerState = await stripe.subscriptions.retrieve(
+          subscriptionId,
+          {},
+          options,
+        );
+        if (
+          providerState.status !== "paused" ||
+          providerState.trial_end !== observed.trial_end
+        )
           throw new ElizaError("Provider and database differ after expiry", {
             code: "BILLING_SANDBOX_EXPIRY_MISMATCH",
           });
@@ -261,7 +319,9 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
     );
   } finally {
     if (server) await server.stop(true);
-    await (await import("../../shared/src/db/client")).closeDatabaseConnectionsForTests();
+    await (
+      await import("../../shared/src/db/client")
+    ).closeDatabaseConnectionsForTests();
     await db.end();
   }
 }

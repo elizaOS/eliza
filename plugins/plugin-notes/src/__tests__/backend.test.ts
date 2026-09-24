@@ -16,11 +16,11 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import type {
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared";
+import {
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+} from "@elizaos/core/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,

@@ -13,7 +13,7 @@ import type {
 import {
   APP_SESSION_SERVICE_TYPE,
   type AppSessionServiceLike,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/apps";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);

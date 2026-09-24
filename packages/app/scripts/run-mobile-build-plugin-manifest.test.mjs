@@ -63,7 +63,6 @@ it("keeps the existing iOS custom pod include gates", () => {
       appStoreBuild: true,
       includeFullBunEngine: true,
       includeLlama: true,
-      includeMobileAgentBridge: true,
     }),
   );
   expect(appStorePods.get("ElizaosCapacitorBunRuntime")).toBe(
@@ -85,9 +84,7 @@ it("keeps the existing iOS custom pod include gates", () => {
       includeLlama: true,
     }),
   );
-  expect(localPods.get("ElizaosCapacitorMobileAgentBridge")).toBe(
-    "@elizaos/plugin-native-inference/bridge",
-  );
+  expect(localPods.has("ElizaosCapacitorMobileAgentBridge")).toBe(false);
   expect(localPods.has("LlamaCpp")).toBe(false);
   expect(localPods.get("LlamaCppCapacitor")).toBe("llama-cpp-capacitor");
 });

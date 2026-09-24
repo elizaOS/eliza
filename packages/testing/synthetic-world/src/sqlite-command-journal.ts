@@ -1,14 +1,14 @@
 /** Adapts the storage-neutral command journal to the lease store's SQLite transaction. */
 
-import type { Database } from "bun:sqlite";
-import type { SyntheticEnvironmentLeaseStore } from "@elizaos/shared";
+import { type Database } from "bun:sqlite";
+import { type SyntheticEnvironmentLeaseStore } from "@elizaos/core/contracts/synthetic-environment-lease";
 import { LeaseFencedSyntheticCommandJournal } from "./command-journal";
-import type {
-  SyntheticCommandJournalExpected,
-  SyntheticCommandJournalIdentity,
-  SyntheticCommandJournalPatch,
-  SyntheticCommandJournalRepository,
-  SyntheticCommandJournalRow,
+import {
+  type SyntheticCommandJournalExpected,
+  type SyntheticCommandJournalIdentity,
+  type SyntheticCommandJournalPatch,
+  type SyntheticCommandJournalRepository,
+  type SyntheticCommandJournalRow,
 } from "./journal-repository";
 
 interface SqliteCommandRow {
@@ -29,7 +29,6 @@ interface SqliteCommandRow {
   updated_at_ms: number;
   revision: number;
 }
-
 function toJournalRow(row: SqliteCommandRow): SyntheticCommandJournalRow {
   return {
     namespace: row.namespace,
@@ -50,7 +49,6 @@ function toJournalRow(row: SqliteCommandRow): SyntheticCommandJournalRow {
     revision: row.revision,
   };
 }
-
 class SqliteSyntheticCommandJournalRepository
   implements SyntheticCommandJournalRepository<Database>
 {
@@ -77,11 +75,9 @@ class SqliteSyntheticCommandJournalRepository
       )
     `);
   }
-
   now(): number {
     return Date.now();
   }
-
   find(
     database: Database,
     identity: SyntheticCommandJournalIdentity,
@@ -93,7 +89,6 @@ class SqliteSyntheticCommandJournalRepository
       .get(identity.namespace, identity.commandId);
     return row === null ? null : toJournalRow(row);
   }
-
   list(database: Database, namespace: string): SyntheticCommandJournalRow[] {
     return database
       .query<SqliteCommandRow, [string]>(
@@ -102,7 +97,6 @@ class SqliteSyntheticCommandJournalRepository
       .all(namespace)
       .map(toJournalRow);
   }
-
   insert(database: Database, row: SyntheticCommandJournalRow): number {
     return database.run(
       `INSERT INTO synthetic_world_commands (
@@ -130,7 +124,6 @@ class SqliteSyntheticCommandJournalRepository
       ],
     ).changes;
   }
-
   compareAndSet(
     database: Database,
     identity: SyntheticCommandJournalIdentity,
@@ -174,7 +167,6 @@ class SqliteSyntheticCommandJournalRepository
     ).changes;
   }
 }
-
 /** Local SW-1 adapter composed over a lease store backed by the same database. */
 export class SqliteSyntheticCommandJournal extends LeaseFencedSyntheticCommandJournal<Database> {
   constructor(leaseStore: SyntheticEnvironmentLeaseStore<Database>) {

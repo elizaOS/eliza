@@ -9,6 +9,7 @@ import {
   type AccessContext,
   ElizaError,
   type IAgentRuntime,
+  type Memory,
   resolveOwnerEntityIdOrDefault,
   type UUID,
   validateUuid,
@@ -50,7 +51,52 @@ export interface FamilyIntakeReviewDetails {
   >;
 }
 
-type DocumentReader = Pick<DocumentService, "getDocumentByIdWithAccessContext">;
+type DocumentReader = Pick<
+  DocumentService,
+  "getDocumentByIdWithAccessContext"
+> &
+  Partial<Pick<DocumentService, "readDocumentRangeWithAccessContext">>;
+
+/** Restore segmented sources through the canonical owner-authorized reader. */
+export async function readFamilyCorrespondenceText(
+  documents: DocumentReader,
+  document: Memory,
+  owner: AccessContext,
+): Promise<string | undefined> {
+  const source = document.content.documentSource;
+  if (source === undefined) return document.content.text;
+  if (!document.id || !documents.readDocumentRangeWithAccessContext)
+    fail(
+      "The complete document source reader is unavailable",
+      "FAMILY_INTAKE_SOURCE_UNAVAILABLE",
+    );
+  const range = await documents.readDocumentRangeWithAccessContext(
+    document.id,
+    { unit: "byte", offset: 0 },
+    owner,
+  );
+  const pointer = z
+    .object({
+      kind: z.literal("document-source"),
+      storage: z.literal("segments"),
+      byteLength: z.number().int().nonnegative(),
+      fingerprint: z.string(),
+    })
+    .safeParse(source);
+  if (
+    !range ||
+    !pointer.success ||
+    range.start !== 0 ||
+    range.end !== range.total ||
+    range.total !== pointer.data.byteLength ||
+    range.sourceFingerprint !== pointer.data.fingerprint
+  )
+    fail(
+      "The complete document source changed during selection",
+      "FAMILY_INTAKE_SOURCE_CHANGED",
+    );
+  return range.text;
+}
 
 function fail(message: string, code: string): never {
   throw new ElizaError(message, { code });
@@ -111,7 +157,11 @@ export class FamilyIntakeService {
         "Select the complete plain-text correspondence document",
         "FAMILY_INTAKE_SOURCE_FORMAT_UNSUPPORTED",
       );
-    const text = document.content.text;
+    const text = await readFamilyCorrespondenceText(
+      this.documents,
+      document,
+      this.owner,
+    );
     if (typeof text !== "string" || text.trim().length === 0)
       fail(
         "The selected document has no complete correspondence text",
@@ -494,6 +544,24 @@ export function getFamilyIntakeService(
             "FAMILY_INTAKE_SOURCE_UNAVAILABLE",
           );
         return documents.getDocumentByIdWithAccessContext(id, context);
+      },
+      async readDocumentRangeWithAccessContext(id, options, context) {
+        const documents = runtime.getService<DocumentService>(
+          DocumentService.serviceType,
+        );
+        if (
+          !documents ||
+          typeof documents.readDocumentRangeWithAccessContext !== "function"
+        )
+          fail(
+            "The canonical document source reader is unavailable",
+            "FAMILY_INTAKE_SOURCE_UNAVAILABLE",
+          );
+        return documents.readDocumentRangeWithAccessContext(
+          id,
+          options,
+          context,
+        );
       },
     },
     {

@@ -4,25 +4,28 @@
  * without dragging the React component graph into the API process at boot.
  *
  * Registration-surface contracts + registries (overlay apps, detail extensions)
- * are owned by @elizaos/shared — the React-free canonical home — so this shim
+ * are owned by @elizaos/core — the React-free canonical home — so this shim
  * registers app surfaces without touching the React package.
  */
-
 // Everything below re-exports from its narrow `@elizaos/ui` subpath rather than
 // the root barrel. The barrel (`@elizaos/ui`) eagerly evaluates the entire
 // frontend component graph, and this shim is reachable from the Node
 // `@elizaos/app` barrel (index.ts) — so importing it from the bare barrel
 // dragged ~1000 React modules (and their deps) into the API process at boot.
 // Subpath imports pull only the specific component. Mirrors `browser.ts`.
-export type {
-  AppDetailExtensionProps,
-  AppRunSummary,
-  AppSessionJsonValue,
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/shared";
-export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
+
+export {
+  type AppRunSummary,
+  type AppSessionJsonValue,
+} from "@elizaos/core/contracts/apps";
 export { client } from "@elizaos/ui/api";
+export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export {
+  type OverlayApp,
+  type OverlayAppContext,
+} from "@elizaos/ui/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {
   SurfaceCard,

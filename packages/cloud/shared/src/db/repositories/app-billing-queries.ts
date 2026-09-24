@@ -84,6 +84,7 @@ export async function readAppBillingMembership(
 }
 
 export class AppBillingQueries {
+  /* global-scope: Public subscription catalog exposes only active, approved apps and published non-retired plans; a customer need not belong to the app-owner organization. */
   async catalog(appId: string, livemode: boolean) {
     const [app] = await dbWrite
       .select({
@@ -118,6 +119,7 @@ export class AppBillingQueries {
     return writeTransaction((tx) => readAppBillingMembership(tx, input));
   }
 
+  /* global-scope: Resolve the app owner for lock ordering; readAppBillingMembership verifies the active actor and app-specific account membership before any snapshot is returned. */
   async snapshot(input: AppBillingReadIdentity) {
     return writeTransaction(async (tx) => {
       const [app] = await tx

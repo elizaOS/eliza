@@ -2,7 +2,7 @@
  * Steward Sidecar - utility helpers.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 
 /**
@@ -29,19 +29,11 @@ export function resolveDataDir(dataDir: string): string {
 }
 
 export function generateApiKey(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return `stw_${Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")}`;
+  return `stw_${randomBytes(32).toString("hex")}`;
 }
 
 export function generateMasterPassword(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return randomBytes(32).toString("hex");
 }
 
 export async function sleep(ms: number): Promise<void> {
@@ -73,8 +65,12 @@ export async function allocateFirstFreeLoopbackPort(
   const host = options.host ?? "127.0.0.1";
   const maxHops = options.maxHops ?? 64;
 
-  if (!Number.isFinite(preferred) || preferred < 1 || preferred > 65535) {
+  if (!Number.isInteger(preferred) || preferred < 1 || preferred > 65535) {
     throw new Error(`Invalid preferred port: ${preferred}`);
+  }
+
+  if (!Number.isInteger(maxHops) || maxHops < 1) {
+    throw new Error(`Invalid port search length: ${maxHops}`);
   }
 
   for (let offset = 0; offset < maxHops; offset += 1) {

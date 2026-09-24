@@ -6,10 +6,7 @@
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",
-    "paths": {
-      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
-    }
+    "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": [

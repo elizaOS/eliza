@@ -1,7 +1,7 @@
 """REALM-Bench agent backed by the eliza benchmark server.
 
 Drop-in replacement for ``REALMAgent`` — same ``solve_task`` interface
-but routes the planning + execution loop through the eliza TypeScript
+but routes planning decisions through the eliza TypeScript
 benchmark server (``ElizaClient.send_message``) instead of the Python
 ``elizaos`` runtime.
 
@@ -10,7 +10,8 @@ selects one of GENERATE_PLAN / EXECUTE_STEP / ADAPT_PLAN / COMPLETE_TASK.
 We emulate that loop here, sending the task context + planning state
 to the TS bridge each turn and parsing the selected action from the
 response (``actions[0]`` if present, else extracted from the response
-text).
+text). This adapter has no tool executor: proposed steps are not effect
+receipts. Only the independent per-problem evaluator establishes success.
 """
 
 from __future__ import annotations
@@ -164,6 +165,24 @@ def _parse_plan_json(text: str, available_tools: list[str]) -> list[dict[str, ob
     return plan
 
 
+def _measured_tokens(usage: object) -> int | None:
+    """Return complete measured usage; absent or malformed counts stay unknown."""
+    if not isinstance(usage, dict):
+        return None
+    def count(*keys: str) -> int | None:
+        for key in keys:
+            if key in usage:
+                value = usage[key]
+                return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        return None
+    total = count("total_tokens", "totalTokens")
+    if total is not None:
+        return total
+    prompt = count("prompt_tokens", "promptTokens", "input_tokens", "inputTokens")
+    completion = count("completion_tokens", "completionTokens", "output_tokens", "outputTokens")
+    return prompt + completion if prompt is not None and completion is not None else None
+
+
 class ElizaREALMAgent:
     """REALM benchmark agent that delegates planning to the eliza TS server.
 
@@ -204,7 +223,7 @@ class ElizaREALMAgent:
         if not self._initialized:
             await self.initialize()
 
-        _, PlanningAction, PlanningStep, PlanningTrajectory, *_ = _realm_types()
+        _, _, _, PlanningTrajectory, *_ = _realm_types()
 
         start_time = time.time()
         trajectory = PlanningTrajectory(task_id=task.id)
@@ -222,6 +241,8 @@ class ElizaREALMAgent:
         plan: list[dict[str, object]] = []
         executed_steps: list[dict[str, object]] = []
         adaptation_count = 0
+        measured_tokens = 0
+        usage_complete = True
         last_action_text = ""
 
         try:
@@ -235,7 +256,7 @@ class ElizaREALMAgent:
                     )
                 else:
                     msg = (
-                        f"Previous action result:\n{last_action_text[:2000]}\n\n"
+                        f"Previous action result:\n{last_action_text}\n\n"
                         f"Decide on the next action based on the current planning state."
                     )
 
@@ -266,18 +287,23 @@ class ElizaREALMAgent:
                 }
 
                 response = self._client.send_message(text=msg, context=context)
-                trajectory.tokens_used += 200  # estimated per round-trip
+                usage = response.params.get("usage") if isinstance(response.params, dict) else None
+                turn_tokens = _measured_tokens(usage)
+                if turn_tokens is None:
+                    usage_complete = False
+                else:
+                    measured_tokens += turn_tokens
+                trajectory.tokens_used = measured_tokens if usage_complete else None
 
                 # Resolve the selected action: explicit actions[0] wins,
                 # else parse from response text/thought.
                 selected_action: str | None = None
-                direct_tool_name: str | None = None
                 if response.actions:
                     candidate = str(response.actions[0]).strip().upper()
                     if candidate in _VALID_ACTIONS:
                         selected_action = candidate
                     elif candidate == "BENCHMARK_ACTION":
-                        selected_action, direct_tool_name = _extract_benchmark_action(
+                        selected_action, _direct_tool_name = _extract_benchmark_action(
                             response.params,
                             task.available_tools,
                         )
@@ -287,29 +313,6 @@ class ElizaREALMAgent:
                             selected_action = _extract_action(source)
                             if selected_action:
                                 break
-                if selected_action is None and "BENCHMARK_ACTION" in response.actions:
-                    if direct_tool_name and not plan:
-                        plan = [{
-                            "action": direct_tool_name,
-                            "description": f"Execute {direct_tool_name}",
-                            "parameters": {},
-                        }]
-                    selected_action = (
-                        "EXECUTE_STEP"
-                        if plan and len(executed_steps) < len(plan)
-                        else "GENERATE_PLAN"
-                        if not plan
-                        else "COMPLETE_TASK"
-                    )
-                if selected_action == "REPLY":
-                    selected_action = (
-                        "GENERATE_PLAN"
-                        if not plan
-                        else "EXECUTE_STEP"
-                        if len(executed_steps) < len(plan)
-                        else "COMPLETE_TASK"
-                    )
-
                 logger.info(
                     "[eliza-realm] Iteration %d: action=%s",
                     iteration + 1,
@@ -326,62 +329,23 @@ class ElizaREALMAgent:
                             parsed_plan = _parse_plan_json(
                                 json.dumps(raw_plan), task.available_tools
                             )
-                    # Fall back to using available tools if the LLM did not return a usable plan.
-                    if not parsed_plan:
-                        parsed_plan = [
-                            {
-                                "action": tool,
-                                "description": f"Execute {tool}",
-                                "parameters": {"step": i + 1},
-                            }
-                            for i, tool in enumerate(task.available_tools[: task.max_steps])
-                        ]
                     plan = parsed_plan
                     last_action_text = (
                         f"Generated plan with {len(plan)} steps"
                     )
 
                 elif selected_action == "EXECUTE_STEP":
-                    if not plan:
-                        last_action_text = "No plan available; generate one first."
-                    elif len(executed_steps) >= len(plan):
-                        last_action_text = "All steps already executed."
-                    else:
-                        step = plan[len(executed_steps)]
-                        action_name = str(step.get("action", "unknown"))
-                        description = str(step.get("description", ""))
-                        # The TS bridge already executed the LLM call to "decide"
-                        # this step — we record it as a successful execution.
-                        executed_steps.append({
-                            "action": action_name,
-                            "description": description,
-                            "success": True,
-                            "observation": f"Executed {action_name}",
-                        })
-                        trajectory.steps.append(
-                            PlanningStep(
-                                step_number=len(executed_steps),
-                                action=PlanningAction(
-                                    name=action_name,
-                                    parameters={"step": len(executed_steps)},
-                                    description=description,
-                                ),
-                                observation=f"Executed {action_name}",
-                                success=True,
-                                error=None,
-                                duration_ms=10.0,
-                            )
-                        )
-                        last_action_text = f"Step {len(executed_steps)} ({action_name}) executed successfully."
+                    last_action_text = (
+                        "No tool executor is configured for this planning benchmark. "
+                        "No action was executed. Submit a structured solution with "
+                        "COMPLETE_TASK for independent constraint evaluation."
+                    )
 
                 elif selected_action == "ADAPT_PLAN":
-                    if self.enable_adaptation:
-                        adaptation_count += 1
-                        last_action_text = (
-                            f"Plan adaptation #{adaptation_count} applied."
-                        )
-                    else:
-                        last_action_text = "Adaptation disabled; ignoring ADAPT_PLAN."
+                    last_action_text = (
+                        "Submit a revised structured solution for independent evaluation. "
+                        "An adaptation request alone does not establish a successful replan."
+                    )
 
                 elif selected_action == "COMPLETE_TASK":
                     # Capture an optional solution payload from the bridge
@@ -417,12 +381,10 @@ class ElizaREALMAgent:
 
             trajectory.adaptation_count = adaptation_count
             trajectory.duration_ms = (time.time() - start_time) * 1000
-            trajectory.plan_quality_score = self._calculate_plan_quality(trajectory, task)
-            trajectory.overall_success = self._evaluate_success(trajectory, task, test_case)
+            trajectory.overall_success = False
             trajectory.final_outcome = (
-                "Task completed successfully"
-                if trajectory.overall_success
-                else "Task partially completed or failed"
+                "Solution submitted; awaiting independent evaluation"
+                if trajectory.solution else "No structured solution submitted"
             )
 
         except Exception as exc:
@@ -433,65 +395,6 @@ class ElizaREALMAgent:
 
         trajectory.end_time_ms = time.time() * 1000
         return trajectory
-
-    # ------------------------------------------------------------------
-    # Scoring helpers (mirror REALMAgent so reports stay comparable)
-    # ------------------------------------------------------------------
-
-    def _calculate_plan_quality(
-        self,
-        trajectory: PlanningTrajectory,
-        task: REALMTask,
-    ) -> float:
-        if not trajectory.steps:
-            return 0.0
-        tools_used = {s.action.name for s in trajectory.steps}
-        available_tools = set(task.available_tools)
-        tool_coverage = (
-            len(tools_used & available_tools) / len(available_tools)
-            if available_tools
-            else 1.0
-        )
-        expected_steps = len(task.available_tools)
-        step_ratio = (
-            len(trajectory.steps) / expected_steps if expected_steps > 0 else 1.0
-        )
-        step_efficiency = max(0.0, min(1.0, 1.0 - abs(1.0 - step_ratio) * 0.5))
-        success_rate = sum(1 for s in trajectory.steps if s.success) / len(
-            trajectory.steps
-        )
-        return tool_coverage * 0.3 + step_efficiency * 0.3 + success_rate * 0.4
-
-    def _evaluate_success(
-        self,
-        trajectory: PlanningTrajectory,
-        task: REALMTask,
-        test_case: Optional[REALMTestCase],
-    ) -> bool:
-        if not trajectory.steps:
-            return False
-        successful_steps = sum(1 for s in trajectory.steps if s.success)
-        total_steps = len(trajectory.steps)
-        if total_steps == 0:
-            return False
-
-        if test_case:
-            required_actions: list[str] = []
-            metrics_raw = test_case.expected.get("metrics")
-            if isinstance(metrics_raw, dict):
-                required_raw = metrics_raw.get("required_actions")
-                if isinstance(required_raw, list):
-                    required_actions = [str(x) for x in required_raw]
-            if not required_actions:
-                expected_raw = test_case.expected.get("actions")
-                if isinstance(expected_raw, list):
-                    required_actions = [str(x) for x in expected_raw]
-            if required_actions:
-                executed = {s.action.name for s in trajectory.steps if s.success}
-                if any(req not in executed for req in required_actions):
-                    return False
-
-        return (successful_steps / total_steps) >= 0.7
 
     async def close(self) -> None:
         """No-op — the server manager handles cleanup."""

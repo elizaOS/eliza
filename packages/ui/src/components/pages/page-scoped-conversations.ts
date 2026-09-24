@@ -6,18 +6,25 @@
  * prompt-optimization passes can cohort by surface contract; bump it when a
  * scope's brief, copy, or live-state shape changes meaningfully.
  */
-import type { PageScope } from "@elizaos/shared";
+
+import type { PageScope } from "@elizaos/core/contracts/page-scope";
 import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export { PAGE_SCOPES, type PageScope } from "@elizaos/shared";
+export {
+  PAGE_SCOPES,
+  type PageScope,
+} from "@elizaos/core/contracts/page-scope";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,
-  { primaryContext: string; secondaryContexts: string[] }
+  {
+    primaryContext: string;
+    secondaryContexts: string[];
+  }
 > = {
   "page-browser": {
     primaryContext: "browser",
@@ -67,7 +74,6 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
     secondaryContexts: ["page", "page-wallet", "wallet"],
   },
 };
-
 /**
  * Bump when the per-scope brief, intro copy, or live-state shape changes
  * meaningfully — so a future MIPRO/GEPA optimization pass can filter to a
@@ -75,7 +81,6 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
  * different surface contracts.
  */
 export const PAGE_SCOPE_VERSION = 15;
-
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
   title: string;
@@ -88,7 +93,6 @@ export interface PageScopeIntroCopy {
    */
   systemAddendum: string;
 }
-
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
@@ -145,7 +149,6 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
       "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and native Hyperliquid and Polymarket readiness. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, trading actions, or prediction-market actions, confirm the asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about Hyperliquid or Polymarket, prefer the native app surfaces for reads/status. Never invent balances, positions, fills, markets, odds, or execution support.",
   },
 };
-
 export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-browser": "Browser",
   "page-character": "Character",
@@ -157,7 +160,6 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-settings": "Settings",
   "page-wallet": "Wallet",
 };
-
 /**
  * Browser scope intro copy varies by Agent Browser Bridge companion state: when the
  * extension is connected the agent can drive real tabs; when it is not, the
@@ -195,24 +197,24 @@ export function getBrowserPageScopeCopy(state: {
       "You are answering inside the Browser view. The user's browser extension is not connected. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Explain that the released Eliza Browser extension connects automatically when the Eliza app is open and signed in. Do not direct the user to unpacked builds, filesystem folders, browser developer mode, pairing tokens, ports, or manual refresh controls. Until the extension connects, only the embedded browser is available; do not invent real-browser tabs or promise real-tab control.",
   };
 }
-
 export function isPageScopedConversation(
   conversation: Pick<Conversation, "metadata"> | null | undefined,
 ): boolean {
   const scope = conversation?.metadata?.scope;
   return typeof scope === "string" && scope.startsWith("page-");
 }
-
 export function isPageScopedConversationMetadata(
   metadata: ConversationMetadata | null | undefined,
 ): boolean {
   const scope = metadata?.scope;
   return typeof scope === "string" && scope.startsWith("page-");
 }
-
 export function buildPageScopedConversationMetadata(
   scope: PageScope,
-  options: { sourceConversationId?: string; pageId?: string } = {},
+  options: {
+    sourceConversationId?: string;
+    pageId?: string;
+  } = {},
 ): ConversationMetadata {
   const metadata: ConversationMetadata = { scope };
   if (options.pageId) {
@@ -223,7 +225,6 @@ export function buildPageScopedConversationMetadata(
   }
   return metadata;
 }
-
 /**
  * Routing metadata stamped on every page-scope send. The runtime persists this
  * into the trajectory `metadata` column verbatim — every field here is a
@@ -231,7 +232,10 @@ export function buildPageScopedConversationMetadata(
  */
 export function buildPageScopedRoutingMetadata(
   scope: PageScope,
-  options: { sourceConversationId?: string; pageId?: string } = {},
+  options: {
+    sourceConversationId?: string;
+    pageId?: string;
+  } = {},
 ): Record<string, unknown> {
   const routing = PAGE_SCOPE_ROUTING_CONTEXTS[scope];
   const metadata: Record<string, unknown> = {
@@ -251,7 +255,6 @@ export function buildPageScopedRoutingMetadata(
   }
   return metadata;
 }
-
 function findPageScopedConversation(
   conversations: Conversation[],
   scope: PageScope,
@@ -268,7 +271,6 @@ function findPageScopedConversation(
       new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
   )[0];
 }
-
 function findPageScopedConversations(
   conversations: Conversation[],
   scope: PageScope,
@@ -286,7 +288,6 @@ function findPageScopedConversations(
         new Date(left.updatedAt).getTime(),
     );
 }
-
 export async function resolvePageScopedConversation(params: {
   scope: PageScope;
   title?: string;
@@ -297,10 +298,8 @@ export async function resolvePageScopedConversation(params: {
   const desiredMetadata = buildPageScopedConversationMetadata(scope, {
     pageId,
   });
-
   const { conversations } = await client.listConversations();
   const existing = findPageScopedConversation(conversations, scope, pageId);
-
   if (existing) {
     const titleMatches = existing.title === title;
     const metadataMatches =
@@ -315,13 +314,11 @@ export async function resolvePageScopedConversation(params: {
     });
     return conversation;
   }
-
   const { conversation } = await client.createConversation(title, {
     metadata: desiredMetadata,
   });
   return conversation;
 }
-
 export async function resetPageScopedConversation(params: {
   scope: PageScope;
   title?: string;
@@ -332,10 +329,8 @@ export async function resetPageScopedConversation(params: {
   const desiredMetadata = buildPageScopedConversationMetadata(scope, {
     pageId,
   });
-
   const { conversations } = await client.listConversations();
   const matching = findPageScopedConversations(conversations, scope, pageId);
-
   if (matching.length > 0) {
     await Promise.allSettled(
       matching.map((conversation) =>
@@ -343,7 +338,6 @@ export async function resetPageScopedConversation(params: {
       ),
     );
   }
-
   const { conversation } = await client.createConversation(title, {
     metadata: desiredMetadata,
   });

@@ -75,8 +75,6 @@
       ],
       "@elizaos/core/node": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/capacitor-bun-runtime": [
@@ -102,6 +100,21 @@
       ],
       "@elizaos/plugin-native-filesystem": [
         "../plugin-native-filesystem/src/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets": [
+        "../plugin-elizacloud/src/cloud-config/cloud-secrets.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/base-url": [
+        "../plugin-elizacloud/src/cloud-config/base-url.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
       ]
     }
   },

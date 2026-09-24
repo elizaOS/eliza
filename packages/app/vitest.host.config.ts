@@ -7,91 +7,6 @@ import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
-const appCoreSrc = path.join(fileDir, "src");
-const agentSrc = path.join(monorepoRoot, "packages/agent/src");
-const authSrc = path.join(monorepoRoot, "packages/auth/src/auth");
-const uiDir = path.join(monorepoRoot, "packages/ui");
-const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
-const coreSrc = path.join(monorepoRoot, "packages/core/src");
-const vaultSrc = path.join(monorepoRoot, "packages/auth/src/vault");
-const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
-const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
-const appLifeopsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-personal-assistant/src",
-);
-const appTaskCoordinatorSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-agent-orchestrator/src/ui",
-);
-const toVitePath = (value: string): string => value.replaceAll("\\", "/");
-const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src/ui");
-const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
-const pluginTodosSrc = path.join(monorepoRoot, "plugins/plugin-todos/src");
-const pluginBrowserBridgeSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-browser/src",
-);
-const pluginAnthropicRoot = path.join(monorepoRoot, "plugins/plugin-anthropic");
-const pluginComputerUseSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-computeruse/src",
-);
-const pluginCodingToolsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-coding-tools/src",
-);
-const pluginDiscordRoot = path.join(monorepoRoot, "plugins/plugin-discord");
-const pluginElizaCloudSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-elizacloud",
-  "src",
-);
-const pluginIMessageSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-imessage/src",
-);
-const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
-const pluginLocalInferenceSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-local-inference/src",
-);
-const pluginNativeFilesystemSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-native-filesystem/src",
-);
-const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
-const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
-const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
-const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
-const pluginAgentOrchestratorSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-agent-orchestrator/src",
-);
-const pluginGitpathologistSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-gitpathologist/src",
-);
-const pluginGoogleSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-google-workspace/src",
-);
-const pluginPtyRoot = path.join(monorepoRoot, "plugins/plugin-pty");
-const pluginVisionSrc = path.join(monorepoRoot, "plugins/plugin-vision/src");
-const pluginWorkflowSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-workflow/src",
-);
-// Optional static plugins imported by
-// packages/agent/src/runtime/optional-plugin-imports.ts. The Windows
-// CI app-and-cli shard runs vitest without a plugin build, so these must resolve
-// to source here like every other package in OPTIONAL_PLUGIN_IMPORTERS —
-// otherwise Vite fails the whole suite at `Failed to resolve entry for package`.
-const pluginSchedulingSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-scheduling/src",
-);
-const pluginInboxSrc = path.join(monorepoRoot, "plugins/plugin-inbox/src");
 // Resolve react/react-dom from the location of this config file so the alias
 // works whether react is hoisted to the monorepo root or installed locally.
 // createRequire resolves through the normal Node resolution algorithm (walks up
@@ -148,6 +63,10 @@ export default defineConfig({
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
+      "scripts/android-native-plugins.test.mjs",
+      "scripts/native-plugin-build.test.mjs",
+      "scripts/verify-android-native-plugins.test.mjs",
+      "scripts/lib/electrobun-file-dialog.test.mjs",
       "scripts/android-assistant-ime-lane.test.mjs",
       "scripts/android-cloud-onboarding-command.test.mjs",
       "scripts/android-e2e-build.test.mjs",
@@ -251,6 +170,9 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest; runs in
       // `bun run test:script-suites` (node --test list).
       "scripts/store-listing-urls.test.mjs",
+      "scripts/native-plugin-build.test.mjs",
+      "scripts/android-native-plugins.test.mjs",
+      "scripts/verify-android-native-plugins.test.mjs",
       // Uses bun:test, not vitest; runs in `bun run test:script-suites`.
       "scripts/voice/voice-models-publish-all.test.mjs",
       // Uses bun:test, not vitest.

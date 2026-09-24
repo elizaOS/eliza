@@ -23,7 +23,7 @@ import {
   getCodingAgentSelectorBridge,
   logger,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/core/contracts/coding-agent-capabilities";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
 // the shared types under this plugin's public surface. `CodingAccountSelection`

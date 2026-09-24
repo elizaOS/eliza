@@ -35,8 +35,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.1.0"
@@ -48,7 +47,8 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "build": "bun run build.ts",

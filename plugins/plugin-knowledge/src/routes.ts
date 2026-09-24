@@ -5,15 +5,24 @@
  * document service (resolved from `@elizaos/plugin-assistant`);
  * this module handles HTTP shaping and access-control scoping only.
  */
-
-import type {
-  AccessContext,
-  AgentRuntime,
-  IFileStorageService,
-  Memory,
-  UUID,
+import {
+  type AccessContext,
+  type AgentRuntime,
+  actorFromAccessContext,
+  ElizaError,
+  type IFileStorageService,
+  type Memory,
+  ServiceType,
+  type UUID,
 } from "@elizaos/core";
-import { actorFromAccessContext, ElizaError, ServiceType } from "@elizaos/core";
+import {
+  type RouteHelpers,
+  type RouteRequestContext,
+} from "@elizaos/core/api/route-helpers";
+import {
+  parseClampedFloat,
+  parsePositiveInteger,
+} from "@elizaos/core/utils/number-parsing";
 import {
   __setDocumentUrlFetchImplForTests,
   actorCanManageAgentDocuments,
@@ -34,8 +43,6 @@ import {
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/plugin-assistant";
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
-import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
 import {
   getDocumentContentType,
   getDocumentDeleteability,
@@ -51,9 +58,7 @@ import {
   type DocumentVisibilityScope,
   getDocumentsService,
 } from "./service-loader.js";
-
 export type DocumentRouteHelpers = RouteHelpers;
-
 export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
@@ -64,16 +69,14 @@ export interface DocumentRouteContext extends RouteRequestContext {
     label: string,
   ) => string | null;
 }
-
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
-const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
+const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1048576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
 const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
   "contentType must be a valid non-empty MIME type string when provided";
 const MIME_ESSENCE_PATTERN =
   /^[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*\/[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*$/;
-
 function isUuidValue(value: unknown): value is UUID {
   return (
     typeof value === "string" &&
@@ -82,7 +85,6 @@ function isUuidValue(value: unknown): value is UUID {
     )
   );
 }
-
 function documentGrantErrorStatus(cause: ElizaError): number {
   if (
     cause.code === "DOCUMENT_NOT_FOUND" ||
@@ -95,7 +97,6 @@ function documentGrantErrorStatus(cause: ElizaError): number {
   if (cause.code === "DOCUMENT_GRANT_MUTATION_CONFLICT") return 409;
   return 500;
 }
-
 type DocumentFilter = SharedDocumentFilter & {
   /**
    * Hub display facet (#13594): the coarse client-facing bucket the Knowledge
@@ -106,7 +107,6 @@ type DocumentFilter = SharedDocumentFilter & {
    */
   knowledgeFacet?: KnowledgeHubFacet;
 };
-
 /** The Knowledge hub's coarse display facets (#13594); `all` is the no-op. */
 type KnowledgeHubFacet =
   | "all"
@@ -115,7 +115,6 @@ type KnowledgeHubFacet =
   | "audio"
   | "video"
   | "transcript";
-
 const KNOWLEDGE_HUB_FACETS: readonly KnowledgeHubFacet[] = [
   "all",
   "doc",
@@ -124,7 +123,6 @@ const KNOWLEDGE_HUB_FACETS: readonly KnowledgeHubFacet[] = [
   "video",
   "transcript",
 ];
-
 function parseKnowledgeFacet(
   value: string | null,
 ): KnowledgeHubFacet | undefined {
@@ -147,26 +145,33 @@ type DocumentUploadBody = {
   scopedToEntityId?: string;
   addedFrom?: string;
 };
-
 type ValidatedDocumentContentType = {
   essence: string;
   original: string;
 };
-
 type DocumentUploadLocation = {
   roomId: UUID;
   worldId: UUID;
 };
-
 type DocumentUploadLocationResult =
-  | { ok: true; value: DocumentUploadLocation }
-  | { ok: false; status: number; error: string };
-
-function validateDocumentContentType(
-  contentType: unknown,
-):
-  | { ok: true; value: ValidatedDocumentContentType }
-  | { ok: false; error: string } {
+  | {
+      ok: true;
+      value: DocumentUploadLocation;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
+function validateDocumentContentType(contentType: unknown):
+  | {
+      ok: true;
+      value: ValidatedDocumentContentType;
+    }
+  | {
+      ok: false;
+      error: string;
+    } {
   if (contentType === undefined) {
     return {
       ok: true,
@@ -176,15 +181,12 @@ function validateDocumentContentType(
   if (typeof contentType !== "string") {
     return { ok: false, error: DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR };
   }
-
   const essence = normalizeDocumentContentType(contentType);
   if (!MIME_ESSENCE_PATTERN.test(essence)) {
     return { ok: false, error: DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR };
   }
-
   return { ok: true, value: { essence, original: contentType } };
 }
-
 function isTextBackedContentType(contentType: string): boolean {
   // This selects the upload wire encoding, not every MIME type that can contain
   // text. Existing callers base64-encode all non-text types outside this legacy
@@ -196,26 +198,22 @@ function isTextBackedContentType(contentType: string): boolean {
     contentType === "application/javascript"
   );
 }
-
 function hasTextBackedFilename(filename: string): boolean {
   const lowerFilename = filename.toLowerCase();
   return [".md", ".mdx", ".txt", ".json", ".xml", ".csv", ".tsv"].some(
     (extension) => lowerFilename.endsWith(extension),
   );
 }
-
 function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
   if (!runtime || typeof runtime.getSetting !== "function") return undefined;
   return asUuid(runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"));
 }
-
 export function resolveRouteActor(
   agentId: UUID,
   ownerEntityId?: UUID,
   accessContext?: AccessContext,
 ): RouteActor | null {
   if (!accessContext?.requesterEntityId) return null;
-
   // Delegate the RoleName -> RouteActorRole mapping to core rather than
   // restating it. The local version collapsed everything that was not
   // OWNER/ADMIN into USER, which silently dropped AGENT: a request the agent
@@ -234,14 +232,12 @@ export function resolveRouteActor(
     ownerEntityId,
   };
 }
-
 class DocumentsSearchModeError extends Error {
   constructor(message = "Invalid searchMode") {
     super(message);
     this.name = "DocumentsSearchModeError";
   }
 }
-
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
   if (value == null || value === "") {
     return undefined;
@@ -251,18 +247,14 @@ function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
   }
   throw new DocumentsSearchModeError();
 }
-
 function parseTimestampParam(value: unknown): number | undefined {
   const trimmed = trimString(value);
   if (!trimmed) return undefined;
-
   const numeric = Number(trimmed);
   if (Number.isFinite(numeric)) return numeric;
-
   const parsed = Date.parse(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
-
 function parseTagsFromSearchParams(searchParams: URLSearchParams): string[] {
   const values = [
     ...searchParams.getAll("tag"),
@@ -273,10 +265,11 @@ function parseTagsFromSearchParams(searchParams: URLSearchParams): string[] {
     .map((value) => value.trim())
     .filter((value): value is string => value.length > 0);
 }
-
 function filtersFromSearchParams(
   url: URL,
-  options: { includeTextQuery?: boolean } = {},
+  options: {
+    includeTextQuery?: boolean;
+  } = {},
 ): DocumentFilter {
   const scope = parseDocumentScope(url.searchParams.get("scope"));
   const scopedToEntityId = asUuid(url.searchParams.get("scopedToEntityId"));
@@ -318,7 +311,6 @@ function filtersFromSearchParams(
     ...(knowledgeFacet ? { knowledgeFacet } : {}),
   };
 }
-
 function filtersFromUploadBody(
   body: {
     metadata?: Record<string, unknown>;
@@ -326,7 +318,11 @@ function filtersFromUploadBody(
     scopedToEntityId?: string;
   },
   actor: RouteActor,
-): { scope: DocumentVisibilityScope; scopedToEntityId?: UUID; error?: string } {
+): {
+  scope: DocumentVisibilityScope;
+  scopedToEntityId?: UUID;
+  error?: string;
+} {
   if (actor.role === "GUEST") {
     return {
       scope: "user-private",
@@ -342,10 +338,8 @@ function filtersFromUploadBody(
       : actor.role === "AGENT"
         ? "agent-private"
         : "global");
-
   const scopedToEntityId =
     asUuid(body.scopedToEntityId) ?? asUuid(metadata?.scopedToEntityId);
-
   if (scope === "global" || scope === "owner-private") {
     if (!actorCanManageOwnerDocuments(actor)) {
       return {
@@ -355,7 +349,6 @@ function filtersFromUploadBody(
     }
     return { scope };
   }
-
   if (scope === "agent-private") {
     if (!actorCanManageAgentDocuments(actor)) {
       return {
@@ -366,7 +359,6 @@ function filtersFromUploadBody(
     }
     return { scope, scopedToEntityId: scopedToEntityId ?? actor.entityId };
   }
-
   const targetEntityId = scopedToEntityId ?? actor.entityId;
   if (actor.role === "USER" && targetEntityId !== actor.entityId) {
     return {
@@ -375,20 +367,19 @@ function filtersFromUploadBody(
       error: "Users can only write documents to their own private scope.",
     };
   }
-
   return { scope, scopedToEntityId: targetEntityId };
 }
-
-function hasUuidId(memory: Memory): memory is Memory & { id: UUID } {
+function hasUuidId(memory: Memory): memory is Memory & {
+  id: UUID;
+} {
   return typeof memory.id === "string" && memory.id.length > 0;
 }
-
-function hasUuidIdAndCreatedAt(
-  memory: Memory,
-): memory is Memory & { id: UUID; createdAt: number } {
+function hasUuidIdAndCreatedAt(memory: Memory): memory is Memory & {
+  id: UUID;
+  createdAt: number;
+} {
   return hasUuidId(memory) && typeof memory.createdAt === "number";
 }
-
 function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
   if (memory.agentId && memory.agentId !== agentId) return false;
   const metadata = asRecord(memory.metadata);
@@ -399,13 +390,11 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
       metadata.documentId === memory.id)
   );
 }
-
 function matchesDocumentFilter(
   memory: DocumentReadableMemory,
   filters: DocumentFilter,
 ): boolean {
   if (!matchesSharedDocumentFilter(memory, filters)) return false;
-
   const metadata = asRecord(memory.metadata);
   if (
     !filters.knowledgeFacet ||
@@ -415,10 +404,8 @@ function matchesDocumentFilter(
   ) {
     return true;
   }
-
   return false;
 }
-
 /**
  * Coarse Knowledge-hub facet for a record (#13594). Collapses the fine
  * media-format vocabulary into the hub's display buckets: image/audio/video and
@@ -480,21 +467,25 @@ function buildRouteMessage({
     createdAt: Date.now(),
   };
 }
-
-function serviceSearchScope(
-  filters: DocumentFilter,
-): { entityId?: UUID; roomId?: UUID } | undefined {
+function serviceSearchScope(filters: DocumentFilter):
+  | {
+      entityId?: UUID;
+      roomId?: UUID;
+    }
+  | undefined {
   // Push room scoping into the service BEFORE ranking/capping so a room-filtered
   // search isn't starved by higher-ranked matches from other rooms filling the
   // capped result set (the service filters on the document memory's roomId,
   // which the attachment-ingest writer sets to the source room). scopedToEntityId
   // continues to narrow to a user's private space.
-  const scope: { entityId?: UUID; roomId?: UUID } = {};
+  const scope: {
+    entityId?: UUID;
+    roomId?: UUID;
+  } = {};
   if (filters.scopedToEntityId) scope.entityId = filters.scopedToEntityId;
   if (filters.roomId) scope.roomId = filters.roomId;
   return scope.entityId || scope.roomId ? scope : undefined;
 }
-
 function decodeMatchedPathComponent(
   ctx: DocumentRouteContext,
   raw: string,
@@ -503,7 +494,6 @@ function decodeMatchedPathComponent(
   if (ctx.decodePathComponent) {
     return ctx.decodePathComponent(raw, ctx.res, label);
   }
-
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -511,7 +501,6 @@ function decodeMatchedPathComponent(
     return null;
   }
 }
-
 async function listDocumentMemories({
   documentsService,
   agentId,
@@ -526,7 +515,10 @@ async function listDocumentMemories({
   filters: DocumentFilter;
   limit: number;
   offset: number;
-}): Promise<{ documents: Memory[]; total: number }> {
+}): Promise<{
+  documents: Memory[];
+  total: number;
+}> {
   if (!documentsService.listAllDocumentsWithAccessContext) {
     throw new Error("Canonical document listing is unavailable");
   }
@@ -542,7 +534,6 @@ async function listDocumentMemories({
     total: matching.length,
   };
 }
-
 /**
  * Per-facet counts for the Knowledge hub (#13594), computed over the WHOLE
  * readable store in one scan — not a page slice — so the hub's segmented control
@@ -594,12 +585,9 @@ async function countDocumentFacets({
     counts[documentHubFacet(metadata, documentTags)] += 1;
     counts.all += 1;
   }
-
   return counts;
 }
-
 export const __setDocumentFetchImplForTests = __setDocumentUrlFetchImplForTests;
-
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
 ): Promise<boolean> {
@@ -614,9 +602,7 @@ export async function handleDocumentsRoutes(
     error,
     readJsonBody,
   } = ctx;
-
   if (!pathname.startsWith("/api/documents")) return false;
-
   if (!runtime?.agentId) {
     error(res, "Agent runtime is not available", 503);
     return true;
@@ -629,12 +615,10 @@ export async function handleDocumentsRoutes(
     return true;
   }
   const routeActor = resolveRouteActor(agentId, ownerEntityId, accessContext);
-
   if (!routeActor) {
     error(res, "Authentication required", 401);
     return true;
   }
-
   const { service: documentsService, reason } =
     await getDocumentsService(runtime);
   if (!documentsService) {
@@ -657,14 +641,12 @@ export async function handleDocumentsRoutes(
   // Preserve the runtime guard across the nested async location resolver.
   const uploadLocationRuntime = runtime;
   const uploadLocationActor = routeActor;
-
   async function resolveUploadLocation(input: {
     roomId?: unknown;
     worldId?: unknown;
   }): Promise<DocumentUploadLocationResult> {
     const roomWasProvided = input.roomId !== undefined;
     const worldWasProvided = input.worldId !== undefined;
-
     if (!roomWasProvided && !worldWasProvided) {
       return { ok: true, value: { roomId: agentId, worldId: agentId } };
     }
@@ -689,7 +671,6 @@ export async function handleDocumentsRoutes(
       }
       requestedWorldId = input.worldId.trim() as UUID;
     }
-
     const roomId = input.roomId.trim() as UUID;
     let room: Awaited<ReturnType<AgentRuntime["getRoom"]>>;
     try {
@@ -720,7 +701,6 @@ export async function handleDocumentsRoutes(
         error: "Document room tenant scope is unavailable",
       };
     }
-
     const worldId = room.worldId as UUID;
     if (requestedWorldId && requestedWorldId !== worldId) {
       return {
@@ -740,10 +720,8 @@ export async function handleDocumentsRoutes(
         error: "Requester is not authorized for the room tenant",
       };
     }
-
     return { ok: true, value: { roomId, worldId } };
   }
-
   if (method === "GET" && pathname === "/api/documents/stats") {
     if (
       !actorCanManageOwnerDocuments(routeActor) &&
@@ -760,7 +738,6 @@ export async function handleDocumentsRoutes(
       tableName: DOCUMENT_FRAGMENTS_TABLE,
       unique: false,
     });
-
     json(res, {
       documentCount,
       fragmentCount,
@@ -768,7 +745,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/documents/facets") {
     // Whole-store facet counts for the Knowledge hub segmented control
     // (#13594). The facet param itself is dropped inside countDocumentFacets so
@@ -793,12 +769,10 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/documents") {
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 100);
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
     const filters = filtersFromSearchParams(url, { includeTextQuery: true });
-
     if (
       !documentsService.listAllDocumentsWithAccessContext ||
       !documentsService.listDocumentFragmentsWithAccessContext
@@ -810,7 +784,6 @@ export async function handleDocumentsRoutes(
       documentsService.listDocumentFragmentsWithAccessContext.bind(
         documentsService,
       );
-
     const { documents, total } = await listDocumentMemories({
       documentsService,
       agentId,
@@ -837,7 +810,6 @@ export async function handleDocumentsRoutes(
         hasUuidId(doc) ? (fragmentCounts.get(doc.id) ?? 0) : 0,
       ),
     );
-
     json(res, {
       ok: true,
       available: true,
@@ -849,14 +821,12 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/documents/search") {
     const query = url.searchParams.get("q");
     if (!query?.trim()) {
       error(res, "Search query (q) is required");
       return true;
     }
-
     const threshold = parseClampedFloat(url.searchParams.get("threshold"), {
       fallback: 0.3,
       min: 0,
@@ -886,14 +856,12 @@ export async function handleDocumentsRoutes(
       filters,
       actor: routeActor,
     });
-
     const results = await documentsService.searchDocuments(
       searchMessage,
       serviceSearchScope(filters),
       searchMode,
       accessContext,
     );
-
     const filteredResults = results
       .filter((result) => (result.similarity ?? 0) >= threshold)
       .filter((result) => matchesDocumentFilter(result, filters))
@@ -919,7 +887,6 @@ export async function handleDocumentsRoutes(
           endMs: typeof meta?.endMs === "number" ? meta.endMs : undefined,
         };
       });
-
     json(res, {
       query: query.trim(),
       threshold,
@@ -928,7 +895,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   const fragmentsMatch = /^\/api\/documents\/([^/]+)\/fragments$/.exec(
     pathname,
   );
@@ -955,7 +921,6 @@ export async function handleDocumentsRoutes(
       error(res, "Document not found", 404);
       return true;
     }
-
     const fragments =
       await documentsService.listDocumentFragmentsWithAccessContext(
         documentId,
@@ -967,7 +932,12 @@ export async function handleDocumentsRoutes(
         const metadata = asRecord(fragment.metadata);
         return {
           id: fragment.id,
-          text: (fragment.content as { text?: string })?.text || "",
+          text:
+            (
+              fragment.content as {
+                text?: string;
+              }
+            )?.text || "",
           position: metadata?.position,
           createdAt: fragment.createdAt,
         };
@@ -983,7 +953,6 @@ export async function handleDocumentsRoutes(
         position: fragment.position,
         createdAt: fragment.createdAt,
       }));
-
     json(res, {
       documentId,
       fragments: documentFragments,
@@ -991,7 +960,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   const docPinsMatch = /^\/api\/documents\/([^/]+)\/pins$/.exec(pathname);
   if ((method === "GET" || method === "PATCH") && docPinsMatch) {
     if (accessContext.role !== "OWNER") {
@@ -1073,7 +1041,6 @@ export async function handleDocumentsRoutes(
     }
     return true;
   }
-
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
   const docAccessMatch = /^\/api\/documents\/([^/]+)\/access$/.exec(pathname);
   if (method === "GET" && docAccessMatch) {
@@ -1108,7 +1075,6 @@ export async function handleDocumentsRoutes(
     }
     return true;
   }
-
   if (method === "PATCH" && docAccessMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
@@ -1168,7 +1134,11 @@ export async function handleDocumentsRoutes(
       const directGrantCandidate =
         metadata &&
         "directGrantEntityIds" in metadata &&
-        (metadata as { directGrantEntityIds?: unknown }).directGrantEntityIds;
+        (
+          metadata as {
+            directGrantEntityIds?: unknown;
+          }
+        ).directGrantEntityIds;
       const directGrantEntityIds = Array.isArray(directGrantCandidate)
         ? directGrantCandidate
         : [];
@@ -1180,7 +1150,6 @@ export async function handleDocumentsRoutes(
     }
     return true;
   }
-
   if (method === "GET" && docIdMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
@@ -1201,7 +1170,6 @@ export async function handleDocumentsRoutes(
       error(res, "Document not found", 404);
       return true;
     }
-
     if (!documentsService.listDocumentFragmentsWithAccessContext) {
       error(res, "Canonical document authorization is unavailable", 503);
       return true;
@@ -1212,7 +1180,6 @@ export async function handleDocumentsRoutes(
         accessContext,
       )
     ).length;
-
     json(res, {
       document: presentDocument(document, fragmentCount, {
         includeContent: true,
@@ -1220,7 +1187,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "PATCH" && docIdMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
@@ -1241,29 +1207,26 @@ export async function handleDocumentsRoutes(
       error(res, "Document not found", 404);
       return true;
     }
-
     const editability = getDocumentEditability(document);
     if (!editability.canEditText) {
       error(res, editability.reason || "This document cannot be edited.", 400);
       return true;
     }
-
-    const body = await readJsonBody<{ content?: string }>(req, res, {
+    const body = await readJsonBody<{
+      content?: string;
+    }>(req, res, {
       maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
-
     if (typeof body.content !== "string" || body.content.trim().length === 0) {
       error(res, "content must be a non-empty string");
       return true;
     }
-
     const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
       accessContext,
     });
-
     json(res, {
       ok: true,
       documentId: result.documentId,
@@ -1271,7 +1234,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "DELETE" && docIdMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
@@ -1297,7 +1259,6 @@ export async function handleDocumentsRoutes(
       error(res, "Document not found", 404);
       return true;
     }
-
     const deleteability = getDocumentDeleteability(existingDocument);
     if (!deleteability.canDelete) {
       error(
@@ -1307,7 +1268,6 @@ export async function handleDocumentsRoutes(
       );
       return true;
     }
-
     const fragmentCount = (
       await documentsService.listDocumentFragmentsWithAccessContext(
         documentId,
@@ -1318,14 +1278,12 @@ export async function handleDocumentsRoutes(
       documentId,
       accessContext,
     );
-
     json(res, {
       ok: true,
       deletedFragments: fragmentCount,
     });
     return true;
   }
-
   async function addDocument(
     service: DocumentsServiceLike,
     document: DocumentUploadBody,
@@ -1387,7 +1345,6 @@ export async function handleDocumentsRoutes(
     const originalBytesAreTextBacked =
       isTextBackedContentType(uploadedContentType) ||
       hasTextBackedFilename(document.filename);
-
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
         asRecord(document.metadata)?.includeImageDescriptions === true;
@@ -1415,9 +1372,16 @@ export async function handleDocumentsRoutes(
       const descText =
         typeof description === "string"
           ? description.trim()
-          : typeof (description as { description?: unknown }).description ===
-              "string"
-            ? (description as { description: string }).description.trim()
+          : typeof (
+                description as {
+                  description?: unknown;
+                }
+              ).description === "string"
+            ? (
+                description as {
+                  description: string;
+                }
+              ).description.trim()
             : "";
       if (!descText) {
         throw new Error("Image description model returned empty text.");
@@ -1425,15 +1389,12 @@ export async function handleDocumentsRoutes(
       content = `[Image: ${document.filename}]\n\n${descText}`;
       contentType = "text/plain";
     }
-
     if (document.filename.endsWith(".mdx")) {
       contentType = "text/markdown";
     }
-
     const textBacked =
       isTextBackedContentType(contentType) ||
       hasTextBackedFilename(document.filename);
-
     const uploadFilters = chatAudience
       ? {
           scope: "global" as const,
@@ -1457,13 +1418,16 @@ export async function handleDocumentsRoutes(
           ? "import"
           : "upload";
     const source = addedFrom;
-
     // Persist the ORIGINAL uploaded bytes (content-addressed) and link them on
     // the document record so it stays downloadable/previewable. Best-effort: a
     // missing service or storage failure must never fail the upload — we log a
     // warning and proceed without the link.
     let mediaLink:
-      | { mediaUrl: string; mediaHash: string; mediaFileName: string }
+      | {
+          mediaUrl: string;
+          mediaHash: string;
+          mediaFileName: string;
+        }
       | undefined;
     if (originalContent.length > 0) {
       try {
@@ -1493,7 +1457,6 @@ export async function handleDocumentsRoutes(
         );
       }
     }
-
     const result = await service.addDocument({
       ...(chatAudience ? { audience: "chat" as const } : {}),
       agentId,
@@ -1525,27 +1488,27 @@ export async function handleDocumentsRoutes(
         ...(mediaLink ?? {}),
       },
     });
-
-    const warningsValue = (result as { warnings?: unknown }).warnings;
+    const warningsValue = (
+      result as {
+        warnings?: unknown;
+      }
+    ).warnings;
     if (Array.isArray(warningsValue)) {
       for (const warning of warningsValue) {
         if (typeof warning === "string") warnings.push(warning);
       }
     }
-
     return {
       documentId: result.clientDocumentId as UUID,
       fragmentCount: result.fragmentCount,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
-
   if (method === "POST" && pathname === "/api/documents") {
     const body = await readJsonBody<DocumentUploadBody>(req, res, {
       maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
-
     if (
       typeof body.content !== "string" ||
       typeof body.filename !== "string" ||
@@ -1555,13 +1518,11 @@ export async function handleDocumentsRoutes(
       error(res, "content and filename must be non-empty strings");
       return true;
     }
-
     const contentType = validateDocumentContentType(body.contentType);
     if (!contentType.ok) {
       error(res, contentType.error, 400);
       return true;
     }
-
     let result: {
       documentId: string;
       fragmentCount: number;
@@ -1609,7 +1570,6 @@ export async function handleDocumentsRoutes(
       );
       return true;
     }
-
     json(res, {
       ok: true,
       documentId: result.documentId,
@@ -1618,7 +1578,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/documents/bulk") {
     const body = await readJsonBody<{
       documents?: DocumentUploadBody[];
@@ -1628,12 +1587,10 @@ export async function handleDocumentsRoutes(
       maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
-
     if (!Array.isArray(body.documents) || body.documents.length === 0) {
       error(res, "documents array is required");
       return true;
     }
-
     if (body.documents.length > MAX_BULK_DOCUMENTS) {
       error(
         res,
@@ -1641,7 +1598,6 @@ export async function handleDocumentsRoutes(
       );
       return true;
     }
-
     const validatedContentTypes = new Map<
       number,
       ValidatedDocumentContentType
@@ -1661,7 +1617,6 @@ export async function handleDocumentsRoutes(
       }
       validatedContentTypes.set(index, contentType.value);
     }
-
     const results: Array<{
       index: number;
       ok: boolean;
@@ -1671,7 +1626,6 @@ export async function handleDocumentsRoutes(
       error?: string;
       warnings?: string[];
     }> = [];
-
     for (const [index, document] of body.documents.entries()) {
       if (
         !document ||
@@ -1686,13 +1640,11 @@ export async function handleDocumentsRoutes(
         });
         continue;
       }
-
       const contentType = validatedContentTypes.get(index);
       if (!contentType) {
         error(res, DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR, 400);
         return true;
       }
-
       const filename = document.filename || `document-${index + 1}`;
       if (
         typeof document.content !== "string" ||
@@ -1708,7 +1660,6 @@ export async function handleDocumentsRoutes(
         });
         continue;
       }
-
       const normalizedDocument: DocumentUploadBody = {
         ...document,
         content: document.content,
@@ -1716,7 +1667,6 @@ export async function handleDocumentsRoutes(
         scope: document.scope ?? body.scope,
         scopedToEntityId: document.scopedToEntityId ?? body.scopedToEntityId,
       };
-
       try {
         const location = await resolveUploadLocation(normalizedDocument);
         if (!location.ok) {
@@ -1752,10 +1702,8 @@ export async function handleDocumentsRoutes(
         });
       }
     }
-
     const successCount = results.filter((item) => item.ok).length;
     const failureCount = results.length - successCount;
-
     json(res, {
       ok: failureCount === 0,
       total: results.length,
@@ -1765,7 +1713,6 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/documents/url") {
     const body = await readJsonBody<{
       url: string;
@@ -1778,19 +1725,16 @@ export async function handleDocumentsRoutes(
       includeImageDescriptions?: boolean;
     }>(req, res);
     if (!body) return true;
-
     const urlToFetch = trimString(body.url);
     if (!urlToFetch) {
       error(res, "url is required");
       return true;
     }
-
     const location = await resolveUploadLocation(body);
     if (!location.ok) {
       error(res, location.error, location.status);
       return true;
     }
-
     let fetchedContent: Awaited<ReturnType<typeof fetchDocumentFromUrl>>;
     try {
       fetchedContent = await fetchDocumentFromUrl(urlToFetch, {
@@ -1800,7 +1744,6 @@ export async function handleDocumentsRoutes(
       error(res, `Failed to fetch URL content: ${String(fetchErr)}`, 400);
       return true;
     }
-
     const { content, mimeType, filename } = fetchedContent;
     const contentType = mimeType;
     const uploadFilters = filtersFromUploadBody(body, routeActor);
@@ -1815,7 +1758,6 @@ export async function handleDocumentsRoutes(
         ? (scopedToEntityId ?? routeActor.entityId)
         : routeActor.entityId;
     const isYouTubeTranscript = isYouTubeUrl(urlToFetch);
-
     const result = await documentsService.addDocument({
       agentId,
       worldId,
@@ -1845,7 +1787,6 @@ export async function handleDocumentsRoutes(
         addedByRole: routeActorAddedByRole(routeActor),
       },
     });
-
     json(res, {
       ok: true,
       documentId: result.clientDocumentId,
@@ -1856,6 +1797,5 @@ export async function handleDocumentsRoutes(
     });
     return true;
   }
-
   return false;
 }

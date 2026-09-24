@@ -4,6 +4,7 @@
  * attributed message principal to a proposal bundle, while raw transcripts and
  * unauthenticated voice-observer events remain unable to mint attestations.
  */
+
 import {
   createHmac,
   randomBytes,
@@ -15,8 +16,8 @@ import {
   type Memory,
   stableStringify,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveAuthenticatedFamilyPrincipal } from "./production-wiring.js";
 import {
   FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
@@ -30,35 +31,28 @@ import {
 
 const AUTHENTICATED_MESSAGE_ISSUER = "elizaos.runtime-authenticated-message.v1";
 const ATTESTATION_TTL_MS = 2 * 60 * 1000;
-
 interface IssuedAttestation {
   readonly expiresAtMs: number;
   readonly proof: string;
   readonly principalEntityId: string;
 }
-
 export interface AuthenticatedMessageSpeakerAttestation {
   readonly principalEntityId: string;
   readonly capturedAt: string;
   readonly attestation: VoiceSpeakerAttestation;
 }
-
 function unsignedAttestation(
   attestation: VoiceSpeakerAttestation,
 ): Omit<VoiceSpeakerAttestation, "proof"> {
   const { proof: _proof, ...unsigned } = attestation;
   return unsigned;
 }
-
 export class AuthenticatedRuntimeSpeakerVerifierService extends FamilyVoiceSpeakerVerifierRuntimeService {
   static override serviceType = FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE;
-
   override capabilityDescription =
     "Short-lived family speaker binding from authenticated runtime message identity";
-
   private readonly secret = randomBytes(32);
   private readonly issued = new Map<string, IssuedAttestation>();
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -68,13 +62,11 @@ export class AuthenticatedRuntimeSpeakerVerifierService extends FamilyVoiceSpeak
       );
     }
   }
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<AuthenticatedRuntimeSpeakerVerifierService> {
     return new AuthenticatedRuntimeSpeakerVerifierService(runtime);
   }
-
   private proofFor(
     attestation: Omit<VoiceSpeakerAttestation, "proof">,
   ): string {
@@ -82,7 +74,6 @@ export class AuthenticatedRuntimeSpeakerVerifierService extends FamilyVoiceSpeak
       .update(stableStringify(attestation))
       .digest("base64url");
   }
-
   async issueForAuthenticatedMessage(
     message: Memory,
   ): Promise<AuthenticatedMessageSpeakerAttestation> {
@@ -126,7 +117,6 @@ export class AuthenticatedRuntimeSpeakerVerifierService extends FamilyVoiceSpeak
       attestation: { ...unsigned, proof },
     };
   }
-
   async verify(
     attestation: VoiceSpeakerAttestation,
   ): Promise<VerifiedVoiceSpeaker> {
@@ -173,13 +163,11 @@ export class AuthenticatedRuntimeSpeakerVerifierService extends FamilyVoiceSpeak
       bindingRevision: 1,
     };
   }
-
   override async stop(): Promise<void> {
     this.issued.clear();
     this.secret.fill(0);
   }
 }
-
 export function getAuthenticatedRuntimeSpeakerVerifier(
   runtime: IAgentRuntime,
 ): AuthenticatedRuntimeSpeakerVerifierService | null {
@@ -191,7 +179,6 @@ export function getAuthenticatedRuntimeSpeakerVerifier(
     ? service
     : null;
 }
-
 export async function issueAuthenticatedMessageSpeakerAttestation(
   runtime: IAgentRuntime,
   message: Memory,

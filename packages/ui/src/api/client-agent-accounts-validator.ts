@@ -4,28 +4,26 @@
  * The accounts endpoint may carry additional feature-detected metadata, but its
  * provider and linked-account fields are required and must fail closed.
  */
-
-import type { LinkedAccountProviderId } from "@elizaos/shared";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
+} from "@elizaos/core/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import {
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+} from "@elizaos/core/contracts/service-routing-types";
+import { ElizaError } from "@elizaos/core/errors";
 import type { AccountsListResponse } from "./client-agent";
-
 /** Stable classification for malformed account inventory responses. */
 export const ACCOUNTS_RESPONSE_INVALID_CODE = "ACCOUNTS_RESPONSE_INVALID";
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function invalid(path: string, expected: string): never {
   throw new ElizaError(
     `Invalid /api/accounts response at ${path}: expected ${expected}`,
@@ -35,7 +33,6 @@ function invalid(path: string, expected: string): never {
     },
   );
 }
-
 function assertNonEmptyString(
   value: unknown,
   path: string,
@@ -44,7 +41,6 @@ function assertNonEmptyString(
     invalid(path, "a non-empty string");
   }
 }
-
 function assertFiniteNumber(
   value: unknown,
   path: string,
@@ -53,7 +49,6 @@ function assertFiniteNumber(
     invalid(path, "a finite number");
   }
 }
-
 function assertOptionalFiniteNumber(
   record: Record<string, unknown>,
   key: string,
@@ -63,7 +58,6 @@ function assertOptionalFiniteNumber(
     assertFiniteNumber(record[key], `${path}.${key}`);
   }
 }
-
 function assertOptionalString(
   record: Record<string, unknown>,
   key: string,
@@ -73,18 +67,15 @@ function assertOptionalString(
     invalid(`${path}.${key}`, "a string");
   }
 }
-
 function isOneOf(values: readonly string[], value: unknown): value is string {
   return typeof value === "string" && values.includes(value);
 }
-
 function assertHealthDetail(value: unknown, path: string): void {
   if (!isRecord(value)) invalid(path, "an object");
   assertOptionalFiniteNumber(value, "until", path);
   assertOptionalString(value, "lastError", path);
   assertOptionalFiniteNumber(value, "lastChecked", path);
 }
-
 function assertUsage(value: unknown, path: string): void {
   if (!isRecord(value)) invalid(path, "an object");
   assertFiniteNumber(value.refreshedAt, `${path}.refreshedAt`);
@@ -98,7 +89,6 @@ function assertUsage(value: unknown, path: string): void {
     }
   }
   assertOptionalFiniteNumber(value, "resetsAt", path);
-
   if (value.weeklyModelBuckets === undefined) return;
   if (!isRecord(value.weeklyModelBuckets)) {
     invalid(`${path}.weeklyModelBuckets`, "an object");
@@ -115,14 +105,12 @@ function assertUsage(value: unknown, path: string): void {
     assertOptionalFiniteNumber(rawBucket, "resetsAt", bucketPath);
   }
 }
-
 const CREDENTIAL_PATHS = [
   "account-pool",
   "direct-api",
   "external-cli",
   "none",
 ] as const;
-
 function assertRuntimeCapability(value: unknown, path: string): void {
   if (!isRecord(value)) invalid(path, "an object");
   if (typeof value.available !== "boolean") {
@@ -143,7 +131,6 @@ function assertRuntimeCapability(value: unknown, path: string): void {
     invalid(`${path}.backend`, "a supported coding-agent backend");
   }
 }
-
 function assertRuntimeEligibility(
   value: unknown,
   providerId: LinkedAccountProviderId,
@@ -152,7 +139,6 @@ function assertRuntimeEligibility(
   if (!isRecord(value)) invalid(path, "an object");
   assertRuntimeCapability(value.chat, `${path}.chat`);
   assertRuntimeCapability(value.codingAgent, `${path}.codingAgent`);
-
   const codingAgent = value.codingAgent as Record<string, unknown>;
   const chat = value.chat as Record<string, unknown>;
   const descriptor = codingProviderDescriptorForProvider(providerId);
@@ -204,7 +190,6 @@ function assertRuntimeEligibility(
     );
   }
 }
-
 function assertAccount(
   value: unknown,
   providerId: string,
@@ -240,7 +225,6 @@ function assertAccount(
   ) {
     invalid(`${path}.prioritySource`, "explicit or generated");
   }
-
   for (const key of [
     "lastUsedAt",
     "lastPrimedAt",
@@ -259,7 +243,6 @@ function assertAccount(
   }
   return value.id;
 }
-
 function assertAccountsListResponse(
   value: unknown,
 ): asserts value is AccountsListResponse {
@@ -267,7 +250,6 @@ function assertAccountsListResponse(
   if (!Array.isArray(value.providers)) {
     invalid("response.providers", "an array");
   }
-
   const providerIds = new Set<string>();
   for (const [providerIndex, rawProvider] of value.providers.entries()) {
     const path = `response.providers[${providerIndex}]`;
@@ -293,7 +275,6 @@ function assertAccountsListResponse(
         `${path}.runtimeEligibility`,
       );
     }
-
     const accountIds = new Set<string>();
     for (const [accountIndex, account] of rawProvider.accounts.entries()) {
       const accountPath = `${path}.accounts[${accountIndex}]`;
@@ -305,7 +286,6 @@ function assertAccountsListResponse(
     }
   }
 }
-
 /** Parse an untrusted accounts response or throw before it reaches UI state. */
 export function parseAccountsListResponse(
   value: unknown,

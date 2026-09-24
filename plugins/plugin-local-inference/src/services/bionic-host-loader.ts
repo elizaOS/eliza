@@ -40,11 +40,11 @@ import {
 	identifyEmbeddingVector,
 	logger,
 } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
-} from "@elizaos/shared/local-inference/bge-input";
+} from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import {
 	normalizeEmbeddingVector,
 	verifyBgeEmbeddingFile,
@@ -61,12 +61,11 @@ import { mergeElizaTurnStopSequences } from "./eliza-turn-stops";
 import { elizaModelsDir } from "./paths";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
-const REQUEST_TIMEOUT_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 120000;
 /** Defensive ceiling on a single response frame (a full completion). */
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
 const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
-
 interface BionicGenerateResponse {
 	ok: boolean;
 	text?: string;
@@ -77,7 +76,6 @@ interface BionicGenerateResponse {
 	incomplete?: boolean;
 	finishReason?: string;
 }
-
 /**
  * One server-push frame of the op="generateStream" reply: {type:"token",text}
  * per bounded decode step, then a terminal {type:"done", ok, tokens, ms, tokS,
@@ -94,14 +92,12 @@ interface BionicStreamFrame {
 	incomplete?: boolean;
 	finishReason?: string;
 }
-
 /** {ok, text} response for the asr / image ops (transcript / description). */
 interface BionicTextResponse {
 	ok: boolean;
 	text?: string;
 	error?: string;
 }
-
 /**
  * Derive the fused-bundle root from a model GGUF path. The host's
  * `eliza_inference_create(bundleDir)` expects the directory that contains
@@ -116,7 +112,6 @@ export function deriveBundleDir(modelPath: string): string {
 	if (path.basename(dir) === "text") return path.dirname(dir);
 	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
 	if (!existsSync(modelPath)) return "";
-
 	const modelName = path.basename(modelPath);
 	const bundleRoot = path.join(
 		dir,
@@ -150,16 +145,13 @@ export function deriveBundleDir(modelPath: string): string {
 	}
 	return "";
 }
-
 export class BionicHostLoader implements LocalInferenceLoader {
 	private modelPath: string | null = null;
 	private bundleDir = "";
 	private embeddingModelPath: string | null = null;
 	private embeddingBundleDir = "";
-
 	/** @param socketName abstract-namespace socket name (no leading NUL). */
 	constructor(private readonly socketName: string) {}
-
 	async prepareEmbeddingModel(modelPath?: string): Promise<void> {
 		const configured =
 			modelPath ??
@@ -208,10 +200,10 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			);
 		}
 	}
-
-	async embed(args: {
-		input: string;
-	}): Promise<{ embedding: number[]; tokens: number }> {
+	async embed(args: { input: string }): Promise<{
+		embedding: number[];
+		tokens: number;
+	}> {
 		if (Buffer.from(args.input, "utf8").toString("utf8") !== args.input) {
 			throw new ElizaError(
 				"Embedding input contains unpaired UTF-16 surrogates",
@@ -298,7 +290,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			tokens,
 		};
 	}
-
 	async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
 		this.modelPath = args.modelPath;
 		this.bundleDir = deriveBundleDir(args.modelPath);
@@ -306,15 +297,12 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			`[BionicHostLoader] active model ${args.modelPath} (bundle ${this.bundleDir || "<host-default>"})`,
 		);
 	}
-
 	async unloadModel(): Promise<void> {
 		this.modelPath = null;
 	}
-
 	currentModelPath(): string | null {
 		return this.modelPath;
 	}
-
 	async generate(args: {
 		prompt: string;
 		stopSequences?: string[];
@@ -383,7 +371,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		}
 		return res.text ?? "";
 	}
-
 	/**
 	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
 	 * Gemma ASR path (op="asr"). The musl agent can't load the fused lib, so
@@ -418,7 +405,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		}
 		return res.text ?? "";
 	}
-
 	/**
 	 * On-device vision / screen-recognition: describe a raw image (PNG/JPEG/WebP
 	 * bytes, base64) via the bionic host's mmproj describe-image (op="image").
@@ -444,7 +430,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		}
 		return res.text ?? "";
 	}
-
 	/**
 	 * One request → one response over a fresh connection. Length-prefixed frames:
 	 * `[int32 BE byte length][UTF-8 JSON]` in each direction.
@@ -454,14 +439,12 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const frame = Buffer.allocUnsafe(4 + payload.length);
 		frame.writeUInt32BE(payload.length, 0);
 		payload.copy(frame, 4);
-
 		return new Promise<T>((resolve, reject) => {
 			// Abstract-namespace socket: a leading NUL byte in the path.
 			const sock = net.connect({ path: `\0${this.socketName}` });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			let expected = -1;
-
 			const finish = (err: Error | null, value?: T) => {
 				if (settled) return;
 				settled = true;
@@ -470,12 +453,10 @@ export class BionicHostLoader implements LocalInferenceLoader {
 				if (err) reject(err);
 				else resolve(value as T);
 			};
-
 			const timer = setTimeout(
 				() => finish(new Error("[BionicHostLoader] request timed out")),
 				REQUEST_TIMEOUT_MS,
 			);
-
 			sock.on("connect", () => sock.write(frame));
 			sock.on("data", (d: Buffer) => {
 				chunks = Buffer.concat([chunks, d]);
@@ -516,7 +497,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			});
 		});
 	}
-
 	/**
 	 * One request → MANY server-pushed frames over a fresh connection
 	 * (op="generateStream"): each {type:"token",text} frame is forwarded to
@@ -534,7 +514,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const frame = Buffer.allocUnsafe(4 + payload.length);
 		frame.writeUInt32BE(payload.length, 0);
 		payload.copy(frame, 4);
-
 		return new Promise<BionicGenerateResponse>((resolve, reject) => {
 			const sock = net.connect({ path: `\0${this.socketName}` });
 			let settled = false;
@@ -546,7 +525,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			// rejects the turn without ever leaving an unhandled rejection.
 			let chunkChain: Promise<void> = Promise.resolve();
 			let chunkFailure: Error | null = null;
-
 			const finish = (err: Error | null, value?: BionicGenerateResponse) => {
 				if (settled) return;
 				settled = true;
@@ -568,7 +546,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 					}
 				});
 			};
-
 			let timer = setTimeout(
 				() => finish(new Error("[BionicHostLoader] stream request timed out")),
 				REQUEST_TIMEOUT_MS,
@@ -581,7 +558,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 					REQUEST_TIMEOUT_MS,
 				);
 			};
-
 			sock.on("connect", () => sock.write(frame));
 			sock.on("data", (d: Buffer) => {
 				chunks = Buffer.concat([chunks, d]);

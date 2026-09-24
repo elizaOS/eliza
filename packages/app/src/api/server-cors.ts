@@ -6,11 +6,10 @@
  */
 
 import {
-  readAliasedEnv,
   resolveAllowedOrigins,
   resolveRuntimePorts,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 /** Headers the native and browser app clients may send across the API boundary. */
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
@@ -27,7 +26,6 @@ export const CORS_ALLOWED_HEADERS = [
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
 ].join(", ");
-
 /**
  * Build the set of localhost ports allowed for CORS.
  * Reads from env vars at call time so tests can override.
@@ -53,7 +51,6 @@ export function buildCorsAllowedPorts(): Set<string> {
   for (let p = 5174; p <= 5200; p++) ports.add(String(p));
   return ports;
 }
-
 /**
  * Comma-separated explicit origins allowed by the operator (e.g. a
  * remote dashboard host like https://bot.example.com). Localhost gets
@@ -74,31 +71,26 @@ export function getAllowedRemoteOrigins(): Set<string> {
     }),
   );
 }
-
 /** Lazily cached port set — computed once, invalidated on port changes. */
 let cachedCorsAllowedPorts: Set<string> | undefined;
 let cachedRemoteOrigins: Set<string> | undefined;
-
 export function getCorsAllowedPorts(): Set<string> {
   if (!cachedCorsAllowedPorts) {
     cachedCorsAllowedPorts = buildCorsAllowedPorts();
   }
   return cachedCorsAllowedPorts;
 }
-
 export function getCachedRemoteOrigins(): Set<string> {
   if (!cachedRemoteOrigins) {
     cachedRemoteOrigins = getAllowedRemoteOrigins();
   }
   return cachedRemoteOrigins;
 }
-
 /** Invalidate the cached CORS port set so it is recomputed on next request. */
 export function invalidateCorsAllowedPorts(): void {
   cachedCorsAllowedPorts = undefined;
   cachedRemoteOrigins = undefined;
 }
-
 /**
  * Capacitor WebView origins for App Store / Play Store mobile builds.
  *
@@ -114,7 +106,6 @@ const CAPACITOR_WEBVIEW_ORIGINS: ReadonlySet<string> = new Set([
   "ionic://localhost",
   "https://localhost",
 ]);
-
 /**
  * Trusted native app schemes. Browsers cannot host arbitrary web pages at
  * these origins; they are used by packaged/native app shells.
@@ -128,7 +119,6 @@ const NATIVE_WEBVIEW_PROTOCOLS: ReadonlySet<string> = new Set([
   "tauri:",
   "electrobun:",
 ]);
-
 /**
  * URL.origin returns the literal string "null" for non-special schemes
  * (capacitor:, ionic:), so we compare protocol+host instead.
@@ -136,7 +126,6 @@ const NATIVE_WEBVIEW_PROTOCOLS: ReadonlySet<string> = new Set([
 function originString(u: URL): string {
   return `${u.protocol}//${u.host}`;
 }
-
 function isAllowedNativeWebviewHost(u: URL): boolean {
   const host = u.hostname.toLowerCase();
   return (
@@ -147,7 +136,6 @@ function isAllowedNativeWebviewHost(u: URL): boolean {
     host === "::1"
   );
 }
-
 /**
  * Check whether a URL string is an allowed origin for CORS:
  *   - a configured local API port,

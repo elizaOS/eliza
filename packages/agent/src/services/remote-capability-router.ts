@@ -58,7 +58,7 @@ import {
   type TerminalCapability,
   type TerminalRunParams,
 } from "@elizaos/core";
-import { parsePositiveInteger } from "@elizaos/shared";
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 import { trimEndCharacters } from "../utils/string-boundaries.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;

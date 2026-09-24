@@ -7,7 +7,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { MeetingEndReason } from "@elizaos/shared";
+import { type MeetingEndReason } from "@elizaos/core/meetings";
 import type { Page } from "playwright-core";
 import { anySelectorVisible } from "../shared/selectors.js";
 import { googleRemovalIndicators } from "./selectors.js";

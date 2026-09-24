@@ -6,7 +6,7 @@
  */
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
-import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ptyRoutes } from "../index";
 import {

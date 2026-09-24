@@ -24,15 +24,10 @@ import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.
 // ZERO real outbound requests. importActual preserves the module's other exports
 // (the runtime graph imports more than fetchRemoteMedia from here).
 const fetchRemoteMedia = vi.fn();
-vi.mock(
-  "../../../../packages/shared/src/media/fetch.ts",
-  async (importActual) => ({
-    ...(await importActual<
-      typeof import("../../../../packages/shared/src/media/fetch.ts")
-    >()),
-    fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMedia(...args),
-  }),
-);
+vi.mock("@elizaos/core/media", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core/media")>()),
+  fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMedia(...args),
+}));
 
 const { DefaultMessageService } = await import("./message.ts");
 
