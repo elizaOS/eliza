@@ -27,12 +27,27 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
-Run Android native bridge instrumentation on an attached device or emulator:
+## Android native plugin verification
+
+With the Android SDK, Java 21, workspace dependencies, and a running emulator:
 
 ```bash
+node packages/app/scripts/android-native-plugins.mjs --list
 node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554
 ```
 
-Results are stored under `test-results/android-native-plugins/`. Per-plugin tests
-cover self-contained operations and explicit unavailable states; external service
-and physical-device behavior requires its own live acceptance run.
+The runner builds every Android native module and executes its instrumentation
+and real WebView/Capacitor bridge contracts. Missing tests, skips, crashes, and
+incomplete runs fail. It leases the selected emulator, installs isolated test
+packages, and removes them afterward. Physical phones are rejected because the
+suite seeds SMS, contacts, location, and credential fixtures. Results are under
+repository-root `test-results/android-native-plugins/` and collected by Device E2E.
+The app-blocker lane also installs and removes a separate tap-counter fixture APK.
+Tests can export captured PNG/MP4 artifacts; the report records their paths, sizes,
+and SHA-256 checksums.
+Use `--plugin plugin-native-location` for a focused run. `--no-build` is diagnostic
+only and labels the report as not built from the checkout.
+
+Bridge contracts cover registration, native result shapes, selected round trips,
+and error paths; they do not certify cellular delivery, cloud speech services,
+VPN enforcement, embedded agent startup, or all physical camera/audio hardware.

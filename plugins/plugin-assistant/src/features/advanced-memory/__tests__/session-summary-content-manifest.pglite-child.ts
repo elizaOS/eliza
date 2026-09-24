@@ -4,7 +4,7 @@ import { createTestRuntime } from "@elizaos/testing";
 import {
   loadSessionSummaryContentLedger,
   publishSessionSummaryContentManifests,
-} from "./session-summary-content-manifest.ts";
+} from "../session-summary-content-manifest.ts";
 
 const [mode, pgliteDir, encodedEnvelope] = process.argv.slice(2);
 if (!mode || !pgliteDir)

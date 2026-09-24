@@ -16,7 +16,7 @@ import {
   type ProgressiveContentTargetFactory,
   type ProgressiveContentTargetFamily,
   type ProgressiveContentTargetObject,
-} from "@elizaos/testing";
+} from "@elizaos/testing/progressive-content-target";
 import { and, count, eq, inArray, sql, sum } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { DatabaseMigrationService } from "../migration-service";

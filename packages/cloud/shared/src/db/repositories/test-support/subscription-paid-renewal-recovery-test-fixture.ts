@@ -212,6 +212,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   }
   test.each([
     { plan_key: "app_monthly" },
+    { plan_key: "independent_app_plan" },
     { billing_scope_id: randomUUID() },
     { merchant_key: "app-merchant" },
   ])("rejects non-organization renewal sources before provider reads: %j", async (invalid) => {
@@ -232,6 +233,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     ).rejects.toMatchObject({ code: "SUBSCRIPTION_ORGANIZATION_SOURCE_UNAVAILABLE" });
     expect(requests).toEqual([]);
     expect(await allowanceCount(f.source.organization_id)).toBe(0);
+    expect(writes).toBe(0);
   });
   test("missed paid renewal heals through the existing cron without a webhook delivery", async () => {
     const f = await seed();

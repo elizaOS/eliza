@@ -66,7 +66,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 const { readVoicePresetFile, writeVoicePresetFileV2 } = await import(
-  "@elizaos/plugin-local-inference/services/voice/voice-preset-format"
+  "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts"
 );
 
 const DEFAULT_BUNDLE = path.join(

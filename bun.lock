@@ -2090,7 +2090,6 @@
         "@capacitor/core": "8.4.0",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
       },

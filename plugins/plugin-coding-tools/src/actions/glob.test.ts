@@ -10,7 +10,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import {
   globHandler,
   globToRegExp,

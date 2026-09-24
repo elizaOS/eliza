@@ -14,7 +14,11 @@ bun run --cwd plugins/plugin-native-gateway build  # build
 bun run --cwd plugins/plugin-native-gateway test   # tests
 ```
 
-Android bridge verification:
+## Android device verification
+
+The emulator suite drives the real WebView/Capacitor/OkHttp client against a
+loopback WebSocket protocol peer. It verifies authentication, RPCs, pushed events,
+reconnection, rejected handshakes, and cancellation of pending work.
 
 ```bash
 node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-gateway
