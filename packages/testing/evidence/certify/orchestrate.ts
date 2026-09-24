@@ -213,9 +213,9 @@ export interface CertifyOptions {
   gpuQueueRoot?: string;
   /** How long the queue executor waits for a worker result before an honest skip. */
   gpuQueueTimeoutMs?: number;
-  /** Test matrix runner; default spawns `packages/scripts/run-all-tests.mjs`. */
+  /** Test matrix runner; default runs the canonical `bun run test:e2e` lane. */
   runMatrix?: MatrixRunner;
-  /** Extra argv forwarded to the matrix runner (`--matrix-arg` on the CLI). */
+  /** Extra argv for custom matrix runners; the canonical E2E runner accepts none. */
   matrixArgs?: readonly string[];
   /** Env for vision-QA backend resolution + provenance; default `process.env`. */
   env?: NodeJS.ProcessEnv;
@@ -246,25 +246,26 @@ const CERTIFY_QUESTION: VisionQuestion = {
 };
 
 /**
- * Default matrix runner: spawn the repo's cross-package test runner and record
+ * Default matrix runner: run the canonical full E2E command and record
  * a single `matrix` lane from its exit code. A non-zero exit is a lane failure
  * (`failed: 1`), never a skipped-and-forgotten result — the whole point is that
  * a red matrix produces a red certification. The full output is captured as the
  * lane log so a reviewer can read what failed.
  */
 export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
-  const script = path.join(
-    repoRoot,
-    "packages",
-    "scripts",
-    "run-all-tests.mjs",
-  );
-  const command = [`node ${path.relative(repoRoot, script)}`, ...args].join(
-    " ",
-  );
+  if (args.length > 0) {
+    throw new EvidenceError(
+      "The canonical E2E runner does not accept matrix arguments",
+      {
+        code: "CERTIFY_MATRIX_ARGUMENTS",
+        context: { args, command: "bun run test:e2e" },
+      },
+    );
+  }
+  const command = "bun run test:e2e";
   io.out(`  matrix: ${command}`);
   return new Promise<MatrixRunResult>((resolve, reject) => {
-    const child = spawn("node", [script, ...args], {
+    const child = spawn("bun", ["run", "test:e2e"], {
       cwd: repoRoot,
       env: process.env,
     });

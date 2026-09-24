@@ -17,6 +17,13 @@ The run ID is one normalized path leaf. Bundle creation claims that directory
 atomically and refuses existing directories or aliases; a caller-supplied run
 ID cannot traverse outside the configured bundle root.
 
+The certification orchestrator runs `bun run test:e2e` once by default and
+records its complete output and exit status as the matrix lane. This uses the
+same deterministic provider and real product paths as CI. Legacy matrix
+selection arguments are rejected; custom `runMatrix` callers retain their own
+argument contract. A passing lane certifies only the flows that command ran,
+not unexecuted UI, native-device, deployed-service, or acoustic behavior.
+
 ## Schema contract (frozen, `schema: 1`)
 
 ```ts
