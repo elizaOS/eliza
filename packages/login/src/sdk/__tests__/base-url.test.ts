@@ -9,7 +9,6 @@
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
-import { AgentKeypair } from "../agent-keypair";
 import { LoginAuth } from "../auth";
 import { assertSecureBaseUrl, stripTrailingSlashes } from "../base-url";
 import { LoginClient } from "../client";
