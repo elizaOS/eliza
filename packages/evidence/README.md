@@ -92,6 +92,7 @@ artifacts (root exists but is empty).
 
 | silo | roots | lane |
 | --- | --- | --- |
+| `android-native-plugins` | `test-results/android-native-plugins/` | native |
 | `e2e-recordings` | `e2e-recordings/` | e2e |
 | `aesthetic-audit` | `packages/app/aesthetic-audit-output/` | — |
 | `device-e2e` | `packages/app/device-e2e-output/` | native |

@@ -83,6 +83,19 @@ function gradleIncludes() {
   return includes;
 }
 
+/** Native workspace projects must point at Android modules that still exist. */
+export function missingAndroidProjectDirectories(settings, settingsDirectory) {
+  return [
+    ...settings.matchAll(
+      /project\('(:[^']+)'\)\.projectDir\s*=\s*new File\('([^']*plugins\/plugin-native-[^']+)'\)/g,
+    ),
+  ]
+    .filter(
+      (match) => !existsSync(join(settingsDirectory, match[2], "build.gradle")),
+    )
+    .map((match) => ({ project: match[1], directory: match[2] }));
+}
+
 /**
  * Pure, side-effect-free wiring computation — consumed by both the CLI below and
  * the `test:server` gate (`verify-android-native-plugins.test.ts`).
@@ -112,14 +125,24 @@ export function verifyAndroidNativePlugins() {
     required,
     missing,
     undeclared,
+    missingDirectories: missingAndroidProjectDirectories(
+      readFileSync(GRADLE_SETTINGS, "utf8"),
+      dirname(GRADLE_SETTINGS),
+    ),
     declaredCount: declared.size,
     androidCount: plugins.filter((p) => p.hasAndroid).length,
   };
 }
 
 function main() {
-  const { required, missing, undeclared, declaredCount, androidCount } =
-    verifyAndroidNativePlugins();
+  const {
+    required,
+    missing,
+    missingDirectories,
+    undeclared,
+    declaredCount,
+    androidCount,
+  } = verifyAndroidNativePlugins();
 
   console.log(
     `[verify-android-native-plugins] declared @elizaos/capacitor-* deps: ${declaredCount}; ` +
@@ -134,6 +157,14 @@ function main() {
     );
   }
 
+  if (missingDirectories.length > 0) {
+    console.error(
+      "[verify-android-native-plugins] Gradle references missing native modules:",
+      missingDirectories,
+    );
+    process.exitCode = 1;
+  }
+
   if (missing.length > 0) {
     console.error(
       `[verify-android-native-plugins] FAIL: ${missing.length} declared Android plugin(s) are missing ` +
@@ -145,6 +176,7 @@ function main() {
     process.exit(1);
   }
 
+  if (process.exitCode) return;
   console.log(
     `[verify-android-native-plugins] OK: all ${required.length} declared Android native plugins are wired into the gradle project list.`,
   );

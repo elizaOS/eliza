@@ -124,3 +124,11 @@ bun run build        # tsc + rollup
 bun run build:docs   # regenerate README from JSDoc, then build
 bun run clean        # remove dist/
 ```
+
+Android uses Google fused location when Play Services is available and Android
+`LocationManager` on AOSP. The emulator suite injects known coordinates and checks
+reads, watch cancellation, and timeouts without silently skipping missing fixes:
+
+```bash
+node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-location
+```

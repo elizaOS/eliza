@@ -46,6 +46,11 @@ function write(repoRoot: string, relPath: string, content: string): void {
 /** Fixture repo mirroring the real silo layouts inspected on develop. */
 function buildFixtureRepo(): string {
   const repo = tmpDir();
+  write(
+    repo,
+    "test-results/android-native-plugins/run/emulator/report.json",
+    "{}",
+  );
   // scripts/e2e-recordings/run-all.mjs output: per-package Playwright results.
   write(
     repo,
@@ -354,6 +359,11 @@ describe("ingestAllSilos", () => {
   it("ingests each fixture silo with correct counts, classification and stored bytes", async () => {
     const { bundle, results, artifacts } = await build(buildFixtureRepo());
     expect(Object.fromEntries(results.map((r) => [r.silo, r]))).toEqual({
+      "android-native-plugins": {
+        silo: "android-native-plugins",
+        status: "ingested",
+        artifactCount: 1,
+      },
       "e2e-recordings": {
         silo: "e2e-recordings",
         status: "ingested",
