@@ -15,7 +15,7 @@ afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 function child(mode: "write" | "read", envelope?: unknown) {
   const script = path.join(
     testDir,
-    "session-summary-content-manifest.pglite-child.ts",
+    "__tests__/session-summary-content-manifest.pglite-child.ts",
   );
   const result = spawnSync(
     "bun",

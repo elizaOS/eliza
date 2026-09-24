@@ -337,7 +337,7 @@ class ElizaADHDBenchRunner:
         # the correct one against semantic-distractor pressure.
         action_menu = "\n".join(f"- {name}" for name in action_names)
         history_text = "\n".join(
-            f"[{h['role']}] {h['text']}" for h in history[-10:]
+            f"[{h['role']}] {h['text']}" for h in history
         )
 
         prompt = (
@@ -481,16 +481,16 @@ class ElizaADHDBenchRunner:
                         {
                             "turn_index": tr.turn_index,
                             "actions_selected": tr.actions_selected,
-                            "response_text": (tr.response_text or "")[:500],
+                            "response_text": (tr.response_text or ""),
                             "latency_ms": tr.latency_ms,
-                            "thought": (tr.thought or "")[:300],
+                            "thought": (tr.thought or ""),
                             "outcomes": [
                                 {
                                     "type": o.outcome.outcome_type.value,
                                     "expected": str(o.outcome.value),
                                     "passed": o.passed,
-                                    "actual": (o.actual_value or "")[:200],
-                                    "detail": (o.detail or "")[:300],
+                                    "actual": (o.actual_value or ""),
+                                    "detail": (o.detail or ""),
                                 }
                                 for o in tr.outcome_results
                             ],

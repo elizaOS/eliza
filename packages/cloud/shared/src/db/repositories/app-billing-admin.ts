@@ -61,7 +61,7 @@ export async function lockAppBillingOwner(
       review: apps.review_status,
     })
     .from(apps)
-    .where(eq(apps.id, owner.appId))
+    .where(and(eq(apps.id, owner.appId), eq(apps.organization_id, owner.organizationId)))
     .for("update");
   const [user] = await tx
     .select({

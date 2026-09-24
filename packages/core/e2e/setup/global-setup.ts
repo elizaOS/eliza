@@ -14,6 +14,7 @@ import {
 	detectInferenceProviders,
 	SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
 import { AgentRuntime } from "../../src/runtime";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
@@ -235,7 +236,7 @@ export default async function globalSetup(): Promise<void> {
 
 	// ── 3. Create runtime ──────────────────────────────────────────────────
 	const agentId = uuidv4() as UUID;
-	const plugins: Plugin[] = [];
+	const plugins: Plugin[] = [createAssistantPlugin()];
 	if (providerPlugin) {
 		plugins.push(providerPlugin);
 	}
