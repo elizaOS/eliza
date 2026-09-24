@@ -10,7 +10,6 @@ await buildPlugin({
   clean: true,
   externals: [
     "@elizaos/core",
-    "@elizaos/shared",
     "@vscode/ripgrep",
     "phonemizer",
     "figlet",

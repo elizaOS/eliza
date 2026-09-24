@@ -29,7 +29,7 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
   ...(await importOriginal()),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => sessionSpies.storedToken,

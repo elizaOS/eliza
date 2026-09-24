@@ -9,12 +9,9 @@
  * cloud-TTS toggle). A NON-ELIZA prefix is the security-relevant fixture: an
  * ELIZA->ELIZA self-mirror would prove nothing.
  */
-import {
-  buildBrandEnvAliases,
-  getBootConfig,
-  readAliasedEnv,
-  setBootConfig,
-} from "@elizaos/shared";
+import { buildBrandEnvAliases } from "@elizaos/core/config/brand-env-aliases";
+import { getBootConfig, setBootConfig } from "@elizaos/core/config/boot-config-store";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isCloudProvisionedContainer } from "../../src/routes/cloud-provisioning";
 

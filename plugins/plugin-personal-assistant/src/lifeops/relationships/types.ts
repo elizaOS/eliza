@@ -6,15 +6,4 @@
  * `RelationshipStore` and the rest of LifeOps keep importing from `./types.js`.
  */
 
-export {
-  BUILT_IN_RELATIONSHIP_TYPES,
-  type BuiltInRelationshipType,
-  defaultRelationshipTypeRegistry,
-  type Relationship,
-  type RelationshipFilter,
-  type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
-  RelationshipTypeRegistry,
-} from "@elizaos/shared";
+export { BUILT_IN_RELATIONSHIP_TYPES, type BuiltInRelationshipType, defaultRelationshipTypeRegistry, type Relationship, type RelationshipFilter, type RelationshipSentiment, type RelationshipSource, type RelationshipState, type RelationshipStatus, RelationshipTypeRegistry } from "@elizaos/core/knowledge-graph/relationship-types";

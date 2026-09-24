@@ -22,10 +22,7 @@ type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
 };
 
-import {
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/unicode";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {

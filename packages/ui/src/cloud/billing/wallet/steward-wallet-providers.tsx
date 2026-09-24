@@ -24,7 +24,7 @@
  * deep-link WalletConnect stays unavailable rather than false-green.
  */
 
-import { BRAND_COLORS } from "@elizaos/shared/brand";
+import { BRAND_COLORS } from "@elizaos/ui/brand";
 import {
   connectorsForWallets,
   darkTheme,

@@ -9,7 +9,7 @@ import {
   type GoogleApiClientFactory,
   GoogleCalendarClient,
 } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { lifeOpsCalendarEventFromGoogle } from "../src/internal/google-delegates.js";
 

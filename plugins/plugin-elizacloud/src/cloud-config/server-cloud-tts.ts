@@ -1,0 +1,360 @@
+/**
+ * Cloud TTS helpers — proxy to the canonical Eliza Cloud API.
+ *
+ * Upstream routes (see eliza-cloud-v2): `POST /api/v1/voice/tts` and legacy
+ * `POST /api/elevenlabs/tts`. Both accept `{ text, voiceId?, modelId? }` with
+ * **ElevenLabs** voice and model ids; the cloud runs ElevenLabs server-side.
+ *
+ * Pure / config-driven helpers live here so consumers in app and the
+ * agent can resolve cloud TTS configuration without importing the
+ * `@elizaos/plugin-elizacloud` package (reverse-dep boundary). The full
+ * upstream proxy request handler (`handleCloudTtsPreviewRoute`) stays in the
+ * plugin because it ties together the agent runtime route surface.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import { getElizaNamespace } from "@elizaos/core";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveStateDir } from "@elizaos/core";
+import { resolveUserPath } from "@elizaos/core";
+type ConfigLike = Record<string, unknown> & {
+    cloud?: {
+        apiKey?: unknown;
+        baseUrl?: unknown;
+    };
+};
+function resolveConfigPath(env: NodeJS.ProcessEnv = process.env, stateDirPath: string = resolveStateDir(env)): string {
+    const override = env.ELIZA_CONFIG_PATH?.trim();
+    if (override)
+        return resolveUserPath(override);
+    const namespace = getElizaNamespace(env);
+    const primaryPath = path.join(stateDirPath, `${namespace}.json`);
+    if (fs.existsSync(primaryPath))
+        return primaryPath;
+    if (namespace !== "eliza") {
+        const legacyPath = path.join(stateDirPath, "eliza.json");
+        if (fs.existsSync(legacyPath))
+            return legacyPath;
+    }
+    return primaryPath;
+}
+function loadElizaConfig(): ConfigLike {
+    const raw = fs.readFileSync(resolveConfigPath(), "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as ConfigLike)
+        : {};
+}
+function normalizeSecretEnvValue(value: string | undefined): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+        return null;
+    }
+    if (trimmed === "REDACTED" ||
+        trimmed === "[REDACTED]" ||
+        /^\*+$/.test(trimmed)) {
+        return null;
+    }
+    return trimmed;
+}
+function resolveCloudApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
+    const devCloudAuthority = resolveDevCloudEnvAuthority(env);
+    const envKey = normalizeSecretEnvValue(devCloudAuthority
+        ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY", env)
+        : env.ELIZAOS_CLOUD_API_KEY);
+    if (devCloudAuthority) {
+        return envKey;
+    }
+    if (envKey) {
+        return envKey;
+    }
+    try {
+        const config = loadElizaConfig();
+        const configKey = normalizeSecretEnvValue(typeof config.cloud?.apiKey === "string"
+            ? config.cloud.apiKey
+            : undefined);
+        if (configKey) {
+            return configKey;
+        }
+    }
+    catch {
+        // Config is optional; sealed secrets are checked next.
+    }
+    const sealedKey = normalizeSecretEnvValue(getCloudSecret("ELIZAOS_CLOUD_API_KEY"));
+    if (sealedKey) {
+        return sealedKey;
+    }
+    return null;
+}
+let cachedCloudBaseUrlFromConfig: string | null | undefined;
+let hasResolvedCloudBaseUrlFromConfig = false;
+export function __resetCloudBaseUrlCache(): void {
+    cachedCloudBaseUrlFromConfig = undefined;
+    hasResolvedCloudBaseUrlFromConfig = false;
+}
+function resolveCloudBaseUrlFromConfig(): string | null {
+    if (hasResolvedCloudBaseUrlFromConfig) {
+        return cachedCloudBaseUrlFromConfig ?? null;
+    }
+    try {
+        const config = loadElizaConfig();
+        const raw = typeof config.cloud?.baseUrl === "string"
+            ? config.cloud.baseUrl.trim()
+            : "";
+        cachedCloudBaseUrlFromConfig = raw.length > 0 ? raw : null;
+        hasResolvedCloudBaseUrlFromConfig = true;
+        return cachedCloudBaseUrlFromConfig;
+    }
+    catch {
+        // On failure, remember that we attempted resolution to avoid repeated I/O.
+        cachedCloudBaseUrlFromConfig = null;
+        hasResolvedCloudBaseUrlFromConfig = true;
+        return null;
+    }
+}
+export function resolveElevenLabsApiKeyForCloudMode(env: NodeJS.ProcessEnv = process.env): string | null {
+    const directKey = normalizeSecretEnvValue(env.ELEVENLABS_API_KEY);
+    if (directKey) {
+        return directKey;
+    }
+    const devCloudEnvIsAuthoritative = Boolean(resolveDevCloudEnvAuthority(env));
+    const cloudTtsSelection = devCloudEnvIsAuthoritative
+        ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_USE_TTS", env)
+        : env.ELIZAOS_CLOUD_USE_TTS;
+    let configWantsCloudTts = false;
+    if (!devCloudEnvIsAuthoritative) {
+        try {
+            configWantsCloudTts = isElizaCloudServiceSelectedInConfig(loadElizaConfig() as Record<string, unknown>, "tts");
+        }
+        catch {
+            configWantsCloudTts = false;
+        }
+    }
+    const cloudTtsEnabled = cloudTtsSelection === "true" ||
+        (!devCloudEnvIsAuthoritative &&
+            cloudTtsSelection === undefined &&
+            configWantsCloudTts);
+    if (!cloudTtsEnabled) {
+        return null;
+    }
+    const cloudTtsDisabled = devCloudEnvIsAuthoritative
+        ? resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_TTS_DISABLED", env)
+        : env.ELIZA_CLOUD_TTS_DISABLED;
+    if (cloudTtsDisabled === "true") {
+        return null;
+    }
+    return resolveCloudApiKey(env);
+}
+export function ensureCloudTtsApiKeyAlias(env: NodeJS.ProcessEnv = process.env): boolean {
+    const directKey = normalizeSecretEnvValue(env.ELEVENLABS_API_KEY);
+    if (directKey) {
+        return false;
+    }
+    const cloudBackedKey = resolveElevenLabsApiKeyForCloudMode(env);
+    if (!cloudBackedKey) {
+        return false;
+    }
+    env.ELEVENLABS_API_KEY = cloudBackedKey;
+    return true;
+}
+export function resolveCloudTtsBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+    const devCloudEnvIsAuthoritative = Boolean(resolveDevCloudEnvAuthority(env));
+    const fromEnv = (devCloudEnvIsAuthoritative
+        ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL", env)
+        : env.ELIZAOS_CLOUD_BASE_URL)?.trim() ?? "";
+    const fromConfig = fromEnv.length > 0 || devCloudEnvIsAuthoritative
+        ? null
+        : resolveCloudBaseUrlFromConfig();
+    const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
+    const fallback = resolveCloudApiBaseUrl();
+    const base = configured.length > 0 ? configured : fallback;
+    try {
+        const parsed = new URL(base);
+        let pathName = parsed.pathname.replace(/\/+$/, "");
+        if (!pathName || pathName === "/") {
+            pathName = "/api/v1";
+        }
+        parsed.pathname = pathName;
+        return parsed.toString().replace(/\/$/, "");
+    }
+    catch {
+        // error-policy:J3 malformed speech overrides use the canonical environment.
+        return fallback;
+    }
+}
+/**
+ * A cloud base URL plus its `www`/apex sibling when the configured host is
+ * itself an apex or `www` host. Service subdomains such as `api.eliza.app`
+ * must never grow invalid `www.api.*` retry candidates. The single URL parse
+ * lives here so TTS and STT share one validated fan-out.
+ */
+function resolveWwwApexBaseSiblings(base: string): string[] {
+    const trimmed = base.replace(/\/+$/, "");
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    }
+    catch {
+        // A custom base URL may be a bare path the resolver already validated;
+        // without a parsable host there is no sibling to add.
+        return [trimmed];
+    }
+    const labels = parsed.hostname.split("@elizaos/plugin-elizacloud/cloud-config");
+    if (!parsed.hostname.startsWith("www.") && labels.length > 2) {
+        return [trimmed];
+    }
+    parsed.hostname = parsed.hostname.startsWith("www.")
+        ? parsed.hostname.slice(4)
+        : `www.${parsed.hostname}`;
+    return [trimmed, parsed.toString().replace(/\/$/, "")];
+}
+export function resolveCloudTtsCandidateUrls(env: NodeJS.ProcessEnv = process.env): string[] {
+    const base = resolveCloudTtsBaseUrl(env).replace(/\/+$/, "");
+    const candidates = new Set<string>();
+    const addEndpointsForApiV1Base = (baseUrl: string): void => {
+        const trimmed = baseUrl.replace(/\/+$/, "");
+        candidates.add(`${trimmed}/voice/tts`);
+        try {
+            const u = new URL(trimmed);
+            const pathName = u.pathname.replace(/\/+$/, "");
+            if (pathName.endsWith("/api/v1")) {
+                // Preserve the ElevenLabs-shaped compat route; `/audio/speech` would
+                // require OpenAI-style model/voice ids and is intentionally not used.
+                candidates.add(`${u.origin}/api/elevenlabs/tts`);
+            }
+        }
+        catch {
+            // Custom base URL may be a path-like value; the base endpoint is already queued.
+        }
+    };
+    for (const siblingBase of resolveWwwApexBaseSiblings(base)) {
+        addEndpointsForApiV1Base(siblingBase);
+    }
+    return [...candidates];
+}
+/**
+ * Upstream cloud STT endpoint (`POST /voice/stt`) candidates, derived from the
+ * same base URL as TTS. Interactive web capture posts a WAV here through the
+ * agent proxy (`/api/asr/cloud`) so `eliza-cloud` ASR is the real transcriber
+ * instead of the engine-dependent browser SpeechRecognition. The `www`/apex
+ * pairing mirrors the TTS resolver for apex/`www` bases; service subdomains
+ * stay exact. There is no ElevenLabs-shaped
+ * legacy STT compat route (unlike TTS), so only the canonical `/voice/stt` path
+ * is queued.
+ */
+export function resolveCloudSttCandidateUrls(env: NodeJS.ProcessEnv = process.env): string[] {
+    const base = resolveCloudTtsBaseUrl(env).replace(/\/+$/, "");
+    const candidates = new Set<string>();
+    for (const siblingBase of resolveWwwApexBaseSiblings(base)) {
+        candidates.add(`${siblingBase}/voice/stt`);
+    }
+    return [...candidates];
+}
+/**
+ * After a non-OK upstream response, only try the next URL for likely-transient /
+ * wrong-route issues. Avoid retrying 401/402/429 etc. so we do not double-charge TTS.
+ */
+export function shouldRetryCloudTtsUpstream(status: number): boolean {
+    return status === 404 || status === 502 || status === 503;
+}
+/** OpenAI-style names — not valid ElevenLabs `voiceId`; map to default voice. */
+const OPENAI_STYLE_VOICE_ALIASES = new Set([
+    "alloy",
+    "ash",
+    "ballad",
+    "coral",
+    "echo",
+    "nova",
+    "sage",
+    "shimmer",
+    "verse",
+]);
+/** Eliza Cloud default premade voice (matches eliza-cloud-v2 ElevenLabs service). */
+const DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID = "eleven_flash_v2_5";
+/** Matches `MAX_TEXT_LENGTH` in eliza-cloud-v2 `app/api/v1/voice/tts/route.ts`. */
+export const ELIZA_CLOUD_TTS_MAX_TEXT_CHARS = 5000;
+function isLikelyEdgeOrAzureNeuralVoiceId(raw: string): boolean {
+    const t = raw.trim();
+    return /^[a-z]{2}-[A-Z]{2}-/i.test(t) && /Neural$/i.test(t);
+}
+function normalizeElizaCloudVoiceId(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+    const lower = trimmed.toLowerCase();
+    if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+    }
+    if (isLikelyEdgeOrAzureNeuralVoiceId(trimmed)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+    }
+    return trimmed;
+}
+export function resolveElizaCloudTtsVoiceId(bodyVoiceId: unknown, env: NodeJS.ProcessEnv = process.env): string {
+    if (typeof bodyVoiceId === "string" && bodyVoiceId.trim()) {
+        return normalizeElizaCloudVoiceId(bodyVoiceId);
+    }
+    const envVoice = env.ELIZAOS_CLOUD_TTS_VOICE?.trim() ?? "";
+    if (envVoice) {
+        return normalizeElizaCloudVoiceId(envVoice);
+    }
+    return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+}
+export function normalizeElizaCloudTtsModelId(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    const lower = trimmed.toLowerCase();
+    if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    }
+    if (/^gpt-/i.test(trimmed)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    }
+    if (/^tts-1/i.test(trimmed)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    }
+    if (/mini-tts/i.test(trimmed)) {
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    }
+    return trimmed;
+}
+export function resolveCloudProxyTtsModel(bodyModel: unknown, env: NodeJS.ProcessEnv = process.env): string {
+    const envModel = env.ELIZAOS_CLOUD_TTS_MODEL?.trim() ?? "";
+    const raw = typeof bodyModel === "string" && bodyModel.trim() ? bodyModel.trim() : "";
+    const chosen = raw || envModel;
+    if (!chosen)
+        return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+    return normalizeElizaCloudTtsModelId(chosen);
+}
+export function mirrorCompatHeaders(req: {
+    headers: Record<string, string | string[] | undefined>;
+}): void {
+    const HEADER_ALIASES = [
+        ["x-elizaos-token", "x-eliza-token"],
+        ["x-elizaos-export-token", "x-eliza-export-token"],
+        ["x-elizaos-client-id", "x-eliza-client-id"],
+        ["x-elizaos-terminal-token", "x-eliza-terminal-token"],
+        ["x-elizaos-ui-language", "x-eliza-ui-language"],
+        ["x-elizaos-agent-action", "x-eliza-agent-action"],
+    ] as const;
+    for (const [appHeader, elizaHeader] of HEADER_ALIASES) {
+        const appValue = req.headers[appHeader];
+        const elizaValue = req.headers[elizaHeader];
+        if (appValue != null && elizaValue == null) {
+            req.headers[elizaHeader] = appValue;
+        }
+        if (elizaValue != null && appValue == null) {
+            req.headers[appHeader] = elizaValue;
+        }
+    }
+}
+/** Internal: expose the resolved cloud API key for the route handler that lives in plugin-elizacloud. */
+export function _internalResolveCloudApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
+    return resolveCloudApiKey(env);
+}

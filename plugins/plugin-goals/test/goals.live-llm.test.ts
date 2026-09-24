@@ -16,7 +16,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsGoalDefinition } from "@elizaos/shared";
+import { type LifeOpsGoalDefinition } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import { evaluateGoalProgressWithLlm } from "../src/goal-semantic-evaluator.ts";
 

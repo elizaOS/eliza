@@ -52,7 +52,7 @@ import {
   GgmlSileroVad,
   VadDetector,
 } from "@elizaos/plugin-local-inference/services/voice/vad";
-import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
+import { buildVoiceTurnSignal } from "@elizaos/core/voice/respond-gate";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(

@@ -33,7 +33,7 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
-import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
@@ -125,7 +125,7 @@ export function turnSignalFromProbability(args: {
 
 /**
  * Rules-of-thumb EOT classifier. Delegates to the single canonical heuristic in
- * `@elizaos/shared/voice-eot` — the SAME scorer the UI shell capture path
+ * `@elizaos/core/voice-eot` — the SAME scorer the UI shell capture path
  * (`packages/ui/src/voice/end-of-turn.ts`) uses, so the two surfaces can never
  * drift. The priority-ordered rule table (ellipsis, punctuation, question-tags,
  * conjunctions, fillers, prepositions, dangling modals, short-utterance) lives

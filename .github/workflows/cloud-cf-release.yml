@@ -3313,8 +3313,8 @@ jobs:
 
       # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Run deployed Personal identity, chat, and continuity trajectory
         id: deployed-browser

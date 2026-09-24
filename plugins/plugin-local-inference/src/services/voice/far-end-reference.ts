@@ -35,7 +35,7 @@ import {
 	ECHO_CAL_FAR_ENERGY_FLOOR,
 	ECHO_CAL_MIN_CONFIDENCE,
 	estimateEchoAlignment,
-} from "@elizaos/shared/voice/aec";
+} from "@elizaos/core/voice/aec";
 import {
 	AudioFrameDecodeError,
 	type AudioFrameEvent,

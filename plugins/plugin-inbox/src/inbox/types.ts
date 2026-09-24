@@ -177,8 +177,4 @@ export interface DeferredInboxDraft {
   senderName: string;
 }
 
-export type {
-  InboxAutoReplyConfig,
-  InboxTriageConfig,
-  InboxTriageRules,
-} from "@elizaos/shared";
+export { type InboxAutoReplyConfig, type InboxTriageConfig, type InboxTriageRules } from "@elizaos/core/contracts/inbox";

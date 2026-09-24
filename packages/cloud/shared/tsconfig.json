@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["esnext", "dom"],
+    "lib": [
+      "esnext",
+      "dom"
+    ],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -13,38 +16,90 @@
     "isolatedModules": true,
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "ignoreDeprecations": "6.0",
     "paths": {
-      "@/billing": ["./src/billing/index.ts"],
-      "@/billing/*": ["./src/billing/*"],
-      "@/db": ["./src/db/index.ts"],
-      "@/db/*": ["./src/db/*"],
-      "@/lib": ["./src/lib/index.ts"],
-      "@/lib/*": ["./src/lib/*"],
-      "@/types": ["./src/types/index.ts"],
-      "@/types/*": ["./src/types/*"],
-      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
-      "@elizaos/cloud-routing/*": ["../routing/src/*"],
-      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
-      "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
-      "@elizaos/core": ["../../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"],
-      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/src/*"],
-      "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
-      "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
-      "@elizaos/plugin-todos/edge": ["../../../plugins/plugin-todos/src/edge.ts"],
-      "@elizaos/plugin-web-search/edge": ["../../../plugins/plugin-web-search/src/edge.ts"],
-      "drizzle-orm": ["../../../node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
-      "@elizaos/plugin-scheduling": ["../../../plugins/plugin-scheduling/src/index.ts"]
+      "@/billing": [
+        "./src/billing/index.ts"
+      ],
+      "@/billing/*": [
+        "./src/billing/*"
+      ],
+      "@/db": [
+        "./src/db/index.ts"
+      ],
+      "@/db/*": [
+        "./src/db/*"
+      ],
+      "@/lib": [
+        "./src/lib/index.ts"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@/types": [
+        "./src/types/index.ts"
+      ],
+      "@/types/*": [
+        "./src/types/*"
+      ],
+      "@elizaos/cloud-routing": [
+        "../routing/src/index.ts"
+      ],
+      "@elizaos/cloud-routing/*": [
+        "../routing/src/*"
+      ],
+      "@elizaos/cloud-sdk": [
+        "../sdk/src/index.ts"
+      ],
+      "@elizaos/cloud-sdk/*": [
+        "../sdk/src/*"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/index.ts"
+      ],
+      "@elizaos/plugin-sql/*": [
+        "../../../plugins/plugin-sql/src/*"
+      ],
+      "@elizaos/core/edge": [
+        "../../../packages/core/src/index.edge.ts"
+      ],
+      "@elizaos/core": [
+        "../../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../../packages/core/src/*"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../../plugins/plugin-elizacloud/src/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../../plugins/plugin-elizacloud/src/*"
+      ],
+      "@elizaos/plugin-todos/edge": [
+        "../../../plugins/plugin-todos/src/edge.ts"
+      ],
+      "@elizaos/plugin-web-search/edge": [
+        "../../../plugins/plugin-web-search/src/edge.ts"
+      ],
+      "drizzle-orm": [
+        "../../../node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../../../node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/plugin-scheduling": [
+        "../../../plugins/plugin-scheduling/src/index.ts"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",

@@ -52,7 +52,7 @@ vi.mock("@elizaos/auth", () => ({
   LoginApiError: class extends Error {},
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
   ...(await importOriginal()),
   buildStewardOAuthAuthorizeUrl: vi.fn(),
   generateStewardOAuthState: vi.fn(),

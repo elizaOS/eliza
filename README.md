@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
+  <img src="packages/ui/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
   <p><strong>Your agentic operating system.</strong></p>
   <p>

@@ -1,8 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalEoaBackend } from "./local-eoa-backend.js";
 import { resolveWalletBackend } from "./select-backend.js";

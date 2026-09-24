@@ -48,8 +48,8 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
-import { readAliasedEnv } from "@elizaos/shared";
-import { fetchRemoteMedia } from "@elizaos/shared/media";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { fetchRemoteMedia } from "@elizaos/core/media";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,

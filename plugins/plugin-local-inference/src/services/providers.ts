@@ -17,12 +17,7 @@
  */
 
 import fs from "node:fs/promises";
-import type {
-	ProviderEnableState,
-	ProviderId,
-	ProviderMeta,
-	ProviderStatus,
-} from "@elizaos/shared";
+import { type ProviderEnableState, type ProviderId, type ProviderMeta, type ProviderStatus } from "@elizaos/core/contracts/local-inference-providers";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";

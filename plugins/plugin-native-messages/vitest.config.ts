@@ -63,14 +63,6 @@ export default defineConfig({
           "packages/ui/src/app-navigate-view.ts",
         ),
       },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(repoRoot, "packages/shared/src/$1"),
-      },
       ...baseAliases,
     ],
   },

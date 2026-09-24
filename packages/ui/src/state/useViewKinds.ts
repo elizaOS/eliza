@@ -7,7 +7,7 @@ import {
   isViewKindEnabled,
   isViewVisible,
   resolveViewKind,
-} from "@elizaos/shared/views/view-kind";
+} from "@elizaos/core/views/view-kind";
 import { useMemo } from "react";
 import { useIsDeveloperMode } from "./useDeveloperMode";
 import { useIsPreviewMode } from "./usePreviewMode";

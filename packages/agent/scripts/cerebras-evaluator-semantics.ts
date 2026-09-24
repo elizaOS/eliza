@@ -686,7 +686,7 @@ async function main() {
       "plugins/plugin-assistant/src/prompts",
       "packages/shared/src",
       "packages/auth/src/vault",
-      "packages/shared/src/catalog",
+      "packages/core/src/catalog",
       "packages/cloud/routing/src",
       "plugins/plugin-openai",
       "plugins/plugin-sql/src",

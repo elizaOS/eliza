@@ -19,10 +19,7 @@
  * rAF, which would fabricate a slow frame for the watchdog on resume.
  */
 
-import {
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/unicode";
 import type * as React from "react";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";

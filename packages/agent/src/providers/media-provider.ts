@@ -22,7 +22,7 @@ import {
 import {
   fetchRemoteMedia,
   VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import type {
   AudioGenConfig,
   AudioGenProvider,

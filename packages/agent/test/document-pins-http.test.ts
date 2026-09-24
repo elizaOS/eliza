@@ -8,7 +8,7 @@ import {
   createDocumentsPlugin,
   type DocumentMemoryMetadata,
 } from "@elizaos/plugin-assistant";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { knowledgePlugin } from "../../../plugins/plugin-knowledge/src/plugin.ts";

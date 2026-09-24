@@ -16,14 +16,7 @@ import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 // node test lane (goals.real-db), where the barrel (→ React views → @elizaos/ui)
 // must never enter and has no dist entry to resolve.
 import { resolveActivitySignalReliability } from "@elizaos/plugin-health/sleep/source-reliability";
-import {
-  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
-  type LifeOpsActivitySignal,
-  type LifeOpsDevicePlatform,
-  type LifeOpsTelemetryEvent,
-  type LifeOpsTelemetryMessageChannel,
-  type LifeOpsTelemetryPayload,
-} from "@elizaos/shared";
+import { LIFEOPS_ACTIVITY_SIGNAL_SOURCES, type LifeOpsActivitySignal, type LifeOpsDevicePlatform, type LifeOpsTelemetryEvent, type LifeOpsTelemetryMessageChannel, type LifeOpsTelemetryPayload } from "@elizaos/core/contracts/personal-assistant";
 import type {
   SignalSourceContribution,
   SignalSourceRegistry,

@@ -26,14 +26,8 @@ import type {
   GoogleParsedMailto,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google-workspace";
-import {
-  fail,
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorSide,
-  type LifeOpsGmailMessageSummary,
-  type LifeOpsGmailSearchFeed,
-  type LifeOpsGoogleCapability,
-} from "@elizaos/shared";
+import { fail } from "@elizaos/core/lifeops-normalize/service-normalize";
+import { type LifeOpsConnectorGrant, type LifeOpsConnectorSide, type LifeOpsGmailMessageSummary, type LifeOpsGmailSearchFeed, type LifeOpsGoogleCapability } from "@elizaos/core/contracts/personal-assistant";
 
 const GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX = "connector-account:";
 

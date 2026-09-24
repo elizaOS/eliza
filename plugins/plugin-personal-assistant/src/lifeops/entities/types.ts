@@ -6,20 +6,4 @@
  * `EntityStore` and the rest of LifeOps keep importing from `./types.js`.
  */
 
-export {
-  BUILT_IN_ENTITY_TYPES,
-  type BuiltInEntityType,
-  DEFAULT_CONNECTOR_ACCOUNT_ID,
-  defaultEntityTypeRegistry,
-  type Entity,
-  type EntityAttribute,
-  type EntityFilter,
-  type EntityIdentity,
-  type EntityIdentityAddedVia,
-  type EntityResolveCandidate,
-  type EntityState,
-  EntityTypeRegistry,
-  type EntityVisibility,
-  normalizeEntityConnectorAccountId,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
+export { BUILT_IN_ENTITY_TYPES, type BuiltInEntityType, DEFAULT_CONNECTOR_ACCOUNT_ID, defaultEntityTypeRegistry, type Entity, type EntityAttribute, type EntityFilter, type EntityIdentity, type EntityIdentityAddedVia, type EntityResolveCandidate, type EntityState, EntityTypeRegistry, type EntityVisibility, normalizeEntityConnectorAccountId, SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";

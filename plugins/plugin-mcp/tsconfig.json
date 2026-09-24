@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "strict": true,
     "strictNullChecks": true,
     "noEmit": true,
@@ -19,13 +22,21 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/plugin-mcp": ["./src/index.ts"]
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/plugin-mcp": [
+        "./src/index.ts"
+      ]
     },
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "__tests__/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",

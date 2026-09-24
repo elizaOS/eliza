@@ -976,7 +976,7 @@ jobs:
             bun run build:core
             timeout --signal=TERM --kill-after=5s 30s \
               node --import tsx --input-type=module \
-              -e 'await import("@elizaos/core"); await import("@elizaos/shared/text/template-rendering")'
+              -e 'await import("@elizaos/core"); await import("@elizaos/plugin-assistant/text/template-rendering")'
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core

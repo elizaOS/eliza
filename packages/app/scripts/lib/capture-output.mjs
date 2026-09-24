@@ -212,14 +212,14 @@ export function mirrorToRecordings(suite, srcPath) {
 }
 
 // Built-in default API port for the dev backend console-log endpoint. Mirrors
-// `DEFAULT_DESKTOP_API_PORT` in packages/shared/src/runtime-env.ts — kept inline
+// `DEFAULT_DESKTOP_API_PORT` in packages/core/src/runtime-env.ts — kept inline
 // so this leaf capture lib stays dependency-light (node builtins only). If the
 // canonical default changes, update it there and here.
 export const DEFAULT_BACKEND_LOG_PORT = 31337;
 
 // Env keys, in precedence order, the dev/capture orchestrator uses to advertise
 // the (possibly auto-shifted) backend API port. Mirrors `DESKTOP_API_PORT_KEYS`
-// in packages/shared/src/runtime-env.ts (ELIZA_API_PORT wins over ELIZA_PORT).
+// in packages/core/src/runtime-env.ts (ELIZA_API_PORT wins over ELIZA_PORT).
 const BACKEND_LOG_PORT_ENV_KEYS = ["ELIZA_API_PORT", "ELIZA_PORT"];
 
 /**

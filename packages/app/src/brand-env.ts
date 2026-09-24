@@ -6,14 +6,9 @@
  * `APP_ENV_ALIASES` is the concrete table resolved for this app's configured
  * prefix (`APP_ENV_PREFIX`).
  */
-import { buildBrandEnvAliases } from "@elizaos/shared";
 import { APP_CONFIG } from "./app-config";
+import { buildBrandEnvAliases } from "@elizaos/core/config/brand-env-aliases";
 import { normalizeEnvPrefix } from "./env-prefix.js";
-
 export { buildBrandEnvAliases };
-
-export const APP_ENV_PREFIX = normalizeEnvPrefix(
-  APP_CONFIG.envPrefix ?? APP_CONFIG.cliName,
-);
-
+export const APP_ENV_PREFIX = normalizeEnvPrefix(APP_CONFIG.envPrefix ?? APP_CONFIG.cliName);
 export const APP_ENV_ALIASES = buildBrandEnvAliases(APP_ENV_PREFIX);

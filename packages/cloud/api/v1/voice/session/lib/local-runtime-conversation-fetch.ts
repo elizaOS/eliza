@@ -5,13 +5,7 @@
  * removes cloud-only credentials.
  */
 
-import {
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
-  parseVoiceUiContext,
-  REALTIME_VOICE_CLIENT_TRANSPORT,
-  type VoiceUiContext,
-} from "@elizaos/shared";
+import { LOCAL_VOICE_RUNTIME_AGENT_HEADER, LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER, parseVoiceUiContext, REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/core/voice";
 import {
   VOICE_CHANNEL_TYPE,
   VOICE_STREAM_PROTOCOL,

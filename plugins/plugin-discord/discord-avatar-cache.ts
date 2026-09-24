@@ -10,7 +10,7 @@ import { resolveStateDir } from "@elizaos/core";
 import {
 	type FetchMediaOptions,
 	fetchRemoteMedia,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 
 const DISCORD_AVATAR_ROUTE_PREFIX = "/api/avatar/discord";
 const MAX_DISCORD_AVATAR_BYTES = 2 * 1024 * 1024;

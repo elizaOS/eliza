@@ -1,15 +1,6 @@
 /** Defines lifeops presence day fixture data for deterministic LifeOps mock-service tests. */
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsActivitySignalSource,
-  LifeOpsActivitySignalState,
-  LifeOpsHealthSignal,
-  LifeOpsHealthSignalSource,
-} from "@elizaos/shared";
-import {
-  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
-  LIFEOPS_HEALTH_SIGNAL_SOURCES,
-} from "@elizaos/shared";
+import { type LifeOpsActivitySignal, type LifeOpsActivitySignalSource, type LifeOpsActivitySignalState, type LifeOpsHealthSignal, type LifeOpsHealthSignalSource } from "@elizaos/core/contracts/personal-assistant";
+import { LIFEOPS_ACTIVITY_SIGNAL_SOURCES, LIFEOPS_HEALTH_SIGNAL_SOURCES } from "@elizaos/core/contracts/personal-assistant";
 
 /**
  * Presence-day fixture for the lifeops-presence mockoon environment.

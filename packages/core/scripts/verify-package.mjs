@@ -28,14 +28,19 @@ const run = (command, args, cwd) =>
 	execFileSync(command, args, { cwd, env, encoding: "utf8", stdio: "pipe" });
 try {
 	run(process.execPath, ["scripts/clean-src-artifacts.mjs", "--check"], core);
-	assert.deepEqual(readdirSync(path.join(core, "dist")).sort(), [
-		"index.d.ts",
-		"index.js",
-	]);
 	const manifest = JSON.parse(
 		readFileSync(path.join(core, "package.json"), "utf8"),
 	);
-	assert.deepEqual(Object.keys(manifest.exports), ["."]);
+	assert.ok(manifest.exports["."], "The Node runtime entrypoint is required");
+	for (const [subpath, target] of Object.entries(manifest.exports)) {
+		const distribution = typeof target === "string" ? target : target.import ?? target.default;
+		if (typeof distribution === "string" && !distribution.includes("*")) {
+			assert.ok(existsSync(path.join(core, distribution)), `Missing published export ${subpath}: ${distribution}`);
+		}
+		if (typeof target === "object" && target.types) {
+			assert.ok(existsSync(path.join(core, target.types)), `Missing declarations for ${subpath}`);
+		}
+	}
 	const packed = new Map();
 	function pack(directory) {
 		const pkg = JSON.parse(
@@ -82,7 +87,7 @@ try {
 			!/^@elizaos\/(?:cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|retrieval$|plugin-)/.test(
 				pkg.name,
 			) &&
-				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|file-type$|json5$|handlebars$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
+				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|handlebars$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
 					pkg.name,
 				),
 			`Packed kernel pulls optional host dependency ${pkg.name}`,

@@ -45,7 +45,7 @@ import {
   webSearchEdgeAction,
   webSearchEdgePlugin,
 } from "@elizaos/plugin-web-search/edge";
-import type { AgentCapabilityTransport } from "@elizaos/shared";
+import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
 import {
   generateText,
   type JSONSchema7,

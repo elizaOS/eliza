@@ -8,7 +8,7 @@
  * AgentRuntime + SQLiteDatabaseAdapter with a real world and room; no model.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";

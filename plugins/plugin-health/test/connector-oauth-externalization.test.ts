@@ -22,7 +22,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setAcmeClientTestEnv } from "../../../packages/shared/src/test-env-config.ts";
+import { setAcmeClientTestEnv } from "@elizaos/core/test-env-config";
 import {
   type ConnectorContribution,
   type ConnectorRegistry,

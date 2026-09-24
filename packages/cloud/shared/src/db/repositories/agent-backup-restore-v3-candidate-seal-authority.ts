@@ -1,20 +1,7 @@
 /** Durable one-shot authority and byte-exact seal/replay for restore-v3 candidates. */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import {
-  type AgentBackupRestoreV3CandidateReceipt,
-  type AgentBackupRestoreV3CandidateSealAuthority,
-  type AgentBackupRestoreV3CandidateSealAuthorization,
-  type AgentBackupRestoreV3CandidateSealAuthorizationRequest,
-  type AgentBackupRestoreV3OperationControl,
-  type AgentBackupRestoreV3StagingSession,
-  canonicalizeAgentBackupRestoreV3CandidateReceipt,
-  canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest,
-  parseAgentBackupRestoreV3CandidateReceipt,
-  parseAgentBackupRestoreV3CandidateSealAuthorization,
-  parseAgentBackupRestoreV3CandidateSealAuthorizationRequest,
-  parseAgentBackupRestoreV3StagingSession,
-} from "@elizaos/shared";
+import { type AgentBackupRestoreV3CandidateReceipt, type AgentBackupRestoreV3CandidateSealAuthority, type AgentBackupRestoreV3CandidateSealAuthorization, type AgentBackupRestoreV3CandidateSealAuthorizationRequest, type AgentBackupRestoreV3OperationControl, type AgentBackupRestoreV3StagingSession, canonicalizeAgentBackupRestoreV3CandidateReceipt, canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest, parseAgentBackupRestoreV3CandidateReceipt, parseAgentBackupRestoreV3CandidateSealAuthorization, parseAgentBackupRestoreV3CandidateSealAuthorizationRequest, parseAgentBackupRestoreV3StagingSession } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import { and, eq, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";

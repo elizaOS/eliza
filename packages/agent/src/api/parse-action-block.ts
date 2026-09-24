@@ -16,7 +16,7 @@ export interface CoordinationLLMResponse {
 }
 
 import { toWellFormedUnicode } from "@elizaos/core";
-import { isPermissionId, type PermissionId } from "@elizaos/shared";
+import { isPermissionId, type PermissionId } from "@elizaos/core/contracts/permissions";
 
 /**
  * Parsed shape for the `permission_request` action. The agent emits this

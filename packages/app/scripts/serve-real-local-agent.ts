@@ -19,7 +19,7 @@ import {
 import type {
   HttpPlugin as Plugin,
   Route,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/core/api/http-plugin";
 import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";

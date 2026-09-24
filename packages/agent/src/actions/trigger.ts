@@ -42,7 +42,7 @@ import {
   AUTONOMY_SERVICE_TYPE,
   resolveMessageTimeZone,
 } from "@elizaos/plugin-assistant";
-import { textStatesExplicitRecurrence } from "@elizaos/shared";
+import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
 import {
   describeCronSchedule,
   describeIntervalMs,

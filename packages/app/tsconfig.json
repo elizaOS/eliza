@@ -3,14 +3,18 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/app": ["../app/src/index.ts"],
+      "@elizaos/app": [
+        "../app/src/index.ts"
+      ],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-blocker": [
+        "./src/types/app-plugin-modules.d.ts"
+      ],
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
@@ -23,16 +27,30 @@
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-wallet": [
+        "../../plugins/plugin-wallet/src/index.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/index.ts"
+      ],
+      "@elizaos/plugin-sql/*": [
+        "../../plugins/plugin-sql/src/*"
+      ],
+      "@elizaos/agent": [
+        "../agent/src/index.ts"
+      ],
+      "@elizaos/plugin-video": [
+        "../../plugins/plugin-video/dist/index.d.ts"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
-      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/src/index.ts"
+      ],
+      "@elizaos/plugin-browser/*": [
+        "../../plugins/plugin-browser/src/*"
+      ],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
@@ -45,8 +63,9 @@
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/core": [
+        "../core/src/index.ts"
+      ],
       "@elizaos/plugin-native-inference/host-bridge": [
         "../../plugins/plugin-native-inference/src/bridge.ts"
       ],

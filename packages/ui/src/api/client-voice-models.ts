@@ -9,138 +9,82 @@
  * Augments `ElizaClient` via declaration merging, same pattern as
  * `client-local-inference.ts`.
  */
-
-import type {
-  NetworkPolicyPreferences,
-  VoiceModelId,
-  VoiceModelVersion,
-} from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
-
+import { type NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import { type VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 export interface VoiceModelInstallationView {
-  readonly id: VoiceModelId;
-  readonly installedVersion: string | null;
-  readonly pinned: boolean;
-  readonly lastError: string | null;
+    readonly id: VoiceModelId;
+    readonly installedVersion: string | null;
+    readonly pinned: boolean;
+    readonly lastError: string | null;
 }
-
 export interface VoiceModelCheckStatus {
-  readonly id: VoiceModelId;
-  readonly installedVersion: string | null;
-  readonly pinned: boolean;
-  readonly latestKnown: VoiceModelVersion | null;
-  readonly allow: boolean;
-  readonly reason:
-    | "up-to-date"
-    | "pinned"
-    | "not-installed"
-    | "net-regression"
-    | "bundle-incompatible"
-    | "update-available";
+    readonly id: VoiceModelId;
+    readonly installedVersion: string | null;
+    readonly pinned: boolean;
+    readonly latestKnown: VoiceModelVersion | null;
+    readonly allow: boolean;
+    readonly reason: "up-to-date" | "pinned" | "not-installed" | "net-regression" | "bundle-incompatible" | "update-available";
 }
-
 export interface VoiceModelsListResponse {
-  readonly installations: ReadonlyArray<VoiceModelInstallationView>;
+    readonly installations: ReadonlyArray<VoiceModelInstallationView>;
 }
-
 export interface VoiceModelsCheckResponse {
-  readonly lastCheckedAt: string;
-  readonly statuses: ReadonlyArray<VoiceModelCheckStatus>;
+    readonly lastCheckedAt: string;
+    readonly statuses: ReadonlyArray<VoiceModelCheckStatus>;
 }
-
 export interface VoiceModelsUpdateResponse {
-  readonly ok: true;
-  readonly id: VoiceModelId;
-  readonly version: string;
-  readonly finalPath: string;
-  readonly sha256: string;
-  readonly sizeBytes: number;
+    readonly ok: true;
+    readonly id: VoiceModelId;
+    readonly version: string;
+    readonly finalPath: string;
+    readonly sha256: string;
+    readonly sizeBytes: number;
 }
-
 export interface VoiceModelsPinResponse {
-  readonly ok: true;
-  readonly id: VoiceModelId;
-  readonly pinned: boolean;
+    readonly ok: true;
+    readonly id: VoiceModelId;
+    readonly pinned: boolean;
 }
-
 export interface VoiceModelsPreferencesResponse {
-  readonly preferences: NetworkPolicyPreferences;
-  // #12087 Item 25: the per-endpoint `isOwner` flag was dropped from the UI
-  // contract — owner-tier gating now flows through the canonical `useRole()`
-  // context, not a flag threaded from this endpoint. The server may still send
-  // it for older clients; the UI no longer reads it.
+    readonly preferences: NetworkPolicyPreferences;
 }
-
 export interface VoiceModelsSetPreferencesResponse {
-  readonly ok: true;
-  readonly preferences: NetworkPolicyPreferences;
+    readonly ok: true;
+    readonly preferences: NetworkPolicyPreferences;
 }
-
 declare module "./client-base" {
-  interface ElizaClient {
-    listVoiceModels(): Promise<VoiceModelsListResponse>;
-    checkVoiceModelUpdates(options?: {
-      force?: boolean;
-    }): Promise<VoiceModelsCheckResponse>;
-    triggerVoiceModelUpdate(
-      id: VoiceModelId,
-    ): Promise<VoiceModelsUpdateResponse>;
-    pinVoiceModel(
-      id: VoiceModelId,
-      pinned: boolean,
-    ): Promise<VoiceModelsPinResponse>;
-    getVoiceModelPreferences(): Promise<VoiceModelsPreferencesResponse>;
-    setVoiceModelPreferences(
-      patch: Partial<NetworkPolicyPreferences>,
-    ): Promise<VoiceModelsSetPreferencesResponse>;
-  }
+    interface ElizaClient {
+        listVoiceModels(): Promise<VoiceModelsListResponse>;
+        checkVoiceModelUpdates(options?: {
+            force?: boolean;
+        }): Promise<VoiceModelsCheckResponse>;
+        triggerVoiceModelUpdate(id: VoiceModelId): Promise<VoiceModelsUpdateResponse>;
+        pinVoiceModel(id: VoiceModelId, pinned: boolean): Promise<VoiceModelsPinResponse>;
+        getVoiceModelPreferences(): Promise<VoiceModelsPreferencesResponse>;
+        setVoiceModelPreferences(patch: Partial<NetworkPolicyPreferences>): Promise<VoiceModelsSetPreferencesResponse>;
+    }
 }
-
 ElizaClient.prototype.listVoiceModels = async function (this: ElizaClient) {
-  return this.fetch("/api/local-inference/voice-models");
+    return this.fetch("/api/local-inference/voice-models");
 };
-
-ElizaClient.prototype.checkVoiceModelUpdates = async function (
-  this: ElizaClient,
-  options,
-) {
-  const query = options?.force ? "?force=1" : "";
-  return this.fetch(`/api/local-inference/voice-models/check${query}`);
+ElizaClient.prototype.checkVoiceModelUpdates = async function (this: ElizaClient, options) {
+    const query = options?.force ? "?force=1" : "";
+    return this.fetch(`/api/local-inference/voice-models/check${query}`);
 };
-
-ElizaClient.prototype.triggerVoiceModelUpdate = async function (
-  this: ElizaClient,
-  id: VoiceModelId,
-) {
-  return this.fetch(
-    `/api/local-inference/voice-models/${encodeURIComponent(id)}/update`,
-    { method: "POST", body: JSON.stringify({}) },
-  );
+ElizaClient.prototype.triggerVoiceModelUpdate = async function (this: ElizaClient, id: VoiceModelId) {
+    return this.fetch(`/api/local-inference/voice-models/${encodeURIComponent(id)}/update`, { method: "POST", body: JSON.stringify({}) });
 };
-
-ElizaClient.prototype.pinVoiceModel = async function (
-  this: ElizaClient,
-  id: VoiceModelId,
-  pinned: boolean,
-) {
-  return this.fetch(
-    `/api/local-inference/voice-models/${encodeURIComponent(id)}/pin`,
-    { method: "POST", body: JSON.stringify({ pinned }) },
-  );
+ElizaClient.prototype.pinVoiceModel = async function (this: ElizaClient, id: VoiceModelId, pinned: boolean) {
+    return this.fetch(`/api/local-inference/voice-models/${encodeURIComponent(id)}/pin`, { method: "POST", body: JSON.stringify({ pinned }) });
 };
-
-ElizaClient.prototype.getVoiceModelPreferences = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/local-inference/voice-models/preferences");
+ElizaClient.prototype.getVoiceModelPreferences = async function (this: ElizaClient) {
+    return this.fetch("/api/local-inference/voice-models/preferences");
 };
-
-ElizaClient.prototype.setVoiceModelPreferences = async function (
-  this: ElizaClient,
-  patch: Partial<NetworkPolicyPreferences>,
-) {
-  return this.fetch("/api/local-inference/voice-models/preferences", {
-    method: "POST",
-    body: JSON.stringify(patch),
-  });
+ElizaClient.prototype.setVoiceModelPreferences = async function (this: ElizaClient, patch: Partial<NetworkPolicyPreferences>) {
+    return this.fetch("/api/local-inference/voice-models/preferences", {
+        method: "POST",
+        body: JSON.stringify(patch),
+    });
 };

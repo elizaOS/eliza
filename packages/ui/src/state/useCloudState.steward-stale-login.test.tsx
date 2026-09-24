@@ -10,7 +10,7 @@
 // first click. A still-usable token and a mounted launcher keep the
 // Steward-branch behavior. jsdom with the API client mocked.
 
-import { registerStewardTokenRemoval } from "@elizaos/shared/steward-session-client";
+import { registerStewardTokenRemoval } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";

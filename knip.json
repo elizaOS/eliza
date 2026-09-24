@@ -29,14 +29,30 @@
     "vitest",
     "make"
   ],
-  "ignoreDependencies": ["vitest", "vitest/config"],
-  "ignoreUnresolved": ["bun-types", "node:sqlite"],
-  "ignoreWorkspaces": ["."],
+  "ignoreDependencies": [
+    "vitest",
+    "vitest/config"
+  ],
+  "ignoreUnresolved": [
+    "bun-types",
+    "node:sqlite"
+  ],
+  "ignoreWorkspaces": [
+    "."
+  ],
   "workspaces": {
     "packages/cloud/routing": {
-      "entry": ["src/index.ts", "src/**/*.test.ts"],
-      "project": ["src/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "packages/cloud/sdk": {
       "entry": [
@@ -53,7 +69,10 @@
         "vitest.live.config.ts",
         "scripts/**/*.mjs"
       ],
-      "ignore": ["dist/**", ".turbo/**"]
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "packages/cloud/api": {
       "entry": [
@@ -64,33 +83,92 @@
         "test/**/*.mjs",
         "test/**/*.ts"
       ],
-      "project": ["**/*.{ts,tsx}", "src/_generate-router.mjs", "test/**/*.mjs"],
-      "ignore": [".wrangler/**", "dist/**", ".turbo/**"],
-      "ignoreDependencies": ["wrangler"]
+      "project": [
+        "**/*.{ts,tsx}",
+        "src/_generate-router.mjs",
+        "test/**/*.mjs"
+      ],
+      "ignore": [
+        ".wrangler/**",
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "wrangler"
+      ]
     },
     "packages/cloud/services/agent-server": {
-      "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": ["bun-types"]
+      "entry": [
+        "src/index.ts",
+        "src/**/*.ts",
+        "__tests__/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "__tests__/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "bun-types"
+      ]
     },
     "packages/cloud/services/gateway-discord": {
-      "entry": ["src/index.ts", "src/**/*.ts", "tests/**/*.ts"],
-      "project": ["src/**/*.ts", "tests/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": ["bun-types"]
+      "entry": [
+        "src/index.ts",
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "bun-types"
+      ]
     },
     "packages/cloud/services/gateway-webhook": {
-      "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": ["bun-types"]
+      "entry": [
+        "src/index.ts",
+        "src/**/*.ts",
+        "__tests__/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "__tests__/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "bun-types"
+      ]
     },
     "packages/cloud/services/operator": {
-      "entry": ["pepr.ts"],
-      "project": ["pepr.ts", "capabilities/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": ["@types/bun", "esbuild", "prettier", "uuid"]
+      "entry": [
+        "pepr.ts"
+      ],
+      "project": [
+        "pepr.ts",
+        "capabilities/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "@types/bun",
+        "esbuild",
+        "prettier",
+        "uuid"
+      ]
     },
     "packages/cloud/shared": {
       "entry": [
@@ -102,9 +180,18 @@
         "src/**/*.test.ts",
         "drizzle.config.ts"
       ],
-      "project": ["src/**/*.ts", "drizzle.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": ["redis", "wadis"]
+      "project": [
+        "src/**/*.ts",
+        "drizzle.config.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ],
+      "ignoreDependencies": [
+        "redis",
+        "wadis"
+      ]
     },
     "packages/testing/scenario-runner": {
       "entry": [
@@ -114,13 +201,14 @@
         "src/**/*.test.ts",
         "vitest.config.ts"
       ],
-      "project": ["src/**/*.ts", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "packages/shared": {
-      "entry": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
+      "project": [
+        "src/**/*.ts",
+        "vitest.config.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "packages/testing": {
       "entry": [
@@ -129,13 +217,31 @@
         "scenarios/**/*.ts",
         "vitest.config.ts"
       ],
-      "project": ["src/**/*.ts", "scenarios/**/*.ts", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
+      "project": [
+        "src/**/*.ts",
+        "scenarios/**/*.ts",
+        "vitest.config.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "packages/auth": {
-      "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "vitest.config.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "plugins/plugin-anthropic": {
       "entry": [
@@ -155,7 +261,10 @@
         "vitest.config.ts",
         "vitest.live.config.ts"
       ],
-      "ignore": ["dist/**", ".turbo/**"]
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "plugins/plugin-native-inference": {
       "entry": [
@@ -164,8 +273,14 @@
         "src/aosp-llama-streaming.ts",
         "__tests__/**/*.test.ts"
       ],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
+      "project": [
+        "src/**/*.ts",
+        "__tests__/**/*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "plugins/plugin-agent-orchestrator": {
       "entry": [
@@ -188,7 +303,10 @@
         "scripts/**/*.cjs",
         "vitest.config.ts"
       ],
-      "ignore": ["dist/**", ".turbo/**"]
+      "ignore": [
+        "dist/**",
+        ".turbo/**"
+      ]
     },
     "packages/app": {
       "entry": [
@@ -214,7 +332,11 @@
         "*.ts",
         "test/**/*.{ts,tsx}"
       ],
-      "ignore": ["dist/**", "ios/**", "android/**"],
+      "ignore": [
+        "dist/**",
+        "ios/**",
+        "android/**"
+      ],
       "ignoreDependencies": [
         "@capacitor/android",
         "@capacitor/barcode-scanner",
@@ -225,7 +347,6 @@
         "@elizaos/app-.*",
         "@elizaos/capacitor-.*",
         "@elizaos/plugin-.*",
-        "@elizaos/shared",
         "@elizaos/ui",
         "@pixiv/three-vrm",
         "llama-cpp-capacitor",
@@ -243,7 +364,10 @@
         "@elizaos/plugin-wechat",
         "electrobun"
       ],
-      "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
+      "ignoreUnresolved": [
+        "tsx",
+        "scripts/build.mjs"
+      ],
       "ignoreBinaries": [
         "adb",
         "afconvert",
@@ -271,8 +395,12 @@
       ]
     },
     "packages/app/deploy/cloud-agent-template": {
-      "entry": ["entrypoint.ts"],
-      "project": ["*.ts"],
+      "entry": [
+        "entrypoint.ts"
+      ],
+      "project": [
+        "*.ts"
+      ],
       "ignoreDependencies": [
         "@elizaos/core",
         "@elizaos/plugin-sql",
@@ -293,14 +421,24 @@
         "electrobun.config.ts",
         "vitest.electrobun.config.ts"
       ],
-      "ignore": ["build/**", "artifacts/**"],
-      "ignoreDependencies": ["bonjour-service", "rcedit"]
+      "ignore": [
+        "build/**",
+        "artifacts/**"
+      ],
+      "ignoreDependencies": [
+        "bonjour-service",
+        "rcedit"
+      ]
     },
     "plugins/plugin-native-gateway": {
-      "ignoreBinaries": ["pod"]
+      "ignoreBinaries": [
+        "pod"
+      ]
     },
     "plugins/plugin-native-activity-tracker": {
-      "ignoreBinaries": ["swiftc"]
+      "ignoreBinaries": [
+        "swiftc"
+      ]
     },
     "packages/agent": {
       "entry": [
@@ -316,7 +454,10 @@
         "test/**/*.{ts,tsx}",
         "*.ts"
       ],
-      "ignore": ["dist/**", "dist-mobile*/**"],
+      "ignore": [
+        "dist/**",
+        "dist-mobile*/**"
+      ],
       "ignoreDependencies": [
         "@elizaos/plugin-cloud-apps",
         "@elizaos/plugin-imessage",
@@ -331,8 +472,16 @@
       ]
     },
     "packages/core": {
-      "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
-      "project": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
+      "entry": [
+        "src/**/*.ts",
+        "!src/**/*.d.ts",
+        "build.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "!src/**/*.d.ts",
+        "build.ts"
+      ],
       "ignoreDependencies": [
         "@ai-sdk/anthropic",
         "@ai-sdk/google",
@@ -368,16 +517,25 @@
       ]
     },
     "plugins/plugin-tailscale": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts"]
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
     },
     "packages/ui": {
-      "entry": ["src/**/*.{css,ts,tsx}", "vitest.config.ts"],
-      "project": ["src/**/*.{css,ts,tsx}", "vitest.config.ts"],
+      "entry": [
+        "src/**/*.{css,ts,tsx}",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "src/**/*.{css,ts,tsx}",
+        "vitest.config.ts"
+      ],
       "ignoreDependencies": [
         "@elizaos/core",
         "@elizaos/plugin-browser",
-        "@elizaos/shared",
         "@capacitor/app",
         "jsdom",
         "node-llama-cpp",
@@ -387,7 +545,10 @@
         "ws",
         "zod"
       ],
-      "ignore": ["dist/**", "storybook-static/**"]
+      "ignore": [
+        "dist/**",
+        "storybook-static/**"
+      ]
     },
     "plugins/plugin-local-inference/native": {
       "entry": [
@@ -395,14 +556,19 @@
         "verify/**/*.{mjs,ts}",
         "package.json"
       ],
-      "project": ["scripts/**/*.{mjs,ts}", "verify/**/*.{mjs,ts}"],
+      "project": [
+        "scripts/**/*.{mjs,ts}",
+        "verify/**/*.{mjs,ts}"
+      ],
       "ignore": [
         "llama.cpp/**",
         "reports/**",
         "verify/bench_results/**",
         "verify/reports/**"
       ],
-      "ignoreBinaries": ["make"]
+      "ignoreBinaries": [
+        "make"
+      ]
     },
     "plugins/plugin-personal-assistant": {
       "entry": [
@@ -429,14 +595,23 @@
         "test/**/*.test.ts",
         "vitest.config.ts"
       ],
-      "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+      "project": [
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "vitest.config.ts"
+      ],
       "ignore": [
         "dist/**",
         "src/contracts/lifeops.ts",
         "src/contracts/lifeops-connector-degradation.ts",
         "src/contracts/permissions.ts"
       ],
-      "ignoreBinaries": ["tsc", "tsup", "vitest", "bunx"]
+      "ignoreBinaries": [
+        "tsc",
+        "tsup",
+        "vitest",
+        "bunx"
+      ]
     }
   }
 }

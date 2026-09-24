@@ -16,24 +16,49 @@
     "noEmit": true,
     "outDir": "./dist",
     "rootDir": "../..",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "bun-types"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
-      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"],
-      "@elizaos/capacitor-secure-store": ["../../plugins/plugin-native-secure-store/src/index.ts"]
+      "@elizaos/cloud-routing": [
+        "../../packages/cloud/routing/src/index.ts"
+      ],
+      "@elizaos/cloud-sdk": [
+        "../../packages/cloud/sdk/src/index.ts"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "__tests__/**/*.ts",
+    "build.ts",
+    "vitest.config.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",

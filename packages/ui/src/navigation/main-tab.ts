@@ -10,19 +10,16 @@
  *
  * Phase 1 of the agent + app extraction.
  */
-
-import type { RegistryAppInfo } from "@elizaos/shared";
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
 import { readAppsCache } from "../components/apps/apps-cache";
-
+import { type RegistryAppInfo } from "@elizaos/core/contracts/apps";
 /** Result of main-tab discovery. */
 export interface MainTabApp {
-  /** The shell tab id — derived from the app's route slug. */
-  tabId: string;
-  /** The app's npm package name. */
-  appName: string;
+    /** The shell tab id — derived from the app's route slug. */
+    tabId: string;
+    /** The app's npm package name. */
+    appName: string;
 }
-
 /**
  * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
  *
@@ -30,12 +27,10 @@ export interface MainTabApp {
  * first-run setup is still pending; once complete, the landing surface is chat.)
  */
 export const MAIN_TAB_FALLBACK = "chat" as const;
-
 /** Read the `mainTab` flag, ignoring non-boolean values defensively. */
 function declaresMainTab(app: RegistryAppInfo): boolean {
-  return app.mainTab === true;
+    return app.mainTab === true;
 }
-
 /**
  * Discover which app should render as the shell's main tab.
  *
@@ -46,19 +41,18 @@ function declaresMainTab(app: RegistryAppInfo): boolean {
  * alphabetically by package name.
  */
 export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
-  const declarers = apps.filter(declaresMainTab);
-  if (declarers.length === 0) return null;
-
-  declarers.sort((a, b) => a.name.localeCompare(b.name));
-
-  const winner = declarers[0];
-  if (!winner) return null;
-  const tabId = packageNameToAppRouteSlug(winner.name);
-  if (!tabId) return null;
-
-  return { tabId, appName: winner.name };
+    const declarers = apps.filter(declaresMainTab);
+    if (declarers.length === 0)
+        return null;
+    declarers.sort((a, b) => a.name.localeCompare(b.name));
+    const winner = declarers[0];
+    if (!winner)
+        return null;
+    const tabId = packageNameToAppRouteSlug(winner.name);
+    if (!tabId)
+        return null;
+    return { tabId, appName: winner.name };
 }
-
 /**
  * Resolve the shell's default landing tab.
  *
@@ -74,7 +68,8 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
  * catalog (post-hydrate) without going through the cache.
  */
 export function resolveDefaultLandingTab(apps?: RegistryAppInfo[]): string {
-  const catalog = apps ?? readAppsCache();
-  if (!catalog) return MAIN_TAB_FALLBACK;
-  return getMainTabApp(catalog)?.tabId ?? MAIN_TAB_FALLBACK;
+    const catalog = apps ?? readAppsCache();
+    if (!catalog)
+        return MAIN_TAB_FALLBACK;
+    return getMainTabApp(catalog)?.tabId ?? MAIN_TAB_FALLBACK;
 }

@@ -11,7 +11,7 @@
  * the same event editor and calendar mutation boundary.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Button,

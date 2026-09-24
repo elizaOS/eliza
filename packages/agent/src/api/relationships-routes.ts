@@ -15,8 +15,8 @@ import type {
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
 } from "@elizaos/plugin-assistant";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import { PostRelationshipLinkRequestSchema } from "@elizaos/core/contracts/relationships-routes";
 import { decodePathComponent } from "./server-helpers.ts";
 
 const UUID_REGEX =

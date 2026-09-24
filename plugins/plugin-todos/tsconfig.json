@@ -2,20 +2,35 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "drizzle-orm": [
+        "../plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/edge": [
+        "../../packages/core/src/index.edge.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
@@ -27,7 +42,11 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",

@@ -3,125 +3,46 @@
  * action (widened with the connector/automation/knowledge contexts), and the MCP
  * provider. Also re-exports handleMcpRoutes for host servers wiring /api/mcp/*.
  */
-
-import type { Plugin } from "@elizaos/core";
-import { type Action, type IAgentRuntime, logger, promoteSubactionsToActions } from "@elizaos/core";
-import { MCP_ACTION_CONTEXT, mcpAction } from "./actions/mcp";
-import { provider } from "./provider";
+import { MCP_ACTION_CONTEXT } from "./actions/mcp";
 import { McpService } from "./service";
-
+import { logger } from "@elizaos/core";
+import { mcpAction } from "./actions/mcp";
+import { promoteSubactionsToActions } from "@elizaos/core";
+import { provider } from "./provider";
+import { type Action } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type Plugin } from "@elizaos/core";
 function withMcpContext(action: Action): Action {
-  return {
-    ...action,
-    contexts: [
-      ...new Set([
-        ...(action.contexts ?? []),
-        "general",
-        "automation",
-        "knowledge",
-        MCP_ACTION_CONTEXT,
-      ]),
-    ],
-  };
+    return {
+        ...action,
+        contexts: [
+            ...new Set([
+                ...(action.contexts ?? []),
+                "general",
+                "automation",
+                "knowledge",
+                MCP_ACTION_CONTEXT,
+            ]),
+        ],
+    };
 }
-
 const mcpPlugin: Plugin = {
-  name: "mcp",
-  description: "Plugin for connecting to MCP (Model Context Protocol) servers",
-
-  init: async (_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
-    logger.info("Initializing MCP plugin...");
-  },
-
-  async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<McpService>(McpService.serviceType);
-    await svc?.stop();
-  },
-
-  services: [McpService],
-  actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
-  providers: [provider],
+    name: "mcp",
+    description: "Plugin for connecting to MCP (Model Context Protocol) servers",
+    init: async (_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+        logger.info("Initializing MCP plugin...");
+    },
+    async dispose(runtime: IAgentRuntime) {
+        const svc = runtime.getService<McpService>(McpService.serviceType);
+        await svc?.stop();
+    },
+    services: [McpService],
+    actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
+    providers: [provider],
 };
-
 export default mcpPlugin;
-
-export {
-  type ActionParameter,
-  actionNamesCollide,
-  assertJsonObject,
-  assertMcpJsonSchemaBudget,
-  buildMcpProviderProjection,
-  convertJsonSchemaToActionParams,
-  createMcpResourceSelectionFeedback,
-  describeMcpResources,
-  detectMcpModelProvider,
-  ERROR_ANALYSIS_TEMPLATE,
-  errorAnalysisTemplate,
-  FEEDBACK_TEMPLATE,
-  feedbackTemplate,
-  formatMcpProviderForPrompt,
-  generateSimiles,
-  getMcpJsonSchemaBudgetError,
-  MAX_MCP_SCHEMA_DEPTH,
-  MAX_MCP_SCHEMA_JSON_BYTES,
-  MAX_MCP_SCHEMA_NODES,
-  MCP_TOOL_SCHEMA_UNBOUNDED,
-  type McpInputSchema,
-  type McpJsonSchema,
-  type McpKernelProviderData,
-  type McpKernelProviderProjection,
-  type McpKernelResource,
-  type McpKernelServer,
-  type McpKernelTool,
-  type McpModelInfo,
-  type McpModelProvider,
-  type McpResourceSelection,
-  type McpRuntimeModelProjection,
-  type McpSchemaCompatibilityPolicy,
-  type McpSelectionValidation,
-  makeUniqueActionName,
-  parseActionName,
-  parseJSON,
-  parseStructuredModelOutput,
-  RESOURCE_ANALYSIS_TEMPLATE,
-  RESOURCE_SELECTION_TEMPLATE,
-  resourceAnalysisTemplate,
-  resourceSelectionTemplate,
-  stringifyJSON,
-  TOOL_REASONING_TEMPLATE,
-  TOOL_SELECTION_ARGUMENT_TEMPLATE,
-  TOOL_SELECTION_NAME_TEMPLATE,
-  toActionName,
-  toolReasoningTemplate,
-  toolSelectionArgumentTemplate,
-  toolSelectionNameTemplate,
-  transformMcpToolSchema,
-  validateJsonSchema,
-  validateMcpResourceSelection,
-  validateParamsAgainstSchema,
-} from "@elizaos/shared";
-export {
-  DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
-  DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,
-  getMcpServerDetails,
-  McpMarketplaceError,
-  type McpMarketplaceErrorCode,
-  type McpMarketplaceRequestOptions,
-  type McpMarketplaceSearchItem,
-  type McpRegistryServer,
-  searchMcpMarketplace,
-} from "./mcp-marketplace.js";
-export {
-  handleMcpRoutes,
-  type McpRouteConfig,
-  type McpRouteContext,
-} from "./routes-mcp.js";
+export { type ActionParameter, actionNamesCollide, assertJsonObject, assertMcpJsonSchemaBudget, buildMcpProviderProjection, convertJsonSchemaToActionParams, createMcpResourceSelectionFeedback, describeMcpResources, detectMcpModelProvider, ERROR_ANALYSIS_TEMPLATE, errorAnalysisTemplate, FEEDBACK_TEMPLATE, feedbackTemplate, formatMcpProviderForPrompt, generateSimiles, getMcpJsonSchemaBudgetError, MAX_MCP_SCHEMA_DEPTH, MAX_MCP_SCHEMA_JSON_BYTES, MAX_MCP_SCHEMA_NODES, MCP_TOOL_SCHEMA_UNBOUNDED, type McpInputSchema, type McpJsonSchema, type McpKernelProviderData, type McpKernelProviderProjection, type McpKernelResource, type McpKernelServer, type McpKernelTool, type McpModelInfo, type McpModelProvider, type McpResourceSelection, type McpRuntimeModelProjection, type McpSchemaCompatibilityPolicy, type McpSelectionValidation, makeUniqueActionName, parseActionName, parseJSON, parseStructuredModelOutput, RESOURCE_ANALYSIS_TEMPLATE, RESOURCE_SELECTION_TEMPLATE, resourceAnalysisTemplate, resourceSelectionTemplate, stringifyJSON, TOOL_REASONING_TEMPLATE, TOOL_SELECTION_ARGUMENT_TEMPLATE, TOOL_SELECTION_NAME_TEMPLATE, toActionName, toolReasoningTemplate, toolSelectionArgumentTemplate, toolSelectionNameTemplate, transformMcpToolSchema, validateJsonSchema, validateMcpResourceSelection, validateParamsAgainstSchema, } from "@elizaos/shared";
+export { DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES, DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS, getMcpServerDetails, McpMarketplaceError, type McpMarketplaceErrorCode, type McpMarketplaceRequestOptions, type McpMarketplaceSearchItem, type McpRegistryServer, searchMcpMarketplace, } from "./mcp-marketplace.js";
+export { handleMcpRoutes, type McpRouteConfig, type McpRouteContext, } from "./routes-mcp.js";
 export { McpService } from "./service.js";
-export {
-  type HttpMcpServerConfig,
-  isMcpSettings,
-  MCP_SERVICE_NAME,
-  type McpServerConfig,
-  type McpSettings,
-  type StdioMcpServerConfig,
-} from "./types.js";
+export { type HttpMcpServerConfig, isMcpSettings, MCP_SERVICE_NAME, type McpServerConfig, type McpSettings, type StdioMcpServerConfig, } from "./types.js";

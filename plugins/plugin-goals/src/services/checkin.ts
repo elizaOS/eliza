@@ -41,10 +41,7 @@ import {
   type ScheduledTaskTrigger,
   type TerminalState,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalReviewState,
-} from "@elizaos/shared";
+import { type LifeOpsGoalDefinition, type LifeOpsGoalReviewState } from "@elizaos/core/contracts/personal-assistant";
 import { GoalsRepository } from "../db/goals-repository.ts";
 import { fail, requireAgentId } from "../goal-normalize.ts";
 import type { GoalsCheckinSync } from "../goals-service.ts";

@@ -1,7 +1,7 @@
 /**
  * The Eliza logo mark, rendered from the shared brand paths.
  */
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/ui/brand";
 import type { CSSProperties } from "react";
 
 interface ElizaLogoProps {

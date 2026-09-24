@@ -4,12 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent";
 import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
-import {
-  LIFEOPS_X_CAPABILITIES,
-  type LifeOpsConnectorSide,
-  type LifeOpsGoogleCapability,
-  type LifeOpsXCapability,
-} from "@elizaos/shared";
+import { LIFEOPS_X_CAPABILITIES, type LifeOpsConnectorSide, type LifeOpsGoogleCapability, type LifeOpsXCapability } from "@elizaos/core/contracts/personal-assistant";
 import {
   googleCapabilitiesToScopes,
   normalizeGoogleCapabilities,

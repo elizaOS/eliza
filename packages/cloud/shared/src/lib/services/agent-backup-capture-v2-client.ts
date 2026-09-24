@@ -5,14 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-  AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
-  AGENT_BACKUP_CAPTURE_V2_LIMITS,
-  type AgentBackupCaptureV2Frame,
-  type AgentBackupCaptureV2Request,
-  parseAgentBackupCaptureV2Frames,
-  parseAgentBackupCaptureV2Request,
-} from "@elizaos/shared";
+import { AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE, AGENT_BACKUP_CAPTURE_V2_LIMITS, type AgentBackupCaptureV2Frame, type AgentBackupCaptureV2Request, parseAgentBackupCaptureV2Frames, parseAgentBackupCaptureV2Request } from "@elizaos/core/contracts/agent-backup-capture-v2";
 
 const MAX_ERROR_BODY_BYTES = 4 * 1024;
 const REMOTE_CAPTURE_FAILURE_STATUS = Object.freeze({

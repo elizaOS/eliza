@@ -8,7 +8,7 @@ import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";

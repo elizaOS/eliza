@@ -19,7 +19,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/shared";
+import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/ui/view-hero-art";
 
 export const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

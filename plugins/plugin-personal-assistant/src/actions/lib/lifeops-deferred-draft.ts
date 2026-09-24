@@ -21,7 +21,7 @@ import {
   recentConversationTexts,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared";
+import { getRecentMessagesData } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,

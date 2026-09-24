@@ -30,14 +30,8 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
-import type {
-	MeetingEndReason,
-	MeetingParticipant,
-	MeetingSession,
-	MeetingTranscriptEvent,
-	TranscriptConsentState,
-	TranscriptSegment,
-} from "@elizaos/shared";
+import { type MeetingEndReason, type MeetingParticipant, type MeetingSession, type MeetingTranscriptEvent } from "@elizaos/core/meetings";
+import { type TranscriptConsentState, type TranscriptSegment } from "@elizaos/core/transcripts";
 import type { ICompatRuntime } from "./compat";
 
 /** Sample rate the meeting pipeline consumes (matches plugin-meetings). */

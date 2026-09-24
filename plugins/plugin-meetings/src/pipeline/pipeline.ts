@@ -16,14 +16,9 @@
 
 import type { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
-import {
-  inferSpeakerName,
-  type MeetingParticipant,
-  type SpeakerNameAttribution,
-  type SpeakerNameEvidence,
-  type TranscriptSegment,
-  toSpeakerNameAttribution,
-} from "@elizaos/shared";
+import { inferSpeakerName, type SpeakerNameAttribution, type SpeakerNameEvidence, toSpeakerNameAttribution } from "@elizaos/core/speaker-name-inference";
+import { type MeetingParticipant } from "@elizaos/core/meetings";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import {
   isMeetingInsufficientCreditsError,
   MEETING_AUDIO_SAMPLE_RATE,

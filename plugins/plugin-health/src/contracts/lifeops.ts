@@ -10,12 +10,7 @@
 // imports and re-exports the canonical const/type/guard so its reliability
 // tables and the PA telemetry mapper agree on one definition instead of
 // drifting copies.
-import {
-  isBuiltinActivitySignalSource,
-  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
-  type LifeOpsActivitySignalSource,
-  type LifeOpsActivitySignalSourceName,
-} from "@elizaos/shared";
+import { isBuiltinActivitySignalSource, LIFEOPS_ACTIVITY_SIGNAL_SOURCES, type LifeOpsActivitySignalSource, type LifeOpsActivitySignalSourceName } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 export type {
@@ -4116,19 +4111,9 @@ export interface SendLifeOpsIMessageRequest {
 // ── Knowledge-graph: Entity + Relationship (W1-E) ──────────────────────────
 //
 // Wire-contract aliases over the canonical knowledge-graph primitives in
-// `@elizaos/shared/knowledge-graph`. The `LifeOps*` names are kept as the
+// `@elizaos/core/knowledge-graph`. The `LifeOps*` names are kept as the
 // cross-package contract surface but resolve to the single canonical
 // definitions — no parallel shape is maintained here.
 
-export type {
-  Entity as LifeOpsEntity,
-  EntityAttribute as LifeOpsEntityAttribute,
-  EntityIdentity as LifeOpsEntityIdentity,
-  EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
-  EntityState as LifeOpsEntityState,
-  EntityVisibility as LifeOpsEntityVisibility,
-  Relationship as LifeOpsGraphRelationship,
-  RelationshipSource as LifeOpsGraphRelationshipSource,
-  RelationshipState as LifeOpsGraphRelationshipState,
-  RelationshipStatus as LifeOpsGraphRelationshipStatus,
-} from "@elizaos/shared";
+export { type Entity as LifeOpsEntity, type EntityAttribute as LifeOpsEntityAttribute, type EntityIdentity as LifeOpsEntityIdentity, type EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia, type EntityState as LifeOpsEntityState, type EntityVisibility as LifeOpsEntityVisibility } from "@elizaos/core/knowledge-graph/entity-types";
+export { type Relationship as LifeOpsGraphRelationship, type RelationshipSource as LifeOpsGraphRelationshipSource, type RelationshipState as LifeOpsGraphRelationshipState, type RelationshipStatus as LifeOpsGraphRelationshipStatus } from "@elizaos/core/knowledge-graph/relationship-types";

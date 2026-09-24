@@ -14,12 +14,12 @@ import type {
   SurfaceManifestBearer,
   ViewKind,
 } from "@elizaos/core";
-import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
+import { hasStewardAuthedCookie } from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/shared/views/surface-manifest";
-import { isViewVisible } from "@elizaos/shared/views/view-kind";
+} from "@elizaos/core/views/surface-manifest";
+import { isViewVisible } from "@elizaos/core/views/view-kind";
 import { X } from "lucide-react";
 import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";
 import "./components/chat/chat-source-registration";

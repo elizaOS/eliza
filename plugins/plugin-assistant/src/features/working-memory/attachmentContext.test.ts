@@ -6,10 +6,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getLocalServerUrl } from "../../../../../packages/core/src/utils/node.ts";
-import { fetchRemoteMedia } from "../../../../../packages/shared/src/media/fetch.ts";
+import { fetchRemoteMedia } from "@elizaos/core/media/fetch";
 
 vi.mock(
-  "../../../../../packages/shared/src/media/fetch.ts",
+  "@elizaos/core/media/fetch",
   async (importOriginal) => {
     const actual = await importOriginal<typeof import("@elizaos/core")>();
     return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };

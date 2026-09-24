@@ -8,13 +8,7 @@ import { once } from "node:events";
 import http from "node:http";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { CalendarServiceError } from "@elizaos/plugin-calendar";
-import type {
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSummary,
-  ListLifeOpsCalendarsRequest,
-} from "@elizaos/shared";
+import { type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsCalendarSummary, type ListLifeOpsCalendarsRequest } from "@elizaos/core/contracts/calendar";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

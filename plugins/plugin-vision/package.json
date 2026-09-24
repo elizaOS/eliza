@@ -72,7 +72,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "jimp": "^1.6.0",
     "sharp": "^0.35.3"
   },

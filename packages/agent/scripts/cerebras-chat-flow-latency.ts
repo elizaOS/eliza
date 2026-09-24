@@ -169,7 +169,7 @@ const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/cloud/routing/src",
   "packages/core/src",
   "plugins/plugin-assistant/src/prompts",
-  "packages/shared/src/catalog",
+  "packages/core/src/catalog",
   "packages/shared/src",
   "packages/auth/src/vault",
   "plugins/plugin-aosp-local-inference/src",

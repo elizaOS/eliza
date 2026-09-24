@@ -15,17 +15,9 @@
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import type {
-  MeetingAutoLeaveConfig,
-  MeetingBillingState,
-  MeetingEndReason,
-  MeetingJoinRequest,
-  MeetingParticipant,
-  MeetingPlatform,
-  MeetingSessionStatus,
-  SpeakerNameEvidence,
-  TranscriptSegment,
-} from "@elizaos/shared";
+import { type MeetingAutoLeaveConfig, type MeetingBillingState, type MeetingEndReason, type MeetingJoinRequest, type MeetingParticipant, type MeetingPlatform, type MeetingSessionStatus } from "@elizaos/core/meetings";
+import { type SpeakerNameEvidence } from "@elizaos/core/speaker-name-inference";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 
 /** Audio produced by every platform adapter: mono Float32 PCM at 16 kHz. */
 export const MEETING_AUDIO_SAMPLE_RATE = 16_000;

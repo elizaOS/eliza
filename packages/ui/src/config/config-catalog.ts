@@ -1,7 +1,7 @@
 /**
  * Plugin config catalog & registry.
  *
- * The implementation is owned by `@elizaos/shared/config/config-catalog` (the
+ * The implementation is owned by `@elizaos/core/config/config-catalog` (the
  * single source of truth, also consumed by server-side config tooling). This
  * module re-exports it so the existing `@elizaos/ui` import paths
  * (`@elizaos/ui` root barrel, `@elizaos/ui/config`, and the relative
@@ -11,4 +11,4 @@
  * config-catalog imports only React (type-only) + zod + shared types, so it is
  * safe to pull into the browser bundle via this re-export.
  */
-export * from "@elizaos/shared/config/config-catalog";
+export * from "@elizaos/core/config/config-catalog";

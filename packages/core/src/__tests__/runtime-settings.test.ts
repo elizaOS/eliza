@@ -5,7 +5,7 @@
  * adapter, no model calls.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";

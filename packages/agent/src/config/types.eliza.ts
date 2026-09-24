@@ -5,4 +5,4 @@
  * packages and the app shell can import config types from a stable
  * `@elizaos/agent/config/*` path without depending on `@elizaos/shared` directly.
  */
-export * from "@elizaos/shared";
+export * from "@elizaos/core/config/types.eliza";

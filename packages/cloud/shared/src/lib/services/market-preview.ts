@@ -1,18 +1,7 @@
 // Coordinates cloud service market preview behavior behind route handlers.
-import type {
-  CoinGeckoMarketRecord,
-  WalletMarketOverviewResponse,
-  WalletMarketOverviewSource,
-  WalletMarketPrediction,
-} from "@elizaos/shared";
-import {
-  buildCoinGeckoMarketsUrl,
-  buildMarketMovers,
-  buildMarketPriceSnapshots,
-  COINGECKO_MARKET_PROVIDER,
-  POLYMARKET_MARKET_PROVIDER,
-  parseCoinGeckoMarkets,
-} from "@elizaos/shared";
+import { type CoinGeckoMarketRecord } from "@elizaos/ui/wallet/market-overview";
+import { type WalletMarketOverviewResponse, type WalletMarketOverviewSource, type WalletMarketPrediction } from "@elizaos/core/contracts/wallet-types";
+import { buildCoinGeckoMarketsUrl, buildMarketMovers, buildMarketPriceSnapshots, COINGECKO_MARKET_PROVIDER, POLYMARKET_MARKET_PROVIDER, parseCoinGeckoMarkets } from "@elizaos/ui/wallet/market-overview";
 import { getCookieValueFromRequest } from "../http/cookie-header";
 import { logger } from "../utils/logger";
 import { isValidAddress, isValidChain } from "./proxy/services/address-validation";

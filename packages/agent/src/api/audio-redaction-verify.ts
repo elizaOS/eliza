@@ -2,7 +2,7 @@
  * Audio PII redaction — verifier transcriber adapters (#14807).
  *
  * The verifier CONTRACT (and the pure PII-absence / sentinel-presence
- * judgment) lives in `@elizaos/shared/audio-redaction-verify`, deliberately
+ * judgment) lives in `@elizaos/core/audio-redaction-verify`, deliberately
  * separable from the span producer so verification can run on a different
  * ASR backend. This module supplies the concrete backends the agent host can
  * offer:
@@ -24,22 +24,19 @@
  *    expected word list and never replaces a real ASR pass in evidence.
  */
 
+import { BLEEP_FREQUENCY_HZ } from "./audio-redaction.ts";
 import { Buffer } from "node:buffer";
-import {
-  ElizaError,
-  fetchWithSsrfGuard,
-  type IAgentRuntime,
-  ModelType,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import type {
-  RedactionTranscribeInput,
-  RedactionTranscriber,
-  RedactionTranscript,
-  TranscriptWord,
-} from "@elizaos/shared";
-import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
+import { ElizaError } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { fetchWithSsrfGuard } from "@elizaos/core";
+import { parseWavPcm16 } from "./audio-redaction.ts";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { truncateWellFormed } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type RedactionTranscribeInput } from "@elizaos/shared";
+import { type RedactionTranscriber } from "@elizaos/shared";
+import { type RedactionTranscript } from "@elizaos/shared";
+import { type TranscriptWord } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Runtime TRANSCRIPTION adapter

@@ -1,7 +1,4 @@
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWalletRoutes, type WalletRouteContext } from "./wallet-routes";
 

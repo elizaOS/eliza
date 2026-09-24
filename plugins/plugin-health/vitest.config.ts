@@ -5,12 +5,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
-const sharedSrc = fileURLToPath(
-  new URL("../../packages/shared/src", import.meta.url),
-);
 // Array form with an exact barrel entry AND a separate subpath entry: a bare
 // string / exact-only `@elizaos/shared` alias prefix-matches subpaths and
-// rewrites `@elizaos/shared/runtime-env` into `.../src/index.ts/runtime-env`
+// rewrites `@elizaos/core/runtime-env` into `.../src/index.ts/runtime-env`
 // (ENOTDIR). Each subpath must resolve to its own source module instead.
 const aliases = [
   {
@@ -21,14 +18,6 @@ const aliases = [
     replacement: fileURLToPath(
       new URL("../../packages/core/src/index.edge.ts", import.meta.url),
     ),
-  },
-  {
-    find: /^@elizaos\/shared$/,
-    replacement: `${sharedSrc}/index.ts`,
-  },
-  {
-    find: /^@elizaos\/shared\/(.+)$/,
-    replacement: `${sharedSrc}/$1`,
   },
   {
     find: /^@elizaos\/plugin-scheduling$/,

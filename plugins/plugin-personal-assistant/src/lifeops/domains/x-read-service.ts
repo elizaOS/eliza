@@ -5,12 +5,7 @@
  */
 import crypto from "node:crypto";
 import type { Memory } from "@elizaos/core";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorGrant, type LifeOpsXDm, type LifeOpsXFeedItem, type LifeOpsXFeedType } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fetchXDirectMessagesWithRuntimeService,

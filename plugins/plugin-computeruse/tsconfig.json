@@ -2,17 +2,26 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],
@@ -21,7 +30,12 @@
       ]
     }
   },
-  "include": ["auto-enable.ts", "src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": [
+    "auto-enable.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
   "exclude": [
     "dist",
     "node_modules",

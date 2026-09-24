@@ -42,8 +42,7 @@
     "telegram": "^2.26.22",
     "type-detect": "^4.1.0",
     "@elizaos/auth": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

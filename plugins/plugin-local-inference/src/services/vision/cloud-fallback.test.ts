@@ -18,10 +18,7 @@ import type {
 	ImageDescriptionParams,
 	ImageDescriptionResult,
 } from "@elizaos/core";
-import {
-	resetDevCloudEnvAuthorityForTests,
-	resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type LocalImageDescriptionHandler,

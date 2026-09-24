@@ -2,28 +2,53 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/app": ["../../packages/app/src/index.ts"],
-      "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "drizzle-orm": [
+        "../plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/app": [
+        "../../packages/app/src/index.ts"
+      ],
+      "@elizaos/app/*": [
+        "../../packages/app/src/*"
+      ],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
       ],
-      "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
-      "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/ui/platform": [
+        "../../packages/ui/src/platform/index.ts"
+      ],
+      "@elizaos/ui/platform/*": [
+        "../../packages/ui/src/platform/*"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@elizaos/agent": [
+        "../../packages/agent/src/index.ts"
+      ],
+      "@elizaos/agent/*": [
+        "../../packages/agent/src/*"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
@@ -35,7 +60,11 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
   "exclude": [
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",

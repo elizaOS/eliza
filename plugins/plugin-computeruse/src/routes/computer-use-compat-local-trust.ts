@@ -1,6 +1,6 @@
 /** Applies the agent server's canonical same-machine trust policy to computer-use routes. */
 import type http from "node:http";
-import { isTrustedLocalRequest } from "@elizaos/shared";
+import { isTrustedLocalRequest } from "@elizaos/agent/api/loopback-trust";
 
 export function isTrustedComputerUseLocalRequest(
   req: Pick<http.IncomingMessage, "headers"> & {

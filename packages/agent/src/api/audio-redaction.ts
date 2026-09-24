@@ -1,7 +1,7 @@
 /**
  * Audio PII redaction — execution ops (#14807).
  *
- * Turns merged redaction windows (`@elizaos/shared/audio-redaction`) into
+ * Turns merged redaction windows (`@elizaos/core/audio-redaction`) into
  * redacted audio bytes with the DURATION PRESERVED, so every transcript word
  * anchor stays valid against the redacted variant:
  *
@@ -32,16 +32,16 @@
  * binary cannot pin the agent process.
  */
 
+import { AudioRedactionChildError } from "./audio-redaction-child.ts";
+import { ElizaError } from "@elizaos/core";
 import { existsSync } from "node:fs";
+import { logger } from "@elizaos/core";
+import { runAudioRedactionChild } from "./audio-redaction-child.ts";
+import { type AudioRedactionSpan } from "@elizaos/shared";
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import type { AudioRedactionSpan } from "@elizaos/shared";
-import {
-  AudioRedactionChildError,
-  runAudioRedactionChild,
-} from "./audio-redaction-child.ts";
 
 /** How a window is made inaudible. */
 export type AudioRedactionMode = "mute" | "bleep";

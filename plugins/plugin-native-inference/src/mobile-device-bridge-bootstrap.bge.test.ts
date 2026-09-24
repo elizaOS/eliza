@@ -10,7 +10,7 @@ import {
   getEmbeddingVectorSpace,
   ModelType,
 } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { initializeTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { WebSocket } from "ws";

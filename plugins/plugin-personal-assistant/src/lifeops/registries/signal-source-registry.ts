@@ -24,11 +24,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsActivitySignalSourceName,
-  LifeOpsTelemetryPayload,
-} from "@elizaos/shared";
+import { type LifeOpsActivitySignal, type LifeOpsActivitySignalSourceName, type LifeOpsTelemetryPayload } from "@elizaos/core/contracts/personal-assistant";
 
 export interface SignalSourceContribution {
   /** Open-string source identifier (built-in or contributed). */

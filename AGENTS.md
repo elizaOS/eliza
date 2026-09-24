@@ -25,7 +25,7 @@ bridges, benchmarks, and first-party plugins. Read the nearest package
   UI changes require the app visual audit and desktop/mobile inspection.
 - Submit changes through a PR against `develop`. Report vulnerabilities
   privately through GitHub Security Advisories. The community plugin registry
-  is retired; first-party catalog data lives in `packages/shared/src/catalog/`.
+  is retired; first-party catalog data lives in `packages/core/src/catalog/`.
 
 Getting started, build, test, and benchmark commands: [README.md](README.md).
 

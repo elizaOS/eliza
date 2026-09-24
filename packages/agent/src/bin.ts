@@ -16,8 +16,9 @@ import { homedir as _earlyHomedir } from "node:os";
 // (issue #13423). `@elizaos/shared` is already a transitive static import via
 // `./cli/index.ts`, so this adds no new module to the boot graph; before the
 // alias table is seeded these fall back to the raw ELIZA_ value.
-import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { isAndroidMobile } from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.

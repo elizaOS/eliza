@@ -6,21 +6,17 @@
  */
 
 import type http from "node:http";
+import { AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { AgentBackupV2CaptureError } from "../services/agent-backup.ts";
+import { createAgentBackupV2Capture } from "../services/agent-backup.ts";
 import { logger } from "@elizaos/core";
-import {
-  AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
-  AGENT_BACKUP_CAPTURE_V2_LIMITS,
-  type AgentBackupCaptureV2Request,
-  parseAgentBackupCaptureV2Request,
-  readRequestBody,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-import {
-  type AgentBackupV2CaptureComponentSource,
-  AgentBackupV2CaptureError,
-  type AgentBackupV2CaptureRuntime,
-  createAgentBackupV2Capture,
-} from "../services/agent-backup.ts";
+import { parseAgentBackupCaptureV2Request } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { readRequestBody } from "@elizaos/core/api/http-helpers";
+import { type AgentBackupCaptureV2Request } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { type AgentBackupV2CaptureComponentSource } from "../services/agent-backup.ts";
+import { type AgentBackupV2CaptureRuntime } from "../services/agent-backup.ts";
+import { type ElizaConfig } from "../config/config.ts";
 
 export interface AgentBackupV2WritableResponse {
   statusCode: number;

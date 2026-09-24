@@ -8,8 +8,8 @@
  */
 // @vitest-environment jsdom
 
-import { logger } from "@elizaos/shared/logger";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { logger } from "@elizaos/ui/logger";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
@@ -20,9 +20,9 @@ const clientCloudMocks = vi.hoisted(() => ({
   resolveDirectCloudAuthApiBase: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
+    typeof import("../../../core/src/steward-session-client/index.ts")
   >()),
   replaceStoredStewardTokenIfCurrent:
     clientCloudMocks.replaceStoredStewardTokenIfCurrent,

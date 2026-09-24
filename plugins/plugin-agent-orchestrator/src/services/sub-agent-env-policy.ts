@@ -3,11 +3,8 @@
  * consumes this as the single host-env projection before adding per-session
  * model gateway, credential bridge, and adapter-specific overrides.
  */
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
-import { isHostExecutionToolchainEnvKey } from "@elizaos/shared/host-execution-env";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { isHostExecutionToolchainEnvKey } from "@elizaos/core/host-execution-env";
 
 function isDevCloudControlledSubAgentEnvKey(key: string): boolean {
   const normalized = key.toUpperCase();

@@ -3,7 +3,8 @@
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
 
-import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { ElizaError } from "../errors.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
 	afterAll,

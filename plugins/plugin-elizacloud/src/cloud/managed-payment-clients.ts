@@ -5,10 +5,7 @@
  */
 
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { z } from "zod";
 import {
   normalizeCloudSiteUrl,

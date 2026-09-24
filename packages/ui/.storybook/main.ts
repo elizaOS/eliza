@@ -14,7 +14,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "..");
 const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
-const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
 const nodeFsStub = resolve(packageRoot, "test/stubs/node-fs.ts");
@@ -139,25 +138,6 @@ const config: StorybookConfig = {
       },
       { find: /^@elizaos\/ui$/, replacement: resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: resolve(uiSrc, "$1") },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: resolve(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: resolve(sharedSrc, "$1"),
-      },
-      {
-        // Mirror the real browser build: @elizaos/shared re-exports the core
-        // barrel, and the renderer resolves it to the browser entry in
-        // production. Using index.node.ts here instead dragged the entire
-        // server subgraph (plugin-manager, personality → fs-extra, typescript,
-        // …) into the catalog, crashing every story that transitively imports
-        // @elizaos/shared (ContinuousChatToggle, PermissionCard). The browser
-        // entry is curated to be node-free.
-        find: /^@elizaos\/core$/,
-        replacement: resolve(coreSrc, "index.browser.ts"),
-      },
       { find: /^@elizaos\/core\/(.+)$/, replacement: resolve(coreSrc, "$1") },
       // Host-only / native modules the browser catalog can't load → stubs.
       {

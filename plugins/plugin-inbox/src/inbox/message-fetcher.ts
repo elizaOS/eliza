@@ -8,17 +8,9 @@
  */
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  expandConnectorSourceFilter,
-  type GetLifeOpsGmailTriageRequest,
-  type LifeOpsConnectorDegradation,
-  type LifeOpsGmailTriageFeed,
-  type LifeOpsGoogleConnectorStatus,
-  type LifeOpsInboxSourceStatus,
-  type LifeOpsXConnectorStatus,
-  type LifeOpsXDm,
-  normalizeConnectorSource,
-} from "@elizaos/shared";
+import { expandConnectorSourceFilter, normalizeConnectorSource } from "@elizaos/core";
+import { type GetLifeOpsGmailTriageRequest, type LifeOpsGmailTriageFeed, type LifeOpsGoogleConnectorStatus, type LifeOpsInboxSourceStatus, type LifeOpsXConnectorStatus, type LifeOpsXDm } from "@elizaos/core/contracts/personal-assistant";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 

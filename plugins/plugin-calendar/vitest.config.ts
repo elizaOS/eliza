@@ -18,7 +18,6 @@ const pluginSchedulingSrc = path.join(
   "plugin-scheduling",
   "src",
 );
-const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 
@@ -103,14 +102,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-scheduling\/(.+)$/,
         replacement: path.join(pluginSchedulingSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(sharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/ui$/,

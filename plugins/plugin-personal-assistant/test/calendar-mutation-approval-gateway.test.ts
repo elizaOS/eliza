@@ -7,7 +7,7 @@ import type {
   CalendarMutationGatewayDep,
   CalendarTravelBufferResult,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarMutationApprovalGateway } from "../src/actions/calendar.js";
 import type {

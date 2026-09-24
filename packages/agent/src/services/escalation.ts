@@ -16,7 +16,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   requireConfirmedSendHandlerDelivery,
 } from "@elizaos/core";
-import { createSerialise } from "@elizaos/shared";
+import { createSerialise } from "@elizaos/core/utils/serialise";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,

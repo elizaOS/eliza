@@ -6,7 +6,7 @@ export {
   isInMemoryPgliteDataDir,
   type TestPgliteStorageMode,
   testPgliteStorageMode,
-} from "@elizaos/shared/utils/pglite-storage";
+} from "@elizaos/plugin-sql/database-utils/pglite-storage";
 export * from "../scenario-runner/schema/index.js";
 export {
   CerebrasJudge,
@@ -81,7 +81,6 @@ export {
   getElizaCoreEntry,
   getInstalledPackageEntry,
   getInstalledPackageRoot,
-  getSharedSourceRoot,
   getUiSourceRoot,
   resolveModuleEntry,
 } from "./eliza-package-paths.ts";

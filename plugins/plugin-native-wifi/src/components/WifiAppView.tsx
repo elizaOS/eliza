@@ -16,7 +16,7 @@ import type {
   WifiStateResult,
 } from "@elizaos/plugin-native-wifi/bridge";
 import { WiFi } from "@elizaos/plugin-native-wifi/bridge";
-import type { OverlayAppContext } from "@elizaos/shared";
+import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
 import { Badge, Button, Input } from "@elizaos/ui";
 import {
   CheckCircle2,

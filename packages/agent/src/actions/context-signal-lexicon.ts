@@ -8,11 +8,9 @@
  * providers and action validators that decide whether a signal is present in
  * the complete available context.
  */
-import {
-  type CharacterLanguage,
-  getValidationKeywordTerms,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared";
+import { type CharacterLanguage } from "@elizaos/core/contracts/first-run-options";
+import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
 export type ContextSignalKey =
   | "affirmative"

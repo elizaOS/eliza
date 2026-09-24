@@ -18,8 +18,8 @@
  * forwards to `/join` — the page is harmless as a bare deep link.
  */
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/ui/brand";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";

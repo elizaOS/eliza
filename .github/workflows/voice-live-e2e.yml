@@ -278,7 +278,7 @@ jobs:
       - name: Build browser bundles
         run: |
           set -euo pipefail
-          bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+          bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
           bun run --cwd packages/app build:web
 
       - name: Prove the live cell is explicit when ungated

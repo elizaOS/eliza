@@ -4,7 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
 

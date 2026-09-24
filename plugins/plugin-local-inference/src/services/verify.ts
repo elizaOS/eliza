@@ -1,6 +1,6 @@
 /**
  * Re-export of the shared model-file verification module. The canonical
- * implementation lives in `@elizaos/shared/local-inference` because both
+ * implementation lives in `@elizaos/plugin-native-inference/model-catalog` because both
  * the server (`@elizaos/app`) and the UI client (`@elizaos/ui`)
  * compute the same SHA256 / GGUF-magic checks against on-disk models.
  */
@@ -10,4 +10,4 @@ export {
 	type VerifyResult,
 	type VerifyState,
 	verifyInstalledModel,
-} from "@elizaos/shared/local-inference/verify";
+} from "@elizaos/plugin-native-inference/model-catalog/verify";

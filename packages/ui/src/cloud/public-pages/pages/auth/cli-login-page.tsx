@@ -5,123 +5,135 @@
  * Eliza app can finish automatically and return to the app; copied links never
  * inherit that trust. On completion the page posts a message to the opener.
  */
-
-import { isElizaCloudControlPlaneHostname } from "@elizaos/shared";
-import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { AlertCircle } from "lucide-react";
+import { ApiError } from "../../../lib/api-client";
 import { Button } from "../../../../components/primitives";
-import {
-  hasCloudAuthCompleted,
-  isCloudAuthHandoffSurface,
-  publishCloudAuthComplete,
-  subscribeCloudAuthComplete,
-} from "../../../auth/cloud-auth-complete-signal";
-import { ApiError, apiFetch } from "../../../lib/api-client";
-import { useSessionAuth } from "../../../lib/use-session-auth";
-import { useCloudT } from "../../../shell/CloudI18nProvider";
+import { CheckCircle2 } from "lucide-react";
+import { Key } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { apiFetch } from "../../../lib/api-client";
 import { clearStaleStewardSession } from "../../../shell/StewardProvider";
 import { getErrorMessage } from "../../lib/error-message";
+import { hasCloudAuthCompleted } from "../../../auth/cloud-auth-complete-signal";
+import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
+import { isElizaCloudControlPlaneHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { publishCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import { type ComponentType } from "react";
+import { type ReactNode } from "react";
+import { useCloudT } from "../../../shell/CloudI18nProvider";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "../../lib/use-page-title";
-
+import { useRef } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useSessionAuth } from "../../../lib/use-session-auth";
+import { useState } from "react";
 type TFn = ReturnType<typeof useCloudT>;
-
-const COMPLETE_TIMEOUT_MS = 30_000;
-const CLI_LOGIN_SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TRUSTED_APP_LAUNCH_KEY_PREFIX =
-  "eliza-cloud-cli-login-trusted-app-launch:";
+const COMPLETE_TIMEOUT_MS = 30000;
+const CLI_LOGIN_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TRUSTED_APP_LAUNCH_KEY_PREFIX = "eliza-cloud-cli-login-trusted-app-launch:";
 const pageSessionStorage = (() => {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.sessionStorage;
-  } catch (error) {
-    void error;
-    return null;
-  }
+    if (typeof window === "undefined")
+        return null;
+    try {
+        return window.sessionStorage;
+    }
+    catch (error) {
+        void error;
+        return null;
+    }
 })();
-
-type CompletionState =
-  | { status: "idle" }
-  | { status: "completing" }
-  | { status: "redirecting" }
-  | { status: "success"; apiKeyPrefix: string }
-  | { status: "cancelled" }
-  | { status: "error"; errorMessage: string };
-
-type PageState =
-  | { status: "initializing" }
-  | { status: "waiting_auth" }
-  | { status: "confirm" }
-  | { status: "completing" }
-  | { status: "redirecting" }
-  | { status: "success"; apiKeyPrefix: string }
-  | { status: "cancelled" }
-  | { status: "error"; errorMessage: string };
-
-type PanelTone = "accent" | "danger" | "success";
-
-const PANEL_TONE_CLASSES: Record<
-  PanelTone,
-  { container: string; icon: string }
-> = {
-  accent: {
-    container: "bg-accent-subtle",
-    icon: "text-accent",
-  },
-  danger: { container: "bg-destructive-subtle", icon: "text-destructive" },
-  success: { container: "bg-status-success-bg", icon: "text-status-success" },
+type CompletionState = {
+    status: "idle";
+} | {
+    status: "completing";
+} | {
+    status: "redirecting";
+} | {
+    status: "success";
+    apiKeyPrefix: string;
+} | {
+    status: "cancelled";
+} | {
+    status: "error";
+    errorMessage: string;
 };
-
+type PageState = {
+    status: "initializing";
+} | {
+    status: "waiting_auth";
+} | {
+    status: "confirm";
+} | {
+    status: "completing";
+} | {
+    status: "redirecting";
+} | {
+    status: "success";
+    apiKeyPrefix: string;
+} | {
+    status: "cancelled";
+} | {
+    status: "error";
+    errorMessage: string;
+};
+type PanelTone = "accent" | "danger" | "success";
+const PANEL_TONE_CLASSES: Record<PanelTone, {
+    container: string;
+    icon: string;
+}> = {
+    accent: {
+        container: "bg-accent-subtle",
+        icon: "text-accent",
+    },
+    danger: { container: "bg-destructive-subtle", icon: "text-destructive" },
+    success: { container: "bg-status-success-bg", icon: "text-status-success" },
+};
 function isAllowedCliReturnHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    isElizaCloudControlPlaneHostname(host)
-  );
+    const host = hostname.toLowerCase();
+    return (host === "localhost" ||
+        host.endsWith(".localhost") ||
+        host === "127.0.0.1" ||
+        host === "::1" ||
+        host === "[::1]" ||
+        isElizaCloudControlPlaneHostname(host));
 }
-
 function sanitizeCliLoginReturnTo(value: string | null): string | null {
-  if (!value?.trim()) return null;
-  if (typeof window === "undefined") return null;
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    if (!isAllowedCliReturnHost(url.hostname)) return null;
-    return url.toString();
-  } catch (error) {
-    void error;
-    return null;
-  }
+    if (!value?.trim())
+        return null;
+    if (typeof window === "undefined")
+        return null;
+    try {
+        const url = new URL(value, window.location.origin);
+        if (url.protocol !== "http:" && url.protocol !== "https:")
+            return null;
+        if (!isAllowedCliReturnHost(url.hostname))
+            return null;
+        return url.toString();
+    }
+    catch (error) {
+        void error;
+        return null;
+    }
 }
-
 function sanitizeCliLoginSessionId(value: string | null): string | null {
-  const sessionId = value?.trim();
-  return sessionId && CLI_LOGIN_SESSION_ID_PATTERN.test(sessionId)
-    ? sessionId
-    : null;
+    const sessionId = value?.trim();
+    return sessionId && CLI_LOGIN_SESSION_ID_PATTERN.test(sessionId)
+        ? sessionId
+        : null;
 }
-
 function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]"
-  );
+    const host = hostname.toLowerCase();
+    return (host === "localhost" ||
+        host.endsWith(".localhost") ||
+        host === "127.0.0.1" ||
+        host === "::1" ||
+        host === "[::1]");
 }
-
 function trustedAppLaunchKey(sessionId: string): string {
-  return `${TRUSTED_APP_LAUNCH_KEY_PREFIX}${sessionId}`;
+    return `${TRUSTED_APP_LAUNCH_KEY_PREFIX}${sessionId}`;
 }
-
 /**
  * The no-extra-click path is deliberately narrower than `returnTo` support:
  * it is only an exact loopback Eliza callback whose completion marker names
@@ -129,57 +141,55 @@ function trustedAppLaunchKey(sessionId: string): string {
  * copied/phished cli-login URL cannot forge a localhost referrer, so it keeps
  * the normal explicit authorization screen.
  */
-function isMatchingLocalAppLaunch(
-  sessionId: string | null,
-  returnTo: string | null,
-  referrer: string,
-): boolean {
-  if (!sessionId || !returnTo || !referrer) return false;
-  try {
-    const callback = new URL(returnTo);
-    const launch = new URL(referrer);
-    return (
-      isLoopbackHostname(callback.hostname) &&
-      callback.searchParams.get("elizaCloudLogin") === "complete" &&
-      callback.searchParams.get("elizaCloudLoginSession") === sessionId &&
-      launch.origin === callback.origin
-    );
-  } catch (error) {
-    void error;
-    return false;
-  }
+function isMatchingLocalAppLaunch(sessionId: string | null, returnTo: string | null, referrer: string): boolean {
+    if (!sessionId || !returnTo || !referrer)
+        return false;
+    try {
+        const callback = new URL(returnTo);
+        const launch = new URL(referrer);
+        return (isLoopbackHostname(callback.hostname) &&
+            callback.searchParams.get("elizaCloudLogin") === "complete" &&
+            callback.searchParams.get("elizaCloudLoginSession") === sessionId &&
+            launch.origin === callback.origin);
+    }
+    catch (error) {
+        void error;
+        return false;
+    }
 }
-
 function hasTrustedAppLaunch(sessionId: string | null): boolean {
-  if (!sessionId || !pageSessionStorage) return false;
-  try {
-    return pageSessionStorage.getItem(trustedAppLaunchKey(sessionId)) === "1";
-  } catch (error) {
-    void error;
-    return false;
-  }
+    if (!sessionId || !pageSessionStorage)
+        return false;
+    try {
+        return pageSessionStorage.getItem(trustedAppLaunchKey(sessionId)) === "1";
+    }
+    catch (error) {
+        void error;
+        return false;
+    }
 }
-
 function rememberTrustedAppLaunch(sessionId: string): void {
-  if (!pageSessionStorage) return;
-  try {
-    pageSessionStorage.setItem(trustedAppLaunchKey(sessionId), "1");
-  } catch (error) {
-    void error;
-    // Storage-disabled browsers keep the explicit confirmation fallback.
-  }
+    if (!pageSessionStorage)
+        return;
+    try {
+        pageSessionStorage.setItem(trustedAppLaunchKey(sessionId), "1");
+    }
+    catch (error) {
+        void error;
+        // Storage-disabled browsers keep the explicit confirmation fallback.
+    }
 }
-
 function forgetTrustedAppLaunch(sessionId: string): void {
-  if (!pageSessionStorage) return;
-  try {
-    pageSessionStorage.removeItem(trustedAppLaunchKey(sessionId));
-  } catch (error) {
-    void error;
-    // A stale, session-scoped marker cannot authorize any other session.
-  }
+    if (!pageSessionStorage)
+        return;
+    try {
+        pageSessionStorage.removeItem(trustedAppLaunchKey(sessionId));
+    }
+    catch (error) {
+        void error;
+        // A stale, session-scoped marker cannot authorize any other session.
+    }
 }
-
 /**
  * Human-readable label for the client that launched this CLI-login flow, shown
  * on the confirmation interstitial. Only the sanitized `returnTo` origin is
@@ -187,101 +197,87 @@ function forgetTrustedAppLaunch(sessionId: string): void {
  * the flow carries no return target (bare CLI deep link).
  */
 function describeCliLoginClient(returnTo: string | null): string | null {
-  if (!returnTo) return null;
-  try {
-    return new URL(returnTo).host;
-  } catch (error) {
-    void error;
-    // error-policy:J3 a pre-sanitized returnTo cannot fail to parse; fail
-    // closed to the generic client description rather than a broken label.
-    return null;
-  }
+    if (!returnTo)
+        return null;
+    try {
+        return new URL(returnTo).host;
+    }
+    catch (error) {
+        void error;
+        // error-policy:J3 a pre-sanitized returnTo cannot fail to parse; fail
+        // closed to the generic client description rather than a broken label.
+        return null;
+    }
 }
-
 function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
-  if (typeof window === "undefined") return "https://eliza.app";
-  if (!returnTo) return window.location.origin;
-  return new URL(returnTo).origin;
+    if (typeof window === "undefined")
+        return "https://eliza.app";
+    if (!returnTo)
+        return window.location.origin;
+    return new URL(returnTo).origin;
 }
-
-function notifyCliLoginComplete(
-  sessionId: string,
-  launchReturnTo: string | null,
-): void {
-  const targetOrigin = resolveCliLoginMessageTargetOrigin(launchReturnTo);
-  try {
-    window.opener?.postMessage(
-      { type: "eliza-cloud-auth-complete", sessionId },
-      targetOrigin,
-    );
-  } catch (error) {
-    void error;
-    // error-policy:J6 cross-origin opener policies can reject postMessage.
-  }
-  publishCloudAuthComplete(sessionId);
+function notifyCliLoginComplete(sessionId: string, launchReturnTo: string | null): void {
+    const targetOrigin = resolveCliLoginMessageTargetOrigin(launchReturnTo);
+    try {
+        window.opener?.postMessage({ type: "eliza-cloud-auth-complete", sessionId }, targetOrigin);
+    }
+    catch (error) {
+        void error;
+        // error-policy:J6 cross-origin opener policies can reject postMessage.
+    }
+    publishCloudAuthComplete(sessionId);
 }
-
 function tryCloseAuthWindow(): void {
-  try {
-    window.close();
-  } catch (error) {
-    void error;
-    // Some browsers reject script-close for normal tabs; success UI remains.
-  }
+    try {
+        window.close();
+    }
+    catch (error) {
+        void error;
+        // Some browsers reject script-close for normal tabs; success UI remains.
+    }
 }
-
-function getPageState({
-  authenticated,
-  completion,
-  ready,
-  sessionId,
-  t,
-  trustedAppLaunch,
-}: {
-  authenticated: boolean;
-  completion: CompletionState;
-  ready: boolean;
-  sessionId: string | null;
-  t: TFn;
-  trustedAppLaunch: boolean;
+function getPageState({ authenticated, completion, ready, sessionId, t, trustedAppLaunch, }: {
+    authenticated: boolean;
+    completion: CompletionState;
+    ready: boolean;
+    sessionId: string | null;
+    t: TFn;
+    trustedAppLaunch: boolean;
 }): PageState {
-  if (!sessionId) {
-    return {
-      status: "error",
-      errorMessage: t("cloud.cliLogin.invalidLink", {
-        defaultValue: "Invalid authentication link. Missing session ID.",
-      }),
-    };
-  }
-  if (completion.status !== "idle") return completion;
-  if (!ready) return { status: "initializing" };
-  if (!authenticated) return { status: "waiting_auth" };
-  if (trustedAppLaunch) return { status: "completing" };
-  // Authenticated with a live session id: hold on the confirmation
-  // interstitial. Minting the API key requires the explicit Authorize gesture
-  // — never fire on page load (a clicked link must not mint on its own).
-  return { status: "confirm" };
+    if (!sessionId) {
+        return {
+            status: "error",
+            errorMessage: t("cloud.cliLogin.invalidLink", {
+                defaultValue: "Invalid authentication link. Missing session ID.",
+            }),
+        };
+    }
+    if (completion.status !== "idle")
+        return completion;
+    if (!ready)
+        return { status: "initializing" };
+    if (!authenticated)
+        return { status: "waiting_auth" };
+    if (trustedAppLaunch)
+        return { status: "completing" };
+    // Authenticated with a live session id: hold on the confirmation
+    // interstitial. Minting the API key requires the explicit Authorize gesture
+    // — never fire on page load (a clicked link must not mint on its own).
+    return { status: "confirm" };
 }
-
-function CliLoginPanel({
-  actions,
-  children,
-  description,
-  icon: Icon,
-  iconClassName,
-  title,
-  tone,
-}: {
-  actions?: ReactNode;
-  children?: ReactNode;
-  description: ReactNode;
-  icon: ComponentType<{ className?: string }>;
-  iconClassName?: string;
-  title: string;
-  tone: PanelTone;
+function CliLoginPanel({ actions, children, description, icon: Icon, iconClassName, title, tone, }: {
+    actions?: ReactNode;
+    children?: ReactNode;
+    description: ReactNode;
+    icon: ComponentType<{
+        className?: string;
+    }>;
+    iconClassName?: string;
+    title: string;
+    tone: PanelTone;
 }) {
-  const toneClasses = PANEL_TONE_CLASSES[tone];
-  return (
+    const toneClasses = PANEL_TONE_CLASSES[tone];
+    return (
     // Scroll — never clip — when the panel is taller than the viewport. A flex
     // `justify-center` pins the card's center and pushes its top above
     // scrollTop 0 where it can't be reached; `overflow-y-auto` + the card's
@@ -291,12 +287,8 @@ function CliLoginPanel({
     <main className="theme-cloud relative flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-bg p-4">
       <div className="relative my-auto w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div
-            className={`flex size-14 items-center justify-center ${toneClasses.container}`}
-          >
-            <Icon
-              className={`size-7 ${toneClasses.icon} ${iconClassName ?? ""}`}
-            />
+          <div className={`flex size-14 items-center justify-center ${toneClasses.container}`}>
+            <Icon className={`size-7 ${toneClasses.icon} ${iconClassName ?? ""}`}/>
           </div>
           <div className="space-y-1">
             <h1 className="text-xl font-semibold text-txt">{title}</h1>
@@ -306,436 +298,298 @@ function CliLoginPanel({
           {actions ? <div className="w-full space-y-2">{actions}</div> : null}
         </div>
       </div>
-    </main>
-  );
+    </main>);
 }
-
 export default function CliLoginPage() {
-  const t = useCloudT();
-  const { authenticated, ready } = useSessionAuth();
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const sessionId = sanitizeCliLoginSessionId(searchParams.get("session"));
-  const launchReturnTo = sanitizeCliLoginReturnTo(searchParams.get("returnTo"));
-  const matchingLocalAppLaunch = isMatchingLocalAppLaunch(
-    sessionId,
-    launchReturnTo,
-    typeof document === "undefined" ? "" : document.referrer,
-  );
-  const trustedAppLaunch =
-    hasTrustedAppLaunch(sessionId) || matchingLocalAppLaunch;
-  const [completion, setCompletion] = useState<CompletionState>({
-    status: "idle",
-  });
-  // The session id the user explicitly authorized via the interstitial.
-  // Keyed by id so a swapped ?session= link must be re-confirmed.
-  const [confirmedSessionId, setConfirmedSessionId] = useState<string | null>(
-    null,
-  );
-  const lastSessionId = useRef(sessionId);
-  const completionFiredRef = useRef(false);
-
-  usePageTitle(
-    t("cloud.cliLogin.metaTitle", {
-      defaultValue: "Sign in | Eliza Cloud",
-    }),
-  );
-
-  useEffect(() => {
-    if (!sessionId || !matchingLocalAppLaunch) return;
-    rememberTrustedAppLaunch(sessionId);
-  }, [matchingLocalAppLaunch, sessionId]);
-
-  useEffect(() => {
-    if (lastSessionId.current === sessionId) return;
-    lastSessionId.current = sessionId;
-    completionFiredRef.current = false;
-    // Consent is for one presentation of one session link. Clear it on every
-    // transition so an A -> B -> A URL swap cannot reuse the earlier gesture.
-    setConfirmedSessionId(null);
-    setCompletion({ status: "idle" });
-  }, [sessionId]);
-
-  // Another Cloud tab already finished this session — stop showing a live
-  // sign-in / completing state on this orphan surface. Ignore events after
-  // this tab has already started completion (avoids same-tab BroadcastChannel
-  // self-echo double-close).
-  useEffect(() => {
-    if (!sessionId) return;
-    if (hasCloudAuthCompleted(sessionId)) {
-      completionFiredRef.current = true;
-      setCompletion({ status: "success", apiKeyPrefix: "" });
-      if (isCloudAuthHandoffSurface()) tryCloseAuthWindow();
-      return;
-    }
-    return subscribeCloudAuthComplete((message) => {
-      if (message.sessionId !== sessionId) return;
-      if (completionFiredRef.current) return;
-      completionFiredRef.current = true;
-      setCompletion({ status: "success", apiKeyPrefix: "" });
-      if (isCloudAuthHandoffSurface()) tryCloseAuthWindow();
+    const t = useCloudT();
+    const { authenticated, ready } = useSessionAuth();
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const sessionId = sanitizeCliLoginSessionId(searchParams.get("session"));
+    const launchReturnTo = sanitizeCliLoginReturnTo(searchParams.get("returnTo"));
+    const matchingLocalAppLaunch = isMatchingLocalAppLaunch(sessionId, launchReturnTo, typeof document === "undefined" ? "" : document.referrer);
+    const trustedAppLaunch = hasTrustedAppLaunch(sessionId) || matchingLocalAppLaunch;
+    const [completion, setCompletion] = useState<CompletionState>({
+        status: "idle",
     });
-  }, [sessionId]);
-
-  // Generic CLI/device completion fires only after Authorize. The matching
-  // local-app handoff may finish without another click because its exact
-  // loopback origin + callback markers were proven by the browser referrer
-  // and remembered across the hosted login round trip.
-  useEffect(() => {
-    if (!sessionId || !ready || !authenticated) return;
-    if (confirmedSessionId !== sessionId && !trustedAppLaunch) return;
-    if (completionFiredRef.current) return;
-    completionFiredRef.current = true;
-    const activeSessionId = sessionId;
-
-    const abort = new AbortController();
-    const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
-
-    async function completeCliLogin() {
-      setCompletion({ status: "completing" });
-      try {
-        const response = await apiFetch(
-          `/api/auth/cli-session/${activeSessionId}/complete`,
-          { method: "POST", json: {}, signal: abort.signal },
-        );
-        const data = (await response.json()) as { keyPrefix: string };
-        forgetTrustedAppLaunch(activeSessionId);
-        notifyCliLoginComplete(activeSessionId, launchReturnTo);
-
-        // Handoff surface (live opener OR named cloud-auth popup): the opener
-        // poll / BroadcastChannel owns continuation. Never navigate returnTo —
-        // that loads a second app shell when opener is severed by COOP or the
-        // opener tab closed while auth was in flight (#18001).
-        if (isCloudAuthHandoffSurface()) {
-          tryCloseAuthWindow();
-          setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
-          return;
+    // The session id the user explicitly authorized via the interstitial.
+    // Keyed by id so a swapped ?session= link must be re-confirmed.
+    const [confirmedSessionId, setConfirmedSessionId] = useState<string | null>(null);
+    const lastSessionId = useRef(sessionId);
+    const completionFiredRef = useRef(false);
+    usePageTitle(t("cloud.cliLogin.metaTitle", {
+        defaultValue: "Sign in | Eliza Cloud",
+    }));
+    useEffect(() => {
+        if (!sessionId || !matchingLocalAppLaunch)
+            return;
+        rememberTrustedAppLaunch(sessionId);
+    }, [matchingLocalAppLaunch, sessionId]);
+    useEffect(() => {
+        if (lastSessionId.current === sessionId)
+            return;
+        lastSessionId.current = sessionId;
+        completionFiredRef.current = false;
+        // Consent is for one presentation of one session link. Clear it on every
+        // transition so an A -> B -> A URL swap cannot reuse the earlier gesture.
+        setConfirmedSessionId(null);
+        setCompletion({ status: "idle" });
+    }, [sessionId]);
+    // Another Cloud tab already finished this session — stop showing a live
+    // sign-in / completing state on this orphan surface. Ignore events after
+    // this tab has already started completion (avoids same-tab BroadcastChannel
+    // self-echo double-close).
+    useEffect(() => {
+        if (!sessionId)
+            return;
+        if (hasCloudAuthCompleted(sessionId)) {
+            completionFiredRef.current = true;
+            setCompletion({ status: "success", apiKeyPrefix: "" });
+            if (isCloudAuthHandoffSurface())
+                tryCloseAuthWindow();
+            return;
         }
-
-        if (launchReturnTo) {
-          setCompletion({ status: "redirecting" });
-          tryCloseAuthWindow();
-          window.location.replace(launchReturnTo);
-          return;
-        }
-        setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
-      } catch (error) {
-        const aborted =
-          error instanceof DOMException && error.name === "AbortError";
-        if (error instanceof ApiError && error.status === 401) {
-          await clearStaleStewardSession();
-        }
-        setCompletion({
-          status: "error",
-          errorMessage: aborted
-            ? t("cloud.cliLogin.timeout", {
-                defaultValue:
-                  "The cloud took too long to respond. Please try again.",
-              })
-            : error instanceof ApiError
-              ? error.message
-              : getErrorMessage(
-                  error,
-                  t("cloud.cliLogin.networkError", {
-                    defaultValue: "Network error. Please try again.",
-                  }),
-                ),
+        return subscribeCloudAuthComplete((message) => {
+            if (message.sessionId !== sessionId)
+                return;
+            if (completionFiredRef.current)
+                return;
+            completionFiredRef.current = true;
+            setCompletion({ status: "success", apiKeyPrefix: "" });
+            if (isCloudAuthHandoffSurface())
+                tryCloseAuthWindow();
         });
-      }
+    }, [sessionId]);
+    // Generic CLI/device completion fires only after Authorize. The matching
+    // local-app handoff may finish without another click because its exact
+    // loopback origin + callback markers were proven by the browser referrer
+    // and remembered across the hosted login round trip.
+    useEffect(() => {
+        if (!sessionId || !ready || !authenticated)
+            return;
+        if (confirmedSessionId !== sessionId && !trustedAppLaunch)
+            return;
+        if (completionFiredRef.current)
+            return;
+        completionFiredRef.current = true;
+        const activeSessionId = sessionId;
+        const abort = new AbortController();
+        const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
+        async function completeCliLogin() {
+            setCompletion({ status: "completing" });
+            try {
+                const response = await apiFetch(`/api/auth/cli-session/${activeSessionId}/complete`, { method: "POST", json: {}, signal: abort.signal });
+                const data = (await response.json()) as {
+                    keyPrefix: string;
+                };
+                forgetTrustedAppLaunch(activeSessionId);
+                notifyCliLoginComplete(activeSessionId, launchReturnTo);
+                // Handoff surface (live opener OR named cloud-auth popup): the opener
+                // poll / BroadcastChannel owns continuation. Never navigate returnTo —
+                // that loads a second app shell when opener is severed by COOP or the
+                // opener tab closed while auth was in flight (#18001).
+                if (isCloudAuthHandoffSurface()) {
+                    tryCloseAuthWindow();
+                    setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
+                    return;
+                }
+                if (launchReturnTo) {
+                    setCompletion({ status: "redirecting" });
+                    tryCloseAuthWindow();
+                    window.location.replace(launchReturnTo);
+                    return;
+                }
+                setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
+            }
+            catch (error) {
+                const aborted = error instanceof DOMException && error.name === "AbortError";
+                if (error instanceof ApiError && error.status === 401) {
+                    await clearStaleStewardSession();
+                }
+                setCompletion({
+                    status: "error",
+                    errorMessage: aborted
+                        ? t("cloud.cliLogin.timeout", {
+                            defaultValue: "The cloud took too long to respond. Please try again.",
+                        })
+                        : error instanceof ApiError
+                            ? error.message
+                            : getErrorMessage(error, t("cloud.cliLogin.networkError", {
+                                defaultValue: "Network error. Please try again.",
+                            })),
+                });
+            }
+        }
+        void completeCliLogin();
+        return () => {
+            clearTimeout(timeout);
+            if (!completionFiredRef.current)
+                abort.abort();
+        };
+    }, [
+        authenticated,
+        confirmedSessionId,
+        launchReturnTo,
+        ready,
+        sessionId,
+        t,
+        trustedAppLaunch,
+    ]);
+    const pageState = getPageState({
+        authenticated,
+        completion,
+        ready,
+        sessionId,
+        t,
+        trustedAppLaunch,
+    });
+    const returnToQuery = searchParams.toString();
+    const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
+    const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+    // No pre-auth interstitial: when the user isn't signed in yet, forward
+    // straight to the Steward login. `returnTo` brings the browser back here
+    // once authenticated, where the confirmation interstitial waits for the
+    // explicit Authorize gesture. Guarded per session via sessionStorage so a
+    // login page that bounces back without establishing a session falls back to
+    // a manual button instead of looping.
+    const autoSignInKey = sessionId
+        ? `eliza-cloud-cli-login-autosignin:${sessionId}`
+        : null;
+    const autoSignInTried = autoSignInKey !== null &&
+        pageSessionStorage?.getItem(autoSignInKey) === "1";
+    useEffect(() => {
+        if (pageState.status !== "waiting_auth" ||
+            !autoSignInKey ||
+            autoSignInTried) {
+            return;
+        }
+        try {
+            pageSessionStorage?.setItem(autoSignInKey, "1");
+        }
+        catch (error) {
+            void error;
+            // sessionStorage unavailable — fall through to the manual sign-in button.
+        }
+        navigate(signInHref, { replace: true });
+    }, [pageState.status, autoSignInKey, autoSignInTried, signInHref, navigate]);
+    if (pageState.status === "initializing") {
+        return (<CliLoginPanel description={t("cloud.cliLogin.initializing", {
+                defaultValue: "Initializing authentication",
+            })} icon={Loader2} iconClassName="animate-spin" title={t("cloud.cliLogin.loading", { defaultValue: "Loading..." })} tone="accent"/>);
     }
-
-    void completeCliLogin();
-
-    return () => {
-      clearTimeout(timeout);
-      if (!completionFiredRef.current) abort.abort();
-    };
-  }, [
-    authenticated,
-    confirmedSessionId,
-    launchReturnTo,
-    ready,
-    sessionId,
-    t,
-    trustedAppLaunch,
-  ]);
-
-  const pageState = getPageState({
-    authenticated,
-    completion,
-    ready,
-    sessionId,
-    t,
-    trustedAppLaunch,
-  });
-  const returnToQuery = searchParams.toString();
-  const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
-  const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
-
-  // No pre-auth interstitial: when the user isn't signed in yet, forward
-  // straight to the Steward login. `returnTo` brings the browser back here
-  // once authenticated, where the confirmation interstitial waits for the
-  // explicit Authorize gesture. Guarded per session via sessionStorage so a
-  // login page that bounces back without establishing a session falls back to
-  // a manual button instead of looping.
-  const autoSignInKey = sessionId
-    ? `eliza-cloud-cli-login-autosignin:${sessionId}`
-    : null;
-  const autoSignInTried =
-    autoSignInKey !== null &&
-    pageSessionStorage?.getItem(autoSignInKey) === "1";
-
-  useEffect(() => {
-    if (
-      pageState.status !== "waiting_auth" ||
-      !autoSignInKey ||
-      autoSignInTried
-    ) {
-      return;
-    }
-    try {
-      pageSessionStorage?.setItem(autoSignInKey, "1");
-    } catch (error) {
-      void error;
-      // sessionStorage unavailable — fall through to the manual sign-in button.
-    }
-    navigate(signInHref, { replace: true });
-  }, [pageState.status, autoSignInKey, autoSignInTried, signInHref, navigate]);
-
-  if (pageState.status === "initializing") {
-    return (
-      <CliLoginPanel
-        description={t("cloud.cliLogin.initializing", {
-          defaultValue: "Initializing authentication",
-        })}
-        icon={Loader2}
-        iconClassName="animate-spin"
-        title={t("cloud.cliLogin.loading", { defaultValue: "Loading..." })}
-        tone="accent"
-      />
-    );
-  }
-
-  if (pageState.status === "confirm") {
-    const clientLabel = describeCliLoginClient(launchReturnTo);
-    return (
-      <CliLoginPanel
-        actions={
-          <>
-            <Button
-              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-              onClick={() => setConfirmedSessionId(sessionId)}
-            >
+    if (pageState.status === "confirm") {
+        const clientLabel = describeCliLoginClient(launchReturnTo);
+        return (<CliLoginPanel actions={<>
+            <Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground" onClick={() => setConfirmedSessionId(sessionId)}>
               {t("cloud.cliLogin.authorizeAction", {
-                defaultValue: "Authorize",
-              })}
+                    defaultValue: "Authorize",
+                })}
             </Button>
-            <Button
-              className="w-full h-11"
-              onClick={() => setCompletion({ status: "cancelled" })}
-              variant="outline"
-            >
+            <Button className="w-full h-11" onClick={() => setCompletion({ status: "cancelled" })} variant="outline">
               {t("cloud.cliLogin.cancelAction", { defaultValue: "Cancel" })}
             </Button>
-          </>
-        }
-        description={
-          clientLabel
-            ? t("cloud.cliLogin.confirmDescriptionNamed", {
-                client: clientLabel,
-                defaultValue: `"${clientLabel}" is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.`,
-              })
-            : t("cloud.cliLogin.confirmDescription", {
-                defaultValue:
-                  "A command-line application is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.",
-              })
-        }
-        icon={Key}
-        title={t("cloud.cliLogin.confirmTitle", {
-          defaultValue: "Authorize CLI Sign-In?",
-        })}
-        tone="accent"
-      />
-    );
-  }
-
-  if (pageState.status === "cancelled") {
-    return (
-      <CliLoginPanel
-        actions={
-          <Button
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            onClick={() => window.close()}
-          >
+          </>} description={clientLabel
+                ? t("cloud.cliLogin.confirmDescriptionNamed", {
+                    client: clientLabel,
+                    defaultValue: `"${clientLabel}" is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.`,
+                })
+                : t("cloud.cliLogin.confirmDescription", {
+                    defaultValue: "A command-line application is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.",
+                })} icon={Key} title={t("cloud.cliLogin.confirmTitle", {
+                defaultValue: "Authorize CLI Sign-In?",
+            })} tone="accent"/>);
+    }
+    if (pageState.status === "cancelled") {
+        return (<CliLoginPanel actions={<Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground" onClick={() => window.close()}>
             {t("cloud.cliLogin.closeWindow", {
-              defaultValue: "Close window",
-            })}
-          </Button>
-        }
-        description={t("cloud.cliLogin.cancelledDescription", {
-          defaultValue:
-            "No API key was created and the requesting app was not granted access.",
-        })}
-        icon={AlertCircle}
-        title={t("cloud.cliLogin.cancelledTitle", {
-          defaultValue: "Sign-In Cancelled",
-        })}
-        tone="danger"
-      />
-    );
-  }
-
-  if (pageState.status === "error") {
-    return (
-      <CliLoginPanel
-        actions={
-          <Button
-            asChild
-            className="hosted-signin-focus-emphasis w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-          >
+                    defaultValue: "Close window",
+                })}
+          </Button>} description={t("cloud.cliLogin.cancelledDescription", {
+                defaultValue: "No API key was created and the requesting app was not granted access.",
+            })} icon={AlertCircle} title={t("cloud.cliLogin.cancelledTitle", {
+                defaultValue: "Sign-In Cancelled",
+            })} tone="danger"/>);
+    }
+    if (pageState.status === "error") {
+        return (<CliLoginPanel actions={<Button asChild className="hosted-signin-focus-emphasis w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
             <a href={sessionId ? signInHref : "/login"}>
               {t("cloud.cliLogin.signInAgain", {
-                defaultValue: "Sign In Again",
-              })}
+                    defaultValue: "Sign In Again",
+                })}
             </a>
-          </Button>
-        }
-        description={pageState.errorMessage}
-        icon={AlertCircle}
-        title={t("cloud.cliLogin.authError", {
-          defaultValue: "Authentication Error",
-        })}
-        tone="danger"
-      />
-    );
-  }
-
-  if (pageState.status === "waiting_auth") {
-    // Happy path: the effect above is forwarding to /login — render a neutral
-    // "redirecting" state, never the CLI interstitial. Only if the login page
-    // bounced back here still unauthenticated (guard already set) do we show a
-    // manual sign-in button as a non-looping fallback.
-    if (!autoSignInTried) {
-      return (
-        <CliLoginPanel
-          description={t("cloud.cliLogin.redirecting", {
-            defaultValue: "Taking you to sign in…",
-          })}
-          icon={Loader2}
-          iconClassName="animate-spin"
-          title={t("cloud.cliLogin.redirectingTitle", {
-            defaultValue: "Signing in",
-          })}
-          tone="accent"
-        />
-      );
+          </Button>} description={pageState.errorMessage} icon={AlertCircle} title={t("cloud.cliLogin.authError", {
+                defaultValue: "Authentication Error",
+            })} tone="danger"/>);
     }
-    return (
-      <CliLoginPanel
-        actions={
-          <Button
-            asChild
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-          >
+    if (pageState.status === "waiting_auth") {
+        // Happy path: the effect above is forwarding to /login — render a neutral
+        // "redirecting" state, never the CLI interstitial. Only if the login page
+        // bounced back here still unauthenticated (guard already set) do we show a
+        // manual sign-in button as a non-looping fallback.
+        if (!autoSignInTried) {
+            return (<CliLoginPanel description={t("cloud.cliLogin.redirecting", {
+                    defaultValue: "Taking you to sign in…",
+                })} icon={Loader2} iconClassName="animate-spin" title={t("cloud.cliLogin.redirectingTitle", {
+                    defaultValue: "Signing in",
+                })} tone="accent"/>);
+        }
+        return (<CliLoginPanel actions={<Button asChild className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
             <a href={signInHref}>
               {t("cloud.cliLogin.signIn", { defaultValue: "Sign In" })}
             </a>
-          </Button>
-        }
-        description={t("cloud.cliLogin.waitingAuthDescription", {
-          defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
-        })}
-        icon={Key}
-        title={t("cloud.cliLogin.cliAuthentication", {
-          defaultValue: "Sign in to Eliza Cloud",
-        })}
-        tone="accent"
-      />
-    );
-  }
-
-  if (pageState.status === "completing" || pageState.status === "redirecting") {
-    return (
-      <CliLoginPanel
-        description={
-          pageState.status === "redirecting"
-            ? t("cloud.cliLogin.returningDescription", {
-                defaultValue: "Returning to your app…",
-              })
-            : t("cloud.cliLogin.completingDescription", {
-                defaultValue: "You're signed in. Taking you back…",
-              })
-        }
-        icon={Key}
-        iconClassName="animate-pulse"
-        title={
-          pageState.status === "redirecting"
-            ? t("cloud.cliLogin.returningTitle", {
-                defaultValue: "Returning to app",
-              })
-            : t("cloud.cliLogin.generatingApiKey", {
-                defaultValue: "Returning to Eliza",
-              })
-        }
-        tone="accent"
-      >
+          </Button>} description={t("cloud.cliLogin.waitingAuthDescription", {
+                defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
+            })} icon={Key} title={t("cloud.cliLogin.cliAuthentication", {
+                defaultValue: "Sign in to Eliza Cloud",
+            })} tone="accent"/>);
+    }
+    if (pageState.status === "completing" || pageState.status === "redirecting") {
+        return (<CliLoginPanel description={pageState.status === "redirecting"
+                ? t("cloud.cliLogin.returningDescription", {
+                    defaultValue: "Returning to your app…",
+                })
+                : t("cloud.cliLogin.completingDescription", {
+                    defaultValue: "You're signed in. Taking you back…",
+                })} icon={Key} iconClassName="animate-pulse" title={pageState.status === "redirecting"
+                ? t("cloud.cliLogin.returningTitle", {
+                    defaultValue: "Returning to app",
+                })
+                : t("cloud.cliLogin.generatingApiKey", {
+                    defaultValue: "Returning to Eliza",
+                })} tone="accent">
         <div className="flex gap-1.5 mt-2">
-          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.3s] motion-reduce:animate-none" />
-          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.15s] motion-reduce:animate-none" />
-          <div className="size-2 animate-pulse rounded-full bg-accent motion-reduce:animate-none" />
+          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.3s] motion-reduce:animate-none"/>
+          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.15s] motion-reduce:animate-none"/>
+          <div className="size-2 animate-pulse rounded-full bg-accent motion-reduce:animate-none"/>
         </div>
-      </CliLoginPanel>
-    );
-  }
-
-  if (pageState.status === "success") {
-    const canClose = isCloudAuthHandoffSurface();
-    return (
-      <CliLoginPanel
-        actions={
-          canClose ? (
-            <Button
-              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-              onClick={tryCloseAuthWindow}
-            >
+      </CliLoginPanel>);
+    }
+    if (pageState.status === "success") {
+        const canClose = isCloudAuthHandoffSurface();
+        return (<CliLoginPanel actions={canClose ? (<Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground" onClick={tryCloseAuthWindow}>
               {t("cloud.cliLogin.closeWindow", {
-                defaultValue: "Close window",
-              })}
-            </Button>
-          ) : (
-            <Button
-              asChild
-              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            >
+                    defaultValue: "Close window",
+                })}
+            </Button>) : (<Button asChild className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
               <a href="/">
                 {t("cloud.authSuccess.returnToAppCta", {
-                  defaultValue: "Return to App",
+                    defaultValue: "Return to App",
                 })}
               </a>
-            </Button>
-          )
-        }
-        description={t("cloud.cliLogin.successDescription", {
-          defaultValue:
-            "You're signed in. Your credentials were sent to the app you started from.",
-        })}
-        icon={CheckCircle2}
-        title={t("cloud.cliLogin.authComplete", {
-          defaultValue: "Authentication Complete!",
-        })}
-        tone="success"
-      >
+            </Button>)} description={t("cloud.cliLogin.successDescription", {
+                defaultValue: "You're signed in. Your credentials were sent to the app you started from.",
+            })} icon={CheckCircle2} title={t("cloud.cliLogin.authComplete", {
+                defaultValue: "Authentication Complete!",
+            })} tone="success">
         <div className="w-full border border-status-success/20 bg-status-success-bg p-4">
           <p className="text-sm text-status-success flex items-center justify-center gap-2">
-            <CheckCircle2 className="size-4" />
+            <CheckCircle2 className="size-4"/>
             {t("cloud.cliLogin.returnToApp", {
-              defaultValue: "Return to your app to continue.",
+                defaultValue: "Return to your app to continue.",
             })}
           </p>
         </div>
-      </CliLoginPanel>
-    );
-  }
-
-  return null;
+      </CliLoginPanel>);
+    }
+    return null;
 }

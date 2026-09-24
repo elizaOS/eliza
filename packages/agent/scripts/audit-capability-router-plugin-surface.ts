@@ -84,7 +84,7 @@ const remoteManifestKeys = new Set(
 const pluginKeys = [
   ...readInterfaceMembers(pluginFile, "Plugin"),
   ...readInterfaceMembers(
-    "packages/shared/src/api/http-plugin.ts",
+    "packages/core/src/api/http-plugin.ts",
     "HttpPlugin",
   ),
 ];

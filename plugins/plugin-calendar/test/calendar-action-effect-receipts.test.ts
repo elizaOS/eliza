@@ -12,10 +12,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeed } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

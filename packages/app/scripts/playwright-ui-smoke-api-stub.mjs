@@ -16,7 +16,7 @@ import {
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
 // Pure catalog data; keep the Node-run stub aligned without loading a runtime.
-import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
+import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a

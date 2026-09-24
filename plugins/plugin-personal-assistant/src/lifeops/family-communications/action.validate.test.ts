@@ -5,7 +5,7 @@
  * deterministic doubles; no database.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { describe, expect, it } from "vitest";
 import { createFamilyCommunicationsAction } from "./action.js";
 import type { FamilyCommunicationsService } from "./service.js";

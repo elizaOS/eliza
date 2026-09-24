@@ -3,12 +3,7 @@
  * mixin that composes the telegram domain's search/send/verify methods onto the
  * LifeOpsService base.
  */
-import type {
-  LifeOpsConnectorSide,
-  LifeOpsTelegramConnectorStatus,
-  VerifyLifeOpsTelegramConnectorRequest,
-  VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorSide, type LifeOpsTelegramConnectorStatus, type VerifyLifeOpsTelegramConnectorRequest, type VerifyLifeOpsTelegramConnectorResponse } from "@elizaos/core/contracts/personal-assistant";
 import type {
   TelegramMessageSearchResult,
   TelegramSendMessageResult,

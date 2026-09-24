@@ -13,11 +13,7 @@ import type {
   Memory,
   ProviderDataRecord,
 } from "@elizaos/core";
-import {
-  type MeetingSession,
-  type ParsedMeetingUrl,
-  parseMeetingUrl,
-} from "@elizaos/shared";
+import { type MeetingSession, type ParsedMeetingUrl, parseMeetingUrl } from "@elizaos/core/meetings";
 import type { MeetingService } from "../service.js";
 
 export function messageText(message: Memory | null | undefined): string {

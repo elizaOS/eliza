@@ -63,7 +63,7 @@ import {
   ScheduledTaskRunnerService,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type { WalletBalancesResponse } from "@elizaos/shared";
+import { type WalletBalancesResponse } from "@elizaos/core/contracts/wallet-types";
 
 /** Contributed dispatch channel the watcher's escalation step names. */
 export const WALLET_BALANCE_DELTA_CHANNEL = "wallet_balance_delta";

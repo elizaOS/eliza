@@ -16,7 +16,7 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import {

@@ -3,7 +3,7 @@
  * adapter, including repeated updates after the persisted revision advances.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { stringToUuid as sqliteTestAgentId } from "./utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "./errors";

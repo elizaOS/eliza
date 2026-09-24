@@ -1,20 +1,8 @@
 /** Durable begin/stage/finish/abort repository for one restore-v3 candidate. */
 
 import { randomBytes, randomUUID } from "node:crypto";
-import {
-  AgentBackupRestoreV3ComponentReceiptSchema,
-  type AgentBackupRestoreV3IsolatedCandidateStaging,
-  type AgentBackupRestoreV3OperationControl,
-  type AgentBackupRestoreV3SourceAuthority,
-  type AgentBackupRestoreV3StagedRecord,
-  AgentBackupRestoreV3StageRecordReceiptSchema,
-  type AgentBackupRestoreV3StagingSession,
-  canonicalizeAgentBackupRestoreV3SourceAuthority,
-  parseAgentBackupManifestV3,
-  parseAgentBackupRestoreV3AuthorityFence,
-  parseAgentBackupRestoreV3SourceAuthority,
-  parseAgentBackupRestoreV3StagingSession,
-} from "@elizaos/shared";
+import { AgentBackupRestoreV3ComponentReceiptSchema, type AgentBackupRestoreV3IsolatedCandidateStaging, type AgentBackupRestoreV3OperationControl, type AgentBackupRestoreV3SourceAuthority, type AgentBackupRestoreV3StagedRecord, AgentBackupRestoreV3StageRecordReceiptSchema, type AgentBackupRestoreV3StagingSession, canonicalizeAgentBackupRestoreV3SourceAuthority, parseAgentBackupRestoreV3AuthorityFence, parseAgentBackupRestoreV3SourceAuthority, parseAgentBackupRestoreV3StagingSession } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+import { parseAgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../helpers";
 import { agentBackupRestoreOperations } from "../schemas/agent-backup-catalog";

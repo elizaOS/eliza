@@ -7,30 +7,18 @@
  * Targeted stale-credential purges require a proven agent owner and preserve
  * every unrelated profile, active-server credential, and loopback owner hint.
  */
-
-import {
-  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
-  cloudPairTokenKeyForAgent,
-} from "@elizaos/shared";
-import {
-  CLOUD_PAIR_LOCAL_STORAGE_KEY,
-  CLOUD_PAIR_SESSION_STORAGE_KEY,
-} from "../components/auth/CloudPairRelay";
+import { CLOUD_PAIR_LOCAL_OWNER_HINT_KEY } from "@elizaos/core/contracts/cloud-pair";
+import { CLOUD_PAIR_LOCAL_STORAGE_KEY } from "../components/auth/CloudPairRelay";
+import { CLOUD_PAIR_SESSION_STORAGE_KEY } from "../components/auth/CloudPairRelay";
+import { cloudPairTokenKeyForAgent } from "@elizaos/core/contracts/cloud-pair";
+import { dedicatedAgentIdFromApiBase } from "./agent-session-recovery";
+import { loadAgentProfileRegistry } from "./agent-profiles";
+import { loadPersistedActiveServer } from "./persistence";
+import { resolveDedicatedAgentId } from "./agent-session-recovery";
+import { saveAgentProfileRegistry } from "./agent-profiles";
+import { scrubPersistedActiveServerToken } from "./persistence";
 import { shellLocalStorage } from "../surface-realm-channel";
-import {
-  type AgentProfile,
-  loadAgentProfileRegistry,
-  saveAgentProfileRegistry,
-} from "./agent-profiles";
-import {
-  dedicatedAgentIdFromApiBase,
-  resolveDedicatedAgentId,
-} from "./agent-session-recovery";
-import {
-  loadPersistedActiveServer,
-  scrubPersistedActiveServerToken,
-} from "./persistence";
-
+import { type AgentProfile } from "./agent-profiles";
 /**
  * Mirrors the write channel's `tryPersistBrowserStorage` shape: report whether
  * the removal took, swallowing only storage-access failures. A failed purge is
@@ -38,129 +26,114 @@ import {
  * (error-policy:J6 best-effort removal).
  */
 function tryRemoveFromStorage(remove: () => void, key?: string): boolean {
-  try {
-    remove();
-    return true;
-  } catch (_storageError) {
-    // error-policy:J6 hardened settings can disable storage; a store we
-    // cannot touch also cannot be re-adopted from, so the purge goal still
-    // holds. Still log the failure so "disconnect succeeded" is not a lie.
-    console.error(
-      `Failed to remove cloud-pair token key${key ? ` (${key})` : ""} from storage.`,
-    );
-    return false;
-  }
+    try {
+        remove();
+        return true;
+    }
+    catch (_storageError) {
+        // error-policy:J6 hardened settings can disable storage; a store we
+        // cannot touch also cannot be re-adopted from, so the purge goal still
+        // holds. Still log the failure so "disconnect succeeded" is not a lie.
+        console.error(`Failed to remove cloud-pair token key${key ? ` (${key})` : ""} from storage.`);
+        return false;
+    }
 }
-
 /** Remove one key from both storage backends, each deletion isolated so a
  * failing store cannot abort clearing the rest. */
 function removePairKeyFromBothStorages(key: string): void {
-  tryRemoveFromStorage(() => {
-    shellLocalStorage.removeItem(key);
-  }, key);
-  tryRemoveFromStorage(() => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(key);
-    }
-  }, key);
+    tryRemoveFromStorage(() => {
+        shellLocalStorage.removeItem(key);
+    }, key);
+    tryRemoveFromStorage(() => {
+        if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem(key);
+        }
+    }, key);
 }
-
 /** Remove a loopback owner hint only when it names the credential being purged. */
 function clearLocalOwnerHintForAgent(agentId: string): void {
-  try {
-    if (
-      window.localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId
-    ) {
-      shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    try {
+        if (window.localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId) {
+            shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+        }
     }
-  } catch (storageError) {
-    // error-policy:J6 a storage backend that cannot be read cannot safely have
-    // its possibly unrelated owner hint removed.
-    console.warn(
-      "Could not inspect localStorage for the cloud-pair owner-hint purge.",
-      storageError,
-    );
-  }
-  try {
-    if (
-      window.sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId
-    ) {
-      window.sessionStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    catch (storageError) {
+        // error-policy:J6 a storage backend that cannot be read cannot safely have
+        // its possibly unrelated owner hint removed.
+        console.warn("Could not inspect localStorage for the cloud-pair owner-hint purge.", storageError);
     }
-  } catch (storageError) {
-    // error-policy:J6 preserve an unreadable hint rather than deleting another
-    // agent's in-flight loopback owner selection.
-    console.warn(
-      "Could not inspect sessionStorage for the cloud-pair owner-hint purge.",
-      storageError,
-    );
-  }
+    try {
+        if (window.sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId) {
+            window.sessionStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+        }
+    }
+    catch (storageError) {
+        // error-policy:J6 preserve an unreadable hint rather than deleting another
+        // agent's in-flight loopback owner selection.
+        console.warn("Could not inspect sessionStorage for the cloud-pair owner-hint purge.", storageError);
+    }
 }
-
 /** Prefix for all per-agent cloud-pair token keys */
 const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
-
 /**
  * Remove all scoped cloud-pair token keys from localStorage.
  * Used when an explicit disconnect happens but we can't resolve a specific agentId.
  */
 function clearAllScopedCloudPairKeys(): void {
-  // shellLocalStorage only has setItem/removeItem/clear; enumerate via raw
-  // localStorage (keys known), then remove each through the isolated helper so
-  // one failing remove cannot abort clearing the rest.
-  let scoped: string[] = [];
-  try {
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const key = window.localStorage.key(i);
-      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) scoped.push(key);
+    // shellLocalStorage only has setItem/removeItem/clear; enumerate via raw
+    // localStorage (keys known), then remove each through the isolated helper so
+    // one failing remove cannot abort clearing the rest.
+    let scoped: string[] = [];
+    try {
+        for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX))
+                scoped.push(key);
+        }
     }
-  } catch (storageError) {
-    // error-policy:J6 hardened settings can block storage enumeration; a store
-    // we cannot read also cannot be re-adopted from, but warn so a vacated
-    // purge never silently looks like a full one.
-    console.warn(
-      "Could not enumerate localStorage for the cloud-pair purge; scoped pair keys may remain.",
-      storageError,
-    );
-    scoped = [];
-  }
-  for (const k of scoped) removePairKeyFromBothStorages(k);
-  // Legacy single-key format
-  removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
+    catch (storageError) {
+        // error-policy:J6 hardened settings can block storage enumeration; a store
+        // we cannot read also cannot be re-adopted from, but warn so a vacated
+        // purge never silently looks like a full one.
+        console.warn("Could not enumerate localStorage for the cloud-pair purge; scoped pair keys may remain.", storageError);
+        scoped = [];
+    }
+    for (const k of scoped)
+        removePairKeyFromBothStorages(k);
+    // Legacy single-key format
+    removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
 }
-
 /**
  * Remove all scoped cloud-pair token keys from sessionStorage.
  */
 function clearAllScopedCloudPairKeysSession(): void {
-  if (typeof window === "undefined") return;
-  let keysToRemove: string[] = [];
-  try {
-    for (let i = 0; i < window.sessionStorage.length; i++) {
-      const key = window.sessionStorage.key(i);
-      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) keysToRemove.push(key);
+    if (typeof window === "undefined")
+        return;
+    let keysToRemove: string[] = [];
+    try {
+        for (let i = 0; i < window.sessionStorage.length; i++) {
+            const key = window.sessionStorage.key(i);
+            if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX))
+                keysToRemove.push(key);
+        }
     }
-  } catch (storageError) {
-    // error-policy:J6 hardened settings can block storage enumeration; warn so
-    // a vacated purge never silently looks like a full one.
-    console.warn(
-      "Could not enumerate sessionStorage for the cloud-pair purge; scoped pair keys may remain.",
-      storageError,
-    );
-    keysToRemove = [];
-  }
-  // sessionStorage is addressed raw (no shellSessionStorage wrapper); the
-  // isolated deletion below mirrors the write channel.
-  for (const key of keysToRemove) {
+    catch (storageError) {
+        // error-policy:J6 hardened settings can block storage enumeration; warn so
+        // a vacated purge never silently looks like a full one.
+        console.warn("Could not enumerate sessionStorage for the cloud-pair purge; scoped pair keys may remain.", storageError);
+        keysToRemove = [];
+    }
+    // sessionStorage is addressed raw (no shellSessionStorage wrapper); the
+    // isolated deletion below mirrors the write channel.
+    for (const key of keysToRemove) {
+        tryRemoveFromStorage(() => {
+            window.sessionStorage.removeItem(key);
+        }, key);
+    }
     tryRemoveFromStorage(() => {
-      window.sessionStorage.removeItem(key);
-    }, key);
-  }
-  tryRemoveFromStorage(() => {
-    window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
-  }, CLOUD_PAIR_SESSION_STORAGE_KEY);
+        window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+    }, CLOUD_PAIR_SESSION_STORAGE_KEY);
 }
-
 /**
  * Remove the durable pair token from BOTH storages the write channel targets.
  * Storage-scoped on purpose — the live bearer/boot-config are left alone so
@@ -176,32 +149,29 @@ function clearAllScopedCloudPairKeysSession(): void {
  * sign-out intent), every scoped key AND the legacy key are purged.
  */
 export function clearCloudPairApiToken(agentId?: string): void {
-  const scopedKey = agentId?.trim()
-    ? cloudPairTokenKeyForAgent(agentId.trim())
-    : null;
-
-  if (scopedKey) {
-    removePairKeyFromBothStorages(scopedKey);
-    clearLocalOwnerHintForAgent(agentId?.trim() ?? "");
-  } else {
-    // No agentId resolved — explicit disconnect with global intent.
-    // Clear ALL scoped keys + legacy key from both storages.
-    clearAllScopedCloudPairKeys();
-    clearAllScopedCloudPairKeysSession();
-    removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
-  }
+    const scopedKey = agentId?.trim()
+        ? cloudPairTokenKeyForAgent(agentId.trim())
+        : null;
+    if (scopedKey) {
+        removePairKeyFromBothStorages(scopedKey);
+        clearLocalOwnerHintForAgent(agentId?.trim() ?? "");
+    }
+    else {
+        // No agentId resolved — explicit disconnect with global intent.
+        // Clear ALL scoped keys + legacy key from both storages.
+        clearAllScopedCloudPairKeys();
+        clearAllScopedCloudPairKeysSession();
+        removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    }
 }
-
 /** A cloud profile belongs to `agentId` via its explicit id or its API base. */
-function profileMatchesDedicatedAgent(
-  profile: AgentProfile,
-  agentId: string,
-): boolean {
-  if (profile.kind !== "cloud") return false;
-  if (profile.cloudAgentId === agentId) return true;
-  return dedicatedAgentIdFromApiBase(profile.apiBase) === agentId;
+function profileMatchesDedicatedAgent(profile: AgentProfile, agentId: string): boolean {
+    if (profile.kind !== "cloud")
+        return false;
+    if (profile.cloudAgentId === agentId)
+        return true;
+    return dedicatedAgentIdFromApiBase(profile.apiBase) === agentId;
 }
-
 /**
  * Purge the persisted credentials for ONE dedicated cloud agent whose adopted
  * bearer a caller has independently observed rejected. The pairing mint is
@@ -221,28 +191,30 @@ function profileMatchesDedicatedAgent(
  *   their still-valid credentials.
  */
 export function clearStalePairCredentialsForAgent(agentId: string): void {
-  const target = agentId.trim();
-  if (!target) return;
-
-  const activeServer = loadPersistedActiveServer();
-  // The durable key is per-agent, so purge THIS agent's scoped key regardless
-  // of which agent is the active server — it provably belongs to the target.
-  clearCloudPairApiToken(target);
-  // The persisted active-server bearer is ONLY scrubbed when it actually
-  // belongs to the deleted agent; an active server for a different agent
-  // keeps its still-valid credential.
-  if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
-    scrubPersistedActiveServerToken();
-  }
-
-  const registry = loadAgentProfileRegistry();
-  let changed = false;
-  registry.profiles = registry.profiles.map((profile) => {
-    if (!profile.accessToken) return profile;
-    if (!profileMatchesDedicatedAgent(profile, target)) return profile;
-    changed = true;
-    const { accessToken: _dropped, ...rest } = profile;
-    return rest;
-  });
-  if (changed) saveAgentProfileRegistry(registry);
+    const target = agentId.trim();
+    if (!target)
+        return;
+    const activeServer = loadPersistedActiveServer();
+    // The durable key is per-agent, so purge THIS agent's scoped key regardless
+    // of which agent is the active server — it provably belongs to the target.
+    clearCloudPairApiToken(target);
+    // The persisted active-server bearer is ONLY scrubbed when it actually
+    // belongs to the deleted agent; an active server for a different agent
+    // keeps its still-valid credential.
+    if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
+        scrubPersistedActiveServerToken();
+    }
+    const registry = loadAgentProfileRegistry();
+    let changed = false;
+    registry.profiles = registry.profiles.map((profile) => {
+        if (!profile.accessToken)
+            return profile;
+        if (!profileMatchesDedicatedAgent(profile, target))
+            return profile;
+        changed = true;
+        const { accessToken: _dropped, ...rest } = profile;
+        return rest;
+    });
+    if (changed)
+        saveAgentProfileRegistry(registry);
 }

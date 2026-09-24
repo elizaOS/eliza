@@ -12,33 +12,10 @@
  */
 
 import crypto from "node:crypto";
-import {
-  fail,
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
-  GOOGLE_GMAIL_CACHE_TTL_MS,
-  LIFEOPS_GMAIL_BULK_OPERATIONS,
-  LIFEOPS_GMAIL_DRAFT_TONES,
-  LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
-  type LifeOpsCalendarEvent,
-  type LifeOpsConnectorGrant,
-  type LifeOpsGmailBatchReplyDraftsFeed,
-  type LifeOpsGmailBulkOperation,
-  type LifeOpsGmailMessageSummary,
-  type LifeOpsGmailNeedsResponseFeed,
-  type LifeOpsGmailRecommendation,
-  type LifeOpsGmailRecommendationsFeed,
-  type LifeOpsGmailReplyDraft,
-  type LifeOpsGmailSearchFeed,
-  type LifeOpsGmailSpamReviewFeed,
-  type LifeOpsGmailSpamReviewItem,
-  type LifeOpsGmailSpamReviewStatus,
-  type LifeOpsGmailTriageFeed,
-  type LifeOpsGmailUnrespondedFeed,
-  normalizeEnumValue,
-  normalizeFiniteNumber,
-  normalizeOptionalString,
-  requireNonEmptyString,
-} from "@elizaos/shared";
+import { fail, normalizeEnumValue, normalizeFiniteNumber, normalizeOptionalString, requireNonEmptyString } from "@elizaos/core/lifeops-normalize/service-normalize";
+import { GOOGLE_CALENDAR_CACHE_TTL_MS, GOOGLE_GMAIL_CACHE_TTL_MS } from "@elizaos/core/lifeops-constants/service-constants";
+import { LIFEOPS_GMAIL_BULK_OPERATIONS, LIFEOPS_GMAIL_DRAFT_TONES, LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES, type LifeOpsConnectorGrant, type LifeOpsGmailBatchReplyDraftsFeed, type LifeOpsGmailBulkOperation, type LifeOpsGmailMessageSummary, type LifeOpsGmailNeedsResponseFeed, type LifeOpsGmailRecommendation, type LifeOpsGmailRecommendationsFeed, type LifeOpsGmailReplyDraft, type LifeOpsGmailSearchFeed, type LifeOpsGmailSpamReviewFeed, type LifeOpsGmailSpamReviewItem, type LifeOpsGmailSpamReviewStatus, type LifeOpsGmailTriageFeed, type LifeOpsGmailUnrespondedFeed } from "@elizaos/core/contracts/personal-assistant";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { extractLooseEmailAddress } from "./email-address.ts";
 
 export type SyncedGoogleGmailMessageSummary = Omit<
@@ -1228,7 +1205,7 @@ export function summarizeGmailRecommendations(
  * alongside the email classifier that depends on it; this preserves the
  * historical import path for in-plugin callers.
  */
-export { wrapUntrustedEmailContent } from "@elizaos/shared/email-classification/wrap-untrusted-email-content";
+export { wrapUntrustedEmailContent } from "@elizaos/core/text/untrusted-email-content";
 
 export function buildFallbackGmailReplyDraftBody(args: {
   message: LifeOpsGmailMessageSummary;

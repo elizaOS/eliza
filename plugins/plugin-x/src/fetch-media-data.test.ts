@@ -10,12 +10,12 @@ import path from "node:path";
 import {
   DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   fetchRemoteMedia,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchMediaData } from "./utils";
 
-vi.mock("@elizaos/shared/media", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/shared/media")>();
+vi.mock("@elizaos/core/media", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../packages/core/src/media/index.ts")>();
   return {
     ...actual,
     fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia),

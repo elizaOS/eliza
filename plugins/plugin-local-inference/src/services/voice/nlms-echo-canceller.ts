@@ -1,6 +1,6 @@
-/** Re-exports the NLMS adaptive echo canceller from `@elizaos/shared/voice/aec`. */
+/** Re-exports the NLMS adaptive echo canceller from `@elizaos/core/voice/aec`. */
 export {
 	NlmsEchoCanceller,
 	type NlmsEchoCancellerOptions,
 	type ResidualSuppressionOptions,
-} from "@elizaos/shared/voice/aec";
+} from "@elizaos/core/voice/aec";

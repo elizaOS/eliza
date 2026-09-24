@@ -2,11 +2,10 @@
  * Declares the platform-specific permission priming sets, rationale copy, and
  * persisted shown-state for the onboarding soft-ask flow.
  */
-import type { PermissionId } from "@elizaos/shared";
-import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { shellLocalStorage } from "../../surface-realm-channel";
-
+import { type PermissionId } from "@elizaos/core/contracts/permissions";
 /**
  * Permission-priming logic for the post-login onboarding modal.
  *
@@ -23,70 +22,59 @@ import { shellLocalStorage } from "../../surface-realm-channel";
  * user taps "Enable" on a card. Priming a permission here does NOT request it —
  * it only decides that a rationale card is worth showing.
  */
-
 export type PrimingPlatform = "ios" | "android" | "desktop" | "web";
-
 export interface PrimingPermissionCopy {
-  /** Icon key (matches SYSTEM_PERMISSIONS `icon` keys in permission-types). */
-  icon: string;
-  /** i18n key for the card title; `title` is the English fallback. */
-  titleKey: string;
-  title: string;
-  /** i18n key for the value-proposition line; `rationale` is the fallback. */
-  rationaleKey: string;
-  rationale: string;
+    /** Icon key (matches SYSTEM_PERMISSIONS `icon` keys in permission-types). */
+    icon: string;
+    /** i18n key for the card title; `title` is the English fallback. */
+    titleKey: string;
+    title: string;
+    /** i18n key for the value-proposition line; `rationale` is the fallback. */
+    rationaleKey: string;
+    rationale: string;
 }
-
 /**
  * Value-proposition copy for every permission we ever prime. Keyed by
  * PermissionId. First-person, benefit-led — this is what earns the "Enable"
  * tap, so it must read as *why the user wins*, not what the OS is about to ask.
  */
-export const PRIMING_COPY: Partial<
-  Record<PermissionId, PrimingPermissionCopy>
-> = {
-  microphone: {
-    icon: "mic",
-    titleKey: "permissionpriming.microphone.title",
-    title: "Talk to me",
-    rationaleKey: "permissionpriming.microphone.rationale",
-    rationale:
-      "Turn on your microphone so you can speak instead of type. Voice stays on your device unless you send it.",
-  },
-  "speech-recognition": {
-    icon: "audio-lines",
-    titleKey: "permissionpriming.speechRecognition.title",
-    title: "Understand your voice",
-    rationaleKey: "permissionpriming.speechRecognition.rationale",
-    rationale:
-      "Allow speech recognition so I can turn what you say into text for hands-free chats.",
-  },
-  location: {
-    icon: "map-pin",
-    titleKey: "permissionpriming.location.title",
-    title: "Plan around where you are",
-    rationaleKey: "permissionpriming.location.rationale",
-    rationale:
-      "Share your location so I can factor in travel time, your time zone, and place-aware reminders.",
-  },
-  notifications: {
-    icon: "bell",
-    titleKey: "permissionpriming.notifications.title",
-    title: "Reach you when it matters",
-    rationaleKey: "permissionpriming.notifications.rationale",
-    rationale:
-      "Let me send notifications for reminders, follow-ups, and results from work I do in the background.",
-  },
-  camera: {
-    icon: "camera",
-    titleKey: "permissionpriming.camera.title",
-    title: "Show me things",
-    rationaleKey: "permissionpriming.camera.rationale",
-    rationale:
-      "Enable the camera so you can capture photos and video for me to look at.",
-  },
+export const PRIMING_COPY: Partial<Record<PermissionId, PrimingPermissionCopy>> = {
+    microphone: {
+        icon: "mic",
+        titleKey: "permissionpriming.microphone.title",
+        title: "Talk to me",
+        rationaleKey: "permissionpriming.microphone.rationale",
+        rationale: "Turn on your microphone so you can speak instead of type. Voice stays on your device unless you send it.",
+    },
+    "speech-recognition": {
+        icon: "audio-lines",
+        titleKey: "permissionpriming.speechRecognition.title",
+        title: "Understand your voice",
+        rationaleKey: "permissionpriming.speechRecognition.rationale",
+        rationale: "Allow speech recognition so I can turn what you say into text for hands-free chats.",
+    },
+    location: {
+        icon: "map-pin",
+        titleKey: "permissionpriming.location.title",
+        title: "Plan around where you are",
+        rationaleKey: "permissionpriming.location.rationale",
+        rationale: "Share your location so I can factor in travel time, your time zone, and place-aware reminders.",
+    },
+    notifications: {
+        icon: "bell",
+        titleKey: "permissionpriming.notifications.title",
+        title: "Reach you when it matters",
+        rationaleKey: "permissionpriming.notifications.rationale",
+        rationale: "Let me send notifications for reminders, follow-ups, and results from work I do in the background.",
+    },
+    camera: {
+        icon: "camera",
+        titleKey: "permissionpriming.camera.title",
+        title: "Show me things",
+        rationaleKey: "permissionpriming.camera.rationale",
+        rationale: "Enable the camera so you can capture photos and video for me to look at.",
+    },
 };
-
 /**
  * Explicit per-platform, ordered priming sets. Highest-value first (voice).
  *
@@ -101,49 +89,39 @@ export const PRIMING_COPY: Partial<
  * agent's in-chat permission-card.
  */
 const PRIMING_SETS: Record<PrimingPlatform, readonly PermissionId[]> = {
-  ios: ["microphone", "speech-recognition", "notifications", "location"],
-  android: ["microphone", "notifications", "location"],
-  desktop: ["microphone", "notifications", "location"],
-  web: [],
+    ios: ["microphone", "speech-recognition", "notifications", "location"],
+    android: ["microphone", "notifications", "location"],
+    desktop: ["microphone", "notifications", "location"],
+    web: [],
 };
-
 export interface ResolvePrimingOptions {
-  /** Override the detected platform (tests / Settings). */
-  platform?: PrimingPlatform;
-  /**
-   * Explicit id list, e.g. a Settings "re-request just these" flow. Still
-   * filtered so only ids with priming copy survive.
-   */
-  only?: readonly PermissionId[];
+    /** Override the detected platform (tests / Settings). */
+    platform?: PrimingPlatform;
+    /**
+     * Explicit id list, e.g. a Settings "re-request just these" flow. Still
+     * filtered so only ids with priming copy survive.
+     */
+    only?: readonly PermissionId[];
 }
-
 /**
  * The ordered list of permissions to prime for the current platform. Only ids
  * that have both a platform-set entry (or explicit `only`) AND rationale copy
  * are returned, so the modal can never render a card it has no words for.
  */
-export function resolvePrimingSet(
-  opts: ResolvePrimingOptions = {},
-): PermissionId[] {
-  const platform = opts.platform ?? getFrontendPlatform();
-  const base = opts.only ?? PRIMING_SETS[platform] ?? [];
-  const supported = base.filter(
-    (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
-  );
-  // The Cloud APK proves notification and foreground-location bridges. Voice
-  // deliberately keeps its narrower RECORD_AUDIO request at the moment the
-  // user starts talking, rather than priming through a generic microphone API.
-  if (platform === "android" && isAndroidCloudBuild()) {
-    return supported.filter(
-      (id) => id === "notifications" || id === "location",
-    );
-  }
-  return supported;
+export function resolvePrimingSet(opts: ResolvePrimingOptions = {}): PermissionId[] {
+    const platform = opts.platform ?? getFrontendPlatform();
+    const base = opts.only ?? PRIMING_SETS[platform] ?? [];
+    const supported = base.filter((id): id is PermissionId => PRIMING_COPY[id] !== undefined);
+    // The Cloud APK proves notification and foreground-location bridges. Voice
+    // deliberately keeps its narrower RECORD_AUDIO request at the moment the
+    // user starts talking, rather than priming through a generic microphone API.
+    if (platform === "android" && isAndroidCloudBuild()) {
+        return supported.filter((id) => id === "notifications" || id === "location");
+    }
+    return supported;
 }
-
 /** localStorage key for the shown-once flag. */
 export const PERMISSION_PRIMING_STORAGE_KEY = "eliza:permissions-primed";
-
 /**
  * True once the priming modal has run to completion (granted, skipped, or
  * dismissed). Storage access can throw in locked-down webviews — a throw means
@@ -151,30 +129,31 @@ export const PERMISSION_PRIMING_STORAGE_KEY = "eliza:permissions-primed";
  * showing rather than silently never appearing.
  */
 export function hasPrimedPermissions(): boolean {
-  try {
-    return localStorage.getItem(PERMISSION_PRIMING_STORAGE_KEY) === "1";
-  } catch {
-    // error-policy:J3 storage throw means "we don't know" (see JSDoc) — err
-    // toward showing the modal rather than silently never priming.
-    return false;
-  }
+    try {
+        return localStorage.getItem(PERMISSION_PRIMING_STORAGE_KEY) === "1";
+    }
+    catch {
+        // error-policy:J3 storage throw means "we don't know" (see JSDoc) — err
+        // toward showing the modal rather than silently never priming.
+        return false;
+    }
 }
-
 /** Record that priming has been shown so it does not reappear on next launch. */
 export function markPermissionsPrimed(): void {
-  try {
-    shellLocalStorage.setItem(PERMISSION_PRIMING_STORAGE_KEY, "1");
-  } catch {
-    // Storage unavailable — the modal will show again next launch, which is a
-    // benign degradation, not a failure worth surfacing.
-  }
+    try {
+        shellLocalStorage.setItem(PERMISSION_PRIMING_STORAGE_KEY, "1");
+    }
+    catch {
+        // Storage unavailable — the modal will show again next launch, which is a
+        // benign degradation, not a failure worth surfacing.
+    }
 }
-
 /** Clear the flag so the priming modal can be re-triggered (Settings entry). */
 export function resetPermissionPriming(): void {
-  try {
-    shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
-  } catch {
-    // Same benign degradation as markPermissionsPrimed.
-  }
+    try {
+        shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
+    }
+    catch {
+        // Same benign degradation as markPermissionsPrimed.
+    }
 }

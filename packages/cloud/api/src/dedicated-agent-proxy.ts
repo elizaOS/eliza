@@ -15,159 +15,126 @@
  * Lazy-imported from `index.ts` only on a UUID-subdomain request, so the Worker
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
-
-import { isInferenceTraceId } from "@elizaos/core";
-import {
-  ELIZA_DOMAIN_CONTRACTS,
-  elizaCloudEnvironmentForHostname,
-  renderCloudPairHandoffHtml,
-} from "@elizaos/shared";
-import { runWithDbCacheAsync } from "@/db/client";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import {
-  getPresentedMobileApiKeySecret,
-  isMobileApiKeySecret,
-  mobileApiKeyIngressRateLimitKey,
-} from "@/lib/auth/mobile-api-key";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { isFirstPartyOrigin } from "@/lib/cors/cloud-api-hono-cors";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { AuthenticationError } from "@/lib/api/errors";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { ForbiddenError } from "@/lib/api/errors";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { getPairingTokenService } from "@/lib/services/pairing-token";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
+import { dedicatedAgentTransportToken } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { elizaCloudEnvironmentForHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { getPairingTokenService } from "@/lib/services/pairing-token";
+import { getPresentedMobileApiKeySecret } from "@/lib/auth/mobile-api-key";
 import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
-import {
-  dedicatedAgentTransportToken,
-  personalDedicatedAgentApiBase,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
+import { isFirstPartyOrigin } from "@/lib/cors/cloud-api-hono-cors";
+import { isInferenceTraceId } from "@elizaos/core";
+import { isMobileApiKeySecret } from "@/lib/auth/mobile-api-key";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
-
+import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
+import { personalDedicatedAgentApiBase } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { renderCloudPairHandoffHtml } from "@elizaos/core/contracts/cloud-pair";
+import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithDbCacheAsync } from "@/db/client";
+import { type AppEnv } from "@/types/cloud-worker-env";
 type Bindings = AppEnv["Bindings"];
-
 const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app";
-
 /** Non-`running` statuses we auto-resume on (mirrors the pairing endpoint). */
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
 const RETRY_AFTER_SECONDS = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const GLOBAL_RATE_LIMIT = 600;
 const MOBILE_API_KEY_RATE_LIMIT = 120;
-const DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS = 30_000;
-const WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS = 5 * 60_000;
-const WORKFLOW_RUN_HEADERS_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS = 30000;
+const WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS = 5 * 60000;
+const WORKFLOW_RUN_HEADERS_TIMEOUT_MS = 10 * 60000;
 const MANAGED_PAIR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS = 60;
 const CLOUD_ONLY_CREDENTIAL_HEADERS = [
-  "cookie",
-  "proxy-authorization",
-  "x-bootstrap-secret",
-  "x-cron-secret",
-  "x-eliza-csrf",
-  "x-eliza-service-token",
-  "x-internal-token",
-  "x-service-key",
-  "x-service-token",
-  "x-timestamp",
-  "x-wallet-address",
-  "x-wallet-signature",
+    "cookie",
+    "proxy-authorization",
+    "x-bootstrap-secret",
+    "x-cron-secret",
+    "x-eliza-csrf",
+    "x-eliza-service-token",
+    "x-internal-token",
+    "x-service-key",
+    "x-service-token",
+    "x-timestamp",
+    "x-wallet-address",
+    "x-wallet-signature",
 ] as const;
 const CLOUD_ONLY_CREDENTIAL_HEADER_PREFIXES = [
-  "cf-access-",
-  "x-steward-",
+    "cf-access-",
+    "x-steward-",
 ] as const;
-
 // Tests override every route's headers budget so the timeout paths complete in
 // milliseconds without weakening production's path-specific limits.
 let originHeadersTimeoutOverrideMs: number | null = null;
-
 /**
  * Synchronous workflow generation and execution do not produce headers until
  * their result exists, so their proxy budget must match the engine operation.
  * The client keeps a ten-percent response-envelope buffer beyond these limits;
  * ordinary agent routes retain the short dead-origin guard.
  */
-export function dedicatedProxyOriginHeadersTimeoutMs(
-  method: string,
-  pathname: string,
-): number {
-  if (method.toUpperCase() !== "POST") {
+export function dedicatedProxyOriginHeadersTimeoutMs(method: string, pathname: string): number {
+    if (method.toUpperCase() !== "POST") {
+        return DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
+    }
+    const normalizedPath = pathname.replace(/\/+$/, "");
+    if (normalizedPath === "/api/workflow/workflows/generate" ||
+        normalizedPath === "/api/workflow/workflows/resolve-clarification") {
+        return WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS;
+    }
+    if (/^\/api\/workflow\/workflows\/[^/]+\/run$/.test(normalizedPath)) {
+        return WORKFLOW_RUN_HEADERS_TIMEOUT_MS;
+    }
     return DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
-  }
-
-  const normalizedPath = pathname.replace(/\/+$/, "");
-  if (
-    normalizedPath === "/api/workflow/workflows/generate" ||
-    normalizedPath === "/api/workflow/workflows/resolve-clarification"
-  ) {
-    return WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS;
-  }
-  if (/^\/api\/workflow\/workflows\/[^/]+\/run$/.test(normalizedPath)) {
-    return WORKFLOW_RUN_HEADERS_TIMEOUT_MS;
-  }
-  return DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
 }
-
 /**
  * Test-only seam for the headers-phase timeout. The `__` prefix + `TestHooks`
  * suffix mark it as non-public (same convention as the chat-completions route).
  */
 export const __dedicatedProxyTestHooks = {
-  setOriginHeadersTimeoutMs(ms: number): void {
-    originHeadersTimeoutOverrideMs = ms;
-  },
-  resetOriginHeadersTimeoutMs(): void {
-    originHeadersTimeoutOverrideMs = null;
-  },
-  get originHeadersTimeoutMs(): number {
-    return originHeadersTimeoutOverrideMs ?? DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
-  },
+    setOriginHeadersTimeoutMs(ms: number): void {
+        originHeadersTimeoutOverrideMs = ms;
+    },
+    resetOriginHeadersTimeoutMs(): void {
+        originHeadersTimeoutOverrideMs = null;
+    },
+    get originHeadersTimeoutMs(): number {
+        return originHeadersTimeoutOverrideMs ?? DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
+    },
 } as const;
-
 function resolveOriginHost(env: Bindings): string {
-  const raw = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
-  return raw && raw.length > 0 ? raw : DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
+    const raw = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
+    return raw && raw.length > 0 ? raw : DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
 }
-
 function managedPairHeaders(extra?: HeadersInit): Headers {
-  const headers = new Headers(extra);
-  headers.set("cache-control", "no-store, no-cache, must-revalidate");
-  headers.set(
-    "content-security-policy",
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-  );
-  headers.set("content-type", "text/html; charset=utf-8");
-  headers.set("cross-origin-resource-policy", "same-origin");
-  headers.set("referrer-policy", "no-referrer");
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("x-frame-options", "DENY");
-  return headers;
+    const headers = new Headers(extra);
+    headers.set("cache-control", "no-store, no-cache, must-revalidate");
+    headers.set("content-security-policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    headers.set("content-type", "text/html; charset=utf-8");
+    headers.set("cross-origin-resource-policy", "same-origin");
+    headers.set("referrer-policy", "no-referrer");
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("x-frame-options", "DENY");
+    return headers;
 }
-
 function escapeManagedPairHtml(value: string): string {
-  return value.replace(/[<>&]/g, (character) =>
-    character === "<" ? "&lt;" : character === ">" ? "&gt;" : "&amp;",
-  );
+    return value.replace(/[<>&]/g, (character) => character === "<" ? "&lt;" : character === ">" ? "&gt;" : "&amp;");
 }
-
 function managedPairDashboardUrl(url: URL): string {
-  const environment =
-    elizaCloudEnvironmentForHostname(url.hostname) ?? "production";
-  return `${ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin}/cloud/agents`;
+    const environment = elizaCloudEnvironmentForHostname(url.hostname) ?? "production";
+    return `${ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin}/cloud/agents`;
 }
-
-function renderManagedPairError(
-  url: URL,
-  title: string,
-  message: string,
-): string {
-  const safeTitle = escapeManagedPairHtml(title);
-  const safeMessage = escapeManagedPairHtml(message);
-  const dashboardUrl = managedPairDashboardUrl(url);
-  return `<!doctype html>
+function renderManagedPairError(url: URL, title: string, message: string): string {
+    const safeTitle = escapeManagedPairHtml(title);
+    const safeMessage = escapeManagedPairHtml(message);
+    const dashboardUrl = managedPairDashboardUrl(url);
+    return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -191,234 +158,158 @@ function renderManagedPairError(
 </body>
 </html>`;
 }
-
-function managedPairErrorResponse(
-  url: URL,
-  status: number,
-  title: string,
-  message: string,
-  extraHeaders?: HeadersInit,
-): Response {
-  return new Response(renderManagedPairError(url, title, message), {
-    status,
-    headers: managedPairHeaders(extraHeaders),
-  });
+function managedPairErrorResponse(url: URL, status: number, title: string, message: string, extraHeaders?: HeadersInit): Response {
+    return new Response(renderManagedPairError(url, title, message), {
+        status,
+        headers: managedPairHeaders(extraHeaders),
+    });
 }
-
-async function handleManagedPairAtEdge(
-  request: Request,
-  env: Bindings,
-  url: URL,
-  agentId: string,
-): Promise<Response> {
-  if (request.method !== "GET") {
-    return managedPairErrorResponse(
-      url,
-      405,
-      "Unsupported request",
-      "Open the agent from Eliza Cloud to start a fresh sign-in.",
-      { allow: "GET" },
-    );
-  }
-
-  const rateLimiter = env.GLOBAL_RATE_LIMITER;
-  if (!rateLimiter) {
-    logger.error("[dedicated-proxy] managed pairing rate limiter unavailable", {
-      agentId,
-    });
-    return managedPairErrorResponse(
-      url,
-      503,
-      "Agent sign-in is unavailable",
-      "Eliza Cloud could not validate this sign-in safely. Try again shortly.",
-    );
-  }
-
-  try {
-    const clientIp =
-      request.headers.get("cf-connecting-ip")?.trim() || "unknown";
-    const rateLimit = await rateLimiter.limit({
-      key: `managed-pair:${clientIp}`,
-    });
-    if (!rateLimit.success) {
-      return managedPairErrorResponse(
-        url,
-        429,
-        "Too many sign-in attempts",
-        "Wait a minute and open your agent again from Eliza Cloud.",
-        { "retry-after": String(MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS) },
-      );
+async function handleManagedPairAtEdge(request: Request, env: Bindings, url: URL, agentId: string): Promise<Response> {
+    if (request.method !== "GET") {
+        return managedPairErrorResponse(url, 405, "Unsupported request", "Open the agent from Eliza Cloud to start a fresh sign-in.", { allow: "GET" });
     }
-  } catch (error) {
-    // error-policy:J1 the edge boundary fails closed when its platform rate
-    // limiter is unavailable, rather than redeeming an unmetered bearer.
-    logger.error("[dedicated-proxy] managed pairing rate limiter failed", {
-      agentId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return managedPairErrorResponse(
-      url,
-      503,
-      "Agent sign-in is unavailable",
-      "Eliza Cloud could not validate this sign-in safely. Try again shortly.",
-    );
-  }
-
-  const token = url.searchParams.get("token")?.trim();
-  if (!token || !MANAGED_PAIR_TOKEN_PATTERN.test(token)) {
-    return managedPairErrorResponse(
-      url,
-      400,
-      "Invalid pairing link",
-      "Open the agent from Eliza Cloud so a fresh sign-in link is generated.",
-    );
-  }
-
-  try {
-    const claim = await getPairingTokenService().claimBrowserToken(token, {
-      agentId,
-      expectedOrigin: url.origin,
-    });
-    if (claim.status === "invalid") {
-      return managedPairErrorResponse(
-        url,
-        403,
-        "Sign-in link expired",
-        "Pairing links are single-use and valid for one minute. Open your agent again from Eliza Cloud.",
-      );
+    const rateLimiter = env.GLOBAL_RATE_LIMITER;
+    if (!rateLimiter) {
+        logger.error("[dedicated-proxy] managed pairing rate limiter unavailable", {
+            agentId,
+        });
+        return managedPairErrorResponse(url, 503, "Agent sign-in is unavailable", "Eliza Cloud could not validate this sign-in safely. Try again shortly.");
     }
-    if (claim.status === "sandbox-credential-unavailable") {
-      return managedPairErrorResponse(
-        url,
-        503,
-        "Agent sign-in is unavailable",
-        "The agent is running without a usable sign-in credential. Try again shortly.",
-      );
+    try {
+        const clientIp = request.headers.get("cf-connecting-ip")?.trim() || "unknown";
+        const rateLimit = await rateLimiter.limit({
+            key: `managed-pair:${clientIp}`,
+        });
+        if (!rateLimit.success) {
+            return managedPairErrorResponse(url, 429, "Too many sign-in attempts", "Wait a minute and open your agent again from Eliza Cloud.", { "retry-after": String(MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS) });
+        }
     }
-    return new Response(renderCloudPairHandoffHtml(claim.apiKey, agentId), {
-      status: 200,
-      headers: managedPairHeaders(),
-    });
-  } catch (error) {
-    // error-policy:J1 the public request boundary translates storage failures
-    // into a visible error without forwarding the token to an untrusted hop.
-    logger.error("[dedicated-proxy] managed pairing claim failed", {
-      agentId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return managedPairErrorResponse(
-      url,
-      500,
-      "Agent sign-in failed",
-      "Eliza Cloud could not complete this sign-in. Open the agent again from the dashboard.",
-    );
-  }
+    catch (error) {
+        // error-policy:J1 the edge boundary fails closed when its platform rate
+        // limiter is unavailable, rather than redeeming an unmetered bearer.
+        logger.error("[dedicated-proxy] managed pairing rate limiter failed", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return managedPairErrorResponse(url, 503, "Agent sign-in is unavailable", "Eliza Cloud could not validate this sign-in safely. Try again shortly.");
+    }
+    const token = url.searchParams.get("token")?.trim();
+    if (!token || !MANAGED_PAIR_TOKEN_PATTERN.test(token)) {
+        return managedPairErrorResponse(url, 400, "Invalid pairing link", "Open the agent from Eliza Cloud so a fresh sign-in link is generated.");
+    }
+    try {
+        const claim = await getPairingTokenService().claimBrowserToken(token, {
+            agentId,
+            expectedOrigin: url.origin,
+        });
+        if (claim.status === "invalid") {
+            return managedPairErrorResponse(url, 403, "Sign-in link expired", "Pairing links are single-use and valid for one minute. Open your agent again from Eliza Cloud.");
+        }
+        if (claim.status === "sandbox-credential-unavailable") {
+            return managedPairErrorResponse(url, 503, "Agent sign-in is unavailable", "The agent is running without a usable sign-in credential. Try again shortly.");
+        }
+        return new Response(renderCloudPairHandoffHtml(claim.apiKey, agentId), {
+            status: 200,
+            headers: managedPairHeaders(),
+        });
+    }
+    catch (error) {
+        // error-policy:J1 the public request boundary translates storage failures
+        // into a visible error without forwarding the token to an untrusted hop.
+        logger.error("[dedicated-proxy] managed pairing claim failed", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return managedPairErrorResponse(url, 500, "Agent sign-in failed", "Eliza Cloud could not complete this sign-in. Open the agent again from the dashboard.");
+    }
 }
-
 function stripCloudOnlyCredentials(headers: Headers): void {
-  for (const name of CLOUD_ONLY_CREDENTIAL_HEADERS) {
-    headers.delete(name);
-  }
-  for (const name of Array.from(headers.keys())) {
-    if (
-      CLOUD_ONLY_CREDENTIAL_HEADER_PREFIXES.some((prefix) =>
-        name.startsWith(prefix),
-      )
-    ) {
-      headers.delete(name);
+    for (const name of CLOUD_ONLY_CREDENTIAL_HEADERS) {
+        headers.delete(name);
     }
-  }
+    for (const name of Array.from(headers.keys())) {
+        if (CLOUD_ONLY_CREDENTIAL_HEADER_PREFIXES.some((prefix) => name.startsWith(prefix))) {
+            headers.delete(name);
+        }
+    }
 }
-
 /**
  * Dedicated ingress never forwards caller-controlled probe instrumentation.
  * The agent owns turn timing, while the one closed-schema trace header is the
  * only browser correlation value that may reach the container.
  */
 function sanitizeDedicatedTraceHeaders(headers: Headers): void {
-  headers.delete("x-eliza-telemetry");
-  headers.delete("x-elizaos-turn-correlation");
-  headers.delete("x-elizaos-turn-attempt");
-  const traceId = headers.get("x-eliza-trace-id");
-  if (!isInferenceTraceId(traceId)) headers.delete("x-eliza-trace-id");
+    headers.delete("x-eliza-telemetry");
+    headers.delete("x-elizaos-turn-correlation");
+    headers.delete("x-elizaos-turn-attempt");
+    const traceId = headers.get("x-eliza-trace-id");
+    if (!isInferenceTraceId(traceId))
+        headers.delete("x-eliza-trace-id");
 }
-
 const DEDICATED_PROXY_PHASES = [
-  "auth",
-  "ownership",
-  "routing",
-  "proxy_dispatch",
+    "auth",
+    "ownership",
+    "routing",
+    "proxy_dispatch",
 ] as const;
 type DedicatedProxyPhase = (typeof DEDICATED_PROXY_PHASES)[number];
-
 interface DedicatedProxyTiming {
-  measure<T>(
-    phase: DedicatedProxyPhase,
-    operation: () => Promise<T>,
-  ): Promise<T>;
-  finish(headers: Headers, status: number): void;
+    measure<T>(phase: DedicatedProxyPhase, operation: () => Promise<T>): Promise<T>;
+    finish(headers: Headers, status: number): void;
 }
-
 function roundedDuration(startedAt: number): number {
-  return Math.round(Math.max(0, performance.now() - startedAt) * 1_000) / 1_000;
+    return Math.round(Math.max(0, performance.now() - startedAt) * 1000) / 1000;
 }
-
 /**
  * One request-local, secret-free timing recorder. The browser-provided trace is
  * retained only after core validation and is the sole join key emitted to logs.
  */
 function createDedicatedProxyTiming(request: Request): DedicatedProxyTiming {
-  const rawTraceId = request.headers.get("x-eliza-trace-id");
-  const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : null;
-  const tracedChatRequest =
-    traceId !== null &&
-    request.method === "POST" &&
-    /\/api\/conversations\/[^/]+\/messages\/stream$/.test(
-      new URL(request.url).pathname.replace(/\/+$/, ""),
-    );
-  const startedAt = performance.now();
-  const phaseDurations = new Map<DedicatedProxyPhase, number>();
-  return {
-    async measure(phase, operation) {
-      const phaseStartedAt = performance.now();
-      try {
-        return await operation();
-      } finally {
-        phaseDurations.set(phase, roundedDuration(phaseStartedAt));
-      }
-    },
-    finish(headers, status) {
-      const totalMs = roundedDuration(startedAt);
-      const metrics = DEDICATED_PROXY_PHASES.flatMap((phase) => {
-        const duration = phaseDurations.get(phase);
-        return duration === undefined
-          ? []
-          : [`dedicated_${phase};dur=${duration}`];
-      });
-      metrics.push(`dedicated_total;dur=${totalMs}`);
-      const existing = headers.get("server-timing")?.trim();
-      headers.set(
-        "server-timing",
-        existing ? `${existing}, ${metrics.join(", ")}` : metrics.join(", "),
-      );
-      if (traceId) headers.set("x-eliza-trace-id", traceId);
-      const completedAuthenticatedRouting =
-        phaseDurations.has("ownership") && phaseDurations.has("routing");
-      if (tracedChatRequest && completedAuthenticatedRouting) {
-        // Warning is the always-on bounded sink in the Cloud logger. Emit only
-        // after authenticated ownership/routing, never for auth probes or
-        // caller-controlled paths that fail before tenant resolution.
-        logger.warn("[dedicated-proxy] correlated chat phase timings", {
-          traceId,
-          status,
-          totalMs,
-          phases: Object.fromEntries(phaseDurations),
-        });
-      }
-    },
-  };
+    const rawTraceId = request.headers.get("x-eliza-trace-id");
+    const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : null;
+    const tracedChatRequest = traceId !== null &&
+        request.method === "POST" &&
+        /\/api\/conversations\/[^/]+\/messages\/stream$/.test(new URL(request.url).pathname.replace(/\/+$/, ""));
+    const startedAt = performance.now();
+    const phaseDurations = new Map<DedicatedProxyPhase, number>();
+    return {
+        async measure(phase, operation) {
+            const phaseStartedAt = performance.now();
+            try {
+                return await operation();
+            }
+            finally {
+                phaseDurations.set(phase, roundedDuration(phaseStartedAt));
+            }
+        },
+        finish(headers, status) {
+            const totalMs = roundedDuration(startedAt);
+            const metrics = DEDICATED_PROXY_PHASES.flatMap((phase) => {
+                const duration = phaseDurations.get(phase);
+                return duration === undefined
+                    ? []
+                    : [`dedicated_${phase};dur=${duration}`];
+            });
+            metrics.push(`dedicated_total;dur=${totalMs}`);
+            const existing = headers.get("server-timing")?.trim();
+            headers.set("server-timing", existing ? `${existing}, ${metrics.join(", ")}` : metrics.join(", "));
+            if (traceId)
+                headers.set("x-eliza-trace-id", traceId);
+            const completedAuthenticatedRouting = phaseDurations.has("ownership") && phaseDurations.has("routing");
+            if (tracedChatRequest && completedAuthenticatedRouting) {
+                // Warning is the always-on bounded sink in the Cloud logger. Emit only
+                // after authenticated ownership/routing, never for auth probes or
+                // caller-controlled paths that fail before tenant resolution.
+                logger.warn("[dedicated-proxy] correlated chat phase timings", {
+                    traceId,
+                    status,
+                    totalMs,
+                    phases: Object.fromEntries(phaseDurations),
+                });
+            }
+        },
+    };
 }
-
 /**
  * Forward the request to the agent-router origin (the CP), preserving
  * path / method / body. When `injectBearer` is provided, the inbound auth is
@@ -426,124 +317,104 @@ function createDedicatedProxyTiming(request: Request): DedicatedProxyTiming {
  * otherwise agent-local auth headers pass through and the container's own auth
  * applies. Browser cookies never cross the Cloud-to-container trust boundary.
  */
-async function proxyToOrigin(
-  request: Request,
-  env: Bindings,
-  url: URL,
-  injectBearer?: string,
-  injectQueryCredential?: RealtimeQueryCredentialName | null,
-  timing?: DedicatedProxyTiming,
-): Promise<Response> {
-  const targetUrl = new URL(request.url);
-  targetUrl.hostname = resolveOriginHost(env);
-  const headers = new Headers(request.headers);
-  headers.delete("host");
-  stripCloudOnlyCredentials(headers);
-  sanitizeDedicatedTraceHeaders(headers);
-  const traceId = headers.get("x-eliza-trace-id");
-  headers.set("x-forwarded-host", url.host);
-  headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
-  if (injectBearer) {
-    headers.set("authorization", `Bearer ${injectBearer}`);
-    headers.delete("x-api-key");
-    // The realtime WebSocket carries the token as `?token=` (browsers can't set
-    // headers on `new WebSocket()`); the container reads it via
-    // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
-    // too so the upgrade authenticates the same way the header does.
-    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
-      targetUrl.searchParams.delete(name);
+async function proxyToOrigin(request: Request, env: Bindings, url: URL, injectBearer?: string, injectQueryCredential?: RealtimeQueryCredentialName | null, timing?: DedicatedProxyTiming): Promise<Response> {
+    const targetUrl = new URL(request.url);
+    targetUrl.hostname = resolveOriginHost(env);
+    const headers = new Headers(request.headers);
+    headers.delete("host");
+    stripCloudOnlyCredentials(headers);
+    sanitizeDedicatedTraceHeaders(headers);
+    const traceId = headers.get("x-eliza-trace-id");
+    headers.set("x-forwarded-host", url.host);
+    headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+    if (injectBearer) {
+        headers.set("authorization", `Bearer ${injectBearer}`);
+        headers.delete("x-api-key");
+        // The realtime WebSocket carries the token as `?token=` (browsers can't set
+        // headers on `new WebSocket()`); the container reads it via
+        // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
+        // too so the upgrade authenticates the same way the header does.
+        for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+            targetUrl.searchParams.delete(name);
+        }
+        if (injectQueryCredential) {
+            targetUrl.searchParams.set(injectQueryCredential, injectBearer);
+        }
     }
-    if (injectQueryCredential) {
-      targetUrl.searchParams.set(injectQueryCredential, injectBearer);
+    // The timeout guards the HEADERS phase only. A blanket
+    // `AbortSignal.timeout(30s)` on the fetch aborted the WHOLE transfer, so any
+    // agent turn or SSE/WebSocket stream still flowing at t=30s was killed
+    // mid-body and the unhandled TimeoutError surfaced to the client as a
+    // CF 1101 / empty body — while the agent's reply persisted server-side. The
+    // timer is cleared the moment the Response object (headers) arrives, so an
+    // established stream flows for as long as the origin keeps it open; only an
+    // origin that never answers is aborted, and that is translated into a
+    // structured 504 the client can read instead of a thrown TimeoutError.
+    const timeoutMs = originHeadersTimeoutOverrideMs ??
+        dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort(new DOMException("origin response headers timed out", "TimeoutError"));
+    }, timeoutMs);
+    const init: RequestInit = {
+        method: request.method,
+        headers,
+        redirect: "manual",
+        signal: controller.signal,
+    };
+    if (request.method !== "GET" && request.method !== "HEAD") {
+        init.body = request.body;
     }
-  }
-  // The timeout guards the HEADERS phase only. A blanket
-  // `AbortSignal.timeout(30s)` on the fetch aborted the WHOLE transfer, so any
-  // agent turn or SSE/WebSocket stream still flowing at t=30s was killed
-  // mid-body and the unhandled TimeoutError surfaced to the client as a
-  // CF 1101 / empty body — while the agent's reply persisted server-side. The
-  // timer is cleared the moment the Response object (headers) arrives, so an
-  // established stream flows for as long as the origin keeps it open; only an
-  // origin that never answers is aborted, and that is translated into a
-  // structured 504 the client can read instead of a thrown TimeoutError.
-  const timeoutMs =
-    originHeadersTimeoutOverrideMs ??
-    dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(
-      new DOMException("origin response headers timed out", "TimeoutError"),
-    );
-  }, timeoutMs);
-  const init: RequestInit = {
-    method: request.method,
-    headers,
-    redirect: "manual",
-    signal: controller.signal,
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-  }
-  try {
-    const dispatch = () => fetch(new Request(targetUrl, init));
-    return timing
-      ? await timing.measure("proxy_dispatch", dispatch)
-      : await dispatch();
-  } catch (error) {
-    // error-policy:J1 boundary translation — the headers-phase timeout becomes
-    // a structured, retryable 504 instead of an unhandled TimeoutError (CF 1101).
-    if (!timedOut) throw error;
-    logger.warn("[dedicated-proxy] origin did not respond within timeout", {
-      host: targetUrl.hostname,
-      path: targetUrl.pathname,
-      timeoutMs,
-      ...(traceId ? { traceId } : {}),
-    });
-    const response = Response.json(
-      {
-        success: false,
-        code: "agent_timeout",
-        error:
-          "Agent did not start responding in time. The agent may still be processing; retry shortly.",
-      },
-      { status: 504 },
-    );
-    response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
-    return response;
-  } finally {
-    clearTimeout(timer);
-  }
+    try {
+        const dispatch = () => fetch(new Request(targetUrl, init));
+        return timing
+            ? await timing.measure("proxy_dispatch", dispatch)
+            : await dispatch();
+    }
+    catch (error) {
+        // error-policy:J1 boundary translation — the headers-phase timeout becomes
+        // a structured, retryable 504 instead of an unhandled TimeoutError (CF 1101).
+        if (!timedOut)
+            throw error;
+        logger.warn("[dedicated-proxy] origin did not respond within timeout", {
+            host: targetUrl.hostname,
+            path: targetUrl.pathname,
+            timeoutMs,
+            ...(traceId ? { traceId } : {}),
+        });
+        const response = Response.json({
+            success: false,
+            code: "agent_timeout",
+            error: "Agent did not start responding in time. The agent may still be processing; retry shortly.",
+        }, { status: 504 });
+        response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
+        return response;
+    }
+    finally {
+        clearTimeout(timer);
+    }
 }
-
-type Sandbox = NonNullable<
-  Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
->;
-
+type Sandbox = NonNullable<Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>>;
 export interface OwnedDedicatedVoiceConversationClaims {
-  agentId: string;
-  conversationId: string;
-  organizationId: string;
-  userId: string;
+    agentId: string;
+    conversationId: string;
+    organizationId: string;
+    userId: string;
 }
-
-export type OwnedDedicatedVoiceConversationResolution =
-  | { kind: "not_dedicated" }
-  | { kind: "dedicated"; fetch: typeof fetch };
-
-function fixedOwnedDedicatedVoiceResponse(
-  body: Record<string, unknown>,
-  status: number,
-  headers?: HeadersInit,
-): OwnedDedicatedVoiceConversationResolution {
-  return {
-    kind: "dedicated",
-    fetch: (async () =>
-      Response.json(body, { status, headers })) as unknown as typeof fetch,
-  };
+export type OwnedDedicatedVoiceConversationResolution = {
+    kind: "not_dedicated";
+} | {
+    kind: "dedicated";
+    fetch: typeof fetch;
+};
+function fixedOwnedDedicatedVoiceResponse(body: Record<string, unknown>, status: number, headers?: HeadersInit): OwnedDedicatedVoiceConversationResolution {
+    return {
+        kind: "dedicated",
+        fetch: (async () => Response.json(body, { status, headers })) as unknown as typeof fetch,
+    };
 }
-
 /**
  * Resolve the same owner-scoped Dedicated runtime transport used by the public
  * agent subdomain, but for a short-lived server-authenticated voice session.
@@ -554,239 +425,176 @@ function fixedOwnedDedicatedVoiceResponse(
  * returned fetch maps only the canonical conversation stream to the runtime;
  * no Cloud credential crosses into the tenant container.
  */
-export async function createOwnedDedicatedVoiceConversationFetch(
-  env: Bindings,
-  claims: OwnedDedicatedVoiceConversationClaims,
-): Promise<OwnedDedicatedVoiceConversationResolution> {
-  return runWithDbCacheAsync(async () => {
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      claims.agentId,
-      claims.organizationId,
-    );
-    if (!sandbox || sandbox.user_id !== claims.userId) {
-      return fixedOwnedDedicatedVoiceResponse(
-        {
-          success: false,
-          error: "Agent not found",
-          code: "agent_not_found",
-        },
-        404,
-      );
-    }
-    if (sandbox.execution_tier === "shared") {
-      return { kind: "not_dedicated" };
-    }
-    if (!isContainerBackedExecutionTier(sandbox.execution_tier)) {
-      return fixedOwnedDedicatedVoiceResponse(
-        {
-          success: false,
-          code: "agent_unavailable",
-          error: "Dedicated agent connection is unavailable",
-        },
-        503,
-      );
-    }
-    if (sandbox.status !== "running") {
-      return fixedOwnedDedicatedVoiceResponse(
-        {
-          success: false,
-          code: "agent_not_running",
-          error: "Dedicated agent is not running yet",
-          data: { status: sandbox.status },
-        },
-        503,
-        { "Retry-After": String(RETRY_AFTER_SECONDS) },
-      );
-    }
-
-    const localSentinel = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN === "https://";
-    const headscaleIp = (sandbox.headscale_ip ?? "").trim();
-    if (!localSentinel && !headscaleIp && !isBridgeHostFallbackEnabled(env)) {
-      return fixedOwnedDedicatedVoiceResponse(
-        {
-          success: false,
-          code: "agent_unroutable",
-          error:
-            "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
-        },
-        503,
-        { "Retry-After": String(RETRY_AFTER_SECONDS) },
-      );
-    }
-
-    const runtimeBase = personalDedicatedAgentApiBase(
-      sandbox,
-      env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
-    );
-    const agentToken = dedicatedAgentTransportToken(sandbox);
-    if (!runtimeBase || !agentToken) {
-      return fixedOwnedDedicatedVoiceResponse(
-        {
-          success: false,
-          code: "agent_unavailable",
-          error: "Dedicated agent connection is unavailable",
-        },
-        503,
-      );
-    }
-
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const incoming = new Request(input, init);
-      const target = new URL(runtimeBase);
-      target.pathname = `/api/conversations/${encodeURIComponent(
-        claims.conversationId,
-      )}/messages/stream`;
-      target.search = new URL(incoming.url).search;
-      target.hash = "";
-
-      const headers = new Headers(incoming.headers);
-      headers.delete("host");
-      stripCloudOnlyCredentials(headers);
-      headers.delete("x-api-key");
-      headers.set("authorization", `Bearer ${agentToken}`);
-      const method = incoming.method.toUpperCase();
-      const requestInit: RequestInit = {
-        method,
-        headers,
-        redirect: "manual",
-        signal: incoming.signal,
-      };
-      if (method !== "GET" && method !== "HEAD") {
-        requestInit.body = await incoming.arrayBuffer();
-      }
-      const runtimeRequest = new Request(target, requestInit);
-
-      // The local cloud harness deliberately has no agent-router hostname;
-      // its canonical transport is the loopback base resolved above.
-      if (localSentinel) return fetch(runtimeRequest);
-      return proxyToOrigin(runtimeRequest, env, target, agentToken);
-    }) as typeof fetch;
-
-    return { kind: "dedicated", fetch: fetchImpl };
-  });
+export async function createOwnedDedicatedVoiceConversationFetch(env: Bindings, claims: OwnedDedicatedVoiceConversationClaims): Promise<OwnedDedicatedVoiceConversationResolution> {
+    return runWithDbCacheAsync(async () => {
+        const sandbox = await agentSandboxesRepository.findByIdAndOrg(claims.agentId, claims.organizationId);
+        if (!sandbox || sandbox.user_id !== claims.userId) {
+            return fixedOwnedDedicatedVoiceResponse({
+                success: false,
+                error: "Agent not found",
+                code: "agent_not_found",
+            }, 404);
+        }
+        if (sandbox.execution_tier === "shared") {
+            return { kind: "not_dedicated" };
+        }
+        if (!isContainerBackedExecutionTier(sandbox.execution_tier)) {
+            return fixedOwnedDedicatedVoiceResponse({
+                success: false,
+                code: "agent_unavailable",
+                error: "Dedicated agent connection is unavailable",
+            }, 503);
+        }
+        if (sandbox.status !== "running") {
+            return fixedOwnedDedicatedVoiceResponse({
+                success: false,
+                code: "agent_not_running",
+                error: "Dedicated agent is not running yet",
+                data: { status: sandbox.status },
+            }, 503, { "Retry-After": String(RETRY_AFTER_SECONDS) });
+        }
+        const localSentinel = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN === "https://";
+        const headscaleIp = (sandbox.headscale_ip ?? "").trim();
+        if (!localSentinel && !headscaleIp && !isBridgeHostFallbackEnabled(env)) {
+            return fixedOwnedDedicatedVoiceResponse({
+                success: false,
+                code: "agent_unroutable",
+                error: "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
+            }, 503, { "Retry-After": String(RETRY_AFTER_SECONDS) });
+        }
+        const runtimeBase = personalDedicatedAgentApiBase(sandbox, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
+        const agentToken = dedicatedAgentTransportToken(sandbox);
+        if (!runtimeBase || !agentToken) {
+            return fixedOwnedDedicatedVoiceResponse({
+                success: false,
+                code: "agent_unavailable",
+                error: "Dedicated agent connection is unavailable",
+            }, 503);
+        }
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(input, init);
+            const target = new URL(runtimeBase);
+            target.pathname = `/api/conversations/${encodeURIComponent(claims.conversationId)}/messages/stream`;
+            target.search = new URL(incoming.url).search;
+            target.hash = "";
+            const headers = new Headers(incoming.headers);
+            headers.delete("host");
+            stripCloudOnlyCredentials(headers);
+            headers.delete("x-api-key");
+            headers.set("authorization", `Bearer ${agentToken}`);
+            const method = incoming.method.toUpperCase();
+            const requestInit: RequestInit = {
+                method,
+                headers,
+                redirect: "manual",
+                signal: incoming.signal,
+            };
+            if (method !== "GET" && method !== "HEAD") {
+                requestInit.body = await incoming.arrayBuffer();
+            }
+            const runtimeRequest = new Request(target, requestInit);
+            // The local cloud harness deliberately has no agent-router hostname;
+            // its canonical transport is the loopback base resolved above.
+            if (localSentinel)
+                return fetch(runtimeRequest);
+            return proxyToOrigin(runtimeRequest, env, target, agentToken);
+        }) as typeof fetch;
+        return { kind: "dedicated", fetch: fetchImpl };
+    });
 }
-
 /**
  * A non-`running` dedicated agent can't be reached. Kick off (or detect an
  * in-flight) resume and tell the client to retry — the same self-healing flow
  * the pairing endpoint exposes, so the app drives one resume+poll loop for both.
  */
-async function resumeAndRespond(
-  sandbox: Sandbox,
-  agentId: string,
-  orgId: string,
-  userId: string,
-): Promise<Response> {
-  if (sandbox.status === "error") {
-    return Response.json(
-      {
-        success: false,
-        code: "agent_error_state",
-        error:
-          "Agent is in an error state. Resolve the failure before connecting.",
-        data: { status: sandbox.status },
-      },
-      { status: 503 },
-    );
-  }
-
-  let jobId: string | undefined;
-  let alreadyInProgress = false;
-  if (
-    sandbox.status === "stopped" &&
-    (await agentSandboxesRepository.wasStoppedByUser(agentId, orgId))
-  ) {
-    return Response.json(
-      {
-        success: false,
-        code: "agent_stopped",
-        error:
-          "This agent is shut down. Start it from Cloud settings when you are ready.",
-        data: { status: "stopped" },
-      },
-      { status: 409 },
-    );
-  }
-  if (RESUMABLE_STATUSES.has(sandbox.status)) {
-    // A suspended / zero-balance org must NOT get free compute by hitting its
-    // own agent subdomain. Gate the auto-resume on credits, mirroring the
-    // pairing-token endpoint (#11224/#11227). Without this, billing suspension
-    // (active-billing sets status='stopped') is defeated: every proxied request
-    // would re-provision the container for free — the daemon executor does no
-    // credit re-check, so this HTTP call-site is the only gate. (#11583)
-    const creditCheck = await checkAgentCreditGate(orgId);
-    if (!creditCheck.allowed) {
-      logger.warn(
-        "[dedicated-proxy] auto-resume blocked: insufficient credits",
-        {
-          agentId,
-          orgId,
-          balance: creditCheck.balance,
-          required: AGENT_PRICING.MINIMUM_DEPOSIT,
-        },
-      );
-      return Response.json(
-        {
-          success: false,
-          code: "insufficient_credits",
-          error:
-            creditCheck.error ?? "Insufficient credits to resume this agent",
-          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-          currentBalance: creditCheck.balance,
-        },
-        { status: 402 },
-      );
+async function resumeAndRespond(sandbox: Sandbox, agentId: string, orgId: string, userId: string): Promise<Response> {
+    if (sandbox.status === "error") {
+        return Response.json({
+            success: false,
+            code: "agent_error_state",
+            error: "Agent is in an error state. Resolve the failure before connecting.",
+            data: { status: sandbox.status },
+        }, { status: 503 });
     }
-    const workerHealth = await checkProvisioningWorkerHealth();
-    if (workerHealth.ok) {
-      try {
-        const { job, created } =
-          await provisioningJobService.enqueueAgentProvisionOnce({
+    let jobId: string | undefined;
+    let alreadyInProgress = false;
+    if (sandbox.status === "stopped" &&
+        (await agentSandboxesRepository.wasStoppedByUser(agentId, orgId))) {
+        return Response.json({
+            success: false,
+            code: "agent_stopped",
+            error: "This agent is shut down. Start it from Cloud settings when you are ready.",
+            data: { status: "stopped" },
+        }, { status: 409 });
+    }
+    if (RESUMABLE_STATUSES.has(sandbox.status)) {
+        // A suspended / zero-balance org must NOT get free compute by hitting its
+        // own agent subdomain. Gate the auto-resume on credits, mirroring the
+        // pairing-token endpoint (#11224/#11227). Without this, billing suspension
+        // (active-billing sets status='stopped') is defeated: every proxied request
+        // would re-provision the container for free — the daemon executor does no
+        // credit re-check, so this HTTP call-site is the only gate. (#11583)
+        const creditCheck = await checkAgentCreditGate(orgId);
+        if (!creditCheck.allowed) {
+            logger.warn("[dedicated-proxy] auto-resume blocked: insufficient credits", {
+                agentId,
+                orgId,
+                balance: creditCheck.balance,
+                required: AGENT_PRICING.MINIMUM_DEPOSIT,
+            });
+            return Response.json({
+                success: false,
+                code: "insufficient_credits",
+                error: creditCheck.error ?? "Insufficient credits to resume this agent",
+                requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+                currentBalance: creditCheck.balance,
+            }, { status: 402 });
+        }
+        const workerHealth = await checkProvisioningWorkerHealth();
+        if (workerHealth.ok) {
+            try {
+                const { job, created } = await provisioningJobService.enqueueAgentProvisionOnce({
+                    agentId,
+                    organizationId: orgId,
+                    userId,
+                    agentName: sandbox.agent_name ?? agentId,
+                    expectedLifecycleRevision: sandbox.lifecycle_revision,
+                });
+                jobId = job.id;
+                alreadyInProgress = !created;
+            }
+            catch (error) {
+                logger.warn("[dedicated-proxy] auto-resume enqueue failed", {
+                    agentId,
+                    orgId,
+                    status: sandbox.status,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+        else {
+            logger.warn("[dedicated-proxy] auto-resume blocked: worker unavailable", {
+                agentId,
+                orgId,
+                status: sandbox.status,
+                code: workerHealth.code,
+            });
+        }
+    }
+    const response = Response.json({
+        success: true,
+        data: {
             agentId,
-            organizationId: orgId,
-            userId,
-            agentName: sandbox.agent_name ?? agentId,
-            expectedLifecycleRevision: sandbox.lifecycle_revision,
-          });
-        jobId = job.id;
-        alreadyInProgress = !created;
-      } catch (error) {
-        logger.warn("[dedicated-proxy] auto-resume enqueue failed", {
-          agentId,
-          orgId,
-          status: sandbox.status,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    } else {
-      logger.warn("[dedicated-proxy] auto-resume blocked: worker unavailable", {
-        agentId,
-        orgId,
-        status: sandbox.status,
-        code: workerHealth.code,
-      });
-    }
-  }
-
-  const response = Response.json(
-    {
-      success: true,
-      data: {
-        agentId,
-        status: "starting",
-        jobId,
-        alreadyInProgress,
-        retryAfterMs: RETRY_AFTER_SECONDS * 1000,
-        message:
-          "Agent is starting. Resume has been requested; retry after the suggested interval.",
-      },
-    },
-    { status: 202 },
-  );
-  response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
-  return response;
+            status: "starting",
+            jobId,
+            alreadyInProgress,
+            retryAfterMs: RETRY_AFTER_SECONDS * 1000,
+            message: "Agent is starting. Resume has been requested; retry after the suggested interval.",
+        },
+    }, { status: 202 });
+    response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
+    return response;
 }
-
 /**
  * The cloud token arrives in the Authorization header (or `x-api-key`) for HTTP
  * requests, but the realtime WebSocket can't set headers on `new WebSocket()` —
@@ -795,553 +603,437 @@ async function resumeAndRespond(
  * same way and inject the swapped agent token back on the same channel.
  */
 const REALTIME_QUERY_CREDENTIAL_NAMES = ["token", "apiKey", "api_key"] as const;
-type RealtimeQueryCredentialName =
-  (typeof REALTIME_QUERY_CREDENTIAL_NAMES)[number];
-
+type RealtimeQueryCredentialName = (typeof REALTIME_QUERY_CREDENTIAL_NAMES)[number];
 interface RealtimeQueryCredentials {
-  effective: { name: RealtimeQueryCredentialName; value: string } | null;
-  values: string[];
+    effective: {
+        name: RealtimeQueryCredentialName;
+        value: string;
+    } | null;
+    values: string[];
 }
-
 function readRealtimeQueryCredentials(url: URL): RealtimeQueryCredentials {
-  const values: string[] = [];
-  let effective: RealtimeQueryCredentials["effective"] = null;
-  for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
-    for (const raw of url.searchParams.getAll(name)) {
-      const value = raw.trim();
-      if (!value) continue;
-      values.push(value);
-      if (!effective) effective = { name, value };
+    const values: string[] = [];
+    let effective: RealtimeQueryCredentials["effective"] = null;
+    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+        for (const raw of url.searchParams.getAll(name)) {
+            const value = raw.trim();
+            if (!value)
+                continue;
+            values.push(value);
+            if (!effective)
+                effective = { name, value };
+        }
     }
-  }
-  return { effective, values };
+    return { effective, values };
 }
-
 function isCloudCredentialShape(value: string | null): boolean {
-  if (!value) return false;
-  if (value.startsWith("eliza_")) return true;
-  const jwtParts = value.split(".");
-  return jwtParts.length === 3 && jwtParts.every((part) => part.length > 0);
+    if (!value)
+        return false;
+    if (value.startsWith("eliza_"))
+        return true;
+    const jwtParts = value.split(".");
+    return jwtParts.length === 3 && jwtParts.every((part) => part.length > 0);
 }
-
-function hasCloudCredentialShape(
-  request: Request,
-  queryCredentials: readonly string[],
-): boolean {
-  const apiKey = request.headers.get("x-api-key")?.trim() ?? null;
-  const authorization = request.headers.get("authorization")?.trim() ?? "";
-  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authorization);
-  return (
-    isCloudCredentialShape(apiKey) ||
-    isCloudCredentialShape(bearerMatch?.[1]?.trim() ?? null) ||
-    queryCredentials.some((value) => isCloudCredentialShape(value))
-  );
+function hasCloudCredentialShape(request: Request, queryCredentials: readonly string[]): boolean {
+    const apiKey = request.headers.get("x-api-key")?.trim() ?? null;
+    const authorization = request.headers.get("authorization")?.trim() ?? "";
+    const bearerMatch = /^Bearer\s+(.+)$/i.exec(authorization);
+    return (isCloudCredentialShape(apiKey) ||
+        isCloudCredentialShape(bearerMatch?.[1]?.trim() ?? null) ||
+        queryCredentials.some((value) => isCloudCredentialShape(value)));
 }
-
 /**
  * Browser origins allowed to call a dedicated agent through the Worker.
  * Tenant-owned agent subdomains are deliberately excluded from the shared
  * first-party set: they must never borrow a visitor's Cloud session to call a
  * different tenant's agent.
  */
-function isDedicatedProxyBrowserOriginAllowed(
-  request: Request,
-  url: URL,
-): boolean {
-  const origin = request.headers.get("origin")?.trim();
-  if (!origin) return true;
-  return origin === url.origin || isFirstPartyOrigin(origin);
+function isDedicatedProxyBrowserOriginAllowed(request: Request, url: URL): boolean {
+    const origin = request.headers.get("origin")?.trim();
+    if (!origin)
+        return true;
+    return origin === url.origin || isFirstPartyOrigin(origin);
 }
-
 /**
  * The Worker, rather than a tenant-controlled agent or the router, owns the
  * browser policy for every dedicated-host response. Agent-local auth is bearer
  * based, so parent-domain cookies never need credentialed CORS here.
  */
-function applyDedicatedProxyCors(
-  request: Request,
-  url: URL,
-  headers: Headers,
-): boolean {
-  for (const name of Array.from(headers.keys())) {
-    if (name.startsWith("access-control-")) headers.delete(name);
-  }
-
-  const origin = request.headers.get("origin")?.trim();
-  if (origin && !isDedicatedProxyBrowserOriginAllowed(request, url)) {
-    return false;
-  }
-
-  headers.set("access-control-allow-origin", origin ?? "*");
-  const vary = new Map<string, string>();
-  for (const value of (headers.get("vary") ?? "").split(",")) {
-    const trimmed = value.trim();
-    if (trimmed) vary.set(trimmed.toLowerCase(), trimmed);
-  }
-  vary.set("origin", "Origin");
-  headers.set("vary", [...vary.values()].join(", "));
-  headers.set(
-    "access-control-allow-methods",
-    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  );
-  headers.set(
-    "access-control-allow-headers",
-    ["authorization", "content-type", "x-api-key", "x-eliza-trace-id"].join(
-      ",",
-    ),
-  );
-  headers.set(
-    "access-control-expose-headers",
-    [
-      "x-eliza-trace-id",
-      "server-timing",
-      "x-eliza-preforward-ms",
-      "x-eliza-inference-path",
-      "x-eliza-provider-request-id",
-      "x-request-id",
-    ].join(","),
-  );
-  return true;
+function applyDedicatedProxyCors(request: Request, url: URL, headers: Headers): boolean {
+    for (const name of Array.from(headers.keys())) {
+        if (name.startsWith("access-control-"))
+            headers.delete(name);
+    }
+    const origin = request.headers.get("origin")?.trim();
+    if (origin && !isDedicatedProxyBrowserOriginAllowed(request, url)) {
+        return false;
+    }
+    headers.set("access-control-allow-origin", origin ?? "*");
+    const vary = new Map<string, string>();
+    for (const value of (headers.get("vary") ?? "").split(",")) {
+        const trimmed = value.trim();
+        if (trimmed)
+            vary.set(trimmed.toLowerCase(), trimmed);
+    }
+    vary.set("origin", "Origin");
+    headers.set("vary", [...vary.values()].join(", "));
+    headers.set("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    headers.set("access-control-allow-headers", ["authorization", "content-type", "x-api-key", "x-eliza-trace-id"].join(","));
+    headers.set("access-control-expose-headers", [
+        "x-eliza-trace-id",
+        "server-timing",
+        "x-eliza-preforward-ms",
+        "x-eliza-inference-path",
+        "x-eliza-provider-request-id",
+        "x-request-id",
+    ].join(","));
+    return true;
 }
-
 function dedicatedProxyPreflight(request: Request, url: URL): Response {
-  const headers = new Headers({ "cache-control": "no-store" });
-  if (!applyDedicatedProxyCors(request, url, headers)) {
-    return new Response(null, { status: 403, headers });
-  }
-  // The browser's CORS-preflight cache is separate from its HTTP cache, so
-  // `Cache-Control: no-store` still protects the response while this bounded
-  // grant avoids another full Worker/auth-router round trip on every chat
-  // turn. The cache is keyed by origin, URL, method, credentials mode, and
-  // requested headers; the Worker revalidates the real bearer on every POST.
-  headers.set("access-control-max-age", "600");
-  return new Response(null, { status: 204, headers });
+    const headers = new Headers({ "cache-control": "no-store" });
+    if (!applyDedicatedProxyCors(request, url, headers)) {
+        return new Response(null, { status: 403, headers });
+    }
+    // The browser's CORS-preflight cache is separate from its HTTP cache, so
+    // `Cache-Control: no-store` still protects the response while this bounded
+    // grant avoids another full Worker/auth-router round trip on every chat
+    // turn. The cache is keyed by origin, URL, method, credentials mode, and
+    // requested headers; the Worker revalidates the real bearer on every POST.
+    headers.set("access-control-max-age", "600");
+    return new Response(null, { status: 204, headers });
 }
-
-function withDedicatedProxyBrowserPolicy(
-  request: Request,
-  url: URL,
-  response: Response,
-  timing: DedicatedProxyTiming,
-): Response {
-  const headers = new Headers(response.headers);
-  headers.delete("set-cookie");
-  headers.delete("set-cookie2");
-  headers.delete("clear-site-data");
-  applyDedicatedProxyCors(request, url, headers);
-  timing.finish(headers, response.status);
-
-  const webSocket = (response as Response & { webSocket?: WebSocket | null })
-    .webSocket;
-  if (response.status === 101) {
-    if (!webSocket) {
-      return new Response(null, {
-        status: 502,
+function withDedicatedProxyBrowserPolicy(request: Request, url: URL, response: Response, timing: DedicatedProxyTiming): Response {
+    const headers = new Headers(response.headers);
+    headers.delete("set-cookie");
+    headers.delete("set-cookie2");
+    headers.delete("clear-site-data");
+    applyDedicatedProxyCors(request, url, headers);
+    timing.finish(headers, response.status);
+    const webSocket = (response as Response & {
+        webSocket?: WebSocket | null;
+    })
+        .webSocket;
+    if (response.status === 101) {
+        if (!webSocket) {
+            return new Response(null, {
+                status: 502,
+                headers,
+            });
+        }
+        const upgradeResponseInit: ResponseInit & {
+            webSocket: WebSocket;
+        } = {
+            status: 101,
+            statusText: response.statusText,
+            headers,
+            webSocket,
+        };
+        const upgradeResponse = new Response(null, upgradeResponseInit);
+        // Bun's Fetch implementation accepts status 101 but ignores the Workers
+        // `webSocket` ResponseInit extension. Preserve the endpoint in local tests
+        // and non-workerd development without changing workerd's native response.
+        if (!("webSocket" in upgradeResponse)) {
+            Object.defineProperty(upgradeResponse, "webSocket", {
+                configurable: false,
+                enumerable: false,
+                value: webSocket,
+                writable: false,
+            });
+        }
+        return upgradeResponse;
+    }
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
         headers,
-      });
-    }
-    const upgradeResponseInit: ResponseInit & { webSocket: WebSocket } = {
-      status: 101,
-      statusText: response.statusText,
-      headers,
-      webSocket,
-    };
-    const upgradeResponse = new Response(null, upgradeResponseInit);
-    // Bun's Fetch implementation accepts status 101 but ignores the Workers
-    // `webSocket` ResponseInit extension. Preserve the endpoint in local tests
-    // and non-workerd development without changing workerd's native response.
-    if (!("webSocket" in upgradeResponse)) {
-      Object.defineProperty(upgradeResponse, "webSocket", {
-        configurable: false,
-        enumerable: false,
-        value: webSocket,
-        writable: false,
-      });
-    }
-    return upgradeResponse;
-  }
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
-function requestIpKey(request: Request): string {
-  const headers = request.headers;
-  const ip =
-    headers.get("cf-connecting-ip") ||
-    headers.get("x-real-ip") ||
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown";
-  return `ip:${ip}`;
-}
-
-function requiresNativeRateLimitBinding(env: Bindings): boolean {
-  return env.NODE_ENV === "production" || env.ENVIRONMENT === "production";
-}
-
-type NativeRateLimitBinding = NonNullable<Bindings["GLOBAL_RATE_LIMITER"]>;
-
-function rateLimitUnavailableResponse(bindingName: string): Response {
-  logger.error("[dedicated-proxy] required ingress limiter unavailable", {
-    bindingName,
-  });
-  const response = Response.json(
-    {
-      success: false,
-      error: "Service temporarily unavailable",
-      code: "rate_limit_unavailable",
-      message: "Rate limiter binding is unavailable; request rejected.",
-    },
-    { status: 503 },
-  );
-  response.headers.set("Retry-After", "30");
-  return response;
-}
-
-function rateLimitExceededResponse(limit: number): Response {
-  const response = Response.json(
-    {
-      success: false,
-      error: "Too many requests",
-      code: "rate_limit_exceeded",
-      message: `Rate limit exceeded. Maximum ${limit} requests per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
-      retryAfter: RATE_LIMIT_WINDOW_SECONDS,
-    },
-    { status: 429 },
-  );
-  response.headers.set("X-RateLimit-Limit", String(limit));
-  response.headers.set("X-RateLimit-Policy", "cloudflare-native");
-  response.headers.set("Retry-After", String(RATE_LIMIT_WINDOW_SECONDS));
-  return response;
-}
-
-function mobileCredentialQueryTransportResponse(): Response {
-  const response = Response.json(
-    {
-      success: false,
-      error: "Mobile credential transport is not allowed",
-      code: "mobile_credential_transport_forbidden",
-      message:
-        "Mobile credentials must use an Authorization or X-API-Key header.",
-    },
-    { status: 400 },
-  );
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
-
-async function enforceNativeIngressLimit(options: {
-  env: Bindings;
-  binding: NativeRateLimitBinding | undefined;
-  bindingName: string;
-  key: string;
-  limit: number;
-}): Promise<Response | null> {
-  const { env, binding, bindingName, key, limit } = options;
-  if (!binding) {
-    return requiresNativeRateLimitBinding(env)
-      ? rateLimitUnavailableResponse(bindingName)
-      : null;
-  }
-
-  try {
-    const { success } = await binding.limit({ key });
-    if (success === true) return null;
-    if (success === false) return rateLimitExceededResponse(limit);
-    logger.error(
-      "[dedicated-proxy] ingress limiter returned an invalid decision",
-      {
-        bindingName,
-      },
-    );
-    return requiresNativeRateLimitBinding(env)
-      ? rateLimitUnavailableResponse(bindingName)
-      : null;
-  } catch (error) {
-    // error-policy:J1 the Worker binding boundary returns an observable outage
-    // in deployed environments while local development remains usable.
-    logger.error("[dedicated-proxy] ingress limiter binding failed", {
-      bindingName,
-      error: error instanceof Error ? error.message : String(error),
     });
-    return requiresNativeRateLimitBinding(env)
-      ? rateLimitUnavailableResponse(bindingName)
-      : null;
-  }
 }
-
+function requestIpKey(request: Request): string {
+    const headers = request.headers;
+    const ip = headers.get("cf-connecting-ip") ||
+        headers.get("x-real-ip") ||
+        headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        "unknown";
+    return `ip:${ip}`;
+}
+function requiresNativeRateLimitBinding(env: Bindings): boolean {
+    return env.NODE_ENV === "production" || env.ENVIRONMENT === "production";
+}
+type NativeRateLimitBinding = NonNullable<Bindings["GLOBAL_RATE_LIMITER"]>;
+function rateLimitUnavailableResponse(bindingName: string): Response {
+    logger.error("[dedicated-proxy] required ingress limiter unavailable", {
+        bindingName,
+    });
+    const response = Response.json({
+        success: false,
+        error: "Service temporarily unavailable",
+        code: "rate_limit_unavailable",
+        message: "Rate limiter binding is unavailable; request rejected.",
+    }, { status: 503 });
+    response.headers.set("Retry-After", "30");
+    return response;
+}
+function rateLimitExceededResponse(limit: number): Response {
+    const response = Response.json({
+        success: false,
+        error: "Too many requests",
+        code: "rate_limit_exceeded",
+        message: `Rate limit exceeded. Maximum ${limit} requests per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+        retryAfter: RATE_LIMIT_WINDOW_SECONDS,
+    }, { status: 429 });
+    response.headers.set("X-RateLimit-Limit", String(limit));
+    response.headers.set("X-RateLimit-Policy", "cloudflare-native");
+    response.headers.set("Retry-After", String(RATE_LIMIT_WINDOW_SECONDS));
+    return response;
+}
+function mobileCredentialQueryTransportResponse(): Response {
+    const response = Response.json({
+        success: false,
+        error: "Mobile credential transport is not allowed",
+        code: "mobile_credential_transport_forbidden",
+        message: "Mobile credentials must use an Authorization or X-API-Key header.",
+    }, { status: 400 });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+}
+async function enforceNativeIngressLimit(options: {
+    env: Bindings;
+    binding: NativeRateLimitBinding | undefined;
+    bindingName: string;
+    key: string;
+    limit: number;
+}): Promise<Response | null> {
+    const { env, binding, bindingName, key, limit } = options;
+    if (!binding) {
+        return requiresNativeRateLimitBinding(env)
+            ? rateLimitUnavailableResponse(bindingName)
+            : null;
+    }
+    try {
+        const { success } = await binding.limit({ key });
+        if (success === true)
+            return null;
+        if (success === false)
+            return rateLimitExceededResponse(limit);
+        logger.error("[dedicated-proxy] ingress limiter returned an invalid decision", {
+            bindingName,
+        });
+        return requiresNativeRateLimitBinding(env)
+            ? rateLimitUnavailableResponse(bindingName)
+            : null;
+    }
+    catch (error) {
+        // error-policy:J1 the Worker binding boundary returns an observable outage
+        // in deployed environments while local development remains usable.
+        logger.error("[dedicated-proxy] ingress limiter binding failed", {
+            bindingName,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return requiresNativeRateLimitBinding(env)
+            ? rateLimitUnavailableResponse(bindingName)
+            : null;
+    }
+}
 function isBridgeHostFallbackEnabled(env: Bindings): boolean {
-  return (
-    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
-    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
-  );
+    return (env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+        env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1");
 }
-
 /**
  * Auth-unify + proxy a request bound for `https://<agentId>.cloud.eliza.app/*`.
  * The Worker owns the browser policy and preflight so neither the tenant agent
  * nor the router can widen credentialed access or make failures CORS-opaque.
  */
-export function handleDedicatedAgentProxy(
-  request: Request,
-  env: Bindings,
-  url: URL,
-  agentId: string,
-): Promise<Response> {
-  if (url.pathname.replace(/\/+$/, "") === "/pair") {
-    return runWithCloudBindingsAsync(env, () =>
-      handleManagedPairAtEdge(request, env, url, agentId),
-    );
-  }
-  // The whole browser-policy path runs inside the bindings context so
-  // isFirstPartyOrigin reads THIS request's ENVIRONMENT binding — outside it
-  // would fall back to process.env and silently evaluate as non-production.
-  return runWithCloudBindingsAsync(env, async () => {
-    if (!isDedicatedProxyBrowserOriginAllowed(request, url)) {
-      return new Response(null, {
-        status: 403,
-        headers: { "cache-control": "no-store" },
-      });
+export function handleDedicatedAgentProxy(request: Request, env: Bindings, url: URL, agentId: string): Promise<Response> {
+    if (url.pathname.replace(/\/+$/, "") === "/pair") {
+        return runWithCloudBindingsAsync(env, () => handleManagedPairAtEdge(request, env, url, agentId));
     }
-    if (request.method === "OPTIONS") {
-      return dedicatedProxyPreflight(request, url);
-    }
-    // UUID-subdomain requests bypass bootstrap-app.ts, including its
-    // request-scoped DB cache middleware. Enter the same boundary here so the
-    // auth/JIT lookup and sandbox ownership lookup reuse one Hyperdrive
-    // connection within this request instead of reconnecting for every query.
-    // The cache is connection-scoped only: credentials and ownership are still
-    // revalidated on every request and no I/O object crosses Worker requests.
-    const timing = createDedicatedProxyTiming(request);
-    const response = await runWithDbCacheAsync(() =>
-      proxyDedicatedAgent(request, env, url, agentId, timing),
-    );
-    return withDedicatedProxyBrowserPolicy(request, url, response, timing);
-  });
+    // The whole browser-policy path runs inside the bindings context so
+    // isFirstPartyOrigin reads THIS request's ENVIRONMENT binding — outside it
+    // would fall back to process.env and silently evaluate as non-production.
+    return runWithCloudBindingsAsync(env, async () => {
+        if (!isDedicatedProxyBrowserOriginAllowed(request, url)) {
+            return new Response(null, {
+                status: 403,
+                headers: { "cache-control": "no-store" },
+            });
+        }
+        if (request.method === "OPTIONS") {
+            return dedicatedProxyPreflight(request, url);
+        }
+        // UUID-subdomain requests bypass bootstrap-app.ts, including its
+        // request-scoped DB cache middleware. Enter the same boundary here so the
+        // auth/JIT lookup and sandbox ownership lookup reuse one Hyperdrive
+        // connection within this request instead of reconnecting for every query.
+        // The cache is connection-scoped only: credentials and ownership are still
+        // revalidated on every request and no I/O object crosses Worker requests.
+        const timing = createDedicatedProxyTiming(request);
+        const response = await runWithDbCacheAsync(() => proxyDedicatedAgent(request, env, url, agentId, timing));
+        return withDedicatedProxyBrowserPolicy(request, url, response, timing);
+    });
 }
-
-async function proxyDedicatedAgent(
-  request: Request,
-  env: Bindings,
-  url: URL,
-  agentId: string,
-  timing: DedicatedProxyTiming,
-): Promise<Response> {
-  const rawTraceId = request.headers.get("x-eliza-trace-id");
-  const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : undefined;
-  const queryCredentials = readRealtimeQueryCredentials(url);
-  const headerCarriesCredential = Boolean(
-    request.headers.get("authorization") || request.headers.get("x-api-key"),
-  );
-  const effectiveQueryCredential = headerCarriesCredential
-    ? null
-    : queryCredentials.effective;
-  const authHeaders = new Headers(request.headers);
-  authHeaders.delete("cookie");
-  if (effectiveQueryCredential) {
-    authHeaders.set(
-      "authorization",
-      `Bearer ${effectiveQueryCredential.value}`,
-    );
-  }
-  const authRequest = new Request(request.url, {
-    method: request.method,
-    headers: authHeaders,
-  });
-
-  // The UUID-subdomain fast path bypasses bootstrap-app.ts, so it must apply
-  // the same global IP backstop before any credential can trigger DB auth.
-  const globalLimitResponse = await enforceNativeIngressLimit({
-    env,
-    binding: env.GLOBAL_RATE_LIMITER,
-    bindingName: "GLOBAL_RATE_LIMITER",
-    key: `global:${requestIpKey(request)}`,
-    limit: GLOBAL_RATE_LIMIT,
-  });
-  if (globalLimitResponse) return globalLimitResponse;
-
-  // Mobile lifecycle credentials are rejected on the query/WebSocket channel so
-  // the proxy never validates or forwards a long-lived secret URL.
-  if (queryCredentials.values.some((value) => isMobileApiKeySecret(value))) {
-    return mobileCredentialQueryTransportResponse();
-  }
-  const mobileSecret = getPresentedMobileApiKeySecret(authRequest);
-  if (mobileSecret) {
-    const mobileLimitResponse = await enforceNativeIngressLimit({
-      env,
-      binding: env.MOBILE_API_KEY_INGRESS_LIMITER,
-      bindingName: "MOBILE_API_KEY_INGRESS_LIMITER",
-      key: mobileApiKeyIngressRateLimitKey(mobileSecret),
-      limit: MOBILE_API_KEY_RATE_LIMIT,
-    });
-    if (mobileLimitResponse) return mobileLimitResponse;
-  }
-
-  let orgId: string;
-  let userId: string;
-  try {
-    const { user } = await timing.measure("auth", () =>
-      requireAuthOrApiKeyWithOrg(authRequest),
-    );
-    orgId = user.organization_id;
-    userId = user.id;
-  } catch (error) {
-    // error-policy:J1 only agent-local credential shapes pass through an
-    // expected Cloud-auth rejection. Cloud API keys and Steward JWTs have stable
-    // wire formats; retaining them after a failed user/JIT lookup could leak a
-    // still-live credential to the container. Managed agent credentials use the
-    // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
-    // reserved so this boundary remains unambiguous.
-    if (error instanceof AuthenticationError) {
-      if (hasCloudCredentialShape(request, queryCredentials.values)) {
-        return Response.json(
-          {
-            success: false,
-            code: "cloud_auth_rejected",
-            error: "Cloud authentication failed",
-          },
-          { status: 401 },
-        );
-      }
-      return proxyToOrigin(request, env, url, undefined, null, timing);
+async function proxyDedicatedAgent(request: Request, env: Bindings, url: URL, agentId: string, timing: DedicatedProxyTiming): Promise<Response> {
+    const rawTraceId = request.headers.get("x-eliza-trace-id");
+    const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : undefined;
+    const queryCredentials = readRealtimeQueryCredentials(url);
+    const headerCarriesCredential = Boolean(request.headers.get("authorization") || request.headers.get("x-api-key"));
+    const effectiveQueryCredential = headerCarriesCredential
+        ? null
+        : queryCredentials.effective;
+    const authHeaders = new Headers(request.headers);
+    authHeaders.delete("cookie");
+    if (effectiveQueryCredential) {
+        authHeaders.set("authorization", `Bearer ${effectiveQueryCredential.value}`);
     }
-
-    if (error instanceof ForbiddenError) {
-      return Response.json(
-        {
-          success: false,
-          code: "agent_access_denied",
-          error: "Agent access denied",
-        },
-        { status: 403 },
-      );
-    }
-
-    logger.error("[dedicated-proxy] cloud credential validation failed", {
-      agentId,
-      error: error instanceof Error ? error.message : String(error),
+    const authRequest = new Request(request.url, {
+        method: request.method,
+        headers: authHeaders,
     });
-    return Response.json(
-      {
-        success: false,
-        code: "cloud_auth_unavailable",
-        error: "Cloud authentication is temporarily unavailable",
-      },
-      { status: 503 },
-    );
-  }
-
-  let agentToken: string;
-  try {
-    // 2. Ownership — the caller's org MUST own this dedicated agent. Not
-    //    owned / not found / shared fails here. Forwarding a known-valid Cloud
-    //    credential would hand it to a different tenant's container.
-    const sandbox = await timing.measure("ownership", () =>
-      agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
-    );
-    const routing = await timing.measure(
-      "routing",
-      async (): Promise<{ response: Response } | { agentToken: string }> => {
-        if (
-          !sandbox ||
-          !isContainerBackedExecutionTier(sandbox.execution_tier)
-        ) {
-          return {
-            response: Response.json(
-              {
+    // The UUID-subdomain fast path bypasses bootstrap-app.ts, so it must apply
+    // the same global IP backstop before any credential can trigger DB auth.
+    const globalLimitResponse = await enforceNativeIngressLimit({
+        env,
+        binding: env.GLOBAL_RATE_LIMITER,
+        bindingName: "GLOBAL_RATE_LIMITER",
+        key: `global:${requestIpKey(request)}`,
+        limit: GLOBAL_RATE_LIMIT,
+    });
+    if (globalLimitResponse)
+        return globalLimitResponse;
+    // Mobile lifecycle credentials are rejected on the query/WebSocket channel so
+    // the proxy never validates or forwards a long-lived secret URL.
+    if (queryCredentials.values.some((value) => isMobileApiKeySecret(value))) {
+        return mobileCredentialQueryTransportResponse();
+    }
+    const mobileSecret = getPresentedMobileApiKeySecret(authRequest);
+    if (mobileSecret) {
+        const mobileLimitResponse = await enforceNativeIngressLimit({
+            env,
+            binding: env.MOBILE_API_KEY_INGRESS_LIMITER,
+            bindingName: "MOBILE_API_KEY_INGRESS_LIMITER",
+            key: mobileApiKeyIngressRateLimitKey(mobileSecret),
+            limit: MOBILE_API_KEY_RATE_LIMIT,
+        });
+        if (mobileLimitResponse)
+            return mobileLimitResponse;
+    }
+    let orgId: string;
+    let userId: string;
+    try {
+        const { user } = await timing.measure("auth", () => requireAuthOrApiKeyWithOrg(authRequest));
+        orgId = user.organization_id;
+        userId = user.id;
+    }
+    catch (error) {
+        // error-policy:J1 only agent-local credential shapes pass through an
+        // expected Cloud-auth rejection. Cloud API keys and Steward JWTs have stable
+        // wire formats; retaining them after a failed user/JIT lookup could leak a
+        // still-live credential to the container. Managed agent credentials use the
+        // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
+        // reserved so this boundary remains unambiguous.
+        if (error instanceof AuthenticationError) {
+            if (hasCloudCredentialShape(request, queryCredentials.values)) {
+                return Response.json({
+                    success: false,
+                    code: "cloud_auth_rejected",
+                    error: "Cloud authentication failed",
+                }, { status: 401 });
+            }
+            return proxyToOrigin(request, env, url, undefined, null, timing);
+        }
+        if (error instanceof ForbiddenError) {
+            return Response.json({
                 success: false,
                 code: "agent_access_denied",
                 error: "Agent access denied",
-              },
-              { status: 403 },
-            ),
-          };
+            }, { status: 403 });
         }
-
-        // 3. Lifecycle — a non-running agent isn't reachable; resume + 202.
-        if (sandbox.status !== "running") {
-          return {
-            response: await resumeAndRespond(sandbox, agentId, orgId, userId),
-          };
-        }
-
-        // 3b. A running row without mesh ingress is not routable yet.
-        const headscaleIp = (sandbox.headscale_ip ?? "").trim();
-        if (!headscaleIp && !isBridgeHostFallbackEnabled(env)) {
-          logger.warn(
-            "[dedicated-proxy] agent running but unroutable (no headscale_ip)",
-            { agentId, orgId, status: sandbox.status },
-          );
-          const response = Response.json(
-            {
-              success: false,
-              code: "agent_unroutable",
-              error:
-                "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
-            },
-            { status: 503 },
-          );
-          response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
-          return { response };
-        }
-
-        // 4. Swap the validated owner's Cloud token for the agent credential.
-        const envVars = (sandbox.environment_vars ?? {}) as Record<
-          string,
-          string
-        >;
-        const resolvedAgentToken = envVars.ELIZA_API_TOKEN?.trim();
-        if (!resolvedAgentToken) {
-          logger.error("[dedicated-proxy] agent credential unavailable", {
+        logger.error("[dedicated-proxy] cloud credential validation failed", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return Response.json({
+            success: false,
+            code: "cloud_auth_unavailable",
+            error: "Cloud authentication is temporarily unavailable",
+        }, { status: 503 });
+    }
+    let agentToken: string;
+    try {
+        // 2. Ownership — the caller's org MUST own this dedicated agent. Not
+        //    owned / not found / shared fails here. Forwarding a known-valid Cloud
+        //    credential would hand it to a different tenant's container.
+        const sandbox = await timing.measure("ownership", () => agentSandboxesRepository.findByIdAndOrg(agentId, orgId));
+        const routing = await timing.measure("routing", async (): Promise<{
+            response: Response;
+        } | {
+            agentToken: string;
+        }> => {
+            if (!sandbox ||
+                !isContainerBackedExecutionTier(sandbox.execution_tier)) {
+                return {
+                    response: Response.json({
+                        success: false,
+                        code: "agent_access_denied",
+                        error: "Agent access denied",
+                    }, { status: 403 }),
+                };
+            }
+            // 3. Lifecycle — a non-running agent isn't reachable; resume + 202.
+            if (sandbox.status !== "running") {
+                return {
+                    response: await resumeAndRespond(sandbox, agentId, orgId, userId),
+                };
+            }
+            // 3b. A running row without mesh ingress is not routable yet.
+            const headscaleIp = (sandbox.headscale_ip ?? "").trim();
+            if (!headscaleIp && !isBridgeHostFallbackEnabled(env)) {
+                logger.warn("[dedicated-proxy] agent running but unroutable (no headscale_ip)", { agentId, orgId, status: sandbox.status });
+                const response = Response.json({
+                    success: false,
+                    code: "agent_unroutable",
+                    error: "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
+                }, { status: 503 });
+                response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
+                return { response };
+            }
+            // 4. Swap the validated owner's Cloud token for the agent credential.
+            const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
+            const resolvedAgentToken = envVars.ELIZA_API_TOKEN?.trim();
+            if (!resolvedAgentToken) {
+                logger.error("[dedicated-proxy] agent credential unavailable", {
+                    agentId,
+                    orgId,
+                });
+                return {
+                    response: Response.json({
+                        success: false,
+                        code: "agent_credential_unavailable",
+                        error: "Agent authentication is temporarily unavailable",
+                    }, { status: 503 }),
+                };
+            }
+            return { agentToken: resolvedAgentToken };
+        });
+        if ("response" in routing)
+            return routing.response;
+        agentToken = routing.agentToken;
+    }
+    catch (error) {
+        // error-policy:J1 a validated Cloud credential never crosses into the
+        // container when ownership or credential resolution fails.
+        logger.error("[dedicated-proxy] owner credential resolution failed", {
             agentId,
             orgId,
-          });
-          return {
-            response: Response.json(
-              {
-                success: false,
-                code: "agent_credential_unavailable",
-                error: "Agent authentication is temporarily unavailable",
-              },
-              { status: 503 },
-            ),
-          };
-        }
-        return { agentToken: resolvedAgentToken };
-      },
-    );
-    if ("response" in routing) return routing.response;
-    agentToken = routing.agentToken;
-  } catch (error) {
-    // error-policy:J1 a validated Cloud credential never crosses into the
-    // container when ownership or credential resolution fails.
-    logger.error("[dedicated-proxy] owner credential resolution failed", {
-      agentId,
-      orgId,
-      ...(traceId ? { traceId } : {}),
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return Response.json(
-      {
-        success: false,
-        code: "agent_auth_unavailable",
-        error: "Agent authentication is temporarily unavailable",
-      },
-      { status: 503 },
-    );
-  }
-
-  // Keep the origin fetch outside the resolution boundary so transport errors
-  // preserve proxy semantics instead of being mistaken for auth failures.
-  return proxyToOrigin(
-    request,
-    env,
-    url,
-    agentToken,
-    effectiveQueryCredential?.name ?? null,
-    timing,
-  );
+            ...(traceId ? { traceId } : {}),
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return Response.json({
+            success: false,
+            code: "agent_auth_unavailable",
+            error: "Agent authentication is temporarily unavailable",
+        }, { status: 503 });
+    }
+    // Keep the origin fetch outside the resolution boundary so transport errors
+    // preserve proxy semantics instead of being mistaken for auth failures.
+    return proxyToOrigin(request, env, url, agentToken, effectiveQueryCredential?.name ?? null, timing);
 }

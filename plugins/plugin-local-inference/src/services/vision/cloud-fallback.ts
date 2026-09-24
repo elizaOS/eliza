@@ -11,11 +11,8 @@ import type {
 	ImageDescriptionParams,
 	ImageDescriptionResult,
 } from "@elizaos/core";
-import {
-	resolveCloudApiBaseUrl,
-	resolveDevCloudAuthorityEnvValue,
-	resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type VisionFallbackReason =
 	| "local-unavailable"

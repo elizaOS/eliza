@@ -20,7 +20,7 @@ import {
   revalidateOwnerExclusiveDisclosure,
   type State,
 } from "@elizaos/core";
-import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+import { type IPermissionsRegistry, type PermissionState } from "@elizaos/core/contracts/permissions";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 
 /** Service id used by the concrete permissions registry service. */

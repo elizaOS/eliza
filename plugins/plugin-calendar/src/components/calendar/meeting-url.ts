@@ -7,7 +7,7 @@
 // unresolvable bare specifier and broke the calendar view bundle load. The
 // logic is a small, stable pure function, so the view carries its own copy
 // rather than pulling the shared runtime into the bundle. Keep in sync with
-// packages/shared/src/meetings.ts.
+// packages/core/src/meetings.ts.
 
 export type MeetingPlatform = "google_meet" | "teams" | "zoom" | "discord";
 

@@ -21,11 +21,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsCircadianState,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleMealLabel,
-} from "@elizaos/shared";
+import { type LifeOpsCircadianState, type LifeOpsScheduleInsight, type LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 
 /**
  * The contract's view of "the current sleep window". `state` is null when

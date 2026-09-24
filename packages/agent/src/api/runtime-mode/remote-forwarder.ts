@@ -16,71 +16,53 @@
  * Device push-token mutations follow the same ownership rule: the selected
  * remote target owns its token registry and sender, never the controller.
  */
-
 import type http from "node:http";
-import { sendJsonError } from "@elizaos/shared";
 import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
-import {
-  getRuntimeModeSnapshot,
-  type RuntimeModeSnapshot,
-} from "./runtime-mode.ts";
-
+import { getRuntimeModeSnapshot } from "./runtime-mode.ts";
+import { sendJsonError } from "@elizaos/core/api/http-helpers";
+import { type RuntimeModeSnapshot } from "./runtime-mode.ts";
 /** Pathnames whose mutations belong to the target in remote mode. */
 const REMOTE_FORWARDED_MUTATION_PREFIXES = [
-  "/api/cloud/login",
-  "/api/cloud/disconnect",
-  "/api/cloud/billing/",
-  "/api/cloud/v1/",
-  "/api/notifications/push-tokens",
-  "/api/notifications/push-tokens/",
+    "/api/cloud/login",
+    "/api/cloud/disconnect",
+    "/api/cloud/billing/",
+    "/api/cloud/v1/",
+    "/api/notifications/push-tokens",
+    "/api/notifications/push-tokens/",
 ] as const;
-
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
 const LEGACY_PUSH_TOKEN_URL = /(\/api\/notifications\/push-tokens\/)[^/?\s]+/g;
-
 /** Removes legacy device identifiers before the agent boundary can log a URL. */
 export function redactPushTokenRequestUrl(value: string): string {
-  return value.replace(LEGACY_PUSH_TOKEN_URL, "$1[redacted]");
+    return value.replace(LEGACY_PUSH_TOKEN_URL, "$1[redacted]");
 }
-
-export function shouldForwardToRemoteTarget(
-  pathname: string,
-  method: string,
-): boolean {
-  if (!FORWARDED_METHODS.has(method.toUpperCase())) return false;
-  return REMOTE_FORWARDED_MUTATION_PREFIXES.some((prefix) =>
-    prefix.endsWith("/") ? pathname.startsWith(prefix) : pathname === prefix,
-  );
+export function shouldForwardToRemoteTarget(pathname: string, method: string): boolean {
+    if (!FORWARDED_METHODS.has(method.toUpperCase()))
+        return false;
+    return REMOTE_FORWARDED_MUTATION_PREFIXES.some((prefix) => prefix.endsWith("/") ? pathname.startsWith(prefix) : pathname === prefix);
 }
-
 /** Build a target URL without allowing request-controlled text to select its origin. */
-export function buildRemoteTargetUrl(
-  requestUrl: string,
-  remoteApiBase: string,
-): URL {
-  const incoming = new URL(requestUrl, "http://controller.invalid");
-  const target = new URL(remoteApiBase);
-  target.pathname = incoming.pathname;
-  target.search = incoming.search;
-  target.hash = "";
-  return target;
+export function buildRemoteTargetUrl(requestUrl: string, remoteApiBase: string): URL {
+    const incoming = new URL(requestUrl, "http://controller.invalid");
+    const target = new URL(remoteApiBase);
+    target.pathname = incoming.pathname;
+    target.search = incoming.search;
+    target.hash = "";
+    return target;
 }
-
 // Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
 // intermediary. Re-using an upstream `Connection: keep-alive` or stale
 // `Transfer-Encoding` against the target's connection corrupts framing.
 const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
 ]);
-
 /**
  * Build the outbound `Headers` for the target. Visible for testing.
  *
@@ -90,97 +72,71 @@ const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
  * we forward every value via `headers.append(name, v)` instead of
  * silently dropping the array (the previous behavior).
  */
-export function buildForwardHeaders(
-  incoming: http.IncomingHttpHeaders,
-  targetHost: string,
-  remoteAccessToken: string | null,
-): Headers {
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(incoming)) {
-    if (value === undefined) continue;
-    if (HOP_BY_HOP_HEADERS.has(name.toLowerCase())) continue;
-    if (Array.isArray(value)) {
-      for (const v of value) headers.append(name, v);
-    } else {
-      headers.set(name, value);
+export function buildForwardHeaders(incoming: http.IncomingHttpHeaders, targetHost: string, remoteAccessToken: string | null): Headers {
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(incoming)) {
+        if (value === undefined)
+            continue;
+        if (HOP_BY_HOP_HEADERS.has(name.toLowerCase()))
+            continue;
+        if (Array.isArray(value)) {
+            for (const v of value)
+                headers.append(name, v);
+        }
+        else {
+            headers.set(name, value);
+        }
     }
-  }
-  // Replace the Host header — we are addressing the target now, not the
-  // controller.
-  headers.set("host", targetHost);
-  if (remoteAccessToken) {
-    headers.set("authorization", `Bearer ${remoteAccessToken}`);
-  }
-  return headers;
+    // Replace the Host header — we are addressing the target now, not the
+    // controller.
+    headers.set("host", targetHost);
+    if (remoteAccessToken) {
+        headers.set("authorization", `Bearer ${remoteAccessToken}`);
+    }
+    return headers;
 }
-
 async function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks);
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+        chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
 }
-
 /**
  * Returns true when the controller forwarded the request to the target
  * (and wrote the response). Returns false when not in remote mode or the
  * route is not in the forwarded list, in which case the caller continues
  * dispatch.
  */
-export async function forwardRemoteCloudMutation(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  snapshot: RuntimeModeSnapshot = getRuntimeModeSnapshot(),
-): Promise<boolean> {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  const method = (req.method ?? "GET").toUpperCase();
-
-  if (snapshot.mode !== "remote") return false;
-  if (!shouldForwardToRemoteTarget(url.pathname, method)) return false;
-  if (!snapshot.remoteApiBase) {
-    sendJsonError(
-      res,
-      snapshot.remoteApiBaseError ?? "Remote target not configured",
-      snapshot.remoteApiBaseError ? 400 : 503,
-    );
+export async function forwardRemoteCloudMutation(req: http.IncomingMessage, res: http.ServerResponse, snapshot: RuntimeModeSnapshot = getRuntimeModeSnapshot()): Promise<boolean> {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const method = (req.method ?? "GET").toUpperCase();
+    if (snapshot.mode !== "remote")
+        return false;
+    if (!shouldForwardToRemoteTarget(url.pathname, method))
+        return false;
+    if (!snapshot.remoteApiBase) {
+        sendJsonError(res, snapshot.remoteApiBaseError ?? "Remote target not configured", snapshot.remoteApiBaseError ? 400 : 503);
+        return true;
+    }
+    const targetUrl = buildRemoteTargetUrl(req.url ?? "/", snapshot.remoteApiBase);
+    // The raw target URL above remains authoritative for compatibility, but any
+    // later boundary diagnostic observing this request must not see the token.
+    req.url = redactPushTokenRequestUrl(req.url ?? "/");
+    const rawBody = FORWARDED_METHODS.has(method)
+        ? await readRequestBody(req)
+        : undefined;
+    const body: BodyInit | undefined = rawBody && rawBody.length > 0 ? rawBody.toString("utf8") : undefined;
+    const headers = buildForwardHeaders(req.headers, targetUrl.host, snapshot.remoteAccessToken);
+    const upstream = await fetchWithTimeoutGuard(targetUrl.toString(), {
+        method,
+        headers,
+        body,
+    }, 30000);
+    const responseBody = await upstream.arrayBuffer();
+    res.writeHead(upstream.status, {
+        "content-type": upstream.headers.get("content-type") ?? "application/json",
+    });
+    res.end(Buffer.from(responseBody));
     return true;
-  }
-
-  const targetUrl = buildRemoteTargetUrl(
-    req.url ?? "/",
-    snapshot.remoteApiBase,
-  );
-  // The raw target URL above remains authoritative for compatibility, but any
-  // later boundary diagnostic observing this request must not see the token.
-  req.url = redactPushTokenRequestUrl(req.url ?? "/");
-
-  const rawBody = FORWARDED_METHODS.has(method)
-    ? await readRequestBody(req)
-    : undefined;
-  const body: BodyInit | undefined =
-    rawBody && rawBody.length > 0 ? rawBody.toString("utf8") : undefined;
-
-  const headers = buildForwardHeaders(
-    req.headers,
-    targetUrl.host,
-    snapshot.remoteAccessToken,
-  );
-
-  const upstream = await fetchWithTimeoutGuard(
-    targetUrl.toString(),
-    {
-      method,
-      headers,
-      body,
-    },
-    30_000,
-  );
-
-  const responseBody = await upstream.arrayBuffer();
-  res.writeHead(upstream.status, {
-    "content-type": upstream.headers.get("content-type") ?? "application/json",
-  });
-  res.end(Buffer.from(responseBody));
-  return true;
 }

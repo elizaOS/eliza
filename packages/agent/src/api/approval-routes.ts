@@ -8,29 +8,23 @@
  */
 
 import type http from "node:http";
-import {
-  PENDING_USER_ACTION_WEIGHT,
-  type PendingUserAction,
-  type PendingUserActionOption,
-  ServiceType,
-  type Task,
-  type UUID,
-} from "@elizaos/core";
-import type {
-  ApprovalAction,
-  ApprovalListFilter,
-  ApprovalQueue,
-  ApprovalRequest,
-  ApprovalRequestState,
-} from "@elizaos/plugin-assistant";
-import {
-  APPROVAL_EXECUTION_CAPABILITY,
-  APPROVAL_EXECUTION_PROTOCOL_VERSION,
-  APPROVAL_SERVICE,
-  type ApprovalService,
-  PENDING_PROMPTS_SERVICE,
-} from "@elizaos/plugin-assistant";
-import type { RouteHelpers } from "@elizaos/shared";
+import { APPROVAL_EXECUTION_CAPABILITY } from "@elizaos/plugin-assistant";
+import { APPROVAL_EXECUTION_PROTOCOL_VERSION } from "@elizaos/plugin-assistant";
+import { APPROVAL_SERVICE } from "@elizaos/plugin-assistant";
+import { PENDING_PROMPTS_SERVICE } from "@elizaos/plugin-assistant";
+import { PENDING_USER_ACTION_WEIGHT } from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
+import { type ApprovalAction } from "@elizaos/plugin-assistant";
+import { type ApprovalListFilter } from "@elizaos/plugin-assistant";
+import { type ApprovalQueue } from "@elizaos/plugin-assistant";
+import { type ApprovalRequest } from "@elizaos/plugin-assistant";
+import { type ApprovalRequestState } from "@elizaos/plugin-assistant";
+import { type ApprovalService } from "@elizaos/plugin-assistant";
+import { type PendingUserAction } from "@elizaos/core";
+import { type PendingUserActionOption } from "@elizaos/core";
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+import { type Task } from "@elizaos/core";
+import { type UUID } from "@elizaos/core";
 
 interface ApprovalRouteRuntime {
   agentId?: string;

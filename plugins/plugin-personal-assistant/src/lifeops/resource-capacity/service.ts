@@ -13,7 +13,7 @@ import {
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalQueue,

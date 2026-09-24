@@ -284,7 +284,7 @@ async function inspectActiveOptimizations(args) {
   let drafterEntry = null;
   try {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
-      "../../shared/src/local-inference/catalog.ts"
+      "@elizaos/plugin-native-inference/model-catalog/catalog"
     );
     // The duet harness passes `args.modelId` (e.g. `eliza-1-2b`); the
     // interactive harness leaves it unset → the first-run default.
@@ -318,7 +318,7 @@ async function inspectActiveOptimizations(args) {
   let bundleInstallIssue = null;
   try {
     const { elizaModelsDir } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const resolved = resolveInstalledBundleRoot(catalogEntry, elizaModelsDir());
     bundleRoot = resolved.bundleRoot;
@@ -361,7 +361,7 @@ async function inspectActiveOptimizations(args) {
     } else {
       missing.push({
         what: `${catalogEntry?.id ?? "eliza-1"} does not declare native MTP metadata`,
-        fix: "update packages/shared/src/local-inference/catalog.ts so every eliza-1 tier has runtime.mtp",
+        fix: "update plugins/plugin-native-inference/src/model-catalog/catalog.ts so every eliza-1 tier has runtime.mtp",
       });
     }
   }
@@ -385,7 +385,7 @@ async function inspectActiveOptimizations(args) {
       let liRoot = null;
       try {
         liRoot = (
-          await import("../../shared/src/local-inference/paths.ts")
+          await import("@elizaos/plugin-native-inference/model-catalog/paths")
         ).localInferenceRoot();
       } catch {
         /* ignore */
@@ -926,7 +926,7 @@ async function tryAutoDownloadVad(_bundleRoot) {
   // Silero v5 VAD GGUF (MIT, public).
   try {
     const { localInferenceRoot } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const dest = path.join(localInferenceRoot(), "vad", "silero-vad-v5.gguf");
     if (existsSync(dest)) return dest;
@@ -957,7 +957,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
       "@elizaos/plugin-local-inference/services/downloader"
     );
     const { elizaModelsDir } = await import(
-      "../../shared/src/local-inference/paths.ts"
+      "@elizaos/plugin-native-inference/model-catalog/paths"
     );
     const dest = path.join(
       elizaModelsDir(),

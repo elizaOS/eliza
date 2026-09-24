@@ -21,15 +21,22 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ]
     }
   },
-  "include": ["./**/*"],
+  "include": [
+    "./**/*"
+  ],
   "exclude": [
     "node_modules",
     "dist",

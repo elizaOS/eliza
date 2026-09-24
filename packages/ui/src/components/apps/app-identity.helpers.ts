@@ -6,44 +6,30 @@
  * to `resolveAppAssetUrl` based on the host's app-shell capability flags, so
  * limited cloud-agent hosts don't request routes they can't serve.
  */
-
-import {
-  getAppHeroThemeKey,
-  resolveApiUrl,
-  resolveAppAssetUrl,
-} from "@elizaos/shared";
-import {
-  Bot,
-  Briefcase,
-  Gamepad2,
-  Globe2,
-  type LucideIcon,
-  Sparkles,
-  Wallet,
-  Wrench,
-} from "lucide-react";
+import { Bot } from "lucide-react";
+import { Briefcase } from "lucide-react";
+import { Gamepad2 } from "lucide-react";
+import { Globe2 } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { Wallet } from "lucide-react";
+import { Wrench } from "lucide-react";
 import { client } from "../../api";
-import {
-  isLimitedCloudAgentApiResourceUrl,
-  supportsFullAppShellRoutes,
-} from "../../api/app-shell-capabilities";
-import type { AppIdentitySource } from "./app-identity";
-
-export function iconImageSource(
-  icon: string | null | undefined,
-): string | null {
-  const value = icon?.trim();
-  if (!value) return null;
-  if (
-    /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i.test(
-      value,
-    )
-  ) {
-    return resolveRuntimeImageUrl(value);
-  }
-  return null;
+import { getAppHeroThemeKey } from "@elizaos/ui/app-hero-art";
+import { isLimitedCloudAgentApiResourceUrl } from "../../api/app-shell-capabilities";
+import { resolveApiUrl } from "@elizaos/ui/utils/asset-url";
+import { resolveAppAssetUrl } from "@elizaos/ui/utils/asset-url";
+import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { type AppIdentitySource } from "./app-identity";
+import { type LucideIcon } from "lucide-react";
+export function iconImageSource(icon: string | null | undefined): string | null {
+    const value = icon?.trim();
+    if (!value)
+        return null;
+    if (/^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i.test(value)) {
+        return resolveRuntimeImageUrl(value);
+    }
+    return null;
 }
-
 /**
  * Convert a heroImage/icon src into a runtime-safe URL.
  *
@@ -52,39 +38,38 @@ export function iconImageSource(
  * the appropriate runtime resolver so they hit the API/asset base instead.
  */
 export function resolveRuntimeImageUrl(value: string): string {
-  // Absolute URLs, data/blob URIs, and custom schemes are already runtime-safe.
-  if (/^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:)/i.test(value)) {
-    if (isLimitedCloudAgentApiResourceUrl(value)) {
-      return "";
+    // Absolute URLs, data/blob URIs, and custom schemes are already runtime-safe.
+    if (/^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:)/i.test(value)) {
+        if (isLimitedCloudAgentApiResourceUrl(value)) {
+            return "";
+        }
+        return value;
     }
-    return value;
-  }
-  // API-served hero endpoints must hit the API base, not the asset CDN.
-  if (value.startsWith("/api/") || value.startsWith("api/")) {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
-      return "";
+    // API-served hero endpoints must hit the API base, not the asset CDN.
+    if (value.startsWith("/api/") || value.startsWith("api/")) {
+        if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+            return "";
+        }
+        return resolveApiUrl(value.startsWith("/") ? value : `/${value}`);
     }
-    return resolveApiUrl(value.startsWith("/") ? value : `/${value}`);
-  }
-  // Static asset under apps/app/public/ — resolves to CDN base in releases.
-  return resolveAppAssetUrl(value);
+    // Static asset under apps/app/public/ — resolves to CDN base in releases.
+    return resolveAppAssetUrl(value);
 }
-
 export function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
-  switch (getAppHeroThemeKey(app)) {
-    case "play":
-      return Gamepad2;
-    case "chat":
-      return Bot;
-    case "money":
-      return Wallet;
-    case "tools":
-      return Wrench;
-    case "world":
-      return Globe2;
-    case "ops":
-      return Briefcase;
-    default:
-      return Sparkles;
-  }
+    switch (getAppHeroThemeKey(app)) {
+        case "play":
+            return Gamepad2;
+        case "chat":
+            return Bot;
+        case "money":
+            return Wallet;
+        case "tools":
+            return Wrench;
+        case "world":
+            return Globe2;
+        case "ops":
+            return Briefcase;
+        default:
+            return Sparkles;
+    }
 }

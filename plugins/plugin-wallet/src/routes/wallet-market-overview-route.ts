@@ -11,16 +11,8 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import {
-  buildCoinGeckoMarketsUrl,
-  buildMarketMovers,
-  buildMarketPriceSnapshots,
-  COINGECKO_MARKET_PROVIDER,
-  type CoinGeckoMarketRecord,
-  POLYMARKET_MARKET_PROVIDER,
-  parseCoinGeckoMarkets,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/shared";
+import { buildCoinGeckoMarketsUrl, buildMarketMovers, buildMarketPriceSnapshots, COINGECKO_MARKET_PROVIDER, type CoinGeckoMarketRecord, POLYMARKET_MARKET_PROVIDER, parseCoinGeckoMarkets } from "@elizaos/ui/wallet/market-overview";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import type {
   WalletMarketOverviewResponse,
   WalletMarketOverviewSource,

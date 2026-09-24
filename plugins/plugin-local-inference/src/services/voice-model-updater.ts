@@ -2,7 +2,7 @@
  * Voice sub-model auto-updater (per R5-versioning §3).
  *
  * Watches for newer versions of the voice sub-models declared in
- * `@elizaos/shared/local-inference/voice-models` (`VOICE_MODEL_VERSIONS`)
+ * `@elizaos/plugin-native-inference/model-catalog/voice-models` (`VOICE_MODEL_VERSIONS`)
  * and recommends downloads when the published-side history advertises a
  * strictly newer semver, the publish gate set `netImprovement === true`,
  * and the user has not pinned the installed model.
@@ -39,15 +39,9 @@
 
 import fsp from "node:fs/promises";
 import path from "node:path";
-import {
-	compareVoiceModelSemver,
-	type Ed25519PublicKey,
-	type NetworkPolicyDecision,
-	VOICE_MODEL_VERSIONS,
-	type VoiceModelId,
-	type VoiceModelVersion,
-	verifyManifestSignatureText,
-} from "@elizaos/shared";
+import { compareVoiceModelSemver, VOICE_MODEL_VERSIONS, type VoiceModelId, type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { type Ed25519PublicKey, verifyManifestSignatureText } from "@elizaos/plugin-native-inference/model-catalog/manifest-signature";
+import { type NetworkPolicyDecision } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import { hashFile } from "./verify";
 
 const DEFAULT_CHECK_INTERVAL_MS = 14_400_000; // 4 hours

@@ -16,126 +16,104 @@
  * gateway range. Every CIDR entry widens token redemption to that LAN/VPC
  * segment, so keep the list as narrow as the deployment allows.
  */
-
 import type http from "node:http";
-import { logger } from "@elizaos/core";
-import {
-  type CloudPairRelaySession,
-  classifyElizaHostname,
-  ELIZA_DOMAIN_CONTRACTS,
-  isLoopbackRemoteAddress,
-  isRemoteAddressInCidrList,
-  parseCloudPairRelaySession,
-  renderCloudPairHandoffHtml,
-  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
-  resolveCloudPairAgentIdFromEnv,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
-
-const RELAY_TIMEOUT_MS = 15_000;
+import { isLoopbackRemoteAddress } from "@elizaos/agent/api/loopback-trust";
+import { isRemoteAddressInCidrList } from "@elizaos/agent/api/loopback-trust";
+import { logger } from "@elizaos/core";
+import { parseCloudPairRelaySession } from "@elizaos/core/contracts/cloud-pair";
+import { renderCloudPairHandoffHtml } from "@elizaos/core/contracts/cloud-pair";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveCloudPairAgentIdFromEnv } from "@elizaos/core/contracts/cloud-pair";
+import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { type CloudPairRelaySession } from "@elizaos/core/contracts/cloud-pair";
+const RELAY_TIMEOUT_MS = 15000;
 const pairingRelayLimiter = getSensitiveLimiter("cloud.pair.relay");
-
 function resolveCloudApiBaseUrl(): string {
-  return resolveCanonicalCloudApiBaseUrl(
-    process.env.NEXT_PUBLIC_API_URL,
-  ).replace(/\/+$/, "");
+    return resolveCanonicalCloudApiBaseUrl(process.env.NEXT_PUBLIC_API_URL).replace(/\/+$/, "");
 }
-
 function resolveCloudAuthRoot(): string {
-  // Cloud-api mounts `/api/auth/pair` at the site root, not under `/api/v1`.
-  // ELIZAOS_CLOUD_BASE_URL is the `/api/v1` URL, so strip the suffix to land
-  // on the site root.
-  const base = resolveCloudApiBaseUrl();
-  return base.replace(/\/api\/v1\/?$/, "");
+    // Cloud-api mounts `/api/auth/pair` at the site root, not under `/api/v1`.
+    // ELIZAOS_CLOUD_BASE_URL is the `/api/v1` URL, so strip the suffix to land
+    // on the site root.
+    const base = resolveCloudApiBaseUrl();
+    return base.replace(/\/api\/v1\/?$/, "");
 }
-
 function resolveDirectRequestOrigin(req: http.IncomingMessage): string {
-  // The origin forwarded to the Cloud exchange is built from direct request
-  // metadata only — X-Forwarded-Host/X-Forwarded-Proto are client-controlled
-  // and must not rewrite the origin the exchange is bound to (W5-014).
-  const proto =
-    req.socket && "encrypted" in req.socket && req.socket.encrypted
-      ? "https"
-      : "http";
-  const host = req.headers.host?.split(",", 1)[0]?.trim();
-  return host ? `${proto}://${host}` : "";
+    // The origin forwarded to the Cloud exchange is built from direct request
+    // metadata only — X-Forwarded-Host/X-Forwarded-Proto are client-controlled
+    // and must not rewrite the origin the exchange is bound to (W5-014).
+    const proto = req.socket && "encrypted" in req.socket && req.socket.encrypted
+        ? "https"
+        : "http";
+    const host = req.headers.host?.split(",", 1)[0]?.trim();
+    return host ? `${proto}://${host}` : "";
 }
-
 interface CloudPairRelayPolicy {
-  readonly directRelayEnabled: boolean;
-  readonly allowedPeerCidrs: string | undefined;
-  readonly agentEnv: Readonly<Record<string, string | undefined>>;
+    readonly directRelayEnabled: boolean;
+    readonly allowedPeerCidrs: string | undefined;
+    readonly agentEnv: Readonly<Record<string, string | undefined>>;
 }
-
 function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
-  const authority = resolveDevCloudEnvAuthority();
-  const read = (key: string): string | undefined =>
-    authority ? resolveDevCloudAuthorityEnvValue(key) : process.env[key];
-  const activationBlocked =
-    authority === "staging-default" || authority === "offline";
-
-  return Object.freeze({
-    directRelayEnabled:
-      !activationBlocked && read("ELIZA_CLOUD_PAIR_DIRECT_RELAY") === "1",
-    allowedPeerCidrs: read("ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS"),
-    agentEnv: Object.freeze({
-      ELIZA_CLOUD_AGENT_ID: read("ELIZA_CLOUD_AGENT_ID"),
-      WAIFU_ELIZA_CLOUD_AGENT_ID: read("WAIFU_ELIZA_CLOUD_AGENT_ID"),
-    }),
-  });
+    const authority = resolveDevCloudEnvAuthority();
+    const read = (key: string): string | undefined => authority ? resolveDevCloudAuthorityEnvValue(key) : process.env[key];
+    const activationBlocked = authority === "staging-default" || authority === "offline";
+    return Object.freeze({
+        directRelayEnabled: !activationBlocked && read("ELIZA_CLOUD_PAIR_DIRECT_RELAY") === "1",
+        allowedPeerCidrs: read("ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS"),
+        agentEnv: Object.freeze({
+            ELIZA_CLOUD_AGENT_ID: read("ELIZA_CLOUD_AGENT_ID"),
+            WAIFU_ELIZA_CLOUD_AGENT_ID: read("WAIFU_ELIZA_CLOUD_AGENT_ID"),
+        }),
+    });
 }
-
-function canUseManagedDirectRelay(
-  req: http.IncomingMessage,
-  policy: CloudPairRelayPolicy,
-): boolean {
-  if (!policy.directRelayEnabled) return false;
-  // The local-only gate must key on the TCP peer, never on request headers:
-  // Host and X-Forwarded-Host are client-controlled, so a remote caller
-  // could previously spoof a loopback origin and redeem a held pairing token
-  // through this relay (W5-014). Non-loopback peers are admitted only through
-  // the explicit ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS allowlist (W5-016) —
-  // see the file header for the local-Docker gateway flow.
-  const peer = req.socket?.remoteAddress;
-  return (
-    isLoopbackRemoteAddress(peer) ||
-    isRemoteAddressInCidrList(peer, policy.allowedPeerCidrs)
-  );
+function canUseManagedDirectRelay(req: http.IncomingMessage, policy: CloudPairRelayPolicy): boolean {
+    if (!policy.directRelayEnabled)
+        return false;
+    // The local-only gate must key on the TCP peer, never on request headers:
+    // Host and X-Forwarded-Host are client-controlled, so a remote caller
+    // could previously spoof a loopback origin and redeem a held pairing token
+    // through this relay (W5-014). Non-loopback peers are admitted only through
+    // the explicit ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS allowlist (W5-016) —
+    // see the file header for the local-Docker gateway flow.
+    const peer = req.socket?.remoteAddress;
+    return (isLoopbackRemoteAddress(peer) ||
+        isRemoteAddressInCidrList(peer, policy.allowedPeerCidrs));
 }
-
 function escapeHtml(value: string): string {
-  return value.replace(/[<>&"]/g, (character) => {
-    if (character === "<") return "&lt;";
-    if (character === ">") return "&gt;";
-    if (character === "&") return "&amp;";
-    return "&quot;";
-  });
+    return value.replace(/[<>&"]/g, (character) => {
+        if (character === "<")
+            return "&lt;";
+        if (character === ">")
+            return "&gt;";
+        if (character === "&")
+            return "&amp;";
+        return "&quot;";
+    });
 }
-
 function resolveCloudConsoleUrl(): string {
-  try {
-    const classified = classifyElizaHostname(
-      new URL(resolveCloudAuthRoot()).hostname,
-    );
-    if (classified.environment) {
-      return `${ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin}/cloud/agents`;
+    try {
+        const classified = classifyElizaHostname(new URL(resolveCloudAuthRoot()).hostname);
+        if (classified.environment) {
+            return `${ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin}/cloud/agents`;
+        }
     }
-  } catch {
-    // error-policy:J3 malformed operator configuration uses the production
-    // recovery destination instead of rendering an untrusted href.
-  }
-  return `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud/agents`;
+    catch {
+        // error-policy:J3 malformed operator configuration uses the production
+        // recovery destination instead of rendering an untrusted href.
+    }
+    return `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud/agents`;
 }
-
 function renderErrorHtml(title: string, message: string): string {
-  // Static error page — no token or inline user data, only a canonical
-  // environment-aware recovery link so staging failures never cross to prod.
-  const safeTitle = escapeHtml(title);
-  const safeMessage = escapeHtml(message);
-  const safeRecoveryUrl = escapeHtml(resolveCloudConsoleUrl());
-  return `<!doctype html>
+    // Static error page — no token or inline user data, only a canonical
+    // environment-aware recovery link so staging failures never cross to prod.
+    const safeTitle = escapeHtml(title);
+    const safeMessage = escapeHtml(message);
+    const safeRecoveryUrl = escapeHtml(resolveCloudConsoleUrl());
+    return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -179,190 +157,99 @@ function renderErrorHtml(title: string, message: string): string {
 </body>
 </html>`;
 }
-
-function sendHtml(
-  res: http.ServerResponse,
-  status: number,
-  body: string,
-): void {
-  res.writeHead(status, {
-    "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    "content-security-policy":
-      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-    "cross-origin-resource-policy": "same-origin",
-    pragma: "no-cache",
-    expires: "0",
-    "x-frame-options": "DENY",
-    "referrer-policy": "no-referrer",
-    "x-content-type-options": "nosniff",
-  });
-  res.end(body);
-}
-
-export async function handleCloudPairRoute(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): Promise<boolean> {
-  const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", "http://localhost");
-  if (method !== "GET" || url.pathname !== "/pair") {
-    return false;
-  }
-
-  // Capture every authority-owned relay input once per request. Later env
-  // writes cannot enable a blocked relay or redirect an admitted exchange.
-  const relayPolicy = resolveCloudPairRelayPolicy();
-  if (!canUseManagedDirectRelay(req, relayPolicy)) {
-    sendHtml(
-      res,
-      421,
-      renderErrorHtml(
-        "Open this agent from Eliza Cloud",
-        "Managed sign-in is completed at the agent's Eliza Cloud address. Return to the dashboard and open the agent again.",
-      ),
-    );
-    return true;
-  }
-
-  const ip = req.socket.remoteAddress ?? null;
-  if (!pairingRelayLimiter.consume(ip)) {
-    sendHtml(
-      res,
-      429,
-      renderErrorHtml(
-        "Too many sign-in attempts",
-        "Wait a minute and click 'Open Web UI' again from the dashboard.",
-      ),
-    );
-    return true;
-  }
-
-  const token = url.searchParams.get("token")?.trim();
-  if (!token) {
-    sendHtml(
-      res,
-      400,
-      renderErrorHtml(
-        "Missing pairing token",
-        "Open the agent from the Eliza Cloud dashboard so a fresh sign-in link is generated.",
-      ),
-    );
-    return true;
-  }
-
-  const origin = resolveDirectRequestOrigin(req);
-  if (!origin) {
-    sendHtml(
-      res,
-      400,
-      renderErrorHtml(
-        "Missing origin",
-        "Your browser did not send a Host header. Try again from a standard browser.",
-      ),
-    );
-    return true;
-  }
-
-  const agentId = resolveCloudPairAgentIdFromEnv(relayPolicy.agentEnv);
-  if (!agentId) {
-    sendHtml(
-      res,
-      503,
-      renderErrorHtml(
-        "Agent identity unavailable",
-        "This local agent is missing its platform identity. Restart it from Eliza Cloud and try again.",
-      ),
-    );
-    return true;
-  }
-
-  const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
-  let exchanged: CloudPairRelaySession | null = null;
-  let status = 0;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
-    const resp = await fetch(exchangeUrl, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        origin,
-      },
-      body: JSON.stringify({ token, agentId }),
-      signal: controller.signal,
+function sendHtml(res: http.ServerResponse, status: number, body: string): void {
+    res.writeHead(status, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "cross-origin-resource-policy": "same-origin",
+        pragma: "no-cache",
+        expires: "0",
+        "x-frame-options": "DENY",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
     });
-    clearTimeout(timeoutId);
-    status = resp.status;
-    if (resp.ok) {
-      // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed
-      // exchange by the null-check that follows.
-      const body: unknown = await resp.json().catch(() => null);
-      exchanged = parseCloudPairRelaySession(body);
-    } else {
-      logger.warn(
-        `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
-      );
+    res.end(body);
+}
+export async function handleCloudPairRoute(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    const method = (req.method ?? "GET").toUpperCase();
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (method !== "GET" || url.pathname !== "/pair") {
+        return false;
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error(
-      `[cloud-pair] exchange failed url=${exchangeUrl} error=${message}`,
-    );
-    sendHtml(
-      res,
-      503,
-      renderErrorHtml(
-        "Eliza Cloud is unreachable",
-        "We couldn't reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
-      ),
-    );
+    // Capture every authority-owned relay input once per request. Later env
+    // writes cannot enable a blocked relay or redirect an admitted exchange.
+    const relayPolicy = resolveCloudPairRelayPolicy();
+    if (!canUseManagedDirectRelay(req, relayPolicy)) {
+        sendHtml(res, 421, renderErrorHtml("Open this agent from Eliza Cloud", "Managed sign-in is completed at the agent's Eliza Cloud address. Return to the dashboard and open the agent again."));
+        return true;
+    }
+    const ip = req.socket.remoteAddress ?? null;
+    if (!pairingRelayLimiter.consume(ip)) {
+        sendHtml(res, 429, renderErrorHtml("Too many sign-in attempts", "Wait a minute and click 'Open Web UI' again from the dashboard."));
+        return true;
+    }
+    const token = url.searchParams.get("token")?.trim();
+    if (!token) {
+        sendHtml(res, 400, renderErrorHtml("Missing pairing token", "Open the agent from the Eliza Cloud dashboard so a fresh sign-in link is generated."));
+        return true;
+    }
+    const origin = resolveDirectRequestOrigin(req);
+    if (!origin) {
+        sendHtml(res, 400, renderErrorHtml("Missing origin", "Your browser did not send a Host header. Try again from a standard browser."));
+        return true;
+    }
+    const agentId = resolveCloudPairAgentIdFromEnv(relayPolicy.agentEnv);
+    if (!agentId) {
+        sendHtml(res, 503, renderErrorHtml("Agent identity unavailable", "This local agent is missing its platform identity. Restart it from Eliza Cloud and try again."));
+        return true;
+    }
+    const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
+    let exchanged: CloudPairRelaySession | null = null;
+    let status = 0;
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
+        const resp = await fetch(exchangeUrl, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                origin,
+            },
+            body: JSON.stringify({ token, agentId }),
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        status = resp.status;
+        if (resp.ok) {
+            // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed
+            // exchange by the null-check that follows.
+            const body: unknown = await resp.json().catch(() => null);
+            exchanged = parseCloudPairRelaySession(body);
+        }
+        else {
+            logger.warn(`[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`);
+        }
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(`[cloud-pair] exchange failed url=${exchangeUrl} error=${message}`);
+        sendHtml(res, 503, renderErrorHtml("Eliza Cloud is unreachable", "We couldn't reach Eliza Cloud to verify your sign-in link. Try again in a minute."));
+        return true;
+    }
+    if (status === 401 || status === 403 || status === 410) {
+        sendHtml(res, 403, renderErrorHtml("Sign-in link expired", "Pairing links are single-use and only valid for a minute. Click 'Open Web UI' again from the dashboard."));
+        return true;
+    }
+    if (status === 429) {
+        sendHtml(res, 429, renderErrorHtml("Too many sign-in attempts", "Wait a minute and click 'Open Web UI' again from the dashboard."));
+        return true;
+    }
+    if (!exchanged) {
+        sendHtml(res, 502, renderErrorHtml("Sign-in failed", "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard."));
+        return true;
+    }
+    logger.info(`[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`);
+    sendHtml(res, 200, renderCloudPairHandoffHtml(exchanged.apiKey, exchanged.agentId));
     return true;
-  }
-
-  if (status === 401 || status === 403 || status === 410) {
-    sendHtml(
-      res,
-      403,
-      renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Click 'Open Web UI' again from the dashboard.",
-      ),
-    );
-    return true;
-  }
-
-  if (status === 429) {
-    sendHtml(
-      res,
-      429,
-      renderErrorHtml(
-        "Too many sign-in attempts",
-        "Wait a minute and click 'Open Web UI' again from the dashboard.",
-      ),
-    );
-    return true;
-  }
-
-  if (!exchanged) {
-    sendHtml(
-      res,
-      502,
-      renderErrorHtml(
-        "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard.",
-      ),
-    );
-    return true;
-  }
-
-  logger.info(
-    `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
-  );
-  sendHtml(
-    res,
-    200,
-    renderCloudPairHandoffHtml(exchanged.apiKey, exchanged.agentId),
-  );
-  return true;
 }

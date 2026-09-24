@@ -24,21 +24,18 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import type {
-  AudioRedactionSpan,
-  RedactionVerifyResult,
-} from "@elizaos/shared";
-import { resolveStateDir } from "../config/paths.ts";
-import type { AudioRedactionMode } from "./audio-redaction.ts";
+import { ElizaError } from "@elizaos/core";
+import { isValidStoredMediaFileName } from "./media-store.ts";
+import { logger } from "@elizaos/core";
+import { mimeForStoredMediaFile } from "./media-store.ts";
+import { persistMediaBytes } from "./media-store.ts";
+import { readStoredMediaBytes } from "./media-store.ts";
 import { redactAudioBytes } from "./audio-redaction.ts";
-import {
-  isValidStoredMediaFileName,
-  mimeForStoredMediaFile,
-  persistMediaBytes,
-  readStoredMediaBytes,
-  storedMediaFileExists,
-} from "./media-store.ts";
+import { resolveStateDir } from "../config/paths.ts";
+import { storedMediaFileExists } from "./media-store.ts";
+import { type AudioRedactionMode } from "./audio-redaction.ts";
+import { type AudioRedactionSpan } from "@elizaos/shared";
+import { type RedactionVerifyResult } from "@elizaos/shared";
 
 /** Memo file next to the media objects (sibling of background-pins.json). */
 const REDACTION_MEMO_FILE = "audio-redactions.json";

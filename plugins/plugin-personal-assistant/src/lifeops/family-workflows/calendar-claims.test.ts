@@ -1,9 +1,5 @@
 /** Exercises monthly packet projection with explicit link identities, school provenance, and conflicting or incomplete calendar facts. */
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsLinkedCalendarLink,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsLinkedCalendarLink } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { collectCalendarClaims } from "./calendar-claims.js";
 

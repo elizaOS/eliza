@@ -22,8 +22,8 @@ import {
 import { DocumentService } from "@elizaos/plugin-assistant";
 import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar/internal/eliza-calendar";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/shared/media";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/core/media";
 import {
   beginFamilyWorkspaceOperation,
   settleFamilyWorkspaceOperation,

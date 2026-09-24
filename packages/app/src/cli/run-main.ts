@@ -9,26 +9,22 @@
  * tests opt out so a rejection still fails the test.
  */
 import process from "node:process";
-import {
-  formatUncaughtError,
-  getLogPrefix,
-  installProcessCrashGuards,
-  RESTART_EXIT_CODE,
-  setRestartHandler,
-  shouldIgnoreUnhandledRejection,
-} from "@elizaos/shared";
-import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
+import { RESTART_EXIT_CODE } from "@elizaos/core/restart";
+import { formatUncaughtError } from "@elizaos/core/error-classification";
+import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+import { getPrimaryCommand } from "./argv";
+import { hasHelpOrVersion } from "./argv";
+import { installProcessCrashGuards } from "@elizaos/core/process-guards";
 import { registerSubCliByName } from "./program/register.subclis";
-
+import { setRestartHandler } from "@elizaos/core/restart";
+import { shouldIgnoreUnhandledRejection } from "@elizaos/core/error-classification";
 /** Commands that boot a long-running server we must keep alive across faults. */
 const LONG_RUNNING_COMMANDS = new Set(["run", "serve", "start"]);
-
 /** @internal Exported for focused command-classification tests. */
 export function isLongRunningServerCommand(argv: string[]): boolean {
-  const primary = getPrimaryCommand(argv);
-  return primary != null && LONG_RUNNING_COMMANDS.has(primary);
+    const primary = getPrimaryCommand(argv);
+    return primary != null && LONG_RUNNING_COMMANDS.has(primary);
 }
-
 /**
  * Install the global crash handlers.
  *
@@ -39,97 +35,75 @@ export function isLongRunningServerCommand(argv: string[]): boolean {
  * out entirely so a rejection still fails the test.
  */
 function installGlobalErrorHandlers(argv: string[]): void {
-  if (process.env.NODE_ENV === "test") return;
-
-  if (isLongRunningServerCommand(argv)) {
-    installProcessCrashGuards({
-      logPrefix: getLogPrefix(),
-      isIgnorable: shouldIgnoreUnhandledRejection,
-      onUncaughtException: "restart",
+    if (process.env.NODE_ENV === "test")
+        return;
+    if (isLongRunningServerCommand(argv)) {
+        installProcessCrashGuards({
+            logPrefix: getLogPrefix(),
+            isIgnorable: shouldIgnoreUnhandledRejection,
+            onUncaughtException: "restart",
+        });
+        return;
+    }
+    process.on("unhandledRejection", (reason) => {
+        if (shouldIgnoreUnhandledRejection(reason)) {
+            console.warn(`${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`);
+            return;
+        }
+        console.error(`${getLogPrefix()} Unhandled rejection:`, formatUncaughtError(reason));
+        process.exit(1);
     });
-    return;
-  }
-
-  process.on("unhandledRejection", (reason) => {
-    if (shouldIgnoreUnhandledRejection(reason)) {
-      console.warn(
-        `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
-      );
-      return;
-    }
-    console.error(
-      `${getLogPrefix()} Unhandled rejection:`,
-      formatUncaughtError(reason),
-    );
-    process.exit(1);
-  });
-
-  process.on("uncaughtException", (error) => {
-    console.error(
-      `${getLogPrefix()} Uncaught exception:`,
-      formatUncaughtError(error),
-    );
-    process.exit(1);
-  });
+    process.on("uncaughtException", (error) => {
+        console.error(`${getLogPrefix()} Uncaught exception:`, formatUncaughtError(error));
+        process.exit(1);
+    });
 }
-
 let cliRestartHandlerRegistered = false;
-
 function registerCliRestartHandler(): void {
-  if (cliRestartHandlerRegistered) return;
-  cliRestartHandlerRegistered = true;
-  setRestartHandler((reason) => {
-    console.error(
-      `${getLogPrefix()} restart requested: ${
-        reason ?? "unspecified"
-      } — exiting with ${RESTART_EXIT_CODE}`,
-    );
-    process.exit(RESTART_EXIT_CODE);
-  });
+    if (cliRestartHandlerRegistered)
+        return;
+    cliRestartHandlerRegistered = true;
+    setRestartHandler((reason) => {
+        console.error(`${getLogPrefix()} restart requested: ${reason ?? "unspecified"} — exiting with ${RESTART_EXIT_CODE}`);
+        process.exit(RESTART_EXIT_CODE);
+    });
 }
-
 async function loadDotEnv(): Promise<void> {
-  const { config } = await import("dotenv");
-  config({ quiet: true });
+    const { config } = await import("dotenv");
+    config({ quiet: true });
 }
-
 export async function runCli(argv: string[] = process.argv) {
-  registerCliRestartHandler();
-  await loadDotEnv();
-
-  // Normalize env: copy Z_AI_API_KEY → ZAI_API_KEY when ZAI_API_KEY is empty.
-  if (!process.env.ZAI_API_KEY?.trim() && process.env.Z_AI_API_KEY?.trim()) {
-    process.env.ZAI_API_KEY = process.env.Z_AI_API_KEY;
-  }
-  if (
-    !process.env.MOONSHOT_API_KEY?.trim() &&
-    process.env.KIMI_API_KEY?.trim()
-  ) {
-    process.env.MOONSHOT_API_KEY = process.env.KIMI_API_KEY;
-  }
-
-  const { buildProgram } = await import("./program");
-  const program = buildProgram();
-
-  // Prevent Commander from calling process.exit() directly so that piped stdio (vitest etc)
-  // has a chance to flush cleanly before the process spins down.
-  program.exitOverride();
-
-  installGlobalErrorHandlers(argv);
-
-  const primary = getPrimaryCommand(argv);
-  if (primary && !hasHelpOrVersion(argv)) {
-    await registerSubCliByName(program, primary);
-  }
-
-  try {
-    await program.parseAsync(argv);
-  } catch (err) {
-    // If commander threw because of an early exit (e.g. --help, --version), don't crash.
-    if (err && typeof err === "object" && "code" in err && "exitCode" in err) {
-      process.exitCode = (err as { exitCode: number }).exitCode ?? 1;
-      return;
+    registerCliRestartHandler();
+    await loadDotEnv();
+    // Normalize env: copy Z_AI_API_KEY → ZAI_API_KEY when ZAI_API_KEY is empty.
+    if (!process.env.ZAI_API_KEY?.trim() && process.env.Z_AI_API_KEY?.trim()) {
+        process.env.ZAI_API_KEY = process.env.Z_AI_API_KEY;
     }
-    throw err;
-  }
+    if (!process.env.MOONSHOT_API_KEY?.trim() &&
+        process.env.KIMI_API_KEY?.trim()) {
+        process.env.MOONSHOT_API_KEY = process.env.KIMI_API_KEY;
+    }
+    const { buildProgram } = await import("./program");
+    const program = buildProgram();
+    // Prevent Commander from calling process.exit() directly so that piped stdio (vitest etc)
+    // has a chance to flush cleanly before the process spins down.
+    program.exitOverride();
+    installGlobalErrorHandlers(argv);
+    const primary = getPrimaryCommand(argv);
+    if (primary && !hasHelpOrVersion(argv)) {
+        await registerSubCliByName(program, primary);
+    }
+    try {
+        await program.parseAsync(argv);
+    }
+    catch (err) {
+        // If commander threw because of an early exit (e.g. --help, --version), don't crash.
+        if (err && typeof err === "object" && "code" in err && "exitCode" in err) {
+            process.exitCode = (err as {
+                exitCode: number;
+            }).exitCode ?? 1;
+            return;
+        }
+        throw err;
+    }
 }

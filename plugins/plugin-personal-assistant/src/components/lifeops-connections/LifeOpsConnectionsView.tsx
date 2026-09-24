@@ -1,13 +1,8 @@
 /** Focused onboarding and ongoing-management UI for Gmail and calendar sources. */
 
-import type {
-  LifeOpsCalendarProvider,
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-  LifeOpsGoogleCapability,
-  LifeOpsGoogleConnectorStatus,
-  PermissionState,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarProvider, type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsGoogleCapability, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
+import { type PermissionState } from "@elizaos/core/contracts/permissions";
 import {
   Button,
   Checkbox,

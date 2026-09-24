@@ -32,7 +32,7 @@ const LEVELS = [
   // web-entry-policy.ts, so it is present before any renderer branch is chosen.
   {
     name: "@elizaos/shared",
-    file: "packages/shared/src/elizacloud/domain-contract.ts",
+    file: "plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts",
   },
   {
     name: "plugin view contacts",

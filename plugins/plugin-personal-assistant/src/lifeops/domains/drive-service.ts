@@ -4,10 +4,7 @@
  * status/grant DTOs. Drive API calls live in the google plugin.
  */
 import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGoogleConnectorStatus,

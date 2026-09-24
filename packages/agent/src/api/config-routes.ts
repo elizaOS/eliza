@@ -13,15 +13,9 @@
  */
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import {
-  isElizaSettingsDebugEnabled,
-  normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountFlagsConfig,
-  normalizeServiceRoutingConfig,
-  sanitizeForSettingsDebug,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { isElizaSettingsDebugEnabled, sanitizeForSettingsDebug, settingsDebugCloudSummary } from "@elizaos/core/settings-debug";
+import { normalizeDeploymentTargetConfig, normalizeLinkedAccountFlagsConfig, normalizeServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

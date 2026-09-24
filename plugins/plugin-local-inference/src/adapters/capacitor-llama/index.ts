@@ -44,7 +44,7 @@ import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
-} from "@elizaos/shared/local-inference/bge-input";
+} from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,

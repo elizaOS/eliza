@@ -96,7 +96,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@electric-sql/pglite": "^0.4.2",
     "@napi-rs/keyring": "^1.1.6",
     "bs58": "^6.0.0",

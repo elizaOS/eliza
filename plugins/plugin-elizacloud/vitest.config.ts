@@ -10,7 +10,7 @@ const src = (relative: string) => path.join(here, "../../packages", relative);
 
 // Regex finds with subpath entries BEFORE the bare-package entries: a plain
 // string alias for "@elizaos/shared" would also rewrite
-// "@elizaos/shared/steward-session-client" into ".../index.ts/steward-…" once
+// "@elizaos/plugin-elizacloud/steward-session-client" into ".../index.ts/steward-…" once
 // the CloudView jsdom suite pulls the @elizaos/ui api graph in. The react pins
 // keep a single React copy so jsdom never mixes the workspace and hoisted
 // peers.
@@ -29,8 +29,6 @@ export default defineConfig({
 			{ find: /^@elizaos\/cloud-routing$/, replacement: src("cloud/routing/src/index.ts") },
 			{ find: /^@elizaos\/cloud-sdk$/, replacement: src("cloud/sdk/src/index.ts") },
 			{ find: /^@elizaos\/core$/, replacement: src("core/src/index.ts") },
-			{ find: /^@elizaos\/shared\/(.*)$/, replacement: `${src("shared/src")}/$1` },
-			{ find: /^@elizaos\/shared$/, replacement: src("shared/src/index.ts") },
 			{ find: /^@elizaos\/ui\/(.*)$/, replacement: `${src("ui/src")}/$1` },
 			{ find: /^@elizaos\/ui$/, replacement: src("ui/src/index.ts") },
 			{

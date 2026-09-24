@@ -2,10 +2,7 @@
  * Unit tests for sub-agent environment policy: validates deny list regex matching
  * and system essential keys.
  */
-import {
-  resetDevCloudEnvAuthorityForTests,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyDevCloudAuthorityToSubAgentEnv,

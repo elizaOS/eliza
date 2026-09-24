@@ -55,10 +55,7 @@ import {
   type LocalWorkspaceDeltaObservation,
   type WorkspaceDeltaFs,
 } from "@elizaos/plugin-coding-tools/lib/workspace-delta";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type {
   RemoteRunnerClient,

@@ -43,7 +43,7 @@ import {
   renderProviderOriginalMessages,
   visibleHistoryEventIds,
 } from "@elizaos/plugin-assistant";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,

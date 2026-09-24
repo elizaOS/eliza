@@ -9,11 +9,8 @@
  * is in cloud / cloud-hybrid mode.
  */
 import { Preferences } from "@capacitor/preferences";
-import {
-  formatError,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+import { formatError } from "@elizaos/core/utils/format-error";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/unicode";
 import type { ElizaWindowBridge } from "@elizaos/ui/bridge/eliza-window-bridge";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings";

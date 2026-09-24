@@ -1,7 +1,7 @@
 /** Produces managed-agent credentials, routing hints and embedding compatibility pins without migrating stored vectors. */
 import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import { EXTERNAL_URLS } from "@elizaos/ui/brand";
 import type { DbTransaction } from "../../db/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";

@@ -56,7 +56,7 @@ jobs:
       - name: Install Playwright Chromium
         run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Build core and shared dependencies
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
       - name: Run Vite dependency HMR
         run: bun run --cwd packages/app test:hmr
 

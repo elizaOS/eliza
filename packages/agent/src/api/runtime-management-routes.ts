@@ -2,12 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
-import {
-  isRuntimeManagementOperation,
-  type RuntimeManagementRequest,
-  type RuntimeManagementResult,
-  readJsonBody,
-} from "@elizaos/shared";
+import { isRuntimeManagementOperation, type RuntimeManagementRequest, type RuntimeManagementResult } from "@elizaos/core/contracts/runtime-management";
+import { readJsonBody } from "@elizaos/core/api/http-helpers";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { PendingRequestMap } from "./pending-request-map.ts";
 import {

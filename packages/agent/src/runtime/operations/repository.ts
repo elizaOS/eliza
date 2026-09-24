@@ -29,7 +29,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
 } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import { formatError } from "@elizaos/core";
 import { resolveStateDir } from "../../config/paths.ts";
 import type {
   OperationPhase,

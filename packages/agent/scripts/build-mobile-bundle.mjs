@@ -583,8 +583,8 @@ const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
   "@elizaos/shared",
-  "@elizaos/shared/brand",
-  "@elizaos/shared/voice/aec",
+  "../../ui/src/brand/index.ts",
+  "../../core/src/voice/aec/index.ts",
   "@elizaos/shared-brand",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
@@ -618,7 +618,7 @@ const dedupeTargets = {
     "src",
     "index.ts",
   ),
-  "@elizaos/shared/brand": path.resolve(
+  "../../ui/src/brand/index.ts": path.resolve(
     repoRoot,
     "packages",
     "shared",
@@ -632,7 +632,7 @@ const dedupeTargets = {
   // keeping its consumers — on device the live-diarization status route then
   // dies with `EchoReferenceBuffer is not defined` at session construction
   // (invisible to the module-load smoke, which never constructs the session).
-  "@elizaos/shared/voice/aec": path.resolve(
+  "../../core/src/voice/aec/index.ts": path.resolve(
     repoRoot,
     "packages",
     "shared",

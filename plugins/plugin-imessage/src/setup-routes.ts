@@ -19,207 +19,178 @@
  * These routes are registered with `rawPath: true` so they mount at their
  * canonical paths without the plugin-name prefix.
  */
-
-import {
-  buildSetupError,
-  type IAgentRuntime,
-  type SetupState,
-  type SetupStatusResponse,
-} from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
-
+import { buildSetupError } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type Route } from "@elizaos/shared";
+import { type RouteRequest } from "@elizaos/shared";
+import { type RouteResponse } from "@elizaos/shared";
+import { type SetupState } from "@elizaos/core";
+import { type SetupStatusResponse } from "@elizaos/core";
 const IMESSAGE_SERVICE_NAME = "imessage";
-
 /**
  * Narrow structural type for the IMessageService methods we call from
  * this route file. Declared here rather than imported from the service
  * module so the route file stays loosely coupled.
  */
 interface IMessageServiceLike {
-  isConnected(): boolean;
-  getStatus?(): {
-    transport: "native" | "blooio";
+    isConnected(): boolean;
+    getStatus?(): {
+        transport: "native" | "blooio";
+        available: boolean;
+        connected: boolean;
+        chatDbAvailable: boolean;
+        sendOnly: boolean;
+        chatDbPath: string;
+        reason: string | null;
+        permissionAction: {
+            type: "full_disk_access";
+            label: string;
+            url: string;
+            instructions: string[];
+        } | null;
+        webhookPath: string | null;
+        channelId: string | null;
+    };
+}
+interface ConnectorSetupService {
+    getConfig(): Record<string, unknown>;
+    updateConfig(updater: (config: Record<string, unknown>) => void): void;
+}
+function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+    if (!service || typeof service !== "object")
+        return false;
+    const candidate = service as Partial<ConnectorSetupService>;
+    return typeof candidate.getConfig === "function" && typeof candidate.updateConfig === "function";
+}
+function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
+    const service = runtime.getService("connector-setup");
+    return isConnectorSetupService(service) ? service : null;
+}
+function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
+    if (!service || typeof service !== "object")
+        return false;
+    const candidate = service as Partial<IMessageServiceLike>;
+    return (typeof candidate.isConnected === "function" &&
+        (candidate.getStatus === undefined || typeof candidate.getStatus === "function"));
+}
+function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
+    const service = runtime.getService(IMESSAGE_SERVICE_NAME);
+    return isIMessageServiceLike(service) ? service : null;
+}
+interface IMessageSetupDetail {
+    transport?: "native" | "blooio";
     available: boolean;
     connected: boolean;
-    chatDbAvailable: boolean;
-    sendOnly: boolean;
-    chatDbPath: string;
-    reason: string | null;
-    permissionAction: {
-      type: "full_disk_access";
-      label: string;
-      url: string;
-      instructions: string[];
+    chatDbAvailable?: boolean;
+    sendOnly?: boolean;
+    chatDbPath?: string;
+    reason?: string | null;
+    permissionAction?: {
+        type: "full_disk_access";
+        label: string;
+        url: string;
+        instructions: string[];
     } | null;
-    webhookPath: string | null;
-    channelId: string | null;
-  };
+    webhookPath?: string | null;
+    channelId?: string | null;
 }
-
-interface ConnectorSetupService {
-  getConfig(): Record<string, unknown>;
-  updateConfig(updater: (config: Record<string, unknown>) => void): void;
-}
-
-function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
-  if (!service || typeof service !== "object") return false;
-  const candidate = service as Partial<ConnectorSetupService>;
-  return typeof candidate.getConfig === "function" && typeof candidate.updateConfig === "function";
-}
-
-function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  const service = runtime.getService("connector-setup");
-  return isConnectorSetupService(service) ? service : null;
-}
-
-function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
-  if (!service || typeof service !== "object") return false;
-  const candidate = service as Partial<IMessageServiceLike>;
-  return (
-    typeof candidate.isConnected === "function" &&
-    (candidate.getStatus === undefined || typeof candidate.getStatus === "function")
-  );
-}
-
-function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
-  const service = runtime.getService(IMESSAGE_SERVICE_NAME);
-  return isIMessageServiceLike(service) ? service : null;
-}
-
-interface IMessageSetupDetail {
-  transport?: "native" | "blooio";
-  available: boolean;
-  connected: boolean;
-  chatDbAvailable?: boolean;
-  sendOnly?: boolean;
-  chatDbPath?: string;
-  reason?: string | null;
-  permissionAction?: {
-    type: "full_disk_access";
-    label: string;
-    url: string;
-    instructions: string[];
-  } | null;
-  webhookPath?: string | null;
-  channelId?: string | null;
-}
-
 function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessageSetupDetail> {
-  const service = resolveService(runtime);
-  if (!service) {
+    const service = resolveService(runtime);
+    if (!service) {
+        return {
+            connector: "imessage",
+            state: "idle",
+            detail: {
+                available: false,
+                connected: false,
+                reason: "imessage service not registered",
+            },
+        };
+    }
+    const connected = service.isConnected();
+    const status = service.getStatus?.();
+    const state: SetupState = connected ? "paired" : status?.available ? "configuring" : "idle";
     return {
-      connector: "imessage",
-      state: "idle",
-      detail: {
-        available: false,
-        connected: false,
-        reason: "imessage service not registered",
-      },
+        connector: "imessage",
+        state,
+        detail: {
+            available: status?.available ?? true,
+            connected,
+            ...(status
+                ? {
+                    transport: status.transport,
+                    chatDbAvailable: status.chatDbAvailable,
+                    sendOnly: status.sendOnly,
+                    chatDbPath: status.chatDbPath,
+                    reason: status.reason,
+                    permissionAction: status.permissionAction,
+                    webhookPath: status.webhookPath,
+                    channelId: status.channelId,
+                }
+                : {}),
+        },
     };
-  }
-  const connected = service.isConnected();
-  const status = service.getStatus?.();
-  const state: SetupState = connected ? "paired" : status?.available ? "configuring" : "idle";
-  return {
-    connector: "imessage",
-    state,
-    detail: {
-      available: status?.available ?? true,
-      connected,
-      ...(status
-        ? {
-            transport: status.transport,
-            chatDbAvailable: status.chatDbAvailable,
-            sendOnly: status.sendOnly,
-            chatDbPath: status.chatDbPath,
-            reason: status.reason,
-            permissionAction: status.permissionAction,
-            webhookPath: status.webhookPath,
-            channelId: status.channelId,
-          }
-        : {}),
-    },
-  };
 }
-
 // ── GET /api/setup/imessage/status ──────────────────────────────────
-async function handleSetupStatus(
-  _req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime
-): Promise<void> {
-  res.status(200).json(buildStatusResponse(runtime));
+async function handleSetupStatus(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): Promise<void> {
+    res.status(200).json(buildStatusResponse(runtime));
 }
-
 // ── POST /api/setup/imessage/start ──────────────────────────────────
-async function handleSetupStart(
-  _req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime
-): Promise<void> {
-  const setupService = getSetupService(runtime);
-  if (!setupService) {
-    res
-      .status(503)
-      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
-    return;
-  }
-
-  setupService.updateConfig((cfg) => {
-    if (!cfg.connectors) cfg.connectors = {};
-    const connectors = cfg.connectors as Record<string, unknown>;
-    const previous = (connectors.imessage as Record<string, unknown> | undefined) ?? {};
-    connectors.imessage = {
-      ...previous,
-      enabled: true,
-    };
-  });
-
-  res.status(200).json(buildStatusResponse(runtime));
+async function handleSetupStart(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): Promise<void> {
+    const setupService = getSetupService(runtime);
+    if (!setupService) {
+        res
+            .status(503)
+            .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
+        return;
+    }
+    setupService.updateConfig((cfg) => {
+        if (!cfg.connectors)
+            cfg.connectors = {};
+        const connectors = cfg.connectors as Record<string, unknown>;
+        const previous = (connectors.imessage as Record<string, unknown> | undefined) ?? {};
+        connectors.imessage = {
+            ...previous,
+            enabled: true,
+        };
+    });
+    res.status(200).json(buildStatusResponse(runtime));
 }
-
 // ── POST /api/setup/imessage/cancel ─────────────────────────────────
-async function handleSetupCancel(
-  _req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime
-): Promise<void> {
-  const setupService = getSetupService(runtime);
-  if (!setupService) {
-    res
-      .status(503)
-      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
-    return;
-  }
-
-  setupService.updateConfig((cfg) => {
-    const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
-    delete connectors.imessage;
-  });
-
-  res.status(200).json({
-    connector: "imessage",
-    state: "idle",
-  } satisfies SetupStatusResponse<undefined>);
+async function handleSetupCancel(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): Promise<void> {
+    const setupService = getSetupService(runtime);
+    if (!setupService) {
+        res
+            .status(503)
+            .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
+        return;
+    }
+    setupService.updateConfig((cfg) => {
+        const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
+        delete connectors.imessage;
+    });
+    res.status(200).json({
+        connector: "imessage",
+        state: "idle",
+    } satisfies SetupStatusResponse<undefined>);
 }
-
 export const imessageSetupRoutes: Route[] = [
-  {
-    type: "GET",
-    path: "/api/setup/imessage/status",
-    handler: handleSetupStatus,
-    rawPath: true,
-  },
-  {
-    type: "POST",
-    path: "/api/setup/imessage/start",
-    handler: handleSetupStart,
-    rawPath: true,
-  },
-  {
-    type: "POST",
-    path: "/api/setup/imessage/cancel",
-    handler: handleSetupCancel,
-    rawPath: true,
-  },
+    {
+        type: "GET",
+        path: "/api/setup/imessage/status",
+        handler: handleSetupStatus,
+        rawPath: true,
+    },
+    {
+        type: "POST",
+        path: "/api/setup/imessage/start",
+        handler: handleSetupStart,
+        rawPath: true,
+    },
+    {
+        type: "POST",
+        path: "/api/setup/imessage/cancel",
+        handler: handleSetupCancel,
+        rawPath: true,
+    },
 ];

@@ -4,7 +4,7 @@
  * LifeOpsServiceError.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { LifeOpsServiceError } from "@elizaos/shared";
+import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
 import type {
   LifeOpsCircadianState,
   LifeOpsWorkflowRun,

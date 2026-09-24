@@ -13,7 +13,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PlannerRuntime,

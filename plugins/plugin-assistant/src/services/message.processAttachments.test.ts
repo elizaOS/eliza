@@ -25,10 +25,10 @@ import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.
 // (the runtime graph imports more than fetchRemoteMedia from here).
 const fetchRemoteMedia = vi.fn();
 vi.mock(
-  "../../../../packages/shared/src/media/fetch.ts",
+  "@elizaos/core/media/fetch",
   async (importActual) => ({
     ...(await importActual<
-      typeof import("../../../../packages/shared/src/media/fetch.ts")
+      typeof import("../../../../packages/core/src/media/fetch.ts")
     >()),
     fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMedia(...args),
   }),

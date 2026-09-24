@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { getEmbeddingVectorSpace, ModelType } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import {
 	afterAll,
 	afterEach,

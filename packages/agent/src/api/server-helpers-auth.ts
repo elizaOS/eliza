@@ -5,22 +5,11 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import {
-  isCloudProvisionedContainer,
-  isLoopbackBindHost,
-  isNullOriginAllowed,
-  isTrustedLocalRequest as isTrustedLocalRequestShared,
-  isWildcardBindHost,
-  readAliasedEnv,
-  resolveAllowedHosts,
-  resolveAllowedOrigins,
-  resolveApiBindHost,
-  resolveApiSecurityConfig,
-  resolveApiToken,
-  setApiToken,
-  stripOptionalHostPort,
-} from "@elizaos/shared";
-import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
+import { isLoopbackBindHost, isNullOriginAllowed, isWildcardBindHost, resolveAllowedHosts, resolveAllowedOrigins, resolveApiBindHost, resolveApiSecurityConfig, resolveApiToken, setApiToken, stripOptionalHostPort } from "@elizaos/core/runtime-env";
+import { isTrustedLocalRequest as isTrustedLocalRequestShared } from "@elizaos/agent/api/loopback-trust";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { normalizeHostPairingCode } from "@elizaos/agent/host-use-cases";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { isRegisteredTokenRoleAuthorized } from "./boundary-role-resolver.ts";
 import { sweepExpiredEntries } from "./memory-bounds.ts";

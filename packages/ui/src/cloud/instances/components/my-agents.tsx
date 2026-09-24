@@ -4,7 +4,7 @@
  * The My Agents surface: lists the user's cloud agent instances with sort/view
  * controls and the create entry point.
  */
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
   ArrowRight,

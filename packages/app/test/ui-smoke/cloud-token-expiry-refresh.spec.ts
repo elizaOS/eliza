@@ -11,7 +11,7 @@
  * so the renderer drives the whole exchange.
  */
 
-import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/shared/steward-session-client";
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { expect, type Route, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,

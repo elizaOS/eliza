@@ -5,7 +5,7 @@
  * a desktop session partition). No React.
  */
 
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import { EXTERNAL_URLS } from "@elizaos/ui/brand";
 
 const DEFAULT_RELEASE_NOTES_URL = `${EXTERNAL_URLS.github}/releases`;
 

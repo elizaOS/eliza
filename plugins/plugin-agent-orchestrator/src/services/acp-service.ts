@@ -44,17 +44,13 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import { SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE } from "@elizaos/plugin-assistant";
-import {
-  CODING_AGENT_BACKEND_PREFLIGHTS,
-  CODING_AGENT_BACKENDS,
-  isAndroidMobile,
-  isCodingAgentBackend,
-} from "@elizaos/shared";
+import { CODING_AGENT_BACKEND_PREFLIGHTS, CODING_AGENT_BACKENDS, isCodingAgentBackend } from "@elizaos/core/contracts/coding-agent-capabilities";
+import { isAndroidMobile } from "@elizaos/core/runtime-env";
 import {
   applyHostToolchainExecutionBaseline,
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/core/host-execution-env";
 import {
   NativeAcpClient,
   type NativeAcpEventContext,

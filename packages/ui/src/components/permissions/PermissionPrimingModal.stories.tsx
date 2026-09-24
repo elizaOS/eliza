@@ -5,172 +5,145 @@
  * settings-only), explicit request/re-check failures, and the initial loading
  * state.
  */
-import type { PermissionId } from "@elizaos/shared";
-import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
-import type {
-  PermissionPrimingController,
-  PrimingItem,
-  PrimingItemStatus,
-} from "./use-permission-priming";
-
+import { type Meta } from "@storybook/react";
+import { type PermissionId } from "@elizaos/core/contracts/permissions";
+import { type PermissionPrimingController } from "./use-permission-priming";
+import { type PrimingItem } from "./use-permission-priming";
+import { type PrimingItemStatus } from "./use-permission-priming";
+import { type StoryObj } from "@storybook/react";
 const meta = {
-  title: "Permissions/PermissionPrimingModal",
-  component: PermissionPrimingModal,
-  parameters: { layout: "fullscreen" },
-  decorators: [
-    (Story) => (
-      <MockAppProvider>
+    title: "Permissions/PermissionPrimingModal",
+    component: PermissionPrimingModal,
+    parameters: { layout: "fullscreen" },
+    decorators: [
+        (Story) => (<MockAppProvider>
         <Story />
-      </MockAppProvider>
-    ),
-  ],
+      </MockAppProvider>),
+    ],
 } satisfies Meta<typeof PermissionPrimingModal>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
-function item(
-  id: PermissionId,
-  status: PrimingItemStatus,
-  canRequest = false,
-): PrimingItem {
-  return {
-    id,
-    status,
-    canRequest,
-    requesting: false,
-    requestError: false,
-    recheckError: false,
-    resolved: false,
-  };
+function item(id: PermissionId, status: PrimingItemStatus, canRequest = false): PrimingItem {
+    return {
+        id,
+        status,
+        canRequest,
+        requesting: false,
+        requestError: false,
+        recheckError: false,
+        resolved: false,
+    };
 }
-
-function controller(
-  active: PrimingItem | null,
-  overrides: Partial<PermissionPrimingController> = {},
-): PermissionPrimingController {
-  const items = active ? [active] : [];
-  return {
-    items,
-    activeIndex: 0,
-    active,
-    currentStep: 1,
-    totalSteps: items.length || 1,
-    ready: true,
-    done: active === null,
-    request: async () => {},
-    skip: () => {},
-    openSettings: async () => {},
-    recheck: async () => {},
-    skipAll: () => {},
-    ...overrides,
-  };
+function controller(active: PrimingItem | null, overrides: Partial<PermissionPrimingController> = {}): PermissionPrimingController {
+    const items = active ? [active] : [];
+    return {
+        items,
+        activeIndex: 0,
+        active,
+        currentStep: 1,
+        totalSteps: items.length || 1,
+        ready: true,
+        done: active === null,
+        request: async () => { },
+        skip: () => { },
+        openSettings: async () => { },
+        recheck: async () => { },
+        skipAll: () => { },
+        ...overrides,
+    };
 }
-
-const noop = () => {};
-
+const noop = () => { };
 export const Microphone: Story = {
-  args: {
-    ids: ["microphone"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(item("microphone", "not-determined", true), {
-      currentStep: 1,
-      totalSteps: 3,
-    }),
-  },
+    args: {
+        ids: ["microphone"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(item("microphone", "not-determined", true), {
+            currentStep: 1,
+            totalSteps: 3,
+        }),
+    },
 };
-
 export const Location: Story = {
-  args: {
-    ids: ["location"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(item("location", "not-determined", true), {
-      currentStep: 3,
-      totalSteps: 3,
-    }),
-  },
+    args: {
+        ids: ["location"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(item("location", "not-determined", true), {
+            currentStep: 3,
+            totalSteps: 3,
+        }),
+    },
 };
-
 export const Notifications: Story = {
-  args: {
-    ids: ["notifications"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(
-      item("notifications", "not-determined", true),
-      { currentStep: 2, totalSteps: 3 },
-    ),
-  },
+    args: {
+        ids: ["notifications"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(item("notifications", "not-determined", true), { currentStep: 2, totalSteps: 3 }),
+    },
 };
-
 export const Requesting: Story = {
-  args: {
-    ids: ["microphone"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller({
-      id: "microphone",
-      status: "not-determined",
-      canRequest: true,
-      requesting: true,
-      requestError: false,
-      recheckError: false,
-      resolved: false,
-    }),
-  },
+    args: {
+        ids: ["microphone"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller({
+            id: "microphone",
+            status: "not-determined",
+            canRequest: true,
+            requesting: true,
+            requestError: false,
+            recheckError: false,
+            resolved: false,
+        }),
+    },
 };
-
 export const DeniedRetryable: Story = {
-  args: {
-    ids: ["location"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(item("location", "denied", true)),
-  },
+    args: {
+        ids: ["location"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(item("location", "denied", true)),
+    },
 };
-
 export const DeniedSettingsOnly: Story = {
-  args: {
-    ids: ["microphone"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(item("microphone", "denied", false)),
-  },
+    args: {
+        ids: ["microphone"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(item("microphone", "denied", false)),
+    },
 };
-
 export const RequestFailed: Story = {
-  args: {
-    ids: ["notifications"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller({
-      ...item("notifications", "unknown", true),
-      requestError: true,
-    }),
-  },
+    args: {
+        ids: ["notifications"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller({
+            ...item("notifications", "unknown", true),
+            requestError: true,
+        }),
+    },
 };
-
 export const RecheckFailed: Story = {
-  args: {
-    ids: ["notifications"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller({
-      ...item("notifications", "denied", false),
-      recheckError: true,
-    }),
-  },
+    args: {
+        ids: ["notifications"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller({
+            ...item("notifications", "denied", false),
+            recheckError: true,
+        }),
+    },
 };
-
 export const Loading: Story = {
-  args: {
-    ids: ["microphone"],
-    open: true,
-    onComplete: noop,
-    controllerOverride: controller(null, { ready: false, done: false }),
-  },
+    args: {
+        ids: ["microphone"],
+        open: true,
+        onComplete: noop,
+        controllerOverride: controller(null, { ready: false, done: false }),
+    },
 };

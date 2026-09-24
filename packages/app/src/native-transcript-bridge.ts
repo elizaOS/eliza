@@ -6,7 +6,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/core/logger";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,

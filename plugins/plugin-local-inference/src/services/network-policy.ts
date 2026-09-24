@@ -1,7 +1,7 @@
 /**
  * NetworkPolicy bridge for `plugin-local-inference` (R5-versioning §4).
  *
- * The shared module `@elizaos/shared/local-inference/network-policy` defines
+ * The shared module `@elizaos/plugin-native-inference/model-catalog/network-policy` defines
  * the platform-agnostic classifier + decision rule. This module wires the
  * platform-specific probes:
  *
@@ -33,15 +33,7 @@
  * Spec: `.swarm/research/R5-versioning.md` §4.
  */
 
-import {
-	applyNetworkPolicy,
-	classifyNetwork,
-	DEFAULT_NETWORK_POLICY_PREFERENCES,
-	type NetworkClass,
-	type NetworkPolicyDecision,
-	type NetworkPolicyPreferences,
-	type RawNetworkState,
-} from "@elizaos/shared";
+import { applyNetworkPolicy, classifyNetwork, DEFAULT_NETWORK_POLICY_PREFERENCES, type NetworkClass, type NetworkPolicyDecision, type NetworkPolicyPreferences, type RawNetworkState } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 
 /**
  * Platform probe — produces a `RawNetworkState` from whatever OS API is

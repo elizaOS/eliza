@@ -32,6 +32,18 @@
       "eliza-source": "./src/features/advanced-capabilities/personality/character-persistence.ts",
       "import": "./dist/character-persistence.js",
       "default": "./dist/character-persistence.js"
+    },
+    "./text/template-engine": {
+      "types": "./dist/text/template-engine.d.ts",
+      "eliza-source": "./src/text/template-engine.ts",
+      "import": "./dist/text/template-engine.js",
+      "default": "./dist/text/template-engine.js"
+    },
+    "./text/template-rendering": {
+      "types": "./dist/text/template-rendering.d.ts",
+      "eliza-source": "./src/text/template-rendering.ts",
+      "import": "./dist/text/template-rendering.js",
+      "default": "./dist/text/template-rendering.js"
     }
   },
   "files": [
@@ -60,9 +72,9 @@
     "unpdf": "^1.4.0",
     "zod": "^4.6.5",
     "uuid": "^14.0.0",
-    "@elizaos/shared": "workspace:*",
     "yaml": "^2.7.0",
-    "handlebars": "^4.7.8"
+    "handlebars": "^4.7.8",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
@@ -71,7 +83,8 @@
     "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*",
     "@biomejs/biome": "2.5.14",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "esbuild": "^0.28.0"
   },
   "publishConfig": {
     "access": "public"

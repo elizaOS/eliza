@@ -2,11 +2,8 @@
  * Test stub for the elizacloud plugin: cloud-site-URL and secret normalization helpers used
  * by LifeOps cloud-feature tests.
  */
-import {
-  normalizeCloudSiteUrl as normalizeSharedCloudSiteUrl,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { normalizeCloudSiteUrl as normalizeSharedCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 const DEFAULT_CLOUD_SITE_URL = "https://api.eliza.app";
 

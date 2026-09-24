@@ -7,7 +7,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS, type MeetingSession } from "@elizaos/shared";
+import { MEETING_PLATFORM_LABELS, type MeetingSession } from "@elizaos/core/meetings";
 import type { MeetingService } from "../service.js";
 
 function formatDuration(ms: number): string {

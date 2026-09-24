@@ -27,7 +27,7 @@ type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/shared/utils/pglite-storage";
+} from "@elizaos/plugin-sql/database-utils/pglite-storage";
 import {
   type LiveProviderConfig,
   type LiveProviderName,

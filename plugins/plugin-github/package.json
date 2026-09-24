@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-github",
   "version": "2.0.3-beta.7",
-  "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
+  "description": "GitHub integration plugin for elizaOS agents \u2014 PRs, issues, notifications via the GitHub REST API",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,8 +44,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@octokit/rest": "^22.0.0",
-    "@elizaos/shared": "workspace:*"
+    "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

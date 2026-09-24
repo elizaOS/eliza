@@ -11,7 +11,7 @@
  * instead of an inline crypto-checkout card.
  */
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/ui/brand";
 import { Gift } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";

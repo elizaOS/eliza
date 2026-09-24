@@ -24,14 +24,6 @@ export default defineConfig({
 				replacement: path.join(appCoreSrcRoot, "$1"),
 			},
 			{
-				find: /^@elizaos\/shared$/,
-				replacement: path.join(sharedSrcRoot, "index.ts"),
-			},
-			{
-				find: /^@elizaos\/shared\/(.*)$/,
-				replacement: path.join(sharedSrcRoot, "$1"),
-			},
-			{
 				find: /^bun:ffi$/,
 				replacement: path.resolve(__dirname, "src/__stubs__/bun-ffi.ts"),
 			},

@@ -20,7 +20,7 @@ export {
   assertCarveOutProjectionComplete,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/shared/db/carve-out-migration";
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 
 const id = () => text("id").primaryKey();
 const created = () =>

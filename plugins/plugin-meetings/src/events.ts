@@ -15,11 +15,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type {
-  MeetingSession,
-  MeetingTranscriptEvent,
-  MeetingWsEvent,
-} from "@elizaos/shared";
+import { type MeetingSession, type MeetingTranscriptEvent, type MeetingWsEvent } from "@elizaos/core/meetings";
 
 /** Minimum ms between meeting-transcript events per session (≤2/s). */
 export const TRANSCRIPT_EVENT_MIN_INTERVAL_MS = 500;

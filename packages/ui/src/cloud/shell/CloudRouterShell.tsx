@@ -18,151 +18,127 @@
  * providers are web-build-only. Native (Capacitor) mounts the tab/view App
  * directly with no bundle growth — see `packages/app/src/main.tsx`.
  */
-
-import {
-  ELIZA_DOMAIN_CONTRACTS,
-  elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared";
-import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  type ComponentType,
-  lazy,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useSyncExternalStore,
-} from "react";
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 import { Button } from "../../components/ui/button";
-import { isAppModeHost } from "../app-mode/app-mode";
-import { queryClient } from "../lib/query-client";
-import { useSessionAuth } from "../lib/use-session-auth";
-import {
-  ensurePrivateCloudSurfaces,
-  getPrivateCloudRegistrationSnapshot,
-  pathNeedsPrivateCloudSurfaces,
-  retryPrivateCloudSurfaces,
-  subscribePrivateCloudRegistration,
-} from "../private-cloud-registration";
-import { isApexControlPlaneHost } from "./apex-host";
-import {
-  CloudI18nProvider,
-  resolveInitialCloudLang,
-} from "./CloudI18nProvider";
+import { CloudI18nProvider } from "./CloudI18nProvider";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
-import {
-  type CloudRouteDef,
-  getCloudRouteGate,
-  getCloudRouteRegistryVersion,
-  listCloudRoutes,
-  subscribeCloudRoutes,
-} from "./cloud-route-registry";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Route } from "react-router-dom";
+import { Routes } from "react-router-dom";
 import { StewardAuthProvider } from "./StewardProvider";
-
+import { Suspense } from "react";
+import { elizaCloudEnvironmentForHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { ensurePrivateCloudSurfaces } from "../private-cloud-registration";
+import { getCloudRouteGate } from "./cloud-route-registry";
+import { getCloudRouteRegistryVersion } from "./cloud-route-registry";
+import { getPrivateCloudRegistrationSnapshot } from "../private-cloud-registration";
+import { isApexControlPlaneHost } from "./apex-host";
+import { isAppModeHost } from "../app-mode/app-mode";
+import { lazy } from "react";
+import { listCloudRoutes } from "./cloud-route-registry";
+import { pathNeedsPrivateCloudSurfaces } from "../private-cloud-registration";
+import { queryClient } from "../lib/query-client";
+import { resolveInitialCloudLang } from "./CloudI18nProvider";
+import { retryPrivateCloudSurfaces } from "../private-cloud-registration";
+import { subscribeCloudRoutes } from "./cloud-route-registry";
+import { subscribePrivateCloudRegistration } from "../private-cloud-registration";
+import { type CloudRouteDef } from "./cloud-route-registry";
+import { type ComponentType } from "react";
+import { type ReactNode } from "react";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { useSessionAuth } from "../lib/use-session-auth";
+import { useSyncExternalStore } from "react";
 /**
  * Retired `/dashboard/*` redirect map. Cloud management now lives at
  * `/cloud/*` inside the normal Eliza app shell; these entries normalize older
  * route spellings while preserving parameters and query strings.
  */
 export const LEGACY_DASHBOARD_REDIRECTS: ReadonlyArray<{
-  from: string;
-  to: string;
+    from: string;
+    to: string;
 }> = [
-  { from: "dashboard", to: "/cloud" },
-  // Legacy build/* surface → agents.
-  { from: "dashboard/build/*", to: "/cloud/my-agents" },
-  // Media generators were folded into the API explorer.
-  { from: "dashboard/image", to: "/cloud/api-explorer" },
-  { from: "dashboard/video", to: "/cloud/api-explorer" },
-  { from: "dashboard/gallery", to: "/cloud/api-explorer" },
-  { from: "dashboard/voices", to: "/cloud/api-explorer" },
-  // Containers were unified under agents.
-  { from: "dashboard/containers", to: "/cloud/agents" },
-  { from: "dashboard/containers/:id", to: "/cloud/agents/:id" },
-  { from: "dashboard/containers/agents/:id", to: "/cloud/agents/:id" },
-  // Real chat lives in the app, not the dashboard; old chat deep links
-  // redirect back to the agent detail page.
-  { from: "dashboard/agents/:id/chat", to: "/cloud/agents/:id" },
-  // App-create modal is opened from the apps list, not its own route.
-  { from: "dashboard/apps/create", to: "/cloud/apps" },
-  // Earnings + Affiliates merged into the tabbed Monetization console page.
-  { from: "dashboard/earnings", to: "/cloud/monetization" },
-  { from: "dashboard/affiliates", to: "/cloud/monetization" },
-  // Knowledge/Documents now lives in the app; old deep links land on the agents list.
-  { from: "dashboard/documents", to: "/cloud/agents" },
+    { from: "dashboard", to: "/cloud" },
+    // Legacy build/* surface → agents.
+    { from: "dashboard/build/*", to: "/cloud/my-agents" },
+    // Media generators were folded into the API explorer.
+    { from: "dashboard/image", to: "/cloud/api-explorer" },
+    { from: "dashboard/video", to: "/cloud/api-explorer" },
+    { from: "dashboard/gallery", to: "/cloud/api-explorer" },
+    { from: "dashboard/voices", to: "/cloud/api-explorer" },
+    // Containers were unified under agents.
+    { from: "dashboard/containers", to: "/cloud/agents" },
+    { from: "dashboard/containers/:id", to: "/cloud/agents/:id" },
+    { from: "dashboard/containers/agents/:id", to: "/cloud/agents/:id" },
+    // Real chat lives in the app, not the dashboard; old chat deep links
+    // redirect back to the agent detail page.
+    { from: "dashboard/agents/:id/chat", to: "/cloud/agents/:id" },
+    // App-create modal is opened from the apps list, not its own route.
+    { from: "dashboard/apps/create", to: "/cloud/apps" },
+    // Earnings + Affiliates merged into the tabbed Monetization console page.
+    { from: "dashboard/earnings", to: "/cloud/monetization" },
+    { from: "dashboard/affiliates", to: "/cloud/monetization" },
+    // Knowledge/Documents now lives in the app; old deep links land on the agents list.
+    { from: "dashboard/documents", to: "/cloud/agents" },
 ];
-
 /** Retired `/cloud/*` aliases emitted by older clients and saved bookmarks. */
 export const CLOUD_MANAGEMENT_COMPAT_REDIRECTS: ReadonlyArray<{
-  from: string;
-  to: string;
+    from: string;
+    to: string;
 }> = [
-  { from: "cloud/security", to: "/cloud/account" },
-  { from: "cloud/earnings", to: "/cloud/monetization" },
-  { from: "cloud/affiliates", to: "/cloud/monetization" },
+    { from: "cloud/security", to: "/cloud/account" },
+    { from: "cloud/earnings", to: "/cloud/monetization" },
+    { from: "cloud/affiliates", to: "/cloud/monetization" },
 ];
-
 /**
  * Substitute `:param` segments from the matched route params, preserve the
  * query string, and keep any `#hash` on the target after the query (a naive
  * `to + search` concatenation would swallow the query into the hash).
  */
-function ParamRedirect({ to }: { to: string }): React.JSX.Element {
-  const location = useLocation();
-  const params = useParams();
-  const resolved = to.replace(/:([a-zA-Z]+)/g, (_, key) => params[key] ?? "");
-  const [path, hash] = resolved.split("#");
-  return (
-    <Navigate
-      to={`${path}${location.search}${hash ? `#${hash}` : ""}`}
-      replace
-    />
-  );
+function ParamRedirect({ to }: {
+    to: string;
+}): React.JSX.Element {
+    const location = useLocation();
+    const params = useParams();
+    const resolved = to.replace(/:([a-zA-Z]+)/g, (_, key) => params[key] ?? "");
+    const [path, hash] = resolved.split("#");
+    return (<Navigate to={`${path}${location.search}${hash ? `#${hash}` : ""}`} replace/>);
 }
-
 /**
  * Settings-tab URLs issued by older OAuth and billing flows map onto their
  * canonical managed Cloud pages. Unknown/absent tabs land on Cloud home.
  */
 const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
-  connections: "/cloud/connectors",
-  billing: "/cloud/billing",
-  organization: "/cloud/organization",
-  agents: "/cloud/agents",
+    connections: "/cloud/connectors",
+    billing: "/cloud/billing",
+    organization: "/cloud/organization",
+    agents: "/cloud/agents",
 };
-
 /** Settings sections whose bodies already have a standalone Cloud route. */
 const CLOUD_SETTINGS_SECTION_TARGETS: Readonly<Record<string, string>> = {
-  "#cloud-account": "/cloud/account",
-  "#cloud-billing": "/cloud/billing",
-  "#cloud-api-keys": "/cloud/api-keys",
-  "#cloud-applications": "/cloud/apps",
-  "#cloud-monetization": "/cloud/monetization",
-  "#cloud-organization": "/cloud/organization",
-  "#cloud-plugin-grants": "/cloud/security/permissions",
+    "#cloud-account": "/cloud/account",
+    "#cloud-billing": "/cloud/billing",
+    "#cloud-api-keys": "/cloud/api-keys",
+    "#cloud-applications": "/cloud/apps",
+    "#cloud-monetization": "/cloud/monetization",
+    "#cloud-organization": "/cloud/organization",
+    "#cloud-plugin-grants": "/cloud/security/permissions",
 };
-
 function LegacySettingsTabRedirect(): React.JSX.Element {
-  const location = useLocation();
-  const target = resolveLegacyCloudSettingsTarget(location.search);
-  return <Navigate to={`${target}${location.search}`} replace />;
+    const location = useLocation();
+    const target = resolveLegacyCloudSettingsTarget(location.search);
+    return <Navigate to={`${target}${location.search}`} replace/>;
 }
-
 export function resolveLegacyCloudSettingsTarget(search: string): string {
-  const tab = new URLSearchParams(search).get("tab") ?? "";
-  return LEGACY_SETTINGS_TAB_TARGETS[tab] ?? "/cloud";
+    const tab = new URLSearchParams(search).get("tab") ?? "";
+    return LEGACY_SETTINGS_TAB_TARGETS[tab] ?? "/cloud";
 }
-
 function renderRouteElement(route: CloudRouteDef): React.JSX.Element {
-  const RouteComponent = route.element as ComponentType<unknown>;
-  return (
+    const RouteComponent = route.element as ComponentType<unknown>;
+    return (
     // The boundary sits INSIDE the console chrome / auth providers so a route
     // crash (or a post-deploy stale lazy chunk — see CloudRouteErrorBoundary)
     // degrades in the page slot instead of escaping to the app-root boundary
@@ -171,55 +147,44 @@ function renderRouteElement(route: CloudRouteDef): React.JSX.Element {
       <Suspense fallback={<RouteChunkFallback />}>
         <RouteComponent />
       </Suspense>
-    </CloudRouteErrorBoundary>
-  );
+    </CloudRouteErrorBoundary>);
 }
-
 /** Fail-closed denial when a route declares a gate with no registered impl. */
 function RouteGateUnavailable(): React.JSX.Element {
-  return (
-    <div className="theme-cloud min-h-dvh bg-black text-white">
+    return (<div className="theme-cloud min-h-dvh bg-black text-white">
       <div className="mx-auto max-w-prose p-8 text-sm text-white/62">
         <h1 className="mb-3 text-lg font-semibold text-white">
           Access unavailable
         </h1>
         <p>This area could not be authorized.</p>
       </div>
-    </div>
-  );
+    </div>);
 }
-
 /**
  * Apply a route's declared `gate` (#12087 Item 23). The shell — not each route
  * body — enforces authorization: a route declaring `gate: "admin"` is wrapped in
  * the registered `AdminGate` even if its own body forgot to. An unknown gate
  * name fails closed (renders a denial, never the body).
  */
-export function applyRouteGate(
-  gate: string | undefined,
-  body: ReactNode,
-): ReactNode {
-  if (!gate) return body;
-  const Gate = getCloudRouteGate(gate);
-  if (!Gate) return <RouteGateUnavailable />;
-  return <Gate>{body}</Gate>;
+export function applyRouteGate(gate: string | undefined, body: ReactNode): ReactNode {
+    if (!gate)
+        return body;
+    const Gate = getCloudRouteGate(gate);
+    if (!Gate)
+        return <RouteGateUnavailable />;
+    return <Gate>{body}</Gate>;
 }
-
 /**
  * Transparent in-flight fallback for a lazy route chunk. Cloud pages supply
  * their own richer skeletons; this just fills the slot for the cold-load gap.
  */
 function RouteChunkFallback(): React.JSX.Element {
-  return <div aria-busy="true" className="min-h-[40vh]" />;
+    return <div aria-busy="true" className="min-h-[40vh]"/>;
 }
-
-function PrivateCloudUnavailable({
-  onRetry,
-}: {
-  onRetry: () => void;
+function PrivateCloudUnavailable({ onRetry, }: {
+    onRetry: () => void;
 }): React.JSX.Element {
-  return (
-    <div className="theme-cloud min-h-dvh bg-black text-white">
+    return (<div className="theme-cloud min-h-dvh bg-black text-white">
       <div className="mx-auto max-w-prose p-8 text-sm text-white/62">
         <h1 className="mb-3 text-lg font-semibold text-white">
           Console unavailable
@@ -228,33 +193,25 @@ function PrivateCloudUnavailable({
           Dashboard surfaces could not be loaded. Check your connection and try
           again.
         </p>
-        <Button
-          type="button"
-          variant="outlineMuted"
-          size="compact"
-          onClick={onRetry}
-        >
+        <Button type="button" variant="outlineMuted" size="compact" onClick={onRetry}>
           Retry
         </Button>
       </div>
-    </div>
-  );
+    </div>);
 }
-
 /**
  * Starts private domain registration only when the active location needs
  * dashboard/console surfaces (#18056). Idle `/login` must not call this.
  */
 function PrivateCloudRegistrationCoordinator(): null {
-  const location = useLocation();
-  useEffect(() => {
-    if (pathNeedsPrivateCloudSurfaces(location.pathname)) {
-      void ensurePrivateCloudSurfaces();
-    }
-  }, [location.pathname]);
-  return null;
+    const location = useLocation();
+    useEffect(() => {
+        if (pathNeedsPrivateCloudSurfaces(location.pathname)) {
+            void ensurePrivateCloudSurfaces();
+        }
+    }, [location.pathname]);
+    return null;
 }
-
 /**
  * Loads private Cloud domains (dashboard routes + in-app Cloud settings
  * sections) when the tab/view App catch-all mounts. Without this, settings
@@ -262,149 +219,102 @@ function PrivateCloudRegistrationCoordinator(): null {
  * were missing on the public web shell (shipwright #18441). Public auth routes
  * like `/login` never mount this wrapper.
  */
-function EnsurePrivateCloudSurfacesOnMount({
-  children,
-}: {
-  children: ReactNode;
+function EnsurePrivateCloudSurfacesOnMount({ children, }: {
+    children: ReactNode;
 }): React.JSX.Element {
-  useEffect(() => {
-    void ensurePrivateCloudSurfaces();
-  }, []);
-  return <>{children}</>;
+    useEffect(() => {
+        void ensurePrivateCloudSurfaces();
+    }, []);
+    return <>{children}</>;
 }
-
 /**
  * `/cloud/*` bootstrap: pending private load, designed failure/retry, then the
  * normal app shell once the Cloud page and route table are registered.
  */
-function PrivateCloudAppRoute({
-  appElement,
-  cloudManagementElement,
-}: {
-  appElement: ReactNode;
-  cloudManagementElement?: ReactNode;
+function PrivateCloudAppRoute({ appElement, cloudManagementElement, }: {
+    appElement: ReactNode;
+    cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
-  return (
-    <StewardAuthProvider>
+    return (<StewardAuthProvider>
       <CloudManagementSessionGate>
-        <PrivateCloudRegistrationRoute
-          appElement={appElement}
-          cloudManagementElement={cloudManagementElement}
-        />
+        <PrivateCloudRegistrationRoute appElement={appElement} cloudManagementElement={cloudManagementElement}/>
       </CloudManagementSessionGate>
-    </StewardAuthProvider>
-  );
+    </StewardAuthProvider>);
 }
-
-function PrivateCloudRegistrationRoute({
-  appElement,
-  cloudManagementElement,
-}: {
-  appElement: ReactNode;
-  cloudManagementElement?: ReactNode;
+function PrivateCloudRegistrationRoute({ appElement, cloudManagementElement, }: {
+    appElement: ReactNode;
+    cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
-  const snapshot = useSyncExternalStore(
-    subscribePrivateCloudRegistration,
-    getPrivateCloudRegistrationSnapshot,
-    getPrivateCloudRegistrationSnapshot,
-  );
-
-  useEffect(() => {
-    if (snapshot.status === "idle") {
-      void ensurePrivateCloudSurfaces();
+    const snapshot = useSyncExternalStore(subscribePrivateCloudRegistration, getPrivateCloudRegistrationSnapshot, getPrivateCloudRegistrationSnapshot);
+    useEffect(() => {
+        if (snapshot.status === "idle") {
+            void ensurePrivateCloudSurfaces();
+        }
+    }, [snapshot.status]);
+    if (snapshot.status === "idle" || snapshot.status === "pending") {
+        return <RouteChunkFallback />;
     }
-  }, [snapshot.status]);
-
-  if (snapshot.status === "idle" || snapshot.status === "pending") {
-    return <RouteChunkFallback />;
-  }
-  if (snapshot.status === "error") {
-    return (
-      <PrivateCloudUnavailable
-        onRetry={() => {
-          void retryPrivateCloudSurfaces();
-        }}
-      />
-    );
-  }
-  return (
-    <>
-      {cloudManagementElement ?? <AppCatchAllRoute appElement={appElement} />}
-    </>
-  );
+    if (snapshot.status === "error") {
+        return (<PrivateCloudUnavailable onRetry={() => {
+                void retryPrivateCloudSurfaces();
+            }}/>);
+    }
+    return (<>
+      {cloudManagementElement ?? <AppCatchAllRoute appElement={appElement}/>}
+    </>);
 }
-
 /**
  * Authenticate the unambiguous `/cloud/*` management namespace before the
  * generic agent app can boot. This keeps localhost development on the same
  * Steward session contract as canonical Cloud hosts while leaving self-hosted
  * password auth scoped to ordinary agent-app routes.
  */
-export function CloudManagementSessionGate({
-  children,
-}: {
-  children: ReactNode;
+export function CloudManagementSessionGate({ children, }: {
+    children: ReactNode;
 }): React.JSX.Element {
-  const { ready, authenticated } = useSessionAuth();
-  const location = useLocation();
-  if (!ready) return <RouteChunkFallback />;
-  if (!authenticated) {
-    const returnTo = encodeURIComponent(
-      `${location.pathname}${location.search}${location.hash}`,
-    );
-    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
-  }
-  return <>{children}</>;
+    const { ready, authenticated } = useSessionAuth();
+    const location = useLocation();
+    if (!ready)
+        return <RouteChunkFallback />;
+    if (!authenticated) {
+        const returnTo = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`);
+        return <Navigate to={`/login?returnTo=${returnTo}`} replace/>;
+    }
+    return <>{children}</>;
 }
-
 /** Preserve any retired dashboard deep link not covered by a narrower map. */
 function LegacyDashboardFallbackRedirect(): React.JSX.Element {
-  const location = useLocation();
-  const params = useParams();
-  const suffix = params["*"] ? `/${params["*"]}` : "";
-  return (
-    <Navigate
-      to={`/cloud${suffix}${location.search}${location.hash}`}
-      replace
-    />
-  );
+    const location = useLocation();
+    const params = useParams();
+    const suffix = params["*"] ? `/${params["*"]}` : "";
+    return (<Navigate to={`/cloud${suffix}${location.search}${location.hash}`} replace/>);
 }
-
 /**
  * Cloud-side providers shared by every registered cloud / auth / payment route.
  * The tab/view App (catch-all) brings its own `AppProvider`, so these never
  * wrap it. Public (token-gated) routes still get query + i18n but are exempt
  * from Steward auth at the route level (see {@link CloudRouteElement}).
  */
-function CloudProviders({
-  children,
-}: {
-  children: ReactNode;
+function CloudProviders({ children, }: {
+    children: ReactNode;
 }): React.JSX.Element {
-  return (
-    <QueryClientProvider client={queryClient}>
+    return (<QueryClientProvider client={queryClient}>
       <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
         {children}
       </CloudI18nProvider>
-    </QueryClientProvider>
-  );
+    </QueryClientProvider>);
 }
-
 /** Route groups consolidated into the normal Eliza agent-app shell. */
 const MANAGED_CLOUD_APP_GROUPS = new Set(["cloud", "admin"]);
-
 function CanonicalCloudAppRedirect(): React.JSX.Element {
-  const location = useLocation();
-  const environment = elizaCloudEnvironmentForHostname(
-    window.location.hostname,
-  );
-  const destination = `${ELIZA_DOMAIN_CONTRACTS[environment ?? "production"].cloudAppOrigin}${location.pathname}${location.search}${location.hash}`;
-  useEffect(() => {
-    window.location.replace(destination);
-  }, [destination]);
-  return <RouteChunkFallback />;
+    const location = useLocation();
+    const environment = elizaCloudEnvironmentForHostname(window.location.hostname);
+    const destination = `${ELIZA_DOMAIN_CONTRACTS[environment ?? "production"].cloudAppOrigin}${location.pathname}${location.search}${location.hash}`;
+    useEffect(() => {
+        window.location.replace(destination);
+    }, [destination]);
+    return <RouteChunkFallback />;
 }
-
 /**
  * Render a single registered cloud route. Authenticated routes are wrapped in
  * the Steward auth provider (which itself lazy-loads the heavy `@stwd/*` runtime
@@ -413,77 +323,62 @@ function CanonicalCloudAppRedirect(): React.JSX.Element {
  * (payment / approve / ballot / sensitive / shared chat) render WITHOUT
  * app-shell chrome and WITHOUT Steward.
  */
-function CloudRouteElement({
-  route,
-  appElement,
-  cloudManagementElement,
-}: {
-  route: CloudRouteDef;
-  appElement: ReactNode;
-  cloudManagementElement?: ReactNode;
+function CloudRouteElement({ route, appElement, cloudManagementElement, }: {
+    route: CloudRouteDef;
+    appElement: ReactNode;
+    cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
-  if (route.public) {
-    return <>{applyRouteGate(route.gate, renderRouteElement(route))}</>;
-  }
-  if (route.group && MANAGED_CLOUD_APP_GROUPS.has(route.group)) {
-    if (isApexControlPlaneHost()) return <CanonicalCloudAppRedirect />;
-    return (
-      <StewardAuthProvider>
+    if (route.public) {
+        return <>{applyRouteGate(route.gate, renderRouteElement(route))}</>;
+    }
+    if (route.group && MANAGED_CLOUD_APP_GROUPS.has(route.group)) {
+        if (isApexControlPlaneHost())
+            return <CanonicalCloudAppRedirect />;
+        return (<StewardAuthProvider>
         <CloudManagementSessionGate>
-          {cloudManagementElement ?? (
-            <AppCatchAllRoute appElement={appElement} />
-          )}
+          {cloudManagementElement ?? (<AppCatchAllRoute appElement={appElement}/>)}
         </CloudManagementSessionGate>
-      </StewardAuthProvider>
-    );
-  }
-  const body = applyRouteGate(route.gate, renderRouteElement(route));
-  return (
-    <StewardAuthProvider>
+      </StewardAuthProvider>);
+    }
+    const body = applyRouteGate(route.gate, renderRouteElement(route));
+    return (<StewardAuthProvider>
       <div className="theme-cloud min-h-dvh bg-black text-white">{body}</div>
-    </StewardAuthProvider>
-  );
+    </StewardAuthProvider>);
 }
-
 export interface CloudRouterShellProps {
-  /**
-   * The existing tab/view app subtree (`<App/>` plus any host runtimes the
-   * shell must not know about — desktop nav/tray, etc.). Rendered unchanged
-   * under the catch-all `/*` route. The host owns its `AppProvider`.
-   */
-  appElement: ReactNode;
-  /** Hosted account management that needs a Cloud session but no agent runtime. */
-  cloudManagementElement?: ReactNode;
-  /** Approved public homepage rendered only on the canonical/legacy marketing hosts. */
-  marketingHomeElement?: ReactNode;
-  /** Public downloads page rendered only on the canonical/legacy marketing hosts. */
-  downloadsElement?: ReactNode;
+    /**
+     * The existing tab/view app subtree (`<App/>` plus any host runtimes the
+     * shell must not know about — desktop nav/tray, etc.). Rendered unchanged
+     * under the catch-all `/*` route. The host owns its `AppProvider`.
+     */
+    appElement: ReactNode;
+    /** Hosted account management that needs a Cloud session but no agent runtime. */
+    cloudManagementElement?: ReactNode;
+    /** Approved public homepage rendered only on the canonical/legacy marketing hosts. */
+    marketingHomeElement?: ReactNode;
+    /** Public downloads page rendered only on the canonical/legacy marketing hosts. */
+    downloadsElement?: ReactNode;
 }
-
-function MarketingDownloadsRoute({
-  downloadsElement,
-}: {
-  downloadsElement: ReactNode;
+function MarketingDownloadsRoute({ downloadsElement, }: {
+    downloadsElement: ReactNode;
 }): React.JSX.Element {
-  const isMarketingHost = isApexControlPlaneHost();
-  const environment = elizaCloudEnvironmentForHostname(
-    window.location.hostname,
-  );
-  const destination = `${ELIZA_DOMAIN_CONTRACTS[environment ?? "production"].marketingOrigin}/downloads`;
-  useEffect(() => {
-    if (!isMarketingHost) window.location.replace(destination);
-  }, [destination, isMarketingHost]);
-  if (isMarketingHost) return <>{downloadsElement}</>;
-  return <RouteChunkFallback />;
+    const isMarketingHost = isApexControlPlaneHost();
+    const environment = elizaCloudEnvironmentForHostname(window.location.hostname);
+    const destination = `${ELIZA_DOMAIN_CONTRACTS[environment ?? "production"].marketingOrigin}/downloads`;
+    useEffect(() => {
+        if (!isMarketingHost)
+            window.location.replace(destination);
+    }, [destination, isMarketingHost]);
+    if (isMarketingHost)
+        return <>{downloadsElement}</>;
+    return <RouteChunkFallback />;
 }
-
 /**
  * Where an authenticated visitor landing on a marketing host is sent. The
  * management-route boundary forwards this path to the canonical managed Cloud
  * app, where it renders inside the normal Eliza agent shell.
  */
 const APEX_AUTHENTICATED_HOME = "/cloud";
-
 /**
  * Catch-all element. Renders the agent app exactly as before, except on a
  * public marketing host, where the agent app must never boot: that host has
@@ -512,175 +407,103 @@ const APEX_AUTHENTICATED_HOME = "/cloud";
  * Every other host (per-agent subdomains, localhost) is untouched: chat stays
  * home.
  */
-export function AppCatchAllRoute({
-  appElement,
-}: {
-  appElement: ReactNode;
+export function AppCatchAllRoute({ appElement, }: {
+    appElement: ReactNode;
 }): React.JSX.Element {
-  const { ready, authenticated } = useSessionAuth();
-  const location = useLocation();
-  // Consume only known Cloud section anchors before any agent entry gate.
-  // Native settings never mount this web router and keep their embedded bodies.
-  const managementTarget =
-    location.pathname === "/settings"
-      ? CLOUD_SETTINGS_SECTION_TARGETS[location.hash]
-      : undefined;
-  if (managementTarget) {
-    return <Navigate to={`${managementTarget}${location.search}`} replace />;
-  }
-  if (isApexControlPlaneHost()) {
-    if (!ready) {
-      return <RouteChunkFallback />;
+    const { ready, authenticated } = useSessionAuth();
+    const location = useLocation();
+    // Consume only known Cloud section anchors before any agent entry gate.
+    // Native settings never mount this web router and keep their embedded bodies.
+    const managementTarget = location.pathname === "/settings"
+        ? CLOUD_SETTINGS_SECTION_TARGETS[location.hash]
+        : undefined;
+    if (managementTarget) {
+        return <Navigate to={`${managementTarget}${location.search}`} replace/>;
     }
-    if (!authenticated) {
-      const returnTo = encodeURIComponent(
-        `${location.pathname}${location.search}`,
-      );
-      return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+    if (isApexControlPlaneHost()) {
+        if (!ready) {
+            return <RouteChunkFallback />;
+        }
+        if (!authenticated) {
+            const returnTo = encodeURIComponent(`${location.pathname}${location.search}`);
+            return <Navigate to={`/login?returnTo=${returnTo}`} replace/>;
+        }
+        return <Navigate to={APEX_AUTHENTICATED_HOME} replace/>;
     }
-    return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
-  }
-  if (isAppModeHost()) {
-    return (
-      <Suspense fallback={<RouteChunkFallback />}>
-        <AppModeEntryRoute
-          appElement={
-            <EnsurePrivateCloudSurfacesOnMount>
+    if (isAppModeHost()) {
+        return (<Suspense fallback={<RouteChunkFallback />}>
+        <AppModeEntryRoute appElement={<EnsurePrivateCloudSurfacesOnMount>
               {appElement}
-            </EnsurePrivateCloudSurfacesOnMount>
-          }
-        />
-      </Suspense>
-    );
-  }
-  return (
-    <EnsurePrivateCloudSurfacesOnMount>
+            </EnsurePrivateCloudSurfacesOnMount>}/>
+      </Suspense>);
+    }
+    return (<EnsurePrivateCloudSurfacesOnMount>
       {appElement}
-    </EnsurePrivateCloudSurfacesOnMount>
-  );
+    </EnsurePrivateCloudSurfacesOnMount>);
 }
-
 /** App-mode entry gate, loaded only on the Eliza app hosts (see
  * {@link AppCatchAllRoute}); apex + per-agent hosts never fetch this chunk. */
 const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
-
 /**
  * The shell. Mounts the registered Cloud routes + retired `/dashboard/*`
  * redirects,
  * redirects, and renders {@link CloudRouterShellProps.appElement} for every
  * other path so chat stays home and the tab system is untouched.
  */
-export function CloudRouterShell({
-  appElement,
-  cloudManagementElement,
-  marketingHomeElement,
-  downloadsElement,
-}: CloudRouterShellProps): React.JSX.Element {
-  // Re-render when private domains finish dynamic registration so newly
-  // registered dashboard routes replace the catch-all (#18056).
-  useSyncExternalStore(
-    subscribeCloudRoutes,
-    getCloudRouteRegistryVersion,
-    getCloudRouteRegistryVersion,
-  );
-  const cloudRoutes = listCloudRoutes();
-  const marketingHost = isApexControlPlaneHost();
-  return (
-    <BrowserRouter>
+export function CloudRouterShell({ appElement, cloudManagementElement, marketingHomeElement, downloadsElement, }: CloudRouterShellProps): React.JSX.Element {
+    // Re-render when private domains finish dynamic registration so newly
+    // registered dashboard routes replace the catch-all (#18056).
+    useSyncExternalStore(subscribeCloudRoutes, getCloudRouteRegistryVersion, getCloudRouteRegistryVersion);
+    const cloudRoutes = listCloudRoutes();
+    const marketingHost = isApexControlPlaneHost();
+    return (<BrowserRouter>
       {/*
-       * CloudProviders (query + cloud-i18n) wrap the whole route tree so cloud
-       * route components share one QueryClient + language context without
-       * remounting on navigation. The catch-all app brings its own AppProvider
-       * and never reads these, so wrapping it is a harmless no-op. Steward auth
-       * is applied per-route (CloudRouteElement) so the app catch-all and public
-       * token routes never load the @stwd/* runtime.
-       */}
+         * CloudProviders (query + cloud-i18n) wrap the whole route tree so cloud
+         * route components share one QueryClient + language context without
+         * remounting on navigation. The catch-all app brings its own AppProvider
+         * and never reads these, so wrapping it is a harmless no-op. Steward auth
+         * is applied per-route (CloudRouteElement) so the app catch-all and public
+         * token routes never load the @stwd/* runtime.
+         */}
       <CloudProviders>
         <PrivateCloudRegistrationCoordinator />
         <Routes>
           {/* The marketing homepage owns `/` ONLY on a marketing host. Every
-              other host must leave `/` to the catch-all route below: giving it
-              a dedicated <Route> makes react-router swap route elements when
-              the app navigates `/` -> `/chat`, which REMOUNTS the whole app
-              subtree and re-reads mount-time URL state (`?shellMode=`), so
-              `?shellMode=voice-selftest|voice-workbench|kiosk|...` surfaces
-              were torn down moments after mounting. */}
-          {marketingHomeElement && marketingHost ? (
-            <Route path="/" element={marketingHomeElement} />
-          ) : null}
+            other host must leave `/` to the catch-all route below: giving it
+            a dedicated <Route> makes react-router swap route elements when
+            the app navigates `/` -> `/chat`, which REMOUNTS the whole app
+            subtree and re-reads mount-time URL state (`?shellMode=`), so
+            `?shellMode=voice-selftest|voice-workbench|kiosk|...` surfaces
+            were torn down moments after mounting. */}
+          {marketingHomeElement && marketingHost ? (<Route path="/" element={marketingHomeElement}/>) : null}
 
-          {downloadsElement ? (
-            <Route
-              path="/downloads"
-              element={
-                <MarketingDownloadsRoute downloadsElement={downloadsElement} />
-              }
-            />
-          ) : null}
+          {downloadsElement ? (<Route path="/downloads" element={<MarketingDownloadsRoute downloadsElement={downloadsElement}/>}/>) : null}
 
-          {cloudRoutes.map((route) => (
-            <Route
-              key={route.path}
-              path={route.path}
-              element={
-                <CloudRouteElement
-                  route={route}
-                  appElement={appElement}
-                  cloudManagementElement={cloudManagementElement}
-                />
-              }
-            />
-          ))}
+          {cloudRoutes.map((route) => (<Route key={route.path} path={route.path} element={<CloudRouteElement route={route} appElement={appElement} cloudManagementElement={cloudManagementElement}/>}/>))}
 
-          {LEGACY_DASHBOARD_REDIRECTS.map(({ from, to }) => (
-            <Route key={from} path={from} element={<ParamRedirect to={to} />} />
-          ))}
+          {LEGACY_DASHBOARD_REDIRECTS.map(({ from, to }) => (<Route key={from} path={from} element={<ParamRedirect to={to}/>}/>))}
 
-          {CLOUD_MANAGEMENT_COMPAT_REDIRECTS.map(({ from, to }) => (
-            <Route key={from} path={from} element={<ParamRedirect to={to} />} />
-          ))}
+          {CLOUD_MANAGEMENT_COMPAT_REDIRECTS.map(({ from, to }) => (<Route key={from} path={from} element={<ParamRedirect to={to}/>}/>))}
 
           {/* Old OAuth/Stripe callbacks can still carry the retired
-              /dashboard/settings?tab=<x> shape. */}
-          <Route
-            path="dashboard/settings"
-            element={<LegacySettingsTabRedirect />}
-          />
+            /dashboard/settings?tab=<x> shape. */}
+          <Route path="dashboard/settings" element={<LegacySettingsTabRedirect />}/>
 
-          <Route
-            path="cloud/settings"
-            element={<LegacySettingsTabRedirect />}
-          />
+          <Route path="cloud/settings" element={<LegacySettingsTabRedirect />}/>
 
-          <Route
-            path="dashboard/*"
-            element={<LegacyDashboardFallbackRedirect />}
-          />
+          <Route path="dashboard/*" element={<LegacyDashboardFallbackRedirect />}/>
 
           {/* A cold direct /cloud/* load must finish registering the lazy
-              app-shell page before the tab router resolves the path. */}
-          <Route
-            path="cloud/*"
-            element={
-              <PrivateCloudAppRoute
-                appElement={appElement}
-                cloudManagementElement={cloudManagementElement}
-              />
-            }
-          />
+            app-shell page before the tab router resolves the path. */}
+          <Route path="cloud/*" element={<PrivateCloudAppRoute appElement={appElement} cloudManagementElement={cloudManagementElement}/>}/>
 
           {/* Catch-all: the existing tab/view app (chat is home) — except on
-              apex control-plane hosts, where the agent app never boots:
-              unauthenticated → /login, authenticated → the console home.
-              See AppCatchAllRoute. */}
-          <Route
-            path="*"
-            element={<AppCatchAllRoute appElement={appElement} />}
-          />
+            apex control-plane hosts, where the agent app never boots:
+            unauthenticated → /login, authenticated → the console home.
+            See AppCatchAllRoute. */}
+          <Route path="*" element={<AppCatchAllRoute appElement={appElement}/>}/>
         </Routes>
       </CloudProviders>
-    </BrowserRouter>
-  );
+    </BrowserRouter>);
 }
-
 export default CloudRouterShell;

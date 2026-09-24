@@ -24,10 +24,8 @@ import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).
-import {
-  isCloudProvisionedContainer,
-  parseCanonicalInteger,
-} from "@elizaos/shared";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import type { ElizaConfig } from "../config/config.ts";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";

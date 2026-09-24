@@ -8,10 +8,7 @@ import os from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { getProjectById, upsertProject } from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
 import {

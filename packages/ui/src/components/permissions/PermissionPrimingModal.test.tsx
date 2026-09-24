@@ -5,304 +5,188 @@
 // the recovery callout for a denied card, the loading state, single onComplete
 // firing, and Skip-for-now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
-import type { PermissionId } from "@elizaos/shared";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
-import type { ReactElement } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { installJsdomUiPolyfills } from "../../../test/jsdom-ui-polyfills";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
-import type {
-  PermissionPrimingController,
-  PrimingItem,
-  PrimingItemStatus,
-} from "./use-permission-priming";
-
+import { act } from "@testing-library/react";
+import { afterEach } from "vitest";
+import { beforeAll } from "vitest";
+import { cleanup } from "@testing-library/react";
+import { describe } from "vitest";
+import { expect } from "vitest";
+import { fireEvent } from "@testing-library/react";
+import { installJsdomUiPolyfills } from "../../../test/jsdom-ui-polyfills";
+import { it } from "vitest";
+import { render } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { type PermissionId } from "@elizaos/core/contracts/permissions";
+import { type PermissionPrimingController } from "./use-permission-priming";
+import { type PrimingItem } from "./use-permission-priming";
+import { type PrimingItemStatus } from "./use-permission-priming";
+import { type ReactElement } from "react";
+import { vi } from "vitest";
 beforeAll(() => {
-  installJsdomUiPolyfills();
+    installJsdomUiPolyfills();
 });
-
 afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
+    cleanup();
+    vi.clearAllMocks();
 });
-
 function renderModal(node: ReactElement) {
-  return render(<MockAppProvider>{node}</MockAppProvider>);
+    return render(<MockAppProvider>{node}</MockAppProvider>);
 }
-
-function item(
-  id: PermissionId,
-  status: PrimingItemStatus,
-  canRequest = false,
-): PrimingItem {
-  return {
-    id,
-    status,
-    canRequest,
-    requesting: false,
-    requestError: false,
-    recheckError: false,
-    resolved: false,
-  };
+function item(id: PermissionId, status: PrimingItemStatus, canRequest = false): PrimingItem {
+    return {
+        id,
+        status,
+        canRequest,
+        requesting: false,
+        requestError: false,
+        recheckError: false,
+        resolved: false,
+    };
 }
-
-function makeController(
-  overrides: Partial<PermissionPrimingController> = {},
-): PermissionPrimingController {
-  return {
-    items: [],
-    activeIndex: 0,
-    active: null,
-    currentStep: 1,
-    totalSteps: 1,
-    ready: true,
-    done: false,
-    request: vi.fn(async () => {}),
-    skip: vi.fn(),
-    openSettings: vi.fn(async () => {}),
-    recheck: vi.fn(async () => {}),
-    skipAll: vi.fn(),
-    ...overrides,
-  };
+function makeController(overrides: Partial<PermissionPrimingController> = {}): PermissionPrimingController {
+    return {
+        items: [],
+        activeIndex: 0,
+        active: null,
+        currentStep: 1,
+        totalSteps: 1,
+        ready: true,
+        done: false,
+        request: vi.fn(async () => { }),
+        skip: vi.fn(),
+        openSettings: vi.fn(async () => { }),
+        recheck: vi.fn(async () => { }),
+        skipAll: vi.fn(),
+        ...overrides,
+    };
 }
-
 describe("PermissionPrimingModal", () => {
-  it("renders the active card with rationale and Enable / Not now", () => {
-    const controller = makeController({
-      items: [item("microphone", "not-determined", true)],
-      active: item("microphone", "not-determined", true),
-      currentStep: 1,
-      totalSteps: 1,
+    it("renders the active card with rationale and Enable / Not now", () => {
+        const controller = makeController({
+            items: [item("microphone", "not-determined", true)],
+            active: item("microphone", "not-determined", true),
+            currentStep: 1,
+            totalSteps: 1,
+        });
+        renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        expect(screen.getByTestId("priming-card-microphone")).toBeTruthy();
+        // MockAppProvider's t returns the defaultValue, so real copy renders.
+        expect(screen.getByText("Talk to me")).toBeTruthy();
+        expect(screen.getByTestId("priming-enable-microphone")).toBeTruthy();
+        expect(screen.getByTestId("priming-skip-microphone")).toBeTruthy();
     });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-
-    expect(screen.getByTestId("priming-card-microphone")).toBeTruthy();
-    // MockAppProvider's t returns the defaultValue, so real copy renders.
-    expect(screen.getByText("Talk to me")).toBeTruthy();
-    expect(screen.getByTestId("priming-enable-microphone")).toBeTruthy();
-    expect(screen.getByTestId("priming-skip-microphone")).toBeTruthy();
-  });
-
-  it("Enable fires the OS request, Not now skips without it", () => {
-    const controller = makeController({
-      items: [item("microphone", "not-determined", true)],
-      active: item("microphone", "not-determined", true),
+    it("Enable fires the OS request, Not now skips without it", () => {
+        const controller = makeController({
+            items: [item("microphone", "not-determined", true)],
+            active: item("microphone", "not-determined", true),
+        });
+        renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        fireEvent.click(screen.getByTestId("priming-enable-microphone"));
+        expect(controller.request).toHaveBeenCalledWith("microphone");
+        expect(controller.skip).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId("priming-skip-microphone"));
+        expect(controller.skip).toHaveBeenCalledWith("microphone");
     });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId("priming-enable-microphone"));
-    expect(controller.request).toHaveBeenCalledWith("microphone");
-    expect(controller.skip).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("priming-skip-microphone"));
-    expect(controller.skip).toHaveBeenCalledWith("microphone");
-  });
-
-  it("shows the recovery callout for a denied card and routes recovery through the controller", async () => {
-    const controller = makeController({
-      items: [item("microphone", "denied", false)],
-      active: item("microphone", "denied", false),
+    it("shows the recovery callout for a denied card and routes recovery through the controller", async () => {
+        const controller = makeController({
+            items: [item("microphone", "denied", false)],
+            active: item("microphone", "denied", false),
+        });
+        renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        expect(screen.getByTestId("priming-recovery-microphone")).toBeTruthy();
+        // canRequest === false → the retry action re-checks status (post-Settings).
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-microphone-retry"));
+        });
+        expect(controller.recheck).toHaveBeenCalledWith("microphone");
+        expect(controller.request).not.toHaveBeenCalled();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-microphone-settings"));
+        });
+        expect(controller.openSettings).toHaveBeenCalledWith("microphone");
     });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-
-    expect(screen.getByTestId("priming-recovery-microphone")).toBeTruthy();
-    // canRequest === false → the retry action re-checks status (post-Settings).
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("priming-recovery-microphone-retry"));
+    it("surfaces a native Settings launch failure in the recovery card", async () => {
+        const controller = makeController({
+            items: [item("notifications", "denied", false)],
+            active: item("notifications", "denied", false),
+            totalSteps: 1,
+            openSettings: vi.fn(async () => {
+                throw new Error("open exited 1");
+            }),
+        });
+        render(<PermissionPrimingModal open onComplete={vi.fn()} ids={["notifications"]} controllerOverride={controller}/>);
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-notifications-settings"));
+        });
+        expect(screen.getByTestId("priming-recovery-notifications-settings-error")
+            .textContent).toContain("Couldn’t open Settings");
     });
-    expect(controller.recheck).toHaveBeenCalledWith("microphone");
-    expect(controller.request).not.toHaveBeenCalled();
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByTestId("priming-recovery-microphone-settings"),
-      );
+    it("a denied card that can still re-prompt retries via request()", async () => {
+        const controller = makeController({
+            items: [item("location", "denied", true)],
+            active: item("location", "denied", true),
+        });
+        renderModal(<PermissionPrimingModal ids={["location"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-location-retry"));
+        });
+        expect(controller.request).toHaveBeenCalledWith("location");
     });
-    expect(controller.openSettings).toHaveBeenCalledWith("microphone");
-  });
-
-  it("surfaces a native Settings launch failure in the recovery card", async () => {
-    const controller = makeController({
-      items: [item("notifications", "denied", false)],
-      active: item("notifications", "denied", false),
-      totalSteps: 1,
-      openSettings: vi.fn(async () => {
-        throw new Error("open exited 1");
-      }),
+    it("labels a platform request failure as an error rather than a user denial", async () => {
+        const failed = {
+            ...item("notifications", "unknown", true),
+            requestError: true,
+        };
+        const controller = makeController({ items: [failed], active: failed });
+        renderModal(<PermissionPrimingModal ids={["notifications"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        expect(screen.getByText("Couldn’t request permission")).toBeTruthy();
+        expect(screen.queryByText("Permission was declined")).toBeNull();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-notifications-retry"));
+        });
+        expect(controller.request).toHaveBeenCalledWith("notifications");
     });
-    render(
-      <PermissionPrimingModal
-        open
-        onComplete={vi.fn()}
-        ids={["notifications"]}
-        controllerOverride={controller}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByTestId("priming-recovery-notifications-settings"),
-      );
+    it("surfaces a failed post-Settings re-check and retries the re-check", async () => {
+        const failed = {
+            ...item("notifications", "denied", false),
+            recheckError: true,
+        };
+        const controller = makeController({ items: [failed], active: failed });
+        renderModal(<PermissionPrimingModal ids={["notifications"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        expect(screen.getByText("Couldn’t verify permission")).toBeTruthy();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("priming-recovery-notifications-retry"));
+        });
+        expect(controller.recheck).toHaveBeenCalledWith("notifications");
+        expect(controller.request).not.toHaveBeenCalled();
     });
-
-    expect(
-      screen.getByTestId("priming-recovery-notifications-settings-error")
-        .textContent,
-    ).toContain("Couldn’t open Settings");
-  });
-
-  it("a denied card that can still re-prompt retries via request()", async () => {
-    const controller = makeController({
-      items: [item("location", "denied", true)],
-      active: item("location", "denied", true),
+    it("renders a loading state until the initial check completes", () => {
+        const controller = makeController({ ready: false, active: null });
+        renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        expect(screen.getByTestId("permission-priming-loading")).toBeTruthy();
     });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["location"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("priming-recovery-location-retry"));
+    it("calls onComplete exactly once when the sequence is done", () => {
+        const onComplete = vi.fn();
+        const controller = makeController({
+            ready: true,
+            done: true,
+            active: null,
+        });
+        const { rerender } = renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={onComplete} controllerOverride={controller}/>);
+        rerender(<MockAppProvider>
+        <PermissionPrimingModal ids={["microphone"]} open onComplete={onComplete} controllerOverride={controller}/>
+      </MockAppProvider>);
+        expect(onComplete).toHaveBeenCalledTimes(1);
     });
-    expect(controller.request).toHaveBeenCalledWith("location");
-  });
-
-  it("labels a platform request failure as an error rather than a user denial", async () => {
-    const failed = {
-      ...item("notifications", "unknown", true),
-      requestError: true,
-    };
-    const controller = makeController({ items: [failed], active: failed });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["notifications"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-
-    expect(screen.getByText("Couldn’t request permission")).toBeTruthy();
-    expect(screen.queryByText("Permission was declined")).toBeNull();
-    await act(async () => {
-      fireEvent.click(
-        screen.getByTestId("priming-recovery-notifications-retry"),
-      );
+    it("Skip for now skips the whole flow", () => {
+        const controller = makeController({
+            items: [item("microphone", "not-determined", true)],
+            active: item("microphone", "not-determined", true),
+        });
+        renderModal(<PermissionPrimingModal ids={["microphone"]} open onComplete={vi.fn()} controllerOverride={controller}/>);
+        fireEvent.click(screen.getByTestId("priming-skip-all"));
+        expect(controller.skipAll).toHaveBeenCalled();
     });
-    expect(controller.request).toHaveBeenCalledWith("notifications");
-  });
-
-  it("surfaces a failed post-Settings re-check and retries the re-check", async () => {
-    const failed = {
-      ...item("notifications", "denied", false),
-      recheckError: true,
-    };
-    const controller = makeController({ items: [failed], active: failed });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["notifications"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-
-    expect(screen.getByText("Couldn’t verify permission")).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(
-        screen.getByTestId("priming-recovery-notifications-retry"),
-      );
-    });
-    expect(controller.recheck).toHaveBeenCalledWith("notifications");
-    expect(controller.request).not.toHaveBeenCalled();
-  });
-
-  it("renders a loading state until the initial check completes", () => {
-    const controller = makeController({ ready: false, active: null });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-    expect(screen.getByTestId("permission-priming-loading")).toBeTruthy();
-  });
-
-  it("calls onComplete exactly once when the sequence is done", () => {
-    const onComplete = vi.fn();
-    const controller = makeController({
-      ready: true,
-      done: true,
-      active: null,
-    });
-    const { rerender } = renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={onComplete}
-        controllerOverride={controller}
-      />,
-    );
-    rerender(
-      <MockAppProvider>
-        <PermissionPrimingModal
-          ids={["microphone"]}
-          open
-          onComplete={onComplete}
-          controllerOverride={controller}
-        />
-      </MockAppProvider>,
-    );
-    expect(onComplete).toHaveBeenCalledTimes(1);
-  });
-
-  it("Skip for now skips the whole flow", () => {
-    const controller = makeController({
-      items: [item("microphone", "not-determined", true)],
-      active: item("microphone", "not-determined", true),
-    });
-    renderModal(
-      <PermissionPrimingModal
-        ids={["microphone"]}
-        open
-        onComplete={vi.fn()}
-        controllerOverride={controller}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("priming-skip-all"));
-    expect(controller.skipAll).toHaveBeenCalled();
-  });
 });

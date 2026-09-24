@@ -56,10 +56,10 @@ const sessionSpies = vi.hoisted(() => ({
   hasCookie: false,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
+      typeof import("../../../../../../core/src/steward-session-client/index.ts")
     >();
   return {
     ...actual,

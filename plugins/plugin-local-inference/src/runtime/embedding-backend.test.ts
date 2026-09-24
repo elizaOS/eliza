@@ -1,7 +1,7 @@
 /** Exercises real backend selection, token agreement and semantic validation with a controlled native FFI boundary. */
 
 import { ElizaError } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { describe, expect, it } from "vitest";
 import { ELIZA_POOLING_CLS } from "../services/voice/ffi-bindings";
 import {

@@ -4,7 +4,7 @@
  * `ELIZA_TERMINAL_MAX_DURATION_MS`, each clamped to a default and a hard ceiling.
  */
 import { randomUUID } from "node:crypto";
-import { parseClampedInteger } from "@elizaos/shared";
+import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 
 const TERMINAL_RUN_MAX_CONCURRENT_DEFAULT = 2;
 const TERMINAL_RUN_MAX_CONCURRENT_CAP = 16;

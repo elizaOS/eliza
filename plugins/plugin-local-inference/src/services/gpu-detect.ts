@@ -2,7 +2,7 @@
  * NVIDIA GPU detection + profile mapping.
  *
  * Wraps `nvidia-smi` to identify the host GPU and maps it to a
- * `GpuProfileId` from `@elizaos/shared/local-inference/gpu-profiles`.
+ * `GpuProfileId` from `@elizaos/plugin-native-inference/model-catalog/gpu-profiles`.
  *
  * Single-GPU only: when multiple GPUs are present, we use the first one
  * `nvidia-smi` reports (canonical CUDA device 0). We do NOT try to split
@@ -15,12 +15,7 @@
  */
 
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
-import {
-	GPU_PROFILES,
-	type GpuProfile,
-	type GpuProfileId,
-	matchGpuProfile,
-} from "@elizaos/shared";
+import { GPU_PROFILES, type GpuProfile, type GpuProfileId, matchGpuProfile } from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
 
 export interface DetectedGpu {
 	/** Raw GPU name from `nvidia-smi --query-gpu=name`. */

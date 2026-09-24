@@ -19,7 +19,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
 
 function formatPerson(person: RelationshipsPersonSummary): string {
   const platforms =

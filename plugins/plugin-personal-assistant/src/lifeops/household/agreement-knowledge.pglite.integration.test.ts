@@ -41,8 +41,8 @@ import {
   registerScheduledTaskChannelDispatcher,
   unregisterScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   afterAll,
   afterEach,

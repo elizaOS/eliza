@@ -1,6 +1,6 @@
 /** Exercises the actual conversational create boundary, before service writes. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import {

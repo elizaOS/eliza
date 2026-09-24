@@ -8,12 +8,4 @@
  * import path stable for callers inside the agent package.
  */
 
-export {
-  isCloudExecutionMode,
-  type LocalExecutionMode,
-  type RuntimeExecutionMode,
-  type RuntimeExecutionModeSource,
-  resolveLocalExecutionMode,
-  resolveRuntimeExecutionMode,
-  shouldUseSandboxExecution,
-} from "@elizaos/shared";
+export { isCloudExecutionMode, type LocalExecutionMode, type RuntimeExecutionMode, type RuntimeExecutionModeSource, resolveLocalExecutionMode, resolveRuntimeExecutionMode, shouldUseSandboxExecution } from "@elizaos/core/config/runtime-mode";

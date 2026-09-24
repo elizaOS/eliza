@@ -11,7 +11,7 @@ import {
   resolveApprovalService,
 } from "@elizaos/plugin-assistant";
 import { CalendarServiceError } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

@@ -2,7 +2,7 @@
  * Verifies safe sorting and NaN-handling in wallet inventory helpers and components.
  */
 
-import type { WalletBalancesResponse } from "@elizaos/shared";
+import { type WalletBalancesResponse } from "@elizaos/core/contracts/wallet-types";
 import { describe, expect, it } from "vitest";
 import { parseUsd, summarizeWalletBalances } from "./InventoryView.helpers.js";
 

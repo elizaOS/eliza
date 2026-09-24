@@ -18,11 +18,8 @@ import {
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
-import {
-  getFirstRunProviderOption,
-  normalizeFirstRunProviderId,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { getFirstRunProviderOption, normalizeFirstRunProviderId } from "@elizaos/core/contracts/first-run-options";
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,

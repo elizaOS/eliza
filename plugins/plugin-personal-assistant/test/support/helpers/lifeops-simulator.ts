@@ -11,10 +11,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
-import {
-  LIFEOPS_DISCORD_CAPABILITIES,
-  LIFEOPS_TELEGRAM_CAPABILITIES,
-} from "@elizaos/shared";
+import { LIFEOPS_DISCORD_CAPABILITIES, LIFEOPS_TELEGRAM_CAPABILITIES } from "@elizaos/core/contracts/personal-assistant";
 import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugin-telegram/src/local-client.ts";
 import {
   createLifeOpsConnectorGrant,

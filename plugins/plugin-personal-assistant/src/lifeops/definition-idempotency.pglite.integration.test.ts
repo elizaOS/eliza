@@ -13,7 +13,7 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-import type { CreateLifeOpsDefinitionRequest } from "@elizaos/shared";
+import { type CreateLifeOpsDefinitionRequest } from "@elizaos/core/contracts/personal-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

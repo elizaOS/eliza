@@ -64,7 +64,7 @@ import {
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";

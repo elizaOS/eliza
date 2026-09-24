@@ -17,26 +17,17 @@ import {
   isGoogleChatConfigured,
   lifeOpsPassiveConnectorsSetting,
 } from "@elizaos/core";
-import {
-  getFirstRunProviderOption,
-  hasExplicitCanonicalRuntimeConfig,
-  isAndroidMobile,
-  isMobilePlatform,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunProviderId,
-  type ResolvedElizaCloudTopology,
-  readAliasedEnv,
-  resolveDeploymentTargetInConfig,
-  resolveElizaCloudTopology,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
-import channelPluginMap from "@elizaos/shared/catalog/channel-plugin-map.json" with {
+import { getFirstRunProviderOption, hasExplicitCanonicalRuntimeConfig, migrateLegacyRuntimeConfig, normalizeFirstRunProviderId, resolveDeploymentTargetInConfig, resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
+import { isAndroidMobile, isMobilePlatform } from "@elizaos/core/runtime-env";
+import { type ResolvedElizaCloudTopology, resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import channelPluginMap from "@elizaos/core/catalog/channel-plugin-map.json" with {
   type: "json",
 };
-import providerPluginMap from "@elizaos/shared/catalog/provider-plugin-map.json" with {
+import providerPluginMap from "@elizaos/core/catalog/provider-plugin-map.json" with {
   type: "json",
 };
-import shortIdPluginMap from "@elizaos/shared/catalog/short-id-plugin-map.json" with {
+import shortIdPluginMap from "@elizaos/core/catalog/short-id-plugin-map.json" with {
   type: "json",
 };
 import type { ElizaConfig } from "../config/config.ts";
@@ -276,7 +267,7 @@ function isStoreBuildVariant(): boolean {
 /**
  * Maps Eliza channel names to plugin package names. Derived at registry build
  * time from each connector entry's `channels` (e.g. x -> ["x", "twitter"]); see
- * packages/shared/src/catalog. To add/rename a channel, edit the owning
+ * packages/core/src/catalog. To add/rename a channel, edit the owning
  * connector's registry-entry.json `channels` and regenerate — not this list.
  */
 export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
@@ -285,7 +276,7 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
 /**
  * Maps environment variable names to model-provider plugin packages. Derived at
  * registry build time from config fields marked `autoEnableProvider`; see
- * packages/shared/src/catalog. To add or rename a provider env key, edit
+ * packages/core/src/catalog. To add or rename a provider env key, edit
  * the owning registry entry and regenerate — not this list.
  */
 export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> =
@@ -375,7 +366,7 @@ const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
  *
  * The registry-owned aliases (wallet, browser, polymarket, vision, …) are
  * generated at registry-build time from each entry's `shortIds` field — see
- * `collectShortIdPluginMap` in packages/shared/src/catalog/generate.ts.
+ * `collectShortIdPluginMap` in packages/core/src/catalog/generate.ts.
  * To add or rename one of those aliases, edit the owning plugin's
  * registry-entry.json `shortIds` and regenerate — not this map. The generator
  * fails loudly if two plugins claim the same short id, so drift cannot ship.

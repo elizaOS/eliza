@@ -34,7 +34,7 @@ import {
   type ScheduledTaskRunnerHandle,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsGoalDefinition } from "@elizaos/shared";
+import { type LifeOpsGoalDefinition } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { GoalsRepository } from "../db/goals-repository.ts";
 import {

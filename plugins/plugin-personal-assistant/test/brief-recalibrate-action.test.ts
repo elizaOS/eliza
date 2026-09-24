@@ -26,7 +26,7 @@ import {
   manageMessageAction,
   respondToMessageAction,
 } from "@elizaos/plugin-assistant";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   afterAll,
   beforeAll,

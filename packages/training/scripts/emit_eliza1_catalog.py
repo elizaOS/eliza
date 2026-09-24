@@ -6,9 +6,9 @@ it has a catalog entry. The canonical catalog (``MODEL_CATALOG``,
 ``ELIZA_1_TIER_IDS``,
 ``DEFAULT_ELIGIBLE_MODEL_IDS``, the HuggingFace URL builders) lives in:
 
-    packages/shared/src/local-inference/catalog.ts
+    plugins/plugin-native-inference/src/model-catalog/catalog.ts
 
-(``@elizaos/shared/local-inference/catalog``). The old
+(``@elizaos/plugin-native-inference/model-catalog/catalog``). The old
 ``packages/app/src/services/local-inference/catalog.ts`` path is now
 just a re-export shim of that module, so anything written there is
 ignored — the shim has no ``MODEL_CATALOG`` literal to patch.
@@ -19,7 +19,7 @@ file to apply it to. Two modes:
 
   * ``--print-entry`` (default when no ``--catalog`` is given): emit just
     the TypeScript object literal to insert into the ``MODEL_CATALOG``
-    array in ``packages/shared/src/local-inference/catalog.ts``, plus a
+    array in ``plugins/plugin-native-inference/src/model-catalog/catalog.ts``, plus a
     header saying where it goes.
   * ``--catalog <path>``: in addition, compute a unified diff that
     inserts the new entry at the end of that file's ``MODEL_CATALOG``
@@ -35,7 +35,7 @@ Usage::
     # Also produce a unified diff against the canonical shared catalog:
     uv run python scripts/emit_eliza1_catalog.py \\
         --manifest checkpoints/eliza-1-2b/gguf/eliza1_manifest.json \\
-        --catalog packages/shared/src/local-inference/catalog.ts \\
+        --catalog plugins/plugin-native-inference/src/model-catalog/catalog.ts \\
         --output reports/training/catalog-eliza-1-2b.diff
 
 Notes:
@@ -76,7 +76,7 @@ log = logging.getLogger("emit_eliza1_catalog")
 # The canonical catalog this script targets. Both the server
 # (``@elizaos/app``) and the UI client (``@elizaos/ui``) import
 # ``MODEL_CATALOG`` from here; the old app path is a re-export shim.
-CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
+CANONICAL_CATALOG_PATH = "plugins/plugin-native-inference/src/model-catalog/catalog.ts"
 
 
 def _bundle_repo(tier: str) -> str:

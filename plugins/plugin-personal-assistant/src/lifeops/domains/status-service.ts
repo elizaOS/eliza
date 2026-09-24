@@ -10,15 +10,7 @@ import type {
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
 import type { HealthBackend } from "@elizaos/plugin-health";
-import type {
-  LifeOpsCapabilitiesStatus,
-  LifeOpsCapabilityEvidence,
-  LifeOpsCapabilityState,
-  LifeOpsCapabilityStatus,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsXConnectorStatus,
-} from "@elizaos/shared";
+import { type LifeOpsCapabilitiesStatus, type LifeOpsCapabilityEvidence, type LifeOpsCapabilityState, type LifeOpsCapabilityStatus, type LifeOpsConnectorMode, type LifeOpsConnectorSide, type LifeOpsXConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import { loadLifeOpsAppState } from "../app-state.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { createFeatureFlagService } from "../feature-flags.js";

@@ -10,26 +10,13 @@
  */
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
-import type {
-  CloudCodingContainerService,
-  CloudVfsBundle,
-  PromoteVfsToCloudContainerRequest,
-} from "@elizaos/shared";
-import {
-  CLOUD_CONTAINER_SERVICE_TYPE,
-  PostWorkbenchVfsCompilePluginRequestSchema,
-  PostWorkbenchVfsGitRequestSchema,
-  PostWorkbenchVfsLoadPluginRequestSchema,
-  PostWorkbenchVfsProjectRequestSchema,
-  PostWorkbenchVfsPromoteToCloudRequestSchema,
-  PostWorkbenchVfsRollbackRequestSchema,
-  PostWorkbenchVfsSnapshotRequestSchema,
-  PutWorkbenchVfsFileRequestSchema,
-} from "@elizaos/shared";
+import { type CloudCodingContainerService, type CloudVfsBundle, type PromoteVfsToCloudContainerRequest } from "@elizaos/core/contracts/cloud-coding-containers";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
+import { PostWorkbenchVfsCompilePluginRequestSchema, PostWorkbenchVfsGitRequestSchema, PostWorkbenchVfsLoadPluginRequestSchema, PostWorkbenchVfsProjectRequestSchema, PostWorkbenchVfsPromoteToCloudRequestSchema, PostWorkbenchVfsRollbackRequestSchema, PostWorkbenchVfsSnapshotRequestSchema, PutWorkbenchVfsFileRequestSchema } from "@elizaos/core/contracts/workbench-routes";
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/shared/platform/sandbox-policy";
+} from "@elizaos/core/platform/sandbox-policy";
 import {
   getLoadedVfsPluginViews,
   loadPluginFromVfs,

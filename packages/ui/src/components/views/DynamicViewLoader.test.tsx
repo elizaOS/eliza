@@ -9,8 +9,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
-import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
+import { logger } from "@elizaos/ui/logger";
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import {
   act,
   cleanup,

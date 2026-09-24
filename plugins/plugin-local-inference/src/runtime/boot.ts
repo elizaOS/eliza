@@ -25,15 +25,12 @@
  * boot steps it skips on mobile (telegram polling, app-route plugins, etc.);
  * this hook only owns the local-inference-specific init.
  */
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
-
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
-import {
-	shouldEnableMobileLocalInference,
-	warnIfMobileGateActiveWithoutPlatform,
-} from "./mobile-local-inference-gate";
-
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { logger } from "@elizaos/core";
+import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate";
+import { type AgentRuntime } from "@elizaos/core";
+import { warnIfMobileGateActiveWithoutPlatform } from "./mobile-local-inference-gate";
 /**
  * Install the local-inference model handler at the pre-ready boot phase.
  *
@@ -43,28 +40,24 @@ import {
  * `ensureLocalInferenceHandler` self-skips). Invoked once by the shared agent
  * boot-hook channel for headless and app hosts alike.
  */
-export async function registerLocalInferenceBoot(
-	runtime: AgentRuntime,
-): Promise<void> {
-	// Mobile-voice-invariant diagnostic: evaluated on every platform (the host
-	// ran it outside the mobile branch) so the mismatch — gate active without
-	// ELIZA_PLATFORM — is actually reachable.
-	warnIfMobileGateActiveWithoutPlatform({
-		mobilePlatform: isMobilePlatform(),
-		warn: logger.warn,
-	});
-
-	if (isMobilePlatform()) {
-		// Mobile bundle wires the local model handler only when a mobile-safe
-		// backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
-		// otherwise the runtime serves from a remote/cloud provider.
-		if (shouldEnableMobileLocalInference()) {
-			await ensureLocalInferenceHandler(runtime);
-		}
-		return;
-	}
-
-	// Desktop / server: ensureLocalInferenceHandler self-skips on a cloud
-	// runtime mode or when no local backend is available.
-	await ensureLocalInferenceHandler(runtime);
+export async function registerLocalInferenceBoot(runtime: AgentRuntime): Promise<void> {
+    // Mobile-voice-invariant diagnostic: evaluated on every platform (the host
+    // ran it outside the mobile branch) so the mismatch — gate active without
+    // ELIZA_PLATFORM — is actually reachable.
+    warnIfMobileGateActiveWithoutPlatform({
+        mobilePlatform: isMobilePlatform(),
+        warn: logger.warn,
+    });
+    if (isMobilePlatform()) {
+        // Mobile bundle wires the local model handler only when a mobile-safe
+        // backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
+        // otherwise the runtime serves from a remote/cloud provider.
+        if (shouldEnableMobileLocalInference()) {
+            await ensureLocalInferenceHandler(runtime);
+        }
+        return;
+    }
+    // Desktop / server: ensureLocalInferenceHandler self-skips on a cloud
+    // runtime mode or when no local backend is available.
+    await ensureLocalInferenceHandler(runtime);
 }

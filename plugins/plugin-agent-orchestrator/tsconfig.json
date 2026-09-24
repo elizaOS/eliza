@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "moduleResolution": "bundler",
     "rootDir": "../..",
     "outDir": "dist",
@@ -20,13 +23,20 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/auth/auth": ["../../packages/auth/src/auth/index.ts"],
-      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/auth/auth": [
+        "../../packages/auth/src/auth/index.ts"
+      ],
+      "@elizaos/auth/auth/*": [
+        "../../packages/auth/src/auth/*"
+      ]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -37,7 +47,9 @@
     "noPropertyAccessFromIndexSignature": false,
     "jsx": "react-jsx"
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts"
+  ],
   "exclude": [
     "dist",
     "node_modules",

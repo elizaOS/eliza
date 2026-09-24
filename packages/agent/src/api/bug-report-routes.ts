@@ -8,14 +8,12 @@
  * opens itself.
  */
 import os from "node:os";
-import {
-  logger,
-  redactSensitiveText,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostBugReportRequestSchema } from "@elizaos/shared";
+import { PostBugReportRequestSchema } from "@elizaos/core/contracts/tail-routes";
+import { logger } from "@elizaos/core";
+import { redactSensitiveText } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { truncateWellFormed } from "@elizaos/core";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";

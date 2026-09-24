@@ -53,7 +53,7 @@ jobs:
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
         # The gateway imports source-form workspace subpaths such as
-        # @elizaos/shared/discord-dm-policy. Match the package-owned test
+        # @elizaos/core/discord-dm-policy. Match the package-owned test
         # script's export condition so a clean runner never falls through to
         # an unbuilt dist/ entry.
         run: bun --conditions=eliza-source test tests/ --timeout 60000

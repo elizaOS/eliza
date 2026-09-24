@@ -4,4 +4,4 @@
  * nodes without depending on app, while existing app import paths
  * keep resolving to the same registry instance.
  */
-export * from "@elizaos/shared/automation-node-contributors";
+export * from "@elizaos/core/automation-node-contributors";

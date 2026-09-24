@@ -10,10 +10,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  isCloudExecutionMode,
-  shouldUseSandboxExecution,
-} from "@elizaos/shared";
+import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/core/config/runtime-mode";
 import spawn from "cross-spawn";
 import { redactShellText, redactShellValue } from "../redaction";
 import type {

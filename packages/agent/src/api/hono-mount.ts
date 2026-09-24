@@ -1,25 +1,23 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { Buffer } from "node:buffer";
+import { buildHonoAppForRuntime } from "./hono-adapter.ts";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
+import { type AccessContext } from "@elizaos/core";
+import { type Hono } from "hono";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type IncomingMessage } from "node:http";
+import { type Route } from "@elizaos/shared";
+import { type ServerResponse } from "node:http";
+import { type UUID } from "@elizaos/core";
 /**
  * Bridge between Node's `http.IncomingMessage` / `ServerResponse` and a Hono
  * app. Lets the existing raw-Node server hand requests off to Hono for the
  * subset of routes that go through `runtime.routes`.
  */
-
-import { Buffer } from "node:buffer";
-import type { IncomingMessage, ServerResponse } from "node:http";
-
-import type { AccessContext, IAgentRuntime, UUID } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
-import type { Hono } from "hono";
-
-import { buildHonoAppForRuntime } from "./hono-adapter.ts";
-import { matchPluginRoutePath } from "./plugin-route-path.ts";
-
 interface RuntimeHonoCache {
-  runtime: WeakRef<IAgentRuntime>;
-  app: Hono;
+    runtime: WeakRef<IAgentRuntime>;
+    app: Hono;
 }
-
 let cached: RuntimeHonoCache | null = null;
 const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
 const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
@@ -28,9 +26,7 @@ const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
 // tryHandleHonoRuntimeRoute always overwrites/deletes it before dispatch, so a
 // client-supplied value can never smuggle a principal in.
 const INTERNAL_ACCESS_CONTEXT_HEADER = "x-eliza-internal-access-context";
-
 const ROLE_NAMES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
-
 /**
  * Parse the internal access-context header back into a typed AccessContext.
  * The value is producer-controlled (set by this module's own caller), but the
@@ -41,192 +37,175 @@ const ROLE_NAMES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
 // undefined (no principal / owner-boundary semantics are NOT granted: routes
 // only widen disclosure when a context is absent because the caller was
 // trunk-authorized, and that path never sets this header).
-function parseInternalAccessContext(
-  value: string | null,
-): AccessContext | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object") return undefined;
-    const record = parsed as Record<string, unknown>;
-    if (
-      typeof record.requesterEntityId !== "string" ||
-      record.requesterEntityId.length === 0
-    ) {
-      return undefined;
+function parseInternalAccessContext(value: string | null): AccessContext | undefined {
+    if (!value)
+        return undefined;
+    try {
+        const parsed: unknown = JSON.parse(value);
+        if (!parsed || typeof parsed !== "object")
+            return undefined;
+        const record = parsed as Record<string, unknown>;
+        if (typeof record.requesterEntityId !== "string" ||
+            record.requesterEntityId.length === 0) {
+            return undefined;
+        }
+        const role = typeof record.role === "string" && ROLE_NAMES.has(record.role)
+            ? (record.role as AccessContext["role"])
+            : undefined;
+        return {
+            requesterEntityId: record.requesterEntityId as UUID,
+            ...(typeof record.worldId === "string"
+                ? { worldId: record.worldId as UUID }
+                : {}),
+            ...(role ? { role } : {}),
+            ...(typeof record.isOwner === "boolean"
+                ? { isOwner: record.isOwner }
+                : {}),
+            ...(typeof record.source === "string" ? { source: record.source } : {}),
+        };
     }
-    const role =
-      typeof record.role === "string" && ROLE_NAMES.has(record.role)
-        ? (record.role as AccessContext["role"])
-        : undefined;
-    return {
-      requesterEntityId: record.requesterEntityId as UUID,
-      ...(typeof record.worldId === "string"
-        ? { worldId: record.worldId as UUID }
-        : {}),
-      ...(role ? { role } : {}),
-      ...(typeof record.isOwner === "boolean"
-        ? { isOwner: record.isOwner }
-        : {}),
-      ...(typeof record.source === "string" ? { source: record.source } : {}),
-    };
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — a malformed header yields no
-    // principal (undefined), never a fabricated identity.
-    return undefined;
-  }
+    catch {
+        // error-policy:J3 untrusted-input sanitizing — a malformed header yields no
+        // principal (undefined), never a fabricated identity.
+        return undefined;
+    }
 }
-
 function getHonoApp(runtime: IAgentRuntime): Hono {
-  if (cached && cached.runtime.deref() === runtime) {
-    return cached.app;
-  }
-  const app = buildHonoAppForRuntime(runtime, {
-    isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
-    isTrustedLocal: (req) =>
-      req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
-    resolveAccessContext: (req) =>
-      parseInternalAccessContext(
-        req.headers.get(INTERNAL_ACCESS_CONTEXT_HEADER),
-      ),
-  });
-  cached = { runtime: new WeakRef(runtime), app };
-  return app;
+    if (cached && cached.runtime.deref() === runtime) {
+        return cached.app;
+    }
+    const app = buildHonoAppForRuntime(runtime, {
+        isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
+        isTrustedLocal: (req) => req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
+        resolveAccessContext: (req) => parseInternalAccessContext(req.headers.get(INTERNAL_ACCESS_CONTEXT_HEADER)),
+    });
+    cached = { runtime: new WeakRef(runtime), app };
+    return app;
 }
-
 /** Reset the cached Hono app — call when `runtime.routes` changes. */
 export function resetHonoMountCache(): void {
-  cached = null;
+    cached = null;
 }
-
 // Matches the 1 MiB cap applied to the sibling JSON/body readers in
 // server.ts (MAX_BODY_BYTES). The Hono fallback path never goes through that
 // reader, so it needs its own guard: without it a POST to any Hono-eligible
 // plugin routeHandler with an unbounded body is fully buffered into an
 // ArrayBuffer with no 413, hanging or OOM-ing the process.
 export const DEFAULT_MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
-
 interface ReadNodeBodyResult {
-  body: ArrayBuffer | null;
-  tooLarge: boolean;
+    body: ArrayBuffer | null;
+    tooLarge: boolean;
 }
-
-async function readNodeBody(
-  req: IncomingMessage,
-  maxBodyBytes: number,
-): Promise<ReadNodeBodyResult> {
-  const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") {
-    return { body: null, tooLarge: false };
-  }
-
-  const declaredLength = Number(req.headers["content-length"]);
-  if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
-    // Drain without retaining bytes so the peer can finish its write and read
-    // the 413 response. Pausing or destroying here turns a valid HTTP rejection
-    // into EPIPE/ECONNRESET for clients that are still sending the declared body.
-    req.resume();
-    return { body: null, tooLarge: true };
-  }
-
-  return new Promise<ReadNodeBodyResult>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let total = 0;
-
-    const cleanup = () => {
-      req.off("data", onData);
-      req.off("end", onEnd);
-      req.off("error", onError);
-      req.off("aborted", onAborted);
-    };
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-    const onAborted = () => onError(new Error("Request body was aborted"));
-    const onEnd = () => {
-      cleanup();
-      if (chunks.length === 0) {
-        resolve({ body: null, tooLarge: false });
-        return;
-      }
-      const concatenated = Buffer.concat(chunks, total);
-      const body = new ArrayBuffer(concatenated.byteLength);
-      new Uint8Array(body).set(concatenated);
-      resolve({ body, tooLarge: false });
-    };
-    const onData = (chunk: Buffer | Uint8Array | string) => {
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      total += buf.byteLength;
-      if (total > maxBodyBytes) {
-        cleanup();
-        // Stop retaining bytes but keep draining the request. This preserves the
-        // memory cap while allowing a real client to receive the promised 413.
-        req.resume();
-        resolve({ body: null, tooLarge: true });
-        return;
-      }
-      chunks.push(buf);
-    };
-
-    req.on("data", onData);
-    req.once("end", onEnd);
-    req.once("error", onError);
-    req.once("aborted", onAborted);
-  });
-}
-
-function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
-  const out = new Headers();
-  for (const [key, value] of Object.entries(headers)) {
-    if (value == null) continue;
-    if (Array.isArray(value)) {
-      for (const v of value) out.append(key, v);
-    } else {
-      out.set(key, value);
+async function readNodeBody(req: IncomingMessage, maxBodyBytes: number): Promise<ReadNodeBodyResult> {
+    const method = (req.method ?? "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD") {
+        return { body: null, tooLarge: false };
     }
-  }
-  return out;
-}
-
-async function pipeWebBodyToNodeResponse(
-  body: ReadableStream<Uint8Array>,
-  res: ServerResponse,
-): Promise<void> {
-  const reader = body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        if (!res.writableEnded) res.end();
-        return;
-      }
-      if (!res.write(Buffer.from(value))) {
-        await new Promise<void>((resolve, reject) => {
-          function cleanup() {
-            res.off("drain", onDrain);
-            res.off("error", onError);
-          }
-          function onDrain() {
-            cleanup();
-            resolve();
-          }
-          function onError(error: Error) {
+    const declaredLength = Number(req.headers["content-length"]);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
+        // Drain without retaining bytes so the peer can finish its write and read
+        // the 413 response. Pausing or destroying here turns a valid HTTP rejection
+        // into EPIPE/ECONNRESET for clients that are still sending the declared body.
+        req.resume();
+        return { body: null, tooLarge: true };
+    }
+    return new Promise<ReadNodeBodyResult>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        const cleanup = () => {
+            req.off("data", onData);
+            req.off("end", onEnd);
+            req.off("error", onError);
+            req.off("aborted", onAborted);
+        };
+        const onError = (error: Error) => {
             cleanup();
             reject(error);
-          }
-          res.once("drain", onDrain);
-          res.once("error", onError);
-        });
-      }
-    }
-  } catch {
-    if (!res.writableEnded) res.end();
-  } finally {
-    reader.releaseLock();
-  }
+        };
+        const onAborted = () => onError(new Error("Request body was aborted"));
+        const onEnd = () => {
+            cleanup();
+            if (chunks.length === 0) {
+                resolve({ body: null, tooLarge: false });
+                return;
+            }
+            const concatenated = Buffer.concat(chunks, total);
+            const body = new ArrayBuffer(concatenated.byteLength);
+            new Uint8Array(body).set(concatenated);
+            resolve({ body, tooLarge: false });
+        };
+        const onData = (chunk: Buffer | Uint8Array | string) => {
+            const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            total += buf.byteLength;
+            if (total > maxBodyBytes) {
+                cleanup();
+                // Stop retaining bytes but keep draining the request. This preserves the
+                // memory cap while allowing a real client to receive the promised 413.
+                req.resume();
+                resolve({ body: null, tooLarge: true });
+                return;
+            }
+            chunks.push(buf);
+        };
+        req.on("data", onData);
+        req.once("end", onEnd);
+        req.once("error", onError);
+        req.once("aborted", onAborted);
+    });
 }
-
+function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
+    const out = new Headers();
+    for (const [key, value] of Object.entries(headers)) {
+        if (value == null)
+            continue;
+        if (Array.isArray(value)) {
+            for (const v of value)
+                out.append(key, v);
+        }
+        else {
+            out.set(key, value);
+        }
+    }
+    return out;
+}
+async function pipeWebBodyToNodeResponse(body: ReadableStream<Uint8Array>, res: ServerResponse): Promise<void> {
+    const reader = body.getReader();
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) {
+                if (!res.writableEnded)
+                    res.end();
+                return;
+            }
+            if (!res.write(Buffer.from(value))) {
+                await new Promise<void>((resolve, reject) => {
+                    function cleanup() {
+                        res.off("drain", onDrain);
+                        res.off("error", onError);
+                    }
+                    function onDrain() {
+                        cleanup();
+                        resolve();
+                    }
+                    function onError(error: Error) {
+                        cleanup();
+                        reject(error);
+                    }
+                    res.once("drain", onDrain);
+                    res.once("error", onError);
+                });
+            }
+        }
+    }
+    catch {
+        if (!res.writableEnded)
+            res.end();
+    }
+    finally {
+        reader.releaseLock();
+    }
+}
 /**
  * Try to dispatch a request through the runtime-routes Hono app. Returns
  * `true` if Hono produced a response (including 404 from Hono itself for any
@@ -249,119 +228,101 @@ async function pipeWebBodyToNodeResponse(
  * dispatcher, used by the in-process IPC surface) serves the same path.
  */
 function normalizeRoutePathname(pathname: string): string {
-  const collapsed = pathname.replace(/\/{2,}/g, "/");
-  return collapsed.length > 1 && collapsed.endsWith("/")
-    ? collapsed.slice(0, -1)
-    : collapsed;
+    const collapsed = pathname.replace(/\/{2,}/g, "/");
+    return collapsed.length > 1 && collapsed.endsWith("/")
+        ? collapsed.slice(0, -1)
+        : collapsed;
 }
-
-function findHonoEligibleRoute(
-  runtime: IAgentRuntime,
-  method: string,
-  pathname: string,
-): Route | null {
-  const upper = method.toUpperCase();
-  for (const route of getHttpRuntime(runtime).routes as Route[]) {
-    if (route.type === "STATIC") continue;
-    if (route.type !== upper) continue;
-    if (!route.routeHandler) continue;
-    if (matchPluginRoutePath(route.path, pathname) === null) continue;
-    return route;
-  }
-  return null;
+function findHonoEligibleRoute(runtime: IAgentRuntime, method: string, pathname: string): Route | null {
+    const upper = method.toUpperCase();
+    for (const route of getHttpRuntime(runtime).routes as Route[]) {
+        if (route.type === "STATIC")
+            continue;
+        if (route.type !== upper)
+            continue;
+        if (!route.routeHandler)
+            continue;
+        if (matchPluginRoutePath(route.path, pathname) === null)
+            continue;
+        return route;
+    }
+    return null;
 }
-
 export async function tryHandleHonoRuntimeRoute(options: {
-  req: IncomingMessage;
-  res: ServerResponse;
-  runtime: IAgentRuntime | null | undefined;
-  isAuthorized: () => boolean;
-  isTrustedLocal?: () => boolean;
-  /** Boundary-resolved requester identity for per-viewer DTO selection (#14781). */
-  accessContext?: () => AccessContext | undefined;
+    req: IncomingMessage;
+    res: ServerResponse;
+    runtime: IAgentRuntime | null | undefined;
+    isAuthorized: () => boolean;
+    isTrustedLocal?: () => boolean;
+    /** Boundary-resolved requester identity for per-viewer DTO selection (#14781). */
+    accessContext?: () => AccessContext | undefined;
 }): Promise<boolean> {
-  const { req, res, runtime } = options;
-  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
-
-  const method = req.method ?? "GET";
-  const requestUrl = req.url ?? "/";
-  const pathname = normalizeRoutePathname(
-    (() => {
-      try {
-        return new URL(requestUrl, `http://${req.headers.host ?? "localhost"}`)
-          .pathname;
-      } catch {
-        return requestUrl.split("?")[0] ?? "/";
-      }
-    })(),
-  );
-
-  const matchedRoute = findHonoEligibleRoute(runtime, method, pathname);
-  if (!matchedRoute) {
-    return false;
-  }
-
-  const app = getHonoApp(runtime);
-
-  const maxBodyBytes = matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
-  const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
-  if (tooLarge) {
-    // The request body exceeded this route's cap. Respond 413 without
-    // dispatching to Hono. Remaining bytes are discarded without retention.
-    res.statusCode = 413;
-    res.setHeader("content-type", "application/json");
-    res.setHeader("connection", "close");
-    res.end(
-      JSON.stringify({
-        error: "Request body too large",
-        maxBytes: maxBodyBytes,
-      }),
-    );
+    const { req, res, runtime } = options;
+    if (!runtime || !getHttpRuntime(runtime).routes.length)
+        return false;
+    const method = req.method ?? "GET";
+    const requestUrl = req.url ?? "/";
+    const pathname = normalizeRoutePathname((() => {
+        try {
+            return new URL(requestUrl, `http://${req.headers.host ?? "localhost"}`)
+                .pathname;
+        }
+        catch {
+            return requestUrl.split("?")[0] ?? "/";
+        }
+    })());
+    const matchedRoute = findHonoEligibleRoute(runtime, method, pathname);
+    if (!matchedRoute) {
+        return false;
+    }
+    const app = getHonoApp(runtime);
+    const maxBodyBytes = matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
+    const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
+    if (tooLarge) {
+        // The request body exceeded this route's cap. Respond 413 without
+        // dispatching to Hono. Remaining bytes are discarded without retention.
+        res.statusCode = 413;
+        res.setHeader("content-type", "application/json");
+        res.setHeader("connection", "close");
+        res.end(JSON.stringify({
+            error: "Request body too large",
+            maxBytes: maxBodyBytes,
+        }));
+        return true;
+    }
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    // Hand Hono the normalized path so its strict router agrees with the
+    // tolerant eligibility gate above (and with dispatchRoute inside the
+    // handler, which re-matches against the same normalized path).
+    url.pathname = pathname;
+    const headers = nodeHeadersToWeb(req.headers);
+    headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
+    headers.set(INTERNAL_TRUSTED_LOCAL_HEADER, options.isTrustedLocal?.() ? "1" : "0");
+    // Always overwrite (or drop) the internal access-context header so an
+    // inbound client value can never survive into dispatch.
+    const accessContext = options.accessContext?.();
+    if (accessContext) {
+        headers.set(INTERNAL_ACCESS_CONTEXT_HEADER, JSON.stringify(accessContext));
+    }
+    else {
+        headers.delete(INTERNAL_ACCESS_CONTEXT_HEADER);
+    }
+    // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
+    const request = new Request(url, {
+        method: req.method ?? "GET",
+        headers,
+        body: bodyBytes ?? undefined,
+    });
+    const response: Response = await app.fetch(request);
+    res.statusCode = response.status;
+    response.headers.forEach((value, key) => {
+        res.setHeader(key, value);
+    });
+    if (!response.body) {
+        res.end();
+        return true;
+    }
+    // Stream the body through the Node response.
+    void pipeWebBodyToNodeResponse(response.body, res);
     return true;
-  }
-  const url = new URL(
-    req.url ?? "/",
-    `http://${req.headers.host ?? "localhost"}`,
-  );
-  // Hand Hono the normalized path so its strict router agrees with the
-  // tolerant eligibility gate above (and with dispatchRoute inside the
-  // handler, which re-matches against the same normalized path).
-  url.pathname = pathname;
-  const headers = nodeHeadersToWeb(req.headers);
-  headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
-  headers.set(
-    INTERNAL_TRUSTED_LOCAL_HEADER,
-    options.isTrustedLocal?.() ? "1" : "0",
-  );
-  // Always overwrite (or drop) the internal access-context header so an
-  // inbound client value can never survive into dispatch.
-  const accessContext = options.accessContext?.();
-  if (accessContext) {
-    headers.set(INTERNAL_ACCESS_CONTEXT_HEADER, JSON.stringify(accessContext));
-  } else {
-    headers.delete(INTERNAL_ACCESS_CONTEXT_HEADER);
-  }
-
-  // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
-  const request = new Request(url, {
-    method: req.method ?? "GET",
-    headers,
-    body: bodyBytes ?? undefined,
-  });
-
-  const response: Response = await app.fetch(request);
-
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
-
-  if (!response.body) {
-    res.end();
-    return true;
-  }
-
-  // Stream the body through the Node response.
-  void pipeWebBodyToNodeResponse(response.body, res);
-  return true;
 }

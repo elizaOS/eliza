@@ -1,4 +1,4 @@
-import { resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateCloudBaseUrl } from "../src/cloud/validate-url.js";
 

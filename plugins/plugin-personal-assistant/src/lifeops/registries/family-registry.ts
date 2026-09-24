@@ -20,11 +20,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  LIFEOPS_TELEMETRY_FAMILIES,
-  type LifeOpsBusFamily,
-  type LifeOpsTelemetryFamily,
-} from "@elizaos/shared";
+import { LIFEOPS_TELEMETRY_FAMILIES, type LifeOpsBusFamily, type LifeOpsTelemetryFamily } from "@elizaos/core/contracts/personal-assistant";
 
 export interface BusFamilyContribution {
   /** Open-string family identifier (built-in or namespaced). */

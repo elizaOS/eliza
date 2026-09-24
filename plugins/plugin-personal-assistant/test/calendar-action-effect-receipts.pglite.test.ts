@@ -23,7 +23,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import {
   afterAll,
   afterEach,

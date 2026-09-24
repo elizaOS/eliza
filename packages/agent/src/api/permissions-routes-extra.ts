@@ -8,11 +8,9 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type {
-  AgentAutomationMode,
-  ReadJsonBodyOptions,
-  TradePermissionMode,
-} from "@elizaos/shared";
+import { type AgentAutomationMode } from "@elizaos/core/api/agent-api-types";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
 import type { ElizaConfig } from "../config/config.ts";
 import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
 

@@ -3,12 +3,9 @@
  * Plain string (figlet heading + framed table + footer); TTY color applied by dev-platform.
  */
 
-import {
-  formatDevSettingsTable,
-  resolveDesktopApiPortPreference,
-  resolveDesktopUiPortPreference,
-} from "@elizaos/shared";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
+import { formatDevSettingsTable } from "@elizaos/app/dev-settings-table";
+import { resolveDesktopApiPortPreference, resolveDesktopUiPortPreference } from "@elizaos/core/runtime-env";
+import { prependDevSubsystemFigletHeading } from "@elizaos/app/dev-settings-figlet-heading";
 
 /**
  * @param {object} p
@@ -63,7 +60,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
   const rendererChange =
     "bun run dev:desktop -- --force-renderer or ELIZA_DESKTOP_RENDERER_BUILD=always; omit to follow mtime heuristic";
 
-  /** @type {import("@elizaos/shared").DevSettingsRow[]} */
+  /** @type {import("@elizaos/app/dev-settings-table").DevSettingsRow[]} */
   const rows = [
     {
       setting: ".env.worktree",
@@ -286,7 +283,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
   );
   const footer =
     "Per-process settings: Vite, API, and Electrobun print their own tables below.\n" +
-    "Other env: inherited process.env; see docs/apps/desktop-local-development.md and @elizaos/shared/runtime-env.\n";
+    "Other env: inherited process.env; see docs/apps/desktop-local-development.md and @elizaos/core/runtime-env.\n";
   return prependDevSubsystemFigletHeading(
     "orchestrator",
     `${table}\n${footer}`,

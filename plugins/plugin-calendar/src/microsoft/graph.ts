@@ -6,11 +6,8 @@
  */
 import { createHash } from "node:crypto";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import { type CreateLifeOpsCalendarEventAttendee, type LifeOpsCalendarEventAttendee } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   DefaultMicrosoftCalendarTokenResolver,
   listMicrosoftCalendarAccounts,

@@ -20,19 +20,20 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
+import { formatError } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import {
   type AppManifestBlock,
   applyAppManifestDefaults,
   filterCandidatesByAppManifest,
   readAppManifest,
-} from "@elizaos/shared/config/app-manifest";
+} from "@elizaos/agent/host-manifests/app-manifest";
 import {
   applyPluginManifestVerdicts,
   evaluatePluginManifests,
   type PluginManifestCandidate,
   type PluginManifestVerdict,
-} from "@elizaos/shared/config/plugin-manifest";
+} from "@elizaos/agent/host-manifests/plugin-manifest";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,

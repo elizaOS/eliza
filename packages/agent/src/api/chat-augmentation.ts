@@ -25,7 +25,7 @@ import {
   embedRecallQuery,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
-import { normalizeCharacterLanguage } from "@elizaos/shared";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import { getErrorMessage } from "./server-helpers.ts";
 

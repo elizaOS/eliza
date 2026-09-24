@@ -4,69 +4,23 @@
  * Keep this surface aligned with `src/index.ts`, but do not re-export modules
  * that require Node APIs or server-only runtime state.
  */
-
-export type {
-  ActionConfirm,
-  ActionOnError,
-  ActionOnSuccess,
-  AndVisibility,
-  AppDetailExtensionComponent,
-  AppDetailExtensionProps,
-  AuthState,
-  AuthVisibility,
-  BuiltinValidator,
-  CondExpr,
-  DynamicProp,
-  NotVisibility,
-  OrVisibility,
-  OverlayApp,
-  OverlayAppContext,
-  PatchOp,
-  PathVisibility,
-  RepeatConfig,
-  RestartHandler,
-  UIStreamConfig,
-  UiAction,
-  UiComponentType,
-  UiElement,
-  UiEventBindings,
-  UiRenderContext,
-  UiSpec,
-  UiSpecValidationCheck,
-  UiSpecValidationConfig,
-  UiSpecVisibilityCondition,
-  VisibilityOperator,
-} from "@elizaos/shared";
-export {
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
-  getAllOverlayApps,
-  getAppDetailExtension,
-  getAvailableOverlayApps,
-  getOverlayApp,
-  isAospAndroid,
-  isOverlayApp,
-  modelLooksLikeElizaCloudHosted,
-  type OverlayAppAvailabilityContext,
-  overlayAppToRegistryInfo,
-  parsePositiveFloat,
-  parsePositiveInteger,
-  RESTART_EXIT_CODE,
-  registerDetailExtension,
-  registerOverlayApp,
-  requestRestart,
-  resolveAppAssetUrl,
-  setRestartHandler,
-  shouldUseCloudOnlyBranding,
-} from "@elizaos/shared";
+export { type ActionConfirm, type ActionOnError, type ActionOnSuccess, type AndVisibility, type AuthState, type AuthVisibility, type BuiltinValidator, type CondExpr, type DynamicProp, type NotVisibility, type OrVisibility, type PatchOp, type PathVisibility, type RepeatConfig, type UIStreamConfig, type UiAction, type UiComponentType, type UiElement, type UiEventBindings, type UiRenderContext, type UiSpec, type UiSpecValidationCheck, type UiSpecValidationConfig, type UiSpecVisibilityCondition, type VisibilityOperator } from "@elizaos/core/config/ui-spec";
+export { type AppDetailExtensionComponent, type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export { type OverlayApp, type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
+export { type RestartHandler } from "@elizaos/core/restart";
+export { buildPluginConfigUiSpec, buildPluginListUiSpec } from "@elizaos/core/config/plugin-ui-spec";
+export { getAllOverlayApps, getAvailableOverlayApps, getOverlayApp, isAospAndroid, isOverlayApp, type OverlayAppAvailabilityContext, overlayAppToRegistryInfo, registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
+export { getAppDetailExtension, registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export { modelLooksLikeElizaCloudHosted } from "@elizaos/ui/utils/eliza-cloud-model-route";
+export { parsePositiveFloat, parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+export { RESTART_EXIT_CODE, requestRestart, setRestartHandler } from "@elizaos/core/restart";
+export { resolveAppAssetUrl } from "@elizaos/ui/utils/asset-url";
+export { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
 // Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
 // from this broad browser facade creates a second bundled shell copy for plugin
 // host imports, which can fold lazy route modules back into the entry chunk.
 export * from "./agent-surface/index.ts";
-export {
-  type AgentElementHandle,
-  useAgentElement,
-} from "./agent-surface/useAgentElement.ts";
+export { type AgentElementHandle, useAgentElement, } from "./agent-surface/useAgentElement.ts";
 export * from "./api/android-native-agent-transport.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
@@ -83,10 +37,7 @@ export * from "./components/apps/extensions/surface.tsx";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
-export {
-  EmptyWidgetState,
-  WidgetSection,
-} from "./components/chat/widgets/shared.tsx";
+export { EmptyWidgetState, WidgetSection, } from "./components/chat/widgets/shared.tsx";
 // The orchestrator/task-coordinator plugin imports this from `@elizaos/ui`
 // (which the app build aliases to this browser entry). It is re-exported from
 // the root index.ts too; keep both in sync. Missing here breaks
@@ -100,24 +51,9 @@ export { Sidebar } from "./components/composites/sidebar/sidebar-root.tsx";
 export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region.tsx";
 export * from "./components/config-ui/config-renderer.helpers.ts";
 export * from "./components/config-ui/config-renderer.tsx";
-export {
-  evaluateUiVisibility,
-  getSupportedComponents,
-  runValidation as runUiValidation,
-  sanitizeLinkHref,
-} from "./components/config-ui/ui-renderer.helpers.ts";
-export {
-  type UiActionDispatchMetadata,
-  UiRenderer,
-  type UiRendererProps,
-} from "./components/config-ui/ui-renderer.tsx";
-export {
-  getAllSettingsSections,
-  getSettingsSection,
-  listSettingsSections,
-  registerSettingsSection,
-  type SettingsSectionDef,
-} from "./components/settings/settings-section-registry.ts";
+export { evaluateUiVisibility, getSupportedComponents, runValidation as runUiValidation, sanitizeLinkHref, } from "./components/config-ui/ui-renderer.helpers.ts";
+export { type UiActionDispatchMetadata, UiRenderer, type UiRendererProps, } from "./components/config-ui/ui-renderer.tsx";
+export { getAllSettingsSections, getSettingsSection, listSettingsSections, registerSettingsSection, type SettingsSectionDef, } from "./components/settings/settings-section-registry.ts";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
@@ -155,16 +91,8 @@ export { SettingsControls } from "./components/ui/settings-controls.tsx";
 export { Skeleton } from "./components/ui/skeleton.tsx";
 export * from "./components/ui/skeleton-layouts.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
-export {
-  agentLifecycleLabel,
-  statusLabelForState,
-  statusToneForState,
-} from "./components/ui/status-badge.helpers.ts";
-export {
-  StatusBadge,
-  StatusDot,
-  StatusPulseDot,
-} from "./components/ui/status-badge.tsx";
+export { agentLifecycleLabel, statusLabelForState, statusToneForState, } from "./components/ui/status-badge.helpers.ts";
+export { StatusBadge, StatusDot, StatusPulseDot, } from "./components/ui/status-badge.tsx";
 export { Switch } from "./components/ui/switch.tsx";
 export * from "./components/ui/table.tsx";
 export * from "./components/ui/tabs.tsx";
@@ -184,10 +112,7 @@ export * from "./config/config-catalog.ts";
 export * from "./config/index.ts";
 // === Phase 5C: ./desktop-runtime moved to @elizaos/app/runtime/desktop ===
 export * from "./events/index.ts";
-export {
-  installFirstRunDeepLinkListener,
-  routeFirstRunDeepLink,
-} from "./first-run/deep-link-handler.ts";
+export { installFirstRunDeepLinkListener, routeFirstRunDeepLink, } from "./first-run/deep-link-handler.ts";
 export * from "./first-run/mobile-runtime-mode.ts";
 export * from "./first-run/pre-seed-local-runtime.ts";
 export * from "./first-run/reload-into-first-run-runtime.ts";
@@ -222,11 +147,7 @@ export { copyTextToClipboard } from "./utils/clipboard.ts";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.ts";
 export { loadDesktopWorkspaceSnapshot } from "./utils/desktop-workspace.ts";
 export * from "./utils/format.ts";
-export {
-  navigatePreOpenedWindow,
-  openExternalUrl,
-  preOpenWindow,
-} from "./utils/openExternalUrl.ts";
+export { navigatePreOpenedWindow, openExternalUrl, preOpenWindow, } from "./utils/openExternalUrl.ts";
 export * from "./voice/index.ts";
 export * from "./widgets/index.ts";
 export { registerBuiltinWidgets } from "./widgets/registry-store.ts";

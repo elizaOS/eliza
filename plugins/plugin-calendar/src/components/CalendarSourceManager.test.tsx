@@ -6,11 +6,7 @@
  * ICS subscription create/remove against a spied calendar client.
  */
 
-import type {
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-  LifeOpsIcsCalendarSource,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSummary, type LifeOpsIcsCalendarSource } from "@elizaos/core/contracts/calendar";
 import {
   cleanup,
   fireEvent,

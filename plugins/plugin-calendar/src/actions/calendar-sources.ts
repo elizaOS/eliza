@@ -27,13 +27,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarProvider,
-  LifeOpsCalendarSourceAdministrationSnapshot,
-  LifeOpsCalendarSourceKey,
-  LifeOpsIcsCalendarSyncResponse,
-  LifeOpsLinkedCalendarControlMutationResult,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarProvider, type LifeOpsCalendarSourceAdministrationSnapshot, type LifeOpsCalendarSourceKey, type LifeOpsIcsCalendarSyncResponse, type LifeOpsLinkedCalendarControlMutationResult } from "@elizaos/core/contracts/calendar";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   googleAccountIdFromGrantId,

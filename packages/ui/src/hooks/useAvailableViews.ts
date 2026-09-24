@@ -12,7 +12,7 @@ import type {
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";

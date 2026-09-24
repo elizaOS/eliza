@@ -10,7 +10,7 @@ import {
   type Media,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
-import { MediaFetchError } from "../../../../../packages/shared/src/media/index.ts";
+import { MediaFetchError } from "@elizaos/core/media";
 import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000ab" as UUID;

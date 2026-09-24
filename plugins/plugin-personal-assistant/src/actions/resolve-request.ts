@@ -40,7 +40,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
 } from "@elizaos/plugin-native-phone/twilio";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

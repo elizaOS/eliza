@@ -10,19 +10,15 @@
  */
 
 import { Buffer } from "node:buffer";
-import {
-  type IMediaGenerationService,
-  logger,
-  type MediaGenerationRequest,
-  ServiceType,
-} from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
-import { fetchRemoteMedia } from "@elizaos/shared/media";
-import {
-  persistDataUrl,
-  persistMediaBytes,
-  pinBackgroundMedia,
-} from "./media-store.ts";
+import { ServiceType } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/core/media";
+import { logger } from "@elizaos/core";
+import { persistDataUrl } from "./media-store.ts";
+import { persistMediaBytes } from "./media-store.ts";
+import { pinBackgroundMedia } from "./media-store.ts";
+import { type IMediaGenerationService } from "@elizaos/core";
+import { type MediaGenerationRequest } from "@elizaos/core";
+import { type Route } from "@elizaos/shared";
 
 interface GenerateImageBody {
   prompt?: unknown;

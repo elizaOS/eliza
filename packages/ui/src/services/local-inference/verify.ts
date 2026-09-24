@@ -8,4 +8,4 @@ export {
   type VerifyResult,
   type VerifyState,
   verifyInstalledModel,
-} from "@elizaos/shared/local-inference/verify";
+} from "@elizaos/plugin-native-inference/model-catalog/verify";

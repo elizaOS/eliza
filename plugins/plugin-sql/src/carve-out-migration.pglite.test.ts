@@ -5,14 +5,8 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import {
-  assertCarveOutProjectionComplete,
-  type CarveOutDatabase,
-  type CarveOutSqlExecutor,
-  createDrizzleCarveOutDatabase,
-  runCarveOutMigration,
-} from "@elizaos/shared";
-import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
+import { assertCarveOutProjectionComplete, type CarveOutDatabase, type CarveOutSqlExecutor, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "@elizaos/plugin-sql/database-utils/raw-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
 

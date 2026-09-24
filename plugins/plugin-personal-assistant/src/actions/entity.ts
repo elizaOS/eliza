@@ -27,10 +27,7 @@ import {
   ElizaError,
   ModelType,
 } from "@elizaos/core";
-import {
-  LIFEOPS_MESSAGE_CHANNELS,
-  type LifeOpsMessageChannel,
-} from "@elizaos/shared";
+import { LIFEOPS_MESSAGE_CHANNELS, type LifeOpsMessageChannel } from "@elizaos/core/contracts/personal-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

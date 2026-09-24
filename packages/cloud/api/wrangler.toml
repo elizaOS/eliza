@@ -34,8 +34,8 @@ __filename = '"/worker.js"'
 "@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
-"@elizaos/shared/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
-"@elizaos/shared/local-inference/voice-models" = "../../shared/src/local-inference/voice-models.ts"
+"@elizaos/core/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
+"@elizaos/plugin-native-inference/model-catalog/voice-models" = "../../shared/src/local-inference/voice-models.ts"
 "@brighter/storage-adapter-s3" = "./src/stubs/brighter-storage-adapter-s3.ts"
 # ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
 # sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any

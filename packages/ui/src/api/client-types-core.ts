@@ -3,55 +3,37 @@
  * ConnectionState*, Sandbox*. One slice of the ElizaClient type surface,
  * re-exported through client-types.ts.
  */
-
-import type {
-  TrajectoryExportFormat,
-  TriggerLastStatus,
-  TriggerRunRecord,
-  TriggerType,
-  TriggerWakeMode,
-} from "@elizaos/core";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
-  AgentAutomationMode as SharedAgentAutomationMode,
-  ColumnInfo as SharedColumnInfo,
-  ConnectionTestResult as SharedConnectionTestResult,
-  ConversationAutomationType as SharedConversationAutomationType,
-  ConversationMetadata as SharedConversationMetadata,
-  ConversationScope as SharedConversationScope,
-  CreateTriggerRequest as SharedCreateTriggerRequest,
-  DatabaseStatus as SharedDatabaseStatus,
-  QueryResult as SharedQueryResult,
-  RuntimeOrderItem as SharedRuntimeOrderItem,
-  RuntimeServiceOrderItem as SharedRuntimeServiceOrderItem,
-  StreamEventEnvelope as SharedStreamEventEnvelope,
-  StreamEventType as SharedStreamEventType,
-  TableInfo as SharedTableInfo,
-  TradePermissionMode as SharedTradePermissionMode,
-  TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-  TriggerSummary as SharedTriggerSummary,
-  TriggerTaskMetadata as SharedTriggerTaskMetadata,
-  UpdateTriggerRequest as SharedUpdateTriggerRequest,
-} from "@elizaos/shared";
-
-export type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
-  TrajectoryExportFormat,
-  TriggerLastStatus,
-  TriggerRunRecord,
-  TriggerType,
-  TriggerWakeMode,
-};
-
+import { type AgentAutomationMode as SharedAgentAutomationMode } from "@elizaos/core/api/agent-api-types";
+import { type ColumnInfo as SharedColumnInfo } from "@elizaos/core/api/agent-api-types";
+import { type ConnectionTestResult as SharedConnectionTestResult } from "@elizaos/core/api/agent-api-types";
+import { type ConversationAutomationType as SharedConversationAutomationType } from "@elizaos/core/contracts/conversation-routes";
+import { type ConversationMetadata as SharedConversationMetadata } from "@elizaos/core/contracts/conversation-routes";
+import { type ConversationScope as SharedConversationScope } from "@elizaos/core/contracts/conversation-routes";
+import { type CreateTriggerRequest as SharedCreateTriggerRequest } from "@elizaos/core/api/agent-api-types";
+import { type CustomActionDef } from "@elizaos/core/contracts/config";
+import { type CustomActionHandler } from "@elizaos/core/contracts/config";
+import { type DatabaseProviderType } from "@elizaos/core/contracts/config";
+import { type DatabaseStatus as SharedDatabaseStatus } from "@elizaos/core/api/agent-api-types";
+import { type QueryResult as SharedQueryResult } from "@elizaos/core/api/agent-api-types";
+import { type ReleaseChannel } from "@elizaos/core/contracts/config";
+import { type RuntimeOrderItem as SharedRuntimeOrderItem } from "@elizaos/core/api/agent-api-types";
+import { type RuntimeServiceOrderItem as SharedRuntimeServiceOrderItem } from "@elizaos/core/api/agent-api-types";
+import { type StreamEventEnvelope as SharedStreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
+import { type StreamEventType as SharedStreamEventType } from "@elizaos/core/api/agent-api-types";
+import { type TableInfo as SharedTableInfo } from "@elizaos/core/api/agent-api-types";
+import { type TradePermissionMode as SharedTradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+import { type TrajectoryExportFormat } from "@elizaos/core";
+import { type TriggerHealthSnapshot as SharedTriggerHealthSnapshot } from "@elizaos/core/api/agent-api-types";
+import { type TriggerLastStatus } from "@elizaos/core";
+import { type TriggerRunRecord } from "@elizaos/core";
+import { type TriggerSummary as SharedTriggerSummary } from "@elizaos/core/api/agent-api-types";
+import { type TriggerTaskMetadata as SharedTriggerTaskMetadata } from "@elizaos/core/api/agent-api-types";
+import { type TriggerType } from "@elizaos/core";
+import { type TriggerWakeMode } from "@elizaos/core";
+import { type UpdateTriggerRequest as SharedUpdateTriggerRequest } from "@elizaos/core/api/agent-api-types";
+export type { CustomActionDef, CustomActionHandler, DatabaseProviderType, ReleaseChannel, TrajectoryExportFormat, TriggerLastStatus, TriggerRunRecord, TriggerType, TriggerWakeMode, };
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API into Vite).
-
 export type ConversationScope = SharedConversationScope;
 export type ConversationAutomationType = SharedConversationAutomationType;
 export type ConversationMetadata = SharedConversationMetadata;
@@ -70,210 +52,166 @@ export type ColumnInfo = SharedColumnInfo;
 export type QueryResult = SharedQueryResult;
 export type RuntimeOrderItem = SharedRuntimeOrderItem;
 export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
-
 export type TradePermissionMode = SharedTradePermissionMode;
-
-export type WhatsAppPairingStatus =
-  | "idle"
-  | "initializing"
-  | "waiting_for_qr"
-  | "connected"
-  | "disconnected"
-  | "timeout"
-  | "error";
-
+export type WhatsAppPairingStatus = "idle" | "initializing" | "waiting_for_qr" | "connected" | "disconnected" | "timeout" | "error";
 export interface DatabaseConfigResponse {
-  config: {
-    provider?: DatabaseProviderType;
-    pglite?: { dataDir?: string };
-    postgres?: {
-      connectionString?: string;
-      host?: string;
-      port?: number;
-      database?: string;
-      user?: string;
-      password?: string;
-      ssl?: boolean;
+    config: {
+        provider?: DatabaseProviderType;
+        pglite?: {
+            dataDir?: string;
+        };
+        postgres?: {
+            connectionString?: string;
+            host?: string;
+            port?: number;
+            database?: string;
+            user?: string;
+            password?: string;
+            ssl?: boolean;
+        };
     };
-  };
-  activeProvider: DatabaseProviderType;
-  needsRestart: boolean;
+    activeProvider: DatabaseProviderType;
+    needsRestart: boolean;
 }
-
 export interface TableRowsResponse {
-  table: string;
-  rows: Record<string, unknown>[];
-  columns: string[];
-  total: number;
-  offset: number;
-  limit: number;
+    table: string;
+    rows: Record<string, unknown>[];
+    columns: string[];
+    total: number;
+    offset: number;
+    limit: number;
 }
-
-export type AgentState =
-  | "not_started"
-  | "starting"
-  | "running"
-  | "stopped"
-  | "restarting"
-  | "error";
-
+export type AgentState = "not_started" | "starting" | "running" | "stopped" | "restarting" | "error";
 export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
-  /** Local embedding (GGUF) warmup — from status overlay */
-  embeddingPhase?: "checking" | "downloading" | "loading" | "ready";
-  embeddingDetail?: string;
-  /** 0–100 when parseable from embedding detail */
-  embeddingProgressPct?: number;
+    phase: string;
+    attempt: number;
+    lastError?: string;
+    lastErrorAt?: number;
+    nextRetryAt?: number;
+    /** Local embedding (GGUF) warmup — from status overlay */
+    embeddingPhase?: "checking" | "downloading" | "loading" | "ready";
+    embeddingDetail?: string;
+    /** 0–100 when parseable from embedding detail */
+    embeddingProgressPct?: number;
 }
-
 export interface AgentStatus {
-  state: AgentState;
-  agentName: string;
-  model: string | undefined;
-  /**
-   * First-turn capability online: the agent has a live runtime + a registered
-   * TEXT handler and can actually answer (distinct from a bare "running" with no
-   * provider wired). Server-authoritative (`/api/health` + `/api/status`); drives
-   * the async-generate + fade-in of the chat composer. Optional for back-compat
-   * with older agents/transports that don't report it.
-   */
-  canRespond?: boolean;
-  uptime: number | undefined;
-  startedAt: number | undefined;
-  port?: number;
-  pendingRestart?: boolean;
-  pendingRestartReasons?: string[];
-  startup?: AgentStartupDiagnostics;
-  /**
-   * Live resume/provision progress for a dedicated cloud agent that answered
-   * the status probe with `202 Accepted` while it warms (#14040 sub-defect 2).
-   * Present only during an in-flight resume; carries the cloud proxy's honest
-   * progress body (`{status,jobId,retryAfterMs}`) so the launcher can render a
-   * "resuming…" state (and reset its slow-boot escalation) instead of an
-   * indistinguishable spinner. Absent for a normal running/stopped status.
-   */
-  resumeProgress?: AgentResumeProgress;
+    state: AgentState;
+    agentName: string;
+    model: string | undefined;
+    /**
+     * First-turn capability online: the agent has a live runtime + a registered
+     * TEXT handler and can actually answer (distinct from a bare "running" with no
+     * provider wired). Server-authoritative (`/api/health` + `/api/status`); drives
+     * the async-generate + fade-in of the chat composer. Optional for back-compat
+     * with older agents/transports that don't report it.
+     */
+    canRespond?: boolean;
+    uptime: number | undefined;
+    startedAt: number | undefined;
+    port?: number;
+    pendingRestart?: boolean;
+    pendingRestartReasons?: string[];
+    startup?: AgentStartupDiagnostics;
+    /**
+     * Live resume/provision progress for a dedicated cloud agent that answered
+     * the status probe with `202 Accepted` while it warms (#14040 sub-defect 2).
+     * Present only during an in-flight resume; carries the cloud proxy's honest
+     * progress body (`{status,jobId,retryAfterMs}`) so the launcher can render a
+     * "resuming…" state (and reset its slow-boot escalation) instead of an
+     * indistinguishable spinner. Absent for a normal running/stopped status.
+     */
+    resumeProgress?: AgentResumeProgress;
 }
-
 /**
  * The cloud dedicated-agent-proxy's `202` resume body, mapped onto
  * {@link AgentStatus.resumeProgress}. A truthy `jobId` (or any freshly-observed
  * progress) is the launcher's "boot is still making progress" signal.
  */
 export interface AgentResumeProgress {
-  /** The proxy's `status` field for the in-flight resume (e.g. "starting"). */
-  status: string;
-  /** The resume job's id when the proxy reports one; a change signals progress. */
-  jobId?: string;
-  /** Advertised retry interval (ms) the proxy asked the client to wait. */
-  retryAfterMs?: number;
-  /** True when the proxy reported the resume was already underway. */
-  alreadyInProgress?: boolean;
-  /**
-   * Client-side timestamp (ms) of THIS observed resume probe. A single
-   * long-running resume keeps the same `status`/`jobId` across polls, so those
-   * alone can't distinguish "still progressing" from "stalled"; a fresh
-   * `observedAt` on every successful 202 is the "a live probe just succeeded"
-   * heartbeat that resets the launcher's slow-boot escalation window (#14040
-   * sub-defect 3). Stamped by the status client on each observation, not by the
-   * server.
-   */
-  observedAt?: number;
+    /** The proxy's `status` field for the in-flight resume (e.g. "starting"). */
+    status: string;
+    /** The resume job's id when the proxy reports one; a change signals progress. */
+    jobId?: string;
+    /** Advertised retry interval (ms) the proxy asked the client to wait. */
+    retryAfterMs?: number;
+    /** True when the proxy reported the resume was already underway. */
+    alreadyInProgress?: boolean;
+    /**
+     * Client-side timestamp (ms) of THIS observed resume probe. A single
+     * long-running resume keeps the same `status`/`jobId` across polls, so those
+     * alone can't distinguish "still progressing" from "stalled"; a fresh
+     * `observedAt` on every successful 202 is the "a live probe just succeeded"
+     * heartbeat that resets the launcher's slow-boot escalation window (#14040
+     * sub-defect 3). Stamped by the status client on each observation, not by the
+     * server.
+     */
+    observedAt?: number;
 }
-
 export interface AgentBootProgress {
-  state: "not_started" | "starting" | "running" | "stopped" | "error";
-  phase: string | null;
-  lastError: string | null;
-  pluginsLoaded: number | null;
-  pluginsFailed: number | null;
-  database: "ok" | "unknown" | "error" | null;
-  agentName: string | null;
-  port: number | null;
-  startedAt: number | null;
-  updatedAt: string;
-}
-
-export type LaunchPhase =
-  | "static-shell"
-  | "agent-process-starting"
-  | "agent-api-waiting"
-  | "agent-api-ready"
-  | "auth-checking"
-  | "pairing-required"
-  | "first-run-checking"
-  | "runtime-gate-required"
-  | "cloud-bootstrap-required"
-  | "remote-seeding"
-  | "model-background-queue"
-  | "ready"
-  | "error";
-
-export interface LaunchSnapshot {
-  phase: LaunchPhase;
-  agent: {
     state: "not_started" | "starting" | "running" | "stopped" | "error";
-    port: number | null;
-    apiBase: string | null;
-    startedAt: number | null;
-    error: string | null;
-  };
-  boot: {
-    runtimePhase: string | null;
+    phase: string | null;
+    lastError: string | null;
     pluginsLoaded: number | null;
     pluginsFailed: number | null;
     database: "ok" | "unknown" | "error" | null;
-  };
-  auth: {
-    checked: boolean;
-    required: boolean | null;
-    pairingEnabled?: boolean;
-    error?: string | null;
-  };
-  firstRun: {
-    checked: boolean;
-    complete: boolean | null;
-    cloudProvisioned?: boolean;
-    requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
-    error?: string | null;
-  };
-  localModel: {
-    backgroundDownloadQueued: boolean;
-    blocking: false;
-    error?: string | null;
-  };
-  diagnostics: {
-    logPath: string;
-    statusPath: string;
-    logTail?: string;
-  };
-  recovery: {
-    canRetry: boolean;
-    canOpenLogs: boolean;
-    canCreateBugReport: boolean;
-    suggestedAction?: string;
-  };
-  updatedAt: string;
+    agentName: string | null;
+    port: number | null;
+    startedAt: number | null;
+    updatedAt: string;
 }
-
-export type ProviderModelCategory =
-  | "chat"
-  | "embedding"
-  | "image"
-  | "tts"
-  | "stt"
-  | "other";
-
+export type LaunchPhase = "static-shell" | "agent-process-starting" | "agent-api-waiting" | "agent-api-ready" | "auth-checking" | "pairing-required" | "first-run-checking" | "runtime-gate-required" | "cloud-bootstrap-required" | "remote-seeding" | "model-background-queue" | "ready" | "error";
+export interface LaunchSnapshot {
+    phase: LaunchPhase;
+    agent: {
+        state: "not_started" | "starting" | "running" | "stopped" | "error";
+        port: number | null;
+        apiBase: string | null;
+        startedAt: number | null;
+        error: string | null;
+    };
+    boot: {
+        runtimePhase: string | null;
+        pluginsLoaded: number | null;
+        pluginsFailed: number | null;
+        database: "ok" | "unknown" | "error" | null;
+    };
+    auth: {
+        checked: boolean;
+        required: boolean | null;
+        pairingEnabled?: boolean;
+        error?: string | null;
+    };
+    firstRun: {
+        checked: boolean;
+        complete: boolean | null;
+        cloudProvisioned?: boolean;
+        requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
+        error?: string | null;
+    };
+    localModel: {
+        backgroundDownloadQueued: boolean;
+        blocking: false;
+        error?: string | null;
+    };
+    diagnostics: {
+        logPath: string;
+        statusPath: string;
+        logTail?: string;
+    };
+    recovery: {
+        canRetry: boolean;
+        canOpenLogs: boolean;
+        canCreateBugReport: boolean;
+        suggestedAction?: string;
+    };
+    updatedAt: string;
+}
+export type ProviderModelCategory = "chat" | "embedding" | "image" | "tts" | "stt" | "other";
 export interface ProviderModelRecord {
-  id: string;
-  name: string;
-  category: ProviderModelCategory;
+    id: string;
+    name: string;
+    category: ProviderModelCategory;
 }
-
 /**
  * One selectable model in the validated provider→model→efforts catalog that
  * every `GET /api/models` response carries (`catalog` field). Mirrors
@@ -281,20 +219,18 @@ export interface ProviderModelRecord {
  * validates `POST /api/models/config` writes against exactly this shape.
  */
 export interface ModelCatalogEntry {
-  id: string;
-  display: string;
-  /** Accepted reasoning-effort levels; empty = the model has no effort knob. */
-  efforts: string[];
-  defaultEffort?: string;
-  roles: Array<"small" | "large" | "coding">;
-  costHint?: string;
-  /** false = listed by the provider but not callable via the API tier. */
-  apiSupported?: boolean;
+    id: string;
+    display: string;
+    /** Accepted reasoning-effort levels; empty = the model has no effort knob. */
+    efforts: string[];
+    defaultEffort?: string;
+    roles: Array<"small" | "large" | "coding">;
+    costHint?: string;
+    /** false = listed by the provider but not callable via the API tier. */
+    apiSupported?: boolean;
 }
-
 /** Provider→entries map inside the `catalog` field of `GET /api/models`. */
 export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
-
 /**
  * The model-catalog response shape consumed by configuration UI and slash
  * completions. Current runtimes return the curated catalog under `catalog`;
@@ -302,64 +238,54 @@ export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
  * the catalog at the top level, so readers must normalize at their boundary.
  */
 export interface ModelCatalogResponse {
-  providers?: unknown;
-  catalog?: { providers?: unknown };
+    providers?: unknown;
+    catalog?: {
+        providers?: unknown;
+    };
 }
-
 export interface ModelCatalog {
-  providers: ModelCatalogProviders;
+    providers: ModelCatalogProviders;
 }
-
 export type ModelsConfigTarget = "small" | "large" | "coding";
-
 /**
  * Coding backend wire values accepted by `POST /api/models/config`. The
  * in-house backend is spelled `eliza-code` on the wire (the server persists it
  * as `ELIZA_DEFAULT_AGENT_TYPE=elizaos`).
  */
 export type ModelsConfigCodingBackend = "codex" | "claude" | "eliza-code";
-
 /** Which config seam won for a key reported by `GET /api/models/config`. */
-export type ModelsConfigSource =
-  | "config.env"
-  | "config.env.vars"
-  | "process.env"
-  | "default";
-
+export type ModelsConfigSource = "config.env" | "config.env.vars" | "process.env" | "default";
 export interface ModelsConfigEffectiveValue {
-  value: string;
-  source: ModelsConfigSource;
+    value: string;
+    source: ModelsConfigSource;
 }
-
 export interface ModelsConfigResponse {
-  targets: {
-    small: Record<string, ModelsConfigEffectiveValue | null>;
-    large: Record<string, ModelsConfigEffectiveValue | null>;
-    coding: Record<string, ModelsConfigEffectiveValue | null>;
-  };
-  /**
-   * The chat provider actually serving inference, resolved server-side from
-   * the serviceRouting topology (absent when no routing is configured).
-   */
-  activeChat?: {
-    provider: string;
-    family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
-    endpoint: string;
-  };
+    targets: {
+        small: Record<string, ModelsConfigEffectiveValue | null>;
+        large: Record<string, ModelsConfigEffectiveValue | null>;
+        coding: Record<string, ModelsConfigEffectiveValue | null>;
+    };
+    /**
+     * The chat provider actually serving inference, resolved server-side from
+     * the serviceRouting topology (absent when no routing is configured).
+     */
+    activeChat?: {
+        provider: string;
+        family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+        endpoint: string;
+    };
 }
-
 export interface ModelsConfigWriteRequest {
-  target: ModelsConfigTarget;
-  /** Chat targets: cerebras | elizacloud | claude-chat. */
-  provider?: string;
-  /** Coding target only. */
-  backend?: ModelsConfigCodingBackend;
-  model: string;
-  effort?: string;
-  /** Persist this backend as ELIZA_DEFAULT_AGENT_TYPE alongside the write. */
-  defaultBackend?: ModelsConfigCodingBackend;
+    target: ModelsConfigTarget;
+    /** Chat targets: cerebras | elizacloud | claude-chat. */
+    provider?: string;
+    /** Coding target only. */
+    backend?: ModelsConfigCodingBackend;
+    model: string;
+    effort?: string;
+    /** Persist this backend as ELIZA_DEFAULT_AGENT_TYPE alongside the write. */
+    defaultBackend?: ModelsConfigCodingBackend;
 }
-
 /**
  * Normalized `POST /api/models/config` outcome. The route answers three
  * designed shapes — 2xx applied/deduped, 400 `MODEL_CONFIG_INVALID`, 409
@@ -368,176 +294,157 @@ export interface ModelsConfigWriteRequest {
  * payload inside a generic ApiError message. Transport failures and 500s
  * still throw.
  */
-export type ModelsConfigWriteResult =
-  | {
-      kind: "applied";
-      /** True when the write requires (and already triggered) an agent restart. */
-      restart: boolean;
-      keys: string[];
-      operationId?: string;
-      /** True when an identical restart was already in flight and this write joined it. */
-      deduped?: boolean;
-      /** Keys whose process-env value came from outside the config (service env). */
-      conflictingServiceEnvKeys?: string[];
-    }
-  | {
-      kind: "invalid";
-      error: string;
-      /** Values the route would have accepted, when the failure names them. */
-      supported?: string[];
-    }
-  | { kind: "busy"; error: string; activeOperationId: string };
-
+export type ModelsConfigWriteResult = {
+    kind: "applied";
+    /** True when the write requires (and already triggered) an agent restart. */
+    restart: boolean;
+    keys: string[];
+    operationId?: string;
+    /** True when an identical restart was already in flight and this write joined it. */
+    deduped?: boolean;
+    /** Keys whose process-env value came from outside the config (service env). */
+    conflictingServiceEnvKeys?: string[];
+} | {
+    kind: "invalid";
+    error: string;
+    /** Values the route would have accepted, when the failure names them. */
+    supported?: string[];
+} | {
+    kind: "busy";
+    error: string;
+    activeOperationId: string;
+};
 export interface AgentAutomationModeResponse {
-  mode: AgentAutomationMode;
-  options: AgentAutomationMode[];
+    mode: AgentAutomationMode;
+    options: AgentAutomationMode[];
 }
-
 export interface TradePermissionModeResponse {
-  mode: TradePermissionMode;
-  tradePermissionMode: TradePermissionMode;
-  options?: TradePermissionMode[];
-  ok?: boolean;
-  canUserLocalExecute?: boolean;
-  canAgentAutoTrade?: boolean;
+    mode: TradePermissionMode;
+    tradePermissionMode: TradePermissionMode;
+    options?: TradePermissionMode[];
+    ok?: boolean;
+    canUserLocalExecute?: boolean;
+    canAgentAutoTrade?: boolean;
 }
-
 export interface ApplyProductionWalletDefaultsResponse {
-  ok: boolean;
-  profile: "pure-privy-safe";
-  walletMode: "privy";
-  tradePermissionMode: "user-sign-only";
-  bscExecutionEnabled: false;
-  clearedSecrets: string[];
+    ok: boolean;
+    profile: "pure-privy-safe";
+    walletMode: "privy";
+    tradePermissionMode: "user-sign-only";
+    bscExecutionEnabled: false;
+    clearedSecrets: string[];
 }
-
 export interface AgentSelfStatusSnapshot {
-  generatedAt: string;
-  state: AgentState;
-  agentName: string;
-  model: string | null;
-  provider: string | null;
-  automationMode: AgentAutomationMode;
-  tradePermissionMode: TradePermissionMode;
-  shellEnabled: boolean;
-  wallet: {
-    walletSource: "local" | "managed" | "none";
-    evmAddress: string | null;
-    evmAddressShort: string | null;
-    solanaAddress: string | null;
-    solanaAddressShort: string | null;
-    hasWallet: boolean;
-    hasEvm: boolean;
-    hasSolana: boolean;
-    localSignerAvailable: boolean;
-    managedBscRpcReady: boolean;
-    rpcReady: boolean;
-    pluginEvmLoaded: boolean;
-    pluginEvmRequired: boolean;
-    executionReady: boolean;
-    executionBlockedReason: string | null;
-  };
-  plugins: {
-    totalActive: number;
-    active: string[];
-    aiProviders: string[];
-    connectors: string[];
-  };
-  capabilities: {
-    canTrade: boolean;
-    canLocalTrade: boolean;
-    canAutoTrade: boolean;
-    canUseBrowser: boolean;
-    canUseComputer: boolean;
-    canRunTerminal: boolean;
-    canInstallPlugins: boolean;
-    canConfigurePlugins: boolean;
-    canConfigureConnectors: boolean;
-  };
+    generatedAt: string;
+    state: AgentState;
+    agentName: string;
+    model: string | null;
+    provider: string | null;
+    automationMode: AgentAutomationMode;
+    tradePermissionMode: TradePermissionMode;
+    shellEnabled: boolean;
+    wallet: {
+        walletSource: "local" | "managed" | "none";
+        evmAddress: string | null;
+        evmAddressShort: string | null;
+        solanaAddress: string | null;
+        solanaAddressShort: string | null;
+        hasWallet: boolean;
+        hasEvm: boolean;
+        hasSolana: boolean;
+        localSignerAvailable: boolean;
+        managedBscRpcReady: boolean;
+        rpcReady: boolean;
+        pluginEvmLoaded: boolean;
+        pluginEvmRequired: boolean;
+        executionReady: boolean;
+        executionBlockedReason: string | null;
+    };
+    plugins: {
+        totalActive: number;
+        active: string[];
+        aiProviders: string[];
+        connectors: string[];
+    };
+    capabilities: {
+        canTrade: boolean;
+        canLocalTrade: boolean;
+        canAutoTrade: boolean;
+        canUseBrowser: boolean;
+        canUseComputer: boolean;
+        canRunTerminal: boolean;
+        canInstallPlugins: boolean;
+        canConfigurePlugins: boolean;
+        canConfigureConnectors: boolean;
+    };
 }
-
 // WebSocket connection state tracking
-export type WebSocketConnectionState =
-  | "connected"
-  | "disconnected"
-  | "reconnecting"
-  | "failed";
-
+export type WebSocketConnectionState = "connected" | "disconnected" | "reconnecting" | "failed";
 export interface ConnectionStateInfo {
-  state: WebSocketConnectionState;
-  reconnectAttempt: number;
-  maxReconnectAttempts: number;
-  disconnectedAt: number | null;
+    state: WebSocketConnectionState;
+    reconnectAttempt: number;
+    maxReconnectAttempts: number;
+    disconnectedAt: number | null;
 }
-
 export type ApiErrorKind = "timeout" | "network" | "http" | "parse";
-
 export class ApiError extends Error {
-  readonly kind: ApiErrorKind;
-  readonly status?: number;
-  readonly path: string;
-  /** Application error code from the JSON body (e.g. "rate_limit_exceeded"). */
-  readonly code?: string;
-  /** Seconds until the caller should retry, from the JSON body or Retry-After header. */
-  readonly retryAfter?: number;
-  /**
-   * The parsed JSON error body, when the response carried one. Structured
-   * error surfaces (e.g. the credit-gate 402's `welcomeBonusWithheld` flag)
-   * need more than the flattened `message`/`code`, and the direct-cloud
-   * request path already exposes the body as `data` — this keeps the two
-   * transports symmetric for classifiers that read either.
-   */
-  readonly data?: unknown;
-
-  constructor(options: {
-    kind: ApiErrorKind;
-    path: string;
-    message: string;
-    status?: number;
-    code?: string;
-    retryAfter?: number;
-    data?: unknown;
-    cause?: unknown;
-  }) {
-    super(options.message);
-    this.name = "ApiError";
-    this.kind = options.kind;
-    this.path = options.path;
-    this.status = options.status;
-    this.code = options.code;
-    this.retryAfter = options.retryAfter;
-    if (options.data !== undefined) {
-      // Error objects are routinely logged/spread. Keep the parsed body
-      // directly readable by structured consumers without serializing every
-      // endpoint's potentially sensitive error fields by default.
-      Object.defineProperty(this, "data", {
-        value: options.data,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      });
-    }
-    if (options.cause !== undefined) {
-      (
-        this as Error & {
-          cause?: unknown;
+    readonly kind: ApiErrorKind;
+    readonly status?: number;
+    readonly path: string;
+    /** Application error code from the JSON body (e.g. "rate_limit_exceeded"). */
+    readonly code?: string;
+    /** Seconds until the caller should retry, from the JSON body or Retry-After header. */
+    readonly retryAfter?: number;
+    /**
+     * The parsed JSON error body, when the response carried one. Structured
+     * error surfaces (e.g. the credit-gate 402's `welcomeBonusWithheld` flag)
+     * need more than the flattened `message`/`code`, and the direct-cloud
+     * request path already exposes the body as `data` — this keeps the two
+     * transports symmetric for classifiers that read either.
+     */
+    readonly data?: unknown;
+    constructor(options: {
+        kind: ApiErrorKind;
+        path: string;
+        message: string;
+        status?: number;
+        code?: string;
+        retryAfter?: number;
+        data?: unknown;
+        cause?: unknown;
+    }) {
+        super(options.message);
+        this.name = "ApiError";
+        this.kind = options.kind;
+        this.path = options.path;
+        this.status = options.status;
+        this.code = options.code;
+        this.retryAfter = options.retryAfter;
+        if (options.data !== undefined) {
+            // Error objects are routinely logged/spread. Keep the parsed body
+            // directly readable by structured consumers without serializing every
+            // endpoint's potentially sensitive error fields by default.
+            Object.defineProperty(this, "data", {
+                value: options.data,
+                enumerable: false,
+                configurable: false,
+                writable: false,
+            });
         }
-      ).cause = options.cause;
+        if (options.cause !== undefined) {
+            (this as Error & {
+                cause?: unknown;
+            }).cause = options.cause;
+        }
     }
-  }
 }
-
 export function isApiError(value: unknown): value is ApiError {
-  return value instanceof ApiError;
+    return value instanceof ApiError;
 }
-
 export function isRateLimitedError(value: unknown): value is ApiError {
-  return (
-    value instanceof ApiError &&
-    (value.status === 429 || value.code === "rate_limit_exceeded")
-  );
+    return (value instanceof ApiError &&
+        (value.status === 429 || value.code === "rate_limit_exceeded"));
 }
-
 /**
  * Definitive "this agent row is gone" shape used for destructive binding
  * cleanup and join stale-binding recovery. Requires the structured
@@ -549,189 +456,159 @@ export function isRateLimitedError(value: unknown): value is ApiError {
  * bindings. Walks the `cause` chain so wrapped selection errors classify.
  */
 export function isCloudAgentGoneError(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
-    const { status, code } = current as Error & {
-      status?: unknown;
-      code?: unknown;
-    };
-    if (code === "agent_not_running") {
-      current = (current as Error & { cause?: unknown }).cause;
-      continue;
+    let current: unknown = error;
+    for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+        const { status, code } = current as Error & {
+            status?: unknown;
+            code?: unknown;
+        };
+        if (code === "agent_not_running") {
+            current = (current as Error & {
+                cause?: unknown;
+            }).cause;
+            continue;
+        }
+        if (code === "agent_not_found" &&
+            (status === 404 || status === undefined)) {
+            return true;
+        }
+        current = (current as Error & {
+            cause?: unknown;
+        }).cause;
     }
-    if (
-      code === "agent_not_found" &&
-      (status === 404 || status === undefined)
-    ) {
-      return true;
-    }
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return false;
+    return false;
 }
-
 export interface RuntimeDebugSnapshot {
-  runtimeAvailable: boolean;
-  generatedAt: number;
-  settings: {
-    maxDepth: number;
-    maxArrayLength: number;
-    maxObjectEntries: number;
-    maxStringLength: number;
-  };
-  meta: {
-    agentId?: string;
-    agentState: AgentState;
-    agentName: string;
-    model: string | null;
-    pluginCount: number;
-    actionCount: number;
-    providerCount: number;
-    evaluatorCount: number;
-    serviceTypeCount: number;
-    serviceCount: number;
-  };
-  order: {
-    plugins: RuntimeOrderItem[];
-    actions: RuntimeOrderItem[];
-    providers: RuntimeOrderItem[];
-    evaluators: RuntimeOrderItem[];
-    services: RuntimeServiceOrderItem[];
-  };
-  sections: {
-    runtime: unknown;
-    plugins: unknown;
-    actions: unknown;
-    providers: unknown;
-    evaluators: unknown;
-    services: unknown;
-  };
+    runtimeAvailable: boolean;
+    generatedAt: number;
+    settings: {
+        maxDepth: number;
+        maxArrayLength: number;
+        maxObjectEntries: number;
+        maxStringLength: number;
+    };
+    meta: {
+        agentId?: string;
+        agentState: AgentState;
+        agentName: string;
+        model: string | null;
+        pluginCount: number;
+        actionCount: number;
+        providerCount: number;
+        evaluatorCount: number;
+        serviceTypeCount: number;
+        serviceCount: number;
+    };
+    order: {
+        plugins: RuntimeOrderItem[];
+        actions: RuntimeOrderItem[];
+        providers: RuntimeOrderItem[];
+        evaluators: RuntimeOrderItem[];
+        services: RuntimeServiceOrderItem[];
+    };
+    sections: {
+        runtime: unknown;
+        plugins: unknown;
+        actions: unknown;
+        providers: unknown;
+        evaluators: unknown;
+        services: unknown;
+    };
 }
-
 export interface SandboxPlatformStatus {
-  platform: string;
-  arch?: string;
-  dockerInstalled?: boolean;
-  dockerAvailable?: boolean;
-  dockerRunning?: boolean;
-  appleContainerAvailable?: boolean;
-  wsl2?: boolean;
-  recommended?: string;
+    platform: string;
+    arch?: string;
+    dockerInstalled?: boolean;
+    dockerAvailable?: boolean;
+    dockerRunning?: boolean;
+    appleContainerAvailable?: boolean;
+    wsl2?: boolean;
+    recommended?: string;
 }
-
 export interface SandboxStartResponse {
-  success: boolean;
-  message: string;
-  waitMs?: number;
-  error?: string;
+    success: boolean;
+    message: string;
+    waitMs?: number;
+    error?: string;
 }
-
 export interface SandboxBrowserEndpoints {
-  cdpEndpoint?: string | null;
-  wsEndpoint?: string | null;
-  noVncEndpoint?: string | null;
+    cdpEndpoint?: string | null;
+    wsEndpoint?: string | null;
+    noVncEndpoint?: string | null;
 }
-
 export interface SandboxScreenshotRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
 }
-
 export interface SandboxScreenshotPayload {
-  format: string;
-  encoding: string;
-  width: number | null;
-  height: number | null;
-  data: string;
+    format: string;
+    encoding: string;
+    width: number | null;
+    height: number | null;
+    data: string;
 }
-
 export interface SandboxWindowInfo {
-  id: string;
-  title: string;
-  app: string;
+    id: string;
+    title: string;
+    app: string;
 }
-
 export interface AgentEventsResponse {
-  events: StreamEventEnvelope[];
-  latestEventId: string | null;
-  totalBuffered: number;
-  replayed: boolean;
+    events: StreamEventEnvelope[];
+    latestEventId: string | null;
+    totalBuffered: number;
+    replayed: boolean;
 }
-
 // WebSocket
 export type WsEventHandler = (data: Record<string, unknown>) => void;
-
 export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
+    timestamp: number;
+    level: string;
+    message: string;
+    source: string;
+    tags: string[];
 }
-
 export interface LogsResponse {
-  entries: LogEntry[];
-  sources: string[];
-  tags: string[];
+    entries: LogEntry[];
+    sources: string[];
+    tags: string[];
 }
-
 export interface LogsFilter {
-  source?: string;
-  level?: string;
-  tag?: string;
-  since?: number;
+    source?: string;
+    level?: string;
+    tag?: string;
+    since?: number;
 }
-
 export type SecurityAuditSeverity = "info" | "warn" | "error" | "critical";
-export type SecurityAuditEventType =
-  | "sandbox_mode_transition"
-  | "secret_token_replacement_outbound"
-  | "secret_sanitization_inbound"
-  | "privileged_capability_invocation"
-  | "policy_decision"
-  | "signing_request_submitted"
-  | "signing_request_rejected"
-  | "signing_request_approved"
-  | "plugin_fallback_attempt"
-  | "security_kill_switch"
-  | "sandbox_lifecycle"
-  | "fetch_proxy_error";
-
+export type SecurityAuditEventType = "sandbox_mode_transition" | "secret_token_replacement_outbound" | "secret_sanitization_inbound" | "privileged_capability_invocation" | "policy_decision" | "signing_request_submitted" | "signing_request_rejected" | "signing_request_approved" | "plugin_fallback_attempt" | "security_kill_switch" | "sandbox_lifecycle" | "fetch_proxy_error";
 export interface SecurityAuditEntry {
-  timestamp: string;
-  type: SecurityAuditEventType;
-  summary: string;
-  metadata?: Record<string, string | number | boolean | null>;
-  severity: SecurityAuditSeverity;
-  traceId?: string;
+    timestamp: string;
+    type: SecurityAuditEventType;
+    summary: string;
+    metadata?: Record<string, string | number | boolean | null>;
+    severity: SecurityAuditSeverity;
+    traceId?: string;
 }
-
 export interface SecurityAuditFilter {
-  type?: SecurityAuditEventType;
-  severity?: SecurityAuditSeverity;
-  since?: number | string | Date;
-  limit?: number;
+    type?: SecurityAuditEventType;
+    severity?: SecurityAuditSeverity;
+    since?: number | string | Date;
+    limit?: number;
 }
-
 export interface SecurityAuditResponse {
-  entries: SecurityAuditEntry[];
-  totalBuffered: number;
-  replayed: true;
+    entries: SecurityAuditEntry[];
+    totalBuffered: number;
+    replayed: true;
 }
-
-export type SecurityAuditStreamEvent =
-  | {
-      type: "snapshot";
-      entries: SecurityAuditEntry[];
-      totalBuffered: number;
-    }
-  | {
-      type: "entry";
-      entry: SecurityAuditEntry;
-    };
-
+export type SecurityAuditStreamEvent = {
+    type: "snapshot";
+    entries: SecurityAuditEntry[];
+    totalBuffered: number;
+} | {
+    type: "entry";
+    entry: SecurityAuditEntry;
+};
 // ---------------------------------------------------------------------------
 // LifeOps ScheduledTask — transport view (GET /api/lifeops/scheduled-tasks)
 // ---------------------------------------------------------------------------
@@ -742,83 +619,75 @@ export type SecurityAuditStreamEvent =
 // the dashboard surfaces. It is intentionally a subset — additive widening is
 // safe, but it must never diverge in meaning from the runner's contract.
 // Mirrors the wire shape returned by the route's `runner.list()` JSON.
-
-export type ScheduledTaskKindView =
-  | "reminder"
-  | "checkin"
-  | "followup"
-  | "approval"
-  | "recap"
-  | "watcher"
-  | "output"
-  | "custom";
-
-export type ScheduledTaskStatusView =
-  | "scheduled"
-  | "fired"
-  | "acknowledged"
-  | "completed"
-  | "skipped"
-  | "expired"
-  | "failed"
-  | "dismissed";
-
-export type ScheduledTaskSourceView =
-  | "default_pack"
-  | "user_chat"
-  | "first_run"
-  | "plugin";
-
+export type ScheduledTaskKindView = "reminder" | "checkin" | "followup" | "approval" | "recap" | "watcher" | "output" | "custom";
+export type ScheduledTaskStatusView = "scheduled" | "fired" | "acknowledged" | "completed" | "skipped" | "expired" | "failed" | "dismissed";
+export type ScheduledTaskSourceView = "default_pack" | "user_chat" | "first_run" | "plugin";
 /**
  * Discriminated trigger view. Matches `ScheduledTaskTrigger` in the spine;
  * the adapter only reads `kind` plus the cron `expression`/anchor, so the
  * remaining trigger payloads are widened to optional opaque fields rather
  * than fully re-typed (they are not rendered).
  */
-export type ScheduledTaskTriggerView =
-  | { kind: "once"; atIso: string }
-  | { kind: "cron"; expression: string; tz: string }
-  | { kind: "interval"; everyMinutes: number; from?: string; until?: string }
-  | { kind: "relative_to_anchor"; anchorKey: string; offsetMinutes: number }
-  | { kind: "during_window"; windowKey: string }
-  | { kind: "event"; eventKind: string }
-  | { kind: "manual" }
-  | { kind: "after_task"; taskId: string; outcome: string };
-
+export type ScheduledTaskTriggerView = {
+    kind: "once";
+    atIso: string;
+} | {
+    kind: "cron";
+    expression: string;
+    tz: string;
+} | {
+    kind: "interval";
+    everyMinutes: number;
+    from?: string;
+    until?: string;
+} | {
+    kind: "relative_to_anchor";
+    anchorKey: string;
+    offsetMinutes: number;
+} | {
+    kind: "during_window";
+    windowKey: string;
+} | {
+    kind: "event";
+    eventKind: string;
+} | {
+    kind: "manual";
+} | {
+    kind: "after_task";
+    taskId: string;
+    outcome: string;
+};
 export interface ScheduledTaskStateView {
-  status: ScheduledTaskStatusView;
-  firedAt?: string;
-  acknowledgedAt?: string;
-  completedAt?: string;
-  followupCount: number;
-  lastFollowupAt?: string;
-  lastDecisionLog?: string;
+    status: ScheduledTaskStatusView;
+    firedAt?: string;
+    acknowledgedAt?: string;
+    completedAt?: string;
+    followupCount: number;
+    lastFollowupAt?: string;
+    lastDecisionLog?: string;
 }
-
 export interface ScheduledTaskView {
-  taskId: string;
-  kind: ScheduledTaskKindView;
-  promptInstructions: string;
-  trigger: ScheduledTaskTriggerView;
-  priority: "low" | "medium" | "high";
-  respectsGlobalPause: boolean;
-  state: ScheduledTaskStateView;
-  source: ScheduledTaskSourceView;
-  createdBy: string;
-  ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
+    taskId: string;
+    kind: ScheduledTaskKindView;
+    promptInstructions: string;
+    trigger: ScheduledTaskTriggerView;
+    priority: "low" | "medium" | "high";
+    respectsGlobalPause: boolean;
+    state: ScheduledTaskStateView;
+    source: ScheduledTaskSourceView;
+    createdBy: string;
+    ownerVisible: boolean;
+    metadata?: Record<string, unknown>;
 }
-
 /** Optional filter accepted by `GET /api/lifeops/scheduled-tasks`. */
 export interface ScheduledTaskListFilter {
-  kind?: ScheduledTaskKindView;
-  status?: ScheduledTaskStatusView;
-  source?: ScheduledTaskSourceView;
-  firedSince?: string;
-  /** Restrict to owner-visible rows (passed as `ownerVisibleOnly=1`). */
-  ownerVisibleOnly?: boolean;
+    kind?: ScheduledTaskKindView;
+    status?: ScheduledTaskStatusView;
+    source?: ScheduledTaskSourceView;
+    firedSince?: string;
+    /** Restrict to owner-visible rows (passed as `ownerVisibleOnly=1`). */
+    ownerVisibleOnly?: boolean;
 }
-
 export interface ScheduledTaskListResponse {
-  tasks: ScheduledTaskView[];
+    tasks: ScheduledTaskView[];
 }

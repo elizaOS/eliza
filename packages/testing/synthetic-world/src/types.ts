@@ -1,105 +1,79 @@
 /** Defines durable command records and the truthful incremental synthetic-world capability surface. */
-
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
-
+import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
 export const SYNTHETIC_WORLD_COMMAND_VERSION = 1 as const;
-
-export type SyntheticJson =
-  | null
-  | boolean
-  | number
-  | string
-  | SyntheticJson[]
-  | { [key: string]: SyntheticJson };
-
-export type SyntheticCommandPhase =
-  | "OWNED"
-  | "EXECUTING"
-  | "COMMITTED"
-  | "SUCCEEDED"
-  | "FAILED"
-  | "DIRTY";
-
-export type SyntheticCommandOutcome =
-  | "PENDING"
-  | "KNOWN_SUCCESS"
-  | "KNOWN_FAILURE"
-  | "UNKNOWN";
-
+export type SyntheticJson = null | boolean | number | string | SyntheticJson[] | {
+    [key: string]: SyntheticJson;
+};
+export type SyntheticCommandPhase = "OWNED" | "EXECUTING" | "COMMITTED" | "SUCCEEDED" | "FAILED" | "DIRTY";
+export type SyntheticCommandOutcome = "PENDING" | "KNOWN_SUCCESS" | "KNOWN_FAILURE" | "UNKNOWN";
 export interface SyntheticWorldCommand {
-  version: typeof SYNTHETIC_WORLD_COMMAND_VERSION;
-  namespace: string;
-  generation: number;
-  commandId: string;
-  type: string;
-  payload: SyntheticJson;
+    version: typeof SYNTHETIC_WORLD_COMMAND_VERSION;
+    namespace: string;
+    generation: number;
+    commandId: string;
+    type: string;
+    payload: SyntheticJson;
 }
-
 export interface SyntheticCommandRecord {
-  version: typeof SYNTHETIC_WORLD_COMMAND_VERSION;
-  namespace: string;
-  commandId: string;
-  generation: number;
-  type: string;
-  payloadHash: string;
-  payload: SyntheticJson;
-  phase: SyntheticCommandPhase;
-  outcome: SyntheticCommandOutcome;
-  result: SyntheticJson | null;
-  error: { code: string; message: string } | null;
-  executionToken: string | null;
-  createdAt: string;
-  heartbeatAt: string;
-  updatedAt: string;
-  revision: number;
+    version: typeof SYNTHETIC_WORLD_COMMAND_VERSION;
+    namespace: string;
+    commandId: string;
+    generation: number;
+    type: string;
+    payloadHash: string;
+    payload: SyntheticJson;
+    phase: SyntheticCommandPhase;
+    outcome: SyntheticCommandOutcome;
+    result: SyntheticJson | null;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+    executionToken: string | null;
+    createdAt: string;
+    heartbeatAt: string;
+    updatedAt: string;
+    revision: number;
 }
-
 export interface SyntheticCommandExecution {
-  record: SyntheticCommandRecord;
-  result: SyntheticJson;
-  replayed: boolean;
+    record: SyntheticCommandRecord;
+    result: SyntheticJson;
+    replayed: boolean;
 }
-
 export interface SyntheticCommandRecovery {
-  retryableCommandIds: string[];
-  failedCommandIds: string[];
-  dirtyCommandIds: string[];
-  activeCommandIds: string[];
+    retryableCommandIds: string[];
+    failedCommandIds: string[];
+    dirtyCommandIds: string[];
+    activeCommandIds: string[];
 }
-
 export interface SyntheticCommandCheckpoint {
-  phase: "OWNED" | "EXECUTING" | "COMMITTED";
-  commandId: string;
-  executionToken: string;
+    phase: "OWNED" | "EXECUTING" | "COMMITTED";
+    commandId: string;
+    executionToken: string;
 }
-
 export interface SyntheticCommandExecutionOptions {
-  onCheckpoint?: (
-    checkpoint: SyntheticCommandCheckpoint,
-  ) => void | Promise<void>;
+    onCheckpoint?: (checkpoint: SyntheticCommandCheckpoint) => void | Promise<void>;
 }
-
 export interface SyntheticCommandHeartbeat {
-  authority: SyntheticEnvironmentLeaseAuthority;
-  commandId: string;
-  executionToken: string;
+    authority: SyntheticEnvironmentLeaseAuthority;
+    commandId: string;
+    executionToken: string;
 }
-
 export const SYNTHETIC_WORLD_CAPABILITIES = Object.freeze({
-  available: [
-    "lease-generation-fence",
-    "durable-command-journal",
-    "production-runtime-boot",
-    "production-pglite-readback",
-    "cloud-command-journal-adapter",
-  ] as const,
-  unavailable: [
-    "full-manifest",
-    "virtual-clock",
-    "fault-injection",
-    "observation-ledger",
-    "atomic-production-domain-command",
-    "subprocess-orchestration",
-    "deployment-qualification",
-  ] as const,
+    available: [
+        "lease-generation-fence",
+        "durable-command-journal",
+        "production-runtime-boot",
+        "production-pglite-readback",
+        "cloud-command-journal-adapter",
+    ] as const,
+    unavailable: [
+        "full-manifest",
+        "virtual-clock",
+        "fault-injection",
+        "observation-ledger",
+        "atomic-production-domain-command",
+        "subprocess-orchestration",
+        "deployment-qualification",
+    ] as const,
 });

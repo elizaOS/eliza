@@ -7,10 +7,7 @@
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { createApprovalQueue } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsLinkedCalendarLink,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent, type LifeOpsLinkedCalendarLink } from "@elizaos/core/contracts/calendar";
 import { z } from "zod";
 import {
   type AccountHandoffRetirementCandidate,

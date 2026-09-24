@@ -6,145 +6,119 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { isDeepStrictEqual } from "node:util";
-import {
-  type ActionReplyFailure,
-  type ActionResult,
-  type AgentRuntime,
-  attestAuthenticatedApiDeliveryAudience,
-  ChannelType,
-  type Content,
-  createMessageMemory,
-  type EffectReceipt,
-  ElizaError,
-  EventType,
-  emitInferenceTiming,
-  getEntityRole,
-  getInferenceTimer,
-  hasAppliedUserFacingEffectProof,
-  hasAtLeastRole,
-  INFERENCE_MARKS,
-  INSUFFICIENT_CREDITS_REPLY,
-  InferenceTurnTimer,
-  isRateLimitError,
-  isTextGenerationModelType,
-  MESSAGE_SOURCE_CLIENT_CHAT,
-  type Memory,
-  type MessageReplyRecoveryContext,
-  ModelType,
-  markInference,
-  nextInferenceTurnId,
-  normalizeEffectReceipts,
-  type RolesWorldMetadata,
-  type RoomHandlerLease,
-  readActionReplyFailure,
-  recordOwnerGrant,
-  recordRoleGrant,
-  renderInteractionsAsPlainText,
-  revertedEffectReceiptIds,
-  runWithInferenceTiming,
-  runWithTrajectoryContext,
-  stampAppConversationProvenance,
-  stringToUuid,
-  stripDashboardOnlyMarkers,
-  type TrustedApiPrincipal,
-  type TurnOutcome,
-  tagsMayProduceEffects,
-  timeInferenceSpan,
-  toWellFormedUnicode,
-  trackPostDeliveryTask,
-  type UUID,
-  withRoomDeliverySettlement,
-} from "@elizaos/core";
-import {
-  persistInferenceTimingSummary,
-  shouldSkipResponseMemoryPersistence,
-} from "@elizaos/plugin-assistant";
-import type {
-  ChatFailureKind,
-  ChatTerminalFailure,
-  ChatToolCallEvent,
-  ChatTurnStatus,
-  LinkedAccountProviderId,
-  LogEntry,
-  ReadJsonBodyOptions,
-  RouteRequestContext,
-} from "@elizaos/shared";
-import {
-  asRecord,
-  DELTA_STREAM_PROTOCOL,
-  extractAssistantReplyText,
-  isLinkedAccountProviderId,
-  normalizeCharacterLanguage,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-  readAliasedEnv,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
-import {
-  type CapturedModelUsage,
-  estimateTokenCount,
-  withModelUsageCapture,
-} from "../runtime/prompt-optimization.ts";
-import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
-import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
-import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
-import {
-  type ChatIdempotencyAdmission,
-  type ChatIdempotencyReservation,
-  ChatIdempotencyWaitAbortedError,
-  createChatIdempotencyStore,
-} from "../services/chat-idempotency-service.ts";
+import { ChannelType } from "@elizaos/core";
+import { ChatIdempotencyWaitAbortedError } from "../services/chat-idempotency-service.ts";
+import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
+import { ElizaError } from "@elizaos/core";
+import { EventType } from "@elizaos/core";
+import { INFERENCE_MARKS } from "@elizaos/core";
+import { INSUFFICIENT_CREDITS_REPLY } from "@elizaos/core";
+import { InferenceTurnTimer } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { asRecord } from "@elizaos/core/type-guards";
+import { attestAuthenticatedApiDeliveryAudience } from "@elizaos/core";
+import { cloneWithoutBlockedObjectKeys } from "./server-helpers.ts";
+import { createChatIdempotencyStore } from "../services/chat-idempotency-service.ts";
+import { createMessageMemory } from "@elizaos/core";
+import { decodePathComponent } from "./server-helpers.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
-import {
-  maybeAugmentChatMessageWithDocuments,
-  maybeAugmentChatMessageWithLanguage,
-} from "./chat-augmentation.ts";
-import { initSse, writeSseData, writeSseJson } from "./chat-stream-writer.ts";
-import {
-  isClientVisibleNoResponse,
-  isNoResponsePlaceholder,
-} from "./chat-text-helpers.ts";
+import { emitInferenceTiming } from "@elizaos/core";
 import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
-import {
-  extractAnthropicSystemAndLastUser,
-  extractCompatTextContent,
-  extractOpenAiSystemAndLastUser,
-  resolveCompatRoomKey,
-  scopeCompatRoomKey,
-} from "./compat-utils.ts";
-import {
-  isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
-} from "./credit-detection.ts";
-import {
-  executeFallbackParsedActions,
-  parseFallbackActionBlocks,
-} from "./fallback-action-helpers.ts";
-import {
-  type LocalInferenceChatMetadata,
-  type LocalInferenceCommandIntent,
-  type LocalInferenceRouteApi,
-  loadLocalInferenceRouteApi,
-} from "./local-inference-server-api.ts";
-import {
-  cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  getErrorMessage,
-  hasBlockedObjectKeyDeep,
-  normalizeIncomingChatPrompt,
-  resolveAppUserName,
-  validateChatImages,
-} from "./server-helpers.ts";
-import {
-  isAuthorized,
-  isServerTokenAuthorized,
-} from "./server-helpers-auth.ts";
-import type { ChatImageAttachment } from "./server-types.ts";
+import { estimateTokenCount } from "../runtime/prompt-optimization.ts";
+import { executeFallbackParsedActions } from "./fallback-action-helpers.ts";
+import { extractAnthropicSystemAndLastUser } from "./compat-utils.ts";
+import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
+import { extractCompatTextContent } from "./compat-utils.ts";
+import { extractOpenAiSystemAndLastUser } from "./compat-utils.ts";
+import { getEntityRole } from "@elizaos/core";
+import { getErrorMessage } from "./server-helpers.ts";
+import { getInferenceTimer } from "@elizaos/core";
+import { hasAppliedUserFacingEffectProof } from "@elizaos/core";
+import { hasAtLeastRole } from "@elizaos/core";
+import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
+import { initSse } from "./chat-stream-writer.ts";
+import { isAuthorized } from "./server-helpers-auth.ts";
+import { isClientVisibleNoResponse } from "./chat-text-helpers.ts";
+import { isDeepStrictEqual } from "node:util";
+import { isInsufficientCreditsError } from "./credit-detection.ts";
+import { isInsufficientCreditsMessage } from "./credit-detection.ts";
+import { isLinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import { isNoResponsePlaceholder } from "./chat-text-helpers.ts";
+import { isRateLimitError } from "@elizaos/core";
+import { isServerTokenAuthorized } from "./server-helpers-auth.ts";
+import { isTextGenerationModelType } from "@elizaos/core";
 import { listViews } from "./views-registry.ts";
+import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { markInference } from "@elizaos/core";
+import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
+import { maybeAugmentChatMessageWithLanguage } from "./chat-augmentation.ts";
+import { nextInferenceTurnId } from "@elizaos/core";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
+import { normalizeEffectReceipts } from "@elizaos/core";
+import { normalizeIncomingChatPrompt } from "./server-helpers.ts";
+import { parseChatFailureKind } from "@elizaos/core/contracts/chat";
+import { parseChatTerminalFailure } from "@elizaos/core/contracts/chat";
+import { parseFallbackActionBlocks } from "./fallback-action-helpers.ts";
+import { persistInferenceTimingSummary } from "@elizaos/plugin-assistant";
+import { readActionReplyFailure } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { recordOwnerGrant } from "@elizaos/core";
+import { recordRoleGrant } from "@elizaos/core";
+import { renderInteractionsAsPlainText } from "@elizaos/core";
+import { resolveAppUserName } from "./server-helpers.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import { resolveCompatRoomKey } from "./compat-utils.ts";
+import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
+import { revertedEffectReceiptIds } from "@elizaos/core";
+import { runWithInferenceTiming } from "@elizaos/core";
+import { runWithTrajectoryContext } from "@elizaos/core";
+import { scopeCompatRoomKey } from "./compat-utils.ts";
+import { shouldSkipResponseMemoryPersistence } from "@elizaos/plugin-assistant";
+import { stampAppConversationProvenance } from "@elizaos/core";
+import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
+import { stringToUuid } from "@elizaos/core";
+import { stripDashboardOnlyMarkers } from "@elizaos/core";
+import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
+import { tagsMayProduceEffects } from "@elizaos/core";
+import { timeInferenceSpan } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { trackPostDeliveryTask } from "@elizaos/core";
+import { type ActionReplyFailure } from "@elizaos/core";
+import { type ActionResult } from "@elizaos/core";
+import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { type AgentRuntime } from "@elizaos/core";
+import { type CapturedModelUsage } from "../runtime/prompt-optimization.ts";
+import { type ChatFailureKind } from "@elizaos/core/contracts/chat";
+import { type ChatIdempotencyAdmission } from "../services/chat-idempotency-service.ts";
+import { type ChatIdempotencyReservation } from "../services/chat-idempotency-service.ts";
+import { type ChatImageAttachment } from "./server-types.ts";
+import { type ChatTerminalFailure } from "@elizaos/core/contracts/chat";
+import { type ChatToolCallEvent } from "@elizaos/core/contracts/chat";
+import { type ChatTurnStatus } from "@elizaos/core/contracts/chat";
+import { type Content } from "@elizaos/core";
+import { type EffectReceipt } from "@elizaos/core";
+import { type ElizaConfig } from "../config/config.ts";
+import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import { type LocalInferenceChatMetadata } from "./local-inference-server-api.ts";
+import { type LocalInferenceCommandIntent } from "./local-inference-server-api.ts";
+import { type LocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { type LogEntry } from "@elizaos/core/api/agent-api-types";
+import { type Memory } from "@elizaos/core";
+import { type MessageReplyRecoveryContext } from "@elizaos/core";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { type RolesWorldMetadata } from "@elizaos/core";
+import { type RoomHandlerLease } from "@elizaos/core";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import { type TrustedApiPrincipal } from "@elizaos/core";
+import { type TurnOutcome } from "@elizaos/core";
+import { type UUID } from "@elizaos/core";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
+import { validateChatImages } from "./server-helpers.ts";
+import { withModelUsageCapture } from "../runtime/prompt-optimization.ts";
+import { withRoomDeliverySettlement } from "@elizaos/core";
+import { writeSseData } from "./chat-stream-writer.ts";
+import { writeSseJson } from "./chat-stream-writer.ts";
 
 export type { ChatImageAttachment, LogEntry };
 

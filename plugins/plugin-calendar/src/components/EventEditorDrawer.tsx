@@ -4,14 +4,8 @@
  * augmented `@elizaos/ui` client to the calendar routes. Mounted by the
  * calendar views when the owner adds or edits an event.
  */
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventUpdate,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import { type CreateLifeOpsCalendarEventAttendee, type CreateLifeOpsCalendarEventRequest, type LifeOpsCalendarEvent, type LifeOpsCalendarEventUpdate, type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import {

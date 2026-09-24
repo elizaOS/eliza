@@ -5,8 +5,8 @@
  */
 import path from "node:path";
 
-import { readAliasedEnv } from "@elizaos/shared";
-import { resolveHostExecutable } from "@elizaos/shared/host-execution-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { resolveHostExecutable } from "@elizaos/core/host-execution-env";
 
 export const TERMINAL_TOOL_NAMES = [
   "sh",

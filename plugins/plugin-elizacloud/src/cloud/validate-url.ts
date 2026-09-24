@@ -1,10 +1,7 @@
 import dns from "node:dns";
 import net from "node:net";
 import { promisify } from "node:util";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 const dnsLookupAll = promisify(dns.lookup);
 

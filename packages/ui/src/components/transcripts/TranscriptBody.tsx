@@ -9,140 +9,76 @@
  * Keeping it prop-driven (`currentTimeMs` in, `onSeekMs` out) means the sync is
  * deterministic and unit-testable without real audio playback.
  */
-
-import {
-  activeWordIndex,
-  flattenTranscriptWords,
-  type Transcript,
-} from "@elizaos/shared";
-import * as React from "react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
-
+import { activeWordIndex } from "@elizaos/core/transcripts";
+import { flattenTranscriptWords } from "@elizaos/core/transcripts";
+import { type Transcript } from "@elizaos/core/transcripts";
+import * as React from "react";
 export interface TranscriptBodyProps {
-  transcript: Transcript;
-  /** Current playback position (ms from audio start) driving the highlight. */
-  currentTimeMs: number;
-  /** Seek to a position when a word / untimed segment is clicked. */
-  onSeekMs?: (ms: number) => void;
+    transcript: Transcript;
+    /** Current playback position (ms from audio start) driving the highlight. */
+    currentTimeMs: number;
+    /** Seek to a position when a word / untimed segment is clicked. */
+    onSeekMs?: (ms: number) => void;
 }
-
 /** Last segment whose start is ≤ `ms` (segment-level fallback highlight). */
 function segmentAt(segments: Transcript["segments"], ms: number): number {
-  let found = -1;
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i].startMs <= ms) found = i;
-    else break;
-  }
-  return found;
+    let found = -1;
+    for (let i = 0; i < segments.length; i++) {
+        if (segments[i].startMs <= ms)
+            found = i;
+        else
+            break;
+    }
+    return found;
 }
-
 interface TranscriptWordProps {
-  text: string;
-  startMs: number;
-  isActive: boolean;
-  testId: string;
-  onSeek: (startMs: number) => void;
+    text: string;
+    startMs: number;
+    isActive: boolean;
+    testId: string;
+    onSeek: (startMs: number) => void;
 }
-
 // Memoized so that, as playback advances, only the word whose active-state flips
 // re-renders — not every word button in the transcript on every audio frame.
 // `onSeek` is stable (ref-backed in the parent), so `isActive` is the only prop
 // that changes.
-const TranscriptWord = React.memo(function TranscriptWord({
-  text,
-  startMs,
-  isActive,
-  testId,
-  onSeek,
-}: TranscriptWordProps): React.JSX.Element {
-  return (
-    <>
-      <Button
-        variant="selection"
-        size="content"
-        data-state={isActive ? "on" : "off"}
-        data-testid={testId}
-        data-active={isActive ? "true" : undefined}
-        onClick={() => onSeek(startMs)}
-      >
+const TranscriptWord = React.memo(function TranscriptWord({ text, startMs, isActive, testId, onSeek, }: TranscriptWordProps): React.JSX.Element {
+    return (<>
+      <Button variant="selection" size="content" data-state={isActive ? "on" : "off"} data-testid={testId} data-active={isActive ? "true" : undefined} onClick={() => onSeek(startMs)}>
         {text}
       </Button>{" "}
-    </>
-  );
+    </>);
 });
-
-export function TranscriptBody({
-  transcript,
-  currentTimeMs,
-  onSeekMs,
-}: TranscriptBodyProps): React.JSX.Element {
-  const flat = React.useMemo(
-    () => flattenTranscriptWords(transcript.segments),
-    [transcript.segments],
-  );
-  const activeFlat = activeWordIndex(flat, currentTimeMs);
-  const active = activeFlat >= 0 ? flat[activeFlat] : undefined;
-  const fallbackSeg = segmentAt(transcript.segments, currentTimeMs);
-  // Stable seek handler so the memoized words don't see a new prop every frame.
-  const onSeekRef = React.useRef(onSeekMs);
-  onSeekRef.current = onSeekMs;
-  const handleSeek = React.useCallback(
-    (ms: number) => onSeekRef.current?.(ms),
-    [],
-  );
-
-  return (
-    <div className="space-y-4 leading-relaxed text-txt">
+export function TranscriptBody({ transcript, currentTimeMs, onSeekMs, }: TranscriptBodyProps): React.JSX.Element {
+    const flat = React.useMemo(() => flattenTranscriptWords(transcript.segments), [transcript.segments]);
+    const activeFlat = activeWordIndex(flat, currentTimeMs);
+    const active = activeFlat >= 0 ? flat[activeFlat] : undefined;
+    const fallbackSeg = segmentAt(transcript.segments, currentTimeMs);
+    // Stable seek handler so the memoized words don't see a new prop every frame.
+    const onSeekRef = React.useRef(onSeekMs);
+    onSeekRef.current = onSeekMs;
+    const handleSeek = React.useCallback((ms: number) => onSeekRef.current?.(ms), []);
+    return (<div className="space-y-4 leading-relaxed text-txt">
       {transcript.segments.map((seg, si) => {
-        const segActive = seg.words.length === 0 && si === fallbackSeg;
-        return (
-          <div key={seg.id} data-testid={`transcript-segment-${si}`}>
-            {seg.speakerLabel || seg.speakerNameAttribution ? (
-              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted">
+            const segActive = seg.words.length === 0 && si === fallbackSeg;
+            return (<div key={seg.id} data-testid={`transcript-segment-${si}`}>
+            {seg.speakerLabel || seg.speakerNameAttribution ? (<div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted">
                 {seg.speakerLabel ? <span>{seg.speakerLabel}</span> : null}
-                <SpeakerNameAttributionBadge
-                  attribution={seg.speakerNameAttribution}
-                />
-              </div>
-            ) : null}
-            <Card
-              asChild
-              variant={segActive ? "nativeTranscriptUser" : "transparent"}
-            >
+                <SpeakerNameAttributionBadge attribution={seg.speakerNameAttribution}/>
+              </div>) : null}
+            <Card asChild variant={segActive ? "nativeTranscriptUser" : "transparent"}>
               <p>
-                {seg.words.length > 0 ? (
-                  seg.words.map((w, wi) => (
-                    <TranscriptWord
-                      key={`${seg.id}-${w.startMs}-${w.text}`}
-                      text={w.text}
-                      startMs={w.startMs}
-                      isActive={
-                        active !== undefined &&
+                {seg.words.length > 0 ? (seg.words.map((w, wi) => (<TranscriptWord key={`${seg.id}-${w.startMs}-${w.text}`} text={w.text} startMs={w.startMs} isActive={active !== undefined &&
                         active.segmentIndex === si &&
-                        active.wordIndex === wi
-                      }
-                      testId={`transcript-word-${si}-${wi}`}
-                      onSeek={handleSeek}
-                    />
-                  ))
-                ) : (
-                  <Button
-                    variant="transparent"
-                    size="content"
-                    align="start"
-                    data-testid={`transcript-segment-text-${si}`}
-                    onClick={() => handleSeek(seg.startMs)}
-                  >
+                        active.wordIndex === wi} testId={`transcript-word-${si}-${wi}`} onSeek={handleSeek}/>))) : (<Button variant="transparent" size="content" align="start" data-testid={`transcript-segment-text-${si}`} onClick={() => handleSeek(seg.startMs)}>
                     {seg.text}
-                  </Button>
-                )}
+                  </Button>)}
               </p>
             </Card>
-          </div>
-        );
-      })}
-    </div>
-  );
+          </div>);
+        })}
+    </div>);
 }

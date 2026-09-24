@@ -8,20 +8,21 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { resolveUserPath } from "../config/paths.ts";
-import { getAgentHostBridge } from "../runtime/host-bridge.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
-import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { detectRuntimeModel } from "./agent-model.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import { loadElizaConfig } from "../config/config.ts";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
+import { resolveUserPath } from "../config/paths.ts";
+import { saveElizaConfig } from "../config/config.ts";
+import { type AgentRuntime } from "@elizaos/core";
+import { type AutonomousConfigLike } from "../types/config-like.ts";
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+import { type RouteRequestMeta } from "@elizaos/core/api/route-helpers";
+import { type UUID } from "@elizaos/core";
 
 type AgentStateStatus =
   | "not_started"

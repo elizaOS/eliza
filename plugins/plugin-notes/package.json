@@ -58,8 +58,7 @@
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.0.0",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"
@@ -72,7 +71,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

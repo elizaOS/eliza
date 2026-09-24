@@ -3,4 +3,4 @@
 export {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/shared/platform/sandbox-policy";
+} from "@elizaos/core/platform/sandbox-policy";

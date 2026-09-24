@@ -1,8 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initRPCProviderManager } from "../../rpc-providers";
 

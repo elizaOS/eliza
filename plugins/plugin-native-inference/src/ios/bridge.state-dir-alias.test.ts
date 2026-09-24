@@ -5,79 +5,77 @@
  * brand→eliza resolution, canonical precedence, empty-is-unset, and no
  * ELIZA_* mirror write.
  */
-
-import { getBootConfig, readAliasedEnv, setBootConfig } from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach } from "vitest";
+import { beforeEach } from "vitest";
+import { describe } from "vitest";
+import { expect } from "vitest";
+import { getBootConfig } from "@elizaos/core/config/boot-config-store";
+import { it } from "vitest";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { resolveMobileStateDir } from "./bridge.ts";
-
+import { setBootConfig } from "@elizaos/core/config/boot-config-store";
 const TOUCHED_KEYS = [
-  "ACME_STATE_DIR",
-  "MILADY_STATE_DIR",
-  "ELIZA_STATE_DIR",
-  "ELIZA_HOME",
-  "ELIZA_WORKSPACE_DIR",
+    "ACME_STATE_DIR",
+    "MILADY_STATE_DIR",
+    "ELIZA_STATE_DIR",
+    "ELIZA_HOME",
+    "ELIZA_WORKSPACE_DIR",
 ] as const;
-
 describe("iOS bridge ELIZA_STATE_DIR alias resolution", () => {
-  let savedEnv: Record<string, string | undefined>;
-  let savedBootConfig: ReturnType<typeof getBootConfig>;
-
-  beforeEach(() => {
-    savedEnv = {};
-    for (const key of TOUCHED_KEYS) {
-      savedEnv[key] = process.env[key];
-      delete process.env[key];
-    }
-    savedBootConfig = getBootConfig();
-    setBootConfig({
-      ...savedBootConfig,
-      envAliases: undefined,
+    let savedEnv: Record<string, string | undefined>;
+    let savedBootConfig: ReturnType<typeof getBootConfig>;
+    beforeEach(() => {
+        savedEnv = {};
+        for (const key of TOUCHED_KEYS) {
+            savedEnv[key] = process.env[key];
+            delete process.env[key];
+        }
+        savedBootConfig = getBootConfig();
+        setBootConfig({
+            ...savedBootConfig,
+            envAliases: undefined,
+        });
     });
-  });
-
-  afterEach(() => {
-    for (const key of TOUCHED_KEYS) {
-      if (savedEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = savedEnv[key];
-    }
-    setBootConfig(savedBootConfig);
-  });
-
-  it("resolves the MILADY brand prefix through the alias-aware reader", () => {
-    process.env.MILADY_STATE_DIR = "/data/milady/state";
-    expect(resolveMobileStateDir()).toBe("/data/milady/state");
-    expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/milady/state");
-    expect(getBootConfig().envAliases).toContainEqual([
-      "MILADY_STATE_DIR",
-      "ELIZA_STATE_DIR",
-    ]);
-  });
-
-  it("seeds aliases for a branded prefix present in the bridge environment", () => {
-    process.env.ACME_STATE_DIR = "/data/acme/state";
-    expect(resolveMobileStateDir()).toBe("/data/acme/state");
-    expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/acme/state");
-    expect(getBootConfig().envAliases).toContainEqual([
-      "ACME_STATE_DIR",
-      "ELIZA_STATE_DIR",
-    ]);
-  });
-
-  it("prefers the canonical ELIZA_STATE_DIR over the brand alias", () => {
-    process.env.ELIZA_STATE_DIR = "/canonical/state";
-    process.env.MILADY_STATE_DIR = "/data/milady/state";
-    expect(resolveMobileStateDir()).toBe("/canonical/state");
-  });
-
-  it("treats a blank canonical value as unset and falls back to the brand alias", () => {
-    process.env.ELIZA_STATE_DIR = "   ";
-    process.env.MILADY_STATE_DIR = "/data/milady/state";
-    expect(resolveMobileStateDir()).toBe("/data/milady/state");
-  });
-
-  it("does not mirror-write the resolved brand value back to ELIZA_STATE_DIR", () => {
-    process.env.MILADY_STATE_DIR = "/data/milady/state";
-    resolveMobileStateDir();
-    expect(process.env.ELIZA_STATE_DIR).toBeUndefined();
-  });
+    afterEach(() => {
+        for (const key of TOUCHED_KEYS) {
+            if (savedEnv[key] === undefined)
+                delete process.env[key];
+            else
+                process.env[key] = savedEnv[key];
+        }
+        setBootConfig(savedBootConfig);
+    });
+    it("resolves the MILADY brand prefix through the alias-aware reader", () => {
+        process.env.MILADY_STATE_DIR = "/data/milady/state";
+        expect(resolveMobileStateDir()).toBe("/data/milady/state");
+        expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/milady/state");
+        expect(getBootConfig().envAliases).toContainEqual([
+            "MILADY_STATE_DIR",
+            "ELIZA_STATE_DIR",
+        ]);
+    });
+    it("seeds aliases for a branded prefix present in the bridge environment", () => {
+        process.env.ACME_STATE_DIR = "/data/acme/state";
+        expect(resolveMobileStateDir()).toBe("/data/acme/state");
+        expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/acme/state");
+        expect(getBootConfig().envAliases).toContainEqual([
+            "ACME_STATE_DIR",
+            "ELIZA_STATE_DIR",
+        ]);
+    });
+    it("prefers the canonical ELIZA_STATE_DIR over the brand alias", () => {
+        process.env.ELIZA_STATE_DIR = "/canonical/state";
+        process.env.MILADY_STATE_DIR = "/data/milady/state";
+        expect(resolveMobileStateDir()).toBe("/canonical/state");
+    });
+    it("treats a blank canonical value as unset and falls back to the brand alias", () => {
+        process.env.ELIZA_STATE_DIR = "   ";
+        process.env.MILADY_STATE_DIR = "/data/milady/state";
+        expect(resolveMobileStateDir()).toBe("/data/milady/state");
+    });
+    it("does not mirror-write the resolved brand value back to ELIZA_STATE_DIR", () => {
+        process.env.MILADY_STATE_DIR = "/data/milady/state";
+        resolveMobileStateDir();
+        expect(process.env.ELIZA_STATE_DIR).toBeUndefined();
+    });
 });

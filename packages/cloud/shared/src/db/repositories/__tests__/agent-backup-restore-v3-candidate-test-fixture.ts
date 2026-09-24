@@ -2,35 +2,9 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import {
-  AGENT_BACKUP_MANIFEST_FORMAT,
-  AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
-  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
-  AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
-  AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
-  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
-  AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
-  AGENT_VAULT_KEY_AUTHORITY_FORMAT,
-  AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
-  type AgentBackupManifestV3,
-  type AgentBackupManifestV3Draft,
-  type AgentBackupRestoreV3AuthorityFence,
-  type AgentBackupRestoreV3CandidateReceipt,
-  type AgentBackupRestoreV3CandidateSealAuthorizationRequest,
-  type AgentBackupRestoreV3ComponentReceipt,
-  type AgentBackupRestoreV3OperationControl,
-  type AgentBackupRestoreV3SourceAuthority,
-  type AgentBackupRestoreV3StagingSession,
-  canonicalizeAgentBackupRestoreV3CandidateReceipt,
-  canonicalizeAgentBackupRestoreV3SourceAuthority,
-  createAgentBackupManifestV3,
-  parseAgentBackupRestoreV3CandidateReceipt,
-  parseAgentBackupRestoreV3CandidateSealAuthorizationRequest,
-} from "@elizaos/shared";
+import { AGENT_BACKUP_MANIFEST_FORMAT } from "@elizaos/core/contracts/agent-backup-manifest";
+import { AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION, AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION, AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT, AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION, AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1, AGENT_VAULT_KEY_AUTHORITY_FORMAT, AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION, type AgentBackupManifestV3, type AgentBackupManifestV3Draft, createAgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
+import { AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS, AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION, AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION, AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS, AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT, type AgentBackupRestoreV3AuthorityFence, type AgentBackupRestoreV3CandidateReceipt, type AgentBackupRestoreV3CandidateSealAuthorizationRequest, type AgentBackupRestoreV3ComponentReceipt, type AgentBackupRestoreV3OperationControl, type AgentBackupRestoreV3SourceAuthority, type AgentBackupRestoreV3StagingSession, canonicalizeAgentBackupRestoreV3CandidateReceipt, canonicalizeAgentBackupRestoreV3SourceAuthority, parseAgentBackupRestoreV3CandidateReceipt, parseAgentBackupRestoreV3CandidateSealAuthorizationRequest } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import type { AgentBackupRestoreV3CandidateExecution } from "../agent-backup-restore-v3-candidate-execution";
 
 export const CANDIDATE_IDS = {

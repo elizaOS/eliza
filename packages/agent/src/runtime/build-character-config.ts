@@ -13,13 +13,7 @@ import {
   type CharacterInput,
   mergeCharacterDefaults,
 } from "@elizaos/core";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "@elizaos/shared";
+import { getDefaultStylePreset, normalizeCharacterLanguage, resolveStylePresetByAvatarIndex, resolveStylePresetById, resolveStylePresetByName } from "@elizaos/core/character-presets";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyAdvancedCapabilitySettings,

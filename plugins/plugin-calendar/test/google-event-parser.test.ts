@@ -7,7 +7,7 @@ import type {
   GoogleCalendarEvent,
   GoogleCalendarListEntry,
 } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 
 import {

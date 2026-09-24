@@ -58,7 +58,7 @@ import {
   type UUID,
   type VoiceEntityBoundPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   allUtterances,
   type BenchSession,

@@ -31,18 +31,7 @@ import {
   screenTimeRangeLabel,
   screenTimeSourceLabel,
 } from "@elizaos/plugin-health";
-import type {
-  LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeHistoryPoint,
-  LifeOpsScreenTimeHistoryResponse,
-  LifeOpsScreenTimeRangeKey,
-  LifeOpsScreenTimeSession,
-  LifeOpsScreenTimeSource,
-  LifeOpsScreenTimeSummary,
-  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  LifeOpsScreenTimeBucket as ScreenTimeBucket,
-  LifeOpsSocialHabitSummary as SocialHabitSummary,
-} from "@elizaos/shared";
+import { type LifeOpsScreenTimeDaily, type LifeOpsScreenTimeHistoryPoint, type LifeOpsScreenTimeHistoryResponse, type LifeOpsScreenTimeRangeKey, type LifeOpsScreenTimeSession, type LifeOpsScreenTimeSource, type LifeOpsScreenTimeSummary, type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown, type LifeOpsScreenTimeBucket as ScreenTimeBucket, type LifeOpsSocialHabitSummary as SocialHabitSummary } from "@elizaos/core/contracts/personal-assistant";
 import { getActivityReportBetween } from "../../activity-profile/activity-tracker-reporting.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { fail } from "../service-normalize.js";

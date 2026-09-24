@@ -22,7 +22,37 @@
       "import": "./dist/drizzle.js",
       "default": "./dist/drizzle.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./database-utils/carve-out-migration": {
+      "types": "./dist/database-utils/carve-out-migration.d.ts",
+      "eliza-source": "./src/database-utils/carve-out-migration.ts",
+      "import": "./dist/database-utils/carve-out-migration.js",
+      "default": "./dist/database-utils/carve-out-migration.js"
+    },
+    "./database-utils/drizzle-database": {
+      "types": "./dist/database-utils/drizzle-database.d.ts",
+      "eliza-source": "./src/database-utils/drizzle-database.ts",
+      "import": "./dist/database-utils/drizzle-database.js",
+      "default": "./dist/database-utils/drizzle-database.js"
+    },
+    "./database-utils/raw-sql": {
+      "types": "./dist/database-utils/raw-sql.d.ts",
+      "eliza-source": "./src/database-utils/raw-sql.ts",
+      "import": "./dist/database-utils/raw-sql.js",
+      "default": "./dist/database-utils/raw-sql.js"
+    },
+    "./database-utils/pglite-storage": {
+      "types": "./dist/database-utils/pglite-storage.d.ts",
+      "eliza-source": "./src/database-utils/pglite-storage.ts",
+      "import": "./dist/database-utils/pglite-storage.js",
+      "default": "./dist/database-utils/pglite-storage.js"
+    },
+    "./database-utils/sql-compat": {
+      "types": "./dist/database-utils/sql-compat.d.ts",
+      "eliza-source": "./src/database-utils/sql-compat.ts",
+      "import": "./dist/database-utils/sql-compat.js",
+      "default": "./dist/database-utils/sql-compat.js"
+    }
   },
   "files": [
     "dist",
@@ -54,7 +84,6 @@
   "dependencies": {
     "@noble/hashes": "2.2.0",
     "@electric-sql/pglite": "^0.4.0",
-    "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
     "drizzle-orm": "0.45.2",
     "pg": "^8.23.0",

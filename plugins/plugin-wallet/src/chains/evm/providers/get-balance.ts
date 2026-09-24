@@ -13,7 +13,7 @@ import {
   type Provider,
   type ProviderResult,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";

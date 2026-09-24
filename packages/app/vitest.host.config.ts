@@ -11,7 +11,6 @@ const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const authSrc = path.join(monorepoRoot, "packages/auth/src/auth");
 const uiDir = path.join(monorepoRoot, "packages/ui");
-const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/auth/src/vault");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");

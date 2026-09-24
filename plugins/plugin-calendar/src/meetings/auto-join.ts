@@ -35,12 +35,8 @@ import {
   type ScheduledTaskInput,
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import {
-  MEETING_PLATFORM_LABELS,
-  type ParsedMeetingUrl,
-  parseMeetingUrl,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { MEETING_PLATFORM_LABELS, type ParsedMeetingUrl, parseMeetingUrl } from "@elizaos/core/meetings";
 import {
   type MeetingAutoJoinPolicy,
   readMeetingAutoJoinSettings,

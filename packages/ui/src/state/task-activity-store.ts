@@ -22,7 +22,7 @@ import type {
   SwarmActivityTool,
   SwarmEvent,
 } from "@elizaos/core";
-import { toSwarmActivity } from "@elizaos/shared/browser-contracts";
+import { toSwarmActivity } from "@elizaos/ui/views/swarm-activity";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
 

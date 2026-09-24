@@ -12,7 +12,6 @@ import { defineConfig, type Plugin } from "vite";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
-const sharedSrc = path.resolve(here, "../../shared/src");
 const sharedAssets = path.resolve(here, "../../shared/assets");
 const cleanupHelper = path.resolve(
   repoRoot,
@@ -24,10 +23,10 @@ const nodeBuiltinsShim = path.resolve(
   here,
   "src/node-builtins-browser-shim.ts",
 );
-const loggerSrc = path.resolve(repoRoot, "packages/shared/src/logger.ts");
+const loggerSrc = path.resolve(repoRoot, "packages/core/src/logger.ts");
 
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
-// (BRAND_PATHS in @elizaos/shared/brand → packages/shared/assets). Serve those
+// (BRAND_PATHS in @elizaos/ui/brand → packages/ui/assets). Serve those
 // from the shared package in dev and copy them into dist on build so the
 // catalog renders logos instead of broken images.
 function brandAssetsPlugin(): Plugin {
@@ -92,9 +91,7 @@ export default defineConfig({
       { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
       { find: "@elizaos/core", replacement: coreBrowserShim },
-      { find: "@elizaos/shared/logger", replacement: loggerSrc },
-      { find: /^@elizaos\/shared$/, replacement: sharedSrc },
-      { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
+      { find: "../../core/src/logger.ts", replacement: loggerSrc },
       { find: "fast-redact", replacement: fastRedactShim },
       // The shared barrel re-exports a node-only package-root resolver
       // (utils/eliza-root.ts). The catalog never calls it, but its top-level

@@ -10,10 +10,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
-  type LifeOpsActivitySignal,
-} from "@elizaos/shared";
+import { LIFEOPS_ACTIVITY_SIGNAL_SOURCES, type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSignalSourceRegistry,

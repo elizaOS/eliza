@@ -10,13 +10,7 @@
 // WalletMarketOverviewResponse with movers/prices/sources) so populated
 // assertions reflect the actual API contract.
 
-import type {
-  WalletBalancesResponse,
-  WalletConfigStatus,
-  WalletMarketOverviewResponse,
-  WalletNftsResponse,
-  WalletTradingProfileResponse,
-} from "@elizaos/shared";
+import { type WalletBalancesResponse, type WalletConfigStatus, type WalletMarketOverviewResponse, type WalletNftsResponse, type WalletTradingProfileResponse } from "@elizaos/core/contracts/wallet-types";
 import {
   cleanup,
   fireEvent,

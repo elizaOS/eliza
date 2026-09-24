@@ -14,7 +14,7 @@ import {
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { type ReactNode, useContext } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

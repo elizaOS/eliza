@@ -22,12 +22,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  assertCarveOutProjectionComplete,
-  type CarveOutDatabase,
-  createDrizzleCarveOutDatabase,
-  runCarveOutMigration,
-} from "@elizaos/shared";
+import { assertCarveOutProjectionComplete, type CarveOutDatabase, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 
 export const GOALS_MIGRATION_LOG_PREFIX = "[Goals]";
 export const GOALS_MIGRATION_SERVICE_TYPE = "goals_migration";

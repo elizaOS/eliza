@@ -20,7 +20,6 @@ import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
   getElizaCoreEntry,
-  getSharedSourceRoot,
   getUiSourceRoot,
 } from "@elizaos/testing";
 import { defineConfig } from "vitest/config";
@@ -37,7 +36,6 @@ import {
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
   getWorkspacePluginAliases,
@@ -53,7 +51,6 @@ const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const cloudRoutingSourceRoot = path.join(
   elizaWorkspaceRoot,
@@ -208,10 +205,8 @@ const vitestInlineDeps = [
   "react",
   "react-dom",
   "react-test-renderer",
-  /^@elizaai\/shared/,
   /^@elizaos\/plugin-/,
   /^@elizaos\/app-/,
-  /^@elizaos\/shared/,
   "zod",
 ];
 

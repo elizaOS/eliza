@@ -180,7 +180,7 @@ def _readme(*, voice_name: str, eval_report: dict[str, Any] | None) -> str:
             "2. Append the `voice` block from `manifest-fragment.json` to "
             "`packages/shared/src/local-inference/kokoro/voice-presets.ts`.",
             "3. Re-run the elizaos/eliza-1 publish preflight and verify "
-            "`packages/shared/src/local-inference/voice-models.ts` records "
+            "`plugins/plugin-native-inference/src/model-catalog/voice-models.ts` records "
             "`voice/kokoro/voices/<voice_name>.bin`.",
         ]
     )

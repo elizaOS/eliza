@@ -7,16 +7,12 @@
  * name, and calls it with a `readJsonBody` pre-bound to the current request.
  */
 
-import type {
-  AppPackageRouteContext,
-  AppPackageRouteDispatchContext,
-} from "@elizaos/shared";
-import { isValidAppRouteSlug } from "@elizaos/shared";
-import {
-  type AppRouteModule,
-  importAppRouteModule,
-} from "../services/app-package-modules.ts";
 import { decodePathComponent } from "./server-helpers.ts";
+import { importAppRouteModule } from "../services/app-package-modules.ts";
+import { isValidAppRouteSlug } from "@elizaos/core/contracts/apps";
+import { type AppPackageRouteContext } from "@elizaos/core/api/route-helpers";
+import { type AppPackageRouteDispatchContext } from "@elizaos/core/api/route-helpers";
+import { type AppRouteModule } from "../services/app-package-modules.ts";
 
 const RESERVED_APP_ROUTE_SLUGS = new Set([
   "",

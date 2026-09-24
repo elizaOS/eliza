@@ -17,12 +17,7 @@ import {
   type UnwrapKmsAeadOperationKeyBundleInput,
 } from "@elizaos/auth/kms";
 import { ElizaError } from "@elizaos/core";
-import {
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
-  AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
-  type AgentBackupManifestV3,
-  canonicalizeAgentBackupOperationKeyBundleContext,
-} from "@elizaos/shared";
+import { AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION, AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION, type AgentBackupManifestV3, canonicalizeAgentBackupOperationKeyBundleContext } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import { logger } from "../utils/logger";
 import type { AgentBackupRestoreV3Control } from "./agent-backup-restore-v3-control";
 

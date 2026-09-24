@@ -47,10 +47,10 @@ vi.mock("../../../../utils/openExternalUrl", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async () => {
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/shared/steward-session-client")
-  >("@elizaos/shared/steward-session-client");
+    typeof import("../../../../../../core/src/steward-session-client/index.ts")
+  >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,
     hasStewardAuthedCookie: () => false,

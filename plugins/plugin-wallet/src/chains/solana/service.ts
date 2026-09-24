@@ -24,7 +24,7 @@ import {
   Service,
   type ServiceTypeName,
 } from "@elizaos/core";
-import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export interface WalletAsset {
   address: string;

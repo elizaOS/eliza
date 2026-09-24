@@ -68,7 +68,7 @@ interface SharedPathsLike {
 
 /**
  * Inline mirror of `resolveStateDir()` + `elizaModelsDir()` from
- * `@elizaos/shared/local-inference/paths`. Used as a fallback when the
+ * `@elizaos/plugin-native-inference/model-catalog/paths`. Used as a fallback when the
  * shared import chain is unreachable (the bench is at the edge of the
  * dep graph; some host environments don't have shared's transitive
  * `@elizaos/core` deps resolved). Same precedence as upstream:
@@ -125,10 +125,10 @@ async function resolveElizaModelPath(
   tierId: Eliza1TierId = DEFAULT_TIER,
 ): Promise<{ modelPath: string; tierId: Eliza1TierId } | null> {
   const paths = await tryImport<SharedPathsLike>(
-    "@elizaos/shared/local-inference/paths",
+    "@elizaos/plugin-native-inference/model-catalog/paths",
   );
   const catalog = await tryImport<SharedCatalogLike>(
-    "@elizaos/shared/local-inference/catalog",
+    "@elizaos/plugin-native-inference/model-catalog/catalog",
   );
   if (!catalog) return null;
   const model = catalog.findCatalogModel(tierId);

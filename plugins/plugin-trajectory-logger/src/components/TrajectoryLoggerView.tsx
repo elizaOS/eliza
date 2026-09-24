@@ -9,7 +9,7 @@
  * available for future adapters.
  */
 
-import type { OverlayAppContext } from "@elizaos/shared";
+import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
 import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";

@@ -29,9 +29,9 @@ const confirmTelegramAccountClaim = vi.fn(async () => {
   clearPendingOnboardingSession();
 });
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
+    typeof import("../../../../core/src/steward-session-client/index.ts")
   >()),
   readStoredStewardToken: () => "existing-steward-token",
 }));

@@ -14,131 +14,105 @@
  * `relationships` graph-snapshot service at position 7); this provider
  * projects the new knowledge-graph stores at position -4.
  */
-
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
+import { RELATIONSHIPS_CONTEXTS } from "../types.js";
+import { RELATIONSHIPS_LOG_PREFIX } from "../types.js";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { logger } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
-
-import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
-
+import { type IAgentRuntime } from "@elizaos/core";
+import { type Memory } from "@elizaos/core";
+import { type Provider } from "@elizaos/core";
+import { type ProviderResult } from "@elizaos/core";
+import { type State } from "@elizaos/core";
 interface EntityProjection {
-  entityId: string;
-  type: string;
-  preferredName: string;
-  platforms: string[];
+    entityId: string;
+    type: string;
+    preferredName: string;
+    platforms: string[];
 }
-
 interface EdgeProjection {
-  fromEntityId: string;
-  toEntityId: string;
-  type: string;
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
 }
-
 export const entityGraphProvider: Provider = {
-  name: "ENTITY_GRAPH",
-  description:
-    "Projection of the owner's known entities and ego-network edges from the runtime knowledge graph, for planner context.",
-  position: -4,
-  contexts: [...RELATIONSHIPS_CONTEXTS],
-  contextGate: { anyOf: [...RELATIONSHIPS_CONTEXTS] },
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ): Promise<ProviderResult> => {
-    const service = resolveKnowledgeGraphService(runtime);
-    if (!service) {
-      return { text: "", data: { entities: [], relationships: [] } };
-    }
-
-    try {
-      const entityStore = service.getEntityStore();
-      const relationshipStore = service.getRelationshipStore();
-
-      const [entities, edges] = await Promise.all([
-        entityStore.list({}),
-        relationshipStore.list({
-          fromEntityId: SELF_ENTITY_ID,
-        }),
-      ]);
-
-      const entityProjections: EntityProjection[] = entities
-        .filter((entity) => entity.entityId !== SELF_ENTITY_ID)
-        .map((entity) => ({
-          entityId: entity.entityId,
-          type: entity.type,
-          preferredName: entity.preferredName,
-          platforms: Array.from(
-            new Set(entity.identities.map((identity) => identity.platform)),
-          ),
-        }));
-
-      const edgeProjections: EdgeProjection[] = edges.map((edge) => ({
-        fromEntityId: edge.fromEntityId,
-        toEntityId: edge.toEntityId,
-        type: edge.type,
-      }));
-
-      if (entityProjections.length === 0 && edgeProjections.length === 0) {
-        return { text: "", data: { entities: [], relationships: [] } };
-      }
-
-      const nameById = new Map(
-        entities.map((entity) => [entity.entityId, entity.preferredName]),
-      );
-      const lines: string[] = [];
-      if (entityProjections.length > 0) {
-        lines.push("Known entities:");
-        for (const entity of entityProjections) {
-          const platforms =
-            entity.platforms.length > 0
-              ? ` [${entity.platforms.join(", ")}]`
-              : "";
-          lines.push(`- ${entity.preferredName} (${entity.type})${platforms}`);
+    name: "ENTITY_GRAPH",
+    description: "Projection of the owner's known entities and ego-network edges from the runtime knowledge graph, for planner context.",
+    position: -4,
+    contexts: [...RELATIONSHIPS_CONTEXTS],
+    contextGate: { anyOf: [...RELATIONSHIPS_CONTEXTS] },
+    get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<ProviderResult> => {
+        const service = resolveKnowledgeGraphService(runtime);
+        if (!service) {
+            return { text: "", data: { entities: [], relationships: [] } };
         }
-      }
-      if (edgeProjections.length > 0) {
-        lines.push("Your relationships:");
-        for (const edge of edgeProjections) {
-          const toName = nameById.get(edge.toEntityId) ?? edge.toEntityId;
-          lines.push(`- you -[${edge.type}]-> ${toName}`);
+        try {
+            const entityStore = service.getEntityStore();
+            const relationshipStore = service.getRelationshipStore();
+            const [entities, edges] = await Promise.all([
+                entityStore.list({}),
+                relationshipStore.list({
+                    fromEntityId: SELF_ENTITY_ID,
+                }),
+            ]);
+            const entityProjections: EntityProjection[] = entities
+                .filter((entity) => entity.entityId !== SELF_ENTITY_ID)
+                .map((entity) => ({
+                entityId: entity.entityId,
+                type: entity.type,
+                preferredName: entity.preferredName,
+                platforms: Array.from(new Set(entity.identities.map((identity) => identity.platform))),
+            }));
+            const edgeProjections: EdgeProjection[] = edges.map((edge) => ({
+                fromEntityId: edge.fromEntityId,
+                toEntityId: edge.toEntityId,
+                type: edge.type,
+            }));
+            if (entityProjections.length === 0 && edgeProjections.length === 0) {
+                return { text: "", data: { entities: [], relationships: [] } };
+            }
+            const nameById = new Map(entities.map((entity) => [entity.entityId, entity.preferredName]));
+            const lines: string[] = [];
+            if (entityProjections.length > 0) {
+                lines.push("Known entities:");
+                for (const entity of entityProjections) {
+                    const platforms = entity.platforms.length > 0
+                        ? ` [${entity.platforms.join(", ")}]`
+                        : "";
+                    lines.push(`- ${entity.preferredName} (${entity.type})${platforms}`);
+                }
+            }
+            if (edgeProjections.length > 0) {
+                lines.push("Your relationships:");
+                for (const edge of edgeProjections) {
+                    const toName = nameById.get(edge.toEntityId) ?? edge.toEntityId;
+                    lines.push(`- you -[${edge.type}]-> ${toName}`);
+                }
+            }
+            return {
+                text: lines.join("\n"),
+                data: {
+                    entities: entityProjections,
+                    relationships: edgeProjections,
+                },
+            };
         }
-      }
-
-      return {
-        text: lines.join("\n"),
-        data: {
-          entities: entityProjections,
-          relationships: edgeProjections,
-        },
-      };
-    } catch (error) {
-      // error-policy:J4 explicit degrade — a knowledge-graph store failure
-      // (DB read, projection) must not render the designed "empty graph"
-      // shape: the degraded result carries an error marker so consumers can
-      // tell a broken graph read from a legitimately empty graph, and
-      // reportError surfaces the failure to RECENT_ERRORS / owner-escalation
-      // instead of a log line nothing reads.
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(
-        `${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH projection failed:`,
-        message,
-      );
-      runtime.reportError?.("ENTITY_GRAPH.provider", error);
-      return {
-        text: "Error retrieving entity graph",
-        data: { entities: [], relationships: [], error: message },
-        values: { entityGraphError: message },
-      };
-    }
-  },
+        catch (error) {
+            // error-policy:J4 explicit degrade — a knowledge-graph store failure
+            // (DB read, projection) must not render the designed "empty graph"
+            // shape: the degraded result carries an error marker so consumers can
+            // tell a broken graph read from a legitimately empty graph, and
+            // reportError surfaces the failure to RECENT_ERRORS / owner-escalation
+            // instead of a log line nothing reads.
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error(`${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH projection failed:`, message);
+            runtime.reportError?.("ENTITY_GRAPH.provider", error);
+            return {
+                text: "Error retrieving entity graph",
+                data: { entities: [], relationships: [], error: message },
+                values: { entityGraphError: message },
+            };
+        }
+    },
 };
-
 export default entityGraphProvider;

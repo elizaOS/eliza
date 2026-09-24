@@ -9,4 +9,4 @@ export {
   getDirectDownloadUrl,
   isDirectBuild,
   isStoreBuild,
-} from "@elizaos/shared/platform/build-variant";
+} from "@elizaos/core/platform/build-variant";

@@ -1,9 +1,6 @@
 /** Exercises Cloud credential and deployment selection at the outbound billing boundary. */
-import {
-  _resetCloudSecretsForTesting,
-  resetDevCloudEnvAuthorityForTests,
-  scrubCloudSecretsFromEnv,
-} from "@elizaos/shared";
+import { _resetCloudSecretsForTesting, scrubCloudSecretsFromEnv } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchCloudCredits,

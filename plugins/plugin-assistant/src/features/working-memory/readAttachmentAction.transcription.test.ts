@@ -58,7 +58,7 @@ import {
 // local-branch read path under test runs its actual code.
 const fetchRemoteMediaMock = vi.fn();
 vi.mock(
-  "../../../../../packages/shared/src/media/fetch.ts",
+  "@elizaos/core/media/fetch",
   async (importActual) => ({
     ...(await importActual<typeof import("@elizaos/core")>()),
     fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),

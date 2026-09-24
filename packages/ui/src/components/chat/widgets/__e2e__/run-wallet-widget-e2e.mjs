@@ -112,14 +112,14 @@ await writeFile(
 );
 // The UI registry-host shim re-exports through the @elizaos/shared barrel;
 // resolve it straight to the self-contained shared source module instead.
-const registryHostSource = join(here, "../../../../../../shared/src/registry-host.ts");
+const registryHostSource = join(here, "@elizaos/ui/registry-host");
 const sharedOverlayRegistrySource = join(
   here,
-  "../../../../../../shared/src/apps/overlay-app-registry.ts",
+  "@elizaos/ui/apps/overlay-app-registry",
 );
 const sharedAppsContractSource = join(
   here,
-  "../../../../../../shared/src/contracts/apps.ts",
+  "@elizaos/core/contracts/apps",
 );
 
 const stubModules = {

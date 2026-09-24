@@ -21,7 +21,7 @@ import {
   messageChallengesPriorAgentReply,
   runV5MessageRuntimeStage1,
 } from "@elizaos/plugin-assistant";
-import { getDefaultStylePreset } from "@elizaos/shared";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import type { LiveProviderName } from "@elizaos/testing";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 

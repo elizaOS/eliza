@@ -17,10 +17,7 @@ import {
   type SearchFlightsResult,
   searchFlights,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  LifeOpsCalendarEvent,
-} from "@elizaos/shared";
+import { type CreateLifeOpsCalendarEventRequest, type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import type {
   FlightBookingExecutionResult,

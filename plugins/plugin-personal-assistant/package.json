@@ -43,6 +43,18 @@
       },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./email-classification/email-classifier": {
+      "types": "./dist/email-classification/email-classifier.d.ts",
+      "eliza-source": "./src/email-classification/email-classifier.ts",
+      "import": "./dist/email-classification/email-classifier.js",
+      "default": "./dist/email-classification/email-classifier.js"
+    },
+    "./email-classification": {
+      "types": "./dist/email-classification/index.d.ts",
+      "eliza-source": "./src/email-classification/index.ts",
+      "import": "./dist/email-classification/index.js",
+      "default": "./dist/email-classification/index.js"
     }
   },
   "scripts": {
@@ -94,7 +106,6 @@
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
@@ -102,7 +113,8 @@
     "sharp": "^0.35.3",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-relationships": "workspace:*"
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
@@ -122,7 +134,8 @@
     "react-dom": "*",
     "vite": "^8.3.0",
     "vitest": "^5.0.1",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*"
   },
   "peerDependencies": {
     "react": "*",

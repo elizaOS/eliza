@@ -24,7 +24,7 @@ import {
   type SharedTodoCutoverSnapshot,
   TODO_CUTOVER_PROVENANCE_KEY,
   type TodoCutoverJsonValue,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/core/todo-cutover";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 

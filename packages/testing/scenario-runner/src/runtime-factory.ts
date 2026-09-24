@@ -22,7 +22,7 @@ import {
   documentsPlugin,
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,

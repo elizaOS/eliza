@@ -4,13 +4,13 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,

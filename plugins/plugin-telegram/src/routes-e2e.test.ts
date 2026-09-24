@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", async () => {
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";
 

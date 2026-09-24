@@ -17,7 +17,7 @@ import {
   type IFileStorageService,
   ServiceType,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { z } from "zod";
 import {
   executeRawSql,

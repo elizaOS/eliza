@@ -51,7 +51,7 @@ import {
   sendTwilioVoiceCall,
 } from "@elizaos/plugin-native-phone/twilio";
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
+import { type LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import type {

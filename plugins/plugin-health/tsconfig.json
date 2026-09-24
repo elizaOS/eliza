@@ -2,19 +2,32 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/plugin-health": ["./src/index.ts"],
-      "@elizaos/plugin-health/*": ["./src/*"],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@elizaos/plugin-health": [
+        "./src/index.ts"
+      ],
+      "@elizaos/plugin-health/*": [
+        "./src/*"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
@@ -26,6 +39,13 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx"
+  ]
 }

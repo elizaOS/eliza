@@ -5,70 +5,57 @@
  * fs directly. Unlike the pre-auth media *serve* route (the sha256 is the
  * capability), these privileged operations are auth-gated (PrivateRoute).
  */
-
-import {
-  type IAgentRuntime,
-  type IFileStorageService,
-  ServiceType,
-  type UUID,
-} from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
+import { ServiceType } from "@elizaos/core";
 import { selectFilesForViewer } from "./files-disclosure.ts";
-
+import { type IAgentRuntime } from "@elizaos/core";
+import { type IFileStorageService } from "@elizaos/core";
+import { type Route } from "@elizaos/shared";
+import { type UUID } from "@elizaos/core";
 function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
-  return (
-    runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES) ?? null
-  );
+    return (runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES) ?? null);
 }
-
 /**
  * GET /api/files — list stored files (newest first), selected per viewer
  * (#14778): the single-owner boundary and OWNER/ADMIN-rank viewers see the
  * whole store; USER/GUEST viewers get the designed restricted state.
  */
 export const filesListRoute: Route = {
-  type: "GET",
-  path: "/api/files",
-  rawPath: true,
-  name: "files-list",
-  routeHandler: async (ctx) => {
-    const storage = getFileStorage(ctx.runtime);
-    if (!storage) {
-      return { status: 503, body: { error: "file storage unavailable" } };
-    }
-    const files = await storage.list();
-    files.sort((a, b) => {
-      const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
-      const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
-      return bTime - aTime;
-    });
-    const body = selectFilesForViewer(
-      files,
-      ctx.accessContext,
-      ctx.runtime.agentId as UUID,
-    );
-    return { status: 200, body };
-  },
+    type: "GET",
+    path: "/api/files",
+    rawPath: true,
+    name: "files-list",
+    routeHandler: async (ctx) => {
+        const storage = getFileStorage(ctx.runtime);
+        if (!storage) {
+            return { status: 503, body: { error: "file storage unavailable" } };
+        }
+        const files = await storage.list();
+        files.sort((a, b) => {
+            const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+            const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+            return bTime - aTime;
+        });
+        const body = selectFilesForViewer(files, ctx.accessContext, ctx.runtime.agentId as UUID);
+        return { status: 200, body };
+    },
 };
-
 /** DELETE /api/files/:filename — delete one stored file (reference-unaware). */
 export const fileDeleteRoute: Route = {
-  type: "DELETE",
-  path: "/api/files/:filename",
-  rawPath: true,
-  name: "file-delete",
-  routeHandler: async (ctx) => {
-    const storage = getFileStorage(ctx.runtime);
-    if (!storage) {
-      return { status: 503, body: { error: "file storage unavailable" } };
-    }
-    const filename = ctx.params?.filename ?? "";
-    const deleted = await storage.delete(filename);
-    return {
-      status: deleted ? 200 : 404,
-      body: { deleted },
-    };
-  },
+    type: "DELETE",
+    path: "/api/files/:filename",
+    rawPath: true,
+    name: "file-delete",
+    routeHandler: async (ctx) => {
+        const storage = getFileStorage(ctx.runtime);
+        if (!storage) {
+            return { status: 503, body: { error: "file storage unavailable" } };
+        }
+        const filename = ctx.params?.filename ?? "";
+        const deleted = await storage.delete(filename);
+        return {
+            status: deleted ? 200 : 404,
+            body: { deleted },
+        };
+    },
 };
-
 export const filesRoutes: Route[] = [filesListRoute, fileDeleteRoute];

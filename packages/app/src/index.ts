@@ -9,51 +9,18 @@
  * is deliberately excluded so its browser aliases can't shadow the real Node
  * exports.
  */
-
 // Runtime-mode resolution moved into @elizaos/agent (api/runtime-mode/) so the
 // bare agent server enforces the same route-visibility gate as this wrapper.
 // Re-exported by name to keep this barrel's public surface stable without
 // star-leaking the whole agent package.
-export {
-  getRuntimeMode,
-  getRuntimeModeSnapshot,
-  isLocalRemoteHost,
-  isLocalRuntime,
-  type RemoteApiBaseValidation,
-  type RemoteApiBaseValidationErr,
-  type RemoteApiBaseValidationOk,
-  RUNTIME_MODES,
-  type RuntimeMode,
-  type RuntimeModeSnapshot,
-  resolveRuntimeMode,
-  validateRemoteApiBase,
-} from "@elizaos/agent";
-export type {
-  AllPermissionsState,
-  PermissionCheckResult,
-  PermissionManagerConfig,
-  PermissionState,
-  PermissionStatus,
-  Platform,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/shared";
-export {
-  type AndroidUserAgentMarker,
-  type AospVariantConfig,
-  type AppAndroidConfig,
-  type AppConfig,
-  type AppDesktopConfig,
-  type AppPackagingConfig,
-  type AppWebConfig,
-  DEFAULT_APP_CONFIG,
-  resolveAppBranding,
-} from "@elizaos/shared";
-export * from "@elizaos/shared/catalog";
+export { getRuntimeMode, getRuntimeModeSnapshot, isLocalRemoteHost, isLocalRuntime, type RemoteApiBaseValidation, type RemoteApiBaseValidationErr, type RemoteApiBaseValidationOk, RUNTIME_MODES, type RuntimeMode, type RuntimeModeSnapshot, resolveRuntimeMode, validateRemoteApiBase, } from "@elizaos/agent";
+export { type AllPermissionsState, type PermissionCheckResult, type PermissionManagerConfig, type PermissionState, type PermissionStatus, type Platform, type SystemPermissionDefinition, type SystemPermissionId } from "@elizaos/core/contracts/permissions";
+export { type AndroidUserAgentMarker, type AospVariantConfig, type AppAndroidConfig, type AppConfig, type AppDesktopConfig, type AppPackagingConfig, type AppWebConfig, DEFAULT_APP_CONFIG, resolveAppBranding } from "@elizaos/core/config/app-config";
+export * from "@elizaos/core/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
-export { type ConfigField, getPlugins } from "@elizaos/shared/catalog";
+export { type ConfigField, getPlugins } from "@elizaos/core/catalog";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -75,11 +42,7 @@ export * from "./first-run/first-run-config";
 // the originals directly through this barrel.
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export * from "./platform/ios-runtime-backends";
-export {
-  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
-  IOS_FULL_BUN_SMOKE_RESULT_KEY,
-  runIosFullBunSmokeIfRequested,
-} from "./platform/ios-runtime-bridge";
+export { IOS_FULL_BUN_SMOKE_REQUEST_KEY, IOS_FULL_BUN_SMOKE_RESULT_KEY, runIosFullBunSmokeIfRequested, } from "./platform/ios-runtime-bridge";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";

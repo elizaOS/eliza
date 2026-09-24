@@ -4,7 +4,7 @@
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
 // Mirrors core's canonical truthy set (core/src/env-utils.ts); re-exported
-// through @elizaos/shared/env-utils, which gallery pages reach via
+// through @elizaos/core/env-utils, which gallery pages reach via
 // runtime-env — without it any page importing shared env helpers throws.
 const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "y", "on", "enabled"]);
 // Browser-safe stand-ins for the core env/error helpers the shared package
@@ -346,12 +346,12 @@ export function settingsDebugCloudSummary(): Record<string, unknown> {
   return {};
 }
 
-export { toSwarmActivity } from "@elizaos/shared/views/swarm-activity";
+export { toSwarmActivity } from "@elizaos/ui/views/swarm-activity";
 export {
   isViewKindEnabled,
   isViewVisible,
   resolveViewKind,
-} from "@elizaos/shared/views/view-kind";
+} from "@elizaos/core/views/view-kind";
 export { activityEventToPlaintext } from "../../../core/src/activity-plaintext.ts";
 export { findInteractionRegions } from "../../../core/src/messaging/interactions/parse.ts";
 export {

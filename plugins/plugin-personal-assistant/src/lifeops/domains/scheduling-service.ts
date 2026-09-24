@@ -5,11 +5,7 @@
  * approval queue; this domain never dispatches connector side effects.
  */
 import crypto from "node:crypto";
-import {
-  LIFEOPS_NEGOTIATION_STATES,
-  type LifeOpsSchedulingNegotiation,
-  type LifeOpsSchedulingProposal,
-} from "@elizaos/shared";
+import { LIFEOPS_NEGOTIATION_STATES, type LifeOpsSchedulingNegotiation, type LifeOpsSchedulingProposal } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactEdgeId,

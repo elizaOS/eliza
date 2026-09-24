@@ -9,15 +9,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsCalendarSourceAdministrationEntry,
-  LifeOpsCalendarSourceAdministrationSnapshot,
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSourceKey,
-  LifeOpsCalendarSourceSelectionReceipt,
-  LifeOpsCalendarSummary,
-  SetLifeOpsCalendarSourceSelectionRequest,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarSourceAdministrationEntry, type LifeOpsCalendarSourceAdministrationSnapshot, type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSourceKey, type LifeOpsCalendarSourceSelectionReceipt, type LifeOpsCalendarSummary, type SetLifeOpsCalendarSourceSelectionRequest } from "@elizaos/core/contracts/calendar";
 import { CalendarServiceError } from "../internal/errors.js";
 import { CalendarService } from "../service/CalendarService.js";
 import { getCalendarFeedPreference } from "../service/feed-preferences.js";

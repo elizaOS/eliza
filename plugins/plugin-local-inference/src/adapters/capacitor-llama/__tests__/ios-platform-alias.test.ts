@@ -3,8 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import { getBootConfig, setBootConfig } from "@elizaos/shared";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { getBootConfig, setBootConfig } from "@elizaos/core/config/boot-config-store";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { afterEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({

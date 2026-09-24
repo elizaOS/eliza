@@ -4,17 +4,5 @@
  * consume it without cross-domain coupling. This file preserves the historical
  * import path for in-plugin callers.
  */
-
-export type {
-  ClassifyEmailOptions,
-  EmailCategory,
-  EmailClassification,
-  EmailLikeMessage,
-} from "@elizaos/shared";
-export {
-  _resetEmailClassifierCache,
-  classifyEmail,
-  classifyEmailByRules,
-  getConfiguredEmailClassifierModel,
-  isEmailClassifierEnabled,
-} from "@elizaos/shared/email-classification/email-classifier";
+export type { ClassifyEmailOptions, EmailCategory, EmailClassification, EmailLikeMessage, } from "@elizaos/shared";
+export { _resetEmailClassifierCache, classifyEmail, classifyEmailByRules, getConfiguredEmailClassifierModel, isEmailClassifierEnabled, } from "@elizaos/plugin-personal-assistant/email-classification/email-classifier";

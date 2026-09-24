@@ -10,7 +10,6 @@ import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
-const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
@@ -83,14 +82,6 @@ export default defineConfig({
         replacement: resolve(uiSrc, "$1"),
       },
       {
-        find: /^@elizaos\/shared$/,
-        replacement: resolve(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: resolve(sharedSrc, "$1"),
-      },
-      {
         find: /^@elizaos\/cloud-routing$/,
         replacement: resolve(cloudRoutingSrc, "index.ts"),
       },
@@ -105,10 +96,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/cloud-shared\/(.+)$/,
         replacement: resolve(cloudSharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared\/logger$/,
-        replacement: resolve(loggerSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core$/,

@@ -21,12 +21,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  assertCarveOutProjectionComplete,
-  type CarveOutDatabase,
-  createDrizzleCarveOutDatabase,
-  runCarveOutMigration,
-} from "@elizaos/shared";
+import { assertCarveOutProjectionComplete, type CarveOutDatabase, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 
 export const CALENDAR_MIGRATION_LOG_PREFIX = "[Calendar]";
 export const CALENDAR_MIGRATION_SERVICE_TYPE = "calendar_migration";

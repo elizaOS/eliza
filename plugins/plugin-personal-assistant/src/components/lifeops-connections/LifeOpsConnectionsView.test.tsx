@@ -6,12 +6,8 @@
  * provider mutation, native permission prompt, or network request can run.
  */
 
-import type {
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorGrant,
-  LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorGrant, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import {
   act,
   cleanup,

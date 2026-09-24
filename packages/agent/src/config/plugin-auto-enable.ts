@@ -9,4 +9,4 @@
  * `@elizaos/shared`, this file is the bridge that keeps Linux Electrobun
  * (and any other consumer of the packaged eliza-dist) booting.
  */
-export { CONNECTOR_PLUGINS, isConnectorConfigured } from "@elizaos/shared";
+export { CONNECTOR_PLUGINS, isConnectorConfigured } from "@elizaos/core/config/plugin-auto-enable-engine";

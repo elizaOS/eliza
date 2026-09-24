@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" with {
   type: "json",
 };
 

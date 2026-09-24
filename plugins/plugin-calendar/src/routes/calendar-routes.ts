@@ -10,25 +10,8 @@
  * contract surface the client + task-coordinator depend on.
  */
 
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  CreateLifeOpsIcsCalendarSourceRequest,
-  CreateLifeOpsLinkedCalendarLinkRequest,
-  DisconnectLifeOpsLinkedCalendarRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEventUpdate,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  ListLifeOpsCalendarsRequest,
-  PurgeLifeOpsCalendarImportedDataRequest,
-  RebindLifeOpsLinkedCalendarRequest,
-  ResolveLifeOpsLinkedCalendarConflictRequest,
-  RunLifeOpsLinkedCalendarReconciliationRequest,
-  SeedLifeOpsCalendarRequest,
-  SetLifeOpsCalendarIncludedRequest,
-  UpdateLifeOpsIcsCalendarSourceRequest,
-} from "@elizaos/shared";
+import { type CreateLifeOpsCalendarEventRequest, type CreateLifeOpsIcsCalendarSourceRequest, type CreateLifeOpsLinkedCalendarLinkRequest, type DisconnectLifeOpsLinkedCalendarRequest, type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarEventUpdate, type LifeOpsCalendarRecurrenceScope, type ListLifeOpsCalendarsRequest, type PurgeLifeOpsCalendarImportedDataRequest, type RebindLifeOpsLinkedCalendarRequest, type ResolveLifeOpsLinkedCalendarConflictRequest, type RunLifeOpsLinkedCalendarReconciliationRequest, type SeedLifeOpsCalendarRequest, type SetLifeOpsCalendarIncludedRequest, type UpdateLifeOpsIcsCalendarSourceRequest } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
 export type CalendarRouteRateLimitKey =
@@ -103,10 +86,10 @@ export interface CalendarRouteService {
   ): Promise<unknown>;
   listLinkedCalendarEvents(): Promise<unknown>;
   listLinkedCalendarEventViews(): Promise<
-    import("@elizaos/shared").LifeOpsLinkedCalendarEventView[]
+    import("@elizaos/core/contracts/calendar").LifeOpsLinkedCalendarEventView[]
   >;
   getLinkedCalendarControl(): Promise<
-    import("@elizaos/shared").LifeOpsLinkedCalendarControl
+    import("@elizaos/core/contracts/calendar").LifeOpsLinkedCalendarControl
   >;
   getLinkedCalendarEvent(linkId: string): Promise<unknown>;
 }
@@ -160,7 +143,7 @@ export async function handleCalendarRoutes(
       if (deps.rateLimit("calendar_link_write")) return true;
       const body =
         await deps.readJsonBody<
-          import("@elizaos/shared").UpdateLifeOpsLinkedCalendarControlRequest
+          import("@elizaos/core/contracts/calendar").UpdateLifeOpsLinkedCalendarControlRequest
         >();
       if (!body) return true;
       return deps.runRoute(async () => {

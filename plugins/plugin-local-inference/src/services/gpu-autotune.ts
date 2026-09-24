@@ -25,12 +25,7 @@
  * tier.
  */
 
-import {
-	GPU_PROFILES,
-	type GpuProfile,
-	type GpuProfileId,
-	matchGpuProfile,
-} from "@elizaos/shared";
+import { GPU_PROFILES, type GpuProfile, type GpuProfileId, matchGpuProfile } from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
 
 /** Minimum input the helper needs to make a choice. */
 export interface GpuInfo {

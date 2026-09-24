@@ -4,10 +4,7 @@
  * Dispatched on `window` for cross-frame visibility and local diagnostics.
  */
 
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT =
   "eliza:lifeops-google-connector-refresh" as const;

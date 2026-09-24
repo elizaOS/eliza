@@ -10,7 +10,7 @@ import {
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   StewardTokenRemovalError,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { createContext } from "react";
 import { client } from "../../api";
 import {

@@ -14,11 +14,8 @@
  * `cloud/` matches their actual ownership.
  */
 
-import {
-  defaultCloudSiteUrl,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { defaultCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 import type { ElizaConfig } from "../lib/config-like";
 

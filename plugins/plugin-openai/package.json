@@ -47,8 +47,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
-    "js-tiktoken": "^1.0.21",
-    "@elizaos/shared": "workspace:*"
+    "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

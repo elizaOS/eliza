@@ -58,11 +58,11 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import {
   hasStewardAuthedCookie,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import * as React from "react";
 import type {
   ConversationMessage,

@@ -5,30 +5,6 @@
  * preserves the historical `./service-normalize.js` import path for in-plugin
  * callers.
  */
-export {
-  fail,
-  lifeOpsErrorMessage,
-  normalizeEnumValue,
-  normalizeFiniteNumber,
-  normalizeIsoString,
-  normalizeLifeOpsContextPolicy,
-  normalizeLifeOpsDomain,
-  normalizeLifeOpsSubjectType,
-  normalizeLifeOpsVisibilityScope,
-  normalizeOptionalBoolean,
-  normalizeOptionalFiniteNumber,
-  normalizeOptionalIsoString,
-  normalizeOptionalMinutes,
-  normalizeOptionalNonNegativeInteger,
-  normalizeOptionalString,
-  normalizePhoneNumber,
-  normalizePositiveInteger,
-  normalizePriority,
-  normalizePrivacyClass,
-  normalizeReminderUrgency,
-  normalizeValidTimeZone,
-  requireAgentId,
-  requireNonEmptyString,
-} from "@elizaos/shared";
+export { fail, lifeOpsErrorMessage, normalizeEnumValue, normalizeFiniteNumber, normalizeIsoString, normalizeLifeOpsContextPolicy, normalizeLifeOpsDomain, normalizeLifeOpsSubjectType, normalizeLifeOpsVisibilityScope, normalizeOptionalBoolean, normalizeOptionalFiniteNumber, normalizeOptionalIsoString, normalizeOptionalMinutes, normalizeOptionalNonNegativeInteger, normalizeOptionalString, normalizePhoneNumber, normalizePositiveInteger, normalizePriority, normalizePrivacyClass, normalizeReminderUrgency, normalizeValidTimeZone, requireAgentId, requireNonEmptyString } from "@elizaos/core/lifeops-normalize/service-normalize";
 
-export { defaultOwnerEntityId } from "@elizaos/shared/lifeops-normalize/owner-entity";
+export { defaultOwnerEntityId } from "@elizaos/core/lifeops-normalize/owner-entity";

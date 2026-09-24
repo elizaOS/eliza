@@ -2,24 +2,41 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "drizzle-orm": [
+        "../plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
       ],
-      "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
-      "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/ui/platform": [
+        "../../packages/ui/src/platform/index.ts"
+      ],
+      "@elizaos/ui/platform/*": [
+        "../../packages/ui/src/platform/*"
+      ],
+      "@elizaos/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../packages/core/src/*"
+      ],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../plugin-agent-orchestrator/dist/ui/index.d.ts"
       ],
@@ -34,6 +51,13 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx"
+  ]
 }

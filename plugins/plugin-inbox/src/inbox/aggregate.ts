@@ -26,17 +26,7 @@
  *     projections.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import {
-  type GetLifeOpsInboxRequest,
-  LIFEOPS_INBOX_CHANNELS,
-  type LifeOpsInbox,
-  type LifeOpsInboxCacheMode,
-  type LifeOpsInboxChannel,
-  type LifeOpsInboxChannelCount,
-  type LifeOpsInboxMessage,
-  type LifeOpsInboxSourceStatus,
-  type LifeOpsInboxThreadGroup,
-} from "@elizaos/shared";
+import { type GetLifeOpsInboxRequest, LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox, type LifeOpsInboxCacheMode, type LifeOpsInboxChannel, type LifeOpsInboxChannelCount, type LifeOpsInboxMessage, type LifeOpsInboxSourceStatus, type LifeOpsInboxThreadGroup } from "@elizaos/core/contracts/personal-assistant";
 import {
   fetchAllMessages,
   type GmailInboxSource,

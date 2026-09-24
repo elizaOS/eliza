@@ -11,11 +11,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsMicrosoftCapability,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorGrant, type LifeOpsConnectorSide, type LifeOpsMicrosoftCapability } from "@elizaos/core/contracts/personal-assistant";
 
 export const MICROSOFT_CALENDAR_PROVIDER = "microsoft";
 export const MICROSOFT_CALENDAR_GRANT_PREFIX = "connector-account:microsoft:";

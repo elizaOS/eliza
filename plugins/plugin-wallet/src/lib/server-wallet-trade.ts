@@ -6,7 +6,8 @@
  */
 import crypto from "node:crypto";
 import type http from "node:http";
-import { readAliasedEnv, type TradePermissionMode } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
 
 import type { WalletExportRequestBody } from "../contracts.js";
 import {

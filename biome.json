@@ -74,8 +74,8 @@
   "overrides": [
     {
       "includes": [
-        "packages/shared/src/local-inference/bge/tokenizer.json",
-        "packages/shared/src/local-inference/bge/tokenizer_config.json"
+        "plugins/plugin-local-inference/src/model-catalog/bge/tokenizer.json",
+        "plugins/plugin-local-inference/src/model-catalog/bge/tokenizer_config.json"
       ],
       "formatter": {
         "enabled": false

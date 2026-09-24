@@ -6,14 +6,7 @@
  * catalog/visibility flags) reuses the canonical app config types from
  * `@elizaos/shared`.
  */
-import type {
-  AppSessionConfig,
-  AppSessionFeature,
-  AppSessionMode,
-  AppUiExtensionConfig,
-  AppViewerConfig,
-  RegistryAppInfo,
-} from "@elizaos/shared";
+import { type AppSessionConfig, type AppSessionFeature, type AppSessionMode, type AppUiExtensionConfig, type AppViewerConfig, type RegistryAppInfo } from "@elizaos/core/contracts/apps";
 
 export type RegistryAppViewerMeta = Omit<AppViewerConfig, "authMessage">;
 export type RegistryAppSessionMode = AppSessionMode;

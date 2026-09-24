@@ -19,7 +19,7 @@ import {
   type BackgroundCatalogKind,
   type BackgroundCatalogMeta,
   DEFAULT_BACKGROUND_CATALOG_ID as SHARED_DEFAULT_BACKGROUND_CATALOG_ID,
-} from "@elizaos/shared/backgrounds/catalog-index";
+} from "@elizaos/ui/backgrounds/catalog-index";
 import {
   DEFAULT_SHADER_UNIFORMS,
   normalizeUniforms,

@@ -21,7 +21,7 @@ import {
   GoogleCalendarClient,
   type GoogleCredentialResolver,
 } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { Auth } from "googleapis";
 import { describe, expect, it } from "vitest";
 import { lifeOpsCalendarEventFromGoogle } from "../src/internal/google-delegates.js";

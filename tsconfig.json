@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -18,26 +22,54 @@
     "strict": true,
     "jsx": "react-jsx",
     "paths": {
-      "@elizaos/ui": ["./packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["./packages/ui/src/*"],
-      "@elizaos/agent": ["./packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["./packages/agent/src/*"],
-      "@elizaos/app": ["./packages/app/src/index.ts"],
-      "@elizaos/app/*": ["./packages/app/src/*"],
-      "@elizaos/cloud-sdk": ["./packages/cloud/sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
-      "@elizaos/core": ["./packages/core/src/index.ts"],
-      "@elizaos/testing": ["./packages/testing/src/index.ts"],
-      "@elizaos/core/atomic-json": ["./packages/core/src/utils/atomic-json.ts"],
-      "@elizaos/core/*": ["./packages/core/src/*"],
+      "@elizaos/ui": [
+        "./packages/ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "./packages/ui/src/*"
+      ],
+      "@elizaos/agent": [
+        "./packages/agent/src/index.ts"
+      ],
+      "@elizaos/agent/*": [
+        "./packages/agent/src/*"
+      ],
+      "@elizaos/app": [
+        "./packages/app/src/index.ts"
+      ],
+      "@elizaos/app/*": [
+        "./packages/app/src/*"
+      ],
+      "@elizaos/cloud-sdk": [
+        "./packages/cloud/sdk/src/index.ts"
+      ],
+      "@elizaos/cloud-sdk/*": [
+        "./packages/cloud/sdk/src/*"
+      ],
+      "@elizaos/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@elizaos/testing": [
+        "./packages/testing/src/index.ts"
+      ],
+      "@elizaos/core/atomic-json": [
+        "./packages/core/src/utils/atomic-json.ts"
+      ],
+      "@elizaos/core/*": [
+        "./packages/core/src/*"
+      ],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/src/index.ts"
       ],
-      "@elizaos/plugin-anthropic": ["./plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-anthropic": [
+        "./plugins/plugin-anthropic/index.ts"
+      ],
       "@elizaos/plugin-anthropic/endpoint-config": [
         "./plugins/plugin-anthropic/utils/config.ts"
       ],
-      "@elizaos/plugin-browser": ["./plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser": [
+        "./plugins/plugin-browser/src/index.ts"
+      ],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -50,51 +82,81 @@
       "@elizaos/plugin-native-contacts": [
         "./plugins/plugin-native-contacts/src/index.ts"
       ],
-      "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord": [
+        "./plugins/plugin-discord/index.ts"
+      ],
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"
       ],
       "@elizaos/plugin-elizacloud/endpoint-config": [
         "./plugins/plugin-elizacloud/src/utils/config.ts"
       ],
-      "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
+      "@elizaos/plugin-imessage": [
+        "./plugins/plugin-imessage/src/index.ts"
+      ],
       "@elizaos/plugin-personal-assistant": [
         "./plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-mcp": ["./plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp": [
+        "./plugins/plugin-mcp/src/index.ts"
+      ],
       "@elizaos/plugin-native-messages": [
         "./plugins/plugin-native-messages/src/index.ts"
       ],
-      "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
+      "@elizaos/plugin-openai": [
+        "./plugins/plugin-openai/index.ts"
+      ],
       "@elizaos/plugin-openai/endpoint-config": [
         "./plugins/plugin-openai/utils/config.ts"
       ],
       "@elizaos/plugin-native-phone": [
         "./plugins/plugin-native-phone/src/index.ts"
       ],
-      "@elizaos/plugin-native-phone/*": ["./plugins/plugin-native-phone/src/*"],
-      "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-native-phone/*": [
+        "./plugins/plugin-native-phone/src/*"
+      ],
+      "@elizaos/plugin-sql": [
+        "./plugins/plugin-sql/src/index.ts"
+      ],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "./plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-trajectory-logger": [
         "./plugins/plugin-trajectory-logger/src/index.ts"
       ],
-      "@elizaos/plugin-video": ["./plugins/plugin-video/src/index.ts"],
-      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-video": [
+        "./plugins/plugin-video/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet": [
+        "./plugins/plugin-wallet/src/index.ts"
+      ],
       "@elizaos/plugin-native-wifi": [
         "./plugins/plugin-native-wifi/src/index.ts"
       ],
-      "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
-      "@elizaos/auth/auth": ["./packages/auth/src/auth/index.ts"],
-      "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
-      "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"],
-      "@elizaos/auth/vault": ["./packages/auth/src/vault/index.ts"],
-      "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
-      "@elizaos/cloud-shared": ["./packages/cloud/shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["./packages/cloud/shared/src/*"],
-      "@elizaos/plugin-wallet/*": ["./plugins/plugin-wallet/src/*"],
+      "@elizaos/plugin-workflow": [
+        "./plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/auth/auth": [
+        "./packages/auth/src/auth/index.ts"
+      ],
+      "@elizaos/auth/auth/*": [
+        "./packages/auth/src/auth/*"
+      ],
+      "@elizaos/auth/vault": [
+        "./packages/auth/src/vault/index.ts"
+      ],
+      "@elizaos/auth/vault/*": [
+        "./packages/auth/src/vault/*"
+      ],
+      "@elizaos/cloud-shared": [
+        "./packages/cloud/shared/src/index.ts"
+      ],
+      "@elizaos/cloud-shared/*": [
+        "./packages/cloud/shared/src/*"
+      ],
+      "@elizaos/plugin-wallet/*": [
+        "./plugins/plugin-wallet/src/*"
+      ],
       "@elizaos/capacitor-agent": [
         "./plugins/plugin-native-agent/src/index.ts"
       ],

@@ -16,7 +16,7 @@ import {
   getScheduledTaskRunner,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";

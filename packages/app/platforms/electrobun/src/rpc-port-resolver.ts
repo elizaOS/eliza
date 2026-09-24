@@ -18,14 +18,10 @@
  * back to HTTP. We just won't return null spuriously when the agent is
  * actually up and reachable on a known port.
  */
-
-import { resolveDesktopApiPort } from "@elizaos/shared";
-
-export function resolveRpcAgentPort(
-	embeddedPort: number | null,
-	env: Record<string, string | undefined> = process.env,
-): number | null {
-	if (embeddedPort !== null && embeddedPort > 0) return embeddedPort;
-	const fromEnv = resolveDesktopApiPort(env);
-	return fromEnv > 0 ? fromEnv : null;
+import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
+export function resolveRpcAgentPort(embeddedPort: number | null, env: Record<string, string | undefined> = process.env): number | null {
+    if (embeddedPort !== null && embeddedPort > 0)
+        return embeddedPort;
+    const fromEnv = resolveDesktopApiPort(env);
+    return fromEnv > 0 ? fromEnv : null;
 }

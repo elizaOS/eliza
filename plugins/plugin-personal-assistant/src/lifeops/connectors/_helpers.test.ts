@@ -8,7 +8,7 @@
  * degradation for every send-capable connector, so its mapping and its
  * payload guard must be pinned exactly.
  */
-import { LifeOpsServiceError } from "@elizaos/shared";
+import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
 import { describe, expect, it } from "vitest";
 import {
   dispatchReceipt,

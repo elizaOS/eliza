@@ -5,7 +5,7 @@ import type {
   DuffelPayment,
   SearchFlightsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 
 export interface TravelBookingPassenger {
   readonly offerPassengerId?: string | null;

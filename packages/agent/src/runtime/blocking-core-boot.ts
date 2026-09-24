@@ -4,7 +4,7 @@
  * already registered plugins are skipped across blocking and deferred phases.
  */
 import { type AgentRuntime, ElizaError, logger } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import { formatError } from "@elizaos/core";
 import { CORE_PLUGINS } from "./core-plugins.ts";
 import { selectDatabasePluginNames } from "./database-selection.ts";
 import type { ResolvedPlugin } from "./plugin-types.ts";

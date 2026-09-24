@@ -7,82 +7,72 @@
  * across from PA's `app_lifeops` on first boot. Depends on `@elizaos/plugin-sql`
  * for the runtime DB handle the schema registers against.
  */
-import {
-  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-
+import { InboxMigrationService } from "./inbox/migration.ts";
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core";
+import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
-import { InboxMigrationService } from "./inbox/migration.ts";
-import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
-import { inboxTriageProvider } from "./providers/inbox-triage.ts";
 import { inboxRoutes } from "./routes/inbox-routes.ts";
-
+import { inboxTriageProvider } from "./providers/inbox-triage.ts";
+import { promoteSubactionsToActions } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/shared";
 export const inboxPlugin: Plugin = {
-  name: "@elizaos/plugin-inbox",
-  description:
-    "Unified cross-channel inbox triage with unresolved-item tracking. Hosts the INBOX umbrella action (list/search/summarize fan-out across email/Discord/Telegram/WhatsApp/X/Slack and similar non-SMS channels) and the inboxTriage provider, backed by the InboxService/InboxRepository triage back-end plus the aggregation domain in `inbox/aggregate.ts` (builders, request resolver, cached read-through InboxDomain). The legacy transport route `GET /api/lifeops/inbox` and the connector sources/cache tables stay in @elizaos/plugin-personal-assistant, which injects them through the aggregate seams and delegates the domain here. (Android SMS is handled by plugin-native-messages.)",
-  dependencies: ["@elizaos/plugin-sql"],
-  schema: inboxDbSchema,
-  services: [InboxMigrationService],
-  // Promote the INBOX_* subaction virtuals here so they exist wherever the
-  // plugin loads (including standalone, without plugin-personal-assistant).
-  // The `triage` override sharpens the planner signal so a genuine triage
-  // request ("triage my inbox", "what needs my attention") routes to
-  // INBOX_TRIAGE — the `inbox_triage` optimized-prompt consumer — instead of
-  // the list/summarize reads (#11383).
-  actions: [
-    ...promoteSubactionsToActions(inboxAction, {
-      overrides: {
-        triage: {
-          description:
-            "subaction = triage — run the AI triage classifier over new cross-channel messages (urgent / needs_reply / notify / info / ignore) and return the prioritized queue",
-          descriptionCompressed:
-            "INBOX_TRIAGE classify new messages urgent|needs_reply|notify|info|ignore -> prioritized queue",
-          similes: ["TRIAGE_INBOX", "PRIORITIZE_INBOX", "CLASSIFY_INBOX"],
+    name: "@elizaos/plugin-inbox",
+    description: "Unified cross-channel inbox triage with unresolved-item tracking. Hosts the INBOX umbrella action (list/search/summarize fan-out across email/Discord/Telegram/WhatsApp/X/Slack and similar non-SMS channels) and the inboxTriage provider, backed by the InboxService/InboxRepository triage back-end plus the aggregation domain in `inbox/aggregate.ts` (builders, request resolver, cached read-through InboxDomain). The legacy transport route `GET /api/lifeops/inbox` and the connector sources/cache tables stay in @elizaos/plugin-personal-assistant, which injects them through the aggregate seams and delegates the domain here. (Android SMS is handled by plugin-native-messages.)",
+    dependencies: ["@elizaos/plugin-sql"],
+    schema: inboxDbSchema,
+    services: [InboxMigrationService],
+    // Promote the INBOX_* subaction virtuals here so they exist wherever the
+    // plugin loads (including standalone, without plugin-personal-assistant).
+    // The `triage` override sharpens the planner signal so a genuine triage
+    // request ("triage my inbox", "what needs my attention") routes to
+    // INBOX_TRIAGE — the `inbox_triage` optimized-prompt consumer — instead of
+    // the list/summarize reads (#11383).
+    actions: [
+        ...promoteSubactionsToActions(inboxAction, {
+            overrides: {
+                triage: {
+                    description: "subaction = triage — run the AI triage classifier over new cross-channel messages (urgent / needs_reply / notify / info / ignore) and return the prioritized queue",
+                    descriptionCompressed: "INBOX_TRIAGE classify new messages urgent|needs_reply|notify|info|ignore -> prioritized queue",
+                    similes: ["TRIAGE_INBOX", "PRIORITIZE_INBOX", "CLASSIFY_INBOX"],
+                },
+            },
+        }),
+    ].map((action) => ({
+        ...action,
+        disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+    })),
+    providers: [inboxTriageProvider, crossChannelContextProvider].map((provider) => ({
+        ...provider,
+        disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+        cacheStable: false,
+    })),
+    routes: inboxRoutes,
+    views: [
+        {
+            id: "inbox",
+            label: "Inbox",
+            description: "Cross-channel inbox triage",
+            icon: "Inbox",
+            path: "/inbox",
+            responseContext: {
+                primaryContext: "messaging",
+                secondaryContexts: ["email"],
+            },
+            // The shipped view is GUI-only. `modalities` is a plain literal here
+            // (plugin.ts is not in the view bundle).
+            modalities: ["gui"],
+            bundlePath: "dist/views/bundle.js",
+            // First-party instrumented view (data-agent-id controls): grant the
+            // agent-surface capability so the view broker admits agent-driven
+            // fills/clicks (#13452 manifest gate).
+            surface: { capabilities: ["agent-surface"] },
+            componentExport: "InboxView",
+            tags: ["inbox", "triage", "communication", "email", "mail", "messages"],
+            relatedActions: ["INBOX"],
+            visibleInManager: true,
+            desktopTabEnabled: true,
         },
-      },
-    }),
-  ].map((action) => ({
-    ...action,
-    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  })),
-  providers: [inboxTriageProvider, crossChannelContextProvider].map(
-    (provider) => ({
-      ...provider,
-      disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-      cacheStable: false,
-    }),
-  ),
-  routes: inboxRoutes,
-  views: [
-    {
-      id: "inbox",
-      label: "Inbox",
-      description: "Cross-channel inbox triage",
-      icon: "Inbox",
-      path: "/inbox",
-      responseContext: {
-        primaryContext: "messaging",
-        secondaryContexts: ["email"],
-      },
-      // The shipped view is GUI-only. `modalities` is a plain literal here
-      // (plugin.ts is not in the view bundle).
-      modalities: ["gui"],
-      bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
-      componentExport: "InboxView",
-      tags: ["inbox", "triage", "communication", "email", "mail", "messages"],
-      relatedActions: ["INBOX"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
+    ],
 };
-
 export default inboxPlugin;

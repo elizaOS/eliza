@@ -8,22 +8,15 @@
  * boot-recovery conductor and the home provisioning widget reuse one add-credits
  * path instead of hand-building the URL twice.
  */
-
-import { normalizeCloudSiteUrl } from "@elizaos/shared";
 import { getBootConfig } from "../config/boot-config";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import { openExternalUrl } from "../utils/openExternalUrl";
-
 /** The canonical hosted add-funds / credits console URL. */
 export function cloudBillingConsoleUrl(cloudApiBase?: string): string {
-  const cloudAppOrigin = normalizeCloudSiteUrl(
-    cloudApiBase ?? getBootConfig().cloudApiBase,
-  );
-  return `${cloudAppOrigin}/cloud/billing`;
+    const cloudAppOrigin = normalizeCloudSiteUrl(cloudApiBase ?? getBootConfig().cloudApiBase);
+    return `${cloudAppOrigin}/cloud/billing`;
 }
-
 /** Open the billing console on the current platform. */
-export function openCloudBillingConsole(
-  cloudApiBase?: string,
-): Promise<boolean> {
-  return openExternalUrl(cloudBillingConsoleUrl(cloudApiBase));
+export function openCloudBillingConsole(cloudApiBase?: string): Promise<boolean> {
+    return openExternalUrl(cloudBillingConsoleUrl(cloudApiBase));
 }

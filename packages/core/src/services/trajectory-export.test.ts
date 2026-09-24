@@ -4,7 +4,7 @@
  * built from both persisted `stepsJson` and inline `steps`.
  */
 
-import { trajectoryToPlaintext } from "@elizaos/shared/activity-plaintext";
+import { trajectoryToPlaintext } from "@elizaos/core/activity-plaintext";
 import { describe, expect, it } from "vitest";
 import {
 	iterateTrajectoryLlmCalls,

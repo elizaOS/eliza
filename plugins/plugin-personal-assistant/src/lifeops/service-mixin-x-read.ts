@@ -3,11 +3,7 @@
  * and the mixin that composes the x-read domain's feed/DM/search methods onto
  * the LifeOpsService base.
  */
-import type {
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-} from "@elizaos/shared";
+import { type LifeOpsXDm, type LifeOpsXFeedItem, type LifeOpsXFeedType } from "@elizaos/core/contracts/personal-assistant";
 
 type XReadOpts = {
   limit?: number;

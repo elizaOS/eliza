@@ -13,7 +13,7 @@ import {
   KMS_AEAD_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   KMS_AEAD_OPERATION_KEY_BUNDLE_V1,
 } from "@elizaos/auth/kms";
-import { AGENT_BACKUP_CHUNK_ENVELOPE_V1, AGENT_BACKUP_MANIFEST_V2_LIMITS } from "@elizaos/shared";
+import { AGENT_BACKUP_CHUNK_ENVELOPE_V1, AGENT_BACKUP_MANIFEST_V2_LIMITS } from "@elizaos/core/contracts/agent-backup-manifest";
 import z from "zod";
 
 const SPOOL_FORMAT = "elizaos.agent-backup.capture-v3-spool" as const;

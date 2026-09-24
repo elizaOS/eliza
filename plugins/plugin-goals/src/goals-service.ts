@@ -22,17 +22,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type CreateLifeOpsGoalRequest,
-  LIFEOPS_GOAL_STATUSES,
-  LIFEOPS_REVIEW_STATES,
-  type LifeOpsAuditEventType,
-  type LifeOpsGoalDefinition,
-  type LifeOpsGoalRecord,
-  type LifeOpsOwnership,
-  type LifeOpsOwnershipInput,
-  type UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared";
+import { type CreateLifeOpsGoalRequest, LIFEOPS_GOAL_STATUSES, LIFEOPS_REVIEW_STATES, type LifeOpsAuditEventType, type LifeOpsGoalDefinition, type LifeOpsGoalRecord, type LifeOpsOwnership, type LifeOpsOwnershipInput, type UpdateLifeOpsGoalRequest } from "@elizaos/core/contracts/personal-assistant";
 import {
   createGoalDefinition,
   GoalsRepository,

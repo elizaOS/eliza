@@ -15,10 +15,7 @@ import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared";
+import { type LifeOpsConnectorGrant, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

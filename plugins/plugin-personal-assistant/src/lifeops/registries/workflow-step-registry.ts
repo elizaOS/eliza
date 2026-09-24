@@ -10,21 +10,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  CreateLifeOpsBrowserSessionRequest,
-  CreateLifeOpsDefinitionRequest,
-  GetLifeOpsCalendarFeedRequest,
-  GetLifeOpsGmailTriageRequest,
-  GetLifeOpsGmailUnrespondedRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsBrowserSession,
-  LifeOpsCalendarFeed,
-  LifeOpsDefinitionRecord,
-  LifeOpsGmailTriageFeed,
-  LifeOpsGmailUnrespondedFeed,
-  LifeOpsHealthSummaryResponse,
-  LifeOpsWorkflowDefinition,
-} from "@elizaos/shared";
+import { type CreateLifeOpsBrowserSessionRequest, type CreateLifeOpsDefinitionRequest, type GetLifeOpsGmailTriageRequest, type GetLifeOpsGmailUnrespondedRequest, type GetLifeOpsHealthSummaryRequest, type LifeOpsBrowserSession, type LifeOpsDefinitionRecord, type LifeOpsGmailTriageFeed, type LifeOpsGmailUnrespondedFeed, type LifeOpsHealthSummaryResponse, type LifeOpsWorkflowDefinition } from "@elizaos/core/contracts/personal-assistant";
+import { type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarFeed } from "@elizaos/core/contracts/calendar";
 import type { z } from "zod";
 
 /**
