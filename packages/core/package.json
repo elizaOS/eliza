@@ -287,12 +287,6 @@
 			"import": "./dist/config/distribution-profile.js",
 			"default": "./dist/config/distribution-profile.js"
 		},
-		"./config/env-vars": {
-			"types": "./dist/config/env-vars.d.ts",
-			"eliza-source": "./src/config/env-vars.ts",
-			"import": "./dist/config/env-vars.js",
-			"default": "./dist/config/env-vars.js"
-		},
 		"./config": {
 			"types": "./dist/config/index.d.ts",
 			"eliza-source": "./src/config/index.ts",
