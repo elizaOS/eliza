@@ -25,11 +25,28 @@
  *   --poll-interval MS  Milliseconds between polls (default 2000)
  *   --no-cors-check     Skip the CORS preflight check
  */
+import assert from "node:assert/strict";
 import crypto from "node:crypto";
+
+interface FlowStep {
+  label: string;
+  totalMs: number;
+  ok: boolean;
+  status?: number;
+  ttfbMs?: number | null;
+  body?: string | null;
+  bodyLength?: number;
+  detail?: string;
+  error?: string | null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // ─── Arg parsing ─────────────────────────────────────────────────────────────
 
-function parseArgs(argv) {
+function parseArgs(argv: string[]) {
   const args = {
     apiBase: "https://api.eliza.app",
     webBase: "https://eliza.app",
@@ -73,12 +90,12 @@ const config = parseArgs(process.argv.slice(2));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function fmtMs(ms) {
+function fmtMs(ms: number) {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function summarize(samples) {
+function summarize(samples: number[]) {
   if (samples.length === 0)
     return { min: 0, max: 0, mean: 0, median: 0, p95: 0, samples: 0 };
   const sorted = [...samples].sort((a, b) => a - b);
@@ -96,7 +113,11 @@ function summarize(samples) {
 
 // ─── Timed fetch ─────────────────────────────────────────────────────────────
 
-async function timedFetch(label, url, options = {}) {
+async function timedFetch(
+  label: string,
+  url: string,
+  options: RequestInit = {},
+) {
   const t0 = performance.now();
   try {
     const response = await fetch(url, options);
@@ -127,15 +148,15 @@ async function timedFetch(label, url, options = {}) {
       ttfbMs: null,
       body: null,
       bodyLength: 0,
-      error: err.message,
+      error: errorMessage(err),
     };
   }
 }
 
 // ─── Single login flow ───────────────────────────────────────────────────────
 
-async function runLoginFlow(round) {
-  const results = [];
+async function runLoginFlow(round: number) {
+  const results: FlowStep[] = [];
   const flowStart = performance.now();
 
   // Step 1: Create CLI session
@@ -154,10 +175,14 @@ async function runLoginFlow(round) {
   );
   results.push(createResult);
 
-  let sessionId = null;
+  let sessionId: string | null = null;
   if (createResult.ok) {
     try {
-      const data = JSON.parse(createResult.body);
+      const data = JSON.parse(createResult.body ?? "");
+      assert.ok(
+        data && typeof data.sessionId === "string" && data.sessionId.length > 0,
+        "Session response requires a session ID",
+      );
       sessionId = data.sessionId;
       const browserUrl = `${config.webBase}/auth/cli-login?session=${sessionId}`;
       results.push({
@@ -191,7 +216,7 @@ async function runLoginFlow(round) {
 
       if (pollResult.ok) {
         try {
-          const pollData = JSON.parse(pollResult.body);
+          const pollData = JSON.parse(pollResult.body ?? "");
           if (
             pollData.status === "authenticated" ||
             pollData.status === "expired"
@@ -241,7 +266,7 @@ async function corsCheck() {
       );
     }
   } catch (e) {
-    console.log(`  Failed: ${e.message}`);
+    console.log(`  Failed: ${errorMessage(e)}`);
   }
 }
 
@@ -276,7 +301,7 @@ async function main() {
     });
     console.log(`  Warmup done in ${fmtMs(performance.now() - warmupStart)}`);
   } catch (e) {
-    console.log(`  Warmup failed: ${e.message} — continuing anyway`);
+    console.log(`  Warmup failed: ${errorMessage(e)} — continuing anyway`);
   }
 
   // CORS check
@@ -306,7 +331,7 @@ async function main() {
       console.log(
         `    status: ${status}  time: ${fmtMs(r.totalMs)}  ttfb: ${r.ttfbMs ? fmtMs(r.ttfbMs) : "n/a"}`,
       );
-      if (r.body && r.bodyLength < 500) {
+      if (r.body && r.bodyLength !== undefined && r.bodyLength < 500) {
         console.log(`    body:   ${r.body.slice(0, 200)}`);
       }
 
