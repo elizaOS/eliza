@@ -2,6 +2,7 @@
  * Resolves aesthetic-audit artifact directories while protecting repository and
  * filesystem roots from the runner's intentional recursive cleanup.
  */
+import fs from "node:fs";
 import path from "node:path";
 
 function containsPath(parent, child) {
@@ -24,21 +25,34 @@ function resolveAuditOutput({
     appDir,
     configured?.trim() || path.join(repoRoot, "test-results", defaultDirectory),
   );
-  const insideRepository = containsPath(repoRoot, outputDir);
-  const insideApp = containsPath(appDir, outputDir);
-  const resultsRoot = path.join(repoRoot, "test-results");
-  const insideResults =
-    outputDir !== resultsRoot && containsPath(resultsRoot, outputDir);
-  if (
-    outputDir === path.parse(outputDir).root ||
-    containsPath(outputDir, repoRoot) ||
-    containsPath(outputDir, appDir) ||
-    outputDir === resultsRoot ||
-    (insideRepository && !insideApp && !insideResults)
-  ) {
-    throw new Error(
-      `[ui-smoke] refusing to clean unsafe audit output: ${outputDir}`,
-    );
+  // Check both the requested path and its existing ancestors. A temporary
+  // output alias must not turn recursive cleanup into deletion of source.
+  const canonicalize = (target) => {
+    try {
+      return fs.realpathSync(target);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      const parent = path.dirname(target);
+      if (parent === target) throw error;
+      return path.join(canonicalize(parent), path.basename(target));
+    }
+  };
+  for (const resolve of [(value) => path.resolve(value), canonicalize]) {
+    const output = resolve(outputDir);
+    const repository = resolve(repoRoot);
+    const app = resolve(appDir);
+    const results = path.join(repository, "test-results");
+    if (
+      output === path.parse(output).root ||
+      containsPath(output, repository) ||
+      containsPath(output, app) ||
+      output === results ||
+      (containsPath(repository, output) && !containsPath(results, output))
+    ) {
+      throw new Error(
+        `[ui-smoke] refusing to clean unsafe audit output: ${outputDir}`,
+      );
+    }
   }
   return outputDir;
 }

@@ -9,6 +9,7 @@ import {
   fileMtime,
   maxMtimeUnder,
 } from "./artifact-staleness.ts";
+import { capacitorPluginsBuildNeeded } from "./capacitor-plugin-build-needed.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
@@ -128,4 +129,27 @@ it("does not hide filesystem errors as missing or unchanged source", () => {
   touch(path.join(tmp, "file"), 1_000_000);
   expect(() => maxMtimeUnder(path.join(tmp, "file"))).toThrow();
   expect(() => fileMtime(path.join(tmp, "file", "child"))).toThrow();
+});
+
+it("uses canonical scanning for native plugin source and manifest changes", () => {
+  const plugin = path.join(tmp, "plugin-native-fixture");
+  expect(capacitorPluginsBuildNeeded(tmp, ["fixture"])).toBe(true);
+  touch(path.join(plugin, "src/index.ts"), 1_000_000);
+  touch(path.join(plugin, "package.json"), 1_000_000);
+  touch(path.join(plugin, "dist/esm/index.js"), 2_000_000);
+  expect(capacitorPluginsBuildNeeded(tmp, ["fixture"])).toBe(false);
+  touch(path.join(plugin, "package.json"), 3_000_000);
+  expect(capacitorPluginsBuildNeeded(tmp, ["fixture"])).toBe(true);
+});
+
+it("does not hide unreadable native source layouts or directory build markers", () => {
+  const plugin = path.join(tmp, "plugin-native-fixture");
+  touch(path.join(plugin, "src"), 1_000_000);
+  touch(path.join(plugin, "dist/esm/index.js"), 2_000_000);
+  expect(() => capacitorPluginsBuildNeeded(tmp, ["fixture"])).toThrow();
+  fs.rmSync(path.join(plugin, "dist/esm/index.js"));
+  fs.mkdirSync(path.join(plugin, "dist/esm/index.js"));
+  expect(() => capacitorPluginsBuildNeeded(tmp, ["fixture"])).toThrow(
+    "not a file",
+  );
 });

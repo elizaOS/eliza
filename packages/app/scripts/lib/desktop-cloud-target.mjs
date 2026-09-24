@@ -13,21 +13,23 @@ const CLOUD_TARGET_ORIGINS = Object.freeze({
  * any explicit `VITE_ELIZA_CLOUD_BASE` override supplied by the operator.
  */
 export function resolveDesktopCloudTarget(args, env = process.env) {
-  const inline = args.find((arg) => arg.startsWith("--cloud-target="));
-  const exactIndex = args.indexOf("--cloud-target");
-  if (
-    exactIndex >= 0 &&
-    (!args[exactIndex + 1] || args[exactIndex + 1].startsWith("--"))
-  ) {
-    throw new Error(
-      'Desktop Cloud target is missing. Expected "production" or "staging".',
-    );
+  let cliValue;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg !== "--cloud-target" && !arg.startsWith("--cloud-target="))
+      continue;
+    if (cliValue !== undefined)
+      throw new Error("Desktop Cloud target was supplied more than once.");
+    cliValue =
+      arg === "--cloud-target"
+        ? args[++index]
+        : arg.slice("--cloud-target=".length);
+    if (!cliValue?.trim() || cliValue.startsWith("--")) {
+      throw new Error(
+        'Desktop Cloud target is missing. Expected "production" or "staging".',
+      );
+    }
   }
-  const cliValue = inline
-    ? inline.slice("--cloud-target=".length)
-    : exactIndex >= 0
-      ? args[exactIndex + 1]
-      : undefined;
   const raw = cliValue ?? env.ELIZA_DESKTOP_CLOUD_TARGET;
 
   if (raw === undefined || raw === null || raw.trim() === "") {
@@ -35,7 +37,7 @@ export function resolveDesktopCloudTarget(args, env = process.env) {
   }
 
   const target = raw.trim().toLowerCase();
-  if (!(target in CLOUD_TARGET_ORIGINS)) {
+  if (!Object.hasOwn(CLOUD_TARGET_ORIGINS, target)) {
     throw new Error(
       `Unknown desktop Cloud target "${raw}". Expected "production" or "staging".`,
     );

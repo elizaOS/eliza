@@ -80,3 +80,28 @@ describe("desktop Cloud build target", () => {
     expect(applyDesktopCloudTarget(env, null)).toBe(env);
   });
 });
+
+it("rejects inherited keys and blank explicit flags instead of changing the target", () => {
+  for (const target of ["__proto__", "constructor"]) {
+    expect(() =>
+      resolveDesktopCloudTarget([`--cloud-target=${target}`], {}),
+    ).toThrow("Unknown desktop Cloud target");
+  }
+  for (const args of [["--cloud-target="], ["--cloud-target", "  "]]) {
+    expect(() =>
+      resolveDesktopCloudTarget(args, {
+        ELIZA_DESKTOP_CLOUD_TARGET: "staging",
+      }),
+    ).toThrow("Desktop Cloud target is missing");
+  }
+});
+
+it("rejects duplicate selectors regardless of flag form", () => {
+  for (const args of [
+    ["--cloud-target=production", "--cloud-target", "staging"],
+    ["--cloud-target", "staging", "--cloud-target=production"],
+    ["--cloud-target=staging", "--cloud-target=staging"],
+  ]) {
+    expect(() => resolveDesktopCloudTarget(args, {})).toThrow("more than once");
+  }
+});

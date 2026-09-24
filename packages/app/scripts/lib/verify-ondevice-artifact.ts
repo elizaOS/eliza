@@ -14,6 +14,7 @@ import {
   assertStagedRendererMatchesBuild,
   type RendererBuildManifest,
   readRendererBuildManifest,
+  rendererBuildManifestMatchesDist,
 } from "./renderer-build-manifest.ts";
 
 /**
@@ -54,13 +55,30 @@ export function verifyStagedArtifact({
       problems.push(
         `${label}: no renderer build stamp in ${rendererDir} — unverifiable renderer.`,
       );
+    } else if (!rendererBuildManifestMatchesDist(rendererDir, manifest)) {
+      problems.push(`${label}: renderer bytes do not match the build stamp.`);
     }
   }
 
   for (const file of requiredFiles) {
     const abs = path.isAbsolute(file) ? file : path.join(rendererDir, file);
-    if (!fs.existsSync(abs)) {
-      problems.push(`${label}: missing required artifact file ${file}`);
+    try {
+      const stat = fs.statSync(abs);
+      if (!stat.isFile() || stat.size === 0) {
+        problems.push(
+          `${label}: required artifact must be a nonempty file: ${file}`,
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        problems.push(`${label}: missing required artifact file ${file}`);
+      } else {
+        throw error;
+      }
     }
   }
 

@@ -96,7 +96,7 @@ describe("verifyStagedArtifact", () => {
     );
   });
 
-  it("verifies presence-only when no fresh dist is supplied", () => {
+  it("verifies the local fingerprint when no fresh dist is supplied", () => {
     const staged = path.join(tmp, "public");
     makeDist(staged);
     writeRendererBuildManifest(staged);
@@ -112,4 +112,29 @@ describe("verifyStagedArtifact", () => {
     expect(result.ok).toBe(false);
     expect(result.problems.join("\n")).toMatch(/no renderer build stamp/);
   });
+});
+
+it("rejects changed renderer bytes without a separate fresh dist", () => {
+  const staged = path.join(tmp, "public");
+  makeDist(staged);
+  writeRendererBuildManifest(staged);
+  fs.writeFileSync(path.join(staged, "assets/index-abc.js"), "y");
+  expect(verifyStagedArtifact({ rendererDir: staged }).ok).toBe(false);
+});
+
+it("rejects directories and empty files as required native companions", () => {
+  const staged = path.join(tmp, "public");
+  makeDist(staged);
+  writeRendererBuildManifest(staged);
+  fs.mkdirSync(path.join(staged, "agent-bundle.js"));
+  fs.writeFileSync(path.join(staged, "libnative.so"), "");
+  const result = verifyStagedArtifact({
+    rendererDir: staged,
+    requiredFiles: ["agent-bundle.js", "libnative.so"],
+  });
+  expect(result.ok).toBe(false);
+  expect(result.problems).toHaveLength(2);
+  expect(
+    result.problems.every((problem) => problem.includes("nonempty file")),
+  ).toBe(true);
 });
