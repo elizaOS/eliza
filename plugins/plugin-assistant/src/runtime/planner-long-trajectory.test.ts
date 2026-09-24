@@ -364,7 +364,41 @@ describe("long progressive planner trajectories", () => {
 });
 
 describe("coding verification recovery scope", () => {
-  it.each([
+  it.each<{
+    label: string;
+    retry: string;
+    cwd: string;
+    recovered: boolean;
+    initialCwd?: string | null;
+    firstActualCwd?: string;
+    actualCwd?: string;
+  }>([
+    {
+      label: "implicit then explicit directory with matching receipts",
+      retry: "go test ./...",
+      cwd: "/workspace",
+      initialCwd: null,
+      firstActualCwd: "/workspace",
+      actualCwd: "/workspace",
+      recovered: true,
+    },
+    {
+      label: "identical arguments but different actual directories",
+      retry: "go test ./...",
+      cwd: "/workspace",
+      firstActualCwd: "/workspace",
+      actualCwd: "/other",
+      recovered: false,
+    },
+    {
+      label: "narrower suite with matching directory receipts",
+      retry: "go test ./internal/config -run TestLoad",
+      cwd: "/workspace",
+      initialCwd: null,
+      firstActualCwd: "/workspace",
+      actualCwd: "/workspace",
+      recovered: false,
+    },
     {
       label: "same suite",
       retry: "go test ./...",
@@ -389,62 +423,80 @@ describe("coding verification recovery scope", () => {
       cwd: "/other",
       recovered: false,
     },
-  ])("preserves evidence for $label", async ({ retry, cwd, recovered }) => {
-    let round = 0;
-    let calls = 0;
-    const result = await runPlannerLoop({
-      codingMode: true,
-      context: { id: "verification-recovery" },
-      runtime: {
-        useModel: async () => {
-          round++;
-          if (round > 4) throw new Error("Unexpected planner retry");
+  ])(
+    "preserves evidence for $label",
+    async ({
+      retry,
+      cwd,
+      recovered,
+      initialCwd,
+      firstActualCwd,
+      actualCwd,
+    }) => {
+      let round = 0;
+      let calls = 0;
+      const result = await runPlannerLoop({
+        codingMode: true,
+        context: { id: "verification-recovery" },
+        runtime: {
+          useModel: async () => {
+            round++;
+            if (round > 4) throw new Error("Unexpected planner retry");
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: `recovery-${round}`,
+                  name: round < 3 ? "SHELL" : "REPLY",
+                  arguments:
+                    round < 3
+                      ? {
+                          command: round === 1 ? "go test ./..." : retry,
+                          ...(round === 1 && initialCwd === null
+                            ? {}
+                            : {
+                                cwd:
+                                  round === 1
+                                    ? (initialCwd ?? "/workspace")
+                                    : cwd,
+                              }),
+                          eliza_turn_scope: "more_work_pending",
+                        }
+                      : {
+                          text: "Verification completed.",
+                          eliza_turn_scope: "final",
+                        },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async () => {
+          calls++;
+          const success = calls !== 1;
           return {
-            text: "",
-            toolCalls: [
-              {
-                id: `recovery-${round}`,
-                name: round < 3 ? "SHELL" : "REPLY",
-                arguments:
-                  round < 3
-                    ? {
-                        command: round === 1 ? "go test ./..." : retry,
-                        cwd: round === 1 ? "/workspace" : cwd,
-                        eliza_turn_scope: "more_work_pending",
-                      }
-                    : {
-                        text: "Verification completed.",
-                        eliza_turn_scope: "final",
-                      },
-              },
-            ],
+            success,
+            text: success ? "Tests passed" : "Tests failed",
+            data: { cwd: calls === 1 ? firstActualCwd : actualCwd },
+            verification: {
+              kind: "test",
+              family: "go",
+              status: success ? "passed" : "failed",
+              exitCode: success ? 0 : 1,
+            },
           };
         },
-      },
-      executeToolCall: async () => {
-        calls++;
-        const success = calls !== 1;
-        return {
-          success,
-          text: success ? "Tests passed" : "Tests failed",
-          verification: {
-            kind: "test",
-            family: "go",
-            status: success ? "passed" : "failed",
-            exitCode: success ? 0 : 1,
-          },
-        };
-      },
-    });
-    expect(calls).toBe(2);
-    expect(result.evaluator?.success).toBe(recovered);
-    expect(result.terminalFailure?.kind).toBe(
-      recovered ? undefined : "coding_tool_failure",
-    );
-    expect(
-      result.trajectory.steps
-        .filter((step) => step.result)
-        .map((step) => step.result?.success),
-    ).toEqual([false, true]);
-  });
+      });
+      expect(calls).toBe(2);
+      expect(result.evaluator?.success).toBe(recovered);
+      expect(result.terminalFailure?.kind).toBe(
+        recovered ? undefined : "coding_tool_failure",
+      );
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.result)
+          .map((step) => step.result?.success),
+      ).toEqual([false, true]);
+    },
+  );
 });

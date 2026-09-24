@@ -6388,12 +6388,13 @@ function resolveShellFailuresSubsumedBy(
   if (call?.name.toUpperCase() !== "SHELL") return;
   const command = shellCommandParam(call);
   if (!command) return;
-  const cwd = shellCwdParam(call);
+  const cwd = shellCwdParam(call, step.result);
   for (const [key, failed] of [...unresolvedByOperation.entries()]) {
     const failedCall = failed.toolCall;
     if (failedCall?.name.toUpperCase() !== "SHELL") continue;
     const failedCommand = shellCommandParam(failedCall);
-    if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+    if (!failedCommand || shellCwdParam(failedCall, failed.result) !== cwd)
+      continue;
     if (containsCommandVerbatim(command, failedCommand)) {
       unresolvedByOperation.delete(key);
     }
@@ -6408,7 +6409,13 @@ function shellCommandParam(call: PlannerToolCall): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function shellCwdParam(call: PlannerToolCall): string {
+function shellCwdParam(
+  call: PlannerToolCall,
+  result?: PlannerToolResult,
+): string {
+  // Tool receipts record the resolved directory, including implicit session cwd.
+  const recorded = result?.data?.cwd;
+  if (typeof recorded === "string" && recorded.trim()) return recorded.trim();
   const value = (call.params as Record<string, unknown> | undefined)?.cwd;
   return typeof value === "string" ? value.trim() : "";
 }
@@ -6677,6 +6684,8 @@ function plannerToolOperationKey(
   // authority merely because their schemas reuse a common field name.
   if (toolCall.name.toUpperCase() === "SHELL") {
     delete (params as Record<string, unknown>).description;
+    const cwd = shellCwdParam(toolCall, result);
+    if (cwd) (params as Record<string, unknown>).cwd = cwd;
   }
   return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
 }
