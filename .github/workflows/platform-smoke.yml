@@ -1,8 +1,8 @@
 # This read-only workflow preserves deterministic macOS and Windows runtime
 # proof. Develop Full remains the sole automatic authority; manual dispatches
 # use the trusted develop definition to test one exact candidate commit.
-name: Platform Smoke
-run-name: Platform Smoke (${{ inputs.source_sha || github.sha }})
+name: Core Platform Tests
+run-name: Core Platform Tests (${{ inputs.source_sha || github.sha }})
 
 on:
   workflow_call:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   platform-smoke:
-    name: Platform smoke (${{ matrix.os }})
+    name: Core tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:

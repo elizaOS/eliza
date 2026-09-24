@@ -13,4 +13,4 @@ bun run --cwd packages/cloud/test-mocks test  # mock API and subprocess contract
 
 No standalone build script is defined; this package is consumed or executed from source.
 
-The server test lane runs the mock API and subprocess contract tests.
+The cloud test lane runs the mock API and subprocess contract tests.
