@@ -3,8 +3,7 @@
  */
 
 import type { HandlerCallback } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
-import { validateToolArgs } from "@elizaos/core/actions/validate-tool-args";
+import { promoteSubactionsToActions, validateToolArgs } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
