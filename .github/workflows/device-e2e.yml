@@ -118,7 +118,9 @@ jobs:
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: "34"
+          # API 35 includes a WebView with the multi-profile storage API tested below.
+          api-level: "35"
+          target: google_apis
           arch: x86_64
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.

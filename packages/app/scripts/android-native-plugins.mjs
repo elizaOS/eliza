@@ -198,6 +198,11 @@ async function main() {
     results: [],
   };
   try {
+    report.device = {
+      sdk: adb("shell", "getprop", "ro.build.version.sdk").trim(),
+      fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
+      webView: adb("shell", "dumpsys", "webviewupdate").trim(),
+    };
     if (!args.includes("--no-build")) {
       console.log(`Building ${selected.length} Android native test APKs`);
       let build;

@@ -71,5 +71,11 @@ class NetworkTransitionFixture(context: Context) : Closeable {
         shell("svc wifi enable")
         shell("svc data ${if (dataEnabled == "1") "enable" else "disable"}")
         awaitMetered(originalMetered)
+        check(shell("settings get global wifi_on") == wifiEnabled) { "Wi-Fi setting was not restored" }
+        check(shell("settings get global mobile_data") == dataEnabled) { "Mobile-data setting was not restored" }
+        val expectedPolicy = "$network;${if (override == "undefined") "none" else override}"
+        check(shell("cmd netpolicy list wifi-networks").lines().filter { it.isNotBlank() }.distinct() == listOf(expectedPolicy)) {
+            "Original Wi-Fi metering override was not restored"
+        }
     }
 }

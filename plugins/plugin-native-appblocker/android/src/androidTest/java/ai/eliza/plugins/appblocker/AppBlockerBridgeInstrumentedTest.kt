@@ -153,7 +153,7 @@ class AppBlockerBridgeInstrumentedTest {
             val button = device.wait(Until.findObject(By.text("Tap count: 0")), 5000)!!
             val bounds = button.visibleBounds
             val point = Point(bounds.centerX(), bounds.centerY())
-            button.click()
+            device.click(point.x, point.y)
             assertTrue(device.wait(Until.hasObject(By.text("Tap count: 1")), 3000))
             scenario.onActivity { it.startActivity(Intent(it, AppBlockerBridgeTestActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) }
             block(scenario, target)
@@ -167,7 +167,7 @@ class AppBlockerBridgeInstrumentedTest {
             assertTrue(result(scenario).getBoolean("success"))
             launchTarget()
             assertTrue("Blocked tap reached the target", device.wait(Until.hasObject(By.text("Tap count: 1")), 4000))
-            device.findObject(By.text("Tap count: 1")).click()
+            device.click(point.x, point.y)
             assertTrue(device.wait(Until.hasObject(By.text("Tap count: 2")), 3000))
             capture("app-unblocked.png")
         }

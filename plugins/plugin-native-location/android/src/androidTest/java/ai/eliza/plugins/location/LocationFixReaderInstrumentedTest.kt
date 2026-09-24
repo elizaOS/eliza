@@ -7,6 +7,8 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
+import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import com.google.android.gms.location.LocationServices
@@ -44,13 +46,18 @@ class LocationFixReaderInstrumentedTest {
         instrumentation.uiAutomation.executeShellCommand("appops set ${context.packageName} android:mock_location allow").use {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
         }
-        @Suppress("DEPRECATION")
-        manager.addTestProvider(LocationManager.GPS_PROVIDER, false, false, false, false, true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE)
-        try {
-            manager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
-            block(manager)
-        } finally {
-            manager.removeTestProvider(LocationManager.GPS_PROVIDER)
+        // Foreground-only permission must be exercised from a resumed host.
+        // Stock Android throttles background instrumentation location callbacks.
+        ActivityScenario.launch(LocationReaderShowcaseActivity::class.java).use { scenario ->
+            assertEquals(Lifecycle.State.RESUMED, scenario.state)
+            @Suppress("DEPRECATION")
+            manager.addTestProvider(LocationManager.GPS_PROVIDER, false, false, false, false, true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE)
+            try {
+                manager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+                block(manager)
+            } finally {
+                manager.removeTestProvider(LocationManager.GPS_PROVIDER)
+            }
         }
     }
 
