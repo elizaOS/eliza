@@ -167,7 +167,7 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 
 describe("client-chat model context preserves executor transport state", () => {
 	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
-		"keeps replay and tab targeting in the original %s message while sending complete semantic fields",
+		"preserves the complete structured %s message and executor transport state",
 		async (channelType) => {
 			const message = makeMessage();
 			message.content = {
@@ -211,12 +211,11 @@ describe("client-chat model context preserves executor transport state", () => {
 				(entry) => entry.role === "user",
 			)?.content;
 			expect(wire).toBeDefined();
-			expect(wire).toContain(original.content.text);
+			// Unknown structured metadata takes the lossless JSON path. Decode the
+			// current-message envelope so escaped text and every nested field count.
+			const currentMessage = wire?.split("# Current message\n").at(-1);
+			expect(JSON.parse(currentMessage ?? "null")).toEqual(original.content);
 			expect(wire).toContain(original.content.replyToMessageText);
-			expect(wire).not.toContain("transport-fingerprint");
-			expect(wire).not.toContain("target-client-tab");
-			expect(wire).not.toContain("uiTimeZone");
-			expect(wire).toContain("complete plugin evidence");
 			const executor = __buildV5ExecutorContextForTests({
 				message,
 				state: makeState(),

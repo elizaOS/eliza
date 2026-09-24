@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import {
   parseRunNodeTsxArgs,
@@ -58,7 +59,14 @@ const nodeArgs = [
 const child = spawn(resolveNodeCmd(), nodeArgs, {
   cwd: process.cwd(),
   detached: exitWithParent && process.platform !== "win32",
-  env: { ...extendNodePathEnv(process.env, process.cwd()), PWD: process.cwd() },
+  env: {
+    ...extendNodePathEnv(process.env, process.cwd()),
+    // Package tooling configs may omit JSX; preserve the shared runtime config.
+    TSX_TSCONFIG_PATH:
+      process.env.TSX_TSCONFIG_PATH ||
+      fileURLToPath(new URL("../../../tsconfig.json", import.meta.url)),
+    PWD: process.cwd(),
+  },
   stdio: "inherit",
 });
 

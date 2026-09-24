@@ -9,6 +9,12 @@ export default defineConfig({
   resolve: {
     alias: [
       ...Object.entries({
+        "@elizaos/plugin-sql/database-utils/pglite-storage": fileURLToPath(
+          new URL(
+            "../plugin-sql/src/database-utils/pglite-storage.ts",
+            import.meta.url,
+          ),
+        ),
         "@elizaos/plugin-sql/database-utils/raw-sql": fileURLToPath(
           new URL(
             "../plugin-sql/src/database-utils/raw-sql.ts",
@@ -40,7 +46,7 @@ export default defineConfig({
           new URL("../plugin-sql/src/index.ts", import.meta.url),
         ),
       }).map(([find, replacement]) => ({
-        find,
+        find: new RegExp(`^${find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
         replacement,
       })),
     ],

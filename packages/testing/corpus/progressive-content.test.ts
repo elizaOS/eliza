@@ -3,6 +3,7 @@
  * as a deterministic checksum, coordinate, authorization, and scale oracle.
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -71,6 +72,29 @@ function signManifest(
 }
 
 describe("progressive content corpus", () => {
+  it("generates identical format fixture bytes across timezones", () => {
+    const moduleUrl = new URL(
+      "./progressive-content-formats.ts",
+      import.meta.url,
+    ).href;
+    const script = `import { generateProgressiveFormatFixtures } from ${JSON.stringify(moduleUrl)};
+      console.log(JSON.stringify(await generateProgressiveFormatFixtures({
+        rootSeed: "progressive-test-seed", publish: async () => {}
+      })));`;
+    const results = ["UTC", "America/Los_Angeles", "Asia/Tokyo"].map((TZ) =>
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "-e", script],
+        {
+          env: { ...process.env, TZ },
+          encoding: "utf8",
+        },
+      ),
+    );
+    expect(results[1]).toBe(results[0]);
+    expect(results[2]).toBe(results[0]);
+  });
+
   it("derives family-stable identifiers without cross-family perturbation", () => {
     expect(progressiveContentObjectId("seed", "file", 3)).toBe(
       progressiveContentObjectId("seed", "file", 3),
@@ -103,7 +127,7 @@ describe("progressive content corpus", () => {
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
     // Frozen before the native-fill optimization: generator bytes and identities
-    // must remain compatible with existing published corpus manifests.
+    // remain compatible with published corpora, independent of host timezone.
     expect(first.manifestSha256).toBe(
       "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
     );
