@@ -17,7 +17,10 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { ANDROID_FULL_TURN_FAILURE_RE } from "../src/platform/chat-failure-strings.ts";
-import { readInstalledRendererStamp, resolveAdb } from "./lib/android-device.mjs";
+import {
+  readInstalledRendererStamp,
+  resolveAdb,
+} from "./lib/android-device.mjs";
 import {
   assertMarkerSurvivedRelaunch,
   buildRelaunchMarker,
