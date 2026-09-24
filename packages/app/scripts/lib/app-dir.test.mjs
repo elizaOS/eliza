@@ -2,9 +2,11 @@ import { spawnSync } from "node:child_process";
 /** Resolves real package layouts and fails before creating phantom package paths. */
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -124,3 +126,66 @@ it("loads canonical workspace errors before package installation", () => {
   });
   expect(result.status, result.stderr).toBe(0);
 });
+
+it.each(["eliza/packages/app", "packages/app"])(
+  "creates Capacitor projects in the consumer app when scripts live in %s",
+  (scriptPackage) => {
+    const root = fixture();
+    manifest(root, ".");
+    manifest(root, "eliza");
+    const consumer = manifest(root, "apps/app");
+    const installed = manifest(root, scriptPackage);
+    const scripts = path.join(installed, "scripts");
+    mkdirSync(path.join(scripts, "lib"), { recursive: true });
+    mkdirSync(path.join(root, "scripts"), { recursive: true });
+    writeFileSync(path.join(root, "scripts/run-eliza-app-script.mjs"), "");
+    copyFileSync(
+      new URL("../ensure-capacitor-platform.mjs", import.meta.url),
+      path.join(scripts, "ensure-capacitor-platform.mjs"),
+    );
+    for (const name of [
+      "app-dir.mjs",
+      "repo-root.ts",
+      "capacitor-platform-templates.mjs",
+    ]) {
+      copyFileSync(
+        new URL(name, import.meta.url),
+        path.join(scripts, "lib", name),
+      );
+    }
+    const bin = path.join(root, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      path.join(bin, "bunx"),
+      `#!/bin/sh
+[ "$1 $2 $3" = "cap add ios" ] || exit 2
+pwd > "$CAP_FIXTURE_CWD"
+mkdir -p ios/App/App.xcodeproj
+: > ios/App/Podfile
+: > ios/App/App.xcodeproj/project.pbxproj
+`,
+      { mode: 0o755 },
+    );
+    const receipt = path.join(root, "cwd");
+    const result = spawnSync(
+      process.execPath,
+      [path.join(scripts, "ensure-capacitor-platform.mjs"), "ios"],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          PATH: `${bin}:/usr/bin:/bin`,
+          CAP_FIXTURE_CWD: receipt,
+        },
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(realpathSync(readFileSync(receipt, "utf8").trim())).toBe(
+      realpathSync(consumer),
+    );
+    expect(existsSync(path.join(consumer, "ios/App/Podfile"))).toBe(true);
+    expect(existsSync(path.join(installed, "ios"))).toBe(false);
+  },
+);

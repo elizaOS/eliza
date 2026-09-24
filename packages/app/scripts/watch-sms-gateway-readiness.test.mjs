@@ -60,10 +60,12 @@ esac`,
       try {
         const result = spawnSync(
           process.execPath,
-          [SCRIPT, "--run-install", "--timeout", "2", "--interval", "2"],
+          // This exercises reconnect ordering, not the deadline. Allow child startup
+          // under full-suite load; strict probe deadlines are tested separately.
+          [SCRIPT, "--run-install", "--timeout", "8", "--interval", "8"],
           {
             encoding: "utf8",
-            timeout: 8_000,
+            timeout: 20_000,
             env: {
               ...process.env,
               PATH: `${dir}:/usr/bin:/bin`,
