@@ -176,8 +176,14 @@ async function installSettingsBackgroundRoutes(
 
   // Local-inference shell-level GETs — the booted zero-key stack answers 501,
   // which the diagnostics guard treats as a failure. A fresh agent has no local
-  // model, so an idle snapshot with valid OS-fallback hardware matches the
-  // real zero-state.
+  // model, so an idle/unsupported snapshot matches real zero-state.
+  await page.route("**/api/local-inference/providers", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { providers: [] });
+  });
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -395,6 +401,7 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
+  await expect(page.getByTestId("permission-priming-modal")).toBeHidden();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
@@ -414,6 +421,10 @@ async function gotoSettings(page: Page): Promise<void> {
 }
 
 test.describe("Settings appearance and model controls", () => {
+  test.beforeAll(async () => {
+    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
+  });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -503,6 +514,15 @@ test.describe("Settings appearance and model controls", () => {
           enabled: true,
           cloudVoiceProxyAvailable: true,
           hasApiKey: true,
+        }),
+      );
+      await page.route("**/api/cloud/credits", (route) =>
+        fulfillJson(route, {
+          connected: true,
+          balance: 100,
+          low: false,
+          critical: false,
+          authRejected: false,
         }),
       );
       let previewRequests = 0;
@@ -653,7 +673,7 @@ test.describe("Settings appearance and model controls", () => {
     page,
   }) => {
     test.setTimeout(180_000);
-    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
+
     const wallpaper = await busyWallpaperDataUrl();
     await seedSettingsBackgroundStorage(page, {
       mode: "image",

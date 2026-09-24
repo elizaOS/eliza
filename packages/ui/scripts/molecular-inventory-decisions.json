@@ -118,6 +118,15 @@
         "plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:PacketDraftEditor"
       ],
       "semanticFingerprint": "sha256:37d6191bc5906dd75f77c0fa0c8b1a0db01057621e86408b9e2fef230f3962c4"
+    },
+    "panel:alert+button": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/local-inference/LocalInferencePanel.tsx:LocalInferencePanel",
+        "packages/ui/src/components/settings/ProviderPanels.tsx:CloudPanel"
+      ],
+      "semanticFingerprint": "sha256:d0e277080b1392be9c584ad23cfc6915843264636be8592c336d9f1ac9ef3728"
     }
   }
 }
