@@ -783,6 +783,8 @@ export interface DurableRecordStore {
 export interface IDatabaseAdapter<DB extends object = object> {
 	/** Optional transactional domain records in this same agent database. */
 	readonly recordStore?: DurableRecordStore;
+	/** Supports mandatory async request scope on memory queries, point reads and counts. */
+	readonly requiredMemoryAccessVersion?: 1;
 	/** Database instance */
 	db: DB;
 

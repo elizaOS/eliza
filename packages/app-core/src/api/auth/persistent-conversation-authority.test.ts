@@ -97,8 +97,10 @@ it("uses persistent sessions and current memberships without loopback or static-
           ...authority.captureDisclosure(req),
           maxPendingBytes: 1024 * 1024,
         });
-        await next();
-        expect(await delivery.completed).toEqual({ kind: "complete" });
+        await authority.withMemoryAccess(req, async () => {
+          await next();
+          expect(await delivery.completed).toEqual({ kind: "complete" });
+        });
       },
       hostAdmission: (req, boundary) => {
         // Only the fixture's conversation can exercise stream finalization.

@@ -1,6 +1,6 @@
-import { flattenRuntimeSettings } from "./runtime-settings.ts";
 /** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
 
+import { hasRequiredMemoryAccess } from "./required-memory-access";
 import { RuntimeDataMutations } from "./runtime/data-mutations.js";
 import {
 	EmbeddingDimensionProbeError,
@@ -13,6 +13,7 @@ import {
 	type ServiceRejecter,
 	type ServiceResolver,
 } from "./runtime/service-lifecycle.js";
+import { flattenRuntimeSettings } from "./runtime-settings.ts";
 import type { TaskMetadataPatch, TaskMetadataPatchOutcome } from "./types/task";
 
 export {
@@ -4589,6 +4590,7 @@ export class AgentRuntime implements IAgentRuntime {
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> | null {
+		if (hasRequiredMemoryAccess(this.agentId)) return null;
 		if (params.tableName !== "messages" || !params.roomId) return null;
 		if (
 			params.entityId !== undefined ||

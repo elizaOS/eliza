@@ -55,7 +55,10 @@ export function bindRequiredHttpDelivery(
     );
   }
   const { deliver, maxPendingBytes } = input;
-  const result = Promise.withResolvers<HttpDeliveryOutcome>();
+  let resolveResult: (outcome: HttpDeliveryOutcome) => void;
+  const result = new Promise<HttpDeliveryOutcome>((resolve) => {
+    resolveResult = resolve;
+  });
   const queue: Frame[] = [];
   let pendingBytes = 0;
   let pumping = false;
@@ -73,7 +76,7 @@ export function bindRequiredHttpDelivery(
     response.off("finish", finished);
     response.off("close", disconnected);
     response.off("error", transportFailed);
-    result.resolve(outcome);
+    resolveResult(outcome);
     if (outcome.kind !== "complete") response.destroy();
   }
   function finished(): void {
@@ -180,10 +183,10 @@ export function bindRequiredHttpDelivery(
   }
 
   const delivery: RequiredDelivery = Object.freeze({
-    completed: result.promise,
+    completed: result,
     end(): Promise<HttpDeliveryOutcome> {
       if (!ending && !settled) delivery.enqueue({ data: "", end: true });
-      return result.promise;
+      return result;
     },
     enqueue(frame: Frame): void {
       if (settled) return;

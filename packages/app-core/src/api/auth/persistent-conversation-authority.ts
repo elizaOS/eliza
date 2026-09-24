@@ -13,7 +13,11 @@ import type {
   AgentHttpRequestAuthorization,
   AgentHttpRequestAuthorizationOptions,
 } from "@elizaos/agent/runtime/host-bridge";
-import { type AgentRuntime, ElizaError } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  withRequiredMemoryAccess,
+} from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/shared";
 import { authStoreForRuntime } from "../../services/auth-store";
 import { createConversationSessionScope } from "./conversation-session-scope";
@@ -177,6 +181,31 @@ export function createPersistentConversationAuthority(input: {
     admit,
     resolveHttpRequestAuthorization,
     captureDisclosure,
+    async withMemoryAccess<T>(
+      request: IncomingMessage,
+      operation: () => Promise<T>,
+    ): Promise<T> {
+      const disclosure = captureDisclosure(request);
+      const context = resolveRequiredHttpAccessContext(request);
+      if (!context)
+        throw new ElizaError("Required conversation memory scope is missing", {
+          code: "CONVERSATION_MEMORY_SCOPE_REQUIRED",
+        });
+      return withRequiredMemoryAccess(
+        runtime,
+        {
+          context,
+          authorize: async () => {
+            if (!(await disclosure.deliver(() => undefined)))
+              throw new ElizaError(
+                "Conversation memory authority was revoked",
+                { code: "CONVERSATION_MEMORY_SCOPE_REVOKED" },
+              );
+          },
+        },
+        operation,
+      );
+    },
     revoke: () => {
       active = false;
     },

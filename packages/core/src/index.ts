@@ -42,9 +42,7 @@ export {
 	LOCAL_MODEL_PROVIDERS,
 	SECRET_KEY_ALIASES,
 } from "./constants";
-
 export * from "./contracts/computer-use";
-
 export * from "./database";
 export * from "./database/connector-json";
 export * from "./database/document-list-query";
@@ -60,6 +58,7 @@ export {
 	type ReportedError,
 	toElizaError,
 } from "./errors";
+export * from "./required-memory-access";
 
 // Export capabilities and plugin creation
 

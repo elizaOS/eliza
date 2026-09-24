@@ -3,6 +3,7 @@
 import { buildDeterministicSeed } from "@elizaos/common";
 import { ElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
+import { hasRequiredMemoryAccess } from "../../required-memory-access";
 import {
 	authorizeOwnerExclusiveDisclosure,
 	ownerExclusiveSuppressionNote,
@@ -100,6 +101,7 @@ export class ProviderStateComposer {
 		skipCache = false,
 		refreshProviders: string[] | null = null,
 	): Promise<State> {
+		const requiredMemoryScope = hasRequiredMemoryAccess(this.runtime.agentId);
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
 			message.metadata !== null &&
@@ -130,7 +132,7 @@ export class ProviderStateComposer {
 				? publicProviderCache.state
 				: undefined;
 		const cachedCandidate =
-			skipCache || !message.id
+			requiredMemoryScope || skipCache || !message.id
 				? emptyObj
 				: (this.runtime.stateCache.get(message.id) ??
 					cachedPublicState ??
@@ -324,7 +326,7 @@ export class ProviderStateComposer {
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this.runtime;
 				const inFlightKey =
-					message.id && !refreshSet?.has(provider.name)
+					!requiredMemoryScope && message.id && !refreshSet?.has(provider.name)
 						? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
@@ -831,7 +833,7 @@ export class ProviderStateComposer {
 			providerSignal,
 			this.lifecycle.isStopping(),
 		);
-		if (message.id && !containsSensitiveProvider) {
+		if (!requiredMemoryScope && message.id && !containsSensitiveProvider) {
 			this.publicProviderStateByMessage.delete(message);
 			this.runtime.stateCache.set(message.id, newState);
 			// Evict oldest entries beyond the cap. The just-set entry and recent
@@ -843,7 +845,7 @@ export class ProviderStateComposer {
 				}
 				this.runtime.stateCache.delete(oldest);
 			}
-		} else if (message.id) {
+		} else if (!requiredMemoryScope && message.id) {
 			const publicProviders = providersToGet.filter(
 				(provider) => provider.disclosureGate?.require !== "owner_exclusive",
 			);

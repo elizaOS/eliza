@@ -72,6 +72,7 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   requireFreshWorldMetadataRevision,
+  resolveRequiredMemoryAccess,
   type Task,
   type TaskMetadataPatch,
   type UUID,
@@ -420,6 +421,7 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  readonly requiredMemoryAccessVersion = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   protected vectorIndex: EphemeralHNSW;
@@ -1093,11 +1095,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async listMemoryTypes(): Promise<string[]> {
+    const access = await resolveRequiredMemoryAccess(this.agentId);
     const rows = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (memory) => memory.agentId === this.agentId
     );
-    const types = rows.map((memory) => {
+    const types = this.filterRequiredMemoryRecords(rows, access).map((memory) => {
       const type = storedMemoryTableName(memory);
       if (typeof type !== "string" || type.length === 0) {
         throw new ElizaError("Cannot inventory memories with a missing storage type", {
@@ -1132,6 +1135,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    params = {
+      ...params,
+      accessContext: await resolveRequiredMemoryAccess(this.agentId, params.accessContext),
+    };
     if (params.cursor && params.offset !== undefined) {
       throw new Error("getMemories cursor and offset are mutually exclusive");
     }
@@ -1234,6 +1241,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    params = {
+      ...params,
+      accessContext: await resolveRequiredMemoryAccess(this.agentId, params.accessContext),
+    };
     if (params.roomIds.length === 0) return [];
     const roomSet = new Set(params.roomIds);
     const textContains = params.textContains?.trim().toLowerCase();
@@ -1280,6 +1291,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     until?: number;
     accessContext?: AccessContext;
   }): Promise<MessageSearchHit[]> {
+    params = {
+      ...params,
+      accessContext: await resolveRequiredMemoryAccess(this.agentId, params.accessContext),
+    };
     if (params.roomIds.length === 0) return [];
     const roomSet = new Set(params.roomIds);
     const tableName = params.tableName ?? "messages";
@@ -1316,15 +1331,51 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }));
   }
 
+  private filterRequiredMemoryRecords(
+    records: StoredMemory[],
+    access: AccessContext | undefined
+  ): StoredMemory[] {
+    if (!access) return records;
+    const tables = new Map<string, Memory[]>();
+    for (const record of records) {
+      if (typeof record.id !== "string")
+        throw new ElizaError("Scoped memory record has no identity", {
+          code: "MEMORY_ACCESS_RECORD_INVALID",
+        });
+      const table = storedMemoryTableName(record);
+      if (typeof table !== "string" || table.length === 0)
+        throw new ElizaError("Scoped memory record has no storage type", {
+          code: "MEMORY_STORAGE_TYPE_INVALID",
+          context: { agentId: this.agentId, memoryId: record.id },
+        });
+      const group = tables.get(table);
+      if (group) group.push(toMemory(record));
+      else tables.set(table, [toMemory(record)]);
+    }
+    const allowed = new Set<string>();
+    for (const [table, memories] of tables) {
+      for (const memory of filterMemoryReadByAccessContext(
+        memories,
+        access,
+        this.agentId,
+        table === "messages" && access.authorizedRoomIds !== undefined ? "room" : "private"
+      )) {
+        if (memory.id) allowed.add(memory.id);
+      }
+    }
+    return records.filter((record) => record.id !== undefined && allowed.has(record.id));
+  }
+
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
-    const memories: Memory[] = [];
+    const access = await resolveRequiredMemoryAccess(this.agentId);
+    const memories: StoredMemory[] = [];
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (!m) continue;
       if (tableName && storedMemoryTableName(m) !== tableName) continue;
-      memories.push(toMemory(m));
+      memories.push(m);
     }
-    return memories;
+    return this.filterRequiredMemoryRecords(memories, access).map(toMemory);
   }
 
   async getCachedEmbeddings(params: {
@@ -1335,11 +1386,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     query_field_sub_name: string;
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
-    const memories = await this.storage.getWhere<StoredMemory>(
+    const access = await resolveRequiredMemoryAccess(this.agentId);
+    const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) => storedMemoryTableName(m) === params.query_table_name && !!m.embedding
     );
 
+    const memories = this.filterRequiredMemoryRecords(stored, access);
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
     for (const memory of memories) {
       if (!memory.embedding) continue;
@@ -1370,6 +1423,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    params = {
+      ...params,
+      accessContext: await resolveRequiredMemoryAccess(this.agentId, params.accessContext),
+    };
     return this.withMemoryMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit;
@@ -1567,8 +1624,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     agentId?: UUID;
     metadata?: Record<string, unknown>;
   }): Promise<number> {
+    const access = await resolveRequiredMemoryAccess(this.agentId);
     const roomSet = params.roomIds ? new Set(params.roomIds) : null;
-    return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
+    const matches = (m: StoredMemory): boolean => {
       if (roomSet && !roomSet.has(m.roomId as UUID)) return false;
       if (params.unique && !m.unique) return false;
       if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
@@ -1581,7 +1639,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         }
       }
       return true;
-    });
+    };
+    if (!access) return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, matches);
+    const stored = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, matches);
+    return this.filterRequiredMemoryRecords(stored, access).length;
   }
 
   async getMemoriesByWorldId(params: {
@@ -1589,13 +1650,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
     tableName?: string;
   }): Promise<Memory[]> {
+    const access = await resolveRequiredMemoryAccess(this.agentId);
     const worldSet = params.worldIds ? new Set(params.worldIds) : null;
-    const memories = await this.storage.getWhere<StoredMemory>(
+    const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
         (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
+    const memories = this.filterRequiredMemoryRecords(stored, access);
     memories.sort(compareStoredMemoriesNewestFirst);
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
     return sliced.map(toMemory);
