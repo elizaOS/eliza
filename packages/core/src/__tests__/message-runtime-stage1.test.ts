@@ -5644,7 +5644,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"TASKS_SPAWN_AGENT",
 		);
 		expect(
-			plannerCall.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
+			plannerCall.tools?.find((tool) => tool.name === "DISCOVER_ACTIONS")
 				?.description,
 		).toContain("Find authorized operations");
 	});
@@ -6101,7 +6101,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ content?: string }>;
 		};
 		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
+			expect.arrayContaining(["DISCOVER_ACTIONS", "REPLY"]),
 		);
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
@@ -6200,12 +6200,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map(({ name }) => name);
 		expect(toolNames).toEqual(
-			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
+			expect.arrayContaining(["DISCOVER_ACTIONS", "REPLY"]),
 		);
 		expect(toolNames).not.toContain("SHELL");
 		expect(toolNames).not.toContain("BROWSER");
 		const discovery = plannerParams.tools?.find(
-			(tool) => tool.name === "DISCOVER_TOOLS",
+			(tool) => tool.name === "DISCOVER_ACTIONS",
 		);
 		expect(discovery?.description).toContain("Find authorized operations");
 		expect(discovery?.description).not.toContain("BROWSER");
@@ -6298,7 +6298,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ content?: string }>;
 		};
 		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
+			expect.arrayContaining(["DISCOVER_ACTIONS", "REPLY"]),
 		);
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
@@ -6491,7 +6491,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				tools?: Array<{ name: string }>;
 			};
 			expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-				expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
+				expect.arrayContaining(["DISCOVER_ACTIONS", "REPLY"]),
 			);
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text).toBe(answer);
@@ -6892,7 +6892,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								toolCalls: [
 									{
 										id: "discover-navigation",
-										name: "DISCOVER_TOOLS",
+										name: "DISCOVER_ACTIONS",
 										arguments: {
 											names: ["UI_ROUTE"],
 											eliza_turn_scope: "more_work_pending",
@@ -6987,7 +6987,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			if (status === "pending") {
 				const initial = calls[1]?.[1] as { tools?: Array<{ name: string }> };
 				expect(initial.tools?.map(({ name }) => name)).toContain(
-					"DISCOVER_TOOLS",
+					"DISCOVER_ACTIONS",
 				);
 				expect(initial.tools?.map(({ name }) => name)).not.toContain(
 					"UI_ROUTE",
@@ -7093,7 +7093,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					toolCalls: [
 						{
 							id: "find-lookup",
-							name: "DISCOVER_TOOLS",
+							name: "DISCOVER_ACTIONS",
 							arguments: {
 								query:
 									name === "MARKET_QUOTE"
@@ -7181,7 +7181,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				tools?: Array<{ name: string }>;
 			};
 			expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
-				expect.arrayContaining([name, "DISCOVER_TOOLS", "REPLY"]),
+				expect.arrayContaining([name, "DISCOVER_ACTIONS", "REPLY"]),
 			);
 			expect(JSON.stringify(calls[3]?.[1])).toContain("61234");
 			if (result.kind === "planned_reply") {
@@ -10900,7 +10900,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
 		expect(
-			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
+			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_ACTIONS")
 				?.description,
 		).toContain("Find authorized operations");
 		expect(
@@ -12048,10 +12048,10 @@ describe("verified read actions own the turn's single user-facing message", () =
 			tools?: Array<{ name: string; description?: string }>;
 		};
 		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
-			expect.arrayContaining(["CALENDAR", "DISCOVER_TOOLS"]),
+			expect.arrayContaining(["CALENDAR", "DISCOVER_ACTIONS"]),
 		);
 		const discovery = plannerParams.tools?.find(
-			(tool) => tool.name === "DISCOVER_TOOLS",
+			(tool) => tool.name === "DISCOVER_ACTIONS",
 		)?.description;
 		expect(discovery).toContain("Find authorized operations");
 		expect(discovery).not.toContain("WEEKLY_BRIEF_DISTRACTOR");
@@ -14028,7 +14028,7 @@ describe("explicit discovery survives planner surface construction", () => {
 					toolCalls: [
 						{
 							id: "discover-fetch",
-							name: "DISCOVER_TOOLS",
+							name: "DISCOVER_ACTIONS",
 							arguments: {
 								names: ["FETCH_EXAMPLE_PAGE"],
 								eliza_turn_scope: "more_work_pending",
@@ -14105,7 +14105,9 @@ describe("explicit discovery survives planner surface construction", () => {
 			const initial = calls.find(
 				([type]) => type === ModelType.ACTION_PLANNER,
 			)?.[1] as { tools: Array<{ name: string }> };
-			expect(initial.tools.map(({ name }) => name)).toContain("DISCOVER_TOOLS");
+			expect(initial.tools.map(({ name }) => name)).toContain(
+				"DISCOVER_ACTIONS",
+			);
 			expect(initial.tools.map(({ name }) => name)).not.toContain(
 				"FETCH_EXAMPLE_PAGE",
 			);
@@ -14132,7 +14134,7 @@ describe("explicit discovery survives planner surface construction", () => {
 				toolCalls: [
 					{
 						id: "discover-memory",
-						name: "DISCOVER_TOOLS",
+						name: "DISCOVER_ACTIONS",
 						arguments: {
 							names: ["MEMORY_SEARCH"],
 							eliza_turn_scope: "more_work_pending",
@@ -14203,7 +14205,7 @@ describe("explicit discovery survives planner surface construction", () => {
 		]);
 		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
 		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
-			"DISCOVER_TOOLS",
+			"DISCOVER_ACTIONS",
 		);
 		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
 			"MEMORY_SEARCH",
@@ -14213,7 +14215,7 @@ describe("explicit discovery survives planner surface construction", () => {
 			expect(result.result.responseContent?.text).toBe(answer);
 	});
 
-	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
+	it("delivers a complete general-context greeting without planning or domain schemas", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -14222,12 +14224,6 @@ describe("explicit discovery survives planner surface construction", () => {
 				replyText: "Hey.",
 				extra: { replyEffectStatus: "none" },
 			}),
-			{
-				text: "",
-				toolCalls: [
-					{ id: "reply-only", name: "REPLY", arguments: { text: "Hey." } },
-				],
-			},
 		]);
 		const handler = vi.fn(async () => ({
 			success: true,
@@ -14251,15 +14247,13 @@ describe("explicit discovery survives planner surface construction", () => {
 		});
 		expect(handler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls.map(([type]) => type)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
-		]);
-		const planner = calls[1][1] as { tools: Array<{ name: string }> };
-		expect(planner.tools.map((tool) => tool.name)).toContain("DISCOVER_TOOLS");
-		expect(planner.tools.map((tool) => tool.name)).not.toContain("CALENDAR");
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply")
+		expect(calls.map(([type]) => type)).toEqual([ModelType.RESPONSE_HANDLER]);
+		const handlerRequest = calls[0][1] as { tools: Array<{ name: string }> };
+		expect(handlerRequest.tools.map((tool) => tool.name)).not.toContain(
+			"CALENDAR",
+		);
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
 			expect(result.result.responseContent?.text).toBe("Hey.");
 	});
 
@@ -14281,7 +14275,7 @@ describe("explicit discovery survives planner surface construction", () => {
 					toolCalls: [
 						{
 							id: "discover-memory",
-							name: "DISCOVER_TOOLS",
+							name: "DISCOVER_ACTIONS",
 							arguments: {
 								names: ["MEMORY_SEARCH"],
 								eliza_turn_scope: "more_work_pending",
@@ -14353,7 +14347,7 @@ describe("explicit discovery survives planner surface construction", () => {
 			]);
 			const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
 			expect(firstPlanner.tools.map(({ name }) => name)).toContain(
-				"DISCOVER_TOOLS",
+				"DISCOVER_ACTIONS",
 			);
 			expect(
 				firstPlanner.tools.some(({ name }) => name === "MEMORY_SEARCH"),
@@ -14373,7 +14367,7 @@ describe("explicit discovery survives planner surface construction", () => {
 				toolCalls: [
 					{
 						id,
-						name: "DISCOVER_TOOLS",
+						name: "DISCOVER_ACTIONS",
 						arguments: {
 							names,
 							eliza_turn_scope: "more_work_pending",
@@ -14489,14 +14483,14 @@ describe("explicit discovery survives planner surface construction", () => {
 			const initial = plannerTools(1);
 			const initialNames = initial.map(({ name }) => name);
 			expect(initialNames).toContain("CHECK_RUNTIME");
-			expect(initialNames).toContain("DISCOVER_TOOLS");
+			expect(initialNames).toContain("DISCOVER_ACTIONS");
 			expect(initialNames.includes("LEDGER_CREATE")).toBe(selectedChild);
 			expect(initialNames).not.toContain("LEDGER");
 			for (const expanded of [plannerTools(2), plannerTools(3)]) {
 				expect(expanded.find(({ name }) => name === "CHECK_RUNTIME")).toEqual(
 					initial.find(({ name }) => name === "CHECK_RUNTIME"),
 				);
-				expect(expanded.map(({ name }) => name)).toContain("DISCOVER_TOOLS");
+				expect(expanded.map(({ name }) => name)).toContain("DISCOVER_ACTIONS");
 				expect(
 					expanded
 						.filter(({ name }) => name.startsWith("LEDGER"))
@@ -14510,15 +14504,20 @@ describe("explicit discovery survives planner surface construction", () => {
 		},
 	);
 
-	it.each([false, true])(
-		"retains discovery when all domain candidates selected=%s",
-		async (includeDomain) => {
+	it.each([
+		{ includeDomain: false, discoveryName: "DISCOVER_ACTIONS" },
+		{ includeDomain: true, discoveryName: "DISCOVER_ACTIONS" },
+		{ includeDomain: false, discoveryName: "DISCOVER_TOOLS" },
+		{ includeDomain: true, discoveryName: "DISCOVER_TOOLS" },
+	])(
+		"retains canonical discovery for $discoveryName with domain selected=$includeDomain",
+		async ({ includeDomain, discoveryName }) => {
 			const runtime = makeRuntime([
 				stage1Response({
 					contexts: ["agent_internal"],
 					candidateActionNames: includeDomain
-						? ["DISCOVER_TOOLS", "RUNTIME"]
-						: ["DISCOVER_TOOLS"],
+						? [discoveryName, "RUNTIME"]
+						: [discoveryName],
 					intents: ["inspect the RUNTIME schema"],
 					extra: { requiresTool: true },
 				}),
@@ -14527,7 +14526,7 @@ describe("explicit discovery survives planner surface construction", () => {
 					toolCalls: [
 						{
 							id: "catalog-1",
-							name: "DISCOVER_TOOLS",
+							name: discoveryName,
 							arguments: { names: ["RUNTIME"], eliza_turn_scope: "final" },
 						},
 					],
@@ -14557,7 +14556,7 @@ describe("explicit discovery survives planner surface construction", () => {
 			const result = await runStage1({
 				runtime,
 				message: makeMessage({
-					text: "Use DISCOVER_TOOLS to inspect the RUNTIME schema. Do not run RUNTIME.",
+					text: `Use ${discoveryName} to inspect the RUNTIME schema. Do not run RUNTIME.`,
 				}),
 				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 			});
@@ -14570,6 +14569,9 @@ describe("explicit discovery survives planner surface construction", () => {
 			]);
 			const planner = calls[1][1] as { tools?: Array<{ name: string }> };
 			expect(planner.tools?.map((tool) => tool.name)).toContain(
+				"DISCOVER_ACTIONS",
+			);
+			expect(planner.tools?.map((tool) => tool.name)).not.toContain(
 				"DISCOVER_TOOLS",
 			);
 			if (!includeDomain)

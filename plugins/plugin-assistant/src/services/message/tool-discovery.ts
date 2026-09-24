@@ -15,10 +15,13 @@ import type {
 } from "@elizaos/core";
 import {
   actionGateRejection,
+  DISCOVER_ACTIONS_NAME,
   DISCOVER_TOOLS_NAME,
   ElizaError,
+  isDiscoveryActionName,
   isObjectRecord,
   normalizeActionJsonSchema,
+  normalizeContextId,
 } from "@elizaos/core";
 import { buildActionCatalog } from "../../runtime/action-catalog";
 import {
@@ -31,7 +34,7 @@ import {
 } from "./planned-tool.js";
 
 /**
- * The families DISCOVER_TOOLS may list and load: every registered action the
+ * The families DISCOVER_ACTIONS may list and load: every registered action the
  * actor is authorized for under the action's OWN declared contexts — the same
  * rule the executor applies at dispatch (planned-tool.ts merges
  * `action.contexts` into the active set). The planner's exposed surface is
@@ -97,10 +100,7 @@ export function createPlannerToolDiscoveryAction(
   options?: { deferNameIndex?: boolean; catalogIndex?: boolean },
 ): Action {
   const catalogIndex = options?.catalogIndex === true;
-  const actionsByName = new Map(
-    authorizedActions.map((action) => [action.name, action]),
-  );
-  if (actionsByName.has(DISCOVER_TOOLS_NAME)) {
+  if (authorizedActions.some((action) => isDiscoveryActionName(action.name))) {
     throw new ElizaError(
       "Planner discovery name conflicts with a registered action",
       {
@@ -130,7 +130,8 @@ export function createPlannerToolDiscoveryAction(
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
   const referenceDescription = `${discoveryDescription} No name index is preloaded here.`;
   return {
-    name: DISCOVER_TOOLS_NAME,
+    name: DISCOVER_ACTIONS_NAME,
+    similes: [DISCOVER_TOOLS_NAME],
     description: options?.deferNameIndex
       ? referenceDescription +
         (catalogIndex
@@ -214,7 +215,11 @@ export function createPlannerToolDiscoveryAction(
           contexts === undefined
             ? freshActions
             : freshActions.filter((action) =>
-                action.contexts?.some((context) => contexts.includes(context)),
+                actionDiscoveryContexts(action).some((context) =>
+                  contexts
+                    .map(normalizeContextId)
+                    .includes(normalizeContextId(context)),
+                ),
               );
         const selected =
           query === undefined

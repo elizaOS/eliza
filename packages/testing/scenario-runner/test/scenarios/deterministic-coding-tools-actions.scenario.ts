@@ -196,6 +196,7 @@ const codingToolModelFixtures: DeterministicModelFixture[] =
     if (writing) planned.push({ actionName: "SHELL", args: verifyParameters });
     const allowed = new Set([
       ...planned.map((tool) => tool.actionName),
+      "DISCOVER_ACTIONS",
       "DISCOVER_TOOLS",
       "REPLY",
       "IGNORE",

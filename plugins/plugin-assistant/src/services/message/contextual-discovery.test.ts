@@ -6,6 +6,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import {
   collectV5PlannerCandidateActions,
   retrieveContextualPlannerActions,
@@ -133,6 +134,110 @@ describe("contextual native discovery", () => {
       expect(result[0]).toBe(operation);
     },
   );
+
+  it.each([
+    ["list notes", ["NOTES_LIST"]],
+    ["find notes", ["NOTES_LIST"]],
+    ["read my notes", ["NOTES_GET", "NOTES_LIST"]],
+    ["edit a note", ["NOTES_PATCH", "NOTES_UPDATE"]],
+    ["remove a note", ["NOTES_DELETE"]],
+    ["create a note", ["NOTES_CREATE"]],
+    ["list and delete notes", ["NOTES_DELETE", "NOTES_LIST"]],
+  ])(
+    "retrieves actual Notes operations for %s without sibling or view pollution",
+    (query, expected) => {
+      const actions: Action[] = [
+        ...(notesPlugin.actions ?? []),
+        {
+          name: "CLOSE_ALL_VIEWS",
+          contexts: ["notes"],
+          description:
+            "Close all views including notes; list of views is available.",
+        },
+      ];
+      const result = retrieveContextualPlannerActions({
+        actions,
+        query,
+        contexts: ["notes"],
+      });
+      expect(result.map((action) => action.name).sort()).toEqual(expected);
+      for (const action of result) expect(actions).toContain(action);
+    },
+  );
+
+  it("preserves mixed-domain work when one operation has no recognized verb", () => {
+    const calendar: Action = {
+      name: "AGENDA",
+      contexts: ["calendar"],
+      description: "Summarize calendar commitments",
+    };
+    const actions = [...(notesPlugin.actions ?? []), calendar];
+    const found = retrieveContextualPlannerActions({
+      actions,
+      query: "list notes and summarize calendar",
+      contexts: ["notes", "calendar"],
+    });
+    expect(found.map((action) => action.name).sort()).toEqual([
+      "AGENDA",
+      "NOTES_LIST",
+    ]);
+    expect(found).toContain(calendar);
+  });
+
+  it("keeps ambiguous and unmatched operation wording discoverable", () => {
+    const actions = notesPlugin.actions ?? [];
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query: "notes",
+      contexts: ["notes"],
+    });
+    expect(result.map((action) => action.name)).toEqual(
+      expect.arrayContaining([
+        "NOTES_LIST",
+        "NOTES_GET",
+        "NOTES_CREATE",
+        "NOTES_UPDATE",
+        "NOTES_DELETE",
+        "NOTES_PATCH",
+      ]),
+    );
+  });
+
+  it("loads gate-only contexts through query search and permits later incremental operations", async () => {
+    const actions: Action[] = [
+      {
+        name: "RECORD_LIST",
+        description: "List notes",
+        contextGate: { anyOf: ["notes"] },
+      },
+      {
+        name: "RECORD_DELETE",
+        description: "Delete notes",
+        contextGate: { allOf: ["notes", "general"] },
+      },
+    ];
+    const loaded: Action[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (actions) => loaded.push(actions),
+      async () => actions,
+      { deferNameIndex: true },
+    );
+    const read = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "list notes", contexts: ["notes"] },
+    });
+    expect(read?.data?.loadedTools).toEqual(["RECORD_LIST"]);
+    const removal = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "remove notes", contexts: ["notes"] },
+    });
+    expect(removal?.data?.loadedTools).toEqual(["RECORD_DELETE"]);
+    expect(loaded).toEqual([[actions[0]], [actions[1]]]);
+    const full = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(JSON.stringify(full?.data)).toContain("RECORD_LIST");
+    expect(JSON.stringify(full?.data)).toContain("RECORD_DELETE");
+  });
 
   it("prefers matching children without loading unrequested sibling schemas", () => {
     const actions: Action[] = [

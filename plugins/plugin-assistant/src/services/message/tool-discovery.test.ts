@@ -24,6 +24,28 @@ import {
 const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
+describe("canonical discovery surface", () => {
+  it("exposes one canonical native schema while retaining the legacy simile", async () => {
+    const domain: Action = {
+      name: "READ_RECORD",
+      description: "Read records",
+      parameters: [],
+    };
+    const loaded: Action[][] = [];
+    const action = createPlannerToolDiscoveryAction([domain], (actions) =>
+      loaded.push(actions),
+    );
+    const tools = buildPlannerToolsFromActions([action]);
+    expect(tools.map((tool) => tool.name)).toEqual(["DISCOVER_ACTIONS"]);
+    expect(action.similes).toContain("DISCOVER_TOOLS");
+    const result = await action.handler?.(runtime, message, undefined, {
+      parameters: { names: ["READ_RECORD"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded).toEqual([[domain]]);
+  });
+});
+
 describe("planner tool discovery", () => {
   it("returns exact parameter evidence only for fresh named descriptions", async () => {
     let loads = 0;
@@ -1087,12 +1109,15 @@ describe("planner tool discovery", () => {
     expect(loaded).toEqual(["MESSAGE"]);
   });
 
-  it("rejects a registered action using the reserved discovery protocol name", () => {
-    expect(() =>
-      createPlannerToolDiscoveryAction(
-        [{ name: "DISCOVER_TOOLS", description: "Collision" }],
-        () => undefined,
-      ),
-    ).toThrow("conflicts");
-  });
+  it.each(["DISCOVER_ACTIONS", "DISCOVER_TOOLS"])(
+    "rejects a registered action using reserved protocol name %s",
+    (name) => {
+      expect(() =>
+        createPlannerToolDiscoveryAction(
+          [{ name, description: "Collision" }],
+          () => undefined,
+        ),
+      ).toThrow("conflicts");
+    },
+  );
 });

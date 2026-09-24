@@ -44,7 +44,7 @@ import {
   canActionRun,
   captureToolStageIO,
   createUnavailableGroundedActionReply,
-  DISCOVER_TOOLS_NAME,
+  DISCOVER_ACTIONS_NAME,
   ElizaError,
   extractReplyTextFromTranscript,
   finalizeTrajectoryRecording,
@@ -52,6 +52,7 @@ import {
   getLocalizedExamplesProvider,
   getTrajectoryContext,
   getUserMessageText,
+  isDiscoveryActionName,
   isProviderContextOverflowFailure,
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
@@ -1249,10 +1250,8 @@ export async function runV5MessageRuntimeStage1(
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.
-    const requestsToolDiscovery = stageOneCandidates.some(
-      (name) =>
-        normalizeActionIdentifier(name) ===
-        normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
+    const requestsToolDiscovery = stageOneCandidates.some((name) =>
+      isDiscoveryActionName(normalizeActionIdentifier(name)),
     );
     const discoverWithoutActionHints = stageOneCandidates.length === 0;
     const canUseProgressiveActions =
@@ -1359,15 +1358,13 @@ export async function runV5MessageRuntimeStage1(
       // it out of the tier-A parent summary rendered into the planner context.
       actionSurface.summary.tierAParents =
         actionSurface.summary.tierAParents.filter(
-          (name) =>
-            normalizeActionIdentifier(name) !==
-            normalizeActionIdentifier("DISCOVER_TOOLS"),
+          (name) => !isDiscoveryActionName(normalizeActionIdentifier(name)),
         );
     }
     if (progressiveActions) {
       actionSurface.summary.discoverableActionCount =
         discoveryCatalogActions.length;
-      actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
+      actionSurface.summary.discoveryToolName = DISCOVER_ACTIONS_NAME;
     }
     const exposedPlannerActions = (
       progressiveActions ?? plannerCandidateActions
@@ -1559,7 +1556,7 @@ export async function runV5MessageRuntimeStage1(
       },
     );
     // No dispatch-budget preflight: the planner receives every authorized
-    // action the progressive surface exposes plus DISCOVER_TOOLS, and the model
+    // action the progressive surface exposes plus DISCOVER_ACTIONS, and the model
     // transport rejects at its real input boundary. An estimate is diagnostic,
     // not permission to discard authorized tools (message-runtime-umbrella-budget).
     const budgetedPlannerContextWithDecision = plannerContextWithDecision;

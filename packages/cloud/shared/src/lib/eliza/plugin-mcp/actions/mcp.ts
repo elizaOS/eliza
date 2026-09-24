@@ -496,10 +496,8 @@ export const mcpAction: ActionWithParams = {
     // search_actions
     "SEARCH_ACTIONS",
     "FIND_ACTIONS",
-    "DISCOVER_ACTIONS",
     "SEARCH_TOOLS",
     "FIND_TOOLS",
-    "DISCOVER_TOOLS",
     "LOOKUP_ACTIONS",
     // list_connections
     "LIST_CONNECTIONS",

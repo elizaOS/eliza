@@ -288,7 +288,7 @@ describe("lossless history references", () => {
         wire.indexOf("current_turn_boundary:"),
       );
       expect(wire.indexOf("current_turn_boundary:")).toBeLessThan(
-        wire.indexOf("message:user:"),
+        wire.indexOf("# Current message\n"),
       );
     }
     expect(context).toEqual(before);

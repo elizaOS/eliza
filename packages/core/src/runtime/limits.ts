@@ -9,7 +9,7 @@ import type { ActionFailureProvenance } from "../types/action-failure";
 import { toWellFormedUnicode } from "../utils/well-formed";
 
 export interface ChainingLoopConfig {
-	/** Maximum tool calls executed during one planner loop. */
+	/** Explicit domain-call ceiling; discovery does not spend it. Unbounded by default. */
 	maxToolCalls: number;
 	/** Maximum repeated failures for the same tool/error signature. */
 	maxRepeatedFailures: number;
@@ -30,21 +30,7 @@ export interface ChainingLoopConfig {
 	 * This is the success-side analog of `maxRepeatedFailures`.
 	 */
 	maxRepeatedToolCalls: number;
-	/**
-	 * Maximum successful memory/knowledge-recall search rounds per turn
-	 * (MEMORY_SEARCH-family: `*_SEARCH` recall tools, SEARCH_KNOWLEDGE, and the
-	 * MEMORY umbrella with a search op). The existing redundant-call breaker
-	 * only catches byte-identical repeats; a model reformulating the SAME recall
-	 * ("alexis gym signup" → "gym signup alexis" → "alexis gym") slips past it
-	 * and every extra round costs a full planner prompt (live sol-dev
-	 * 2026-08-17: 3-5 MEMORY_SEARCH rounds per turn drove 30-117s tails). Once
-	 * the budget is spent, further search-class calls are skipped with an
-	 * instruction to answer from the results already gathered — the results ARE
-	 * in the trajectory, so no information is lost. Near-duplicate queries
-	 * (same tool, same normalized query tokens) are additionally skipped
-	 * regardless of remaining budget. Failed calls remain governed by the
-	 * repeated-failure guard so this budget does not suppress a corrected retry.
-	 */
+	/** Optional successful recall-search ceiling; distinct searches are unbounded by default. */
 	maxMemorySearchRounds: number;
 	/** Explicit model window for diagnostic estimates; provider errors remain authoritative. */
 	contextWindowTokens: number;
@@ -85,13 +71,13 @@ export interface ChainingLoopConfig {
 }
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
-	maxToolCalls: 16,
+	maxToolCalls: Number.POSITIVE_INFINITY,
 	maxRepeatedFailures: 2,
 	maxRequiredToolMisses: 3,
 	maxUnavailableToolCallRetries: 3,
 	maxTerminalOnlyContinuations: 2,
 	maxRepeatedToolCalls: 2,
-	maxMemorySearchRounds: 2,
+	maxMemorySearchRounds: Number.POSITIVE_INFINITY,
 	contextWindowTokens: 1_000_000,
 	compactionReserveTokens: 10_000,
 	maxTrajectoryPromptTokens: 1_500_000,
@@ -99,6 +85,8 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 
 export type TrajectoryLimitKind =
 	| "tool_calls"
+	| "repeated_observations"
+	| "memory_search_rounds"
 	| "repeated_failures"
 	| "required_tool_misses"
 	| "unavailable_tool_calls"

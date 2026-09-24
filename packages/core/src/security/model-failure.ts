@@ -398,6 +398,8 @@ export function classifyStructuredFailureCause(
 			case "repeated_failures":
 				return error.failureProvenance?.kind ?? "planner_exhaustion";
 			case "tool_calls":
+			case "memory_search_rounds":
+			case "repeated_observations":
 			case "terminal_only_continuations":
 			case "trajectory_token_budget":
 				return "planner_exhaustion";

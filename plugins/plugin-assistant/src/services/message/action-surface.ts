@@ -28,6 +28,7 @@ import {
 } from "../../runtime/action-catalog";
 import {
   parentAliasesForCandidateAction,
+  preferredOperationNames,
   retrieveActions,
 } from "../../runtime/action-retrieval.ts";
 import { tierActionResults } from "../../runtime/action-tiering.ts";
@@ -74,16 +75,45 @@ export function retrieveContextualPlannerActions(args: {
   });
   // Routing narrows the bootstrap, not registry availability. A mistaken or
   // unknown domain with no matches falls back to the authorized global search;
-  // DISCOVER_TOOLS also permits explicit searches outside the initial domains.
+  // DISCOVER_ACTIONS also permits explicit searches outside the initial domains.
   const domains = new Set(
-    args.contexts?.filter(
-      (context) => context !== "general" && context !== "simple",
-    ),
+    args.contexts
+      ?.map(normalizeContextId)
+      .filter((context) => context !== "general" && context !== "simple"),
   );
   const domainMatches = matches.filter((action) =>
-    action.contexts?.some((context) => domains.has(context)),
+    actionDiscoveryContexts(action).some((context) =>
+      domains.has(normalizeContextId(context)),
+    ),
   );
-  const relevant = domainMatches.length > 0 ? domainMatches : matches;
+  const domainRelevant = domainMatches.length > 0 ? domainMatches : matches;
+  // Narrow each requested domain independently. A recognized notes operation
+  // must not erase a calendar intent whose operation wording has no name match.
+  const searchDomains = domains.size > 0 ? [...domains] : [undefined];
+  const selected = new Set<Action>();
+  for (const domain of searchDomains) {
+    const candidates =
+      domain === undefined
+        ? domainRelevant
+        : domainRelevant.filter((action) =>
+            actionDiscoveryContexts(action).some(
+              (context) => normalizeContextId(context) === domain,
+            ),
+          );
+    const operationNames = preferredOperationNames(
+      args.query,
+      candidates.map((action) => action.name),
+    );
+    for (const action of candidates) {
+      if (operationNames.size === 0 || operationNames.has(action.name))
+        selected.add(action);
+    }
+  }
+  // A selected context with no registry matches must still permit global lookup.
+  const relevant =
+    selected.size > 0
+      ? domainRelevant.filter((action) => selected.has(action))
+      : domainRelevant;
   const names = new Set(relevant.map((action) => action.name));
   return relevant.filter(
     (action) =>
