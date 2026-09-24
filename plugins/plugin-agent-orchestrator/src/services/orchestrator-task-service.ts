@@ -1061,6 +1061,29 @@ export class OrchestratorTaskService extends Service {
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
   private readonly autoVerifyInFlight = new Set<string>();
+  // Detached verification, event handling and recovery still own persistence.
+  // The host must not close the database until these admitted operations settle.
+  private readonly backgroundWork = new Set<Promise<unknown>>();
+
+  private trackBackgroundWork<T>(work: Promise<T>): Promise<T> {
+    this.backgroundWork.add(work);
+    void work.then(
+      () => this.backgroundWork.delete(work),
+      (error: unknown) => {
+        this.backgroundWork.delete(work);
+        this.runtime.reportError?.(
+          "OrchestratorTask.backgroundWork",
+          error,
+          {},
+        );
+        this.log("error", "background task work failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    return work;
+  }
+
   /** Tasks currently handing contributor receipts to their elected coordinator. */
   private readonly completionReviewDispatchInFlight = new Set<string>();
 
@@ -1153,15 +1176,17 @@ export class OrchestratorTaskService extends Service {
     // reaches the state dir, so without this the dir grows without bound. Runs
     // once at start, after the store is wired; best-effort so a sweep hiccup
     // never blocks service start (below).
-    void this.gcChildTrajectoryDirs().catch((err) => {
-      // error-policy:J7 startup GC is a disk-hygiene convenience; a failure is
-      // reported (the leak stays observable) but must not abort service start.
-      this.runtime.reportError?.(
-        "OrchestratorTask.gcChildTrajectoryDirs",
-        err,
-        {},
-      );
-    });
+    void this.trackBackgroundWork(
+      this.gcChildTrajectoryDirs().catch((err) => {
+        // error-policy:J7 startup GC is a disk-hygiene convenience; a failure is
+        // reported (the leak stays observable) but must not abort service start.
+        this.runtime.reportError?.(
+          "OrchestratorTask.gcChildTrajectoryDirs",
+          err,
+          {},
+        );
+      }),
+    );
     // Resume any tasks parked before a restart, then arm the reconcile tick that
     // drains the queue even when no terminal session event fires (a sweptStale
     // session frees a slot silently). Best-effort: a store hiccup here must not
@@ -1178,7 +1203,7 @@ export class OrchestratorTaskService extends Service {
         );
       });
       this.admissionReconcileTimer = setInterval(() => {
-        void this.drainAdmissionQueue();
+        void this.trackBackgroundWork(this.drainAdmissionQueue());
       }, ADMISSION_RECONCILE_INTERVAL_MS);
       this.admissionReconcileTimer.unref?.();
     }
@@ -1187,7 +1212,7 @@ export class OrchestratorTaskService extends Service {
     // (supervisor digest, status rollups) instead of "stalling" forever.
     if (this.stuckTaskReaperEnabled()) {
       this.stuckTaskReaperTimer = setInterval(() => {
-        void this.reapStuckTasks();
+        void this.trackBackgroundWork(this.reapStuckTasks());
       }, STUCK_TASK_REAP_INTERVAL_MS);
       this.stuckTaskReaperTimer.unref?.();
     }
@@ -1214,12 +1239,8 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        return this.onSessionEvent(
-          sessionId,
-          event,
-          data,
-          sessionSnapshot,
-          turnId,
+        return this.trackBackgroundWork(
+          this.onSessionEvent(sessionId, event, data, sessionSnapshot, turnId),
         );
       },
     );
@@ -1269,6 +1290,11 @@ export class OrchestratorTaskService extends Service {
       this.stuckTaskReaperTimer = undefined;
     }
     this.started = false;
+    // An admitted event can enqueue verification while its own promise settles.
+    // Drain to a fixed point rather than taking a single stale snapshot.
+    while (this.backgroundWork.size > 0) {
+      await Promise.allSettled([...this.backgroundWork]);
+    }
   }
 
   private queueSmithersRecovery(acp: AcpService): void {
@@ -1279,28 +1305,32 @@ export class OrchestratorTaskService extends Service {
     ) {
       return;
     }
-    void this.recoverInterruptedSmithersRuns(acp).catch((err) => {
-      // error-policy:J7 startup recovery is retried on the next boot or an
-      // explicit recovery call; the task remains durably marked running and
-      // the failure is surfaced to the agent instead of blocking service boot.
-      this.runtime.reportError?.(
-        "OrchestratorTask.recoverSmithersRuns",
-        err,
-        {},
-      );
-    });
+    void this.trackBackgroundWork(
+      this.recoverInterruptedSmithersRuns(acp).catch((err) => {
+        // error-policy:J7 startup recovery is retried on the next boot or an
+        // explicit recovery call; the task remains durably marked running and
+        // the failure is surfaced to the agent instead of blocking service boot.
+        this.runtime.reportError?.(
+          "OrchestratorTask.recoverSmithersRuns",
+          err,
+          {},
+        );
+      }),
+    );
   }
 
   private queueCompletionBarrierRecovery(): void {
-    void this.recoverCompletionBarriers().catch((err) => {
-      // error-policy:J7 persisted receipt delivery is retried on the next boot
-      // or terminal event; a recovery failure cannot prevent service startup.
-      this.runtime.reportError?.(
-        "OrchestratorTask.recoverCompletionBarriers",
-        err,
-        {},
-      );
-    });
+    void this.trackBackgroundWork(
+      this.recoverCompletionBarriers().catch((err) => {
+        // error-policy:J7 persisted receipt delivery is retried on the next boot
+        // or terminal event; a recovery failure cannot prevent service startup.
+        this.runtime.reportError?.(
+          "OrchestratorTask.recoverCompletionBarriers",
+          err,
+          {},
+        );
+      }),
+    );
   }
 
   /** A process restart loses verifier promises, but not their durable task state. */
@@ -2220,7 +2250,9 @@ export class OrchestratorTaskService extends Service {
           return decision;
         });
         if (gate.dispatchReview) {
-          void this.dispatchContributionReview(taskId);
+          void this.trackBackgroundWork(
+            this.dispatchContributionReview(taskId),
+          );
         }
         if (!gate.authorized) break;
         // Cross-surface arbitration for the digest emitter: stamp this
@@ -2250,12 +2282,14 @@ export class OrchestratorTaskService extends Service {
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
         // parser must see the original text.
-        void this.autoVerifyCompletion(
-          taskId,
-          sessionId,
-          completionEvidence,
-          summary,
-          completionBundle,
+        void this.trackBackgroundWork(
+          this.autoVerifyCompletion(
+            taskId,
+            sessionId,
+            completionEvidence,
+            summary,
+            completionBundle,
+          ),
         );
         break;
       }
@@ -2371,7 +2405,7 @@ export class OrchestratorTaskService extends Service {
     // rather than waiting on the 30s reconcile tick. Fire-and-forget: the drain
     // is serialized internally and never rejects into this write path.
     if (ADMISSION_DRAIN_EVENTS.has(event) && this.admissionQueueEnabled()) {
-      void this.drainAdmissionQueue();
+      void this.trackBackgroundWork(this.drainAdmissionQueue());
     }
   }
 
@@ -2820,7 +2854,9 @@ export class OrchestratorTaskService extends Service {
         taskId,
         sessionId,
       );
-      void this.writeEvidenceTrajectory(taskId, sessionId, bundle);
+      void this.trackBackgroundWork(
+        this.writeEvidenceTrajectory(taskId, sessionId, bundle),
+      );
       return { evidence: buildCompletionEvidenceString(bundle), bundle };
     } catch (err) {
       // error-policy:J7 fire-and-forget on the task_complete path; on failure it
@@ -3865,7 +3901,7 @@ export class OrchestratorTaskService extends Service {
       !this.admissionQueue.includes(taskId)
     ) {
       this.admissionQueue.push(taskId);
-      void this.drainAdmissionQueue();
+      void this.trackBackgroundWork(this.drainAdmissionQueue());
     }
     // A task interrupted mid-work (pausedWithActiveWork) had its subprocesses
     // killed by pause, so resume must spawn a FRESH sub-agent to continue from
@@ -7144,7 +7180,7 @@ export class OrchestratorTaskService extends Service {
       depth: this.admissionQueue.length,
     });
     // A slot may have freed between the cap rejection and this write; try now.
-    void this.drainAdmissionQueue();
+    void this.trackBackgroundWork(this.drainAdmissionQueue());
     return this.getTask(taskId);
   }
 
