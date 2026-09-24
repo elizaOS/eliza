@@ -11,6 +11,16 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 
+interface ViteCommandOptions {
+  appDir: string;
+  force?: boolean;
+  sourceCheckout?: boolean;
+  runtime?: "bun" | "node";
+  runtimePath?: string;
+  port?: string | number;
+  viteArgs?: string[];
+}
+
 export function resolveViteCommand({
   appDir,
   force = false,
@@ -21,7 +31,7 @@ export function resolveViteCommand({
   runtimePath = process.execPath,
   port,
   viteArgs = [],
-}) {
+}: ViteCommandOptions) {
   if (!runtimePath?.trim()) {
     throw new Error(
       "A JavaScript runtime is required to run the Vite dev server.",
@@ -73,7 +83,7 @@ export function resolveSupervisedViteCommand({
   sourceCheckout,
   port,
   viteArgs = [],
-}) {
+}: Omit<ViteCommandOptions, "runtime" | "runtimePath"> & { nodePath: string }) {
   return resolveViteCommand({
     appDir,
     force,

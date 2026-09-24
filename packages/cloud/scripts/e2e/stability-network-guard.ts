@@ -14,7 +14,7 @@ import { isIP } from "node:net";
 const ledgerPath = process.env.ELIZA_STABILITY_CHILD_NETWORK_LEDGER;
 if (!ledgerPath) throw new Error("network guard requires its ledger path");
 const nativeFetch = globalThis.fetch;
-const loopback = (hostname) => {
+const loopback = (hostname: string) => {
   if (hostname === "localhost") return true;
   const address =
     hostname.startsWith("[") && hostname.endsWith("]")
@@ -26,7 +26,7 @@ const loopback = (hostname) => {
   );
 };
 
-const appendDecision = (url, method, allowed) => {
+const appendDecision = (url: URL, method: string, allowed: boolean) => {
   appendFileSync(
     ledgerPath,
     `${JSON.stringify({
@@ -39,10 +39,14 @@ const appendDecision = (url, method, allowed) => {
   );
 };
 
-const requestUrl = (defaultProtocol, args) => {
+function isOptions(value: unknown): value is http.RequestOptions {
+  return value !== null && typeof value === "object" && !(value instanceof URL);
+}
+
+const requestUrl = (defaultProtocol: string, args: unknown[]) => {
   const first = args[0];
   if (typeof first === "string" || first instanceof URL) return new URL(first);
-  if (!first || typeof first !== "object" || first.socketPath) {
+  if (!isOptions(first) || first.socketPath) {
     throw new Error("stability network policy requires an explicit HTTP URL");
   }
   const protocol = first.protocol ?? defaultProtocol;
@@ -61,21 +65,23 @@ const requestUrl = (defaultProtocol, args) => {
   return new URL(`${protocol}//${authority}${pathname}`);
 };
 
-const requestMethod = (args) => {
+const requestMethod = (args: unknown[]) => {
   const first = args[0];
   const second = args[1];
-  const options =
-    second && typeof second === "object"
-      ? second
-      : first && typeof first === "object" && !(first instanceof URL)
-        ? first
-        : undefined;
+  const options = isOptions(second)
+    ? second
+    : isOptions(first)
+      ? first
+      : undefined;
   return options?.method ?? "GET";
 };
 
-const guardRequestModule = (module, defaultProtocol) => {
+const guardRequestModule = (
+  module: Pick<typeof http, "request" | "get">,
+  defaultProtocol: string,
+) => {
   const nativeRequest = module.request;
-  module.request = function guardedRequest(...args) {
+  module.request = function guardedRequest(...args: unknown[]) {
     const url = requestUrl(defaultProtocol, args);
     const method = requestMethod(args);
     const allowed = loopback(url.hostname);
@@ -84,8 +90,12 @@ const guardRequestModule = (module, defaultProtocol) => {
       throw new Error(`stability network policy blocked ${url.origin}`);
     return Reflect.apply(nativeRequest, module, args);
   };
-  module.get = function guardedGet(...args) {
-    const request = module.request(...args);
+  module.get = function guardedGet(...args: unknown[]) {
+    const request: http.ClientRequest = Reflect.apply(
+      module.request,
+      module,
+      args,
+    );
     request.end();
     return request;
   };
@@ -107,7 +117,10 @@ mock.module("node:https", () => ({
   get: https.get,
 }));
 
-globalThis.fetch = async (input, init) => {
+const guardedFetch = async (
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Promise<Response> => {
   const url = new URL(
     typeof input === "string" || input instanceof URL ? input : input.url,
   );
@@ -135,3 +148,18 @@ globalThis.fetch = async (input, init) => {
   }
   return response;
 };
+
+// Preserve Bun's fetch API while applying the same egress boundary to warmups.
+globalThis.fetch = Object.assign(guardedFetch, {
+  preconnect: (
+    input: Parameters<typeof fetch.preconnect>[0],
+    options?: Parameters<typeof fetch.preconnect>[1],
+  ) => {
+    const url = new URL(input);
+    const allowed = loopback(url.hostname);
+    appendDecision(url, "PRECONNECT", allowed);
+    if (!allowed)
+      throw new Error(`stability network policy blocked ${url.origin}`);
+    return nativeFetch.preconnect(input, options);
+  },
+});

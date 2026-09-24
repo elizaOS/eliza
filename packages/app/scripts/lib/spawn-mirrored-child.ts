@@ -4,14 +4,18 @@
  * mirrored back so callers can distinguish interruption from failure.
  */
 
-import { spawn } from "node:child_process";
+import { type SpawnOptions, spawn } from "node:child_process";
 
-const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM"];
+const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
 /** Spawn a child whose numeric exit code or terminating signal becomes ours. */
-export function spawnMirroredChild(command, args, options) {
+export function spawnMirroredChild(
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) {
   const child = spawn(command, args, options);
-  const signalHandlers = new Map();
+  const signalHandlers = new Map<NodeJS.Signals, () => void>();
 
   for (const signal of FORWARDED_SIGNALS) {
     const forward = () => {

@@ -258,12 +258,7 @@ const CERTIFY_QUESTION: VisionQuestion = {
  * lane log so a reviewer can read what failed.
  */
 export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
-  const script = path.join(
-    repoRoot,
-    "packages",
-    "scripts",
-    "run-all-tests.ts",
-  );
+  const script = path.join(repoRoot, "packages", "scripts", "run-all-tests.ts");
   const command = [`node ${path.relative(repoRoot, script)}`, ...args].join(
     " ",
   );
