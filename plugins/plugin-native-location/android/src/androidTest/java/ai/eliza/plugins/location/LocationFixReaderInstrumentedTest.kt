@@ -12,6 +12,8 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.SystemClock
+import androidx.test.core.app.ActivityScenario
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -38,11 +40,16 @@ class LocationFixReaderInstrumentedTest {
     private val reader get() = LocationFixReader(context)
     private val handles = mutableListOf<LocationFixReader.RequestHandle>()
     private var providerAdded = false
+    private var scenario: ActivityScenario<LocationReaderShowcaseActivity>? = null
 
     @Before
     fun createProvider() {
         check(Build.HARDWARE.contains("cutf") || Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) {
             "Framework location fixture requires a disposable emulator"
+        }
+        // Foreground location permission requires a resumed host on stock Android.
+        scenario = ActivityScenario.launch(LocationReaderShowcaseActivity::class.java).also {
+            assertEquals(Lifecycle.State.RESUMED, it.state)
         }
         shell("appops set ${context.packageName} android:mock_location allow")
         check(manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) { "Enable emulator location before this test" }
@@ -58,6 +65,8 @@ class LocationFixReaderInstrumentedTest {
         instrumentation.runOnMainSync { handles.forEach { it.cancel() } }
         if (providerAdded) manager.removeTestProvider(LocationManager.GPS_PROVIDER)
         shell("appops set ${context.packageName} android:mock_location default")
+        scenario?.close()
+        scenario = null
     }
 
     @Test
