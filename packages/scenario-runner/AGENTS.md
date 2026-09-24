@@ -16,7 +16,7 @@ packages/scenario-runner/
     index.js / index.d.ts   # ScenarioDefinition, ScenarioTurn, CapturedAction, etc.
   src/
     index.ts                 # Public re-exports
-    cli.ts                   # `eliza-scenarios run|list` — arg parsing + orchestration
+    cli.ts                   # `eliza-scenarios run|list|stability` — arg parsing + orchestration
     executor.ts              # runScenario() — core execution loop (message/action/api/tick turns)
     runtime-factory.ts       # createScenarioRuntime() — boots AgentRuntime with PGLite + LLM
     loader.ts                # discoverScenarios / loadAllScenarios / listScenarioMetadata / expandScenarioDefinition / countScenarioCorpus / validateScenarioCorpus
@@ -24,6 +24,8 @@ packages/scenario-runner/
     judge.ts                 # judgeTextWithLlm() — LLM-as-judge (Cerebras gpt-oss-120b or fallback)
     cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
+    stability.ts             # strict three-attempt plans, aggregation, tiers, and focus lists
+    stability-executor.ts    # unconditional programmatic attempts through an injected isolated-runtime boundary
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
     seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
@@ -57,6 +59,8 @@ import {
 // Reporting
 import {
   buildAggregate, writeReport, printStdoutSummary, writeScenarioRunViewer,
+  createScenarioStabilityPlan, buildScenarioStabilityReport,
+  executeScenarioStability,
 } from "@elizaos/scenario-runner";
 
 // Native (training corpus) export
@@ -87,12 +91,45 @@ eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
                             [--provider groq|openai|anthropic|google|openrouter|cli]
                             [fileGlob ...]
 eliza-scenarios list <dir> [--lane pr-deterministic|live-only] [fileGlob ...]
+eliza-scenarios stability <output-dir> --runId <id>
+                          [--attempt-report <matrix.json>] # exactly three when supplied
 ```
 
 `--provider` pins a `run` invocation to one configured live provider instead of
 using provider precedence. Invalid or unavailable selections fail loudly.
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
+
+The `stability` command is report plumbing only. With no attempt reports it
+writes a plan with three unique run IDs and isolated `attempt-01` through
+`attempt-03` output directories. With exactly three reports at those declared
+paths, it writes deterministic `3/3`, `2/3`, `1/3`, or `0/3` tiers and a
+focus list. It does not execute scenarios or providers.
+Aggregation consumes the pre-existing `stability-plan.json`; it never replaces
+that authority. Reports must be regular files at its exact paths and are bounded
+to 64 MiB, 10,000 scenarios, 1,000 failed assertions per scenario, and bounded
+identifier/detail strings. Conflicting plans and contradictory statuses fail as
+CLI usage errors before an aggregate is written.
+
+Programmatic callers use `executeScenarioStability()`. Its public plan is
+runtime-canonicalized before execution: only the exact ordinals 1, 2, and 3,
+canonical IDs, contained output paths, and matching report authority are
+accepted. Every attempt result is admitted as bounded plain JSON; cycles,
+accessors, executable/lossy values, excessive strings, depth, width, nodes, or
+serialized bytes become harness failures and are not retained.
+
+`ScenarioStabilitySubprocessAdapter` is the production isolation boundary. It
+opens the exact synthetic-control manifest in a fresh leased namespace, runs
+each attempt in an independent POSIX process group, inherits no ambient service
+credentials, terminates the group before closing/resetting the session, and
+records the process/generation/manifest receipt. Deterministic mode requires an
+exact strict-fixture fingerprint plus zero unmatched, ambiguous, unused, or
+over-consumed diagnostics. Real-LLM mode accepts one explicit model credential
+while every service endpoint remains credential-free loopback. The same
+executor always measures attempts 1, 2, and 3, compares runtime-produced initial
+state hashes, records first-attempt success, and blocks every cell below `3/3`.
+The shared durable manifest/reset/ledger authorities and strict final fixture
+gate remain explicit composition dependencies of the scheduled Cloud lane.
 
 ### Lanes
 
