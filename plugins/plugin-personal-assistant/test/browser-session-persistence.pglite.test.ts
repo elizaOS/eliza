@@ -102,6 +102,32 @@ afterAll(async () => {
 });
 
 describe("stored browser session atomic persistence", () => {
+  it("allows exactly one repository claimant to acquire queued work", async () => {
+    const session = queuedSession();
+    await repository.createBrowserSession(session);
+    const claimants = [
+      companion("claim-a", "profile-a"),
+      companion("claim-b", "profile-b"),
+    ];
+    const claims = await Promise.all(
+      claimants.map((claimant) =>
+        new LifeOpsRepository(runtime).claimBrowserSession(
+          runtime.agentId,
+          claimant,
+          new Date().toISOString(),
+        ),
+      ),
+    );
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    const persisted = await repository.getBrowserSession(
+      runtime.agentId,
+      session.id,
+    );
+    expect(persisted?.status).toBe("running");
+    expect(persisted?.companionId).toBe(claims.find(Boolean)?.companionId);
+    expect(persisted?.profileId).toBe(claims.find(Boolean)?.profileId);
+  });
+
   it("accepts the terminal checkpoint idempotently and rejects rewinds or foreign updates", async () => {
     const session = queuedSession();
     await repository.createBrowserSession(session);
