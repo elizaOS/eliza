@@ -279,9 +279,11 @@ describe("parseConversationMessageEvent", () => {
       timestamp: 10,
       source: "discord",
       actionCallbackHistory: ["a", "", "  ", "b", 5],
+      planningAcknowledgment: "Let me check.",
     });
     expect(parsed?.source).toBe("discord");
     expect(parsed?.actionCallbackHistory).toEqual(["a", "b"]);
+    expect(parsed?.planningAcknowledgment).toBe("Let me check.");
   });
 
   it("accepts only the internal transcript visibility value", () => {

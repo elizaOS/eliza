@@ -46,7 +46,7 @@ export function createContextReadTool(
               acknowledgment: {
                 type: "string" as const,
                 description:
-                  "Brief natural progress about the lookup you are starting, or empty when unnecessary. No answer, result, internal reference labels, reasoning, or claims of completed work. This is transient progress, never the final reply.",
+                  'One short conversational acknowledgment, usually 2–6 words, such as "Let me check.", or empty when unnecessary. Do not repeat the request or speculate that information is missing. No answer, result, internal reference labels, reasoning, or claims of completed work. This is transient progress, never the final reply.',
               },
             }
           : {}),

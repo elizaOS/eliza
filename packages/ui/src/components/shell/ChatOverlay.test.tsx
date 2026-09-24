@@ -3652,7 +3652,7 @@ describe("ChatOverlay", () => {
       expect(screen.queryByTestId("typing-dots")).toBeNull();
     });
 
-    it("shows transient voice progress and replaces it with the saved final reply", () => {
+    it("retains spoken progress beside the saved final reply", () => {
       const { rerender } = render(
         <ChatOverlay
           controller={makeController({
@@ -3699,13 +3699,14 @@ describe("ChatOverlay", () => {
                 id: "a",
                 role: "assistant",
                 content: "Your note says hello.",
+                planningAcknowledgment: "Checking your note.",
                 createdAt: 2,
               },
             ],
           } as Partial<ShellController>)}
         />,
       );
-      expect(screen.queryByText("Checking your note.")).toBeNull();
+      expect(screen.getByTestId("chat-acknowledgment").textContent).toBe("Checking your note.");
       expect(screen.getByText("Your note says hello.")).toBeTruthy();
     });
 

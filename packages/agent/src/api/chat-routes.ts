@@ -473,6 +473,8 @@ export interface AccountConnectRequest {
 }
 
 export interface ChatGenerationResult {
+  /** Already-delivered progress, retained for display; not final answer text. */
+  planningAcknowledgment?: string;
   /** Server-owned execution status, independent of recovered reply delivery. */
   outcome?: TurnOutcome;
   text: string;
@@ -3616,6 +3618,7 @@ async function generateChatResponseWithTiming(
 
     return {
       text: finalText,
+      ...(planningAcknowledgment ? { planningAcknowledgment } : {}),
       agentName,
       ...(result?.outcome ? { outcome: result.outcome } : {}),
       ...(transcriptVisibility ? { transcriptVisibility } : {}),

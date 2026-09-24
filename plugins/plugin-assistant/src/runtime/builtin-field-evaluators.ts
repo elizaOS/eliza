@@ -252,7 +252,7 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
     NAVIGATION_REPLY_RULE +
-    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment before its grounded result. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
+    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=one short conversational acknowledgment, usually 2–6 words (for example "Let me check."). Do not repeat the request, names, dates or parameters; do not speculate about results or claim missing information before checking. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
     EXACT_REPLY_TEXT_RULE,
   descriptionCompressed:
     "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",

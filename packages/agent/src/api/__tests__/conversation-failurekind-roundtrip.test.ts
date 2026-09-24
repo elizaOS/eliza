@@ -291,6 +291,15 @@ function createCtx(
   return { ctx, record, captured };
 }
 
+it("retains an already-spoken acknowledgment outside final answer text", () => {
+  const content = buildPersistedAssistantContent("Two appointments.", {
+    planningAcknowledgment: "Let me check.",
+    responseContent: { text: "Two appointments." },
+  });
+  expect(content.text).toBe("Two appointments.");
+  expect(content.planningAcknowledgment).toBe("Let me check.");
+});
+
 describe("conversation failureKind round-trip", () => {
   beforeEach(() => {
     generateResult = {};

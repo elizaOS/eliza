@@ -200,7 +200,6 @@ export function applyServerEvent(
         // Only playback completion may release the speaking/microphone gate.
         phase: state.phase === "speaking" ? "speaking" : "thinking",
         traceId: event.traceId,
-        progressText: undefined,
       };
     case "speaking_start":
       return { ...state, phase: "speaking", traceId: event.traceId };
