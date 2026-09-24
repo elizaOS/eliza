@@ -2,10 +2,11 @@
  * Cover-image background layer for the unified app background, given a data or
  * /api/media URL.
  */
+
+import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
 import type * as React from "react";
 import { Card } from "../components/ui/card";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
 export interface ImageBackgroundProps {
   /** Cover-image source — a data URL or a served `/api/media/…` URL. */

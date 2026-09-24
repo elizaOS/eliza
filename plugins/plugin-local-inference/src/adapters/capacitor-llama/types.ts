@@ -18,7 +18,7 @@
  * keep the interface free-standing so any backend can implement it.
  */
 
-import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 
 export interface TokenizerConfig {
 	name: string;

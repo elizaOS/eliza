@@ -7,17 +7,17 @@
  * Character view, not here.
  */
 
-import { Volume2, VolumeX } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client, type VoiceConfig } from "../../api";
-import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
-import { useAppSelectorShallow } from "../../state";
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "../../voice/types";
+} from "@elizaos/shared";
+import { Volume2, VolumeX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client, type VoiceConfig } from "../../api";
+import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
+import { useAppSelectorShallow } from "../../state";
 import {
   DEFAULT_ELEVEN_FAST_MODEL,
   EDGE_VOICE_GROUPS,

@@ -17,7 +17,7 @@ import {
   type RemoteControllerGrant,
   type RemoteJsonValue,
   type SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 
 export type RemoteCommandJournalStatus =
   | "reserved"

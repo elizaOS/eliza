@@ -3,7 +3,7 @@
  * collision and uncatchable crash-checkpoint coverage.
  */
 
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
 import { SqliteSyntheticEnvironmentLeaseStore } from "../../../../cloud/test-mocks/src/synthetic-environment";
 import {
   SqliteSyntheticCommandJournal,

@@ -12,7 +12,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 import { selectFilesForViewer } from "./files-disclosure.ts";
 
 function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {

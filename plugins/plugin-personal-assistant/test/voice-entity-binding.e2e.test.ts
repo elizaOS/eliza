@@ -43,7 +43,7 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
 } from "@elizaos/plugin-relationships/knowledge-graph";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

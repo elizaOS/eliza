@@ -8,7 +8,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 

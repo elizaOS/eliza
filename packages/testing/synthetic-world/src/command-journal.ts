@@ -8,8 +8,8 @@ import { ElizaError } from "@elizaos/core";
 import type {
   SyntheticEnvironmentLeaseAuthority,
   SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
-import { isSyntheticEnvironmentNamespace } from "@elizaos/shared/contracts/synthetic-environment-lease";
+} from "@elizaos/shared";
+import { isSyntheticEnvironmentNamespace } from "@elizaos/shared";
 import type {
   SyntheticCommandJournalExpected,
   SyntheticCommandJournalIdentity,

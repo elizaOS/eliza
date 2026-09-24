@@ -2,11 +2,9 @@
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud/domain-contract";
-import {
 	isLoopbackBindHost,
 	isWildcardBindHost,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { resolveExternalApiBase } from "./api-base";
 
 function isExternalPlainHttpUrl(parsed: URL): boolean {

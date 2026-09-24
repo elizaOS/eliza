@@ -12,7 +12,7 @@ import {
   DEFAULT_SERVER_ONLY_PORT,
   isLoopbackBindHost,
   isWildcardBindHost,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorGrant,

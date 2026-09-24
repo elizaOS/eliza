@@ -4,7 +4,7 @@
  * presentational components from depending on the enrollment state machine.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 
 export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
 

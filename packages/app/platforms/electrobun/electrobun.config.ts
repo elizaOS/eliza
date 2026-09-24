@@ -678,16 +678,16 @@ export function createElectrobunConfig(): ElectrobunConfig {
 		scripts: {
 			// Electrobun removes the target build folder without `force: true`;
 			// seed it first so clean worktrees do not fail with ENOENT.
-			preBuild: "scripts/ensure-build-folder.ts",
+			preBuild: "../../scripts/electrobun/ensure-build-folder.ts",
 			// Sign native code inside the runtime dist node_modules on the inner app bundle
 			// before Electrobun runs the platform signing/notarization flow.
-			postBuild: "scripts/postwrap-sign-runtime-macos.ts",
+			postBuild: "../../scripts/electrobun/postwrap-sign-runtime-macos.ts",
 			// Electrobun deliberately skips its release signing path in dev. Apply a
 			// local ad-hoc identity after packaging so macOS permission services see
 			// the bundle id from Info.plist instead of the launcher helper identity.
-			postPackage: "scripts/sign-dev-macos-app.ts",
+			postPackage: "../../scripts/electrobun/sign-dev-macos-app.ts",
 			// Capture wrapper-bundle binary metadata after the self-extractor is created.
-			postWrap: "scripts/postwrap-diagnostics.ts",
+			postWrap: "../../scripts/electrobun/postwrap-diagnostics.ts",
 		},
 		build: {
 			// Electrobun otherwise bundles its own runtime, independently of the host Bun.

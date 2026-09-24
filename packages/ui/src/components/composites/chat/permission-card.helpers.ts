@@ -10,7 +10,7 @@ import {
   isPermissionId,
   type PermissionId,
   type PermissionState,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 /**
  * Friendly human-readable labels per permission id. Used as the card title

@@ -307,7 +307,7 @@ export class BlazeFaceGgmlDetector {
       await fs.access(ggufPath);
     } catch {
       throw new Error(
-        `${MODULE_TAG} BlazeFace GGUF missing at ${ggufPath} — see scripts/blazeface_to_gguf.py.`,
+        `${MODULE_TAG} BlazeFace GGUF missing at ${ggufPath} — see packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py.`,
       );
     }
     this.handle = this.bindings.open(ggufPath);

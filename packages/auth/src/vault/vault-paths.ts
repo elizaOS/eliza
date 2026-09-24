@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolveAliasedEnvValue } from "@elizaos/shared/config/boot-config-store";
+import { resolveAliasedEnvValue } from "@elizaos/shared";
 
 export function resolveDefaultVaultRoot(workDir?: string): string {
   const namespace =

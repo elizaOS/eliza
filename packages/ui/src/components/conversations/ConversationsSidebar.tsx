@@ -14,6 +14,7 @@
  * drawer. Barrel-exported and mounted inside the chat panel layout.
  */
 
+import { errorMessage } from "@elizaos/shared";
 import {
   Bell,
   BellOff,
@@ -39,7 +40,6 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import { errorMessage } from "../../utils/errors";
 import { emitViewEvent } from "../../views/view-event-bus";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";

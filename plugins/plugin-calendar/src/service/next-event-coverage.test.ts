@@ -5,7 +5,7 @@ import { AgentRuntime, type Memory } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/shared/contracts/calendar";
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../actions/calendar-handler.js";
 import { CalendarService } from "./CalendarService.js";

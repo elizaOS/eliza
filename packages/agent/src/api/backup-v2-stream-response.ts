@@ -12,8 +12,8 @@ import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Request,
+  readRequestBody,
 } from "@elizaos/shared";
-import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentBackupV2CaptureComponentSource,

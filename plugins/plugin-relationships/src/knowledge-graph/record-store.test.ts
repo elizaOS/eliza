@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime, type UUID } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
-import type { Entity, EntityIdentity } from "@elizaos/shared/knowledge-graph";
+import type { Entity, EntityIdentity } from "@elizaos/shared";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { LegacyRelationshipsSchemaAuditService } from "../services/legacy-schema-audit.ts";
 import { KnowledgeGraphService } from "./service.ts";

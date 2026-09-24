@@ -23,16 +23,14 @@ import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
 	type RoutingPreferences,
+	readJsonBody,
 	resolveElizaCloudTopology,
 	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
-} from "@elizaos/shared";
-import {
-	readJsonBody,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 import {
 	readRoutingPreferences,
 	setPolicy,

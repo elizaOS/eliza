@@ -6,7 +6,7 @@
 
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
 import type { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
 import {
   SYNTHETIC_WORLD_CAPABILITIES,

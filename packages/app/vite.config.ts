@@ -51,6 +51,7 @@ import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.mjs";
+import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -1491,26 +1492,6 @@ function resolveSharedSourceExportTarget(
   return resolveExistingTsSourceModule(
     path.join(sharedPkgDir, "src", sourceRelative),
   );
-}
-
-/** The renderer imports pure shared contracts; the agent kernel runs in Node. */
-function rejectRuntimeInRendererPlugin(): Plugin {
-  return {
-    name: "reject-runtime-in-renderer",
-    enforce: "pre",
-    resolveId(id, importer) {
-      if (
-        id === "@elizaos/core" ||
-        id.startsWith("@elizaos/core/") ||
-        id === "@elizaos/shared"
-      ) {
-        throw new Error(
-          `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
-        );
-      }
-      return null;
-    },
-  };
 }
 
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.

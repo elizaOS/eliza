@@ -3,7 +3,7 @@
  *
  * The 7-class basic-emotion vocabulary is a *contract* shared by:
  *
- *   - the GGUF conversion script (`scripts/voice_emotion_to_gguf.py`),
+ *   - the GGUF conversion script (`packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_emotion_to_gguf.py`),
  *     which must pack head logits in this exact order;
  *   - the runtime decode in the (eventual) real emotion TU, which reads
  *     the GGUF logits in this order without any remap;

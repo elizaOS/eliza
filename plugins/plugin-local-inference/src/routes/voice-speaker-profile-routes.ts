@@ -37,11 +37,7 @@
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 import {
 	type VoiceProfileRecord,
 	VoiceProfileStore,

@@ -27,9 +27,8 @@ const smokeScript = path.join(
   repoRoot,
   "packages",
   "app",
-  "platforms",
-  "electrobun",
   "scripts",
+  "electrobun",
   "smoke-test-windows.ps1",
 );
 

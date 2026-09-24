@@ -132,29 +132,10 @@ if (reuse) {
   process.exit(0);
 }
 
-const startMocksJsPath = path.join(
+const startMocksPath = path.join(
   repoRoot,
-  "packages",
-  "testing",
-  "scenario-runner",
-  "test",
-  "mocks",
-  "scripts",
-  "start-mocks.js",
+  "packages/testing/scripts/mocks/start-mocks.ts",
 );
-const startMocksTsPath = path.join(
-  repoRoot,
-  "packages",
-  "testing",
-  "scenario-runner",
-  "test",
-  "mocks",
-  "scripts",
-  "start-mocks.ts",
-);
-const startMocksPath = fs.existsSync(startMocksJsPath)
-  ? startMocksJsPath
-  : startMocksTsPath;
 const { startMocks } = await import(startMocksPath);
 
 console.log("[start-mocks-bg] Starting mock servers...");

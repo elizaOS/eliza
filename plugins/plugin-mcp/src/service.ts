@@ -24,6 +24,7 @@ import {
   Service,
   validateMcpServerConfig,
 } from "@elizaos/core";
+import { assertMcpJsonSchemaBudget, MCP_TOOL_SCHEMA_UNBOUNDED } from "@elizaos/shared";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -59,7 +60,6 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
-import { assertMcpJsonSchemaBudget, MCP_TOOL_SCHEMA_UNBOUNDED } from "./utils/schema-budget";
 
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {

@@ -10,7 +10,7 @@ import {
   collectPreparedKeywordTermMatches,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/shared/i18n/keyword-matching-core";
+} from "@elizaos/shared";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
 

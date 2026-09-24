@@ -10,7 +10,7 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { logger, nodeLookupFn, nodePinnedFetch } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 import { fetchRemoteMedia } from "@elizaos/shared/media";
 import {
   ensureThumbnailForStoredFile,

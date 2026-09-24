@@ -30,7 +30,7 @@ import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/shared";
 
 /** Production + staging Eliza app hosts (the staging Pages deploy serves the
  * identical bundle on `app-staging.*`, so staging must mirror prod behavior). */

@@ -14,6 +14,13 @@ node packages/scripts/audit-scripts.mjs
 bun run verify
 ```
 
+Install builds use Turbo's dependency graph and cache; an existing `dist` file
+is not proof of freshness. In [`turbo.json`](../../turbo.json), `typecheck:deps`
+tracks source changes without running builds. Typechecks that read generated
+declarations declare the producing build explicitly. Source imports outside
+Turbo's dependency graph, including peer-only packages, need an explicit
+`#typecheck:deps` edge so their changes invalidate cached checks.
+
 The script test runner discovers tests recursively here and in
 `packages/cloud/scripts/`, including untracked files during development.
 Relative module imports resolve from their source file; operational outputs and

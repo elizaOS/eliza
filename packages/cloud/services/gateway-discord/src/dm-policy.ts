@@ -9,7 +9,7 @@
 import {
   type DiscordDmPolicyMetadata,
   isDiscordDmSenderAllowed,
-} from "@elizaos/shared/discord-dm-policy";
+} from "@elizaos/shared";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 

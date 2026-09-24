@@ -3,6 +3,7 @@
  * they can be covered by unit tests without a DOM.
  */
 
+import { MODEL_CATALOG } from "@elizaos/shared";
 import type {
   CatalogModel,
   DownloadJob,
@@ -10,7 +11,6 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 import { assessCatalogModelFit } from "../../services/local-inference/recommendation";
 import { formatByteSize } from "../../utils/format";
 

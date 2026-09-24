@@ -14,7 +14,7 @@ Test from this directory:
 python -m pytest
 ```
 
-Before full-corpus runs or dataset tests, run `python3 scripts/fetch-corpus-assets.py`
+Before full-corpus runs or dataset tests, run `python3 ../../scripts/terminal-bench/fetch-corpus-assets.py`
 from this directory. It explicitly downloads missing large inputs and protected
 bytecode fixtures, verifying their revision, byte counts, and SHA-256 values
 against `corpus-manifest.json`. Normal installation does not fetch them.

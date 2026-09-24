@@ -1,6 +1,7 @@
 /** Verifies isSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { resetUiRegistryHostForTests } from "@elizaos/shared";
 /**
  * jsdom tests for the generalized `SectionNav` primitive and `isSectionPath`
  * predicate (#13586). Exercises the real app-shell page registry to confirm:
@@ -24,7 +25,6 @@ import {
   handleAgentSurfaceCapability,
 } from "../../agent-surface";
 import { registerAppShellPage } from "../../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   isSectionPath,
   SectionNav,

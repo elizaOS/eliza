@@ -2,7 +2,7 @@
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 export interface CloudAuthWindowFrame {
 	x: number;
 	y: number;

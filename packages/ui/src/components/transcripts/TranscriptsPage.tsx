@@ -15,11 +15,9 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
-} from "@elizaos/shared/meetings";
-import type {
   Transcript,
   TranscriptCaptureSharingState,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingStatusEvent } from "../../api/client-meetings";

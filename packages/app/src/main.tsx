@@ -55,18 +55,18 @@ import {
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
-import { getStylePresets } from "@elizaos/shared/character-presets";
-import {
-  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
-  cloudPairTokenKeyForAgent,
-  isCloudPairAgentId,
-  isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/personal-assistant";
-import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
+import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+  getStylePresets,
+  isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";

@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir, resolveUserPath } from "@elizaos/core";
-import { normalizeDeploymentTargetConfig } from "@elizaos/shared/contracts/service-routing";
+import { normalizeDeploymentTargetConfig } from "@elizaos/shared";
 import type { PersistedDeployment } from "./api-base";
 import { logger } from "./logger";
 

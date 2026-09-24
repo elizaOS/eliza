@@ -5,6 +5,9 @@
  * status; the widget is the ONLY model-loading status surface (the chat overlay
  * shows no floating pill) and self-hides when no local slot needs a download.
  */
+
+import type { LocalInferenceSlotReadiness } from "@elizaos/shared";
+import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
@@ -17,9 +20,6 @@ import {
   deriveHomeModelStatus,
   type HomeModelStatus,
 } from "../../../services/local-inference/home-model-status";
-import type { LocalInferenceSlotReadiness } from "../../../services/local-inference/types";
-import { resolveApiUrl } from "../../../utils/asset-url";
-import { getElizaApiToken } from "../../../utils/eliza-globals";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";

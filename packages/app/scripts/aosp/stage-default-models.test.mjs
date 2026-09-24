@@ -35,3 +35,21 @@ describe("stage-default-models", () => {
     expect(voice?.ggufFile).toBe("tts/kokoro/kokoro-82m-v1_0.gguf");
   });
 });
+
+// All AOSP callers share the current monorepo layout and explicit override contract.
+describe("AOSP config location", () => {
+  it("resolves the canonical app and an explicit alternate host", async () => {
+    const { resolveAppConfigPath } = await import(
+      "./lib/load-variant-config.ts"
+    );
+    expect(resolveAppConfigPath({ repoRoot: "/repo" })).toBe(
+      path.join("/repo", "packages", "app", "app.config.ts"),
+    );
+    expect(
+      resolveAppConfigPath({
+        repoRoot: "/repo",
+        flagValue: "/fork/app.config.ts",
+      }),
+    ).toBe(path.resolve("/fork/app.config.ts"));
+  });
+});

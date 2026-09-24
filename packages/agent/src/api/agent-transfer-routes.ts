@@ -12,8 +12,10 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
-import { PostAgentExportRequestSchema } from "@elizaos/shared";
-import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
+import {
+  PostAgentExportRequestSchema,
+  readRequestBodyBuffer,
+} from "@elizaos/shared";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;

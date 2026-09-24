@@ -21,7 +21,7 @@ import {
   resolveOptimizedPromptForRuntime,
   segmentBlock,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
+import { composePrompt } from "@elizaos/shared";
 import { v4 } from "uuid";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import {

@@ -25,8 +25,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import type { AudioRedactionSpan } from "@elizaos/shared/audio-redaction";
-import type { RedactionVerifyResult } from "@elizaos/shared/audio-redaction-verify";
+import type {
+  AudioRedactionSpan,
+  RedactionVerifyResult,
+} from "@elizaos/shared";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AudioRedactionMode } from "./audio-redaction.ts";
 import { redactAudioBytes } from "./audio-redaction.ts";

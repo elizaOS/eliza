@@ -11,7 +11,7 @@ import type {
   HttpPlugin as Plugin,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import type {
   CapturedAction,

@@ -5,7 +5,7 @@
 // the recovery callout for a denied card, the loading state, single onComplete
 // firing, and Skip-for-now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+import type { PermissionId } from "@elizaos/shared";
 import {
   act,
   cleanup,

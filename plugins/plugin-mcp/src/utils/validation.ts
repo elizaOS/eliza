@@ -10,10 +10,11 @@ import { Worker } from "node:worker_threads";
 import type { State } from "@elizaos/core";
 import {
   createMcpResourceSelectionFeedback,
+  getMcpJsonSchemaBudgetError,
+  validateJsonSchema,
   validateMcpResourceSelection,
-} from "@elizaos/shared/mcp";
+} from "@elizaos/shared";
 import type { McpProviderData, McpServerInfo, ValidationResult } from "../types";
-import { getMcpJsonSchemaBudgetError, validateJsonSchema } from "./json";
 import {
   type ResourceSelection,
   type ToolSelectionArgument,

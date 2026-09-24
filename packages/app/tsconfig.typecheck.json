@@ -3,11 +3,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/app": ["../app/dist/index.d.ts"],
-      "@elizaos/app/*": ["../app/dist/*"],
-      "@elizaos/app/first-run/first-run-config": [
-        "../app/dist/first-run/first-run-config.d.ts"
-      ],
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/app/*": ["./src/*"],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-agent-orchestrator/ui": [

@@ -108,8 +108,8 @@ class FaceParity(unittest.TestCase):
         return np.asarray(img, dtype=np.uint8), img.width, img.height
 
     def _convert_blazeface(self, output_path: Path):
-        """Run scripts/blazeface_to_gguf.py to produce the real GGUF."""
-        script = REPO_ROOT / "scripts" / "blazeface_to_gguf.py"
+        """Run packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py to produce the real GGUF."""
+        script = REPO_ROOT.parents[3] / "packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py"
         subprocess.run(
             [sys.executable, str(script), "--output", str(output_path), "--fp32"],
             check=True,

@@ -11,8 +11,8 @@
  * Phase 1 of the agent + app extraction.
  */
 
-import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import { readAppsCache } from "../components/apps/apps-cache";
 
 /** Result of main-tab discovery. */

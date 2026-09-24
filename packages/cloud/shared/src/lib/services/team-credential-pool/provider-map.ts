@@ -7,7 +7,7 @@
  * flag + org allowlist, never the public API.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type { SecretProvider } from "../../../db/schemas/secrets";
 
 export const POOLED_DIRECT_PROVIDERS = [

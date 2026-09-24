@@ -10,6 +10,15 @@
  * data, not code. Contrast with `ConfigRenderer`, which drives a JSON-Schema
  * config form rather than a spec tree.
  */
+
+import type {
+  AuthState,
+  CondExpr,
+  UiAction,
+  UiElement,
+  UiRenderContext,
+  UiSpec,
+} from "@elizaos/shared";
 import { X } from "lucide-react";
 import type React from "react";
 import {
@@ -20,14 +29,6 @@ import {
   useState,
 } from "react";
 import { getByPath, setByPath } from "../../config/config-catalog";
-import type {
-  AuthState,
-  CondExpr,
-  UiAction,
-  UiElement,
-  UiRenderContext,
-  UiSpec,
-} from "../../config/ui-spec";
 import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Badge } from "../ui/badge";

@@ -16,7 +16,7 @@
 import {
   BACKGROUND_APPLY_EVENT,
   type BackgroundApplyPayload,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   catalogEntryToConfig,
@@ -37,7 +37,7 @@ import {
 export type {
   BackgroundApplyOp,
   BackgroundApplyPayload,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 export { BACKGROUND_APPLY_EVENT };
 
 /** Pull a Partial<ShaderUniformValues> out of an untrusted payload field. */

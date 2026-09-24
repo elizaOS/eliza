@@ -5,7 +5,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { LegacyRouteHandler, Route } from "@elizaos/shared/api/http-plugin";
+import type { LegacyRouteHandler, Route } from "@elizaos/shared";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import type { SolanaService } from "../service";
 import type { ApiError, ApiResponse, WalletPortfolio } from "../types";

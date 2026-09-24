@@ -1009,7 +1009,7 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         )
     args = [
         sys.executable,
-        "scripts/run_benchmark.py",
+        "../../scripts/adhdbench/run_benchmark.py",
         "run",
         "--provider",
         effective_provider,
@@ -1214,7 +1214,7 @@ def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
         return [
             sys.executable,
-            "framework/scripts/harness_runner.py",
+            "scripts/framework/harness_runner.py",
             "--harness",
             ctx.request.agent.strip().lower(),
             "--provider",
@@ -1417,7 +1417,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         osworld_python = str(conda_python) if conda_python.exists() else sys.executable
     args = [
         osworld_python,
-        "scripts/python/run_multienv_eliza.py",
+        "../../scripts/osworld/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
         "--model",
@@ -1537,7 +1537,7 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if task in {"should_respond", "should-respond"}:
         args = [
             sys.executable,
-            "scripts/harness_runner.py",
+            "../../scripts/eliza-1/harness_runner.py",
             "--harness",
             str(harness).strip().lower(),
             "--model",

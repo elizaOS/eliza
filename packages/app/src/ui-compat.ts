@@ -8,13 +8,6 @@
  * registers app surfaces without touching the React package.
  */
 
-export { registerDetailExtension } from "@elizaos/shared/apps/detail-extension-registry";
-export type { AppDetailExtensionProps } from "@elizaos/shared/apps/detail-extension-types";
-export type {
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/shared/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/shared/apps/overlay-app-registry";
 // Everything below re-exports from its narrow `@elizaos/ui` subpath rather than
 // the root barrel. The barrel (`@elizaos/ui`) eagerly evaluates the entire
 // frontend component graph, and this shim is reachable from the Node
@@ -22,9 +15,13 @@ export { registerOverlayApp } from "@elizaos/shared/apps/overlay-app-registry";
 // dragged ~1000 React modules (and their deps) into the API process at boot.
 // Subpath imports pull only the specific component. Mirrors `browser.ts`.
 export type {
+  AppDetailExtensionProps,
   AppRunSummary,
   AppSessionJsonValue,
-} from "@elizaos/shared/contracts/apps";
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/shared";
+export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
 export { client } from "@elizaos/ui/api";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {

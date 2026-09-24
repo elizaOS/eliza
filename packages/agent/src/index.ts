@@ -21,7 +21,7 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 
 export interface CloudConfigLike {
   apiKey?: string | null;

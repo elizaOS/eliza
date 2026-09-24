@@ -15,7 +15,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,

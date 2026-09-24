@@ -14,7 +14,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { logger } from "@elizaos/core";
-import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
+import { isDevApiWatchEnabled } from "@elizaos/shared";
 
 import { resolveStateDir } from "../config/paths.ts";
 import type { BootSummary } from "./boot-timer.ts";

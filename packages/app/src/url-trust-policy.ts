@@ -12,7 +12,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,

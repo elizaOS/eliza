@@ -15,7 +15,7 @@ import {
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
   REMOTE_CONTROL_PROTOCOL_VERSION,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import type { Database } from "../client";

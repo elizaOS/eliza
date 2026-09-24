@@ -10,8 +10,11 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger } from "@elizaos/core";
-import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
+import {
+  isCloudProvisionedContainer,
+  resolveApiToken,
+  sendJsonError,
+} from "@elizaos/shared";
 import { serializeInlineScriptValue } from "./inline-script-serialization.ts";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import {

@@ -3,10 +3,10 @@
  * @vitest-environment jsdom
  */
 
+import { resetUiRegistryHostForTests } from "@elizaos/shared";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../registry-host";
 import { seedAppValue } from "../state/app-store";
 import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";

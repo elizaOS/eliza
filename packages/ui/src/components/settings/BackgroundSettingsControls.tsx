@@ -16,6 +16,7 @@
  *    condensed in-chat BACKGROUND widget.
  */
 
+import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
 import { Check, ImagePlus, RotateCcw, RotateCw } from "lucide-react";
 import type { ChangeEvent, CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,7 +36,6 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
-import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,

@@ -9,7 +9,7 @@
  */
 import { cloudServiceApisBaseUrl } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseClampedInteger } from "@elizaos/shared";
 import { toWalletCloudRoutingSettings } from "../cloud-routing-authority";
 import { dexScreenerErrorMessage } from "./errors";
 import type {

@@ -19,10 +19,7 @@ import {
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
-import type {
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+import type { RouteHandlerContext, RouteHandlerResult } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

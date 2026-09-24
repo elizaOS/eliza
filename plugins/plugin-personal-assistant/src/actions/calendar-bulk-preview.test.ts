@@ -1,6 +1,6 @@
 /** Tests that bulk-reschedule approval previews enumerate the complete cohort. */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/personal-assistant";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { formatBulkReschedulePreviewLines } from "./calendar-preview.js";
 

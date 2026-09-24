@@ -14,7 +14,7 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   type ElizaCloudEnvironment,
   resolveCloudApiBaseUrl,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 
 export type CloudLiveOriginContract = {
   /** Resolved `<origin>/api/v1` base the runtime's Cloud proxy will call. */

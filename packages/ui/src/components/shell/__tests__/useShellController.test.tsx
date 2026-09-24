@@ -11,7 +11,7 @@
 import {
   NAVIGATE_VIEW_EVENT,
   VOICE_SETTINGS_APPLY_EVENT,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,

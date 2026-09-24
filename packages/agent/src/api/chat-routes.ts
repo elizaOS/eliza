@@ -66,6 +66,7 @@ import type {
   LinkedAccountProviderId,
   LogEntry,
   ReadJsonBodyOptions,
+  RouteRequestContext,
 } from "@elizaos/shared";
 import {
   asRecord,
@@ -77,7 +78,6 @@ import {
   parseChatTerminalFailure,
   readAliasedEnv,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

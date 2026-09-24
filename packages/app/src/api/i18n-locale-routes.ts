@@ -7,7 +7,7 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
-import { normalizeLanguage } from "@elizaos/shared/i18n/language";
+import { normalizeLanguage } from "@elizaos/shared";
 import { sendJson as sendJsonResponse } from "./response";
 
 type LanguageCandidate = {

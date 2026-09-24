@@ -3,7 +3,7 @@
  * package. Keeping the manifest here makes payload additions reviewable and
  * gives tests one canonical contract instead of parsing a package script.
  */
-import { copyFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { copyPackageAssets } from "../../scripts/copy-package-assets.mjs";
@@ -19,18 +19,18 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   // Consumer entrypoints and their shared dependencies are explicit: adding a
   // repository script must not silently expand the installed package.
   "scripts/README.md",
+  "scripts/electrobun",
   "scripts/align-electrobun-version.mjs",
   "scripts/aosp/compile-libllama-paths.mjs",
   "scripts/aosp/compile-libllama.mjs",
   "scripts/aosp/compile-shim.mjs",
-  "scripts/aosp/lib/load-variant-config.mjs",
+  "scripts/aosp/lib/load-variant-config.ts",
   "scripts/aosp/seccomp-shim/loader-wrap.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler.c",
   "scripts/aosp/stage-default-models.mjs",
   "scripts/aosp/stage-models-dfm.mjs",
-  "scripts/aosp/variant-config-schema.ts",
   "scripts/audit-apple-store-sandbox.mjs",
   "scripts/audit-ios-cloud-artifact.mjs",
   "scripts/benchmark-preflight.mjs",
@@ -307,10 +307,10 @@ export async function copyPublishAssets({
   // separate implementations for installed consumers.
   for (const [source, destination] of [
     [
-      "plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+      "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
       "ios-app-store-runtime-policy.mjs",
     ],
-    ["packages/scripts/lib/workspaces.ts", "workspace-discovery.mjs"],
+    ["packages/scripts/lib/workspaces.ts", "workspaces.ts"],
     [
       "packages/scripts/lib/repository-file-integrity.ts",
       "repository-file-integrity.ts",
@@ -321,6 +321,10 @@ export async function copyPublishAssets({
       path.join(destinationPackage, "dist/scripts/lib", destination),
     );
   }
+  writeFileSync(
+    path.join(destinationPackage, "dist/scripts/lib/workspace-discovery.mjs"),
+    'export { collectWorkspaceMaps } from "./workspaces.ts";\n',
+  );
 }
 
 if (

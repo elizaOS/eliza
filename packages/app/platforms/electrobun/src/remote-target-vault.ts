@@ -9,7 +9,7 @@ import {
 	isRemoteTargetPublicIdentity,
 	REMOTE_CONTROL_PROTOCOL_VERSION,
 	type RemoteTargetPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";

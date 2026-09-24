@@ -19,6 +19,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
+import type { Transcript, TranscriptSegment } from "@elizaos/shared";
 import {
   DEFAULT_MEETING_AUTO_LEAVE,
   DEFAULT_MEETING_MAX_DURATION_MS,
@@ -39,10 +40,6 @@ import {
   parseMeetingUrl,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import type {
-  Transcript,
-  TranscriptSegment,
-} from "@elizaos/shared/transcripts";
 import { MeetingEventEmitter } from "./events.js";
 import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import {

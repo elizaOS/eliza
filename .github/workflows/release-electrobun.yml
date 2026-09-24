@@ -667,9 +667,9 @@ jobs:
         run: |
           wrapper_dir="$RUNNER_TEMP/eliza-notary-bin"
           mkdir -p "$wrapper_dir"
-          cp packages/app/platforms/electrobun/scripts/hdiutil-wrapper.sh "$wrapper_dir/hdiutil"
-          cp packages/app/platforms/electrobun/scripts/xcrun-wrapper.sh "$wrapper_dir/xcrun"
-          cp packages/app/platforms/electrobun/scripts/zip-wrapper.sh "$wrapper_dir/zip"
+          cp packages/app/scripts/electrobun/hdiutil-wrapper.sh "$wrapper_dir/hdiutil"
+          cp packages/app/scripts/electrobun/xcrun-wrapper.sh "$wrapper_dir/xcrun"
+          cp packages/app/scripts/electrobun/zip-wrapper.sh "$wrapper_dir/zip"
           chmod +x "$wrapper_dir/hdiutil"
           chmod +x "$wrapper_dir/xcrun"
           chmod +x "$wrapper_dir/zip"
@@ -957,7 +957,7 @@ jobs:
           ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
           ELECTROBUN_SKIP_CODESIGN: ${{ steps.macos-keychain.outputs.skip_codesign }}
-        run: bash packages/app/platforms/electrobun/scripts/stage-macos-release-artifacts.sh
+        run: bash packages/app/scripts/electrobun/stage-macos-release-artifacts.sh
 
       - name: Sign Windows executables
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
@@ -967,7 +967,7 @@ jobs:
           WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
           WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
         shell: pwsh
-        run: pwsh -File packages/app/platforms/electrobun/scripts/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build")
+        run: pwsh -File packages/app/scripts/electrobun/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build")
 
       - name: Install Inno Setup 6.7.1
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
@@ -1182,7 +1182,7 @@ jobs:
           ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: ${{ runner.temp }}\el-proof
         run: |
           Remove-Item $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          pwsh -File packages/app/platforms/electrobun/scripts/verify-windows-installer-proof.ps1 `
+          pwsh -File packages/app/scripts/electrobun/verify-windows-installer-proof.ps1 `
             -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") `
             -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build") `
             -ProofInstallDir $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR `
@@ -1266,7 +1266,7 @@ jobs:
           WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
           WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
         shell: pwsh
-        run: pwsh -File packages/app/platforms/electrobun/scripts/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build")
+        run: pwsh -File packages/app/scripts/electrobun/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build")
 
       - name: Verify Windows code signature
         if: matrix.platform.os == 'windows' && env.WINDOWS_SIGN_CERT_BASE64 != ''

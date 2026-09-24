@@ -6,7 +6,7 @@ import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionStatus,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 import * as React from "react";
 import { client } from "../../api/client";
 import {

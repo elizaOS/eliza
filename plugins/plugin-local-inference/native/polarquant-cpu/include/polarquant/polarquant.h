@@ -9,7 +9,7 @@
  *
  * The block format is locked here -- see polar_block.h for the layout.
  * Centroids live in polar_centroids.h and are committed to the tree
- * (regenerated bit-for-bit by scripts/gen_centroids.py).
+ * (regenerated bit-for-bit by packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/gen_centroids.py).
  *
  * This header now covers the scalar reference *and* the SIMD ports
  * (AVX2 + NEON, declared further down).  Metal kernels live in the

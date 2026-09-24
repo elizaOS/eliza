@@ -1,6 +1,7 @@
 /** Verifies isWalletSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { resetUiRegistryHostForTests } from "@elizaos/shared";
 /**
  * jsdom tests for `WalletSectionNav` and `isWalletSectionPath`: exercises the
  * real app-shell page registry to confirm active-route matching, alias
@@ -16,7 +17,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../../registry-host";
 import { isWalletSectionPath, WalletSectionNav } from "./WalletSectionNav";
 
 const platformMocks = vi.hoisted(() => ({ platform: "web" }));

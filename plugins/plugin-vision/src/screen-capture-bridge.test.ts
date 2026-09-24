@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
+import type { RouteHandlerContext } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { screenFrameRoute } from "./routes.js";
 import {

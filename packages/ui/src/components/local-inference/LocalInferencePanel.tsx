@@ -5,7 +5,8 @@
  * and drives the hub through the local-inference API client.
  */
 
-import type { VoiceModelId } from "@elizaos/shared/local-inference/voice-models";
+import type { VoiceModelId } from "@elizaos/shared";
+import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -20,8 +21,6 @@ import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";

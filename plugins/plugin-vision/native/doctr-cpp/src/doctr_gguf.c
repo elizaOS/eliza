@@ -1,7 +1,7 @@
 /*
  * Minimal GGUF v3 reader for doctr-cpp.
  *
- * The doctr GGUF is produced by scripts/doctr_to_gguf.py with
+ * The doctr GGUF is produced by packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py with
  * arch="doctr" and contains only fp32 tensors plus a handful of
  * string/uint32 metadata keys. The full GGUF spec carries dozens of
  * tensor dtypes and quantization blocks; we deliberately only parse

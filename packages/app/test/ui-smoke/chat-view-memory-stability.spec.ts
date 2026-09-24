@@ -3,7 +3,7 @@
  * the real renderer fixture.
  */
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { CHAT_PREFILL_EVENT } from "../../../ui/src/events";
 import {

@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import type {
   CapturedAction,

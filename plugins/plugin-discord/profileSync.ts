@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
-import type { FetchMediaOptions } from "@elizaos/shared/media";
+import type { FetchMediaOptions } from "@elizaos/shared";
 import { fetchRemoteMedia } from "@elizaos/shared/media";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";

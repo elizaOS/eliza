@@ -153,6 +153,7 @@ const LOADER_NAMED_IMPORTER_BINDINGS = new Map([
   ["@elizaos/app/browser", "importAppCoreViewCompat"],
   ["@elizaos/app/ui-compat", "importAppCoreViewCompat"],
   ["@elizaos/core", "importCoreViewCompat"],
+  ["@elizaos/shared", "importSharedViewCompat"],
   ["@elizaos/ui", "importUiRootCompat"],
   ["@elizaos/ui/app-navigate-view", "importUiAppNavigateViewCompat"],
   ["@elizaos/ui/bridge", "importUiBridgeCompat"],

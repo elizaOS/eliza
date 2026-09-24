@@ -3,7 +3,7 @@
 Loads either:
 
 1. **Upstream data** under ``suites/webshop/data/`` (fetched via
-   ``scripts/fetch_data.py``): an ``items_shuffle*.json`` product catalog
+   ``elizaos_webshop_tools.fetch_data``): an ``items_shuffle*.json`` product catalog
    plus ``items_ins_v2*.json`` attributes and ``items_human_ins.json``
    instructions. This is the standard 1.18M (or 1k for ``small``) product
    benchmark.
@@ -26,12 +26,12 @@ import json
 import logging
 import os
 import random
-import runpy
+from importlib import import_module
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType
 from typing import Any
 
 from elizaos_webshop.types import WebShopTask
@@ -39,7 +39,6 @@ from elizaos_webshop.types import WebShopTask
 logger = logging.getLogger(__name__)
 
 REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-FETCH_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "fetch_data.py"
 
 EDGE_VARIANTS: tuple[dict[str, str], ...] = (
     {
@@ -173,11 +172,8 @@ def resolve_paths(
     return WebShopDataPaths(items=items, attributes=attrs, human_instructions=human)
 
 
-def _load_fetch_module() -> Any:
-    namespace = runpy.run_path(str(FETCH_SCRIPT))
-    if "download_profile" not in namespace and "fetch_profile" in namespace:
-        namespace["download_profile"] = namespace["fetch_profile"]
-    return SimpleNamespace(**namespace)
+def _load_fetch_module() -> ModuleType:
+    return import_module("elizaos_webshop_tools.fetch_data")
 
 
 def ensure_profile_downloaded(profile: str, data_dir: Path) -> WebShopDataPaths:
@@ -188,14 +184,14 @@ def ensure_profile_downloaded(profile: str, data_dir: Path) -> WebShopDataPaths:
     if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
         raise FileNotFoundError(
             "WebShop data not found and WEBSHOP_NO_AUTOFETCH is set. "
-            f"Run `python scripts/fetch_data.py --profile {profile}` first, "
+            f"Run `python -m elizaos_webshop_tools.fetch_data --profile {profile}` first, "
             "or pass --use-sample-tasks for a tiny built-in catalog."
         )
 
     fetch_module = _load_fetch_module()
     download_profile = getattr(fetch_module, "download_profile", None)
     if not callable(download_profile):
-        raise RuntimeError("scripts/fetch_data.py does not expose download_profile()")
+        raise RuntimeError("elizaos_webshop_tools.fetch_data does not expose download_profile()")
     download_profile(profile, data_dir)
 
     paths = resolve_paths(data_dir=data_dir, profile=profile)

@@ -5,10 +5,10 @@
  */
 // @vitest-environment jsdom
 
+import type { UiSpec } from "@elizaos/shared";
 import { cleanup, render, screen } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UiSpec } from "../../config/ui-spec";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 import { MessageUiSpecBlock } from "./MessageContent";

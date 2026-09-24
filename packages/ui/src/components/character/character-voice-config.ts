@@ -5,12 +5,12 @@
  * character roster entry (honoring whether an API key is configured).
  */
 
-import type { VoiceConfig } from "../../api/client";
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
-} from "../../voice/types";
+} from "@elizaos/shared";
+import type { VoiceConfig } from "../../api/client";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 /* ── Constants ─────────────────────────────────────────────────────── */

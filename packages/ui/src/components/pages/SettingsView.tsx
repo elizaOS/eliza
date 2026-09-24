@@ -9,10 +9,7 @@
  * section. Also reusable in modal form (`inModal`).
  */
 
-import {
-  isPermissionId,
-  type PermissionId,
-} from "@elizaos/shared/contracts/permissions";
+import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import {
   Suspense,

@@ -12,7 +12,7 @@
  * 2d 4h", making the selection policy legible instead of a black box.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import type { ProviderSelectionState } from "../../api/client-accounts";

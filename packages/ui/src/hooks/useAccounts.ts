@@ -12,7 +12,7 @@
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/shared/contracts/service-routing-types";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";

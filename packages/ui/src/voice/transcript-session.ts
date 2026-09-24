@@ -16,7 +16,7 @@
  * span and segment-level highlight. Pure (the caller injects "now").
  */
 
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type { TranscriptSegment } from "@elizaos/shared";
 
 export interface AddFinalOptions {
   speakerLabel?: string;

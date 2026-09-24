@@ -5,7 +5,7 @@
 
 "use client";
 
-import { formatUsd } from "@elizaos/shared/utils/format";
+import { formatUsd } from "@elizaos/shared";
 import { format } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";

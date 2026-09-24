@@ -25,7 +25,7 @@ import {
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
 import { taskCoordinatorPlugin as taskCoordinatorViews } from "./ui/plugin.js";
 

@@ -9,7 +9,7 @@
  * the fixture.
  *
  * The test:
- *  1. Opens the GGUF emitted by `scripts/voice_diarizer_to_gguf.py`
+ *  1. Opens the GGUF emitted by `packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py`
  *     (expected at `models/voice/diarizer/pyannote-segmentation-3.0.gguf`
  *      relative to the repo root — override with $VOICE_DIARIZER_GGUF).
  *  2. For each fixture: loads the WAV via a tiny in-file PCM-16 reader,
@@ -107,7 +107,7 @@ int main(void) {
         fprintf(stderr,
                 "[voice-diarizer-parity] SKIP — GGUF not found at %s\n"
                 "  Build it with:\n"
-                "    python3 plugins/plugin-local-inference/native/voice-classifier-cpp/scripts/voice_diarizer_to_gguf.py "
+                "    python3 packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py "
                 "--output models/voice/diarizer/pyannote-segmentation-3.0.gguf\n",
                 gguf);
         return 0;

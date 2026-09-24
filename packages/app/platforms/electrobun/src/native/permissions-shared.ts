@@ -6,14 +6,14 @@ export type {
 	PermissionStatus,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 import type {
 	PermissionId,
 	PermissionState,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 export type SystemPermissionId = PermissionId;
 

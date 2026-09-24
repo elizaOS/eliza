@@ -9,7 +9,7 @@
 import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,
-} from "@elizaos/shared/app-hero-art";
+} from "@elizaos/shared";
 import { type CSSProperties, useState } from "react";
 import { Card } from "../ui/card";
 import {

@@ -2,7 +2,7 @@
  * Compatibility shims for the model-hub search callers. Consumer local inference
  * uses only the curated Eliza-1 bundles in the catalog, so these return empty.
  */
-import type { CatalogModel } from "./types";
+import type { CatalogModel } from "@elizaos/shared";
 
 export const CUSTOM_MODEL_SEARCH_DISABLED_MESSAGE =
   "Custom model search is disabled; local inference uses curated Eliza-1 bundles only.";

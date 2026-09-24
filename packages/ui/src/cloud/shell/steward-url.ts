@@ -12,7 +12,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/shared";
 import { configuredStewardApiUrlOverride } from "./steward-config";
 
 const STEWARD_PREFIX = "/steward";

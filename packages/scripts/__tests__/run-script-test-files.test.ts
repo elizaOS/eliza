@@ -83,6 +83,8 @@ describe("isolated script-test runner arguments", () => {
     expect(result.stderr).toContain(
       `[script-tests] failed: ${missingTestFile}`,
     );
+    expect(result.stderr).not.toContain("files were searched");
+    expect(result.stderr).not.toContain("filters did not match");
   });
 });
 

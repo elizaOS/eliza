@@ -9,8 +9,7 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
-import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
+import { composePromptFromState, resourceAnalysisTemplate } from "@elizaos/shared";
 import { createMcpMemory } from "./mcp";
 
 const MAX_TOOL_ATTACHMENTS = 4;

@@ -5,7 +5,7 @@
  * memory with an embedding when the runtime provides that capability.
  */
 import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
-import { buildMcpProviderProjection } from "@elizaos/shared/mcp";
+import { buildMcpProviderProjection } from "@elizaos/shared";
 import type { McpProvider, McpServer } from "../types";
 
 export async function createMcpMemory(

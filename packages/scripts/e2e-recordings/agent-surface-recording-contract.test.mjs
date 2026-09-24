@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   DIRECT_AGENT_SURFACE_OUTPUT_DIR,
   resolveAgentSurfaceOutputDir,
-} from "../../src/ui/agent-surface/__e2e__/output-path.mjs";
+} from "../../ui/src/agent-surface/__e2e__/output-path.mjs";
 import {
   recordingEnvironment,
   recordingOutputDirForSuite,

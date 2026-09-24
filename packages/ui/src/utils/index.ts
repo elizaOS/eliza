@@ -3,9 +3,52 @@
  * re-exported shared helpers.
  */
 
-export { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
-export { isSafeExecutableValue } from "@elizaos/shared/utils/exec-safety";
+export type {
+  BrowserTabKit,
+  BrowserTabKitCursorPoint,
+  BrowserTabKitDispatchOptions,
+  BrowserTabKitMoveOptions,
+  BrowserTabKitTypeOptions,
+} from "@elizaos/shared";
 export {
+  autoLabel,
+  BROWSER_TAB_PRELOAD_SCRIPT,
+  type BrowserTabsRendererImpl,
+  clearElizaApiBase,
+  clearElizaApiToken,
+  computeStreamingDelta,
+  createRateLimiter,
+  createSerialise,
+  DELTA_STREAM_PROTOCOL,
+  type DeltaStreamProtocol,
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  type ElizaWindow,
+  ENV_KEY_ACRONYMS,
+  ensureNamespaceDefaults,
+  ensureRuntimeSqlCompatibility,
+  errorMessage,
+  executeRawSql,
+  formatSubscriptionRequestError,
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+  getElizaApiBase,
+  getElizaApiToken,
+  getLogPrefix,
+  isCloudStatusAuthenticated,
+  isCloudStatusReasonApiKeyOnly,
+  isDocumentImageFile,
+  isRedirectResponse,
+  isSafeExecutableValue,
+  isTimeoutError,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+  mergeStreamingText,
+  modelLooksLikeElizaCloudHosted,
+  normalizeCharacterMessageExamples,
+  normalizeOpenAICallbackInput,
+  normalizeOwnerName,
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -13,38 +56,33 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
-} from "@elizaos/shared/utils/number-parsing";
+  quoteIdent,
+  type RateLimitCheck,
+  type RateLimiter,
+  type RateLimiterOptions,
+  resolveApiUrl,
+  resolveAppAssetUrl,
+  resolveStreamingUpdate,
+  type StreamingUpdateResult,
+  sanitizeIdentifier,
+  setBrowserTabsRendererImpl,
+  setElizaApiBase,
+  setElizaApiToken,
+  sqlLiteral,
+  stripAssistantStageDirections,
+} from "@elizaos/shared";
 export * from "../lib/floating-layers";
 export { cn } from "../lib/utils";
-export * from "./asset-url";
-export * from "./browser-tab-kit-types";
-export * from "./browser-tabs-renderer-registry";
-export * from "./character-message-examples";
 export * from "./clipboard";
-export * from "./cloud-status";
 export * from "./desktop-bug-report";
 export * from "./desktop-dialogs";
 export * from "./desktop-workspace";
-export * from "./documents-upload-image";
-export * from "./eliza-cloud-model-route";
-export * from "./eliza-globals";
 export * from "./env";
-export * from "./errors";
 export * from "./format";
 export * from "./globals";
 export * from "./image-attachment";
-export * from "./labels";
-export * from "./log-prefix";
 export * from "./name-tokens";
-export * from "./namespace-defaults";
 export * from "./navigation-url";
 export * from "./openExternalUrl";
-export * from "./owner-name";
-export * from "./rate-limiter";
-export * from "./serialise";
-export * from "./sql-compat";
-export * from "./streaming-text";
-export * from "./subscription-auth";
-export * from "./trajectory-format";
 export * from "./transient-fetch";
 export * from "./tts-debug";

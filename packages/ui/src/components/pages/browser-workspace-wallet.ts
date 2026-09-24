@@ -6,10 +6,7 @@
  * capability flags) that embedded iframes read to talk to the host wallet.
  */
 
-import type {
-  WalletAddresses,
-  WalletConfigStatus,
-} from "@elizaos/shared/contracts/wallet-types";
+import type { WalletAddresses, WalletConfigStatus } from "@elizaos/shared";
 import type { StewardStatusResponse } from "../../api/client-types-steward";
 
 export type {

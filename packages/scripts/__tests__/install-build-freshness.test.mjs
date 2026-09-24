@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
-for (const task of ["build", "@elizaos/app#build:dist"]) {
+for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
   test(`${task}: install refreshes stale distributions and restores cached outputs`, () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "eliza-install-build-"));
     const write = (name, value) => {
@@ -86,11 +86,12 @@ for (const task of ["build", "@elizaos/app#build:dist"]) {
           }),
         );
         write(`packages/${name}/src/index.ts`, name);
+        write(`packages/${name}/runtime.json`, "runtime-v1");
         write(
           `packages/${name}/build.mjs`,
           `import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 mkdirSync('dist', { recursive: true });
-writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSync('../../plugins/plugin-build.ts', 'utf8') + readFileSync('../../plugins/plugin-build-externals.ts', 'utf8') + readFileSync('../scripts/prepare-package-dist.mjs', 'utf8') + readFileSync('../scripts/copy-package-assets.mjs', 'utf8')${name === "consumer" ? " + readFileSync('../leaf/dist/index.js', 'utf8')" : ""});`,
+writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSync('runtime.json', 'utf8') + readFileSync('../../plugins/plugin-build.ts', 'utf8') + readFileSync('../../plugins/plugin-build-externals.ts', 'utf8') + readFileSync('../scripts/prepare-package-dist.mjs', 'utf8') + readFileSync('../scripts/copy-package-assets.mjs', 'utf8')${name === "consumer" ? " + readFileSync('../leaf/dist/index.js', 'utf8')" : ""});`,
         );
       }
       // The real runner resolves Turbo from node_modules without installing fixtures.
@@ -123,6 +124,8 @@ writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSy
       };
       const first = run();
       assert.equal(run(), first);
+      write("packages/consumer/runtime.json", "runtime-v2");
+      assert.match(run(), /runtime-v2/);
       write("packages/leaf/src/index.ts", "updated-leaf");
       assert.match(run(), /updated-leaf/);
       if (task === "build") {
@@ -140,6 +143,122 @@ writeFileSync('dist/index.js', readFileSync('src/index.ts', 'utf8') + readFileSy
       assert.equal(run(), latest);
     } finally {
       rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const dependencyKind of ["dependencies", "peerDependencies"]) {
+  test(`${dependencyKind}: source typechecks invalidate without building`, () => {
+    const leaf =
+      dependencyKind === "peerDependencies" ? "@elizaos/ui" : "@fixture/leaf";
+    const consumer =
+      dependencyKind === "peerDependencies"
+        ? "@elizaos/plugin-todos"
+        : "consumer";
+    const fixture = mkdtempSync(path.join(tmpdir(), "eliza-typecheck-cache-"));
+    const marker = `${fixture}.executions`;
+    const write = (name, value) => {
+      const target = path.join(fixture, name);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(
+        target,
+        typeof value === "string" ? value : JSON.stringify(value),
+      );
+    };
+    try {
+      const turbo = JSON.parse(
+        readFileSync(path.join(root, "turbo.json"), "utf8"),
+      );
+      write("package.json", {
+        name: "fixture",
+        private: true,
+        packageManager: "bun@1.3.14",
+        workspaces: ["packages/*"],
+      });
+      write("turbo.json", {
+        tasks: {
+          typecheck: turbo.tasks.typecheck,
+          "typecheck:deps": turbo.tasks["typecheck:deps"],
+          build: turbo.tasks.build,
+          ...(dependencyKind === "peerDependencies"
+            ? {
+                [`${consumer}#typecheck`]: turbo.tasks[`${consumer}#typecheck`],
+              }
+            : {}),
+        },
+      });
+      write(".gitignore", "node_modules\n.turbo\n");
+      write("packages/leaf/package.json", {
+        name: leaf,
+        version: "1.0.0",
+        scripts: { build: "node fail-build.mjs" },
+      });
+      write(
+        "packages/leaf/fail-build.mjs",
+        'throw new Error("Source checking must not build dependencies");',
+      );
+      write("packages/leaf/src/index.ts", "export type Value = number;");
+      write("packages/consumer/package.json", {
+        name: consumer,
+        version: "1.0.0",
+        scripts: { typecheck: "node check.mjs" },
+        [dependencyKind]: { [leaf]: "workspace:*" },
+      });
+      write("packages/consumer/tsconfig.json", {
+        compilerOptions: {
+          noEmit: true,
+          strict: true,
+          types: [],
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          paths: { [leaf]: ["../leaf/src/index.ts"] },
+        },
+        include: ["src"],
+      });
+      write(
+        "packages/consumer/src/index.ts",
+        `import type { Value } from "${leaf}"; export const value: Value = 42;`,
+      );
+      write(
+        "packages/consumer/check.mjs",
+        `import { appendFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+appendFileSync(${JSON.stringify(marker)}, "x");
+const result = spawnSync(process.execPath, [${JSON.stringify(path.join(root, "node_modules/typescript/bin/tsc"))}, "--noEmit"], { stdio: "inherit" });
+process.exit(result.status ?? 1);`,
+      );
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [path.join(root, "node_modules/turbo/bin/turbo"), "run", "typecheck"],
+          {
+            cwd: fixture,
+            encoding: "utf8",
+            timeout: 60_000,
+            env: {
+              ...process.env,
+              TURBO_TELEMETRY_DISABLED: "1",
+              TURBO_CACHE: "local:rw",
+            },
+          },
+        );
+      let result = run();
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      assert.equal(readFileSync(marker, "utf8"), "x");
+      result = run();
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      assert.equal(readFileSync(marker, "utf8"), "x");
+      write("packages/leaf/src/index.ts", "export type Value = string;");
+      result = run();
+      assert.notEqual(result.status, 0);
+      assert.match(
+        `${result.stdout}\n${result.stderr}`,
+        /not assignable to type/,
+      );
+      assert.equal(readFileSync(marker, "utf8"), "xx");
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+      rmSync(marker, { force: true });
     }
   });
 }

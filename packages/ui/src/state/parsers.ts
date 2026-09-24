@@ -3,6 +3,11 @@
  * chat reducer consumes (agent status, startup diagnostics, conversation
  * messages and custom-action params). No React, no I/O.
  */
+
+import {
+  computeStreamingDelta as computeStreamingDeltaInternal,
+  mergeStreamingText,
+} from "@elizaos/shared";
 import type {
   AgentStartupDiagnostics,
   AgentStatus,
@@ -10,10 +15,6 @@ import type {
   CustomActionDef,
   StreamEventEnvelope,
 } from "../api/client";
-import {
-  computeStreamingDelta as computeStreamingDeltaInternal,
-  mergeStreamingText,
-} from "../utils/streaming-text";
 import { AGENT_STATES, type ApiLikeError } from "./types";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

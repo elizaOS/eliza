@@ -4,14 +4,12 @@
  */
 
 import {
-  isElizaCloudLinkedInConfig,
-  resolveElizaCloudTopology,
-} from "@elizaos/shared/contracts/cloud-topology";
-import {
   getFirstRunProviderOption,
+  isElizaCloudLinkedInConfig,
   resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/first-run-options";
+} from "@elizaos/shared";
 import { asRecord, readString } from "../state/config-readers";
 import type {
   CloudPreferenceClientLike as ClientLike,

@@ -1,5 +1,6 @@
 /** Connects hosted Eliza runtimes to configured MCP servers and exposes their permitted tools. */
 import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { toActionName } from "@elizaos/shared";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -9,7 +10,6 @@ import type {
   ResourceTemplate,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import { createMcpToolActions, type McpToolAction } from "./actions/dynamic-tool-actions";
 import { getSchemaCache, McpSchemaCache } from "./cache/schema-cache";
@@ -37,7 +37,6 @@ import {
   type PingConfig,
   type StdioMcpServerConfig,
 } from "./types";
-import { toActionName } from "./utils/action-naming";
 import { buildMcpProviderData } from "./utils/mcp";
 
 const err = (e: unknown): string => (e instanceof Error ? e.message : String(e));

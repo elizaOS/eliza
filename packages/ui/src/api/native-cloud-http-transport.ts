@@ -9,7 +9,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { decodeNativeBase64 } from "./native-http-codec";
 import {

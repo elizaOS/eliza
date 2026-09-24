@@ -8,7 +8,7 @@ import baseConfig from "../scripts/vitest/default.config";
 import {
   agentTestExclude,
   agentTestInclude,
-} from "./scripts/run-vitest-batches.mjs";
+} from "./scripts/run-vitest-batches.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");

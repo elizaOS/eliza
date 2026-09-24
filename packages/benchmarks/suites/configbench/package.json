@@ -4,7 +4,6 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Configuration & Secrets Security Benchmark for @elizaos/plugin-assistant secrets and built-in plugin-manager",
-  "main": "./dist/index.js",
   "scripts": {
     "bench": "bun run src/index.ts",
     "bench:eliza": "bun run src/index.ts --eliza",
@@ -21,7 +20,7 @@
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-groq": "beta",
     "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
@@ -30,9 +29,5 @@
     "vitest": "4.1.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
-  },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ]
+  }
 }

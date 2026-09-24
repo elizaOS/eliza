@@ -30,8 +30,10 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { createDrizzleCarveOutDatabase } from "@elizaos/shared";
-import { resolvePlatform } from "@elizaos/shared/runtime-env";
+import {
+  createDrizzleCarveOutDatabase,
+  resolvePlatform,
+} from "@elizaos/shared";
 import {
   createCodingAgentScheduleDispatcher,
   PR_SHEPHERD_DISPATCH_CHANNEL,

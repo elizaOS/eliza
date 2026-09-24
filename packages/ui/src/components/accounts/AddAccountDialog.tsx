@@ -5,14 +5,14 @@
  * to their supported coding surfaces.
  */
 
-import {
-  codingProviderSubscriptionAuthMode,
-  isCodingSubscriptionProvider,
-} from "@elizaos/shared/contracts/coding-agent-capabilities";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/shared/contracts/service-routing-types";
+} from "@elizaos/shared";
+import {
+  codingProviderSubscriptionAuthMode,
+  isCodingSubscriptionProvider,
+} from "@elizaos/shared";
 import {
   type FormEvent,
   useCallback,
