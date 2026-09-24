@@ -1,9 +1,10 @@
 # Android device test harnesses
 
-These harnesses drive installed Android applications. Each retained case still requires review against the repository E2E-only policy; running on a device alone does not establish a complete product flow. Stub onboarding, route-render checks and native bridge read probes have been retired.
+These harnesses drive installed Android applications. Each retained case still requires review against the repository E2E-only policy; running on a device alone does not establish a complete product flow. Mocked Android-browser onboarding, route-render checks and native bridge read probes have been retired. The installed-app remote pairing and chat flow is retained: its host runs the real runtime and HTTP API with deterministic inference.
 
 | Layer | What it proves | Driver |
 |---|---|---|
+| `onboarding-to-home.android.spec.ts` | Installed-app remote pairing, persisted connection and chat through the real host/runtime with deterministic inference | Playwright Android + adb + host HTTP server |
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
 | `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
@@ -104,7 +105,7 @@ bun run --cwd packages/app test:e2e:android:lifecycle:reboot
 
 ## CI device coverage
 
-The former host-emulator lane combined stub-backed onboarding and smoke checks. It does not qualify as complete E2E coverage. A retained device lane must drive the real host/runtime, pairing and product effects, with deterministic fixtures limited to inference and media provider boundaries. Hardware execution and inspected artifacts are still required before claiming device coverage.
+The host-emulator lane combined real pairing/chat with partial smoke checks. Retain the pairing/chat flow and remove the partial probes. A retained device lane must drive the real host/runtime, pairing and product effects, with deterministic fixtures limited to inference and media provider boundaries. Hardware execution and inspected artifacts are still required before claiming device coverage.
 
 ## On-device agent: where it runs
 
