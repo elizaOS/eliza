@@ -20,7 +20,7 @@ vi.mock("@elizaos/app/services/auth-store", () => ({
   authStoreForRuntime: () => null,
 }));
 
-vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({
+vi.mock("@elizaos/plugin-relationships", () => ({
   resolveKnowledgeGraphService: () => ({
     getEntityStore: () => ({ resolve: mocks.resolve }),
   }),

@@ -33,7 +33,7 @@ import "@elizaos/ui/styles";
 // Relationships owns the canonical /apps/relationships route. Its registration
 // metadata is tiny and must be available before the first route capture; the
 // page component itself remains lazy-loaded by the plugin registration.
-import "@elizaos/plugin-relationships/register";
+import { registerRelationshipsApp } from "@elizaos/plugin-relationships";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -279,6 +279,8 @@ declare global {
   }
 }
 
+registerRelationshipsApp();
+
 const { createRoot } = ReactDomClient;
 // Keep one renderer owner across entry-module HMR. An in-flight boot finishes
 // bridge initialization once, then renders through the latest mount callback.
@@ -338,13 +340,6 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-agent-orchestrator/ui/register",
     () => import("@elizaos/plugin-agent-orchestrator/ui/register"),
-  );
-}
-
-function importAppRelationshipsRegister() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-relationships/register",
-    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -944,10 +939,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
-    },
-    {
-      key: "@elizaos/plugin-relationships/register",
-      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];

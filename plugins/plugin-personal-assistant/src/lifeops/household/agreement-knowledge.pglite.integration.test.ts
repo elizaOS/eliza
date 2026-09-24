@@ -35,7 +35,7 @@ import {
   TrajectoriesService,
 } from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,

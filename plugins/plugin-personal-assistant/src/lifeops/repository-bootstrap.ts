@@ -6,7 +6,7 @@ import { browserBridgeSchema } from "@elizaos/plugin-browser/schema";
 import { calendarSchema } from "@elizaos/plugin-calendar/service/schema";
 import { goalsDbSchema } from "@elizaos/plugin-goals/db/schema";
 import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
-import { knowledgeGraphSchema } from "@elizaos/plugin-relationships/knowledge-graph";
+import { knowledgeGraphSchema } from "@elizaos/plugin-relationships";
 import { remindersDbSchema } from "@elizaos/plugin-reminders/db/schema";
 import { schedulingDbSchema } from "@elizaos/plugin-scheduling";
 import { resolveBrowserBridgeTable } from "./repositories/browser-tables.js";
