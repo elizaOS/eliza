@@ -55,7 +55,7 @@
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react-dom": "^19.3.0",
     "fast-check": "^4.10.2",
     "react": "^19.3.0",
     "react-dom": "^19.0.0",
