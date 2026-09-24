@@ -13,14 +13,16 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
-import { schema } from "@elizaos/plugin-sql";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql";
+import {
+  DatabaseMigrationService,
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+  schema,
+  plugin as sqlPlugin,
+} from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
-import { plugin as sqlPlugin } from "../../../plugin-sql/src/index";
-import { DatabaseMigrationService } from "../../../plugin-sql/src/migration-service";
-import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter";
-import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager";
-import type { DrizzleDatabase } from "../../../plugin-sql/src/types";
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index.ts";
 
 type RuntimeMemoryService = {

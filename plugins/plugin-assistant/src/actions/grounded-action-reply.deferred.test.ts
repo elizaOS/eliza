@@ -2,12 +2,12 @@
 import {
   type Action,
   applyGroundedActionReply,
+  executePlannedToolCall,
   getActionReplyOwner,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { executePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call";
 import { actionResultToPlannerToolResult } from "../runtime/planner-loop.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { renderGroundedActionReply } from "./grounded-action-reply";

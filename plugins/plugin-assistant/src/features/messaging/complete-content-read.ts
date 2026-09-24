@@ -1,7 +1,10 @@
 import type { MessageContentRangeReadResult } from "@elizaos/core";
 /** Assembles complete authorized message or attachment text from revision-bound storage pages. */
-import { createHash, ElizaError } from "@elizaos/core";
-import { MESSAGE_CONTENT_SEGMENT_MAX_BYTES } from "../../../../../packages/core/src/runtime/message-content-segments.ts";
+import {
+  createHash,
+  ElizaError,
+  MESSAGE_CONTENT_SEGMENT_MAX_BYTES,
+} from "@elizaos/core";
 
 type Range = { offset: number; limit: number; expectedRevision?: string };
 

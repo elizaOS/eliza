@@ -28,6 +28,7 @@ import {
 	BGE_SMALL_VECTOR_SPACE,
 	canonicalPromptForModelCall,
 	ElizaError,
+	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	getInferenceTimer,
@@ -47,7 +48,6 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
-import { fetchRemoteMedia } from "@elizaos/core/media";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import { LocalInferenceUnavailableError } from "../provider";

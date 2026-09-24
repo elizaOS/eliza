@@ -17,9 +17,10 @@
  * parser (`message.ts` calls it on the raw completion before parsing), so these
  * assertions run the real production path with no test-only surface.
  */
+
+import type { GenerateTextResult } from "@elizaos/core";
+import { HANDLE_RESPONSE_TOOL_NAME } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { HANDLE_RESPONSE_TOOL_NAME } from "../../../../packages/core/src/actions/to-tool.ts";
-import type { GenerateTextResult } from "../../../../packages/core/src/types/index.ts";
 import { getStage1RetryReason } from "./message.ts";
 
 function nestedObjectJson(depth: number, leaf = "1"): string {

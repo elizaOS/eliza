@@ -5,15 +5,15 @@
  * and entity-scoped user resolution. Deterministic: connectors are vi.fn stubs,
  * no live model.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   IAgentRuntime,
   Memory,
   MessageConnector,
   State,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
-import { CONTEXT_ROUTING_METADATA_KEY } from "../../../../../../packages/core/src/utils/context-routing.ts";
+} from "@elizaos/core";
+import { ChannelType, CONTEXT_ROUTING_METADATA_KEY } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   platformChatContextProvider,
   platformUserContextProvider,

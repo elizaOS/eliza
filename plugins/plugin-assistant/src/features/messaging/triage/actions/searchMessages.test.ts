@@ -5,14 +5,13 @@
  * state without a live connector, model, or database.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";

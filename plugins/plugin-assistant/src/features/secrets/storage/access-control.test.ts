@@ -7,14 +7,14 @@
  * in-memory component/world maps and a real KeyManager.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
 import {
   type Component,
   type IAgentRuntime,
   Role,
   type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it } from "vitest";
 import { KeyManager } from "../crypto/encryption.ts";
 import { PermissionDeniedError, type SecretContext } from "../types.ts";
 import { CharacterSettingsStorage } from "./character-store.ts";

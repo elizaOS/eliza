@@ -10,12 +10,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-const { getTrajectoryContext } = await import(
-  "../../../../../packages/core/src/trajectory-context.ts"
-);
+const { getTrajectoryContext } = await import("@elizaos/core");
 const { logAdvancedMemoryTrajectory } = await import("./trajectory.ts");
 
-vi.mock("../../../../../packages/core/src/trajectory-context.ts", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   getTrajectoryContext: vi.fn(),
 }));
 

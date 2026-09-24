@@ -6,11 +6,9 @@
  * value keeps its exact configured meaning (no silent floor/truncation).
  * Deterministic parser test over the exported resolvers; no runtime boot.
  */
+
+import { ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  ElizaError,
-  isElizaError,
-} from "../../../../packages/core/src/errors.ts";
 import {
   resolveCodingMaxRequiredToolMisses,
   resolveCodingMaxToolCalls,

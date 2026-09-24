@@ -6,13 +6,14 @@
  * with images the exception when a vision (`IMAGE_DESCRIPTION`) model is
  * registered. Deterministic harness: a hand-stubbed runtime, no live model or DB.
  */
-import { describe, expect, it } from "vitest";
+
 import {
   type IAgentRuntime,
   type Memory,
   ModelType,
   type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { attachmentsProvider } from "./attachments.ts";
 
 const roomId = "00000000-0000-0000-0000-000000000001" as UUID;

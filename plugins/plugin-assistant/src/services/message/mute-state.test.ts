@@ -5,17 +5,16 @@
  * listings. Deterministic map-backed runtime; state transitions are asserted
  * against the stores, not mocks of the thing under test.
  */
-import { describe, expect, it } from "vitest";
-import { createUniqueUuid } from "../../../../../packages/core/src/entities.ts";
-import type {
-  Room,
-  World,
-} from "../../../../../packages/core/src/types/environment.ts";
-import type { UUID } from "../../../../../packages/core/src/types/primitives.ts";
+
 import type {
   IAgentRuntime,
   MessageConnectorTarget,
-} from "../../../../../packages/core/src/types/runtime.ts";
+  Room,
+  UUID,
+  World,
+} from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   resolveEffectiveMuteState,
   resolveMutedTargetFlags,

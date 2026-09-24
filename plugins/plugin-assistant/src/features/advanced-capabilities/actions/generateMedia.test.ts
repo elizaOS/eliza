@@ -5,12 +5,8 @@
  * against a deterministic mock runtime (vi.fn media service, no live model).
  */
 
+import { actionToTool, ModelType, ServiceType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { actionToTool } from "../../../../../../packages/core/src/actions/to-tool.ts";
-import {
-  ModelType,
-  ServiceType,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { generateMediaAction } from "./generateMedia.ts";
 
 const message = {

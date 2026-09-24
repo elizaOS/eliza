@@ -1,13 +1,9 @@
 /** Incremental evidence is retained until successful storage, with replay-stable IDs. */
 
+import type { EvaluatorRunOptions, Memory, UUID } from "@elizaos/core";
+import { LongTermMemoryCategory } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  EvaluatorRunOptions,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { LongTermMemoryCategory } from "../../../../../../packages/core/src/types/long-term-memory.ts";
 import { longTermMemoryEvaluator } from "./memory-items.ts";
 
 const AGENT = "00000000-0000-0000-0000-000000000001" as UUID;

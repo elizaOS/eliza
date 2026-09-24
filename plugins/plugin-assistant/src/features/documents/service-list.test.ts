@@ -3,11 +3,9 @@
  * DocumentService, and SQLiteDatabaseAdapter with persisted memory records.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
   type AccessContext,
+  AgentRuntime,
   type Character,
   type Memory,
   MemoryType,
@@ -15,7 +13,9 @@ import {
   type Room,
   type UUID,
   type World,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { DocumentService } from "./service.ts";
 /**
  * Exercises document filtering, pagination, and complete reads through a real AgentRuntime,

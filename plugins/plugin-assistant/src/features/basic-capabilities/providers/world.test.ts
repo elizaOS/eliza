@@ -4,8 +4,6 @@
  * real provider formatting and data assembly.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
@@ -13,8 +11,10 @@ import type {
   State,
   UUID,
   World,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import worldProviderDefault, { worldProvider } from "./world.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;

@@ -5,18 +5,17 @@
  * stubbed TEXT_SMALL response; assertions read the stores the inbound gate
  * reads, closing the loop from action write to message drop.
  */
-import { describe, expect, it } from "vitest";
-import type {
-  Room,
-  World,
-} from "../../../../../../packages/core/src/types/environment.ts";
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Room,
   State,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+  World,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { resolveEffectiveMuteState } from "../../../services/message/mute-state.ts";
 import { roomOpAction } from "./room.ts";
 

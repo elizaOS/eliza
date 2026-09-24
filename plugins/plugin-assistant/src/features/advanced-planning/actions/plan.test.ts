@@ -3,8 +3,9 @@
  * Deterministic — the handler runs against a stub runtime with no model call;
  * assertions cover the returned plan body and persistence metadata.
  */
+
+import { CANONICAL_SUBACTION_KEY } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { CANONICAL_SUBACTION_KEY } from "../../../../../../packages/core/src/actions/subaction-dispatch.ts";
 import { planAction } from "./plan.ts";
 
 function runtime() {

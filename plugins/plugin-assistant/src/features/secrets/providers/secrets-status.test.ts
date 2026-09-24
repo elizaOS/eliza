@@ -6,12 +6,9 @@
  * a hand-built mock runtime — no live model or database.
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   SECRETS_SERVICE_TYPE,
   type SecretsService,

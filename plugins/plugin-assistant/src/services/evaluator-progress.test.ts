@@ -1,10 +1,7 @@
 /** Revision progress and staged-output recovery; durable cache is a JSON round-trip double. */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import {
   assertExtractionSourcesUnchanged,
   bindEvaluatorReferenceEvidence,

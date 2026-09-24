@@ -4,8 +4,9 @@
  * account is two connectors aliasing the same source; only distinct accounts
  * are ambiguous.
  */
+
+import type { Room } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Room } from "../../../../../../packages/core/src/types/environment.ts";
 import {
   DEFAULT_RECENT_READ_LIMIT,
   rankLocalChannelRooms,

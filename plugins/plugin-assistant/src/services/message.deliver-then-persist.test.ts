@@ -11,28 +11,23 @@
  * adapter transaction begins, and delegates real writes to the real adapter.
  */
 
+import type { Content, Memory } from "@elizaos/core";
+import {
+  AgentRuntime,
+  asUUID,
+  attestDeliveryAudienceFromCanonicalRoom,
+  authorizeOwnerExclusiveDisclosure,
+  ChannelType,
+  createCharacter,
+  EventType,
+  inferenceTimingRegistry,
+  ModelType,
+  PRIVACY_DENIED_TEXT,
+  type UUID,
+} from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { inferenceTimingRegistry } from "../../../../packages/core/src/inference-timing.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import {
-  attestDeliveryAudienceFromCanonicalRoom,
-  authorizeOwnerExclusiveDisclosure,
-  PRIVACY_DENIED_TEXT,
-} from "../../../../packages/core/src/security/index.ts";
-import type {
-  Content,
-  Memory,
-} from "../../../../packages/core/src/types/index.ts";
-import { EventType } from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/model.ts";
-import {
-  asUUID,
-  ChannelType,
-  type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
 import { createAssistantPlugin } from "../index.ts";
 import {
   DefaultMessageService,

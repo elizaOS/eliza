@@ -5,8 +5,9 @@
  * result must stay inside [-1, 1]; and group scoring must not divide by a zero
  * range when every trajectory scores alike. Pure module, no runtime.
  */
+
+import type { Trajectory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 import {
   createRewardService,
   RewardService,

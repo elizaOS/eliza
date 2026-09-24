@@ -8,8 +8,9 @@
  * follow-up thresholds, platform import, and identity clustering are asserted
  * from observed behaviour. Deterministic: no database, network, or model.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import {
   calculateRelationshipStrength,
   countSharedConversationWindows,

@@ -5,11 +5,9 @@
  * compatible display of legacy free-text preference memories. Deterministic —
  * no live model.
  */
+
+import type { State, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, test } from "vitest";
-import type {
-  State,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import { userPersonalityProvider } from "../providers/user-personality.ts";
 import { initStore, makeFakeRuntime, makeMessage } from "./test-helpers.ts";
 

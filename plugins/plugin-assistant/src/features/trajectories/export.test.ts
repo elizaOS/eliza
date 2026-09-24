@@ -6,8 +6,8 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Trajectory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 import {
   exportForOpenPipeART,
   exportGroupedByScenario,

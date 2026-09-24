@@ -7,16 +7,16 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
+import type { IAgentRuntime } from "@elizaos/core";
+import {
+  logActiveTrajectoryLlmCall,
+  logger,
+  ModelType,
+  withStandaloneTrajectory,
+} from "@elizaos/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { embed as aiEmbed, generateText as aiGenerateText } from "ai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { logger } from "../../../../../packages/core/src/logger.ts";
-import {
-  logActiveTrajectoryLlmCall,
-  withStandaloneTrajectory,
-} from "../../../../../packages/core/src/trajectory-utils.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import {
   generateText,
   generateTextEmbedding,
@@ -65,20 +65,12 @@ vi.mock("@openrouter/ai-sdk-provider", () => ({
   })),
 }));
 
-vi.mock(
-  "../../../../../packages/core/src/logger.ts",
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import("../../../../../packages/core/src/logger.ts")
-    >()),
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-    },
-  }),
-);
-
-vi.mock("../../../../../packages/core/src/trajectory-utils.ts", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  logger: {
+    debug: vi.fn(),
+    error: vi.fn(),
+  },
   logActiveTrajectoryLlmCall: vi.fn(),
   withStandaloneTrajectory: vi.fn(
     async (

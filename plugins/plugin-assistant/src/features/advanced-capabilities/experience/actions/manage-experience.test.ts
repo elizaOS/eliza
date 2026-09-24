@@ -4,15 +4,16 @@
  * delete-by-query strong-match/ambiguity contract. Deterministic — no model,
  * no database; the fake service records exactly the calls the handler makes.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   ActionResult,
   HandlerCallback,
   HandlerOptions,
-} from "../../../../../../../packages/core/src/types/components.ts";
-import type { Memory } from "../../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/runtime.ts";
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 import { manageExperienceAction } from "./manage-experience.ts";
 

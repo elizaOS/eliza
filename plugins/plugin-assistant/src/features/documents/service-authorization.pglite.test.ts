@@ -4,28 +4,25 @@
  * composition across user and agent-tenant boundaries.
  */
 
-import {
-  buildDocumentSourceProjection,
-  projectDocumentParentContent,
-} from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
-import { setEntityRoleCas } from "../../../../../packages/core/src/roles.ts";
-import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
-import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { runWithTrajectoryContext } from "../../../../../packages/core/src/trajectory-context.ts";
+import type { AgentRuntime, DocumentMetadata } from "@elizaos/core";
 import {
   type Agent,
+  buildDocumentSourceProjection,
   ChannelType,
+  filterByContextGate,
   type HandlerOptions,
   type Memory,
   MemoryType,
   ModelType,
+  projectDocumentParentContent,
+  readDocumentMutationSnapshot,
+  runWithTrajectoryContext,
   type State,
+  setEntityRoleCas,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import type { DocumentMetadata } from "../../../../../packages/core/src/types/memory.ts";
+} from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
 import { documentAction } from "./actions.ts";
 import { pinnedDocumentsProvider } from "./pinned-provider.ts";

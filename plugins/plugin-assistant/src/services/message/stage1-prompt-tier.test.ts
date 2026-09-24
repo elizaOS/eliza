@@ -5,9 +5,9 @@
  * sources, and unknown/missing channel types all fail open.
  */
 
+import type { Memory } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import { ChannelType } from "../../../../../packages/core/src/types/primitives.ts";
 import {
   isUnaddressedTextGroupTurn,
   TEXT_GROUP_CHANNEL_TYPES,

@@ -3,9 +3,9 @@
  * registration, lookup, duplicate rejection, disposal, and isolation behavior.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { ElizaError } from "../../../../../../../packages/core/src/errors.ts";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
 import {
   type DeferredMessageScheduler,
   getDeferredMessageScheduler,

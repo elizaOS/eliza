@@ -6,16 +6,14 @@
 
 import type { ServerResponse } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime, Memory, MessagePayload } from "@elizaos/core";
+import {
+  logActiveTrajectoryLlmCall,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { runWithTrajectoryContext } from "../../../../../packages/core/src/trajectory-context.ts";
-import { logActiveTrajectoryLlmCall } from "../../../../../packages/core/src/trajectory-utils.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  MessagePayload,
-} from "../../../../../packages/core/src/types/index.ts";
 import { trajectoriesPlugin } from "./index";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes";
 import { TrajectoriesService } from "./TrajectoriesService";

@@ -11,10 +11,10 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import type { UUID } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { UUID } from "../../../../../../packages/core/src/types/index.ts";
 import {
   behavioralProfiles,
   identityLinks,

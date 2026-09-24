@@ -6,21 +6,19 @@
  * database adapter; no model call is involved.
  */
 
-import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import type { Memory, Room, State, UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ChannelTopicsService,
+  createCharacter,
+  ElizaError,
+  stringToUuid as sqliteTestAgentId,
+} from "@elizaos/core";
 import {
   createSQLiteTestRuntime,
   SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCharacter } from "../../../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
-import { ChannelTopicsService } from "../../../../../../packages/core/src/services/channel-topics.ts";
-import type {
-  Memory,
-  Room,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { channelTopicsProvider } from "./channelTopics.ts";
 
 const ROOM = "00000000-0000-0000-0000-0000000000aa" as UUID;

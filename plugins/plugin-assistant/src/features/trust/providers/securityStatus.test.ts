@@ -4,13 +4,9 @@
  * mock runtime and security service; no live model or database.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { securityStatusProvider } from "./securityStatus.ts";
 
 const USER_ID = "10000000-0000-0000-0000-000000000000" as UUID;

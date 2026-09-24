@@ -4,10 +4,9 @@
  * verifies its retrieval contract, result deduplication, rendering, and fail-soft
  * behavior without invoking a model or database.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/runtime.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 import { experienceProvider } from "./experienceProvider.ts";
