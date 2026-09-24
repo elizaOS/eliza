@@ -15,3 +15,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-wifi build  # build
 bun run --cwd plugins/plugin-native-wifi test   # tests
 ```
+
+Android 10+ connection success means an Internet network suggestion was accepted,
+not that association completed. Do not create a second local-only peer request or
+retain network callbacks. Connection security comes from Android security type
+or a matching scan result; unavailable security rejects rather than reporting open.

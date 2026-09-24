@@ -1,3 +1,4 @@
+/** Exposes permission-gated Android address-book reads, creation and vCard import through Capacitor. */
 package ai.eliza.plugins.contacts
 
 import android.Manifest
@@ -11,11 +12,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 
-// Declares the `contacts` alias so the Capacitor base Plugin auto-provides
-// checkPermissions()/requestPermissions() — the app can REQUEST contacts access
-// on first use of the Contacts feature instead of only rejecting (which forced
-// the user to grant it from system Settings). Nothing requests this at launch;
-// it is feature-gated to the Contacts view.
+// Contacts access is requested by the feature on first use, never at app launch.
 @CapacitorPlugin(
     name = "ElizaContacts",
     permissions = [
@@ -36,15 +33,13 @@ class ContactsPlugin : Plugin() {
             return
         }
 
-        val requestedLimit = call.getInt("limit")
-        if (requestedLimit != null && requestedLimit <= 0) {
-            call.reject("limit must be positive")
+        val requestedLimit = (call.data.opt("limit") as? Number)?.toDouble()
+        if (call.data.has("limit") && (requestedLimit == null || !requestedLimit.isFinite() ||
+                requestedLimit <= 0 || requestedLimit > 9_007_199_254_740_991.0 || requestedLimit % 1.0 != 0.0)) {
+            call.reject("limit must be a positive safe integer", "INVALID_LIMIT")
             return
         }
-        val limit = requestedLimit ?: Int.MAX_VALUE
-        // The ContactsProvider query is delegated to ContactsReader so it can be
-        // exercised by an instrumented androidTest (write→read round-trip) without
-        // a Capacitor Bridge (issue #9967); the JS shape below is unchanged.
+        val limit = requestedLimit?.toLong()
         val contacts = JSArray()
         try {
             for (record in ContactsReader(context).listContacts(call.getString("query"), limit)) {
@@ -60,8 +55,9 @@ class ContactsPlugin : Plugin() {
                     ),
                 )
             }
-        } catch (error: IllegalStateException) {
-            call.reject(error.message ?: "Contacts provider returned no cursor")
+        } catch (error: Exception) {
+            // error-policy:J1 Provider failures reject the complete bridge read; partial contact data is never returned.
+            call.reject("Contacts provider could not complete the read", "CONTACTS_UNAVAILABLE", error)
             return
         }
 

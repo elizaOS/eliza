@@ -5,7 +5,7 @@
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
-name: PR Static Smoke
+name: PR Validation
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ env:
 
 jobs:
   source-smoke:
-    name: Source static smoke
+    name: Source checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -395,9 +395,7 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null \
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \

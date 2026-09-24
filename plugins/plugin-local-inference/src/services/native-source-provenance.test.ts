@@ -13,7 +13,11 @@ interface OwnershipFamily {
 	ownerRoot: string;
 	mirrorRoot: string;
 	exact: string[];
-	adapted: Array<{ file: string; reason: string }>;
+	adapted: Array<{
+		file: string;
+		reason: string;
+		documentationPathRewrites?: Array<{ from: string; to: string }>;
+	}>;
 	standalone?: Array<{ file: string; owner: string; reason: string }>;
 }
 
@@ -147,6 +151,26 @@ describe("native copied-source ownership", () => {
 
 		it(`${family.name} adapted mirrors and standalone sources have explicit provenance`, () => {
 			for (const entry of family.adapted) {
+				if (entry.documentationPathRewrites) {
+					let owner = readFileSync(
+						ownedPath(family.ownerRoot, entry.file),
+						"utf8",
+					);
+					for (const rewrite of entry.documentationPathRewrites) {
+						expect(rewrite.from.length).toBeGreaterThan(0);
+						expect(
+							owner,
+							`${family.name}/${entry.file} documented path`,
+						).toContain(rewrite.from);
+						owner = owner.replaceAll(rewrite.from, rewrite.to);
+					}
+					expect(
+						owner,
+						`${family.name}/${entry.file} differs beyond documented paths`,
+					).toBe(
+						readFileSync(ownedPath(family.mirrorRoot, entry.file), "utf8"),
+					);
+				}
 				expectFile(
 					ownedPath(family.ownerRoot, entry.file),
 					`${family.name}/${entry.file} owner`,

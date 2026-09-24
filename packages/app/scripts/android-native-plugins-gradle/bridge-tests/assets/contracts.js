@@ -1,4 +1,4 @@
-/* Executed inside the device WebView. No web shims or mocked native methods. */
+/** Exercises actual Capacitor bridges from the device WebView, including native outputs and invalid-input settlement. */
 (async () => {
   window.nativeContractResult = null;
   let assertions = 0;
@@ -144,6 +144,85 @@
         "Android telecom status",
       );
       await rejects("placeCall", { number: "" });
+      await rejects("listRecentCalls", { limit: 0 });
+      await rejects("saveCallTranscript", { callId: "", transcript: "text" });
+      const fixture = descriptor.phoneFixture;
+      const { calls } = await call("listRecentCalls", {
+        number: fixture.number,
+      });
+      const types = [
+        "incoming",
+        "outgoing",
+        "missed",
+        "rejected",
+        "blocked",
+        "answered_externally",
+      ];
+      assert(
+        calls.length === fixture.ids.length,
+        "all seeded calls must cross the bridge",
+      );
+      calls.forEach((entry, index) => {
+        assert(entry.id === fixture.ids[index], "calls must be newest first");
+        assert(
+          entry.number === fixture.number,
+          "number filter must isolate fixture rows",
+        );
+        assert(
+          entry.type === types[index] &&
+            entry.rawType === [1, 2, 3, 5, 6, 7][index],
+          "call type mapping",
+        );
+        assert(entry.durationSeconds === entry.rawType * 11, "call duration");
+        assert(entry.isNew === (index === 2), "missed-call unread flag");
+      });
+      const limited = await call("listRecentCalls", {
+        number: fixture.number,
+        limit: 2,
+      });
+      assert(
+        limited.calls.length === 2 && limited.calls[1].id === fixture.ids[1],
+        "explicit call limit",
+      );
+      const transcript =
+        "Caller: Hello 🌍\nAgent: Complete transcript.\n".repeat(300);
+      const summary =
+        "A Unicode conversation — preserved across plugin recreation.";
+      if (!descriptor.recreated) {
+        await rejects("saveCallTranscript", {
+          callId: fixture.ids[0],
+          transcript: "",
+        });
+        const saved = await call("saveCallTranscript", {
+          callId: fixture.ids[0],
+          transcript,
+          summary,
+        });
+        assert(
+          Number.isInteger(saved.updatedAt) && saved.updatedAt > 0,
+          "transcript timestamp",
+        );
+      }
+      const savedCalls = await call("listRecentCalls", {
+        number: fixture.number,
+      });
+      window.nativePhoneEvidence = savedCalls;
+      assert(
+        savedCalls.calls[0].agentTranscript === transcript,
+        "complete persisted transcript must round trip",
+      );
+      assert(
+        savedCalls.calls[0].agentSummary === summary,
+        "persisted summary must round trip",
+      );
+      assert(
+        Number.isInteger(savedCalls.calls[0].agentTranscriptUpdatedAt),
+        "persisted timestamp must be numeric",
+      );
+      assert(
+        savedCalls.calls[1].agentTranscript == null,
+        "transcript must not leak to another call",
+      );
       break;
     }
     case "plugin-native-location": {
@@ -186,6 +265,13 @@
     case "plugin-native-network-policy": {
       const result = await call("getMeteredHint");
       assert(result.source === "android-os", "Android network policy source");
+      if (Object.hasOwn(descriptor, "expectedMetered")) {
+        assert(
+          result.metered === descriptor.expectedMetered,
+          `live network transition: ${descriptor.networkStage}`,
+        );
+        window.nativeNetworkEvidence = result;
+      }
       assert(
         result.metered === null || typeof result.metered === "boolean",
         "metered state contract",
