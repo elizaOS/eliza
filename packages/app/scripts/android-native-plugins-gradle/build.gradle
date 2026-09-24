@@ -79,7 +79,7 @@ subprojects { subproject ->
                 new File(assets, 'native-plugin.json').text = groovy.json.JsonOutput.toJson(descriptor + [directory: directory])
                 if (!new File(subproject.projectDir, 'src/androidTest/assets/public/index.html').exists()) {
                     new File(assets, 'public').mkdirs()
-                    new File(assets, 'public/index.html').text = new File(fixtures, 'index.html').text
+                    new File(assets, 'public/index.html').text = new File(fixtures, '__fixtures__/index.html').text
                 }
                 def manifest = originalManifest.exists() ? originalManifest.text : '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>'
                 def activity = '<activity android:name="ai.eliza.testing.NativeBridgeTestActivity" android:exported="true" android:theme="@style/AppTheme.NoActionBar" />'
