@@ -30,6 +30,7 @@ export interface ModelProviderTestRuntimeOptions
   extends Omit<TestRuntimeOptions, "plugins"> {
   plugins?: Plugin[];
   fixtures?: DeterministicModelFixture[];
+  modelTypes?: DeterministicModelPluginOptions["modelTypes"];
   priority?: number;
   resolve?: DeterministicModelPluginOptions["resolve"];
   stream?: DeterministicModelPluginOptions["stream"];
@@ -41,6 +42,7 @@ export async function createTestRuntimeWithModelProvider(
   const embeddingDimensions = options.embeddingDimensions ?? 384;
   const modelProvider = createDeterministicModelPlugin({
     fixtures: options.fixtures,
+    modelTypes: options.modelTypes,
     priority: options.priority,
     resolve: options.resolve,
     stream: options.stream,
