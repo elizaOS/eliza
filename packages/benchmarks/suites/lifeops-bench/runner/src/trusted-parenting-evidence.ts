@@ -19,7 +19,7 @@ import {
   PARENTING_RECORD_SCOPE_ATTRIBUTE,
 } from "@elizaos/plugin-personal-assistant";
 import { resolveOwnerFactStore } from "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import type { BenchmarkSession } from "./server-utils.js";
 

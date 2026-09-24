@@ -5,7 +5,7 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { normalizeEntityConnectorAccountId } from "@elizaos/shared";
 import { z } from "zod";
 import {

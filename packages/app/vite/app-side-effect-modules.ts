@@ -9,7 +9,9 @@ import path from "node:path";
  * Manifest-driven discovery of renderer side-effect app modules.
  *
  * App plugins that need to register UI surfaces/pages at app boot self-declare
- * `"elizaos": { "appRegister": "register" | "ui" }` in their own package.json.
+ * `"elizaos": { "appRegister": { "export": "registerApp" } }` names an
+ * explicit function on the package root. Legacy `"register"` and `"ui"`
+ * markers remain readable while those plugins migrate their public surfaces.
  * The renderer build scans for that marker instead of the app shell hardcoding a
  * loader list, so adding or deleting a plugin directory needs zero app-side edits.
  *
@@ -18,7 +20,7 @@ import path from "node:path";
  * no per-plugin Vite alias is required for the boot set.
  */
 
-export type AppRegisterMode = "register" | "ui";
+export type AppRegisterMode = "register" | "ui" | "root";
 
 export type SideEffectAppModule = {
   /**
@@ -33,17 +35,16 @@ export type SideEffectAppModule = {
   /** Canonical package name (workspace dependency name). */
   packageName: string;
   /** Declared registration mode from `elizaos.appRegister`. */
-  mode: AppRegisterMode;
   /** Absolute path to the renderer registration entry imported at boot. */
   entry: string;
-};
+} & ({ mode: "register" | "ui" } | { mode: "root"; exportName: string });
 
 const UI_ENTRY_CANDIDATES = ["src/ui.ts", "src/ui/index.ts"];
 const REGISTER_ENTRY = "src/register.ts";
 
 function resolveRegistrationEntry(
   pkgDir: string,
-  mode: AppRegisterMode,
+  mode: "register" | "ui",
 ): string | null {
   if (mode === "register") {
     const candidate = path.join(pkgDir, REGISTER_ENTRY);
@@ -83,11 +84,43 @@ export function discoverSideEffectAppModules(
       let pkg: { name?: unknown; elizaos?: { appRegister?: unknown } };
       try {
         pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-      } catch {
-        continue;
+      } catch (cause) {
+        // error-policy:J2 identify the invalid manifest without dropping a plugin.
+        throw new Error(`Invalid app plugin manifest: ${pkgPath}`, { cause });
       }
 
-      const mode = pkg.elizaos?.appRegister;
+      const declaration = pkg.elizaos?.appRegister;
+      if (typeof declaration === "object" && declaration !== null) {
+        const name = pkg.name;
+        if (typeof name !== "string" || seen.has(name)) continue;
+        if (
+          !("export" in declaration) ||
+          typeof declaration.export !== "string" ||
+          !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(declaration.export)
+        ) {
+          throw new Error(
+            `[app-side-effect-modules] ${name} appRegister must name a root export`,
+          );
+        }
+        const entry = ["src/index.ts", "src/index.tsx", "index.ts"]
+          .map((relative) => path.join(pkgDir, relative))
+          .find((candidate) => fs.existsSync(candidate));
+        if (!entry) {
+          throw new Error(
+            `[app-side-effect-modules] ${name} has no package root source entry`,
+          );
+        }
+        seen.add(name);
+        discovered.push({
+          key: `${name}#root:${declaration.export}`,
+          packageName: name,
+          mode: "root",
+          entry,
+          exportName: declaration.export,
+        });
+        continue;
+      }
+      const mode = declaration;
       if (mode !== "register" && mode !== "ui") continue;
       const name = pkg.name;
       if (typeof name !== "string" || seen.has(name)) continue;
@@ -138,10 +171,14 @@ export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
       if (!code.includes(LOADERS_MARKER)) return null;
       const modules = discoverSideEffectAppModules(packageRoots);
       const entries = modules
-        .map(
-          (module) =>
-            `  { key: ${JSON.stringify(module.key)}, load: () => import(${JSON.stringify(module.entry)}) },`,
-        )
+        .map((module) => {
+          const key = JSON.stringify(module.key);
+          if (module.mode === "root") {
+            const specifier = JSON.stringify(module.packageName);
+            return `  { key: ${key}, load: () => import(${specifier}).then(({ ${module.exportName}: register }) => { if (typeof register !== "function") throw new Error(${JSON.stringify(`${module.packageName} must export callable ${module.exportName}`)}); return register(); }) },`;
+          }
+          return `  { key: ${key}, load: () => import(${JSON.stringify(module.entry)}) },`;
+        })
         .join("\n");
       return {
         code: code.replace(LOADERS_MARKER, `[\n${entries}\n]`),

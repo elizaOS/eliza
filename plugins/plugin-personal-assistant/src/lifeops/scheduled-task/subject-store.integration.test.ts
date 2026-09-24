@@ -12,7 +12,7 @@
 import {
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
