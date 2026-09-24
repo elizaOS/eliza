@@ -63,41 +63,39 @@ export function PhoneView() {
   const [dialed, setDialed] = useState("");
   const [callReady, setCallReady] = useState(false);
   const [calls, setCalls] = useState<PhoneCallRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [historyStatus, setHistoryStatus] =
+    useState<PhoneSnapshot["historyStatus"]>("loading");
   const [error, setError] = useState<string | null>(null);
 
   const refreshCalls = useCallback(async () => {
-    setLoading(true);
+    setHistoryStatus("loading");
     setError(null);
     try {
-      // A null status means requestPermissions() itself threw — treat that as
-      // "not granted" and stop. Otherwise we fall through to listRecentCalls,
-      // which rejects ("READ_CALL_LOG permission is required") and Capacitor
-      // logs the raw rejection to the console (#10196). Web reports "granted",
-      // so the web/desktop path is unchanged.
-      const status = await Phone.requestPermissions().catch(() => null);
-      if (status?.phone !== "granted") {
+      const status = await Phone.requestPermissions();
+      if (status.phone !== "granted") {
         setCalls([]);
         setCallReady(false);
+        setHistoryStatus("unavailable");
         setError(
           "Phone access is needed for recent calls and dialing. Grant it in your device settings, then retry.",
         );
         return;
       }
       const [phoneStatus, { calls: fetched }] = await Promise.all([
-        Phone.getStatus().catch(() => null),
+        Phone.getStatus(),
         Phone.listRecentCalls({ limit: 50 }),
       ]);
-      setCallReady(phoneStatus?.canPlaceCalls ?? true);
+      setCallReady(phoneStatus.canPlaceCalls);
       setCalls(
         fetched.map((entry) => toPhoneCallRow(entry, formatWhen(entry.date))),
       );
+      setHistoryStatus("ready");
     } catch (err) {
+      // error-policy:J4 Bridge failures remain visible and disable calling until a successful refresh.
       setError(err instanceof Error ? err.message : String(err));
       setCalls([]);
       setCallReady(false);
-    } finally {
-      setLoading(false);
+      setHistoryStatus("unavailable");
     }
   }, []);
 
@@ -136,6 +134,7 @@ export function PhoneView() {
     try {
       await Phone.placeCall({ number: normalized });
     } catch (err) {
+      // error-policy:J4 Bridge failures remain visible and disable calling until a successful refresh.
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -146,6 +145,7 @@ export function PhoneView() {
     try {
       await Phone.openDialer(number ? { number } : undefined);
     } catch (err) {
+      // error-policy:J4 Bridge failures remain visible and disable calling until a successful refresh.
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [dialed]);
@@ -193,7 +193,7 @@ export function PhoneView() {
     callReady,
     dialed,
     calls,
-    loading,
+    historyStatus,
     error,
   };
 

@@ -17,7 +17,7 @@ Android phone and Telecom bridge for elizaOS. A [Capacitor](https://capacitorjs.
 | Platform | Status |
 |---|---|
 | Android | Full native implementation |
-| Web / browser | `getStatus` returns all-false; `listRecentCalls` returns empty; all other methods throw |
+| Web / browser | `getStatus` reports disabled capabilities; history, mutations and permission methods reject with `UNAVAILABLE` |
 | iOS | Unsupported |
 
 ## Installation
@@ -114,3 +114,39 @@ bun run --cwd plugins/plugin-native-phone build
 ```
 
 This runs `tsc` (TypeScript compilation to `dist/esm/`) followed by rollup (bundling to `dist/plugin.js` and `dist/plugin.cjs.js`).
+
+## Android call-history validation
+
+Explicit limits must be positive safe integers; malformed values reject with
+`INVALID_LIMIT`. Omission returns complete matching history. Provider or saved
+transcript failures reject the complete read with `CALL_HISTORY_UNAVAILABLE`;
+partial history is not returned as successful data. Saved transcript and summary
+text retain their exact whitespace and Unicode content.
+Absent nullable call-history and status values are emitted as JSON `null`, so
+the native wire response matches the published required nullable fields.
+
+The native `PhoneHistoryInstrumentedTest` uses a real Capacitor BridgeActivity,
+CallLog provider and isolated preferences. It verifies newest-first filtered
+reads, numeric limits, invalid input, complete transcript round-trips and corrupt
+stored-data rejection. Synthetic call rows are deleted by their exact inserted
+IDs; test preferences belong to the isolated test APK. No carrier call is made.
+Build `:elizaos-capacitor-phone:assembleDebugAndroidTest`, install its test APK
+on an exclusive emulator, then run:
+
+```bash
+adb -s DEVICE shell am instrument -w \
+  ai.eliza.plugins.phone.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Check the terminal instrumentation result rather than relying on shell exit 0.
+
+The browser/Node fallback never reports unsupported history as an empty call log
+or unsupported phone permissions as granted. Valid operation requests reject
+with Capacitor `UNAVAILABLE`; malformed inputs still receive validation errors.
+`getStatus()` remains available to report the disabled phone capabilities.
+
+Android acknowledges a transcript save only after SharedPreferences reports a
+successful disk commit. Persistence failure rejects with `TRANSCRIPT_SAVE_FAILED`
+and no saved timestamp. The native suite verifies actual disk contents at
+acknowledgment and injects a write failure only in the isolated test app’s own
+preferences directory, restoring its permissions afterward.

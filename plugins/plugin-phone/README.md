@@ -63,3 +63,12 @@ The build produces three outputs: `dist/index.js` (main ESM bundle), `dist/views
 - `@capacitor/haptics` — Haptic feedback on companion navigation transitions.
 - `@capacitor/preferences` — Navigation stack persistence for the companion.
 - `@capacitor/barcode-scanner` — QR pairing scan in the companion Pairing view.
+
+Phone permission and status failures stay visible in the dialer. Unsupported
+platforms show the bridge unavailable error, while an actual permission denial
+shows the device-settings guidance. Call controls require a successful status
+read reporting call permission; a failed read never enables calling.
+
+Recent calls have explicit loading, ready and unavailable states. Only a
+successful empty read displays “None”; failed or pending reads do not report a
+zero count.

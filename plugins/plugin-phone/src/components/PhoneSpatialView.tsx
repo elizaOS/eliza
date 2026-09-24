@@ -32,7 +32,7 @@ export interface PhoneSnapshot {
   callReady: boolean;
   dialed: string;
   calls: PhoneCallRow[];
-  loading?: boolean;
+  historyStatus: "loading" | "ready" | "unavailable";
   error?: string | null;
 }
 
@@ -118,9 +118,8 @@ export function PhoneSpatialView({
   onAction,
 }: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
-  // Mirror the `placeCall()` guard: only a dialed value that normalizes to a
-  // callable number enables Call, so separators or stray keys keep it off.
-  const canCall = Boolean(normalizeNumber(snapshot.dialed));
+  const canCall =
+    snapshot.callReady && Boolean(normalizeNumber(snapshot.dialed));
   return (
     <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -132,7 +131,11 @@ export function PhoneSpatialView({
           {snapshot.callReady ? "call-ready" : "call-blocked"}
         </Text>
         <Text style="caption" tone="muted">
-          {snapshot.loading ? "loading" : `${snapshot.calls.length} recent`}
+          {snapshot.historyStatus === "ready"
+            ? `${snapshot.calls.length} recent`
+            : snapshot.historyStatus === "loading"
+              ? "loading"
+              : "history unavailable"}
         </Text>
       </HStack>
 
@@ -222,13 +225,19 @@ export function PhoneSpatialView({
             role: "button",
             label: "Refresh recent calls",
           }}
-          disabled={snapshot.loading}
+          disabled={snapshot.historyStatus === "loading"}
           onPress={dispatch("refresh")}
         >
-          {snapshot.loading ? "Refreshing…" : "Refresh"}
+          {snapshot.historyStatus === "loading" ? "Refreshing…" : "Refresh"}
         </Button>
       </HStack>
-      {snapshot.calls.length === 0 ? (
+      {snapshot.historyStatus !== "ready" ? (
+        <Text tone="muted" align="center" style="caption">
+          {snapshot.historyStatus === "loading"
+            ? "Loading recent calls…"
+            : "Recent calls unavailable"}
+        </Text>
+      ) : snapshot.calls.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
           None
         </Text>
@@ -261,6 +270,7 @@ export function PhoneSpatialView({
                 variant="ghost"
                 tone="primary"
                 agent={`call:${call.id}`}
+                disabled={!snapshot.callReady}
                 onPress={dispatch(`call-number:${call.number}`)}
               >
                 Call
