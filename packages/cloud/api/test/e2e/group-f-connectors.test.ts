@@ -37,6 +37,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { redactSensitiveLogText } from "@elizaos/common";
 import { api, getBaseUrl, isServerReachable } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -205,6 +206,29 @@ describeE2E("POST /api/eliza-app/connections/:platform/initiate", () => {
       {},
       { headers: { Authorization: "Bearer bogus" } },
     );
+    // Keep the failure visible while distinguishing Worker failures from route errors.
+    if (res.status !== 401) {
+      let responseBody: string;
+      try {
+        responseBody = redactSensitiveLogText(await res.clone().text());
+      } catch {
+        // error-policy:J7 Diagnostic capture must not replace the status assertion.
+        responseBody = "[response body unavailable]";
+      }
+      console.error(
+        "[group-f-connectors] invalid-session initiate response",
+        JSON.stringify({
+          status: res.status,
+          headers: {
+            contentType: res.headers.get("content-type"),
+            server: res.headers.get("server"),
+            traceId: res.headers.get("x-eliza-trace-id"),
+            requestId: res.headers.get("x-request-id"),
+          },
+          body: responseBody,
+        }),
+      );
+    }
     // Session check fires before the unsupported-platform 400.
     expect(res.status).toBe(401);
   });
