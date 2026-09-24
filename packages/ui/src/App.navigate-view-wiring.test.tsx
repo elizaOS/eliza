@@ -84,7 +84,9 @@ const nativeContacts = vi.hoisted(() => ({
   createContact: vi.fn(),
   importVCard: vi.fn(),
 }));
-vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({ Contacts: nativeContacts }));
+vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
+  Contacts: nativeContacts,
+}));
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
