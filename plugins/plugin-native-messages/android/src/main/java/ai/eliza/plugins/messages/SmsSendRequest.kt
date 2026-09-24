@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import java.util.UUID
 
 internal class SmsSendRequest(
@@ -31,6 +32,8 @@ internal class SmsSendRequest(
     private val handler = Handler(Looper.getMainLooper())
     private val pending = mutableListOf<PendingIntent>()
     private val received = mutableSetOf<Int>()
+    var sentMessageUri: String? = null
+        private set
     private var failureCode: Int? = null
     private var registered = false
     private var started = false
@@ -41,6 +44,7 @@ internal class SmsSendRequest(
             if (settled || intent.action != action) return
             val part = intent.getIntExtra("part", -1)
             if (part !in 0 until partCount || !received.add(part)) return
+            intent.getStringExtra("uri")?.let { sentMessageUri = it }
             if (resultCode != Activity.RESULT_OK && failureCode == null) failureCode = resultCode
             if (received.size == partCount) {
                 finish(failureCode?.let { Outcome.Failed(it) } ?: Outcome.Sent)
@@ -54,16 +58,15 @@ internal class SmsSendRequest(
         require(partCount > 0 && timeoutMs > 0)
         started = true
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(receiver, IntentFilter(action), Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                context.registerReceiver(receiver, IntentFilter(action))
-            }
+            ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
             registered = true
+            // Telephony fills in the persisted URI. Keep the mutable callback
+            // package-scoped and its receiver private on every Android version.
             for (part in 0 until partCount) {
                 pending += PendingIntent.getBroadcast(context, part,
                     Intent(action).setPackage(context.packageName).putExtra("part", part),
-                    PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.FLAG_CANCEL_CURRENT or
+                        (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0))
             }
             handler.postDelayed(timeout, timeoutMs)
             return ArrayList(pending)

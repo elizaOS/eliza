@@ -18,7 +18,8 @@ Generated evidence uses repository-root `test-results/`: `aesthetic-audit/`,
 `device-e2e/`, `app/`, `cloud-e2e/`, and `core/` contain their respective producers.
 Android plugin instrumentation uses `android-native-plugins/`; embedded-agent
 lifecycle evidence uses `android-native-agent/runs/`. Runtime staging stays outside
-that evidence inventory. Keep producer inventories and artifact uploads aligned.
+that evidence inventory. SMS modem proofs use `android-native-sms/` and label
+peer delivery separately from loopback. Keep producer inventories and uploads aligned.
 
 ## Choose the work you need
 

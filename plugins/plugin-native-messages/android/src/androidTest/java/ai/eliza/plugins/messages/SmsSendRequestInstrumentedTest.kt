@@ -3,6 +3,7 @@ package ai.eliza.plugins.messages
 
 import android.app.Activity
 import android.app.PendingIntent
+import android.content.Intent
 import android.os.SystemClock
 import android.telephony.SmsManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -35,6 +36,20 @@ class SmsSendRequestInstrumentedTest {
         intents[1].send(Activity.RESULT_OK)
         assertTrue(finished.await(3, TimeUnit.SECONDS))
         assertEquals(SmsSendRequest.Outcome.Failed(SmsManager.RESULT_ERROR_NO_SERVICE), outcome.get())
+        assertThrows(PendingIntent.CanceledException::class.java) { intents[0].send(Activity.RESULT_OK) }
+    }
+
+    @Test
+    fun sentReceiptPreservesPlatformUriThroughMultipartCompletion() {
+        val finished = CountDownLatch(1)
+        val intents = start(2) { assertEquals(SmsSendRequest.Outcome.Sent, it); finished.countDown() }
+        intents[0].send(instrumentation.targetContext, Activity.RESULT_OK,
+            Intent().putExtra("uri", "content://sms/42"))
+        intents[1].send(Activity.RESULT_OK)
+        assertTrue(finished.await(3, TimeUnit.SECONDS))
+        instrumentation.runOnMainSync {
+            assertEquals("content://sms/42", requests.last().sentMessageUri)
+        }
         assertThrows(PendingIntent.CanceledException::class.java) { intents[0].send(Activity.RESULT_OK) }
     }
 

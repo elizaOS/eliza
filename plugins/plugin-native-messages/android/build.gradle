@@ -35,6 +35,7 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.12.0'}"
 
     // Instrumented test deps (issue #9967 — on-device SMS read).
     androidTestImplementation "androidx.test:core:1.5.0"
