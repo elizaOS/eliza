@@ -3,16 +3,10 @@
  * registry and in-memory persistence, including both serial fallback paths.
  */
 
+import type { Character, JsonValue, Memory, UUID } from "@elizaos/core";
+import { AgentRuntime, ModelType } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, test } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  JsonValue,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 
 /**

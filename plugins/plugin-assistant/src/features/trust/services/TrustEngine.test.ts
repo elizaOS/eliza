@@ -7,15 +7,15 @@
  * hourly limits, and the five-minute profile cache are exercised exactly.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElizaError } from "../../../../../../packages/core/src/errors.ts";
 import {
   type Component,
+  ElizaError,
   type IAgentRuntime,
   Service,
+  stringToUuid,
   type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type TrustEvidence,
   TrustEvidenceType,

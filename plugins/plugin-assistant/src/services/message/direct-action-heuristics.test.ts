@@ -5,8 +5,9 @@
  * "don't browse the web"), since a false positive runs an unwanted
  * side-effecting action.
  */
+
+import type { Action } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import {
   classifyExplicitContinuationTurn,
   findAvailableActionName,

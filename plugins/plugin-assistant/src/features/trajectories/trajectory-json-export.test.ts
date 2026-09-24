@@ -5,15 +5,13 @@
  * undefined metadata values are dropped. Deterministic — plain in-memory objects,
  * no runtime or database.
  */
-import { describe, expect, it } from "vitest";
+
+import type { ContextEvent, ContextObject } from "@elizaos/core";
 import {
   buildContextObjectTrajectoryExport,
   serializeContextObjectTrajectoryExport,
-} from "../../../../../packages/core/src/trajectory-utils.ts";
-import type {
-  ContextEvent,
-  ContextObject,
-} from "../../../../../packages/core/src/types/context-object.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("context object trajectory JSON export", () => {
   it("serializes v5 context events as JSON without legacy conversion", () => {

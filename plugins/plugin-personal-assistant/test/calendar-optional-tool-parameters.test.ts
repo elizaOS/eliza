@@ -4,13 +4,13 @@
  * strings that the planner has to invent just to satisfy the wire grammar.
  */
 import type { Action, ActionParameterSchema } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { promoteSubactionsToActions } from "../../../packages/core/src/actions/promote-subactions.js";
-import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool.js";
 import {
+  buildPlannerToolsFromActions,
+  promoteSubactionsToActions,
   validateSchema,
   validateToolArgs,
-} from "../../../packages/core/src/actions/validate-tool-args.js";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { createCalendarActionRunner } from "../../plugin-calendar/src/actions/calendar-handler.js";
 import { __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall } from "../../plugin-openai/models/text.js";
 import {

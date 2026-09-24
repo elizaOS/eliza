@@ -5,13 +5,14 @@
  * authorization contract (validate checks only a pending choice, never a stored
  * world role), and unknown-id rejection.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { choiceAction } from "./choice.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";

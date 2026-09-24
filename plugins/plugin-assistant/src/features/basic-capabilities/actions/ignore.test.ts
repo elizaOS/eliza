@@ -3,13 +3,14 @@
  * response-delivery behavior. The real action runs without a model or database;
  * only the transport callback is observed.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { ignoreAction } from "./ignore.ts";
 
 const runtime = {} as IAgentRuntime;

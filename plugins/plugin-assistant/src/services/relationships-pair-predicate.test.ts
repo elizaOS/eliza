@@ -2,8 +2,9 @@
  * Pins analyzeRelationship to the source/target pair, not any row that
  * merely mentions the target entity.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import { RelationshipsService } from "./relationships.ts";
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;

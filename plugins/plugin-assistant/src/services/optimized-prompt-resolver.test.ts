@@ -11,13 +11,13 @@
  * behavior.
  */
 
-import { OPTIMIZED_PROMPT_SERVICE } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
 import {
+  OPTIMIZED_PROMPT_SERVICE,
   resolveOptimizedPrompt,
   resolveOptimizedPromptForRuntime,
   trimDemonstrationInput,
-} from "../../../../packages/core/src/services/optimized-prompt-resolver";
+} from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import {
   OPTIMIZED_PROMPT_TASKS,
   type OptimizedPromptArtifact,

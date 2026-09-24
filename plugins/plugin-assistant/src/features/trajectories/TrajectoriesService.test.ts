@@ -7,8 +7,9 @@
  * (`executeRawSql` overridden against an in-memory row) — deterministic, no real
  * database.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { TrajectoriesService } from "./TrajectoriesService.ts";
 
 function createRuntimeWithoutSql(): IAgentRuntime {

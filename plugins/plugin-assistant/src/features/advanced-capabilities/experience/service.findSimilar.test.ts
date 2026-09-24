@@ -6,11 +6,9 @@
  * Uses the in-memory mock runtime — no live model, no real DB.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
 import { type Experience, ExperienceType, OutcomeType } from "./types.ts";
 
 // Force the shared recall-query embedder to fail open (error → null) so we can

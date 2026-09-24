@@ -14,24 +14,21 @@
  * cause-specific default is what a connector would post.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElizaError } from "../../../../packages/core/src/errors.ts";
-import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import type { Room } from "../../../../packages/core/src/types/environment.ts";
-import type { Memory } from "../../../../packages/core/src/types/memory.ts";
-import { ModelType } from "../../../../packages/core/src/types/model.ts";
+import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import {
   asUUID,
   ChannelType,
   type Content,
+  ElizaError,
+  ModelType,
+  PROVIDER_CONTEXT_OVERFLOW,
+  ResponseHandlerFieldRegistry,
+  TurnControllerRegistry,
   type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../packages/core/src/types/state.ts";
-import { PROVIDER_CONTEXT_OVERFLOW } from "../../../../packages/core/src/utils/model-errors.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { v4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "./message.ts";
 

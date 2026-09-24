@@ -5,13 +5,13 @@
  * forever (same fail-closed class as the remote fetch-with-timeout work).
  */
 import { Buffer } from "node:buffer";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ContentType,
   type IAgentRuntime,
   type Media,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;

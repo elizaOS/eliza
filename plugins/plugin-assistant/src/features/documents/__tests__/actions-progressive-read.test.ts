@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { isReadView } from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { isReadView } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentAction } from "../actions.ts";
 import { DocumentService } from "../service.ts";
 

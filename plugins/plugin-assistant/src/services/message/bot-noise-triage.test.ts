@@ -9,14 +9,9 @@
  * fails OPEN into the normal pipeline.
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { ChannelType, ModelType, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import { ModelType } from "../../../../../packages/core/src/types/model.ts";
-import {
-  ChannelType,
-  type UUID,
-} from "../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
 import {
   buildBotNoiseTriagePrompt,
   isBotNoiseTriageEnabled,

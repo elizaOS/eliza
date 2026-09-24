@@ -6,22 +6,20 @@ import {
   buildReadSlice,
   ContentType,
   ElizaError,
+  fetchRemoteMedia,
   getLocalServerUrl,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
+  MediaFetchError,
   type Memory,
   ModelType,
   type ReadView,
+  readResponseWithLimit,
   type State,
   type UUID,
 } from "@elizaos/core";
-import {
-  fetchRemoteMedia,
-  MediaFetchError,
-  readResponseWithLimit,
-} from "@elizaos/core/media";
 import {
   linkShareOwnText,
   looksLikeBareLinkShare,
@@ -54,13 +52,11 @@ import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
  */
 
 import {
+  attachmentTextSourceDescriptor,
   buildAccessContext,
+  hashAttachmentIdForLocator,
   type MessageContentRangePage,
 } from "@elizaos/core";
-import {
-  attachmentTextSourceDescriptor,
-  hashAttachmentIdForLocator,
-} from "../../../../../packages/core/src/runtime/message-content-segments.ts";
 import { readCompleteMessageContent } from "../messaging/complete-content-read.ts";
 
 const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;

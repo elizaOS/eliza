@@ -4,20 +4,10 @@
  * in-memory document-service stub and no model calls or module mocks.
  */
 
+import type { IAgentRuntime, Media, Memory, Room, UUID } from "@elizaos/core";
+import { ChannelType, ContentType, ElizaError } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
-import { ElizaError } from "../../../../../packages/core/src/errors.ts";
-import type {
-  IAgentRuntime,
-  Media,
-  Memory,
-  Room,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import {
-  ChannelType,
-  ContentType,
-} from "../../../../../packages/core/src/types/index.ts";
 import type { DocumentService } from "../documents/service.ts";
 import { readAttachmentAction } from "./readAttachmentAction.ts";
 

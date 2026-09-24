@@ -6,15 +6,16 @@
  * only for their system context. Deterministic fake
  * runtime with literal provider fixtures — no live model or database.
  */
-import { describe, expect, it } from "vitest";
-import { recentErrorsProvider } from "../../../../packages/core/src/providers/recent-errors.ts";
-import type { Provider } from "../../../../packages/core/src/types/components.ts";
-import type { AgentContext } from "../../../../packages/core/src/types/contexts.ts";
+
 import type {
+  AgentContext,
   IAgentRuntime,
   Memory,
+  Provider,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { recentErrorsProvider } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { selectV5PlannerStateProviderNames } from "./message.ts";
 
 function provider(overrides: Partial<Provider> & { name: string }): Provider {

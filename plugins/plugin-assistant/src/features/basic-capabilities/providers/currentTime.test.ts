@@ -2,11 +2,9 @@
  * CURRENT_TIME contract tests prove device-first local rendering and honest
  * agent/host reference fallbacks at deterministic DST and date boundaries.
  */
+
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { currentTimeProvider, resolveMessageTimeZone } from "./currentTime.ts";
 
 const OWNER_ENTITY_ID = "00000000-0000-0000-0000-0000000000a1";

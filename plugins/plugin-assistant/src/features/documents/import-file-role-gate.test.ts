@@ -4,14 +4,15 @@
  * path probe while OWNER and agent-self callers can proceed to the normal
  * not-found boundary; it never reads a live host file.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   SearchCategoryRegistration,
   UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";
 

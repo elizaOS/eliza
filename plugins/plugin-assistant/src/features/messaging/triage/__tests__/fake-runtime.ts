@@ -8,10 +8,7 @@
  * cross-cutting integrations outside this unit's scope.
  */
 
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type {
   ContactInfo,
   RelationshipsService,

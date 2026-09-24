@@ -2,15 +2,16 @@
  * Exercises pinned-document provider pagination through the production service
  * boundary with deterministic adapter responses.
  */
-import { describe, expect, it, vi } from "vitest";
-import { DOCUMENT_LIST_MAX_LIMIT } from "../../../../../packages/core/src/database/document-list-query.ts";
-import { projectDeferredProviders } from "../../../../../packages/core/src/runtime/provider-context.ts";
-import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
+
+import type { ContextObject } from "@elizaos/core";
 import {
+  DOCUMENT_LIST_MAX_LIMIT,
   type Memory,
   MemoryType,
+  projectDeferredProviders,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentsProvider, renderPinnedDocuments } from "./provider.ts";
 import { DocumentService } from "./service.ts";
 

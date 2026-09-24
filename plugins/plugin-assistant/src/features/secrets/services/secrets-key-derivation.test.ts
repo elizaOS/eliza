@@ -7,9 +7,9 @@
  * test against createMockRuntime — no storage I/O.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import { deriveKeyPbkdf2, KeyManager } from "../crypto/encryption.ts";
 import { SecretsService } from "./secrets.ts";
 

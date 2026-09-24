@@ -6,13 +6,8 @@
  * opt-out flag; no live model.
  */
 
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
-import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
 import { userEmotionSignalProvider } from "./userEmotionSignal.ts";
 
 function makeRuntime(setting?: string | undefined): IAgentRuntime {

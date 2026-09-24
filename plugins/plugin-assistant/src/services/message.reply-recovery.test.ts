@@ -1,22 +1,21 @@
 /** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
 
-import { ChannelType, type IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing";
-import { assert, describe, expect, it, vi } from "vitest";
-import { completionContextSources } from "../../../../packages/core/src/runtime/completion-context.ts";
-import {
-  renderContextObject,
-  segmentBlock,
-} from "../../../../packages/core/src/runtime/context-renderer.ts";
-import type { PlannerTrajectory } from "../../../../packages/core/src/runtime/planner-types.ts";
-import { attestDeliveryAudienceFromCanonicalRoom } from "../../../../packages/core/src/security/trusted-delivery-audience.ts";
-import { runWithStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
-import { applyGroundedActionReply } from "../../../../packages/core/src/types/action-reply.ts";
+import type { PlannerTrajectory } from "@elizaos/core";
 import {
   type ActionResult,
+  applyGroundedActionReply,
+  attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  completionContextSources,
+  type IAgentRuntime,
   type Memory,
   ModelType,
-} from "../../../../packages/core/src/types/index.ts";
+  renderContextObject,
+  runWithStreamingContext,
+  segmentBlock,
+} from "@elizaos/core";
+import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing";
+import { assert, describe, expect, it, vi } from "vitest";
 import { parseEvaluatorOutput } from "../runtime/evaluator.ts";
 import { runPlannerLoop } from "../runtime/planner-loop.ts";
 import { capturePlannerReplyRecovery } from "./message/egress-policy.ts";

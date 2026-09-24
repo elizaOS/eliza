@@ -8,14 +8,10 @@
  * or database. The guard's node-pinned transport bypasses a stubbed
  * `globalThis.fetch` by design, so the deterministic wire is injected instead.
  */
+
+import type { EvaluatorRunContext, Memory, State, UUID } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  EvaluatorRunContext,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../../../../packages/core/src/types/index.ts";
 import {
   _setLinkPreviewTransportForTests,
   linkExtractionEvaluator,

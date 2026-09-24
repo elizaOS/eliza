@@ -5,8 +5,8 @@
  * rather than reaching the inbox query as garbage.
  */
 
+import type { HandlerOptions } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { HandlerOptions } from "../../../../../../../packages/core/src/types/components.ts";
 import { parseListInboxParams, parseTriageParams } from "./_shared.ts";
 
 const opts = (parameters: Record<string, unknown>): HandlerOptions =>

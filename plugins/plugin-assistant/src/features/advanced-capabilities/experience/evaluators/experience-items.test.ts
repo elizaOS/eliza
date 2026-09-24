@@ -4,15 +4,16 @@
  * secret redaction + synthetic-summary filtering in prepare, and cross-batch dedupe
  * on record. Runtime and EXPERIENCE service are vi.fn stubs — no live model, no DB.
  */
-import { assert, describe, expect, it, vi } from "vitest";
+
 import type {
   EvaluatorProcessorContext,
   EvaluatorRunOptions,
-} from "../../../../../../../packages/core/src/types/evaluator.ts";
-import type { Memory } from "../../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../../../../packages/core/src/types/state.ts";
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
+import { assert, describe, expect, it, vi } from "vitest";
 import {
   formatRecentMessages,
   getRoomTranscript,

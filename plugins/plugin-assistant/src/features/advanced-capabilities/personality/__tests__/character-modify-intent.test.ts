@@ -6,13 +6,14 @@
  * when classification stays inconclusive. Role access runs the real
  * hasRoleAccess against an owner-seeded runtime.
  */
-import { describe, expect, test } from "vitest";
+
 import type {
   ActionResult,
   HandlerCallback,
   IAgentRuntime,
   UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import {
   characterAction,
   detectModificationIntentByRules,

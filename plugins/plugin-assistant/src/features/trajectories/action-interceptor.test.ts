@@ -3,7 +3,6 @@
  * real wrappers with deterministic service observers and runtime inputs.
  */
 
-import { describe, expect, it, vi } from "vitest";
 import type {
   Action,
   HandlerCallback,
@@ -12,7 +11,8 @@ import type {
   Plugin,
   Provider,
   State,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   clearTrajectoryContext,
   getTrajectoryContext,
