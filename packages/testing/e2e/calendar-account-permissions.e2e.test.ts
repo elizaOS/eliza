@@ -27,6 +27,7 @@ test("explicit read-only and revoked accounts cannot write or fall back to anoth
     });
     await seedGoogleConnectorGrant(runtime, {
       email: "writable@example.test",
+      grantId: "cal17-writable",
       capabilities: ["google.calendar.read", "google.calendar.write"],
     });
     const manager = getConnectorAccountManager(runtime);
@@ -77,6 +78,48 @@ test("explicit read-only and revoked accounts cannot write or fall back to anoth
     expect(
       mocks.requestLedger().filter((entry) => entry.path.includes("/events")),
     ).toEqual([]);
+    const created = await calendar.createCalendarEventMutation(url, {
+      ...request,
+      grantId: writableGrant,
+    });
+    expect(created.outcome).toBe("event");
+    if (!created.event) throw new Error("Expected persisted Google event");
+    expect(created.event.grantId).toBe(writableGrant);
+    expect(created.event.title).toBe(request.title);
+    const writes = mocks
+      .requestLedger()
+      .filter(
+        (entry) => entry.method === "POST" && entry.path.endsWith("/events"),
+      );
+    expect(writes).toHaveLength(1);
+    const providerReadback = await fetch(
+      `${mocks.baseUrls.google}/calendar/v3/calendars/primary/events/${encodeURIComponent(created.event.externalId)}`,
+      {
+        headers: {
+          Authorization: "Bearer mock-google-access-token-cal17-writable",
+        },
+      },
+    );
+    expect(providerReadback.status).toBe(200);
+    expect(await providerReadback.json()).toMatchObject({
+      id: created.event.externalId,
+      summary: request.title,
+      start: { dateTime: new Date(request.startAt).toISOString() },
+      end: { dateTime: new Date(request.endAt).toISOString() },
+    });
+    const googleBeforeRevocation = await repo.listCalendarEvents(
+      runtime.agentId,
+      "google",
+    );
+    expect(
+      googleBeforeRevocation.find((event) => event.id === created.event?.id),
+    ).toMatchObject({
+      grantId: writableGrant,
+      title: request.title,
+      startAt: new Date(request.startAt).toISOString(),
+      endAt: new Date(request.endAt).toISOString(),
+    });
+    mocks.clearRequestLedger();
     await manager.patchAccount("google", writable.id, { status: "revoked" });
     await expect(
       lifeops.requireGoogleCalendarGrant(url, "local", "owner", writableGrant),
@@ -92,6 +135,9 @@ test("explicit read-only and revoked accounts cannot write or fall back to anoth
     ).toEqual([]);
     expect(await repo.listCalendarEvents(runtime.agentId, "eliza")).toEqual(
       before,
+    );
+    expect(await repo.listCalendarEvents(runtime.agentId, "google")).toEqual(
+      googleBeforeRevocation,
     );
     expect(
       (
