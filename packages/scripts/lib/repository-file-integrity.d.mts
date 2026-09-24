@@ -1,6 +1,6 @@
 /** Types the repository path validation helpers used by TypeScript workspace tooling. */
 export function normalizeGitRepositoryPath(
-  value: string,
+  value: unknown,
   label?: string,
 ): string;
 

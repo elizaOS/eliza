@@ -1,10 +1,7 @@
 /**
  * Voice Workbench real-decision-logic services adapter (#8785, #9427).
  *
- * The ground-truth mock (`groundTruthMockServices`) echoes the corpus labels —
- * it proves the runner → scorers → report wiring, but it can never catch a
- * regression in the DECISION logic because it never runs it. This adapter does:
- * for every turn it runs the REAL, shipped modules —
+ * For each turn this adapter exercises the shipped decision modules:
  *
  *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/shared/voice-eot`)
  *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/shared/voice/respond-gate`)

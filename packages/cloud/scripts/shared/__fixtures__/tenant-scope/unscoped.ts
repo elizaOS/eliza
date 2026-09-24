@@ -4,7 +4,9 @@
  * read against a tenant data-plane table WITHOUT a scope annotation — the
  * checker must flag exactly one violation here.
  */
-declare const dbRead: { query: { apps: { findFirst(args: unknown): Promise<unknown> } } };
+declare const dbRead: {
+  query: { apps: { findFirst(args: unknown): Promise<unknown> } };
+};
 declare function eq(a: unknown, b: unknown): unknown;
 declare function and(...parts: unknown[]): unknown;
 declare function or(...parts: unknown[]): unknown;
@@ -39,7 +41,10 @@ export class UnscopedFixtureRepo {
     return await dbRead.query.apps.findFirst({ where: and(...conditions) });
   }
 
-  async findScopedSpreadWithSameLocalName(orgId: string, id: string): Promise<unknown> {
+  async findScopedSpreadWithSameLocalName(
+    orgId: string,
+    id: string,
+  ): Promise<unknown> {
     const conditions = [eq(apps.id, id), eq(apps.organization_id, orgId)];
     return await dbRead.query.apps.findFirst({ where: and(...conditions) });
   }

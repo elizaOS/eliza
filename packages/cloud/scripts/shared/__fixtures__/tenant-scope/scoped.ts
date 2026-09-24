@@ -4,7 +4,9 @@
  * annotation, and a real ownership predicate in the WHERE. The checker must
  * find zero violations here.
  */
-declare const dbRead: { query: { apps: { findFirst(args: unknown): Promise<unknown> } } };
+declare const dbRead: {
+  query: { apps: { findFirst(args: unknown): Promise<unknown> } };
+};
 declare function eq(a: unknown, b: unknown): unknown;
 declare function and(...parts: unknown[]): unknown;
 declare function inArray(a: unknown, b: unknown): unknown;

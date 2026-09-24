@@ -23,11 +23,6 @@
     "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
   },
   {
-    "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
-  },
-  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
     "tokens": ["@elizaos/plugin-discord"],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"

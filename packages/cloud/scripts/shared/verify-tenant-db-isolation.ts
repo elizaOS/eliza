@@ -8,21 +8,25 @@ import {
 
 // sslmode=disable: the throwaway CI Postgres has no TLS, so the admin executor
 // (DirectPgExecutor) must connect in plaintext rather than its prod TLS path.
-const ADMIN = "postgresql://postgres:adminpw@localhost:55432/postgres?sslmode=disable";
+const ADMIN =
+  "postgresql://postgres:adminpw@localhost:55432/postgres?sslmode=disable";
 const APP_A = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const APP_B = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 let pass = 0;
 let fail = 0;
 function check(name: string, ok: boolean, detail = "") {
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`,
+  );
   ok ? pass++ : fail++;
 }
 
 // The throwaway local Postgres has no TLS; the real cluster does. Strip the
 // (correct-for-prod) sslmode=require for these local connection checks so a
 // rejection is genuinely REVOKE CONNECT, not a TLS handshake failure.
-const local = (dsn: string) => dsn.replace("sslmode=require", "sslmode=disable");
+const local = (dsn: string) =>
+  dsn.replace("sslmode=require", "sslmode=disable");
 
 async function canConnect(dsn: string): Promise<{ ok: boolean; err?: string }> {
   const c = new Client({ connectionString: local(dsn) });
@@ -46,7 +50,9 @@ const a = await provisioner.provision(APP_A);
 const b = await provisioner.provision(APP_B);
 const identA = deriveTenantIdent(APP_A);
 const identB = deriveTenantIdent(APP_B);
-console.log(`provisioned A=${identA.dbName} (role ${identA.roleName}), B=${identB.dbName}`);
+console.log(
+  `provisioned A=${identA.dbName} (role ${identA.roleName}), B=${identB.dbName}`,
+);
 
 // 1. Each tenant can reach its OWN database.
 check("tenant A connects to its own DB", (await canConnect(a.dsn)).ok);
@@ -58,7 +64,9 @@ const cross = await canConnect(aCredsToBDb);
 check(
   "tenant A is REJECTED from tenant B's DB (REVOKE CONNECT)",
   !cross.ok,
-  cross.ok ? "BREACH: connected!" : `rejected: ${(cross.err ?? "").slice(0, 70)}`,
+  cross.ok
+    ? "BREACH: connected!"
+    : `rejected: ${(cross.err ?? "").slice(0, 70)}`,
 );
 
 // 3. Tenant A can actually use its own DB (schema privileges granted).
@@ -70,7 +78,11 @@ try {
   const r = await ca.query("select count(*)::int as n from t_demo");
   check("tenant A can create + write tables in its own DB", r.rows[0].n === 1);
 } catch (e) {
-  check("tenant A can create + write tables in its own DB", false, String(e).slice(0, 70));
+  check(
+    "tenant A can create + write tables in its own DB",
+    false,
+    String(e).slice(0, 70),
+  );
 } finally {
   await ca.end();
 }
@@ -80,7 +92,11 @@ const ca2 = new Client({ connectionString: local(a.dsn) });
 await ca2.connect();
 try {
   await ca2.query('create database "sneaky_db"');
-  check("tenant A CANNOT create databases (least-privilege)", false, "BREACH: created a DB!");
+  check(
+    "tenant A CANNOT create databases (least-privilege)",
+    false,
+    "BREACH: created a DB!",
+  );
 } catch {
   check("tenant A CANNOT create databases (least-privilege)", true);
 } finally {

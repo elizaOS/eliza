@@ -16,6 +16,12 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+export {
+  assertCarveOutProjectionComplete,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "../../../../../plugins/plugin-sql/src/carve-out-migration";
+
 const id = () => text("id").primaryKey();
 const created = () =>
   timestamp("created_at", { withTimezone: true }).defaultNow().notNull();

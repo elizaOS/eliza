@@ -38,7 +38,10 @@ async function adminExec(sql: string): Promise<void> {
 }
 
 // 1. Apply migration 0140 to the throwaway tenant PG (idempotent).
-const migration = readFileSync("./src/db/migrations/0140_tenant_db_clusters.sql", "utf8");
+const migration = readFileSync(
+  "./src/db/migrations/0140_tenant_db_clusters.sql",
+  "utf8",
+);
 for (const stmt of migration.split("--> statement-breakpoint")) {
   if (stmt.trim()) await adminExec(stmt.trim());
 }

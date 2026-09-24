@@ -23,3 +23,6 @@ Declare non-text model types explicitly; unexpected or unconsumed required
 fixtures fail. Run `bun test --conditions eliza-source
 packages/testing/e2e/perfect-result-runtime.e2e.test.ts` from the root. These
 scenarios verify runtime behavior, not model intelligence or audio quality.
+
+Renderer tests import DOM fixtures from `@elizaos/testing/browser-mocks`; the
+root runtime-fixture entry does not load browser mocks.

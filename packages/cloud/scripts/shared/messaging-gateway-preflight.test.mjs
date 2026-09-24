@@ -19,8 +19,14 @@ const SCRIPT = path.join(
   REPOSITORY_ROOT,
   "packages/cloud/scripts/shared/messaging-gateway-preflight.mjs",
 );
-const WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/cloud-gateway-discord.yml");
-const DEVELOP_WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/develop-full.yml");
+const WORKFLOW = path.join(
+  REPOSITORY_ROOT,
+  ".github/workflows/cloud-gateway-discord.yml",
+);
+const DEVELOP_WORKFLOW = path.join(
+  REPOSITORY_ROOT,
+  ".github/workflows/develop-full.yml",
+);
 const CONFIGURATION_CONTEXT_IDENTIFIER =
   /(^|[^A-Za-z0-9_])(secrets|vars|inputs)(?=$|[^A-Za-z0-9_])/i;
 const GITHUB_EXPRESSION = /\$\{\{([\s\S]*?)\}\}/g;
@@ -116,12 +122,16 @@ function parseWorkflow(source, label) {
 }
 
 function expressionReferencesConfigurationContext(expression) {
-  const withoutStringLiterals = expression.replace(/'(?:''|[^'])*'|"(?:\\.|[^"\\])*"/g, "");
+  const withoutStringLiterals = expression.replace(
+    /'(?:''|[^'])*'|"(?:\\.|[^"\\])*"/g,
+    "",
+  );
   return CONFIGURATION_CONTEXT_IDENTIFIER.test(withoutStringLiterals);
 }
 
 function stringReferencesConfigurationContext(value, implicitExpression) {
-  if (implicitExpression && expressionReferencesConfigurationContext(value)) return true;
+  if (implicitExpression && expressionReferencesConfigurationContext(value))
+    return true;
 
   return Array.from(value.matchAll(GITHUB_EXPRESSION)).some((match) =>
     expressionReferencesConfigurationContext(match[1]),
@@ -130,10 +140,15 @@ function stringReferencesConfigurationContext(value, implicitExpression) {
 
 function isSemanticConfigurationKey(valuePath, key) {
   if (key === "inputs") {
-    return valuePath === "$.on.workflow_call" || valuePath === "$.on.workflow_dispatch";
+    return (
+      valuePath === "$.on.workflow_call" ||
+      valuePath === "$.on.workflow_dispatch"
+    );
   }
   if (key !== "secrets") return false;
-  return valuePath === "$.on.workflow_call" || /^\$\.jobs\.[^.]+$/.test(valuePath);
+  return (
+    valuePath === "$.on.workflow_call" || /^\$\.jobs\.[^.]+$/.test(valuePath)
+  );
 }
 
 function findConfigurationContextReferences(
@@ -167,7 +182,12 @@ function findConfigurationContextReferences(
     if (isSemanticConfigurationKey(valuePath, key)) {
       references.push(`${valuePath}{key:${key}}`);
     }
-    findConfigurationContextReferences(item, `${valuePath}.${key}`, references, key === "if");
+    findConfigurationContextReferences(
+      item,
+      `${valuePath}.${key}`,
+      references,
+      key === "if",
+    );
   }
 
   return references;
@@ -185,14 +205,22 @@ function assertSourceTestOnlyWorkflow(workflow) {
     );
   }
 
-  assert.deepEqual(Object.keys(jobs), ["test"], "cloud-gateway-discord must contain only test");
+  assert.deepEqual(
+    Object.keys(jobs),
+    ["test"],
+    "cloud-gateway-discord must contain only test",
+  );
   assert.deepEqual(
     Object.keys(workflow),
     Object.keys(EXPECTED_SOURCE_ONLY_WORKFLOW),
     "cloud-gateway-discord top-level keys must match the exact source-only contract",
   );
   const testJob = requireMapping(jobs.test, "cloud-gateway-discord test job");
-  assert.equal(Object.hasOwn(testJob, "env"), false, "test job must not define environment values");
+  assert.equal(
+    Object.hasOwn(testJob, "env"),
+    false,
+    "test job must not define environment values",
+  );
   assert.equal(
     Object.hasOwn(testJob, "permissions"),
     false,
@@ -238,13 +266,19 @@ function replaceExactlyOnce(source, expected, replacement) {
     -1,
     `mutation target is not unique: ${expected}`,
   );
-  return source.slice(0, firstIndex) + replacement + source.slice(firstIndex + expected.length);
+  return (
+    source.slice(0, firstIndex) +
+    replacement +
+    source.slice(firstIndex + expected.length)
+  );
 }
 
 function assertWorkflowSourceRejected(source, expectedError) {
   assert.throws(
     () =>
-      assertSourceTestOnlyWorkflow(parseWorkflow(source, "mutated cloud-gateway-discord workflow")),
+      assertSourceTestOnlyWorkflow(
+        parseWorkflow(source, "mutated cloud-gateway-discord workflow"),
+      ),
     expectedError,
   );
 }
@@ -285,14 +319,21 @@ const DISCORD_PRESENCE_ENV = {
 const WHATSAPP_CONTRACT_VALUE = "whatsapp-contract-value-never-print";
 
 function runStrict(channels, env = {}) {
-  return spawnSync(process.execPath, [SCRIPT, "--strict", `--channels=${channels}`], {
-    encoding: "utf8",
-    env: { PATH: process.env.PATH, ...env },
-  });
+  return spawnSync(
+    process.execPath,
+    [SCRIPT, "--strict", `--channels=${channels}`],
+    {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, ...env },
+    },
+  );
 }
 
 test("requires both halves of the shared webhook forwarding boundary", () => {
-  for (const missingKey of ["ELIZA_APP_WEBHOOK_GATEWAY_URL", "ELIZA_APP_WEBHOOK_GATEWAY_SECRET"]) {
+  for (const missingKey of [
+    "ELIZA_APP_WEBHOOK_GATEWAY_URL",
+    "ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
+  ]) {
     const env = { ...SHARED_ENV };
     delete env[missingKey];
     const result = runStrict("shared", env);
@@ -408,7 +449,10 @@ test("Discord shared ingress is distinct from human OAuth and generic bot aliase
     result.stdout,
     /\[fail\] discord: system bot token - Discord system bot token is not configured/,
   );
-  assert.doesNotMatch(result.stdout, /\[fail\].* is configured|\[fail\].* is explicitly enabled/);
+  assert.doesNotMatch(
+    result.stdout,
+    /\[fail\].* is configured|\[fail\].* is explicitly enabled/,
+  );
   assert.doesNotMatch(output, /legacy-contract-value-never-print/);
 });
 
@@ -441,18 +485,23 @@ test("WhatsApp readiness requires one complete authority across all 256 states",
         .filter((_, index) => (mask & (1 << index)) !== 0)
         .map((name) => [name, WHATSAPP_CONTRACT_VALUE]),
     );
-    const hasCompleteAuthority = WHATSAPP_CREDENTIAL_SETS.some((credentialSet) =>
-      credentialSet.every((name) => Boolean(env[name])),
+    const hasCompleteAuthority = WHATSAPP_CREDENTIAL_SETS.some(
+      (credentialSet) => credentialSet.every((name) => Boolean(env[name])),
     );
     const missing = missingWhatsAppCredentialRefs(env);
     assert.equal(missing.length === 0, hasCompleteAuthority);
-    assert.doesNotMatch(JSON.stringify(missing), /whatsapp-contract-value-never-print/);
+    assert.doesNotMatch(
+      JSON.stringify(missing),
+      /whatsapp-contract-value-never-print/,
+    );
   }
 });
 
 test("WhatsApp strict preflight wires complete and split authorities without leaking values", () => {
   for (const credentialSet of WHATSAPP_CREDENTIAL_SETS) {
-    const env = Object.fromEntries(credentialSet.map((name) => [name, WHATSAPP_CONTRACT_VALUE]));
+    const env = Object.fromEntries(
+      credentialSet.map((name) => [name, WHATSAPP_CONTRACT_VALUE]),
+    );
     const result = runStrict("whatsapp", env);
     const output = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 0, output);
@@ -475,23 +524,30 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
 });
 
 test("reusable workflow keeps the develop caller source-test-only", () => {
-  const workflow = parseWorkflow(readFileSync(WORKFLOW, "utf8"), "cloud-gateway-discord workflow");
+  const workflow = parseWorkflow(
+    readFileSync(WORKFLOW, "utf8"),
+    "cloud-gateway-discord workflow",
+  );
   const developWorkflow = parseWorkflow(
     readFileSync(DEVELOP_WORKFLOW, "utf8"),
     "develop-full workflow",
   );
   assertSourceTestOnlyWorkflow(workflow);
-  const developPush = requireMapping(developWorkflow.on, "develop-full triggers").push;
+  const developPush = requireMapping(
+    developWorkflow.on,
+    "develop-full triggers",
+  ).push;
   const caller = requireMapping(
-    requireMapping(developWorkflow.jobs, "develop-full jobs")["cloud-gateway-discord"],
+    requireMapping(developWorkflow.jobs, "develop-full jobs")[
+      "cloud-gateway-discord"
+    ],
     "develop-full cloud-gateway-discord caller",
   );
 
-  assert.deepEqual(requireMapping(developPush, "develop-full push trigger").branches, [
-    "develop",
-    "staging",
-    "main",
-  ]);
+  assert.deepEqual(
+    requireMapping(developPush, "develop-full push trigger").branches,
+    ["develop", "staging", "main"],
+  );
   assertDevelopSourceOnlyCaller(caller);
 });
 
@@ -519,7 +575,8 @@ test("configuration-context scan accepts benign prose", () => {
   assert.doesNotThrow(() =>
     assertSourceTestOnlyWorkflow(
       parseWorkflow(
-        "# Benign prose: secrets, vars, and inputs are unavailable.\n" + workflowSource,
+        "# Benign prose: secrets, vars, and inputs are unavailable.\n" +
+          workflowSource,
         "commented cloud-gateway-discord workflow",
       ),
     ),
@@ -536,7 +593,11 @@ test("source-only workflow guard rejects adversarial YAML source mutations", () 
   ].join("\n");
 
   assertWorkflowSourceRejected(
-    replaceExactlyOnce(workflowSource, testName, testName + "\n    environment: production"),
+    replaceExactlyOnce(
+      workflowSource,
+      testName,
+      testName + "\n    environment: production",
+    ),
     /job test must not attach an environment/,
   );
 
@@ -581,13 +642,18 @@ test("source-only workflow guard rejects adversarial YAML source mutations", () 
     replaceExactlyOnce(
       workflowSource,
       testName,
-      testName + "\n    permissions:\n      contents: write\n      id-token: write",
+      testName +
+        "\n    permissions:\n      contents: write\n      id-token: write",
     ),
     /test job must not override workflow permissions/,
   );
 
   assertWorkflowSourceRejected(
-    replaceExactlyOnce(workflowSource, testName, testName + "\n    container: node:24"),
+    replaceExactlyOnce(
+      workflowSource,
+      testName,
+      testName + "\n    container: node:24",
+    ),
     /test job keys must match the exact source-only contract/,
   );
 
@@ -632,7 +698,12 @@ test("source-only workflow guard rejects adversarial YAML source mutations", () 
   let mergedEnvironmentWorkflow = replaceExactlyOnce(
     workflowSource,
     "jobs:",
-    ["x-job-defaults: &job-defaults", "  environment: production", "", "jobs:"].join("\n"),
+    [
+      "x-job-defaults: &job-defaults",
+      "  environment: production",
+      "",
+      "jobs:",
+    ].join("\n"),
   );
   mergedEnvironmentWorkflow = replaceExactlyOnce(
     mergedEnvironmentWorkflow,

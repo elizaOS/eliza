@@ -23,7 +23,8 @@ export function missingWhatsAppCredentialRefs(env) {
     set.filter((name) => !env[name]?.trim()),
   );
   return candidates.reduce(
-    (current, candidate) => (candidate.length < current.length ? candidate : current),
+    (current, candidate) =>
+      candidate.length < current.length ? candidate : current,
     nearest,
   );
 }

@@ -16,10 +16,14 @@ async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   const unknown = process.argv.slice(2).filter((arg) => arg !== "--apply");
   if (unknown.length > 0) {
-    process.stderr.write(`Unknown arguments: ${unknown.join(" ")}\nUsage: [--apply]\n`);
+    process.stderr.write(
+      `Unknown arguments: ${unknown.join(" ")}\nUsage: [--apply]\n`,
+    );
     process.exit(2);
   }
-  const { dbWrite, closeDatabaseConnectionsForTests } = await import("../../shared/src/db/client");
+  const { dbWrite, closeDatabaseConnectionsForTests } = await import(
+    "../../shared/src/db/client"
+  );
   const { reconcileContainerDeleteJobs } = await import(
     "../../shared/src/lib/services/container-delete-job-reconciler"
   );

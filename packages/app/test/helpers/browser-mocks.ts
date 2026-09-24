@@ -1,4 +1,4 @@
-/** Compatibility facade for the canonical core browser test helpers. */
+/** Compatibility facade for the canonical renderer test helpers. */
 export {
   createCanvas2DContext,
   createMemoryStorage,
@@ -6,4 +6,4 @@ export {
   installCanvasShims,
   installMediaElementShims,
   suppressReactTestConsoleErrors,
-} from "@elizaos/testing";
+} from "@elizaos/testing/browser-mocks";

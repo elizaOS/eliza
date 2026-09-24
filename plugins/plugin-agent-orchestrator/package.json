@@ -141,8 +141,6 @@
     "typecheck:live-harness": "tsc --noEmit -p tsconfig.live-harness.json",
     "test": "bunx vitest run --config vitest.config.ts && bun run test:ui",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
-    "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
-    "test:e2e:native": "bun run build && node tests/e2e/live-native-acp-smoke.mjs",
     "test:e2e:pi-linked-account": "bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
     "test:e2e:multi-account": "bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts",
     "test:e2e:multi-account:live": "ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts",

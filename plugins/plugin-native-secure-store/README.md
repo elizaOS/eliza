@@ -10,8 +10,4 @@ Build from the repository root:
 bun run --cwd plugins/plugin-native-secure-store build
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd plugins/plugin-native-secure-store test
-```
+Native storage behavior requires testing on the target Apple or Android device.

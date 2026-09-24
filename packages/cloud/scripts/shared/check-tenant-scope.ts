@@ -54,17 +54,26 @@ export interface TenantScopeViolation {
 const ALLOW_ANNOTATION = /global-scope:/;
 
 function parse(file: string): ts.SourceFile {
-  return ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  return ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
 }
 
 function primaryKeyPredicateTable(where: ts.Expression): string | undefined {
   if (!ts.isCallExpression(where)) return undefined;
   if (!ts.isIdentifier(where.expression)) return undefined;
-  if (where.expression.text !== "eq" && where.expression.text !== "inArray") return undefined;
+  if (where.expression.text !== "eq" && where.expression.text !== "inArray")
+    return undefined;
   const lhs = where.arguments[0];
   if (!lhs || !ts.isPropertyAccessExpression(lhs)) return undefined;
-  if (!ts.isIdentifier(lhs.expression) || lhs.name.text !== "id") return undefined;
-  return TENANT_DATA_PLANE_TABLES.has(lhs.expression.text) ? lhs.expression.text : undefined;
+  if (!ts.isIdentifier(lhs.expression) || lhs.name.text !== "id")
+    return undefined;
+  return TENANT_DATA_PLANE_TABLES.has(lhs.expression.text)
+    ? lhs.expression.text
+    : undefined;
 }
 
 type ConstArrayDeclaration = ts.VariableDeclaration & {
@@ -73,7 +82,9 @@ type ConstArrayDeclaration = ts.VariableDeclaration & {
   parent: ts.VariableDeclarationList;
 };
 
-function isConstArrayDeclaration(node: ts.VariableDeclaration): node is ConstArrayDeclaration {
+function isConstArrayDeclaration(
+  node: ts.VariableDeclaration,
+): node is ConstArrayDeclaration {
   return (
     ts.isIdentifier(node.name) &&
     node.initializer !== undefined &&
@@ -90,7 +101,10 @@ function constArrayInitializerFromStatement(
   if (!ts.isVariableStatement(statement)) return undefined;
   let found: ts.ArrayLiteralExpression | undefined;
   for (const declaration of statement.declarationList.declarations) {
-    if (isConstArrayDeclaration(declaration) && declaration.name.text === name) {
+    if (
+      isConstArrayDeclaration(declaration) &&
+      declaration.name.text === name
+    ) {
       found = declaration.initializer;
     }
   }
@@ -108,7 +122,11 @@ function findVisibleConstArrayInitializer(
   name: string,
   from: ts.Node,
 ): ts.ArrayLiteralExpression | undefined {
-  for (let scope: ts.Node | undefined = from.parent; scope; scope = scope.parent) {
+  for (
+    let scope: ts.Node | undefined = from.parent;
+    scope;
+    scope = scope.parent
+  ) {
     const statements = statementScope(scope);
     if (!statements) continue;
 
@@ -173,7 +191,8 @@ function primaryKeyOnlyTables(
 
   if (!ts.isCallExpression(where)) return undefined;
   if (!ts.isIdentifier(where.expression)) return undefined;
-  if (where.expression.text !== "and" && where.expression.text !== "or") return undefined;
+  if (where.expression.text !== "and" && where.expression.text !== "or")
+    return undefined;
 
   const tables = new Set<string>();
   let sawPkPredicate = false;
@@ -209,7 +228,8 @@ function enclosingFunction(node: ts.Node): { name: string; text: string } {
     }
   }
   if (!fn) return { name: "<module>", text: "" };
-  const name = fn.name && ts.isIdentifier(fn.name) ? fn.name.text : "<anonymous>";
+  const name =
+    fn.name && ts.isIdentifier(fn.name) ? fn.name.text : "<anonymous>";
   return { name, text: fn.getFullText() };
 }
 
@@ -224,7 +244,11 @@ function whereExpression(node: ts.Node): ts.Expression | undefined {
   ) {
     return node.arguments[0];
   }
-  if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === "where") {
+  if (
+    ts.isPropertyAssignment(node) &&
+    ts.isIdentifier(node.name) &&
+    node.name.text === "where"
+  ) {
     return node.initializer;
   }
   return undefined;
@@ -234,7 +258,9 @@ function whereExpression(node: ts.Node): ts.Expression | undefined {
  * Returns every unannotated pk-only tenant-table access in the given repository
  * files. Pure over the file contents (reads from disk, no other side effects).
  */
-export function findUnscopedTenantReads(repoFiles: string[]): TenantScopeViolation[] {
+export function findUnscopedTenantReads(
+  repoFiles: string[],
+): TenantScopeViolation[] {
   const violations: TenantScopeViolation[] = [];
   for (const file of repoFiles) {
     const source = parse(file);
@@ -245,7 +271,9 @@ export function findUnscopedTenantReads(repoFiles: string[]): TenantScopeViolati
         if (tables) {
           const fn = enclosingFunction(node);
           if (!ALLOW_ANNOTATION.test(fn.text)) {
-            const { line } = source.getLineAndCharacterOfPosition(node.getStart());
+            const { line } = source.getLineAndCharacterOfPosition(
+              node.getStart(),
+            );
             for (const table of tables) {
               violations.push({ file, line: line + 1, table, method: fn.name });
             }
@@ -260,8 +288,12 @@ export function findUnscopedTenantReads(repoFiles: string[]): TenantScopeViolati
 }
 
 if (import.meta.main) {
-  const root = fileURLToPath(new URL("../../shared/src/db/repositories", import.meta.url));
-  const files = globSync(`${root}/**/*.ts`).filter((f) => !f.endsWith(".test.ts"));
+  const root = fileURLToPath(
+    new URL("../../shared/src/db/repositories", import.meta.url),
+  );
+  const files = globSync(`${root}/**/*.ts`).filter(
+    (f) => !f.endsWith(".test.ts"),
+  );
   const violations = findUnscopedTenantReads(files);
 
   if (violations.length > 0) {

@@ -54,7 +54,10 @@ test("strict mode passes once every required account has one complete credential
 test("report mode surfaces missing reference names but never fails", () => {
   const result = run([]);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /missing: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET/);
+  assert.match(
+    result.stdout,
+    /missing: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET/,
+  );
   assert.match(result.stdout, /Re-run with --strict in CI to fail closed/);
 });
 
@@ -93,7 +96,10 @@ test("WhatsApp doctor exposes missing, partial, and configured 4-of-4 states wit
     [4, "configured"],
   ]) {
     const env = Object.fromEntries(
-      WHATSAPP_ENV.slice(0, count).map((name) => [name, WHATSAPP_CONTRACT_VALUE]),
+      WHATSAPP_ENV.slice(0, count).map((name) => [
+        name,
+        WHATSAPP_CONTRACT_VALUE,
+      ]),
     );
     const result = run(["--json", "--category=social_communications"], env);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
