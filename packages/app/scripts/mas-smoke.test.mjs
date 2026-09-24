@@ -24,7 +24,7 @@ import {
   identifierVerificationRequirement,
   signingIdentifierForMacho,
 } from "./codesign-mas.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.ts";
 import {
   findForbiddenPrivateComponents,
   findMachOFiles,

@@ -45,7 +45,7 @@ function fixture(t, nested = false, appName = "app") {
     "ensure-avatars.mjs",
     "process-vrms.mjs",
     "lib/app-dir.mjs",
-    "lib/repo-root.mjs",
+    "lib/repo-root.ts",
   ])
     cpSync(path.join(scripts, file), path.join(target, file));
   const put = (name, bytes) => {

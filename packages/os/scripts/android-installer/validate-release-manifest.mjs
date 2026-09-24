@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 const args = process.argv.slice(2);
 const DEFAULT_ARTIFACT_DIR = "release/android/partitions";
 const hardwareInventory = readJson(
-  new URL("../../hardware-targets.json", import.meta.url),
+  new URL("../../android/hardware-targets.json", import.meta.url),
 );
 const hardwareTargetsById = new Map(
   (hardwareInventory.targets ?? []).map((target) => [target.targetId, target]),
@@ -142,7 +142,7 @@ function releaseArtifactInstructions(
       "replace each artifacts[].sizeBytes and artifacts[].sha256 with those exact values; do not use placeholders or copied hashes",
     ],
     validate_commands: [
-      `node android/installer/scripts/validate-release-manifest.mjs "${manifestPath}" --artifact-dir "${stageDir}" --write-evidence evidence/android-partition-artifacts-integrity.json`,
+      `node scripts/android-installer/validate-release-manifest.mjs "${manifestPath}" --artifact-dir "${stageDir}" --write-evidence evidence/android-partition-artifacts-integrity.json`,
     ],
     provenance_requirements: [
       `AOSP workspace path and ${inventoryTarget?.aospLockPath ?? "the selected AOSP lock"} digest`,

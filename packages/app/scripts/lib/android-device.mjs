@@ -18,7 +18,7 @@ import { isDeviceLeased } from "./device-lease.mjs";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
+} from "./renderer-build-manifest.ts";
 
 const IS_WINDOWS = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -18,7 +18,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { verifyStagedArtifact } from "./lib/verify-ondevice-artifact.mjs";
+import { verifyStagedArtifact } from "./lib/verify-ondevice-artifact.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");

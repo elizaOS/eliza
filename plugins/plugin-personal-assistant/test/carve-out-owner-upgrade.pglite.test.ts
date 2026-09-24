@@ -7,22 +7,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { migrateGoalTables } from "@elizaos/plugin-goals";
+import { migrateInboxTables } from "@elizaos/plugin-inbox";
+import { migrateReminderTables } from "@elizaos/plugin-reminders";
+import { type CarveOutDatabase, runCarveOutMigration } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrateFinanceTables } from "../../plugin-finances/src/services/migration";
-import { migrateGoalTables } from "../../plugin-goals/src/services/migration";
-import { migrateInboxTables } from "../../plugin-inbox/src/inbox/migration";
-import { migrateReminderTables } from "../../plugin-reminders/src/services/migration";
-import {
-  type CarveOutDatabase,
-  runCarveOutMigration,
-} from "../../plugin-sql/src/carve-out-migration";
 
 const domains = [
-  {
-    domain: "finances",
-    table: "life_payment_sources",
-    migrate: migrateFinanceTables,
-  },
   {
     domain: "goals",
     table: "life_goal_definitions",

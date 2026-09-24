@@ -28,7 +28,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.mjs";
+import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.ts";
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDeclarations,

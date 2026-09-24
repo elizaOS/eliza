@@ -381,8 +381,6 @@
         "server"
       ],
       "buildOnInstall": {
-        "sentinel": "dist/api/auth.js",
-        "order": 5,
         "script": "build:dist"
       }
     }

@@ -20,7 +20,7 @@
  * (exit 0) so it never red-fails a build that simply has no credentials. Exit 1
  * only on a real, authenticated service returning a wrong/invalid result.
  *
- * Run: `node packages/testing/scenario-runner/scripts/real-service-audio-roundtrip.mjs`
+ * Run: `node packages/testing/scripts/scenario-runner/real-service-audio-roundtrip.mjs`
  * (reads ELEVENLABS_API_KEY, then ELEVENLABS_XI_API_KEY, from the env — the
  * plugin reads ELEVENLABS_API_KEY; the repo .env historically uses the XI name).
  */

@@ -140,10 +140,10 @@ sim: check-arch
 	node $(DISTRO)/sim.mjs --brand-config $(BRAND_CONFIG) --device-dir $(DEVICE_DIR) --aosp-root $(AOSP_ROOT) $(ARGS)
 
 splash:
-	node $(HERE)scripts/generate-eliza-bootanimation.mjs
+	node $(HERE)../scripts/android/generate-eliza-bootanimation.mjs
 
 bootanimation: splash
-	node $(HERE)scripts/build-eliza-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
+	node $(HERE)../scripts/android/build-eliza-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
 
 check-arch:
 	@case " $(SUPPORTED_ARCHES) " in \

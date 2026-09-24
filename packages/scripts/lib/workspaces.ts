@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertContainedRegularFile } from "./repository-file-integrity.mjs";
+import { assertContainedRegularFile } from "./repository-file-integrity.ts";
 
 /** Describes the canonical workspace discovery and package graph helpers. */
 export interface WorkspaceDiscoveryOptions {

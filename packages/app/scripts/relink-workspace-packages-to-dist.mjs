@@ -16,7 +16,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const root = resolveRepoRootFromImportMeta(import.meta.url);

@@ -7,8 +7,8 @@ import { mobileWebDistReuseStatus } from "./mobile-web-build-reuse.mjs";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
-import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+} from "./renderer-build-manifest.ts";
+import { resolveRepoRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

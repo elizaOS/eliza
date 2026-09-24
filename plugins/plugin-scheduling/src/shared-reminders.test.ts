@@ -1,40 +1,30 @@
-/** Verifies the Shared reminder action against its trusted-destination boundary. */
+/** Exercises the public scheduling barrel through the Shared reminder action and its trusted-destination boundary. */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "./scheduled-task/completion-check-registry.js";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "./scheduled-task/consolidation-policy.js";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "./scheduled-task/escalation.js";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "./scheduled-task/gate-registry.js";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  TestNoopScheduledTaskDispatcher,
-} from "./scheduled-task/runner.js";
-import { createInMemoryScheduledTaskLogStore } from "./scheduled-task/state-log.js";
 import type {
   ScheduledTask,
   ScheduledTaskInput,
   ScheduledTaskRunner,
-} from "./scheduled-task/types.js";
+} from "@elizaos/plugin-scheduling";
 import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
   createSharedRemindersEdgePlugin,
+  createTaskGateRegistry,
   parseSharedReminderDelivery,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  type ScheduledTaskRunnerHandle,
   type SharedRemindersEdgePluginOptions,
-} from "./shared-reminders.js";
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it, vi } from "vitest";
 
 const NOW = "2026-08-14T20:00:00.000Z";
 const PRIVATE_DELIVERY = {

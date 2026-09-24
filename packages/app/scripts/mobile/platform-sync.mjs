@@ -6,7 +6,7 @@ import process from "node:process";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
-} from "../lib/renderer-build-manifest.mjs";
+} from "../lib/renderer-build-manifest.ts";
 import {
   dropRetiredLlamaCppFromAndroidGradle,
   reconcilePluginManifestWithGradle,

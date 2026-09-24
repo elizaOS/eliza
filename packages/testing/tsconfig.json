@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true,
     "types": ["node", "bun"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
@@ -14,8 +13,7 @@
       "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"]
     },
     "composite": false,
-    "incremental": false,
-    "skipLibCheck": true
+    "incremental": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]

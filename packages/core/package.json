@@ -76,10 +76,7 @@
 	"elizaos": {
 		"scripts": {
 			"coreBuild": true,
-			"buildOnInstall": {
-				"sentinel": "dist/index.js",
-				"order": 1
-			},
+			"buildOnInstall": {},
 			"testLanes": [
 				"server"
 			]

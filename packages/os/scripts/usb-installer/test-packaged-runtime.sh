@@ -12,8 +12,7 @@ if [[ -z "$artifact" || ! -f "$artifact" ]]; then
   exit 1
 fi
 
-repo_root="$(git rev-parse --show-toplevel)"
-usb_package="$repo_root/usb-installer"
+usb_package="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../usb-installer" && pwd)"
 stage_dir="$(mktemp -d /tmp/elizaos-electrobun-runtime.XXXXXX)"
 cleanup() {
   rm -R "$stage_dir"
@@ -49,7 +48,7 @@ fi
   }
 '
 
-cd "$repo_root"
+cd "$usb_package"
 "$runtime_bun" test \
   "$usb_package/src/__tests__/packaged-app-handler.test.ts" \
   "$usb_package/src/backend/__tests__/raw-image-pipeline.test.ts" \

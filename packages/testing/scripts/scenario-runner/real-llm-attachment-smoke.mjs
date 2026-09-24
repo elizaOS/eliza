@@ -13,7 +13,7 @@
  * so it never red-fails a build that simply has no credentials. Exit 1 only on a
  * real, authenticated model giving a wrong answer.
  *
- * Run: `node packages/testing/scenario-runner/scripts/real-llm-attachment-smoke.mjs`
+ * Run: `node packages/testing/scripts/scenario-runner/real-llm-attachment-smoke.mjs`
  * (reads OPENAI_API_KEY / ANTHROPIC_API_KEY / XAI_API_KEY / CEREBRAS_API_KEY
  * from the env).
  */

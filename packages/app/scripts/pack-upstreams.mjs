@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const ARTIFACTS_DIR = path.join(ROOT, "artifacts");

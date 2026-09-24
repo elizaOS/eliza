@@ -23,7 +23,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {

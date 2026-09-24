@@ -28,7 +28,7 @@
  * error; exit 1 only on a real, authenticated wrong/invalid result.
  *
  * Run:
- *   node packages/testing/scenario-runner/scripts/real-service-voice-e2e.mjs
+ *   node packages/testing/scripts/scenario-runner/real-service-voice-e2e.mjs
  *   [--out <dir>]   # also write question.mp3 / reply.mp3 there
  */
 

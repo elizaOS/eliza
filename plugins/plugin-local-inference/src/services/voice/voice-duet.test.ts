@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
 	DuetAudioBridge,
 	resampleLinear,
-} from "../../../../../packages/app/scripts/lib/duet-bridge.mjs";
+} from "../../../../../packages/app/scripts/lib/duet-bridge.ts";
 import { EndToEndLatencyTracer, type LatencyTrace } from "../latency-trace";
 import { parseExpressiveTags } from "./expressive-tags";
 import { PushMicSource } from "./mic-source";

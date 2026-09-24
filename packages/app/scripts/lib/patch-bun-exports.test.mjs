@@ -16,7 +16,7 @@ import {
   pruneNestedElizaPluginCoreCopies,
   repairElizaCoreRuntimeDist,
 } from "./patch-bun-exports.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = join(

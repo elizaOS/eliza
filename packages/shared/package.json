@@ -958,10 +958,7 @@
   "elizaos": {
     "scripts": {
       "coreBuild": true,
-      "buildOnInstall": {
-        "sentinel": "dist/brand/index.js",
-        "order": 2
-      },
+      "buildOnInstall": {},
       "testLanes": [
         "server"
       ]

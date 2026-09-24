@@ -4,7 +4,6 @@
 		"lib": ["ES2024", "DOM", "DOM.Iterable"],
 		"outDir": "./dist",
 		"rootDir": "../../",
-		"ignoreDeprecations": "6.0",
 		"sourceMap": false,
 		"inlineSourceMap": false,
 		"typeRoots": [
@@ -14,11 +13,9 @@
 			"../../../node_modules"
 		],
 		"types": ["node"],
-		"noEmit": true,
 		"composite": false,
 		"declaration": false,
 		"declarationMap": false,
-		"skipLibCheck": true,
 		"paths": {
 			"@elizaos/core": ["./src/index.ts"]
 		},

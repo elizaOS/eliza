@@ -20,7 +20,7 @@ import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
-} from "./repository-file-integrity.mjs";
+} from "./repository-file-integrity.ts";
 import { execFileSync } from "./spawn-sync-captured.mjs";
 
 export const SCRIPT_TEST_RUNNER =

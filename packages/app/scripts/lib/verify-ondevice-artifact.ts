@@ -12,8 +12,9 @@ import path from "node:path";
 
 import {
   assertStagedRendererMatchesBuild,
+  type RendererBuildManifest,
   readRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
+} from "./renderer-build-manifest.ts";
 
 /**
  * @param {{
@@ -29,9 +30,14 @@ export function verifyStagedArtifact({
   freshDistDir = null,
   requiredFiles = [],
   label = "artifact",
+}: {
+  rendererDir: string;
+  freshDistDir?: string | null;
+  requiredFiles?: string[];
+  label?: string;
 }) {
-  const problems = [];
-  let manifest = null;
+  const problems: string[] = [];
+  let manifest: RendererBuildManifest | null = null;
 
   if (freshDistDir) {
     try {
@@ -39,6 +45,7 @@ export function verifyStagedArtifact({
         label,
       });
     } catch (error) {
+      // error-policy:J4: expose verification failures in the returned gate result.
       problems.push(error instanceof Error ? error.message : String(error));
     }
   } else {

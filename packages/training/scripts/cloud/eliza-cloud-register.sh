@@ -16,7 +16,7 @@
 # This script does step 2 + step 3 for all three sizes in sequence,
 # pulling the env from the cloud service's canonical manifests. The
 # catalog edit (step 1) is a manual one-line PR per size — see
-# `../README.md` for the exact diff.
+# `../../cloud/README.md` for the exact diff.
 #
 # Required env:
 #   VASTAI_API_KEY     — vastai_… key with template + endpoint perms

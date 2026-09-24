@@ -18,7 +18,7 @@ import {
   NATIVE_PLUGINS_ROOT,
   resolveNativePluginDir as nativePluginDir,
 } from "./capacitor-plugin-names.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECURSIVE_CLEANUP_SCRIPT = path.resolve(

@@ -4,8 +4,7 @@
  * prefix taking priority over bare-name cross-provider fallbacks. Provides the
  * per-slot model selectors (`getSmallModel`, `getLargeModel`, `getNanoModel`, …)
  * with their small/large fallback chains, auth-mode / API-key / base-URL
- * resolution, and the CoT-budget, temperature-lock, and
- * max-output-token override parsers documented in this package's AGENTS.md.
+ * resolution, and the reasoning-budget, temperature, and output-limit parsers.
  */
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";

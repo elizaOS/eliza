@@ -9,7 +9,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const pluginDir = path.join(repoRoot, "plugins", "plugin-agent-orchestrator");

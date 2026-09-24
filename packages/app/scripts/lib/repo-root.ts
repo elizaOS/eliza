@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-function looksLikeConsumerRoot(dir) {
+function looksLikeConsumerRoot(dir: string) {
   return (
     existsSync(path.join(dir, "package.json")) &&
     (existsSync(path.join(dir, "packages", "app", "package.json")) ||
@@ -17,7 +17,7 @@ function looksLikeConsumerRoot(dir) {
   );
 }
 
-function looksLikeFlatMonorepoRoot(dir) {
+function looksLikeFlatMonorepoRoot(dir: string) {
   const flat =
     existsSync(path.join(dir, "package.json")) &&
     existsSync(path.join(dir, "packages", "app", "package.json")) &&
@@ -38,7 +38,7 @@ function looksLikeFlatMonorepoRoot(dir) {
   return true;
 }
 
-function looksLikeRepoRoot(dir) {
+function looksLikeRepoRoot(dir: string) {
   return looksLikeFlatMonorepoRoot(dir) || looksLikeConsumerRoot(dir);
 }
 
@@ -69,7 +69,7 @@ export function resolveRepoRootFromCwd({ cwd = process.cwd() } = {}) {
 }
 
 export function resolveRepoRootFromImportMeta(
-  importMetaUrl,
+  importMetaUrl: string,
   { fallbackToCwd = false, cwd = process.cwd() } = {},
 ) {
   try {
@@ -86,7 +86,7 @@ export function resolveRepoRootFromImportMeta(
 // + packages/scripts. Unlike resolveRepoRoot, this does NOT defer to an outer
 // consumer container when eliza is nested as a subrepo for local integration.
 // Use it to locate eliza-internal `packages/scripts/*`.
-function hasElizaWorkspaceShape(dir) {
+function hasElizaWorkspaceShape(dir: string) {
   return (
     existsSync(path.join(dir, "package.json")) &&
     existsSync(path.join(dir, "packages", "app", "package.json")) &&
@@ -110,7 +110,7 @@ export function resolveElizaWorkspaceRoot(startDir = process.cwd()) {
 }
 
 export function resolveElizaWorkspaceRootFromImportMeta(
-  importMetaUrl,
+  importMetaUrl: string,
   { fallbackToCwd = false, cwd = process.cwd() } = {},
 ) {
   try {

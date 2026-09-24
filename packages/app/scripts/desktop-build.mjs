@@ -33,7 +33,7 @@ import {
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
-import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
+import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.ts";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
