@@ -21,7 +21,6 @@ import { mkdir } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { writeFile } from "node:fs/promises";
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "../../../../../..");
 const stylesDir = join(here, "../../../styles");
 const outDir = join(here, "output-permission-priming");
 await mkdir(outDir, { recursive: true });
@@ -71,6 +70,7 @@ const stubClient = {
         }));
     },
 };
+// Keep browser-safe core subpaths real; stub only the Node runtime barrel.
 // The modal's graph incidentally reaches `@elizaos/core` (a UI util imports the
 // `@elizaos/core` barrel, whose HTTP helpers import core). The modal never
 // executes any of it, so stub core to a proxy of undefineds and shim node
@@ -99,10 +99,7 @@ module.exports = { ElizaError };
 const stubCore = {
     name: "stub-core",
     setup(b) {
-        b.onResolve({ filter: /^@elizaos\/core\/contracts\/first-run-options$/ }, () => ({
-            path: join(repoRoot, "packages/core/src/contracts/first-run-options.ts"),
-        }));
-        b.onResolve({ filter: /^@elizaos\/core($|\/)/ }, () => ({ path: coreStub }));
+        b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({ path: coreStub }));
     },
 };
 const NODE_BUILTINS = /^(node:|fs$|fs\/promises$|path$|crypto$|os$|util$|events$|stream$|child_process$|http$|https$|net$|tls$|url$|zlib$|buffer$|assert$|readline$|worker_threads$|perf_hooks$|module$|constants$|string_decoder$|tty$|dns$|querystring$|vm$|v8$|async_hooks$)/;
@@ -125,6 +122,7 @@ const result = await build({
     bundle: true,
     format: "iife",
     platform: "browser",
+    conditions: ["eliza-source"],
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     // This is a browser-only fixture. The modal graph can reach shared styling
@@ -134,6 +132,7 @@ const result = await build({
     define: {
         "process.env.NODE_ENV": '"production"',
         "process.env": "{}",
+        "import.meta.env": "{}",
     },
     plugins: [stubClient, stubCore, shimNodeBuiltins],
     write: false,
@@ -195,7 +194,11 @@ try {
     ]) {
         const ctx = await browser.newContext({ viewport: view.viewport });
         const page = await ctx.newPage();
-        page.on("pageerror", (e) => sink.errors.push(`[${view.name}] ${e}`));
+        page.on("pageerror", (e) => {
+            const message = `[${view.name}] ${e}`;
+            sink.errors.push(message);
+            console.error(message);
+        });
         await runFlow(page, view.name);
         await ctx.close();
     }
