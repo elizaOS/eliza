@@ -161,19 +161,8 @@
         "typecheck:deps",
         "^build",
         "@elizaos/core#build",
-        "@elizaos/ui#build",
         "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-wallet#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-agent-orchestrator#build",
-        "@elizaos/plugin-video#build",
-        "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-embeddings#build",
-        "@elizaos/plugin-knowledge#build",
-        "@elizaos/plugin-native-filesystem#build",
-        "@elizaos/plugin-pty#build",
-        "@elizaos/plugin-relationships#build",
-        "@elizaos/plugin-web-search#build"
+        "@elizaos/plugin-knowledge#build"
       ]
     },
     "@elizaos/app#typecheck": {
@@ -328,12 +317,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ],
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/agent#build",
-        "^build",
-        "@elizaos/ui#build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -345,9 +329,6 @@
     },
     "@elizaos/lifeops-bench#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
-    },
-    "@elizaos/personality-bench#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
     },
     "@elizaos/testing#typecheck": {
       "dependsOn": [
