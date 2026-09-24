@@ -1120,7 +1120,8 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot, cloudMocksRoot } = testRoots;
+  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot, cloudMocksRoot } =
+    testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {

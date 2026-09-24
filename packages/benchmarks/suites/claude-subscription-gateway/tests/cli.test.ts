@@ -232,6 +232,8 @@ describe("gateway CLI", () => {
       "bun",
       [
         "--conditions=eliza-source",
+        "--tsconfig-override",
+        fileURLToPath(new URL("../../../../../tsconfig.json", import.meta.url)),
         CLI_PATH,
         "--ready-file",
         readyFile,
@@ -240,7 +242,7 @@ describe("gateway CLI", () => {
       ],
       {
         cwd: directory,
-        env: withoutApiBillingEnvironment(),
+        env: { ...withoutApiBillingEnvironment(), ELIZA_STATE_DIR: directory },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
