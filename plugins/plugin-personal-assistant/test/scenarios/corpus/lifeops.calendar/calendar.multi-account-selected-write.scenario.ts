@@ -61,6 +61,24 @@ export default scenario({
       text: `Use work@company.test, its primary Google calendar. Yes, create ${title} on February 5, 2027 from 15:00 to 15:30 UTC, with no guests.`,
       timeoutMs: 120_000,
     },
+    {
+      kind: "wait",
+      name: "no-write-before-proposal-approval",
+      timeoutMs: 5_000,
+      until: async (ctx) => {
+        const result = await assertUnchanged(ctx);
+        if (result !== undefined && result !== true)
+          throw new Error(`Calendar changed before approval: ${JSON.stringify(result)}`);
+        return true;
+      },
+    },
+    {
+      kind: "message",
+      name: "approve-selected-account-proposal",
+      room: "main",
+      text: "Yes, approve the pending Cedar focus block proposal for work@company.test, primary Google calendar, February 5, 2027 from 15:00 to 15:30 UTC. Execute it once.",
+      timeoutMs: 120_000,
+    },
   ],
   finalChecks: [
     {

@@ -461,6 +461,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                grantId: "eliza-calendar",
+                calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
                 endAt: "2026-09-18T16:00:00-04:00",
                 timeZone: "America/New_York",
@@ -516,6 +518,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                grantId: "eliza-calendar",
+                calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
                 endAt: "2026-09-18T16:00:00-04:00",
                 timeZone: "America/New_York",
@@ -586,6 +590,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                grantId: "eliza-calendar",
+                calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
                 endAt: "2026-09-18T16:00:00-04:00",
                 timeZone: "America/New_York",
@@ -664,6 +670,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                grantId: "eliza-calendar",
+                calendarId: "primary",
                 startAt: "2026-09-20T10:00:00-04:00",
                 endAt: "2026-09-20T10:15:00-04:00",
                 timeZone: "America/New_York",
@@ -725,6 +733,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                grantId: "eliza-calendar",
+                calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
                 endAt: "2026-09-18T16:00:00-04:00",
                 timeZone: "America/New_York",

@@ -1,6 +1,6 @@
 /** Exercises the actual conversational create boundary, before service writes. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import {
@@ -34,22 +34,26 @@ const busy = {
   description: "",
   location: "",
 } as LifeOpsCalendarEvent;
-function fixture(events: LifeOpsCalendarEvent[] = [], status = "fresh") {
+function fixture(
+  events: LifeOpsCalendarEvent[] = [],
+  status = "fresh",
+  sourceKey = key,
+) {
   const service = {
     getCalendarFeed: vi.fn(async () => ({
       events,
       state: status === "fresh" ? "complete" : "partial",
       source: "synced",
       syncedAt: new Date().toISOString(),
-      sources: [{ key, status, visibility: "details", error: null }],
+      sources: [{ key: sourceKey, status, visibility: "details", error: null }],
     })),
     prepareCalendarEventCreate: vi.fn(async (_url, request) => ({
       ...request,
       startAt: request.startAt,
       endAt: request.endAt ?? end,
       timeZone: "America/New_York",
-      grantId: "eliza-calendar",
-      calendarId: "primary",
+      grantId: request.grantId ?? "eliza-calendar",
+      calendarId: request.calendarId ?? "primary",
       side: "owner",
     })),
     createCalendarEvent: vi.fn(async (_url, request) => ({
@@ -74,11 +78,17 @@ async function create(
   extracted: Record<string, unknown>,
   events: LifeOpsCalendarEvent[] = [],
   request?: { text: string; createdAt: number },
+  sourceKey = key,
 ) {
-  const { runtime, service } = fixture(events);
+  const { runtime, service } = fixture(events, "fresh", sourceKey);
+  const parsed = {
+    grantId: key.grantId,
+    calendarId: key.calendarId,
+    ...extracted,
+  };
   const runJsonModel = vi.fn(async () => ({
-    rawResponse: JSON.stringify(extracted),
-    parsed: extracted,
+    rawResponse: JSON.stringify(parsed),
+    parsed,
   }));
   const action = createCalendarActionRunner({
     runJsonModel: runJsonModel as CalendarActionDeps["runJsonModel"],
@@ -106,6 +116,62 @@ async function create(
 }
 
 describe("calendar conversational write boundary", () => {
+  it("prepares the extracted connected account when planner arguments omit its grant", async () => {
+    const sourceKey = {
+      ...key,
+      provider: "google",
+      grantId: "connector-account:work",
+      connectorAccountId: "work",
+    };
+    const { service } = await create(
+      {
+        title: "Call dad",
+        startAt: start,
+        endAt: end,
+        grantId: sourceKey.grantId,
+        calendarId: sourceKey.calendarId,
+      },
+      [],
+      {
+        text: "Use my work Google account, primary calendar, at the requested time.",
+        createdAt: Date.now(),
+      },
+      sourceKey,
+    );
+    expect(service.prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        grantId: sourceKey.grantId,
+        calendarId: "primary",
+        side: "owner",
+      }),
+    );
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { grantId: null, calendarId: null },
+    { grantId: "unavailable-account", calendarId: "primary" },
+    { grantId: "eliza-calendar", calendarId: "unknown-calendar" },
+  ])(
+    "does not write when extracted destination is unresolved: %j",
+    async (destination) => {
+      const { result, service } = await create({
+        title: "Call dad",
+        startAt: start,
+        endAt: end,
+        requiresInput: false,
+        ...destination,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: { requiresInput: true },
+      });
+      expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+      expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ["2027-03-14T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT"],
     ["2027-11-07T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS"],

@@ -557,6 +557,8 @@ function extraction(
   endAt: string | null,
 ): Args {
   return {
+    grantId: "eliza-calendar",
+    calendarId: "primary",
     requiresInput: startAt === null,
     clarification: startAt === null ? "What exact time should I use?" : null,
     title,

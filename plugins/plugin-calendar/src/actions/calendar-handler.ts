@@ -4098,7 +4098,7 @@ async function inferCreateEventDetails(
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
-    "The proposed destination below is a planner choice, not user authorization. Verify it against the user's requested provider/account as well as the event timing. An unspecified destination defaults to the built-in Eliza calendar only for an unqualified calendar request. If the user explicitly requests Google or another connected provider but the proposed destination is the built-in calendar, set requiresInput:true and ask which connected account/calendar to use. Feed selection does not authorize substituting another provider. If several accounts match and the user has not selected one, ask before writing. Never select an account based on the event's personal/work subject.",
+    "Resolve grantId and calendarId from the calendar source identities using the user's requested provider/account and calendar. Copy both identifiers from the same source key; these extracted identifiers determine the write destination. The proposed destination below is only a planner hint, not user authorization. If the user selected an account in this turn, use that account even when the planner omitted its grant. Only an unqualified calendar request may default to eliza-calendar/primary. If the requested destination cannot be uniquely resolved, return null identifiers and requiresInput:true with a clarification. Never substitute the built-in calendar for a named provider, or select an account based on the event's personal/work subject.",
     "Calendar availability is not permission to invent a time. Use timing the user stated or clearly accepted for this event in the conversation. A planner intent is only a routing hint, never evidence of user-supplied details.",
     "Preserve names and places in their original language or script when useful.",
     "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
@@ -4162,6 +4162,8 @@ const createExtractionProperties = {
       "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
   },
   clarification: nullableExtractionText,
+  grantId: nullableExtractionText,
+  calendarId: nullableExtractionText,
   title: nullableExtractionText,
   description: nullableExtractionText,
   location: nullableExtractionText,
@@ -5516,7 +5518,13 @@ const calendarAction: CalendarHandlerAction = {
           planningTimeZone,
           details,
         );
-        if (extractedDetails.requiresInput === true) {
+        const destination = calendarContext.feed.sources.find(
+          (source) =>
+            source.key.grantId === detailString(extractedDetails, "grantId") &&
+            source.key.calendarId ===
+              detailString(extractedDetails, "calendarId"),
+        );
+        if (extractedDetails.requiresInput === true || !destination) {
           return respond({
             success: false,
             text: await renderReply(
@@ -5533,7 +5541,12 @@ const calendarAction: CalendarHandlerAction = {
           });
         }
         const createEventBuild = buildCreateEventRequest({
-          details,
+          details: {
+            ...details,
+            grantId: destination.key.grantId,
+            calendarId: destination.key.calendarId,
+            side: destination.key.side,
+          },
           extractedDetails,
           explicitTitle,
           inferredTitle,
