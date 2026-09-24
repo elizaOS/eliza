@@ -173,6 +173,13 @@ export function parseConversationMessageEvent(
     return null;
   }
   const parsed: ConversationMessage = { id, role, text, timestamp };
+  if (
+    role === "assistant" &&
+    typeof value.planningAcknowledgment === "string" &&
+    value.planningAcknowledgment.trim()
+  ) {
+    parsed.planningAcknowledgment = value.planningAcknowledgment;
+  }
   if (transcriptVisibility === "internal") {
     parsed.transcriptVisibility = transcriptVisibility;
   }

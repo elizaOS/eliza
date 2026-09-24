@@ -5,3 +5,5 @@ Node runtime kernel for Eliza agents: plugin registration, authorization, state,
 Keep core independent of application hosts, database adapters, and assistant behavior. Preserve authorization, cancellation, effect receipts, and complete model context; hosts register behavior and providers explicitly.
 
 Build, test, and setup: [README.md](README.md).
+
+Historical navigation receipts may follow their exact, unambiguous original request through history selection. Include receipt bytes in the source hash and restore them with that request. Missing, malformed or stale bindings retain full evidence; current tools, mutation outcomes and standing constraints remain inline.

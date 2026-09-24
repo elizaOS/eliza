@@ -22,6 +22,33 @@ function analyzeFixture(root) {
   });
 }
 
+test("declaration consumers may build dependencies while lint stays source-only", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "audit-build-order-"));
+  try {
+    writeJson(path.join(root, "package.json"), {
+      workspaces: [],
+      devDependencies: {
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "@typescript/typescript6": "6.0.0",
+      },
+    });
+    const tasks = { typecheck: { dependsOn: ["^build"] } };
+    const analyze = (tasks) =>
+      analyzeBuildTypecheck({
+        repoRoot: root,
+        turbo: { tasks },
+        buildFiles: [],
+      }).violations;
+    assert.deepEqual(analyze(tasks), []);
+    assert.match(
+      analyze({ ...tasks, "lint:check": { dependsOn: ["^build"] } }).join("\n"),
+      /lint reads source directly/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("nested workspace enforcement requires a justified package exception", () => {
   const root = mkdtempSync(path.join(tmpdir(), "audit-build-nested-"));
   try {

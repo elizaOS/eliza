@@ -1,7 +1,12 @@
 /** Reads historical navigation evidence from host-owned outcomes on authorized
  * request memories. Delivery is a past transport fact, never current renderer
  * state or evidence of displayed records. No assistant prose supplies authority. */
-import { ChannelType, isObjectRecord, type Memory } from "@elizaos/core";
+import {
+  ChannelType,
+  isObjectRecord,
+  type Memory,
+  normalizeEffectReceipts,
+} from "@elizaos/core";
 import {
   conversationClientUserMemoryId,
   readDurableConversationChatMarker,
@@ -19,13 +24,14 @@ const NAVIGATION_FIELDS = new Set([
   "path",
 ]);
 
-export function historicalNavigationReceipts(
+export function historicalActionResults(
   request: Memory,
   current: Memory,
   agentId: string,
-): { success: boolean; receipt: string }[] {
+): Record<string, unknown>[] {
   if (
     request.id === current.id ||
+    current.agentId !== agentId ||
     request.agentId !== agentId ||
     request.roomId !== current.roomId ||
     request.entityId !== current.entityId ||
@@ -60,8 +66,31 @@ export function historicalNavigationReceipts(
     !Array.isArray(outcome.actionResults)
   )
     return [];
+  return outcome.actionResults.filter(isObjectRecord);
+}
+
+export function historicalEffectReceipts(results: Record<string, unknown>[]) {
+  return results.flatMap((result) => {
+    if (typeof result.success !== "boolean") return [];
+    try {
+      return normalizeEffectReceipts(result.effectReceipts).map((receipt) => ({
+        actionName:
+          typeof result.actionName === "string" ? result.actionName : undefined,
+        success: result.success,
+        receipt,
+      }));
+    } catch {
+      // error-policy:J3 Malformed stored effects are not historical evidence.
+      return [];
+    }
+  });
+}
+
+export function historicalNavigationReceipts(
+  results: Record<string, unknown>[],
+): { success: boolean; receipt: string }[] {
   const receipts: { success: boolean; receipt: string }[] = [];
-  for (const result of outcome.actionResults) {
+  for (const result of results) {
     if (
       !isObjectRecord(result) ||
       (result.actionName !== "VIEWS_SHOW" && result.actionName !== "VIEWS") ||

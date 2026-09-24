@@ -176,21 +176,12 @@
       "outputs": []
     },
     "@elizaos/agent#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build",
-        "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-wallet#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-agent-orchestrator#build",
-        "@elizaos/plugin-video#build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
       "dependsOn": [
-        "@elizaos/app#build:dist",
+        "@elizaos/app#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-personal-assistant#build",
         "@elizaos/ui#build"
