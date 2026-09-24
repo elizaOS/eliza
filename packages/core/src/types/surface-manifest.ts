@@ -1,99 +1,23 @@
-/**
- * Surface manifests — the single declared contract that governs how the app
- * shell isolates one view from every other surface. A view renders into a
- * shared shell tree, so without a declared boundary a view can visually or
- * behaviourally leak into the rest of the app (paint the launcher wallpaper
- * onto an opaque page, keep a global background channel live, reach past the
- * shell into another view's DOM). The manifest makes that boundary explicit and
- * data-driven: background policy, header framing, isolation level, lifecycle
- * expectation, and the capability grants a view is allowed to exercise all live
- * in ONE typed structure hung off the view registration.
- *
- * The manifest is the source of truth every consumer derives from — the shell's
- * background resolver reads {@link SurfaceManifest.background}, the capability
- * broker reads {@link SurfaceManifest.capabilities}, and the isolation doc names
- * each {@link SurfaceIsolationLevel}. A view never opts into the wallpaper by
- * accident: {@link resolveSurfaceManifest} only honours `background: "shared"`
- * when the manifest also grants the `wallpaper` capability, so the launcher and
- * views that explicitly declare immersion are the only surfaces that can paint
- * it (issue #13452 acceptance: "Shared app wallpaper is restricted to
- * Home/Launcher/Background and explicitly marked immersive views ... no view can
- * opt in by accident").
- *
- * Lives in `@elizaos/core` so the agent server (view registry, /api/views) and
- * every front-end (dashboard shell, view manager, DynamicViewLoader capability
- * broker) share one definition — the same reason {@link ViewKind} lives here.
- * Consumers: `packages/ui/src/App.tsx` (background resolver),
- * `packages/ui/src/components/views/DynamicViewLoader.tsx` (capability broker),
- * `packages/ui/src/surface-isolation.ts` (isolation-level catalogue + doc).
- */
+/** View declaration types carried by plugins; host presentation policies live in shared. */
 
 export type AppShellBackgroundPolicy = "opaque" | "shared";
+
 export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
 
-/**
- * How a view is separated from the host realm and from other views. Ordered
- * from least to most isolated. The catalogue in
- * `packages/ui/src/surface-isolation.ts` states which level each shipped view
- * uses and why, and maps each level to its per-platform embedding
- * (Electron `WebContentsView`, sandboxed `<iframe>`, `WKWebView`/Android
- * `WebView`).
- *
- *  - `in-process`      — trusted built-in shell views run in the host DOM/React
- *                        realm with the full host singleton (React, API client,
- *                        native bridges). No sandbox; trust is the boundary.
- *  - `sandboxed-iframe` — untrusted/plugin web views run in a sandboxed iframe
- *                        with a postMessage capability broker. Never combine
- *                        `allow-scripts` + `allow-same-origin` on same-origin
- *                        content — that is not a real sandbox (MDN).
- *  - `native-webview`  — heavy/untrusted views embed a native child web-content
- *                        surface (desktop `WebContentsView`, iOS `WKWebView`,
- *                        Android `WebView`) with its own renderer process and an
- *                        explicit process/storage-sharing policy.
- *  - `immersive`       — a fullscreen surface that owns its whole window
- *                        (launcher, background editor). Chrome-free and the only
- *                        non-launcher level allowed to paint the shared
- *                        wallpaper, and only when it also grants `wallpaper`.
- */
-export const SURFACE_ISOLATION_LEVELS = [
-	"in-process",
-	"sandboxed-iframe",
-	"native-webview",
-	"immersive",
-] as const;
-
 /** A view's isolation level. See {@link SURFACE_ISOLATION_LEVELS}. */
-export type SurfaceIsolationLevel = (typeof SURFACE_ISOLATION_LEVELS)[number];
-
-/**
- * The discrete capabilities a view can be granted. A capability the manifest
- * does not list is denied by the broker — a plugin view only reaches the shell
- * facilities it was granted. Grants are additive and default to none.
- *
- *  - `wallpaper`         — may paint the shared Home/Launcher wallpaper. Gates
- *                          `background: "shared"`: a view without this grant is
- *                          forced opaque no matter what it declares. Restricted
- *                          to the launcher + explicitly immersive views.
- *  - `background:apply`  — may drive the global background-apply broker (change
- *                          the persisted wallpaper for the whole app). The
- *                          background editor holds it; normal views do not.
- *  - `navigate`          — may request shell navigation (open another view).
- *  - `storage`           — may use host-scoped persistent storage.
- *  - `agent-surface`     — may expose its DOM elements to the agent surface so
- *                          the planner can read/click/fill them. Standard
- *                          read-only introspection is always available; this
- *                          grant is for a view opting INTO richer agent control.
- */
-export const SURFACE_CAPABILITIES = [
-	"wallpaper",
-	"background:apply",
-	"navigate",
-	"storage",
-	"agent-surface",
-] as const;
+export type SurfaceIsolationLevel =
+	| "in-process"
+	| "sandboxed-iframe"
+	| "native-webview"
+	| "immersive";
 
 /** A capability grantable to a view surface. See {@link SURFACE_CAPABILITIES}. */
-export type SurfaceCapability = (typeof SURFACE_CAPABILITIES)[number];
+export type SurfaceCapability =
+	| "wallpaper"
+	| "background:apply"
+	| "navigate"
+	| "storage"
+	| "agent-surface";
 
 /**
  * Lifecycle expectation for a mounted view — how the shell treats it when it is
@@ -202,103 +126,3 @@ export interface SurfaceManifestBearer {
 	 */
 	headerPolicy?: ViewHeaderPolicy;
 }
-
-function dedupeCapabilities(
-	caps: readonly SurfaceCapability[] | undefined,
-): ReadonlySet<SurfaceCapability> {
-	// `Set`'s constructor treats a missing iterable as empty, so an absent
-	// capability list yields an empty set without a `?? []` empty-fallback.
-	return new Set(caps);
-}
-
-const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
-	kind: "content",
-	topology: "framed",
-	width: "standard",
-	scroll: "view",
-	gutter: "standard",
-});
-
-/**
- * Resolve a (possibly sparse) declaration into a {@link ResolvedSurfaceManifest}
- * with defaults applied and the wallpaper gate enforced.
- *
- * Precedence for each field: `surface.<field>` wins, then the legacy standalone
- * field (`backgroundPolicy` / `headerPolicy`), then the safe default.
- *
- * The one enforced invariant: `background: "shared"` requires the `wallpaper`
- * capability. A view that declares `shared` without the grant resolves to
- * `opaque` — the shell can never surface the wallpaper on a view that was not
- * explicitly granted it, closing the "opt in by accident" gap (#13452). The
- * launcher/immersive surfaces that legitimately paint the wallpaper declare
- * both `background: "shared"` and the `wallpaper` grant.
- */
-export function resolveSurfaceManifest(
-	decl: SurfaceManifestBearer | null | undefined,
-): ResolvedSurfaceManifest {
-	const surface = decl?.surface;
-	const capabilities = dedupeCapabilities(surface?.capabilities);
-
-	const declaredBackground =
-		surface?.background ?? decl?.backgroundPolicy ?? "opaque";
-	// Wallpaper gate: "shared" is only honoured with the explicit grant.
-	const background: AppShellBackgroundPolicy =
-		declaredBackground === "shared" && capabilities.has("wallpaper")
-			? "shared"
-			: "opaque";
-
-	return {
-		background,
-		header: surface?.header ?? decl?.headerPolicy ?? "normal",
-		isolation: surface?.isolation ?? "in-process",
-		lifecycle: surface?.lifecycle ?? "ephemeral",
-		layout: surface?.layout
-			? { topology: "framed", ...surface.layout }
-			: DEFAULT_PAGE_LAYOUT_MANIFEST,
-		capabilities,
-	};
-}
-
-/**
- * The resolved screen-background policy for a declaration — the field the shell
- * background resolver reads. A thin projection of {@link resolveSurfaceManifest}
- * so callers that only need the background do not pull the whole manifest.
- */
-export function resolveSurfaceBackgroundPolicy(
-	decl: SurfaceManifestBearer | null | undefined,
-): AppShellBackgroundPolicy {
-	return resolveSurfaceManifest(decl).background;
-}
-
-/**
- * Whether a resolved manifest grants a capability. The broker's allow-check —
- * a capability not in the manifest is denied.
- */
-export function surfaceGrants(
-	manifest: ResolvedSurfaceManifest,
-	capability: SurfaceCapability,
-): boolean {
-	return manifest.capabilities.has(capability);
-}
-
-/**
- * The canonical manifest for the shared launcher/immersive wallpaper surfaces
- * (Home, Launcher, Background editor). Declares `shared` + the `wallpaper`
- * grant so the resolver actually paints the wallpaper, and marks the surface
- * `immersive`. Built-in shell registrations reuse this instead of hand-repeating
- * the `shared` + grant pair, so the wallpaper opt-in is declared in exactly one
- * place per surface family.
- */
-export const IMMERSIVE_WALLPAPER_SURFACE: SurfaceManifest = {
-	background: "shared",
-	header: "immersive",
-	isolation: "immersive",
-	layout: {
-		kind: "immersive",
-		topology: "ambient",
-		width: "full",
-		scroll: "view",
-		gutter: "none",
-	},
-	capabilities: ["wallpaper", "background:apply"],
-};

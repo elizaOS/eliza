@@ -53,9 +53,7 @@ describe("device-e2e bundle assembly", () => {
         lane: "android",
         date: new Date("2026-07-05T01:02:03.004Z"),
       }),
-    ).toBe(
-      "/repo/packages/app/device-e2e-output/android-2026-07-05T01-02-03-004Z",
-    );
+    ).toBe("/repo/test-results/device-e2e/android-2026-07-05T01-02-03-004Z");
   });
 
   it("writes summary, junit, and inline copies for existing JPG/MP4 artifacts", () => {

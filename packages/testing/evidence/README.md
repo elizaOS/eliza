@@ -17,6 +17,13 @@ The run ID is one normalized path leaf. Bundle creation claims that directory
 atomically and refuses existing directories or aliases; a caller-supplied run
 ID cannot traverse outside the configured bundle root.
 
+The certification orchestrator runs `bun run test:e2e` once by default and
+records its complete output and exit status as the matrix lane. This uses the
+same deterministic provider and real product paths as CI. Legacy matrix
+selection arguments are rejected; custom `runMatrix` callers retain their own
+argument contract. A passing lane certifies only the flows that command ran,
+not unexecuted UI, native-device, deployed-service, or acoustic behavior.
+
 ## Schema contract (frozen, `schema: 1`)
 
 ```ts
@@ -93,9 +100,12 @@ artifacts (root exists but is empty).
 | silo | roots | lane |
 | --- | --- | --- |
 | `e2e-recordings` | `e2e-recordings/` | e2e |
-| `aesthetic-audit` | `packages/app/aesthetic-audit-output/` | — |
-| `device-e2e` | `packages/app/device-e2e-output/` | native |
-| `playwright-test-results` | `packages/app/test-results/` | e2e |
+| `aesthetic-audit` | `test-results/aesthetic-audit/` | — |
+| `aesthetic-audit-cloud` | `test-results/aesthetic-audit-cloud/` | — |
+| `cloud-playwright` | `test-results/cloud-e2e/` | cloud-e2e |
+| `core-playwright` | `test-results/core/` | core-e2e |
+| `device-e2e` | `test-results/device-e2e/` | native |
+| `playwright-test-results` | `test-results/app/` | e2e |
 | `ios-device-capture` | `packages/app/ios/build/boot-capture/`, `packages/app/ios/build/device-logs/` | native |
 | `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |

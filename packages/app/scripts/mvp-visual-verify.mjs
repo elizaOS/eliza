@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Post-processes the screenshots `audit:app` already captured into a higher-
  * fidelity visual-verification report: for every `<viewport>/<slug>.png` under
@@ -28,6 +29,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.mjs";
 import { diffAgainstBaseline } from "./mvp-visual-verify/diff.mjs";
 import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.mjs";
 import {
@@ -42,7 +44,6 @@ import {
 } from "./mvp-visual-verify/ocr.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const appDir = path.resolve(here, "..");
 
 function log(msg) {
   process.stdout.write(`[mvp-visual-verify] ${msg}\n`);
@@ -155,7 +156,7 @@ async function main() {
   const inputDir = path.resolve(
     args.input ??
       process.env.ELIZA_AUDIT_APP_DIR ??
-      path.join(appDir, "aesthetic-audit-output"),
+      testOutputPath("aesthetic-audit"),
   );
   if (!(await isDir(inputDir))) {
     throw new Error(

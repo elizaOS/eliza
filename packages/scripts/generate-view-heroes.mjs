@@ -117,13 +117,6 @@ export function pluginHasHeroAsset(pluginDir, repoRoot = DEFAULT_REPO_ROOT) {
  */
 export const views = [
   {
-    out: "plugins/plugin-app-control/assets/hero.svg",
-    id: "views",
-    label: "Views",
-    hue: 270,
-    icon: VIEW_HERO_ICONS.views,
-  },
-  {
     out: "plugins/plugin-blocker/assets/hero.svg",
     id: "focus",
     label: "Focus",
@@ -150,13 +143,6 @@ export const views = [
     label: "Documents",
     hue: 190,
     icon: VIEW_HERO_ICONS.todos,
-  },
-  {
-    out: "plugins/plugin-finances/assets/hero.svg",
-    id: "finances",
-    label: "Finances",
-    hue: 150,
-    icon: VIEW_HERO_ICONS.finances,
   },
   {
     out: "plugins/plugin-form/assets/hero.svg",

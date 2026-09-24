@@ -5,6 +5,13 @@
   "type": "module",
   "description": "LifeOpsBench server-side harness: HTTP bench server, LifeOps fake backend, Cerebras autowirer, and bench plugin driven by the Python runners in suites/. Runs against an elizaOS checkout (ELIZA_REPO_DIR); never published.",
   "main": "./src/server.ts",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
     "benchmark:server": "node --conditions=eliza-source --conditions=development --import tsx src/server.ts",
     "trusted-runtime:server": "node --conditions=eliza-source --conditions=development --import tsx src/trusted-runtime-server.ts",
@@ -24,7 +31,10 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

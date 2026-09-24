@@ -24,7 +24,6 @@ import {
   type ActionResult,
   checkSenderRole,
   ElizaError,
-  getViewModalities,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -35,6 +34,7 @@ import {
   type ViewScopedActionStep,
   type ViewType,
 } from "@elizaos/core";
+import { getViewModalities } from "@elizaos/shared/views/view-declarations";
 import { assertRuntimeViewEntry, getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,

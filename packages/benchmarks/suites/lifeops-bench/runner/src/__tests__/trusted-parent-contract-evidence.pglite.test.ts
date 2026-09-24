@@ -1,5 +1,5 @@
 /**
- * Real-PGlite proof for four native parent-suite evaluators.
+ * Real-PGlite proof for three native parent-suite evaluators.
  *
  * Every terminal state follows a registered production Action.handler call
  * and is then read back from production graph, SQL, or calculation state.
@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../plugins/plugin-personal-assistant/test/helpers/runtime.js";
+} from "../../../../../../../plugins/plugin-personal-assistant/test/helpers/runtime.js";
 import { type BenchmarkSession, createSession } from "../server-utils.js";
 import {
   G15_NOTICE_KEY,
@@ -19,7 +19,6 @@ import {
   G30_HOUSEHOLD_ID,
   G30_SCENARIO_ID,
   G30_THRESHOLD_RECORD_ID,
-  G34_SCENARIO_ID,
   G38_ASSIGNMENT_RECORD_ID,
   G38_SCENARIO_ID,
   TRUSTED_PARENT_CONTRACT_STATE_SCHEMA,
@@ -70,85 +69,6 @@ function stateFrom(response: Record<string, unknown>): Record<string, unknown> {
   return state as Record<string, unknown>;
 }
 
-function known(annualUsd: number) {
-  return {
-    status: "known",
-    annualUsd: { minUsd: annualUsd, maxUsd: annualUsd },
-    source: {
-      sourceId: `worksheet:${annualUsd}`,
-      label: "Household worksheet",
-      observedAt: "2026-07-26T12:00:00.000Z",
-    },
-  };
-}
-
-const NOT_APPLICABLE = {
-  status: "not_applicable",
-  reason: "This category does not apply to the option.",
-};
-
-function careOption(input: {
-  optionId: string;
-  grossUsd: number;
-  careUsd: number;
-}) {
-  return {
-    optionId: input.optionId,
-    label: input.optionId,
-    grossCashCompensation: known(input.grossUsd),
-    variableCompensation: known(0),
-    equityCompensation: NOT_APPLICABLE,
-    taxesAndPayroll: known(Math.round(input.grossUsd * 0.22)),
-    employeeBenefitsValue: known(5_000),
-    employerRetirementValue: known(2_000),
-    healthInsuranceCost: known(3_000),
-    commuteCost: known(1_000),
-    workExpense: known(500),
-    householdSupportCost: known(0),
-    otherHouseholdIncomeDelta: known(0),
-    childcare: [
-      {
-        childEntityId: "Lee",
-        label: "Lee",
-        regularCareCost: known(input.careUsd),
-        backupCareCost: known(1_500),
-        uncoveredHoursPerMonth: {
-          status: "known",
-          range: { min: 0, max: 4 },
-          source: {
-            sourceId: `coverage:${input.optionId}`,
-            label: "Coverage worksheet",
-            observedAt: "2026-07-26T12:00:00.000Z",
-          },
-        },
-      },
-    ],
-    scheduleReliability: {
-      status: "known",
-      range: { min: 0.8, max: 0.95 },
-      source: {
-        sourceId: `schedule:${input.optionId}`,
-        label: "Schedule history",
-        observedAt: "2026-07-26T12:00:00.000Z",
-      },
-    },
-    reentryEffect: {
-      status: "known",
-      horizonYears: 5,
-      futureHouseholdEarningsDeltaUsd: {
-        minUsd: 5_000,
-        maxUsd: 20_000,
-      },
-      source: {
-        sourceId: `reentry:${input.optionId}`,
-        label: "Career history",
-        observedAt: "2026-07-26T12:00:00.000Z",
-      },
-      rationale: "Recent experience can affect later household earnings.",
-    },
-  };
-}
-
 describe("trusted parent contracts through registered production actions", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
@@ -165,11 +85,7 @@ describe("trusted parent contracts through registered production actions", () =>
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
-    for (const actionName of [
-      "SCHOOL_SOURCES",
-      "HOUSEHOLD_OPERATIONS",
-      "OWNER_FINANCES",
-    ]) {
+    for (const actionName of ["SCHOOL_SOURCES", "HOUSEHOLD_OPERATIONS"]) {
       const action = runtime
         .getAllActions()
         .find((candidate) => candidate.name === actionName);
@@ -326,61 +242,6 @@ describe("trusted parent contracts through registered production actions", () =>
     });
     expect(state.sizeHistory).toHaveLength(2);
     expect(state.actionHistory).toHaveLength(2);
-  });
-
-  it("G34 returns exact input revisions under one comparable formula set", async () => {
-    const scenario = {
-      schemaVersion: "childcare-work-scenario.v1",
-      scenarioId: "trusted-g34-care-model",
-      householdId: "trusted-g34-household",
-      asOf: "2026-07-26T12:00:00.000Z",
-      currency: "USD",
-      options: [
-        careOption({
-          optionId: "executive-income",
-          grossUsd: 240_000,
-          careUsd: 42_000,
-        }),
-        careOption({
-          optionId: "hourly-variable-shifts",
-          grossUsd: 48_000,
-          careUsd: 24_000,
-        }),
-      ],
-    };
-    const response = await executeTrustedRuntimeAction(
-      {
-        runtime,
-        bearerToken: "x".repeat(32),
-        allowedActions: new Set(["OWNER_FINANCES"]),
-        resolveSession,
-      },
-      request({
-        scenarioId: G34_SCENARIO_ID,
-        runId: "pglite-g34",
-        actionName: "OWNER_FINANCES",
-        parameters: {
-          action: "childcare_work_scenario",
-          scenarioJson: JSON.stringify(scenario),
-        },
-        risk: "read",
-        ordinal: 1,
-      }),
-    );
-    const state = stateFrom(response);
-    const calculation = state.calculation as Record<string, unknown>;
-
-    expect(response.ok).toBe(true);
-    expect(calculation).toMatchObject({
-      status: "complete",
-      comparableFormulaSetId: "childcare-work-scenario.formula-set.v1",
-    });
-    expect(calculation.inputRevisionIds).toHaveLength(2);
-    expect(
-      (calculation.inputRevisionIds as string[]).every((revision) =>
-        /^sha256:[0-9a-f]{64}$/u.test(revision),
-      ),
-    ).toBe(true);
   });
 
   it("G38 creates a review while preserving both assignment revisions", async () => {

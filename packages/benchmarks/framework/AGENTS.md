@@ -3,7 +3,7 @@
 Measures the overhead of the elizaOS framework itself: a TypeScript (Bun)
 harness drives a real `AgentRuntime` with a deterministic mock-LLM plugin and
 in-memory DB, reporting latency, throughput, pipeline breakdown, memory, and
-startup across 21 scenarios. A Python cross-harness runner
+startup across 20 scenarios. A Python cross-harness runner
 (`scripts/harness_runner.py`) replays the same scenario fixtures against real
 Eliza / Hermes / OpenClaw clients. Exposed to the suite orchestrator as the
 `framework` adapter (public adapter, not a registry entry).
@@ -14,7 +14,7 @@ Eliza / Hermes / OpenClaw clients. Exposed to the suite orchestrator as the
 # Wrapper — install/build checks, TypeScript harness, comparison report
 cd framework
 ./run.sh                 # default scenarios
-./run.sh --all           # all 21 scenarios (includes stress tests)
+./run.sh --all           # all 20 scenarios (includes stress tests)
 ./run.sh --scenarios=single-message,burst-100,startup-cold
 ./run.sh --compare       # comparison report only, from existing results/
 
@@ -22,7 +22,7 @@ cd framework
 bun run framework/typescript/src/bench.ts --scenarios=single-message
 
 # Real-LLM mode (end-to-end sanity, NOT overhead measurement); needs
-# ELIZA_CHAT_VIA_CLI, OPENAI_API_KEY, or CEREBRAS_API_KEY
+# OPENAI_API_KEY or CEREBRAS_API_KEY
 bun run framework/typescript/src/bench.ts --real-llm
 
 # Through the suite orchestrator (mode=harness replays fixtures against a real
@@ -35,7 +35,7 @@ python -m benchmarks.orchestrator run --benchmarks framework --provider <p> --mo
 ## Smoke test (no API keys)
 
 The default TypeScript harness uses the deterministic mock-LLM plugin and the
-in-memory DB adapter — no keys, no network, no disk. This is the no-key smoke
+in-memory SQLite adapter — no keys, no network, no disk. This is the no-key smoke
 path:
 
 ```bash
@@ -67,7 +67,7 @@ bun run check            # typecheck + lint + format check
 | `typescript/src/mock-llm-plugin.ts` | Deterministic mock handlers for `TEXT_SMALL/LARGE/EMBEDDING/COMPLETION` + dummy providers |
 | `typescript/src/metrics.ts` | Latency/throughput stats, RSS monitor, pipeline timer |
 | `scripts/harness_runner.py` | Cross-harness runner over the shared fixtures (eliza / hermes / openclaw adapters) |
-| `shared/scenarios.json` | 21 scenario fixtures shared by both runners |
+| `shared/scenarios.json` | 20 scenario fixtures shared by both runners |
 | `shared/character.json` | Benchmark agent character |
 | `compare.ts` | Side-by-side comparison of result JSON files |
 | `visualize.py` | ASCII charts / summary tables from `results/` |

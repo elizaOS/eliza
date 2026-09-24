@@ -2,10 +2,12 @@
  * Playwright UI-smoke spec for the Settings Background app flow using the real
  * renderer fixture.
  */
+
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
 import {
   expectNoPageDiagnostics,
@@ -17,11 +19,7 @@ import {
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
-  "settings-background",
-);
+const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "settings-background");
 
 // A handful of launcher views so the launcher is non-empty (the home
 // WidgetHost / catalog only renders content when the catalog has visible

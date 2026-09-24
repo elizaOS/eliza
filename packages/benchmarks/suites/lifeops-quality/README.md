@@ -25,13 +25,12 @@ expectations derive from the re-anchor-on-fire contract.
 
 ## Commands
 
-The unit lane is self-contained. The gate lanes drive real elizaOS plugin
-code, which lives in the elizaOS monorepo: point `ELIZA_REPO_DIR` at an
-elizaOS checkout with dependencies installed and the
-`@elizaos/plugin-personal-assistant` dependency graph built.
+The default test runs the retained scheduler gate against this checkout's
+real elizaOS plugin code. Set `ELIZA_REPO_DIR` to exercise another checkout
+with dependencies installed and the personal-assistant dependency graph built.
 
 ```bash
-bun run test              # unit lane: metrics, oracle, corpus/fixture/baseline invariants (fast, no DB)
+bun run test              # keyless scheduler gate over PGlite; included in the server CI lane
 ELIZA_REPO_DIR=/path/to/eliza bun run bench             # both gates (real classifier + real scheduler tick over PGlite)
 ELIZA_REPO_DIR=/path/to/eliza bun run bench:triage      # triage gate only (~10s)
 ELIZA_REPO_DIR=/path/to/eliza bun run bench:timeliness  # timeliness gate only (~3min, ~2,300 real ticks)

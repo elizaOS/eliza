@@ -1,4 +1,8 @@
-import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
+/** Registers the Android device-settings overlay in the shared browser app registry. */
+import {
+  type OverlayApp,
+  registerOverlayApp,
+} from "@elizaos/shared/apps/index";
 
 export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-native-settings";
 

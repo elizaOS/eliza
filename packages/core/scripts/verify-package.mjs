@@ -176,6 +176,25 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  const exportPrompt = 'complete model request 🟠 '.repeat(12000) + 'FINAL-REQUEST';
+  const exportResponse = 'complete response with final reference';
+  const exportRecord = {
+    trajectoryId: 'packed-trajectory', agentId, startTime: 1, metadata: { source: 'packed-consumer' },
+    steps: [{ stepId: 'packed-step', timestamp: 1, llmCalls: [{
+      callId: 'packed-call', model: 'fixture', systemPrompt: 'Preserve the request.',
+      userPrompt: exportPrompt, response: exportResponse,
+    }] }],
+  };
+  for (const format of ['json', 'jsonl']) {
+    const exported = publicApi.serializeTrajectoryExport([exportRecord], { format });
+    const parsed = JSON.parse(exported.data);
+    const row = Array.isArray(parsed) ? parsed[0] : parsed;
+    assert.equal(row.request.prompt, exportPrompt);
+    assert.equal(row.response.text, exportResponse);
+  }
+  assert.throws(() => publicApi.serializeTrajectoryExport([
+    { ...exportRecord, steps: undefined, stepsJson: '{invalid' },
+  ], { format: 'jsonl' }), publicApi.ElizaError);
   const keywordMemory = { id: 'keyword', content: { text: 'automobile receipt' } };
   const semanticMemory = { id: 'semantic', content: { text: 'bought a car' } };
   const attachmentMemory = { id: 'attachment', content: {} };

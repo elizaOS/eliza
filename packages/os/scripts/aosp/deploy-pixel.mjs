@@ -61,11 +61,11 @@ const osRepoRoot = path.resolve(here, "../..");
 const repoRoot = path.resolve(
   process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
 );
-const appScripts = path.join(repoRoot, "packages/app-core/scripts");
+const appScripts = path.join(repoRoot, "packages/app/scripts");
 const appAospScripts = path.join(appScripts, "aosp");
 const androidAgentAssets = path.join(
   repoRoot,
-  "packages/app-core/platforms/android/app/src/main/assets/agent",
+  "packages/app/platforms/android/app/src/main/assets/agent",
 );
 
 export function parseArgs(argv) {

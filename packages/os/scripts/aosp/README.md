@@ -3,7 +3,7 @@
 These scripts deploy and smoke-test elizaOS AOSP images. Image orchestration is
 canonical in `scripts/distro-android/`; the Android application, its native
 inference compiler, and model staging remain in `elizaOS/eliza` under
-`packages/app-core/scripts/aosp/`.
+`packages/app/scripts/aosp/`.
 
 Set `ELIZAOS_ELIZA_ROOT` to an application-source checkout. CI checks out that
 repository at `.eliza-source` and uses it as the default dependency boundary.
@@ -13,7 +13,7 @@ repository at `.eliza-source` and uses it as the default dependency boundary.
 Add an `aosp` block to your host app's `app.config.ts`:
 
 ```ts
-import type { AppConfig } from "@elizaos/app-core";
+import type { AppConfig } from "@elizaos/app";
 
 export default {
   appName: "Acme",
@@ -35,7 +35,7 @@ export default {
 ```
 
 See `AospVariantConfig` in
-`eliza/packages/app-core/src/config/app-config.ts` for the full
+`eliza/packages/app/src/config/app-config.ts` for the full
 schema. Forks without an `aosp:` block don't ship an AOSP image; the
 toolkit is inert.
 

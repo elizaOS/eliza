@@ -211,12 +211,7 @@ export { CharacterSchema } from "./config/character-schema.ts";
 export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export * from "./config/index.ts";
 export { resolveUserPath } from "./config/paths.ts";
-// Surface plugin-widgets / plugin-validation / plugin-manager
-// types through the barrel so `@elizaos/plugin-registry` consumes them
-// without reaching into subpaths. The implementations remain agent-private.
-// plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
-// Re-export the internal helpers they consume so the plugin can stay free of
-// `agent/src/...` deep imports.
+// Export host-owned plugin metadata helpers for transport consumers.
 export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,

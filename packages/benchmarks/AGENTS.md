@@ -22,7 +22,7 @@ nearest suite guide and README before editing.
 | Directory | Responsibility |
 | --- | --- |
 | `suites/` | Benchmark implementations, inputs, fixtures, and tests |
-| `harnesses/` | Eliza, Hermes, OpenClaw, Smithers, and Codex adapters |
+| `harnesses/` | Eliza, Hermes, OpenClaw, and Codex adapters |
 | `registry/` | Benchmark commands, requirements, result locators, and scorers |
 | `framework/` | Shared Python and TypeScript harness framework |
 | `lib/` | Results storage, pricing, trajectories, and shared schemas |

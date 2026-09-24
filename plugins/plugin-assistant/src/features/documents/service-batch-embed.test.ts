@@ -86,6 +86,7 @@ async function makeHarness(options: HarnessOptions): Promise<{
 }> {
   const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(vecOf("").length);
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,
     character: {

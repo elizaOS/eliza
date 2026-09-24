@@ -5,7 +5,10 @@
       "name": "Single Message Processing",
       "description": "Process one message end-to-end (baseline latency)",
       "messages": [
-        { "content": "Hello BenchmarkAgent, how are you?", "role": "user" }
+        {
+          "content": "Hello BenchmarkAgent, how are you?",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -19,7 +22,10 @@
       "name": "10-Message Conversation",
       "description": "10-message back-and-forth conversation measuring state growth",
       "messages": [
-        { "content": "Hello BenchmarkAgent, let's talk.", "role": "user" },
+        {
+          "content": "Hello BenchmarkAgent, let's talk.",
+          "role": "user"
+        },
         {
           "content": "BenchmarkAgent, what do you think about performance?",
           "role": "user"
@@ -28,7 +34,10 @@
           "content": "BenchmarkAgent, can you explain latency?",
           "role": "user"
         },
-        { "content": "BenchmarkAgent, how about throughput?", "role": "user" },
+        {
+          "content": "BenchmarkAgent, how about throughput?",
+          "role": "user"
+        },
         {
           "content": "BenchmarkAgent, what about memory usage?",
           "role": "user"
@@ -41,12 +50,18 @@
           "content": "BenchmarkAgent, how does state composition work?",
           "role": "user"
         },
-        { "content": "BenchmarkAgent, what are providers?", "role": "user" },
+        {
+          "content": "BenchmarkAgent, what are providers?",
+          "role": "user"
+        },
         {
           "content": "BenchmarkAgent, explain action dispatch.",
           "role": "user"
         },
-        { "content": "BenchmarkAgent, summarize everything.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, summarize everything.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -96,11 +111,26 @@
       "name": "With ShouldRespond Check",
       "description": "Messages with shouldRespond enabled (agent name in message = always respond)",
       "messages": [
-        { "content": "Hey BenchmarkAgent, respond to this.", "role": "user" },
-        { "content": "BenchmarkAgent, another message.", "role": "user" },
-        { "content": "BenchmarkAgent, third test.", "role": "user" },
-        { "content": "BenchmarkAgent, fourth test.", "role": "user" },
-        { "content": "BenchmarkAgent, fifth test.", "role": "user" }
+        {
+          "content": "Hey BenchmarkAgent, respond to this.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, another message.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, third test.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, fourth test.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, fifth test.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": true,
@@ -112,13 +142,28 @@
     {
       "id": "with-should-respond-no-name",
       "name": "ShouldRespond Without Agent Name",
-      "description": "Messages without agent name — shouldRespond must evaluate via mock LLM",
+      "description": "Messages without agent name \u2014 shouldRespond must evaluate via mock LLM",
       "messages": [
-        { "content": "Hello there, how are you?", "role": "user" },
-        { "content": "Tell me about performance testing.", "role": "user" },
-        { "content": "What's the weather like?", "role": "user" },
-        { "content": "Can you help me with something?", "role": "user" },
-        { "content": "Thanks for the help.", "role": "user" }
+        {
+          "content": "Hello there, how are you?",
+          "role": "user"
+        },
+        {
+          "content": "Tell me about performance testing.",
+          "role": "user"
+        },
+        {
+          "content": "What's the weather like?",
+          "role": "user"
+        },
+        {
+          "content": "Can you help me with something?",
+          "role": "user"
+        },
+        {
+          "content": "Thanks for the help.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": true,
@@ -136,8 +181,14 @@
           "content": "BenchmarkAgent, please reply to this message.",
           "role": "user"
         },
-        { "content": "BenchmarkAgent, send another reply.", "role": "user" },
-        { "content": "BenchmarkAgent, one more reply please.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, send another reply.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, one more reply please.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -151,7 +202,10 @@
       "name": "10 Providers",
       "description": "Message processing with 10 registered dummy providers",
       "messages": [
-        { "content": "BenchmarkAgent, test with 10 providers.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, test with 10 providers.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -166,7 +220,10 @@
       "name": "50 Providers",
       "description": "Message processing with 50 registered dummy providers",
       "messages": [
-        { "content": "BenchmarkAgent, test with 50 providers.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, test with 50 providers.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -326,21 +383,6 @@
         "multiStep": true,
         "warmup": 3,
         "iterations": 15
-      }
-    },
-    {
-      "id": "minimal-bootstrap",
-      "name": "Minimal Bootstrap (CHARACTER only)",
-      "description": "Single message with minimal bootstrap — only CHARACTER provider",
-      "messages": [
-        { "content": "BenchmarkAgent, minimal test.", "role": "user" }
-      ],
-      "config": {
-        "checkShouldRespond": false,
-        "multiStep": false,
-        "minimalBootstrap": true,
-        "warmup": 5,
-        "iterations": 50
       }
     }
   ]

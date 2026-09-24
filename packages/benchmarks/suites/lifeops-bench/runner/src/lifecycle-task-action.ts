@@ -62,7 +62,7 @@ export const LIFECYCLE_TASKS_TOOL_CONTRACT = lifecycleTasksContractSchema.parse(
   JSON.parse(
     readFileSync(
       new URL(
-        "../../benchmarks/orchestrator_lifecycle/tasks-tool.json",
+        "../../../orchestrator_lifecycle/tasks-tool.json",
         import.meta.url,
       ),
       "utf8",

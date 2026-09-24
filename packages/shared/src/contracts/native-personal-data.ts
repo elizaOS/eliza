@@ -20,7 +20,7 @@ import type {
   ConnectedAccountCapability,
   ConnectedAccountStatus,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type {
   PermissionId,
   PermissionRestrictedReason,

@@ -4,7 +4,7 @@
  * (`@elizaos/ui`, `react`, three, …) left as external bare imports; those must
  * resolve to the host shell's live singletons, not to a second copy. The agent
  * bundle route serves each view wrapped as a factory (see
- * `packages/agent/src/api/dynamic-view-host-external.mjs`) whose default export
+ * `packages/agent/src/api/dynamic-view-host-external.ts`) whose default export
  * matches {@link HostExternalBundleFactory}: it takes a {@link HostModuleImporter}
  * and returns the view's export namespace. The shell's `DynamicViewLoader`
  * imports the wrapped module and calls the factory with an importer backed by

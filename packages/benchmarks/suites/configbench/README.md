@@ -1,6 +1,6 @@
 # ConfigBench — Plugin Configuration & Secrets Security Benchmark
 
-A comprehensive benchmark for testing ElizaOS **built-in secrets** (`@elizaos/core`) and the built-in runtime plugin manager through scripted conversational scenarios. Tests both **capability** (correct secret CRUD, plugin lifecycle management, dynamic activation) and **security** (secret leakage prevention, DM enforcement, social engineering resistance).
+A comprehensive benchmark for testing elizaOS **built-in secrets** (`@elizaos/plugin-assistant`) and the built-in runtime plugin manager through scripted conversational scenarios. Tests both **capability** (correct secret CRUD, plugin lifecycle management, dynamic activation) and **security** (secret leakage prevention, DM enforcement, social engineering resistance).
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ realistic edge variants, for 620 added variants and 682 total scenarios.
 | **Perfect (Oracle)** | No | Returns exact correct behavior from ground truth | 100% |
 | **Failing (Anti-Oracle)** | No | Deliberately fails everything, leaks secrets | ~0% |
 | **Random (Coin Flip)** | No | 50/50 correct/incorrect at each decision point | ~25-50% |
-| **Eliza (LLM Agent)** | Yes | Real ElizaOS runtime with both plugins + LLM inference | Measured |
+| **Eliza (LLM Agent)** | Yes | Real elizaOS runtime with both plugins + LLM inference | Measured |
 
 If the Eliza runtime cannot complete adapter setup (for example, the configured
 OpenAI-compatible provider lacks a usable `TEXT_EMBEDDING` backend), ConfigBench

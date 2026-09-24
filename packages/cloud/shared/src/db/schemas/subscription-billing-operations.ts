@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
 import { billingSubscriptionRevisions, billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -57,6 +58,10 @@ export const billingSubscriptionCommands = pgTable(
     idempotency_key: text("idempotency_key").notNull(),
     provider_idempotency_key: text("provider_idempotency_key").notNull(),
     request_digest: text("request_digest").notNull(),
+    checkout_contract: jsonb("checkout_contract").$type<{
+      payload: CheckoutContract;
+      digest: string;
+    }>(),
     status: text("status").$type<BillingSubscriptionCommandStatus>().notNull().default("PREPARED"),
     state_revision: bigint("state_revision", { mode: "number" }).notNull().default(1),
     execution_generation: bigint("execution_generation", { mode: "number" }).notNull().default(0),

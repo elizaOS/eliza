@@ -181,7 +181,13 @@ export function parseOutputDirArg(argv) {
 }
 
 export function defaultDeviceE2eOutputDir({ appDir, lane, date = new Date() }) {
-  return path.join(appDir, "device-e2e-output", `${lane}-${timestampId(date)}`);
+  return path.join(
+    appDir,
+    "../..",
+    "test-results",
+    "device-e2e",
+    `${lane}-${timestampId(date)}`,
+  );
 }
 
 export function createDeviceE2eBundle({

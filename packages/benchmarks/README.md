@@ -2,7 +2,7 @@
 
 The elizaOS evaluation suite — every benchmark used to measure Eliza agents,
 plus the harness adapters that let the same benchmarks run against other agent
-backends (Hermes, OpenClaw, Smithers, Codex). Suites span agent autonomy,
+backends (Hermes, OpenClaw, Codex). Suites span agent autonomy,
 tool-call correctness, long-horizon reasoning, voice/vision multimodal,
 embodied control, onchain trading, and adversarial robustness.
 
@@ -14,7 +14,7 @@ benchmark is self-contained in its own directory under `suites/` and carries
 
 ```
 suites/            One directory per benchmark (bfcl, tau-bench, agentbench, vending-bench, …)
-harnesses/         Agent-backend adapters: eliza / hermes / openclaw / smithers / codex
+harnesses/         Agent-backend adapters: eliza / hermes / openclaw / codex
 registry/          Source of truth — every benchmark's id, run command, requirements, scorer
 framework/         Shared harness framework (Python + TypeScript)
 lib/               Shared helpers: results store, pricing, trajectory normalizer, TS schemas
@@ -75,7 +75,7 @@ bun run --cwd plugin-benchmarks test   # plugin vitest suite
 
 TypeScript/Bun suites (`eliza-1`, `vision-language`, `configbench`,
 `interrupt-bench`, `personality-bench`, `three-agent-dialogue`) test with
-`bun test`; Rust components (HyperliquidBench runner) with `cargo test`.
+their workspace test scripts; Rust components use `cargo test`.
 
 ## Results
 
@@ -99,3 +99,29 @@ python -m benchmarks.orchestrator serve-viewer
 Campaign commands and execution requirements: [orchestrator guide](suites/orchestrator/README.md).
 
 Integration findings and validation: [review](REVIEW.md).
+
+## Monorepo validation
+
+Install once at the repository root with `bun install`. The root
+[benchmark workflow](../../.github/workflows/benchmarks.yml) runs shared Python
+and orchestrator checks, inventory validation, and deterministic runtime smoke
+checks. Its optional live framework job requires an explicit manual selection
+and an OpenAI secret; there is no scheduled paid-model run.
+
+From the monorepo root:
+
+```bash
+python -m pip install -r packages/benchmarks/requirements-ci.txt
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+PYTHONPATH=packages python -m pytest packages/benchmarks/tests packages/benchmarks/lib packages/benchmarks/suites/orchestrator/tests -q
+python packages/benchmarks/scripts/runtime-smoke.py
+```
+
+Action-calling publication requires the full corpus under `packages/training`,
+or the explicit `ELIZA_TRAINING_ROOT` override. Missing corpus data makes
+calibration incompatible; diagnostic smoke rows cannot stand in for that corpus.
+
+For all harness unit suites, use `pytest --import-mode=importlib` to keep their
+same-named test modules isolated. Docker-backed candidate execution is opt-in
+with `BENCHMARK_DOCKER_TESTS=1`; it requires a working daemon and the pinned
+evaluator image. The offline unit lane does not certify that sandbox.

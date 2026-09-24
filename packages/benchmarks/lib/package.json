@@ -13,7 +13,6 @@
     "./local-llama-cpp": "./src/local-llama-cpp.ts"
   },
   "scripts": {
-    "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

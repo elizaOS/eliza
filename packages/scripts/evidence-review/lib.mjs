@@ -57,17 +57,21 @@ export function inferSource(root, filePath) {
   if (rel.startsWith("evidence/")) return "evidence";
   if (rel.startsWith("e2e-recordings/")) return "e2e-recordings";
   if (rel.startsWith("device-e2e-output/")) return "device-e2e";
-  if (rel.startsWith("packages/app/aesthetic-audit-output/")) {
+  if (rel.startsWith("test-results/aesthetic-audit/")) {
     return "app-audit";
   }
-  if (rel.startsWith("packages/app/device-e2e-output/")) return "device-e2e";
+  if (rel.startsWith("test-results/device-e2e/")) return "device-e2e";
   if (rel.startsWith("packages/app/ios/build/boot-capture/")) {
     return "ios-boot-capture";
   }
   if (rel.startsWith("packages/app/ios/build/device-logs/")) {
     return "ios-device-logs";
   }
-  if (rel.startsWith("packages/app/test-results/")) return "app-test-results";
+  if (rel.startsWith("test-results/aesthetic-audit-cloud/"))
+    return "cloud-audit";
+  if (rel.startsWith("test-results/cloud-e2e/")) return "cloud-test-results";
+  if (rel.startsWith("test-results/core/")) return "core-test-results";
+  if (rel.startsWith("test-results/app/")) return "app-test-results";
   if (rel.startsWith("packages/app/reports/walkthrough/")) {
     return "walkthrough";
   }

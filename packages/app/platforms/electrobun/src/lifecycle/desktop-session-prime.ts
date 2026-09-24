@@ -72,7 +72,7 @@ async function runDesktopSessionPrime(
 	try {
 		// A persisted session can outlive the embedded backend process that owns
 		// its database row. Re-prove filesystem co-location and mint for every
-		// agent generation; persistence remains available to browser-bridge callers
+		// agent generation; persistence remains available to subsequent desktop sessions
 		// that explicitly use loadOrCreateDesktopSession's default reuse behavior.
 		session = await loadOrCreateDesktopSession({
 			apiBase,

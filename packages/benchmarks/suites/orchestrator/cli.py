@@ -278,10 +278,10 @@ def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
             values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
         deduped: list[str] = []
         for value in values:
-            if value not in {"eliza", "hermes", "openclaw", "smithers", "codex", *SYNTHETIC_HARNESSES}:
+            if value not in {"eliza", "hermes", "openclaw", "codex", *SYNTHETIC_HARNESSES}:
                 raise SystemExit(
                     "Unknown harness "
-                    f"'{value}'. Expected eliza, hermes, openclaw, smithers, "
+                    f"'{value}'. Expected eliza, hermes, openclaw, "
                     "codex, random_v1, perfect_v1, wrong_v1, or half_v1."
                 )
             if value not in deduped:
@@ -1192,7 +1192,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--adapters",
         nargs="+",
         default=None,
-        help="Harness adapters to run (e.g. eliza hermes openclaw smithers codex)",
+        help="Harness adapters to run (e.g. eliza hermes openclaw codex)",
     )
     p_review_all.add_argument("--provider", default="cerebras", help="Model provider")
     p_review_all.add_argument("--model", default="gemma-4-31b", help="Model name")

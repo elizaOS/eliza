@@ -140,7 +140,7 @@ The scheduled and `ci:device`-label-gated Android job in
    distinct.
 
 Artifacts are written under
-`packages/app/test-results/android-onboarding-to-home/`:
+`test-results/app/android-onboarding-to-home/`:
 `home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`; the bundle
 root also includes `inline/`, `logs/`, `summary.json`, and `junit.xml`.
 
@@ -200,7 +200,7 @@ cannot produce: `packageName === ai.elizaos.app`, Android role rows from
 `RoleManager`, and the native-only `voiceCall` volume stream.
 
 Artifacts are written under
-`packages/app/test-results/android-native-plugin-view-smoke/`:
+`test-results/app/android-native-plugin-view-smoke/`:
 `native-plugin-result.json`, `native-plugin-device.png`,
 `native-plugin-view-smoke.mp4`, `webview-console.log`, and `logcat.txt`.
 
@@ -248,7 +248,7 @@ Capacitor first-run Preferences, writes `eliza:ios-onboarding-smoke:request`,
 and launches the app. The WebView then clicks the real Remote onboarding card,
 fills the host-agent URL, submits first-run, and writes
 `eliza:ios-onboarding-smoke:result` for the harness to poll. Artifacts land in
-`packages/app/test-results/ios-onboarding-to-home/`: `fresh-onboarding.png`,
+`test-results/app/ios-onboarding-to-home/`: `fresh-onboarding.png`,
 `home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and
 `host-agent.log`.
 
