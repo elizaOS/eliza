@@ -66,7 +66,6 @@ type TrajectorySqlExecutor = (sqlText: string) => Promise<TrajectorySqlResult>;
 // ============================================================================
 
 export interface TrajectoryListOptions {
-  roomId?: string;
   limit?: number;
   offset?: number;
   status?: "active" | "completed" | "error" | "timeout" | "terminated";

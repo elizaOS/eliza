@@ -3789,7 +3789,7 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
   target: TargetInfo,
   params: ParamRecord,
-  limit: number,
+  limit: number | undefined,
 ) {
   return {
     target,
@@ -3804,7 +3804,7 @@ async function fetchRecentMessagesFromConnector(
   connector: ConnectorWithHooks,
   context: MessageConnectorQueryContext,
   params: ParamRecord,
-  limit: number,
+  limit: number | undefined,
 ): Promise<Memory[]> {
   if (!connector.fetchMessages || !connector.listRecentTargets) return [];
   const recent = await connector.listRecentTargets(context);
@@ -3905,10 +3905,20 @@ async function handleReadChannel(
   const accountId = accountIdFromParams(params, message);
   const channel = textParam(params.channel) ?? textParam(params.target);
   const range = textParam(params.range);
-  const limit = recentReadLimit(
-    range,
-    requestedLimit(numberParam(params.limit)),
-  );
+  const requestedLimit = numberParam(params.limit);
+  if (
+    params.limit !== undefined &&
+    (requestedLimit === undefined ||
+      !Number.isSafeInteger(requestedLimit) ||
+      requestedLimit <= 0)
+  ) {
+    return opFailure(
+      "read_channel",
+      "INVALID_PARAMETERS",
+      "MESSAGE read_channel limit must be a positive safe integer.",
+    );
+  }
+  const limit = recentReadLimit(range, requestedLimit);
 
   // Prefer in-process connector fetchMessages when available.
   const hookConnectors = connectors.filter(

@@ -4,7 +4,6 @@
  * rows. Parent descriptors are content-free commit points; segment identifiers
  * are deterministic for one message, source revision, and ordinal.
  */
-import { v5 as uuidv5 } from "uuid";
 import {
 	artifactDisclosureRecordFromMemory,
 	resolveArtifactDisclosure,
@@ -146,17 +145,26 @@ function sourceSegmentId(args: {
 	ordinal: number;
 	attachmentHash?: string;
 }): UUID {
-	return uuidv5(
-		[
-			"message-content-segment-v1",
-			args.messageId,
-			args.kind,
-			args.attachmentHash ?? "message",
-			args.revision,
-			String(args.ordinal),
-		].join(":"),
-		MESSAGE_CONTENT_SEGMENT_NAMESPACE,
-	) as UUID;
+	const name = [
+		"message-content-segment-v1",
+		args.messageId,
+		args.kind,
+		args.attachmentHash ?? "message",
+		args.revision,
+		String(args.ordinal),
+	].join(":");
+	// Preserve the RFC 4122 v5 identities already persisted by earlier versions.
+	const digest = createHash("sha1")
+		.update(
+			Buffer.from(MESSAGE_CONTENT_SEGMENT_NAMESPACE.replaceAll("-", ""), "hex"),
+		)
+		.update(name)
+		.digest();
+	const id = Buffer.from(digest.subarray(0, 16));
+	id[6] = (id.readUInt8(6) & 0x0f) | 0x50;
+	id[8] = (id.readUInt8(8) & 0x3f) | 0x80;
+	const hex = Buffer.from(id).toString("hex");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID;
 }
 
 function buildSource(args: {
