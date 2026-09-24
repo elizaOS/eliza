@@ -8,6 +8,11 @@
 import crypto from "node:crypto";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
+  type Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
@@ -18,8 +23,6 @@ import {
   type ScheduledTaskRunnerHandle,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { type Entity, SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalChannel,

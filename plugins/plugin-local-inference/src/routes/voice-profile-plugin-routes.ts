@@ -16,8 +16,12 @@
  */
 import type * as http from "node:http";
 import { sendJsonError } from "@elizaos/core/api/http-helpers";
-import { type Route } from "@elizaos/shared";
-type VoicePrefixHandler = (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean>;
+import type { Route } from "@elizaos/core/api/http-plugin";
+
+type VoicePrefixHandler = (
+	req: http.IncomingMessage,
+	res: http.ServerResponse,
+) => Promise<boolean>;
 /**
  * Adapt a boolean-returning prefix dispatcher to the plugin-route handler
  * contract. The route table below only registers paths the dispatcher owns,
@@ -25,100 +29,106 @@ type VoicePrefixHandler = (req: http.IncomingMessage, res: http.ServerResponse) 
  * profile id segment) — answer 404 rather than hanging the response.
  */
 function delegate(load: () => Promise<VoicePrefixHandler>) {
-    return async (req: unknown, res: unknown): Promise<void> => {
-        const httpReq = req as http.IncomingMessage;
-        const httpRes = res as http.ServerResponse;
-        const handler = await load();
-        const handled = await handler(httpReq, httpRes);
-        if (!handled && !httpRes.headersSent) {
-            sendJsonError(httpRes, "not found", 404);
-        }
-    };
+	return async (req: unknown, res: unknown): Promise<void> => {
+		const httpReq = req as http.IncomingMessage;
+		const httpRes = res as http.ServerResponse;
+		const handler = await load();
+		const handled = await handler(httpReq, httpRes);
+		if (!handled && !httpRes.headersSent) {
+			sendJsonError(httpRes, "not found", 404);
+		}
+	};
 }
-const speakerProfiles = delegate(async () => (await import("./voice-speaker-profile-routes.js"))
-    .handleVoiceSpeakerProfileRoutes);
-const profilesManagement = delegate(async () => (await import("./voice-profiles-management-routes.js"))
-    .handleVoiceProfilesManagementRoutes);
+const speakerProfiles = delegate(
+	async () =>
+		(await import("./voice-speaker-profile-routes.js"))
+			.handleVoiceSpeakerProfileRoutes,
+);
+const profilesManagement = delegate(
+	async () =>
+		(await import("./voice-profiles-management-routes.js"))
+			.handleVoiceProfilesManagementRoutes,
+);
 export const voiceProfilePluginRoutes: Route[] = [
-    // Recognized-speaker centroids → elizaOS entity binding.
-    {
-        type: "GET",
-        path: "/v1/voice/speaker-profiles",
-        rawPath: true,
-        handler: speakerProfiles,
-    },
-    {
-        type: "POST",
-        path: "/v1/voice/speaker-profiles/:id/bind",
-        rawPath: true,
-        handler: speakerProfiles,
-    },
-    {
-        type: "POST",
-        path: "/v1/voice/speaker-profiles/:id/unbind",
-        rawPath: true,
-        handler: speakerProfiles,
-    },
-    // VoiceProfileSection management UI (list / edit / merge / split / export /
-    // sample preview / bind / unbind).
-    {
-        type: "GET",
-        path: "/api/voice/profiles",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "DELETE",
-        path: "/api/voice/profiles",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "POST",
-        path: "/api/voice/profiles/export",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "PATCH",
-        path: "/api/voice/profiles/:id",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "DELETE",
-        path: "/api/voice/profiles/:id",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "GET",
-        path: "/api/voice/profiles/:id/sample",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "POST",
-        path: "/api/voice/profiles/:id/merge",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "POST",
-        path: "/api/voice/profiles/:id/split",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "POST",
-        path: "/api/voice/profiles/:id/bind",
-        rawPath: true,
-        handler: profilesManagement,
-    },
-    {
-        type: "POST",
-        path: "/api/voice/profiles/:id/unbind",
-        rawPath: true,
-        handler: profilesManagement,
-    },
+	// Recognized-speaker centroids → elizaOS entity binding.
+	{
+		type: "GET",
+		path: "/v1/voice/speaker-profiles",
+		rawPath: true,
+		handler: speakerProfiles,
+	},
+	{
+		type: "POST",
+		path: "/v1/voice/speaker-profiles/:id/bind",
+		rawPath: true,
+		handler: speakerProfiles,
+	},
+	{
+		type: "POST",
+		path: "/v1/voice/speaker-profiles/:id/unbind",
+		rawPath: true,
+		handler: speakerProfiles,
+	},
+	// VoiceProfileSection management UI (list / edit / merge / split / export /
+	// sample preview / bind / unbind).
+	{
+		type: "GET",
+		path: "/api/voice/profiles",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "DELETE",
+		path: "/api/voice/profiles",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "POST",
+		path: "/api/voice/profiles/export",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "PATCH",
+		path: "/api/voice/profiles/:id",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "DELETE",
+		path: "/api/voice/profiles/:id",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "GET",
+		path: "/api/voice/profiles/:id/sample",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "POST",
+		path: "/api/voice/profiles/:id/merge",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "POST",
+		path: "/api/voice/profiles/:id/split",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "POST",
+		path: "/api/voice/profiles/:id/bind",
+		rawPath: true,
+		handler: profilesManagement,
+	},
+	{
+		type: "POST",
+		path: "/api/voice/profiles/:id/unbind",
+		rawPath: true,
+		handler: profilesManagement,
+	},
 ];

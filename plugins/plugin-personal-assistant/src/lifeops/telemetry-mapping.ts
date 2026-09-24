@@ -11,12 +11,19 @@
 
 import crypto from "node:crypto";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  type LifeOpsActivitySignal,
+  type LifeOpsDevicePlatform,
+  type LifeOpsTelemetryEvent,
+  type LifeOpsTelemetryMessageChannel,
+  type LifeOpsTelemetryPayload,
+} from "@elizaos/core/contracts/personal-assistant";
 // Import the leaf module, not the `@elizaos/plugin-health` barrel: this file is
 // in the data-layer graph that `lifeops/repository.ts` pulls into the keyless
 // node test lane (goals.real-db), where the barrel (→ React views → @elizaos/ui)
 // must never enter and has no dist entry to resolve.
 import { resolveActivitySignalReliability } from "@elizaos/plugin-health/sleep/source-reliability";
-import { LIFEOPS_ACTIVITY_SIGNAL_SOURCES, type LifeOpsActivitySignal, type LifeOpsDevicePlatform, type LifeOpsTelemetryEvent, type LifeOpsTelemetryMessageChannel, type LifeOpsTelemetryPayload } from "@elizaos/core/contracts/personal-assistant";
 import type {
   SignalSourceContribution,
   SignalSourceRegistry,

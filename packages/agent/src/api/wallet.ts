@@ -27,7 +27,13 @@ export {
 } from "./wallet-keygen.ts";
 
 import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { type KeyValidationResult, type SolanaTokenBalance, type WalletAddresses, type WalletChain, type WalletImportResult } from "@elizaos/core/contracts/wallet-types";
+import {
+  type KeyValidationResult,
+  type SolanaTokenBalance,
+  type WalletAddresses,
+  type WalletChain,
+  type WalletImportResult,
+} from "@elizaos/core/contracts/wallet-types";
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
@@ -37,7 +43,41 @@ type StewardAgentPayload = {
   walletAddresses?: { evm?: string; solana?: string };
 };
 
-export { type BscTradeExecuteRequest, type BscTradeExecuteResponse, type BscTradeExecutionResult, type BscTradePreflightRequest, type BscTradePreflightResponse, type BscTradeQuoteRequest, type BscTradeQuoteResponse, type BscTradeSide, type BscTradeTxStatus, type BscTradeTxStatusResponse, type BscTransferExecuteRequest, type BscTransferExecuteResponse, type BscTransferExecutionResult, type BscUnsignedApprovalTx, type BscUnsignedTradeTx, type BscUnsignedTransferTx, type EvmChainBalance, type EvmTokenBalance, type KeyValidationResult, type SolanaTokenBalance, type TradePermissionMode, type WalletAddresses, type WalletBalancesResponse, type WalletChain, type WalletConfigStatus, type WalletGenerateResult, type WalletImportResult, type WalletKeys, type WalletTradeLedgerEntry, type WalletTradeSource, type WalletTradingProfileResponse, type WalletTradingProfileSourceFilter, type WalletTradingProfileWindow } from "@elizaos/core/contracts/wallet-types";
+export {
+  type BscTradeExecuteRequest,
+  type BscTradeExecuteResponse,
+  type BscTradeExecutionResult,
+  type BscTradePreflightRequest,
+  type BscTradePreflightResponse,
+  type BscTradeQuoteRequest,
+  type BscTradeQuoteResponse,
+  type BscTradeSide,
+  type BscTradeTxStatus,
+  type BscTradeTxStatusResponse,
+  type BscTransferExecuteRequest,
+  type BscTransferExecuteResponse,
+  type BscTransferExecutionResult,
+  type BscUnsignedApprovalTx,
+  type BscUnsignedTradeTx,
+  type BscUnsignedTransferTx,
+  type EvmChainBalance,
+  type EvmTokenBalance,
+  type KeyValidationResult,
+  type SolanaTokenBalance,
+  type TradePermissionMode,
+  type WalletAddresses,
+  type WalletBalancesResponse,
+  type WalletChain,
+  type WalletConfigStatus,
+  type WalletGenerateResult,
+  type WalletImportResult,
+  type WalletKeys,
+  type WalletTradeLedgerEntry,
+  type WalletTradeSource,
+  type WalletTradingProfileResponse,
+  type WalletTradingProfileSourceFilter,
+  type WalletTradingProfileWindow,
+} from "@elizaos/core/contracts/wallet-types";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 

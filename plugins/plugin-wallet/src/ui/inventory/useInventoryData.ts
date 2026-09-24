@@ -8,7 +8,13 @@
  * zero USD value are dropped. All sorting/filtering is memoized on the raw
  * inputs and the user's sort/filter selections.
  */
-import { type EvmChainBalance, type WalletAddresses, type WalletBalancesResponse, type WalletConfigStatus, type WalletNftsResponse } from "@elizaos/core/contracts/wallet-types";
+import {
+  type EvmChainBalance,
+  type WalletAddresses,
+  type WalletBalancesResponse,
+  type WalletConfigStatus,
+  type WalletNftsResponse,
+} from "@elizaos/core/contracts/wallet-types";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useMemo } from "react";
 import {

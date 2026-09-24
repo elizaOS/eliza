@@ -14,24 +14,24 @@ import z from "zod";
 // absent. `accountId` instead identifies an explicit routing choice, so a
 // present but blank value is invalid rather than equivalent to no choice.
 export const PostInboxMessageRequestSchema = z
-  .object({
-    accountId: z.string().regex(/\S/, "accountId is required").optional(),
-    roomId: z.string().regex(/\S/, "roomId is required"),
-    source: z.string().regex(/\S/, "source is required"),
-    text: z.string().regex(/\S/, "text is required"),
-    replyToMessageId: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    ...(value.accountId ? { accountId: value.accountId.trim() } : {}),
-    roomId: value.roomId.trim(),
-    source: value.source.trim().toLowerCase(),
-    text: value.text.trim(),
-    ...(value.replyToMessageId?.trim()
-      ? { replyToMessageId: value.replyToMessageId.trim() }
-      : {}),
-  }));
+	.object({
+		accountId: z.string().regex(/\S/, "accountId is required").optional(),
+		roomId: z.string().regex(/\S/, "roomId is required"),
+		source: z.string().regex(/\S/, "source is required"),
+		text: z.string().regex(/\S/, "text is required"),
+		replyToMessageId: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		...(value.accountId ? { accountId: value.accountId.trim() } : {}),
+		roomId: value.roomId.trim(),
+		source: value.source.trim().toLowerCase(),
+		text: value.text.trim(),
+		...(value.replyToMessageId?.trim()
+			? { replyToMessageId: value.replyToMessageId.trim() }
+			: {}),
+	}));
 
 export type PostInboxMessageRequest = z.infer<
-  typeof PostInboxMessageRequestSchema
+	typeof PostInboxMessageRequestSchema
 >;

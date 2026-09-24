@@ -4,53 +4,53 @@
  * unparseable input. Used by config zod schemas and CLI flag parsing.
  */
 export type DurationMsParseOptions = {
-  defaultUnit?: "ms" | "s" | "m" | "h" | "d";
+	defaultUnit?: "ms" | "s" | "m" | "h" | "d";
 };
 
 export function parseDurationMs(
-  raw: string,
-  opts?: DurationMsParseOptions,
+	raw: string,
+	opts?: DurationMsParseOptions,
 ): number {
-  if (typeof raw !== "string") {
-    throw new Error("invalid duration (empty)");
-  }
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) {
-    throw new Error("invalid duration (empty)");
-  }
+	if (typeof raw !== "string") {
+		throw new Error("invalid duration (empty)");
+	}
+	const trimmed = raw.trim().toLowerCase();
+	if (!trimmed) {
+		throw new Error("invalid duration (empty)");
+	}
 
-  const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(trimmed);
-  if (!m) {
-    throw new Error(`invalid duration: ${raw}`);
-  }
+	const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(trimmed);
+	if (!m) {
+		throw new Error(`invalid duration: ${raw}`);
+	}
 
-  const value = Number(m[1]);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`invalid duration: ${raw}`);
-  }
+	const value = Number(m[1]);
+	if (!Number.isFinite(value) || value < 0) {
+		throw new Error(`invalid duration: ${raw}`);
+	}
 
-  const unit = (m[2] ?? opts?.defaultUnit ?? "ms") as
-    | "ms"
-    | "s"
-    | "m"
-    | "h"
-    | "d";
-  const multiplier =
-    unit === "ms"
-      ? 1
-      : unit === "s"
-        ? 1000
-        : unit === "m"
-          ? 60_000
-          : unit === "h"
-            ? 3_600_000
-            : 86_400_000;
-  const milliseconds = value * multiplier;
-  if (
-    !Number.isFinite(milliseconds) ||
-    !Number.isSafeInteger(Math.round(milliseconds))
-  ) {
-    throw new Error(`invalid duration: ${raw}`);
-  }
-  return Math.round(milliseconds);
+	const unit = (m[2] ?? opts?.defaultUnit ?? "ms") as
+		| "ms"
+		| "s"
+		| "m"
+		| "h"
+		| "d";
+	const multiplier =
+		unit === "ms"
+			? 1
+			: unit === "s"
+				? 1000
+				: unit === "m"
+					? 60_000
+					: unit === "h"
+						? 3_600_000
+						: 86_400_000;
+	const milliseconds = value * multiplier;
+	if (
+		!Number.isFinite(milliseconds) ||
+		!Number.isSafeInteger(Math.round(milliseconds))
+	) {
+		throw new Error(`invalid duration: ${raw}`);
+	}
+	return Math.round(milliseconds);
 }

@@ -6,7 +6,7 @@
 import { Buffer } from "node:buffer";
 import { PassThrough } from "node:stream";
 import { ChannelType, createUniqueUuid, type UUID } from "@elizaos/core";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ICompatRuntime } from "../compat";
 import { AudioMonitor, VoiceManager } from "../voice";

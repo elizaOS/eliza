@@ -1,6 +1,6 @@
 /**
  * Zod schema for the per-GPU YAML profile files in
- * `packages/shared/src/local-inference-gpu/profiles/*.yaml`.
+ * `plugins/plugin-native-inference/src/model-gpu/profiles/*.yaml`.
  *
  * The YAML files are the source of truth for *per-bundle* deployment
  * recommendations on a given card (n_gpu_layers, ctx_size, parallel,
@@ -21,7 +21,7 @@ import { z } from "zod";
 import {
   ELIZA_1_TIER_IDS,
   type Eliza1TierId,
-} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+} from "../model-catalog/catalog.js";
 
 /**
  * Card ids — must match `GpuProfileId` in

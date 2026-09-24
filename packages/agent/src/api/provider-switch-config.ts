@@ -15,10 +15,35 @@ import {
 } from "@elizaos/auth/auth/account-storage";
 import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
 import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
-import { type DeploymentTargetConfig, type LinkedAccountFlagsConfig, type ServiceCapability, type ServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
+import {
+  deriveFirstRunCredentialPersistencePlan,
+  type FirstRunConnection,
+  type FirstRunCredentialInputs,
+  type FirstRunLlmPersistenceSelection,
+  type FirstRunLocalProviderId,
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
+  getStoredSubscriptionProvider,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunCredentialInputs,
+  normalizeFirstRunProviderId,
+  normalizeSubscriptionProviderSelectionId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/core/contracts/first-run-options";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  type DeploymentTargetConfig,
+  type LinkedAccountFlagsConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeServiceRoutingConfig,
+  type ServiceCapability,
+  type ServiceRoutingConfig,
+} from "@elizaos/core/contracts/service-routing";
 import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
-import { buildDefaultElizaCloudServiceRouting, buildElizaCloudServiceRoute, DEFAULT_CEREBRAS_TEXT_MODEL, normalizeDeploymentTargetConfig, normalizeServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
-import { deriveFirstRunCredentialPersistencePlan, type FirstRunConnection, type FirstRunCredentialInputs, type FirstRunLlmPersistenceSelection, type FirstRunLocalProviderId, getDirectAccountProviderForFirstRunProvider, getFirstRunProviderOption, getFirstRunProviderSignalEnvKeys, getStoredFirstRunProviderId, getStoredSubscriptionProvider, migrateLegacyRuntimeConfig, normalizeFirstRunCredentialInputs, normalizeFirstRunProviderId, normalizeSubscriptionProviderSelectionId, requiresAdditionalRuntimeProvider } from "@elizaos/core/contracts/first-run-options";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {

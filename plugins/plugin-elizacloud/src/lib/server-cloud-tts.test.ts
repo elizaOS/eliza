@@ -8,7 +8,7 @@
  * logger when the flag is set, silent otherwise), and the proxy fetch abort
  * so a stalled upstream cannot hang the warming `for (;;)` loop.
  */
-import { _resetCloudSecretsForTesting } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import { _resetCloudSecretsForTesting } from "../cloud-config/cloud-secrets.js";
 import { addLogListener } from "@elizaos/core";
 import { afterAll } from "vitest";
 import { afterEach } from "vitest";

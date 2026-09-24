@@ -17,72 +17,32 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/core": [
-        "../packages/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "../packages/core/dist/*"
-      ],
-      "@elizaos/ui": [
-        "../packages/ui/dist/index.d.ts"
-      ],
-      "@elizaos/ui/api": [
-        "../packages/ui/dist/api/index.d.ts"
-      ],
-      "@elizaos/ui/api/*": [
-        "../packages/ui/dist/api/*"
-      ],
-      "@elizaos/ui/components": [
-        "../packages/ui/dist/components/index.d.ts"
-      ],
-      "@elizaos/ui/components/*": [
-        "../packages/ui/dist/components/*"
-      ],
-      "@elizaos/ui/spatial": [
-        "../packages/ui/dist/spatial/index.d.ts"
-      ],
-      "@elizaos/ui/utils": [
-        "../packages/ui/dist/utils/index.d.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../packages/ui/dist/*"
-      ],
+      "@elizaos/core": ["../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../packages/core/dist/*"],
+      "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/api": ["../packages/ui/dist/api/index.d.ts"],
+      "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
+      "@elizaos/ui/components": ["../packages/ui/dist/components/index.d.ts"],
+      "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
+      "@elizaos/ui/spatial": ["../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "./plugin-agent-orchestrator/dist/ui/index.d.ts"
       ],
       "@elizaos/plugin-agent-orchestrator/ui/*": [
         "./plugin-agent-orchestrator/dist/ui/*"
       ],
-      "@elizaos/app": [
-        "../packages/app/dist/index.d.ts"
-      ],
-      "@elizaos/app/*": [
-        "../packages/app/dist/*"
-      ],
-      "@elizaos/agent": [
-        "../packages/agent/dist/index.d.ts"
-      ],
-      "@elizaos/agent/*": [
-        "../packages/agent/dist/*"
-      ],
-      "@elizaos/plugin-discord": [
-        "./plugin-discord/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-discord/*": [
-        "./plugin-discord/dist/*"
-      ],
-      "@elizaos/plugin-wallet": [
-        "../plugins/plugin-wallet/dist/index.d.mts"
-      ],
-      "@elizaos/plugin-wallet/*": [
-        "../plugins/plugin-wallet/dist/*"
-      ],
-      "@elizaos/plugin-elizacloud": [
-        "./plugin-elizacloud/dist/index.d.ts"
-      ],
-      "@elizaos/cloud-sdk": [
-        "../packages/cloud/sdk/dist/index.d.ts"
-      ],
+      "@elizaos/app": ["../packages/app/dist/index.d.ts"],
+      "@elizaos/app/*": ["../packages/app/dist/*"],
+      "@elizaos/agent": ["../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": ["../packages/agent/dist/*"],
+      "@elizaos/plugin-discord": ["./plugin-discord/dist/index.d.ts"],
+      "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
+      "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
+      "@elizaos/plugin-elizacloud": ["./plugin-elizacloud/dist/index.d.ts"],
+      "@elizaos/cloud-sdk": ["../packages/cloud/sdk/dist/index.d.ts"],
       "@elizaos/testing/scenario-runner": [
         "../packages/testing/scenario-runner/src/index.ts"
       ]

@@ -22,26 +22,26 @@
 import z from "zod";
 
 export const PutPermissionsShellRequestSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		enabled: z.boolean().optional(),
+	})
+	.strict();
 
 const PermissionStateRecordSchema = z.record(
-  z.string(),
-  z.record(z.string(), z.unknown()),
+	z.string(),
+	z.record(z.string(), z.unknown()),
 );
 
 export const PutPermissionsStateRequestSchema = z
-  .object({
-    permissions: PermissionStateRecordSchema.optional(),
-    startup: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		permissions: PermissionStateRecordSchema.optional(),
+		startup: z.boolean().optional(),
+	})
+	.strict();
 
 export type PutPermissionsShellRequest = z.infer<
-  typeof PutPermissionsShellRequestSchema
+	typeof PutPermissionsShellRequestSchema
 >;
 export type PutPermissionsStateRequest = z.infer<
-  typeof PutPermissionsStateRequestSchema
+	typeof PutPermissionsStateRequestSchema
 >;

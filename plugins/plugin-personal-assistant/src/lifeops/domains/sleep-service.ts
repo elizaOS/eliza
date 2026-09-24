@@ -4,8 +4,13 @@
  * belongs to plugin-health; LifeOps only projects it for the owner). Base-only
  * domain — no cross-domain dependencies.
  */
+
+import {
+  type LifeOpsPersonalBaselineResponse,
+  type LifeOpsSleepHistoryResponse,
+  type LifeOpsSleepRegularityResponse,
+} from "@elizaos/core/contracts/personal-assistant";
 import { createHealthSleepServiceMethods } from "@elizaos/plugin-health";
-import { type LifeOpsPersonalBaselineResponse, type LifeOpsSleepHistoryResponse, type LifeOpsSleepRegularityResponse } from "@elizaos/core/contracts/personal-assistant";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 export class SleepDomain {

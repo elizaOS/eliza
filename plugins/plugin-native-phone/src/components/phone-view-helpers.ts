@@ -4,9 +4,9 @@
 // Fast-Refresh-compatible (Vite full-reloads a component file that also exports
 // plain functions).
 
+import { ElizaError } from "@elizaos/core/errors";
 import type { CallLogEntry } from "@elizaos/plugin-native-phone/bridge";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
-import { ElizaError } from "@elizaos/core";
 
 const DEFAULT_CALL_LOG_LIMIT = 50;
 const MAX_CALL_LOG_LIMIT = 200;

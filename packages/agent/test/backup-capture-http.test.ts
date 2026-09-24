@@ -3,7 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT, type AgentBackupCaptureV2Request, parseAgentBackupCaptureV2Frames } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import {
+  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+  type AgentBackupCaptureV2Request,
+  parseAgentBackupCaptureV2Frames,
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";

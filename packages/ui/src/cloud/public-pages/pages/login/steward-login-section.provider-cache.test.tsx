@@ -108,7 +108,7 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 
 vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../../../../core/src/steward-session-client/index.ts")
+    typeof import("@elizaos/plugin-elizacloud/steward-session-client")
   >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,

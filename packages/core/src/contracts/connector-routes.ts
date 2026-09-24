@@ -22,38 +22,38 @@ import z from "zod";
 const RESERVED_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export const PostConnectorRequestSchema = z
-  .object({
-    name: z.string().regex(/\S/, "Missing connector name"),
-    config: z.record(z.string(), z.unknown()),
-  })
-  .strict()
-  .transform((value) => ({
-    name: value.name.trim(),
-    config: value.config,
-  }))
-  .refine((value) => !RESERVED_OBJECT_KEYS.has(value.name), {
-    message:
-      'Invalid connector name: "__proto__", "constructor", and "prototype" are reserved',
-  });
+	.object({
+		name: z.string().regex(/\S/, "Missing connector name"),
+		config: z.record(z.string(), z.unknown()),
+	})
+	.strict()
+	.transform((value) => ({
+		name: value.name.trim(),
+		config: value.config,
+	}))
+	.refine((value) => !RESERVED_OBJECT_KEYS.has(value.name), {
+		message:
+			'Invalid connector name: "__proto__", "constructor", and "prototype" are reserved',
+	});
 
 export const PostProviderSwitchRequestSchema = z
-  .object({
-    provider: z.string().regex(/\S/, "Missing provider"),
-    apiKey: z.string().max(512, "API key is too long").optional(),
-    primaryModel: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const apiKey = value.apiKey?.trim();
-    const primaryModel = value.primaryModel?.trim();
-    return {
-      provider: value.provider.trim(),
-      ...(apiKey ? { apiKey } : {}),
-      ...(primaryModel ? { primaryModel } : {}),
-    };
-  });
+	.object({
+		provider: z.string().regex(/\S/, "Missing provider"),
+		apiKey: z.string().max(512, "API key is too long").optional(),
+		primaryModel: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const apiKey = value.apiKey?.trim();
+		const primaryModel = value.primaryModel?.trim();
+		return {
+			provider: value.provider.trim(),
+			...(apiKey ? { apiKey } : {}),
+			...(primaryModel ? { primaryModel } : {}),
+		};
+	});
 
 export type PostConnectorRequest = z.infer<typeof PostConnectorRequestSchema>;
 export type PostProviderSwitchRequest = z.infer<
-  typeof PostProviderSwitchRequestSchema
+	typeof PostProviderSwitchRequestSchema
 >;

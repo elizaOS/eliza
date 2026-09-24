@@ -13,7 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { AgentRuntime } from '@elizaos/core';
-import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from '@elizaos/core/api/http-plugin-runtime';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';

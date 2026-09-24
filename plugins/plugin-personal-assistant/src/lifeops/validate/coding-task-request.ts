@@ -7,7 +7,10 @@
  * the action and letting routing fall through to a better fit).
  */
 
-import { findKeywordTermMatch, getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
+import {
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+} from "@elizaos/core/i18n/keyword-matching";
 
 /**
  * Build-an-app / coding-task requests. Owner task/routine creation shares verbs

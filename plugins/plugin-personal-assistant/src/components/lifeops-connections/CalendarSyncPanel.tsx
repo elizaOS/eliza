@@ -1,5 +1,9 @@
 /** Owner review of the exact Google destination and durable calendar sync state. */
-import { type LifeOpsCalendarSummary, type LifeOpsLinkedCalendarControl, type UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarSummary,
+  type LifeOpsLinkedCalendarControl,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
 import {
   Button,
   Select,

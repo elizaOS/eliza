@@ -21,25 +21,16 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import { registryPath } from "@elizaos/plugin-native-inference/model-catalog/paths";
-import type { InstalledModel } from "@elizaos/core/contracts/local-inference";
+import type {
+  InstalledModel,
+  VerifyResult,
+} from "@elizaos/core/contracts/local-inference";
+import { registryPath } from "./paths.js";
 
-export type VerifyState =
-  | "unknown"
-  | "ok"
-  | "mismatch"
-  | "missing"
-  | "truncated";
-
-export interface VerifyResult {
-  state: VerifyState;
-  /** SHA256 hex of the file as it exists now. Absent when file missing. */
-  currentSha256: string | null;
-  /** Hash from the registry, when available. */
-  expectedSha256: string | null;
-  /** Size read from the filesystem. */
-  currentBytes: number | null;
-}
+export type {
+  VerifyResult,
+  VerifyState,
+} from "@elizaos/core/contracts/local-inference";
 
 const GGUF_MAGIC = Buffer.from("GGUF", "ascii");
 

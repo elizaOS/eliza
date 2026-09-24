@@ -9,7 +9,7 @@
  * @module restart
  */
 import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" with {
-  type: "json",
+	type: "json",
 };
 
 /**
@@ -29,12 +29,12 @@ let _handler: RestartHandler = () => {};
  * Replace the active restart handler.
  */
 export function setRestartHandler(handler: RestartHandler): void {
-  _handler = handler;
+	_handler = handler;
 }
 
 /**
  * Trigger a restart. Delegates to whatever handler is currently registered.
  */
 export function requestRestart(reason?: string): void | Promise<void> {
-  return _handler(reason);
+	return _handler(reason);
 }

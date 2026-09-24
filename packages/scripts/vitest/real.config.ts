@@ -21,7 +21,7 @@ import {
   getAutonomousSourceRoot,
   getElizaCoreEntry,
   getUiSourceRoot,
-} from "@elizaos/testing";
+} from "@elizaos/testing/package-paths";
 import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {
@@ -426,7 +426,7 @@ export default defineConfig({
           "@elizaos/core",
           "@elizaos/agent",
           "@elizaos/app",
-                  /^@elizaos\/plugin-/,
+          /^@elizaos\/plugin-/,
           "zod",
         ],
       },

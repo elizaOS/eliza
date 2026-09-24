@@ -28,68 +28,91 @@
  * `Runtime.exec`'ing the bun process. On every other build the call logs that
  * local registration was skipped.
  */
-import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
-import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { FIRST_RUN_DEFAULT_MODEL_ID } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { InferenceBackgroundWaitTimeoutError } from "@elizaos/core";
-import { InferenceIdleUnloader } from "./inference-memory-policy.js";
-import { ModelType } from "@elizaos/core";
-import { Readable } from "node:stream";
-import { Service } from "@elizaos/core";
-import { applyBackgroundInferenceBudget } from "@elizaos/core";
-import { assertAospModelDownloadSize } from "./aosp-model-paths.js";
-import { assertBgeTokenAgreement } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
-import { bundleSlugFromModelName } from "./aosp-model-paths.js";
-import { classifyInferenceRamClass } from "./inference-memory-policy.js";
-import { createAospStreamingLlmBinding } from "./aosp-llama-streaming.js";
-import { createPreparedModelRequestGuard } from "@elizaos/core";
-import { createService } from "@elizaos/core";
-import { createWriteStream } from "node:fs";
-import { existsSync } from "node:fs";
-import { fetchRecommendedAospModel } from "./aosp-model-paths.js";
-import { getInferencePriorityGate } from "@elizaos/core";
-import { identifyEmbeddingVector } from "@elizaos/core";
-import { isAospEnabled } from "./aosp-llama-paths.js";
-import { linkSync } from "node:fs";
-import { logger } from "@elizaos/core";
-import { makeProcMeminfoPressureCheck } from "./inference-memory-policy.js";
-import { mkdirSync } from "node:fs";
-import { pipeline } from "node:stream/promises";
-import { prepareAospEmbeddingBundle } from "./aosp-embedding-artifact.js";
-import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
-import { readFileSync } from "node:fs";
-import { readdirSync } from "node:fs";
-import { renameSync } from "node:fs";
-import { resolveAospElizaInferenceLibPath } from "./aosp-llama-paths.js";
-import { resolveBackgroundInferenceBudget } from "@elizaos/core";
-import { resolveInferenceIdleUnloadMs } from "./inference-memory-policy.js";
-import { resolveRecommendedAospModel } from "./aosp-model-paths.js";
-import { resolveStateDir } from "@elizaos/core";
-import { rmSync } from "node:fs";
-import { statSync } from "node:fs";
-import { streamGenerate } from "./aosp-llama-streaming.js";
-import { symlinkSync } from "node:fs";
-import { tierBundleSlug } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { type AgentRuntime } from "@elizaos/core";
-import { type AospFfiPointerHelpers } from "./aosp-llama-streaming.js";
-import { type AospFusedLlmSymbols } from "./aosp-llama-streaming.js";
-import { type AospFusedStreamingLlmBinding } from "./aosp-llama-streaming.js";
-import { type AospLlmStreamConfig } from "./aosp-llama-streaming.js";
-import { type GenerateTextParams } from "@elizaos/core";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type TextEmbeddingParams } from "@elizaos/core";
-import { type TextToSpeechParams } from "@elizaos/core";
-import { type TranscriptionParams } from "@elizaos/core";
-import { unlinkSync } from "node:fs";
-import { verifyAospEmbeddingArtifact } from "./aosp-embedding-artifact.js";
-import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
-import { writeFileSync } from "node:fs";
+
+import {
+  createWriteStream,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import {
+  type AgentRuntime,
+  applyBackgroundInferenceBudget,
+  BGE_SMALL_VECTOR_SPACE,
+  createPreparedModelRequestGuard,
+  createService,
+  ElizaError,
+  type GenerateTextParams,
+  getInferencePriorityGate,
+  type IAgentRuntime,
+  InferenceBackgroundWaitTimeoutError,
+  identifyEmbeddingVector,
+  logger,
+  ModelType,
+  resolveBackgroundInferenceBudget,
+  resolveStateDir,
+  Service,
+  type TextEmbeddingParams,
+  type TextToSpeechParams,
+  type TranscriptionParams,
+} from "@elizaos/core";
+import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
+import {
+  prepareAospEmbeddingBundle,
+  verifyAospEmbeddingArtifact,
+} from "./aosp-embedding-artifact.js";
+import {
+  isAospEnabled,
+  resolveAospElizaInferenceLibPath,
+} from "./aosp-llama-paths.js";
+import {
+  type AospFfiPointerHelpers,
+  type AospFusedLlmSymbols,
+  type AospFusedStreamingLlmBinding,
+  type AospLlmStreamConfig,
+  createAospStreamingLlmBinding,
+  streamGenerate,
+} from "./aosp-llama-streaming.js";
+import {
+  assertAospModelDownloadSize,
+  bundleSlugFromModelName,
+  fetchRecommendedAospModel,
+  resolveRecommendedAospModel,
+} from "./aosp-model-paths.js";
+import {
+  classifyInferenceRamClass,
+  InferenceIdleUnloader,
+  makeProcMeminfoPressureCheck,
+  resolveInferenceIdleUnloadMs,
+} from "./inference-memory-policy.js";
+import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
+import {
+  assertBgeTokenAgreement,
+  prepareBgeEmbeddingInput,
+} from "./model-catalog/bge-input.js";
+import {
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  tierBundleSlug,
+} from "./model-catalog/catalog.js";
+
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
-const aospOwnerPromises = new WeakMap<IAgentRuntime, Promise<AospLoaderOwner | null>>();
+const aospOwnerPromises = new WeakMap<
+  IAgentRuntime,
+  Promise<AospLoaderOwner | null>
+>();
 const AOSP_ACTIVE_MODEL_STATE_FILE = "aosp-active.json";
 let routeActivationLoader: AospLoader | null = null;
 /**
@@ -102,33 +125,31 @@ let routeActivationLoader: AospLoader | null = null;
  */
 const LOCAL_INFERENCE_PRIORITY = 0;
 export interface AospLoader {
-    loadModel(args: AospLoadModelArgs): Promise<void>;
-    unloadModel(): Promise<void>;
-    currentModelPath(): string | null;
-    generate(args: {
-        prompt: string;
-        stopSequences?: string[];
-        maxTokens?: number;
-        temperature?: number;
-        grammar?: string;
-        onTextChunk?: (chunk: string) => void | Promise<void>;
-        stopOnFirstSentence?: boolean;
-        minFirstSentenceChars?: number;
-        /**
-         * Per-request abort signal. Forwarded into the fused streaming decode
-         * loop (`streamGenerate`); the loop checks `signal.aborted` between
-         * steps and cancels the native stream when the caller aborts.
-         */
-        signal?: AbortSignal;
-    }): Promise<string>;
-    embed(args: {
-        input: string;
-    }): Promise<{
-        embedding: number[];
-        tokens: number;
-    }>;
-    /** Release the loader's native library handle after its model is unloaded. */
-    close?(): Promise<void>;
+  loadModel(args: AospLoadModelArgs): Promise<void>;
+  unloadModel(): Promise<void>;
+  currentModelPath(): string | null;
+  generate(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
+    /**
+     * Per-request abort signal. Forwarded into the fused streaming decode
+     * loop (`streamGenerate`); the loop checks `signal.aborted` between
+     * steps and cancels the native stream when the caller aborts.
+     */
+    signal?: AbortSignal;
+  }): Promise<string>;
+  embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }>;
+  /** Release the loader's native library handle after its model is unloaded. */
+  close?(): Promise<void>;
 }
 /**
  * Route every model-touching loader call through the idle unloader's
@@ -137,215 +158,270 @@ export interface AospLoader {
  * — an explicit unload IS the idle path's goal, and the voice handlers'
  * out-of-band eviction must never be counted as model use.
  */
-export function instrumentLoaderForIdleTracking(loader: AospLoader, unloader: InferenceIdleUnloader): AospLoader {
-    const track = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
-        const endUse = unloader.beginUse();
-        try {
-            return await fn(...args);
-        }
-        finally {
-            endUse();
-        }
+export function instrumentLoaderForIdleTracking(
+  loader: AospLoader,
+  unloader: InferenceIdleUnloader,
+): AospLoader {
+  const track =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      const endUse = unloader.beginUse();
+      try {
+        return await fn(...args);
+      } finally {
+        endUse();
+      }
     };
-    return {
-        currentModelPath: () => loader.currentModelPath(),
-        loadModel: track(loader.loadModel.bind(loader)),
-        unloadModel: () => loader.unloadModel(),
-        generate: track(loader.generate.bind(loader)),
-        embed: track(loader.embed.bind(loader)),
-        ...(loader.close
-            ? { close: () => loader.close?.() ?? Promise.resolve() }
-            : {}),
-    };
+  return {
+    currentModelPath: () => loader.currentModelPath(),
+    loadModel: track(loader.loadModel.bind(loader)),
+    unloadModel: () => loader.unloadModel(),
+    generate: track(loader.generate.bind(loader)),
+    embed: track(loader.embed.bind(loader)),
+    ...(loader.close
+      ? { close: () => loader.close?.() ?? Promise.resolve() }
+      : {}),
+  };
 }
-function writeAospActiveModelState(state: {
-    status: "ready";
-    role: "chat" | "embedding";
-    provider: typeof PROVIDER;
-    path: string;
-    loadedAt: string;
-} | {
-    status: "error";
-    role: "chat" | "embedding";
-    provider: typeof PROVIDER;
-    path: string;
-    error: string;
-    updatedAt: string;
-}): void {
-    try {
-        const activeStatePath = path.join(resolveStateDir(), "local-inference", AOSP_ACTIVE_MODEL_STATE_FILE);
-        mkdirSync(path.dirname(activeStatePath), { recursive: true });
-        writeFileSync(activeStatePath, `${JSON.stringify({ version: 1, ...state }, null, 2)}\n`, "utf8");
-    }
-    catch (err) {
-        // error-policy:J7 the active-model-state file is a diagnostic sidecar (drives
-        // the route-status UI); a write failure is logged and must not fail model load.
-        logger.warn("[aosp-local-inference] Failed to write active model state:", err instanceof Error ? err.message : String(err));
-    }
+function writeAospActiveModelState(
+  state:
+    | {
+        status: "ready";
+        role: "chat" | "embedding";
+        provider: typeof PROVIDER;
+        path: string;
+        loadedAt: string;
+      }
+    | {
+        status: "error";
+        role: "chat" | "embedding";
+        provider: typeof PROVIDER;
+        path: string;
+        error: string;
+        updatedAt: string;
+      },
+): void {
+  try {
+    const activeStatePath = path.join(
+      resolveStateDir(),
+      "local-inference",
+      AOSP_ACTIVE_MODEL_STATE_FILE,
+    );
+    mkdirSync(path.dirname(activeStatePath), { recursive: true });
+    writeFileSync(
+      activeStatePath,
+      `${JSON.stringify({ version: 1, ...state }, null, 2)}\n`,
+      "utf8",
+    );
+  } catch (err) {
+    // error-policy:J7 the active-model-state file is a diagnostic sidecar (drives
+    // the route-status UI); a write failure is logged and must not fail model load.
+    logger.warn(
+      "[aosp-local-inference] Failed to write active model state:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 function clearAospActiveModelState(): void {
-    try {
-        const activeStatePath = path.join(resolveStateDir(), "local-inference", AOSP_ACTIVE_MODEL_STATE_FILE);
-        if (existsSync(activeStatePath))
-            unlinkSync(activeStatePath);
-    }
-    catch (err) {
-        // error-policy:J7 diagnostic sidecar cleanup; a failure is logged and must not
-        // fail the unload it accompanies.
-        logger.warn("[aosp-local-inference] Failed to clear active model state:", err instanceof Error ? err.message : String(err));
-    }
+  try {
+    const activeStatePath = path.join(
+      resolveStateDir(),
+      "local-inference",
+      AOSP_ACTIVE_MODEL_STATE_FILE,
+    );
+    if (existsSync(activeStatePath)) unlinkSync(activeStatePath);
+  } catch (err) {
+    // error-policy:J7 diagnostic sidecar cleanup; a failure is logged and must not
+    // fail the unload it accompanies.
+    logger.warn(
+      "[aosp-local-inference] Failed to clear active model state:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 /** KV-cache type names the fused lib's `eliza_kv_cache_type` map accepts. */
-type AospKvCacheTypeName = "f16" | "q8_0" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+type AospKvCacheTypeName =
+  | "f16"
+  | "q8_0"
+  | "tbq3_0"
+  | "tbq4_0"
+  | "qjl1_256"
+  | "q4_polar";
 const AOSP_KV_CACHE_TYPE_NAMES: readonly AospKvCacheTypeName[] = [
-    "f16",
-    "q8_0",
-    "tbq3_0",
-    "tbq4_0",
-    "qjl1_256",
-    "q4_polar",
+  "f16",
+  "q8_0",
+  "tbq3_0",
+  "tbq4_0",
+  "qjl1_256",
+  "q4_polar",
 ];
 export interface AospLoadModelArgs {
-    modelPath: string;
-    role?: "chat" | "embedding";
-    contextSize?: number;
-    maxThreads?: number;
-    useGpu?: boolean;
-    gpuLayers?: number;
-    draftModelPath?: string;
-    draftContextSize?: number;
-    draftMin?: number;
-    draftMax?: number;
-    speculativeSamples?: number;
-    mobileSpeculative?: boolean;
-    cacheTypeK?: AospKvCacheTypeName;
-    cacheTypeV?: AospKvCacheTypeName;
-    disableThinking?: boolean;
-    kvCacheType?: {
-        k?: AospKvCacheTypeName;
-        v?: AospKvCacheTypeName;
-    };
+  modelPath: string;
+  role?: "chat" | "embedding";
+  contextSize?: number;
+  maxThreads?: number;
+  useGpu?: boolean;
+  gpuLayers?: number;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: AospKvCacheTypeName;
+  cacheTypeV?: AospKvCacheTypeName;
+  disableThinking?: boolean;
+  kvCacheType?: {
+    k?: AospKvCacheTypeName;
+    v?: AospKvCacheTypeName;
+  };
 }
 export interface AospRouteActivationSnapshot {
-    modelId: string | null;
-    loadedAt: string | null;
-    status: "idle" | "ready" | "error";
-    error?: string;
-    loadedContextSize?: number | null;
-    loadedCacheTypeK?: string | null;
-    loadedCacheTypeV?: string | null;
-    loadedGpuLayers?: number | null;
+  modelId: string | null;
+  loadedAt: string | null;
+  status: "idle" | "ready" | "error";
+  error?: string;
+  loadedContextSize?: number | null;
+  loadedCacheTypeK?: string | null;
+  loadedCacheTypeV?: string | null;
+  loadedGpuLayers?: number | null;
 }
-function activeSnapshotFromLoadArgs(modelId: string, loadedAt: string, loadArgs: AospLoadModelArgs): AospRouteActivationSnapshot {
-    return {
-        modelId,
-        loadedAt,
-        status: "ready",
-        loadedContextSize: loadArgs.contextSize ?? null,
-        loadedCacheTypeK: loadArgs.cacheTypeK ?? loadArgs.kvCacheType?.k ?? null,
-        loadedCacheTypeV: loadArgs.cacheTypeV ?? loadArgs.kvCacheType?.v ?? null,
-        loadedGpuLayers: typeof loadArgs.gpuLayers === "number" ? loadArgs.gpuLayers : null,
-    };
+function activeSnapshotFromLoadArgs(
+  modelId: string,
+  loadedAt: string,
+  loadArgs: AospLoadModelArgs,
+): AospRouteActivationSnapshot {
+  return {
+    modelId,
+    loadedAt,
+    status: "ready",
+    loadedContextSize: loadArgs.contextSize ?? null,
+    loadedCacheTypeK: loadArgs.cacheTypeK ?? loadArgs.kvCacheType?.k ?? null,
+    loadedCacheTypeV: loadArgs.cacheTypeV ?? loadArgs.kvCacheType?.v ?? null,
+    loadedGpuLayers:
+      typeof loadArgs.gpuLayers === "number" ? loadArgs.gpuLayers : null,
+  };
 }
 export async function activateAospLocalInferenceModel(args: {
-    modelId: string;
-    modelPath: string;
-    loadArgs: AospLoadModelArgs;
+  modelId: string;
+  modelPath: string;
+  loadArgs: AospLoadModelArgs;
 }): Promise<AospRouteActivationSnapshot> {
-    if (!routeActivationLoader) {
-        throw new Error("[aosp-local-inference] Native localInferenceLoader is not ready yet.");
-    }
-    try {
-        await routeActivationLoader.unloadModel();
-        await routeActivationLoader.loadModel(args.loadArgs);
-        const loadedAt = new Date().toISOString();
-        writeAospActiveModelState({
-            status: "ready",
-            role: "chat",
-            provider: PROVIDER,
-            path: args.modelPath,
-            loadedAt,
-        });
-        // Eagerly stage the on-device Kokoro voice when a local chat model is
-        // selected/activated, so the first spoken reply already uses the neural
-        // voice instead of the platform "android voice". Background + idempotent
-        // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
-        ensureKokoroTtsAssetsInBackground(resolveBundleRootFromModelPath(args.modelPath), bundleSlugFromModelName(path.basename(args.modelPath)));
-        return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
-    }
-    catch (err) {
-        // error-policy:J2 context-adding rethrow — record the load failure in the
-        // status sidecar (observable), then rethrow so the caller sees the error; the
-        // model is NOT reported as ready.
-        writeAospActiveModelState({
-            status: "error",
-            role: "chat",
-            provider: PROVIDER,
-            path: args.modelPath,
-            error: err instanceof Error ? err.message : String(err),
-            updatedAt: new Date().toISOString(),
-        });
-        throw err;
-    }
+  if (!routeActivationLoader) {
+    throw new Error(
+      "[aosp-local-inference] Native localInferenceLoader is not ready yet.",
+    );
+  }
+  try {
+    await routeActivationLoader.unloadModel();
+    await routeActivationLoader.loadModel(args.loadArgs);
+    const loadedAt = new Date().toISOString();
+    writeAospActiveModelState({
+      status: "ready",
+      role: "chat",
+      provider: PROVIDER,
+      path: args.modelPath,
+      loadedAt,
+    });
+    // Eagerly stage the on-device Kokoro voice when a local chat model is
+    // selected/activated, so the first spoken reply already uses the neural
+    // voice instead of the platform "android voice". Background + idempotent
+    // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
+    ensureKokoroTtsAssetsInBackground(
+      resolveBundleRootFromModelPath(args.modelPath),
+      bundleSlugFromModelName(path.basename(args.modelPath)),
+    );
+    return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
+  } catch (err) {
+    // error-policy:J2 context-adding rethrow — record the load failure in the
+    // status sidecar (observable), then rethrow so the caller sees the error; the
+    // model is NOT reported as ready.
+    writeAospActiveModelState({
+      status: "error",
+      role: "chat",
+      provider: PROVIDER,
+      path: args.modelPath,
+      error: err instanceof Error ? err.message : String(err),
+      updatedAt: new Date().toISOString(),
+    });
+    throw err;
+  }
 }
 export async function clearAospLocalInferenceModel(): Promise<AospRouteActivationSnapshot> {
-    if (routeActivationLoader) {
-        await routeActivationLoader.unloadModel();
-    }
-    clearAospActiveModelState();
-    return { modelId: null, loadedAt: null, status: "idle" };
+  if (routeActivationLoader) {
+    await routeActivationLoader.unloadModel();
+  }
+  clearAospActiveModelState();
+  return { modelId: null, loadedAt: null, status: "idle" };
 }
-type GenerateTextHandler = (runtime: IAgentRuntime, params: GenerateTextParams) => Promise<string>;
-type EmbeddingHandler = (runtime: IAgentRuntime, params: TextEmbeddingParams | string | null) => Promise<number[]>;
-type TextToSpeechHandler = (runtime: IAgentRuntime, params: TextToSpeechParams | string) => Promise<Uint8Array>;
+type GenerateTextHandler = (
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+) => Promise<string>;
+type EmbeddingHandler = (
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null,
+) => Promise<number[]>;
+type TextToSpeechHandler = (
+  runtime: IAgentRuntime,
+  params: TextToSpeechParams | string,
+) => Promise<Uint8Array>;
 interface AospKokoroPrewarmOptions {
-    shouldSkip?: () => boolean;
+  shouldSkip?: () => boolean;
 }
 interface AospFusedKokoroConfig {
-    libPath: string;
-    bundleRoot: string;
-    kokoroGgufPath: string;
-    kokoroVoicePath: string;
+  libPath: string;
+  bundleRoot: string;
+  kokoroGgufPath: string;
+  kokoroVoicePath: string;
 }
-type TranscriptionHandler = (runtime: IAgentRuntime, params: TranscriptionParams | Buffer | string | LocalTranscriptionParams) => Promise<string>;
+type TranscriptionHandler = (
+  runtime: IAgentRuntime,
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+) => Promise<string>;
 interface LocalTranscriptionParams {
-    pcm?: Float32Array;
-    audio?: Uint8Array | ArrayBuffer | Buffer;
-    sampleRateHz?: number;
-    sampleRate?: number;
-    signal?: AbortSignal;
+  pcm?: Float32Array;
+  audio?: Uint8Array | ArrayBuffer | Buffer;
+  sampleRateHz?: number;
+  sampleRate?: number;
+  signal?: AbortSignal;
 }
 function renderMessageContent(content: unknown): string {
-    if (typeof content === "string")
-        return content.trim();
-    if (!Array.isArray(content))
-        return "";
-    return content
-        .map((part) => {
-        if (typeof part === "string")
-            return part.trim();
-        if (part &&
-            typeof part === "object" &&
-            typeof (part as {
-                text?: unknown;
-            }).text === "string") {
-            return (part as {
-                text: string;
-            }).text.trim();
-        }
-        return "";
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part.trim();
+      if (
+        part &&
+        typeof part === "object" &&
+        typeof (
+          part as {
+            text?: unknown;
+          }
+        ).text === "string"
+      ) {
+        return (
+          part as {
+            text: string;
+          }
+        ).text.trim();
+      }
+      return "";
     })
-        .filter(Boolean)
-        .join("\n")
-        .trim();
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 }
-function normalizeChatRole(role: unknown): "system" | "user" | "assistant" | "tool" {
-    return role === "system" ||
-        role === "assistant" ||
-        role === "user" ||
-        role === "tool"
-        ? role
-        : "user";
+function normalizeChatRole(
+  role: unknown,
+): "system" | "user" | "assistant" | "tool" {
+  return role === "system" ||
+    role === "assistant" ||
+    role === "user" ||
+    role === "tool"
+    ? role
+    : "user";
 }
 /**
  * Render core GenerateTextParams into the flat prompt string consumed by the
@@ -363,140 +439,161 @@ function normalizeChatRole(role: unknown): "system" | "user" | "assistant" | "to
 const GEMMA_START_OF_TURN = "<start_of_turn>";
 const GEMMA_END_OF_TURN = "<end_of_turn>";
 function gemmaRole(role: "system" | "user" | "assistant" | "tool"): string {
-    return role === "assistant" ? "model" : role;
+  return role === "assistant" ? "model" : role;
 }
-export function flattenGenerateTextParamsForAospPrompt(params: GenerateTextParams): string {
-    if (typeof params.prompt === "string" && params.prompt.length > 0) {
-        return params.prompt;
+export function flattenGenerateTextParamsForAospPrompt(
+  params: GenerateTextParams,
+): string {
+  if (typeof params.prompt === "string" && params.prompt.length > 0) {
+    return params.prompt;
+  }
+  const gemmaBlock = (
+    role: "system" | "user" | "assistant" | "tool",
+    content: string,
+  ) =>
+    `${GEMMA_START_OF_TURN}${gemmaRole(role)}\n${content}${GEMMA_END_OF_TURN}`;
+  const messages = params.messages ?? [];
+  if (messages.length > 0) {
+    const blocks: string[] = [];
+    const hasSystemMessage = messages.some(
+      (message) => message.role === "system",
+    );
+    if (
+      !hasSystemMessage &&
+      typeof params.system === "string" &&
+      params.system
+    ) {
+      blocks.push(gemmaBlock("system", params.system.trim()));
     }
-    const gemmaBlock = (role: "system" | "user" | "assistant" | "tool", content: string) => `${GEMMA_START_OF_TURN}${gemmaRole(role)}\n${content}${GEMMA_END_OF_TURN}`;
-    const messages = params.messages ?? [];
-    if (messages.length > 0) {
-        const blocks: string[] = [];
-        const hasSystemMessage = messages.some((message) => message.role === "system");
-        if (!hasSystemMessage &&
-            typeof params.system === "string" &&
-            params.system) {
-            blocks.push(gemmaBlock("system", params.system.trim()));
-        }
-        for (const message of messages) {
-            const content = renderMessageContent(message.content);
-            if (!content)
-                continue;
-            blocks.push(gemmaBlock(normalizeChatRole(message.role), content));
-        }
-        if (blocks.length > 0) {
-            const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
-            if (lastRole !== "assistant") {
-                blocks.push(`${GEMMA_START_OF_TURN}model\n`);
-            }
-            return blocks.join("\n");
-        }
+    for (const message of messages) {
+      const content = renderMessageContent(message.content);
+      if (!content) continue;
+      blocks.push(gemmaBlock(normalizeChatRole(message.role), content));
     }
-    const promptFromSegments = params.promptSegments && params.promptSegments.length > 0
-        ? params.promptSegments.map((segment) => segment.content ?? "").join("")
-        : "";
-    if (promptFromSegments.length > 0) {
-        return promptFromSegments;
+    if (blocks.length > 0) {
+      const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
+      if (lastRole !== "assistant") {
+        blocks.push(`${GEMMA_START_OF_TURN}model\n`);
+      }
+      return blocks.join("\n");
     }
-    if (typeof params.system === "string" && params.system.length > 0) {
-        return `${gemmaBlock("system", params.system.trim())}\n${GEMMA_START_OF_TURN}model\n`;
-    }
-    return "";
+  }
+  const promptFromSegments =
+    params.promptSegments && params.promptSegments.length > 0
+      ? params.promptSegments.map((segment) => segment.content ?? "").join("")
+      : "";
+  if (promptFromSegments.length > 0) {
+    return promptFromSegments;
+  }
+  if (typeof params.system === "string" && params.system.length > 0) {
+    return `${gemmaBlock("system", params.system.trim())}\n${GEMMA_START_OF_TURN}model\n`;
+  }
+  return "";
 }
-export function buildGenerateArgsFromParams(params: GenerateTextParams): Parameters<AospLoader["generate"]>[0] {
-    const args: Parameters<AospLoader["generate"]>[0] = {
-        prompt: flattenGenerateTextParamsForAospPrompt(params),
-    };
-    // Always stop at Gemma turn boundaries. With parse_special=true the model's
-    // <end_of_turn> is its EOG token (the fused stream ends the turn on it), but
-    // the text stops are a belt-and-suspenders guard against the model
-    // continuing past its turn or opening a new <start_of_turn> role.
-    args.stopSequences = [
-        ...(params.stopSequences ?? []),
-        GEMMA_END_OF_TURN,
-        GEMMA_START_OF_TURN,
-    ];
-    if (params.maxTokens !== undefined) {
-        args.maxTokens = params.maxTokens;
-    }
-    if (params.temperature !== undefined) {
-        args.temperature = params.temperature;
-    }
-    if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
-        args.grammar = params.grammar;
-    }
-    const wantsStreaming = params.stream === true || params.streamStructured === true;
-    if (wantsStreaming && typeof params.onStreamChunk === "function") {
-        args.onTextChunk = (chunk: string) => params.onStreamChunk?.(chunk);
-    }
-    const androidLocalOptions = params.providerOptions?.androidLocal &&
-        typeof params.providerOptions.androidLocal === "object" &&
-        !Array.isArray(params.providerOptions.androidLocal)
-        ? (params.providerOptions.androidLocal as Record<string, unknown>)
-        : null;
-    if (androidLocalOptions?.stopOnFirstSentence === true) {
-        args.stopOnFirstSentence = true;
-    }
-    const minFirstSentenceChars = typeof androidLocalOptions?.minFirstSentenceChars === "number"
-        ? androidLocalOptions.minFirstSentenceChars
-        : Number.NaN;
-    if (Number.isFinite(minFirstSentenceChars) && minFirstSentenceChars > 0) {
-        args.minFirstSentenceChars = Math.floor(minFirstSentenceChars);
-    }
-    if (params.signal !== undefined) {
-        args.signal = params.signal;
-    }
-    return args;
+export function buildGenerateArgsFromParams(
+  params: GenerateTextParams,
+): Parameters<AospLoader["generate"]>[0] {
+  const args: Parameters<AospLoader["generate"]>[0] = {
+    prompt: flattenGenerateTextParamsForAospPrompt(params),
+  };
+  // Always stop at Gemma turn boundaries. With parse_special=true the model's
+  // <end_of_turn> is its EOG token (the fused stream ends the turn on it), but
+  // the text stops are a belt-and-suspenders guard against the model
+  // continuing past its turn or opening a new <start_of_turn> role.
+  args.stopSequences = [
+    ...(params.stopSequences ?? []),
+    GEMMA_END_OF_TURN,
+    GEMMA_START_OF_TURN,
+  ];
+  if (params.maxTokens !== undefined) {
+    args.maxTokens = params.maxTokens;
+  }
+  if (params.temperature !== undefined) {
+    args.temperature = params.temperature;
+  }
+  if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
+    args.grammar = params.grammar;
+  }
+  const wantsStreaming =
+    params.stream === true || params.streamStructured === true;
+  if (wantsStreaming && typeof params.onStreamChunk === "function") {
+    args.onTextChunk = (chunk: string) => params.onStreamChunk?.(chunk);
+  }
+  const androidLocalOptions =
+    params.providerOptions?.androidLocal &&
+    typeof params.providerOptions.androidLocal === "object" &&
+    !Array.isArray(params.providerOptions.androidLocal)
+      ? (params.providerOptions.androidLocal as Record<string, unknown>)
+      : null;
+  if (androidLocalOptions?.stopOnFirstSentence === true) {
+    args.stopOnFirstSentence = true;
+  }
+  const minFirstSentenceChars =
+    typeof androidLocalOptions?.minFirstSentenceChars === "number"
+      ? androidLocalOptions.minFirstSentenceChars
+      : Number.NaN;
+  if (Number.isFinite(minFirstSentenceChars) && minFirstSentenceChars > 0) {
+    args.minFirstSentenceChars = Math.floor(minFirstSentenceChars);
+  }
+  if (params.signal !== undefined) {
+    args.signal = params.signal;
+  }
+  return args;
 }
 /** Resolve the complete output budget without clipping the prompt or request. */
 export function resolveAospCompletionBudget(input: {
-    requestedMaxTokens?: number;
-    contextSize: number;
-    promptTokenCount: number;
+  requestedMaxTokens?: number;
+  contextSize: number;
+  promptTokenCount: number;
 }): number {
-    const { requestedMaxTokens, contextSize, promptTokenCount } = input;
-    if (!Number.isSafeInteger(contextSize) ||
-        contextSize <= 0 ||
-        !Number.isSafeInteger(promptTokenCount) ||
-        promptTokenCount < 0) {
-        throw new ElizaError("AOSP completion budget inputs are invalid", {
-            code: "INVALID_MODEL_CONTEXT_BUDGET",
-            context: { contextSize, promptTokenCount },
-        });
-    }
-    const remainingTokens = contextSize - promptTokenCount;
-    if (remainingTokens <= 0) {
-        throw new ElizaError("The complete prompt does not fit the AOSP model context; refusing to truncate it", {
-            code: "MODEL_PROMPT_TOO_LARGE",
-            context: { contextSize, promptTokenCount },
-        });
-    }
-    if (requestedMaxTokens === undefined)
-        return remainingTokens;
-    if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
-        throw new ElizaError("AOSP maxTokens must be a positive safe integer", {
-            code: "INVALID_MODEL_OUTPUT_BUDGET",
-            context: { requestedMaxTokens },
-        });
-    }
-    if (requestedMaxTokens > remainingTokens) {
-        throw new ElizaError("The requested AOSP output does not fit the remaining model context; refusing to clamp it", {
-            code: "MODEL_OUTPUT_BUDGET_EXCEEDED",
-            context: { requestedMaxTokens, remainingTokens },
-        });
-    }
-    return requestedMaxTokens;
+  const { requestedMaxTokens, contextSize, promptTokenCount } = input;
+  if (
+    !Number.isSafeInteger(contextSize) ||
+    contextSize <= 0 ||
+    !Number.isSafeInteger(promptTokenCount) ||
+    promptTokenCount < 0
+  ) {
+    throw new ElizaError("AOSP completion budget inputs are invalid", {
+      code: "INVALID_MODEL_CONTEXT_BUDGET",
+      context: { contextSize, promptTokenCount },
+    });
+  }
+  const remainingTokens = contextSize - promptTokenCount;
+  if (remainingTokens <= 0) {
+    throw new ElizaError(
+      "The complete prompt does not fit the AOSP model context; refusing to truncate it",
+      {
+        code: "MODEL_PROMPT_TOO_LARGE",
+        context: { contextSize, promptTokenCount },
+      },
+    );
+  }
+  if (requestedMaxTokens === undefined) return remainingTokens;
+  if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
+    throw new ElizaError("AOSP maxTokens must be a positive safe integer", {
+      code: "INVALID_MODEL_OUTPUT_BUDGET",
+      context: { requestedMaxTokens },
+    });
+  }
+  if (requestedMaxTokens > remainingTokens) {
+    throw new ElizaError(
+      "The requested AOSP output does not fit the remaining model context; refusing to clamp it",
+      {
+        code: "MODEL_OUTPUT_BUDGET_EXCEEDED",
+        context: { requestedMaxTokens, remainingTokens },
+      },
+    );
+  }
+  return requestedMaxTokens;
 }
 function readPositiveIntEnv(name: string, fallback: number): number {
-    const raw = process.env[name]?.trim();
-    if (!raw)
-        return fallback;
-    // Prefix-parse hole: "4junk" parsed to 4, so a typo in e.g. ELIZA_LLAMA_N_CTX
-    // silently became a 4-token context window instead of falling back. The `> 0`
-    // check stays the range authority, so a signed value is still judged by it.
-    const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  // Prefix-parse hole: "4junk" parsed to 4, so a typo in e.g. ELIZA_LLAMA_N_CTX
+  // silently became a 4-token context window instead of falling back. The `> 0`
+  // check stays the range authority, so a signed value is still judged by it.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 /**
  * Chat KV-cache type override (`ELIZA_LLAMA_KV_TYPE_K` / `_V`). The fork
@@ -505,236 +602,262 @@ function readPositiveIntEnv(name: string, fallback: number): number {
  * The env knob lets a device profile pin another supported type without a
  * rebuild.
  */
-function readKvCacheTypeEnv(name: string, fallback: AospKvCacheTypeName): AospKvCacheTypeName {
-    const raw = process.env[name]?.trim().toLowerCase();
-    if (!raw)
-        return fallback;
-    const match = AOSP_KV_CACHE_TYPE_NAMES.find((candidate) => candidate === raw);
-    if (!match) {
-        logger.warn(`[aosp-local-inference] ${name}="${raw}" is not a recognised KV cache type (accepted: ${AOSP_KV_CACHE_TYPE_NAMES.join(", ")}); using ${fallback}`);
-        return fallback;
-    }
-    return match;
+function readKvCacheTypeEnv(
+  name: string,
+  fallback: AospKvCacheTypeName,
+): AospKvCacheTypeName {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  const match = AOSP_KV_CACHE_TYPE_NAMES.find((candidate) => candidate === raw);
+  if (!match) {
+    logger.warn(
+      `[aosp-local-inference] ${name}="${raw}" is not a recognised KV cache type (accepted: ${AOSP_KV_CACHE_TYPE_NAMES.join(", ")}); using ${fallback}`,
+    );
+    return fallback;
+  }
+  return match;
 }
 function readNonNegativeIntEnv(name: string): number | null {
-    const raw = process.env[name]?.trim();
-    if (!raw)
-        return null;
-    // Same hole on the non-negative form.
-    const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  // Same hole on the non-negative form.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
-export function isAospLocalEmbeddingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-    return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
+export function isAospLocalEmbeddingEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
 }
 function readBooleanEnv(name: string): boolean | null {
-    const raw = process.env[name]?.trim().toLowerCase();
-    if (!raw)
-        return null;
-    if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
-        return true;
-    }
-    if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
-        return false;
-    }
-    return null;
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+    return true;
+  }
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+    return false;
+  }
+  return null;
 }
 function resolveAospLlamaGpuLayers(): number {
-    const explicitLayers = readNonNegativeIntEnv("ELIZA_LLAMA_N_GPU_LAYERS");
-    if (explicitLayers !== null)
-        return explicitLayers;
-    const useGpu = readBooleanEnv("ELIZA_AOSP_LLAMA_USE_GPU");
-    return useGpu === true ? 99 : 0;
+  const explicitLayers = readNonNegativeIntEnv("ELIZA_LLAMA_N_GPU_LAYERS");
+  if (explicitLayers !== null) return explicitLayers;
+  const useGpu = readBooleanEnv("ELIZA_AOSP_LLAMA_USE_GPU");
+  return useGpu === true ? 99 : 0;
 }
 function mtpServerSpawnAllowed(): boolean {
-    const explicitServerSpawn = readBooleanEnv("ELIZA_MTP_SERVER_SPAWN");
-    if (explicitServerSpawn !== null) {
-        return explicitServerSpawn;
-    }
-    // ELIZA_MTP expresses the desired inference mode. It must not opt a
-    // stock APK into the retired child-process llama-server path. Android
-    // production builds only enable speculation through an in-process FFI
-    // implementation that explicitly reports support; server spawn is a
-    // diagnostic escape hatch and requires ELIZA_MTP_SERVER_SPAWN=1.
-    return false;
+  const explicitServerSpawn = readBooleanEnv("ELIZA_MTP_SERVER_SPAWN");
+  if (explicitServerSpawn !== null) {
+    return explicitServerSpawn;
+  }
+  // ELIZA_MTP expresses the desired inference mode. It must not opt a
+  // stock APK into the retired child-process llama-server path. Android
+  // production builds only enable speculation through an in-process FFI
+  // implementation that explicitly reports support; server spawn is a
+  // diagnostic escape hatch and requires ELIZA_MTP_SERVER_SPAWN=1.
+  return false;
 }
 function inProcessMtpRequested(): boolean {
-    const explicitMtp = readBooleanEnv("ELIZA_MTP");
-    if (explicitMtp !== null) {
-        return explicitMtp;
-    }
-    return readBooleanEnv("ELIZA_MTP_REQUIRED") === true;
+  const explicitMtp = readBooleanEnv("ELIZA_MTP");
+  if (explicitMtp !== null) {
+    return explicitMtp;
+  }
+  return readBooleanEnv("ELIZA_MTP_REQUIRED") === true;
 }
 function mtpDrafterIsTargetCopy(bundleDir: string): boolean {
-    const raw = readMtpTargetMeta(bundleDir);
-    if (!raw)
-        return false;
-    const draftSha = typeof raw.drafter?.sha256 === "string"
-        ? raw.drafter.sha256.trim().toLowerCase()
-        : "";
-    const targetSha = typeof raw.targetText?.sha256 === "string"
-        ? raw.targetText.sha256.trim().toLowerCase()
-        : "";
-    return Boolean(draftSha && targetSha && draftSha === targetSha);
+  const raw = readMtpTargetMeta(bundleDir);
+  if (!raw) return false;
+  const draftSha =
+    typeof raw.drafter?.sha256 === "string"
+      ? raw.drafter.sha256.trim().toLowerCase()
+      : "";
+  const targetSha =
+    typeof raw.targetText?.sha256 === "string"
+      ? raw.targetText.sha256.trim().toLowerCase()
+      : "";
+  return Boolean(draftSha && targetSha && draftSha === targetSha);
 }
 function readMtpTargetMeta(bundleDir: string): {
-    publishEligible?: unknown;
-    drafter?: {
-        sha256?: unknown;
-        sizeBytes?: unknown;
-        finalElizaWeights?: unknown;
-    };
-    targetText?: {
-        sha256?: unknown;
-        sizeBytes?: unknown;
-        finalElizaWeights?: unknown;
-    };
-    validation?: {
-        checks?: Record<string, {
-            pass?: unknown;
-        } | undefined>;
-    };
+  publishEligible?: unknown;
+  drafter?: {
+    sha256?: unknown;
+    sizeBytes?: unknown;
+    finalElizaWeights?: unknown;
+  };
+  targetText?: {
+    sha256?: unknown;
+    sizeBytes?: unknown;
+    finalElizaWeights?: unknown;
+  };
+  validation?: {
+    checks?: Record<
+      string,
+      | {
+          pass?: unknown;
+        }
+      | undefined
+    >;
+  };
 } | null {
-    const metaPath = path.join(bundleDir, "mtp", "target-meta.json");
-    if (!existsSync(metaPath))
-        return null;
-    try {
-        return JSON.parse(readFileSync(metaPath, "utf8"));
-    }
-    catch (err) {
-        // error-policy:J4 explicit degrade — the MTP target-meta sidecar is optional;
-        // an absent/corrupt meta returns null (observable via the debug log) and the
-        // caller runs without MTP speculative decoding. Not a swallowed model failure.
-        writeAospLlamaDebugLog("bootstrap:mtp:targetMetaReadFailed", {
-            metaPath,
-            error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
-    }
+  const metaPath = path.join(bundleDir, "mtp", "target-meta.json");
+  if (!existsSync(metaPath)) return null;
+  try {
+    return JSON.parse(readFileSync(metaPath, "utf8"));
+  } catch (err) {
+    // error-policy:J4 explicit degrade — the MTP target-meta sidecar is optional;
+    // an absent/corrupt meta returns null (observable via the debug log) and the
+    // caller runs without MTP speculative decoding. Not a swallowed model failure.
+    writeAospLlamaDebugLog("bootstrap:mtp:targetMetaReadFailed", {
+      metaPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }
 function mtpMetadataAllowsStockAutoPair(bundleDir: string): boolean {
-    const meta = readMtpTargetMeta(bundleDir);
-    if (meta?.publishEligible !== true)
-        return false;
-    if (mtpDrafterIsTargetCopy(bundleDir))
-        return false;
-    if (meta.drafter?.finalElizaWeights === false ||
-        meta.targetText?.finalElizaWeights === false) {
-        return false;
-    }
-    const draftSize = typeof meta.drafter?.sizeBytes === "number" ? meta.drafter.sizeBytes : 0;
-    const targetSize = typeof meta.targetText?.sizeBytes === "number"
-        ? meta.targetText.sizeBytes
-        : 0;
-    if (draftSize > 0 && targetSize > 0 && draftSize >= targetSize)
-        return false;
-    const checks = meta.validation?.checks ?? {};
-    for (const name of [
-        "architectureLoadable",
-        "vocabMatch",
-        "tokenizerMetadataMatch",
-        "drafterSmaller",
-    ]) {
-        if (checks[name]?.pass === false)
-            return false;
-    }
-    return true;
+  const meta = readMtpTargetMeta(bundleDir);
+  if (meta?.publishEligible !== true) return false;
+  if (mtpDrafterIsTargetCopy(bundleDir)) return false;
+  if (
+    meta.drafter?.finalElizaWeights === false ||
+    meta.targetText?.finalElizaWeights === false
+  ) {
+    return false;
+  }
+  const draftSize =
+    typeof meta.drafter?.sizeBytes === "number" ? meta.drafter.sizeBytes : 0;
+  const targetSize =
+    typeof meta.targetText?.sizeBytes === "number"
+      ? meta.targetText.sizeBytes
+      : 0;
+  if (draftSize > 0 && targetSize > 0 && draftSize >= targetSize) return false;
+  const checks = meta.validation?.checks ?? {};
+  for (const name of [
+    "architectureLoadable",
+    "vocabMatch",
+    "tokenizerMetadataMatch",
+    "drafterSmaller",
+  ]) {
+    if (checks[name]?.pass === false) return false;
+  }
+  return true;
 }
 function resolveMtpDrafterPath(modelPath: string): string | null {
-    const explicit = process.env.ELIZA_MTP_DRAFTER_PATH?.trim();
-    if (explicit) {
-        return existsSync(explicit) ? explicit : null;
-    }
-    const textDir = path.dirname(modelPath);
-    const bundleDir = path.basename(textDir).toLowerCase() === "text"
-        ? path.dirname(textDir)
-        : path.dirname(modelPath);
-    const mtpDir = path.join(bundleDir, "mtp");
-    if (!existsSync(mtpDir))
-        return null;
-    const explicitlyRequested = inProcessMtpRequested() || mtpServerSpawnAllowed();
-    const explicitlyDisabled = readBooleanEnv("ELIZA_MTP") === false;
-    if (!explicitlyRequested &&
-        (explicitlyDisabled || !mtpMetadataAllowsStockAutoPair(bundleDir))) {
-        return null;
-    }
-    if (mtpDrafterIsTargetCopy(bundleDir)) {
-        writeAospLlamaDebugLog("bootstrap:mtp:skip", {
-            reason: "drafter_sha_matches_target",
-            bundleDir,
-        });
-        return null;
-    }
-    try {
-        const candidates = readdirSync(mtpDir)
-            .filter((name) => {
-            const lower = name.toLowerCase();
-            return lower.endsWith(".gguf") && lower.includes("draft");
-        })
-            .sort();
-        for (const name of candidates) {
-            const candidate = path.join(mtpDir, name);
-            if (existsSync(candidate))
-                return candidate;
-        }
-    }
-    catch {
-        // error-policy:J4 explicit degrade — filesystem probe for an optional draft
-        // model; any error means "not found here", the caller falls back. The two
-        // return-null branches are the same designed "absent" answer.
-        return null;
-    }
+  const explicit = process.env.ELIZA_MTP_DRAFTER_PATH?.trim();
+  if (explicit) {
+    return existsSync(explicit) ? explicit : null;
+  }
+  const textDir = path.dirname(modelPath);
+  const bundleDir =
+    path.basename(textDir).toLowerCase() === "text"
+      ? path.dirname(textDir)
+      : path.dirname(modelPath);
+  const mtpDir = path.join(bundleDir, "mtp");
+  if (!existsSync(mtpDir)) return null;
+  const explicitlyRequested =
+    inProcessMtpRequested() || mtpServerSpawnAllowed();
+  const explicitlyDisabled = readBooleanEnv("ELIZA_MTP") === false;
+  if (
+    !explicitlyRequested &&
+    (explicitlyDisabled || !mtpMetadataAllowsStockAutoPair(bundleDir))
+  ) {
     return null;
-}
-export function buildAospLoadModelArgs(role: "chat" | "embedding", modelPath: string): AospLoadModelArgs {
-    if (role === "chat") {
-        const draftModelPath = resolveMtpDrafterPath(modelPath);
-        const gpuLayers = resolveAospLlamaGpuLayers();
-        return {
-            modelPath,
-            role,
-            contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
-            draftModelPath: draftModelPath ?? undefined,
-            draftContextSize: draftModelPath
-                ? readPositiveIntEnv("ELIZA_MTP_DRAFT_N_CTX", 2048)
-                : undefined,
-            draftMin: draftModelPath
-                ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MIN", 1)
-                : undefined,
-            draftMax: draftModelPath
-                ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MAX", 16)
-                : undefined,
-            useGpu: gpuLayers > 0,
-            gpuLayers,
-            // Gemma-4 KV path (#11760): the QJL/PolarQuant kernels are retired for
-            // the shipped eliza-1 tiers (#8848/#9033 cutover — Gemma's dual head
-            // dims are incompatible), and current fused libs route the legacy names
-            // into the stock V-quant check, which hard-fails without flash-attn
-            // (disabled on Android: scalar-FA race). K=q8_0 halves the K cache and
-            // needs no FA; V stays f16 (V-quant requires FA). Matches the bionic
-            // host's KV decision (ELIZA_BIONIC_KV_QUANT=0) and the catalog's
-            // ELIZA_1_KV_QUANT=q8_0.
-            kvCacheType: {
-                k: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_K", "q8_0"),
-                v: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_V", "f16"),
-            },
-        };
+  }
+  if (mtpDrafterIsTargetCopy(bundleDir)) {
+    writeAospLlamaDebugLog("bootstrap:mtp:skip", {
+      reason: "drafter_sha_matches_target",
+      bundleDir,
+    });
+    return null;
+  }
+  try {
+    const candidates = readdirSync(mtpDir)
+      .filter((name) => {
+        const lower = name.toLowerCase();
+        return lower.endsWith(".gguf") && lower.includes("draft");
+      })
+      .sort();
+    for (const name of candidates) {
+      const candidate = path.join(mtpDir, name);
+      if (existsSync(candidate)) return candidate;
     }
+  } catch {
+    // error-policy:J4 explicit degrade — filesystem probe for an optional draft
+    // model; any error means "not found here", the caller falls back. The two
+    // return-null branches are the same designed "absent" answer.
+    return null;
+  }
+  return null;
+}
+export function buildAospLoadModelArgs(
+  role: "chat" | "embedding",
+  modelPath: string,
+): AospLoadModelArgs {
+  if (role === "chat") {
+    const draftModelPath = resolveMtpDrafterPath(modelPath);
+    const gpuLayers = resolveAospLlamaGpuLayers();
     return {
-        modelPath,
-        role,
-        contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
-        useGpu: false,
-        gpuLayers: 0,
-        kvCacheType: {
-            k: "f16",
-            v: "f16",
-        },
+      modelPath,
+      role,
+      contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
+      draftModelPath: draftModelPath ?? undefined,
+      draftContextSize: draftModelPath
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_N_CTX", 2048)
+        : undefined,
+      draftMin: draftModelPath
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MIN", 1)
+        : undefined,
+      draftMax: draftModelPath
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MAX", 16)
+        : undefined,
+      useGpu: gpuLayers > 0,
+      gpuLayers,
+      // Gemma-4 KV path (#11760): the QJL/PolarQuant kernels are retired for
+      // the shipped eliza-1 tiers (#8848/#9033 cutover — Gemma's dual head
+      // dims are incompatible), and current fused libs route the legacy names
+      // into the stock V-quant check, which hard-fails without flash-attn
+      // (disabled on Android: scalar-FA race). K=q8_0 halves the K cache and
+      // needs no FA; V stays f16 (V-quant requires FA). Matches the bionic
+      // host's KV decision (ELIZA_BIONIC_KV_QUANT=0) and the catalog's
+      // ELIZA_1_KV_QUANT=q8_0.
+      kvCacheType: {
+        k: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_K", "q8_0"),
+        v: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_V", "f16"),
+      },
     };
+  }
+  return {
+    modelPath,
+    role,
+    contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
+    useGpu: false,
+    gpuLayers: 0,
+    kvCacheType: {
+      k: "f16",
+      v: "f16",
+    },
+  };
 }
 type RuntimeWithModelRegistration = AgentRuntime & {
-    getModel: (modelType: string | number) => GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler | TranscriptionHandler | undefined;
-    registerModel: (modelType: string | number, handler: GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler | TranscriptionHandler, provider: string, priority?: number) => void;
+  getModel: (
+    modelType: string | number,
+  ) =>
+    | GenerateTextHandler
+    | EmbeddingHandler
+    | TextToSpeechHandler
+    | TranscriptionHandler
+    | undefined;
+  registerModel: (
+    modelType: string | number,
+    handler:
+      | GenerateTextHandler
+      | EmbeddingHandler
+      | TextToSpeechHandler
+      | TranscriptionHandler,
+    provider: string,
+    priority?: number,
+  ) => void;
 };
 /**
  * Cloud-fallback priority. Sits one below the local handler's
@@ -754,15 +877,21 @@ const CLOUD_FALLBACK_PRIORITY = -1;
  * silent try/catch. Unrecoverable errors propagate; only the conditions
  * listed in `FallbackReason` route to cloud.
  */
-type FallbackReason = "local-unavailable" | "local-overloaded" | "local-error" | "local-aborted-pre-completion";
-type LocalGenerateOutcome = {
-    kind: "ok";
-    text: string;
-} | {
-    kind: "fallback";
-    reason: FallbackReason;
-    cause?: Error;
-};
+type FallbackReason =
+  | "local-unavailable"
+  | "local-overloaded"
+  | "local-error"
+  | "local-aborted-pre-completion";
+type LocalGenerateOutcome =
+  | {
+      kind: "ok";
+      text: string;
+    }
+  | {
+      kind: "fallback";
+      reason: FallbackReason;
+      cause?: Error;
+    };
 /**
  * Classify a thrown error into either "let it propagate" or "rotate to
  * cloud". Mirrors `packages/app/src/services/local-inference/cloud-fallback.ts`
@@ -770,44 +899,50 @@ type LocalGenerateOutcome = {
  * `@elizaos/app` (cycle through `@elizaos/agent`).
  */
 function classifyLocalError(err: unknown): {
-    fallback: boolean;
-    reason: FallbackReason;
+  fallback: boolean;
+  reason: FallbackReason;
 } {
-    if (err instanceof Error) {
-        const name = err.name;
-        const msg = err.message.toLowerCase();
-        if (name === "AbortError") {
-            return { fallback: false, reason: "local-aborted-pre-completion" };
-        }
-        if (err instanceof InferenceBackgroundWaitTimeoutError) {
-            // The local lane was busy for the whole bounded background wait
-            // (#11914) — the job never started locally, so a configured cloud
-            // handler may run it instead.
-            return { fallback: true, reason: "local-overloaded" };
-        }
-        if (msg.includes("no bundled") ||
-            msg.includes("not installed in this build") ||
-            msg.includes("no local model is active") ||
-            msg.includes("dlopen") ||
-            msg.includes("fused libelizainference") ||
-            msg.includes("streaming-llm") ||
-            msg.includes("aosp-local-inference] no") ||
-            msg.includes("called before loadmodel")) {
-            return { fallback: true, reason: "local-unavailable" };
-        }
-        if (msg.includes("decode: failed to find a memory slot") ||
-            msg.includes("thermal") ||
-            msg.includes("low-power")) {
-            return { fallback: true, reason: "local-overloaded" };
-        }
-        if (msg.includes("llm_stream_") ||
-            msg.includes("fused tokenize") ||
-            msg.includes("fused embed") ||
-            msg.includes("ggml_assert")) {
-            return { fallback: true, reason: "local-error" };
-        }
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+    if (name === "AbortError") {
+      return { fallback: false, reason: "local-aborted-pre-completion" };
     }
-    return { fallback: false, reason: "local-error" };
+    if (err instanceof InferenceBackgroundWaitTimeoutError) {
+      // The local lane was busy for the whole bounded background wait
+      // (#11914) — the job never started locally, so a configured cloud
+      // handler may run it instead.
+      return { fallback: true, reason: "local-overloaded" };
+    }
+    if (
+      msg.includes("no bundled") ||
+      msg.includes("not installed in this build") ||
+      msg.includes("no local model is active") ||
+      msg.includes("dlopen") ||
+      msg.includes("fused libelizainference") ||
+      msg.includes("streaming-llm") ||
+      msg.includes("aosp-local-inference] no") ||
+      msg.includes("called before loadmodel")
+    ) {
+      return { fallback: true, reason: "local-unavailable" };
+    }
+    if (
+      msg.includes("decode: failed to find a memory slot") ||
+      msg.includes("thermal") ||
+      msg.includes("low-power")
+    ) {
+      return { fallback: true, reason: "local-overloaded" };
+    }
+    if (
+      msg.includes("llm_stream_") ||
+      msg.includes("fused tokenize") ||
+      msg.includes("fused embed") ||
+      msg.includes("ggml_assert")
+    ) {
+      return { fallback: true, reason: "local-error" };
+    }
+  }
+  return { fallback: false, reason: "local-error" };
 }
 /**
  * Locate the highest-priority registered TEXT_* handler whose provider is
@@ -816,71 +951,90 @@ function classifyLocalError(err: unknown): {
  * failure rather than a silent miss.
  */
 interface CloudCandidate {
-    provider: string;
-    priority: number;
-    handler: GenerateTextHandler;
+  provider: string;
+  priority: number;
+  handler: GenerateTextHandler;
 }
-function findCloudCandidate(runtime: IAgentRuntime, modelType: (typeof ModelType)[keyof typeof ModelType], excludeProvider: string): CloudCandidate | null {
-    const r = runtime as IAgentRuntime & {
-        models?: Map<string, Array<{
-            provider: string;
-            priority: number;
-            handler: GenerateTextHandler;
-        }>>;
-    };
-    const entries = r.models?.get(String(modelType));
-    if (!entries || entries.length === 0)
-        return null;
-    for (const entry of entries) {
-        if (entry.provider !== excludeProvider) {
-            return {
-                provider: entry.provider,
-                priority: entry.priority,
-                handler: entry.handler,
-            };
-        }
+function findCloudCandidate(
+  runtime: IAgentRuntime,
+  modelType: (typeof ModelType)[keyof typeof ModelType],
+  excludeProvider: string,
+): CloudCandidate | null {
+  const r = runtime as IAgentRuntime & {
+    models?: Map<
+      string,
+      Array<{
+        provider: string;
+        priority: number;
+        handler: GenerateTextHandler;
+      }>
+    >;
+  };
+  const entries = r.models?.get(String(modelType));
+  if (!entries || entries.length === 0) return null;
+  for (const entry of entries) {
+    if (entry.provider !== excludeProvider) {
+      return {
+        provider: entry.provider,
+        priority: entry.priority,
+        handler: entry.handler,
+      };
     }
-    return null;
+  }
+  return null;
 }
 /** Runtime service that owns one fused AOSP loader and releases it on stop. */
 export class AospLoaderRuntimeService extends Service implements AospLoader {
-    override capabilityDescription = "Owns the fused AOSP local-inference loader for this agent runtime.";
-    constructor(runtime: IAgentRuntime, private readonly loader: AospLoader, private readonly stopLoader: () => Promise<void>) {
-        super(runtime);
-    }
-    async loadModel(args: AospLoadModelArgs): Promise<void> {
-        await this.loader.loadModel(args);
-    }
-    async unloadModel(): Promise<void> {
-        await this.loader.unloadModel();
-    }
-    currentModelPath(): string | null {
-        return this.loader.currentModelPath();
-    }
-    async generate(args: Parameters<AospLoader["generate"]>[0]): Promise<string> {
-        return this.loader.generate(args);
-    }
-    async embed(args: Parameters<AospLoader["embed"]>[0]): ReturnType<AospLoader["embed"]> {
-        return this.loader.embed(args);
-    }
-    override async stop(): Promise<void> {
-        await this.stopLoader();
-    }
+  override capabilityDescription =
+    "Owns the fused AOSP local-inference loader for this agent runtime.";
+  constructor(
+    runtime: IAgentRuntime,
+    private readonly loader: AospLoader,
+    private readonly stopLoader: () => Promise<void>,
+  ) {
+    super(runtime);
+  }
+  async loadModel(args: AospLoadModelArgs): Promise<void> {
+    await this.loader.loadModel(args);
+  }
+  async unloadModel(): Promise<void> {
+    await this.loader.unloadModel();
+  }
+  currentModelPath(): string | null {
+    return this.loader.currentModelPath();
+  }
+  async generate(args: Parameters<AospLoader["generate"]>[0]): Promise<string> {
+    return this.loader.generate(args);
+  }
+  async embed(
+    args: Parameters<AospLoader["embed"]>[0],
+  ): ReturnType<AospLoader["embed"]> {
+    return this.loader.embed(args);
+  }
+  override async stop(): Promise<void> {
+    await this.stopLoader();
+  }
 }
 /** Register the class without waiting on the runtime initialization barrier. */
-export async function registerAospLoaderService(runtime: Pick<IAgentRuntime, "registerService">, loader: AospLoader, options: {
+export async function registerAospLoaderService(
+  runtime: Pick<IAgentRuntime, "registerService">,
+  loader: AospLoader,
+  options: {
     start?: () => void;
     stop?: () => Promise<void>;
-} = {}): Promise<void> {
-    const stopLoader = options.stop ?? (() => loader.unloadModel());
-    const serviceClass = createService<AospLoaderRuntimeService>(SERVICE_NAME)
-        .withDescription("Owns the fused AOSP local-inference loader for this agent runtime.")
-        .withStart(async (serviceRuntime) => {
-        options.start?.();
-        return new AospLoaderRuntimeService(serviceRuntime, loader, stopLoader);
+  } = {},
+): Promise<void> {
+  const stopLoader = options.stop ?? (() => loader.unloadModel());
+  const serviceClass = createService<AospLoaderRuntimeService>(SERVICE_NAME)
+    .withDescription(
+      "Owns the fused AOSP local-inference loader for this agent runtime.",
+    )
+    .withStart(async (serviceRuntime) => {
+      options.start?.();
+      return new AospLoaderRuntimeService(serviceRuntime, loader, stopLoader);
     })
-        .build();
-    await runtime.registerService(serviceClass);
+    .build();
+  await runtime.registerService(serviceClass);
 }
 /**
  * Register the fused-libelizainference loader as the `localInferenceLoader`
@@ -898,16 +1052,22 @@ export async function registerAospLoaderService(runtime: Pick<IAgentRuntime, "re
  * `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`
  * dynamically import it to wire the `localInferenceLoader` service.
  */
-export async function registerAospLlamaLoader(runtime: IAgentRuntime, options: AospLocalInferenceBootstrapOptions = {}): Promise<boolean> {
-    if (!isAospEnabled())
-        return false;
-    const owner = await ensureAospLoaderOwner(runtime, options);
-    if (!owner) {
-        logger.error("[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); localInferenceLoader NOT registered.");
-        return false;
-    }
-    logger.info("[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)");
-    return true;
+export async function registerAospLlamaLoader(
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions = {},
+): Promise<boolean> {
+  if (!isAospEnabled()) return false;
+  const owner = await ensureAospLoaderOwner(runtime, options);
+  if (!owner) {
+    logger.error(
+      "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); localInferenceLoader NOT registered.",
+    );
+    return false;
+  }
+  logger.info(
+    "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
+  );
+  return true;
 }
 /**
  * Resolve the bundled chat / embedding GGUF paths shipped under
@@ -918,189 +1078,206 @@ export async function registerAospLlamaLoader(runtime: IAgentRuntime, options: A
  * swaps do not need code changes.
  */
 interface BundledModelManifestEntry {
-    // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
-    // writes `ggufFile` (the on-disk filename relative to the models dir).
-    // Older manifests used `filename`; we read both for forward-compat.
-    ggufFile?: string;
-    filename?: string;
-    role: "chat" | "embedding";
+  // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
+  // writes `ggufFile` (the on-disk filename relative to the models dir).
+  // Older manifests used `filename`; we read both for forward-compat.
+  ggufFile?: string;
+  filename?: string;
+  role: "chat" | "embedding";
 }
 interface LocalInferenceAssignmentsFile {
-    assignments?: Record<string, string | undefined>;
+  assignments?: Record<string, string | undefined>;
 }
 interface LocalInferenceRegistryEntry {
-    id?: string;
-    path?: string;
-    bundleRoot?: string;
+  id?: string;
+  path?: string;
+  bundleRoot?: string;
 }
 interface LocalInferenceRegistryFile {
-    models?: LocalInferenceRegistryEntry[];
+  models?: LocalInferenceRegistryEntry[];
 }
 function readJsonFile<T>(file: string): T | null {
-    try {
-        if (!existsSync(file))
-            return null;
-        return JSON.parse(readFileSync(file, "utf8")) as T;
-    }
-    catch {
-        // error-policy:J4 explicit degrade — optional JSON sidecar; missing/corrupt
-        // returns null and the caller uses its next discovery source (assigned models
-        // / manifest / fallback-find). Not the sole model source.
-        return null;
-    }
+  try {
+    if (!existsSync(file)) return null;
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch {
+    // error-policy:J4 explicit degrade — optional JSON sidecar; missing/corrupt
+    // returns null and the caller uses its next discovery source (assigned models
+    // / manifest / fallback-find). Not the sole model source.
+    return null;
+  }
 }
 function mapExistingModelPath(raw: unknown, modelsDir: string): string | null {
-    if (typeof raw !== "string" || raw.trim().length === 0)
-        return null;
-    const candidate = raw.trim();
-    const normalized = candidate.replaceAll("\\", "/");
-    // Container-relative rows (the canonical registry format since #11669) are
-    // stored relative to the local-inference dir — the parent of modelsDir.
-    if (!path.isAbsolute(candidate) && !/^[A-Za-z]:[\\/]/.test(candidate)) {
-        const parts = normalized.split("/").filter(Boolean);
-        if (parts.length === 0 || parts.some((p) => p === "." || p === "..")) {
-            return null;
-        }
-        const mapped = path.join(path.dirname(modelsDir), ...parts);
-        return existsSync(mapped) ? mapped : null;
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
+  const candidate = raw.trim();
+  const normalized = candidate.replaceAll("\\", "/");
+  // Container-relative rows (the canonical registry format since #11669) are
+  // stored relative to the local-inference dir — the parent of modelsDir.
+  if (!path.isAbsolute(candidate) && !/^[A-Za-z]:[\\/]/.test(candidate)) {
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length === 0 || parts.some((p) => p === "." || p === "..")) {
+      return null;
     }
-    // Legacy absolute rows from a previous container/state root: re-anchor by
-    // the `/local-inference/models/` suffix.
-    const marker = "/local-inference/models/";
-    const markerIndex = normalized.lastIndexOf(marker);
-    if (markerIndex >= 0) {
-        const relative = normalized.slice(markerIndex + marker.length);
-        const mapped = path.join(modelsDir, ...relative.split("/").filter(Boolean));
-        if (existsSync(mapped))
-            return mapped;
-    }
-    return existsSync(candidate) ? candidate : null;
+    const mapped = path.join(path.dirname(modelsDir), ...parts);
+    return existsSync(mapped) ? mapped : null;
+  }
+  // Legacy absolute rows from a previous container/state root: re-anchor by
+  // the `/local-inference/models/` suffix.
+  const marker = "/local-inference/models/";
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    const relative = normalized.slice(markerIndex + marker.length);
+    const mapped = path.join(modelsDir, ...relative.split("/").filter(Boolean));
+    if (existsSync(mapped)) return mapped;
+  }
+  return existsSync(candidate) ? candidate : null;
 }
 function isChatModelPath(file: string): boolean {
-    const lowerPath = file.replaceAll("\\", "/").toLowerCase();
-    const lowerName = path.basename(file).toLowerCase();
-    return (lowerName.endsWith(".gguf") &&
-        lowerName.includes("eliza-1") &&
-        !lowerPath.includes("/mtp/") &&
-        !lowerPath.includes("/tts/") &&
-        !lowerPath.includes("/asr/") &&
-        !lowerPath.includes("/vad/") &&
-        !lowerName.includes("drafter") &&
-        !lowerName.includes("mmproj"));
+  const lowerPath = file.replaceAll("\\", "/").toLowerCase();
+  const lowerName = path.basename(file).toLowerCase();
+  return (
+    lowerName.endsWith(".gguf") &&
+    lowerName.includes("eliza-1") &&
+    !lowerPath.includes("/mtp/") &&
+    !lowerPath.includes("/tts/") &&
+    !lowerPath.includes("/asr/") &&
+    !lowerPath.includes("/vad/") &&
+    !lowerName.includes("drafter") &&
+    !lowerName.includes("mmproj")
+  );
 }
 function isEmbeddingModelPath(file: string): boolean {
-    const lowerPath = file.replaceAll("\\", "/").toLowerCase();
-    const lowerName = path.basename(file).toLowerCase();
-    return (lowerName.endsWith(".gguf") &&
-        (lowerPath.includes("embedding") || lowerName.includes("bge")));
+  const lowerPath = file.replaceAll("\\", "/").toLowerCase();
+  const lowerName = path.basename(file).toLowerCase();
+  return (
+    lowerName.endsWith(".gguf") &&
+    (lowerPath.includes("embedding") || lowerName.includes("bge"))
+  );
 }
-function findModelUnderDirectory(root: string, role: "chat" | "embedding"): string | null {
-    if (!existsSync(root))
-        return null;
-    const matcher = role === "chat" ? isChatModelPath : isEmbeddingModelPath;
-    const visit = (dir: string, depth: number): string | null => {
-        if (depth > 4)
-            return null;
-        let names: string[];
-        try {
-            names = readdirSync(dir).sort();
-        }
-        catch {
-            // error-policy:J4 explicit degrade — an unreadable/absent dir yields "no
-            // model found in this tree" (null); the caller composes other discovery
-            // sources. Fabricates no path.
-            return null;
-        }
-        for (const name of names) {
-            const abs = path.join(dir, name);
-            let stats: ReturnType<typeof statSync>;
-            try {
-                stats = statSync(abs);
-            }
-            catch {
-                // error-policy:J3 skip an unstattable entry during model-file discovery;
-                // the walk continues and either finds a real file or returns null. No
-                // fabricated match.
-                continue;
-            }
-            if (stats.isFile() && matcher(abs))
-                return abs;
-            if (stats.isDirectory()) {
-                const found = visit(abs, depth + 1);
-                if (found)
-                    return found;
-            }
-        }
-        return null;
-    };
-    return visit(root, 0);
-}
-function resolveAssignedRegistryModel(registry: LocalInferenceRegistryFile | null, modelId: string | undefined, role: "chat" | "embedding", modelsDir: string): string | null {
-    if (!modelId)
-        return null;
-    const entry = registry?.models?.find((model) => model.id === modelId);
-    if (!entry)
-        return null;
-    const direct = mapExistingModelPath(entry.path, modelsDir);
-    if (direct &&
-        (role === "chat" ? isChatModelPath(direct) : isEmbeddingModelPath(direct))) {
-        return direct;
+function findModelUnderDirectory(
+  root: string,
+  role: "chat" | "embedding",
+): string | null {
+  if (!existsSync(root)) return null;
+  const matcher = role === "chat" ? isChatModelPath : isEmbeddingModelPath;
+  const visit = (dir: string, depth: number): string | null => {
+    if (depth > 4) return null;
+    let names: string[];
+    try {
+      names = readdirSync(dir).sort();
+    } catch {
+      // error-policy:J4 explicit degrade — an unreadable/absent dir yields "no
+      // model found in this tree" (null); the caller composes other discovery
+      // sources. Fabricates no path.
+      return null;
     }
-    const bundleRoot = mapExistingModelPath(entry.bundleRoot, modelsDir);
-    if (!bundleRoot)
-        return null;
-    return findModelUnderDirectory(bundleRoot, role);
+    for (const name of names) {
+      const abs = path.join(dir, name);
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(abs);
+      } catch {
+        // error-policy:J3 skip an unstattable entry during model-file discovery;
+        // the walk continues and either finds a real file or returns null. No
+        // fabricated match.
+        continue;
+      }
+      if (stats.isFile() && matcher(abs)) return abs;
+      if (stats.isDirectory()) {
+        const found = visit(abs, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(root, 0);
+}
+function resolveAssignedRegistryModel(
+  registry: LocalInferenceRegistryFile | null,
+  modelId: string | undefined,
+  role: "chat" | "embedding",
+  modelsDir: string,
+): string | null {
+  if (!modelId) return null;
+  const entry = registry?.models?.find((model) => model.id === modelId);
+  if (!entry) return null;
+  const direct = mapExistingModelPath(entry.path, modelsDir);
+  if (
+    direct &&
+    (role === "chat" ? isChatModelPath(direct) : isEmbeddingModelPath(direct))
+  ) {
+    return direct;
+  }
+  const bundleRoot = mapExistingModelPath(entry.bundleRoot, modelsDir);
+  if (!bundleRoot) return null;
+  return findModelUnderDirectory(bundleRoot, role);
 }
 export function readAssignedBundledModels(modelsDir: string): {
-    chat: string | null;
-    embedding: string | null;
+  chat: string | null;
+  embedding: string | null;
 } {
-    const localInferenceDir = path.dirname(modelsDir);
-    const assignments = readJsonFile<LocalInferenceAssignmentsFile>(path.join(localInferenceDir, "assignments.json"))?.assignments;
-    if (!assignments)
-        return { chat: null, embedding: null };
-    const registry = readJsonFile<LocalInferenceRegistryFile>(path.join(localInferenceDir, "registry.json"));
-    return {
-        chat: resolveAssignedRegistryModel(registry, assignments.TEXT_SMALL ?? assignments.TEXT_LARGE, "chat", modelsDir) ??
-            resolveAssignedRegistryModel(registry, assignments.TEXT_LARGE, "chat", modelsDir),
-        embedding: resolveAssignedRegistryModel(registry, assignments.TEXT_EMBEDDING, "embedding", modelsDir),
-    };
+  const localInferenceDir = path.dirname(modelsDir);
+  const assignments = readJsonFile<LocalInferenceAssignmentsFile>(
+    path.join(localInferenceDir, "assignments.json"),
+  )?.assignments;
+  if (!assignments) return { chat: null, embedding: null };
+  const registry = readJsonFile<LocalInferenceRegistryFile>(
+    path.join(localInferenceDir, "registry.json"),
+  );
+  return {
+    chat:
+      resolveAssignedRegistryModel(
+        registry,
+        assignments.TEXT_SMALL ?? assignments.TEXT_LARGE,
+        "chat",
+        modelsDir,
+      ) ??
+      resolveAssignedRegistryModel(
+        registry,
+        assignments.TEXT_LARGE,
+        "chat",
+        modelsDir,
+      ),
+    embedding: resolveAssignedRegistryModel(
+      registry,
+      assignments.TEXT_EMBEDDING,
+      "embedding",
+      modelsDir,
+    ),
+  };
 }
 function readBundledModelManifest(modelsDir: string): {
-    chat: string | null;
-    embedding: string | null;
+  chat: string | null;
+  embedding: string | null;
 } {
-    const manifestPath = path.join(modelsDir, "manifest.json");
-    if (!existsSync(manifestPath))
-        return { chat: null, embedding: null };
-    try {
-        const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-            models?: BundledModelManifestEntry[];
-        };
-        let chat: string | null = null;
-        let embedding: string | null = null;
-        for (const entry of parsed.models ?? []) {
-            const fileName = entry.ggufFile ?? entry.filename;
-            if (!fileName)
-                continue;
-            const abs = path.join(modelsDir, fileName);
-            if (!existsSync(abs))
-                continue;
-            if (entry.role === "chat" && !chat)
-                chat = abs;
-            else if (entry.role === "embedding" && !embedding)
-                embedding = abs;
-        }
-        return { chat, embedding };
+  const manifestPath = path.join(modelsDir, "manifest.json");
+  if (!existsSync(manifestPath)) return { chat: null, embedding: null };
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      models?: BundledModelManifestEntry[];
+    };
+    let chat: string | null = null;
+    let embedding: string | null = null;
+    for (const entry of parsed.models ?? []) {
+      const fileName = entry.ggufFile ?? entry.filename;
+      if (!fileName) continue;
+      const abs = path.join(modelsDir, fileName);
+      if (!existsSync(abs)) continue;
+      if (entry.role === "chat" && !chat) chat = abs;
+      else if (entry.role === "embedding" && !embedding) embedding = abs;
     }
-    catch (err) {
-        // error-policy:J4 explicit degrade — a corrupt manifest.json is logged at
-        // error (observable) and this ONE discovery source returns "found nothing";
-        // the caller then falls through to assigned-registry / fallback-find / the
-        // recommended-model auto-download. It does not report a model as ready.
-        logger.error("[aosp-local-inference] Could not parse manifest.json:", err instanceof Error ? err.message : String(err));
-        return { chat: null, embedding: null };
-    }
+    return { chat, embedding };
+  } catch (err) {
+    // error-policy:J4 explicit degrade — a corrupt manifest.json is logged at
+    // error (observable) and this ONE discovery source returns "found nothing";
+    // the caller then falls through to assigned-registry / fallback-find / the
+    // recommended-model auto-download. It does not report a model as ready.
+    logger.error(
+      "[aosp-local-inference] Could not parse manifest.json:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return { chat: null, embedding: null };
+  }
 }
 // Recommended-model auto-download for the AOSP / bun:ffi path. Mirrors
 // the helper in plugin-native-inference/mobile-device-bridge-bootstrap.ts:
@@ -1112,71 +1289,78 @@ function readBundledModelManifest(modelsDir: string): {
 // builds — callers see the original "stage one via stage-default-models"
 // error in that mode.
 const aospInflightDownloads = new Map<string, Promise<string>>();
-async function downloadRecommendedAospModel(role: "chat" | "embedding", modelsDir: string): Promise<string> {
-    const model = resolveRecommendedAospModel(role);
-    mkdirSync(modelsDir, { recursive: true });
-    const finalPath = path.join(modelsDir, model.ggufFile);
-    mkdirSync(path.dirname(finalPath), { recursive: true });
-    if (existsSync(finalPath)) {
-        const sz = statSync(finalPath).size;
-        if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
-            return finalPath;
-        }
-        logger.warn(`[aosp-local-inference] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`);
-        try {
-            unlinkSync(finalPath);
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — unlink stale/mismatched model file.
-        }
+async function downloadRecommendedAospModel(
+  role: "chat" | "embedding",
+  modelsDir: string,
+): Promise<string> {
+  const model = resolveRecommendedAospModel(role);
+  mkdirSync(modelsDir, { recursive: true });
+  const finalPath = path.join(modelsDir, model.ggufFile);
+  mkdirSync(path.dirname(finalPath), { recursive: true });
+  if (existsSync(finalPath)) {
+    const sz = statSync(finalPath).size;
+    if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
+      return finalPath;
     }
-    const dedupKey = `${role}:${model.id}`;
-    const existing = aospInflightDownloads.get(dedupKey);
-    if (existing)
-        return existing;
-    const promise = (async () => {
-        const stagingPath = `${finalPath}.part`;
-        try {
-            unlinkSync(stagingPath);
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — unlink stale staging file before download.
-        }
-        const { response, candidate } = await fetchRecommendedAospModel(model);
-        logger.info(`[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${candidate.label ?? candidate.base}`);
-        if (!response.ok || !response.body) {
-            throw new Error(`[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${candidate.url}`);
-        }
-        await pipeline(Readable.fromWeb(response.body as never), createWriteStream(stagingPath));
-        const stagedSize = statSync(stagingPath).size;
-        try {
-            assertAospModelDownloadSize(model, stagedSize);
-            if (role === "embedding")
-                verifyAospEmbeddingArtifact(stagingPath);
-        }
-        catch (error) {
-            try {
-                unlinkSync(stagingPath);
-            }
-            catch {
-                // error-policy:J6 best-effort teardown — unlink bad-size staging artifact (real error thrown next).
-            }
-            throw error;
-        }
-        renameSync(stagingPath, finalPath);
-        logger.info(`[aosp-local-inference] Auto-download complete: ${finalPath} (${stagedSize} bytes)`);
-        return finalPath;
-    })();
-    aospInflightDownloads.set(dedupKey, promise);
+    logger.warn(
+      `[aosp-local-inference] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`,
+    );
     try {
-        return await promise;
+      unlinkSync(finalPath);
+    } catch {
+      // error-policy:J6 best-effort teardown — unlink stale/mismatched model file.
     }
-    finally {
-        aospInflightDownloads.delete(dedupKey);
+  }
+  const dedupKey = `${role}:${model.id}`;
+  const existing = aospInflightDownloads.get(dedupKey);
+  if (existing) return existing;
+  const promise = (async () => {
+    const stagingPath = `${finalPath}.part`;
+    try {
+      unlinkSync(stagingPath);
+    } catch {
+      // error-policy:J6 best-effort teardown — unlink stale staging file before download.
     }
+    const { response, candidate } = await fetchRecommendedAospModel(model);
+    logger.info(
+      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${candidate.label ?? candidate.base}`,
+    );
+    if (!response.ok || !response.body) {
+      throw new Error(
+        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${candidate.url}`,
+      );
+    }
+    await pipeline(
+      Readable.fromWeb(response.body as never),
+      createWriteStream(stagingPath),
+    );
+    const stagedSize = statSync(stagingPath).size;
+    try {
+      assertAospModelDownloadSize(model, stagedSize);
+      if (role === "embedding") verifyAospEmbeddingArtifact(stagingPath);
+    } catch (error) {
+      try {
+        unlinkSync(stagingPath);
+      } catch {
+        // error-policy:J6 best-effort teardown — unlink bad-size staging artifact (real error thrown next).
+      }
+      throw error;
+    }
+    renameSync(stagingPath, finalPath);
+    logger.info(
+      `[aosp-local-inference] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
+    );
+    return finalPath;
+  })();
+  aospInflightDownloads.set(dedupKey, promise);
+  try {
+    return await promise;
+  } finally {
+    aospInflightDownloads.delete(dedupKey);
+  }
 }
 function resolveBundledModelsDir(): string {
-    return path.join(resolveStateDir(), "local-inference", "models");
+  return path.join(resolveStateDir(), "local-inference", "models");
 }
 // Kokoro-82M is the small/fast on-device voice — the only on-device TTS
 // backend. It isn't always bundled into
@@ -1198,87 +1382,104 @@ const KOKORO_STYLE_DIM = 256;
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
 // Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
 function resolveAssignedChatTierSlug(): string {
-    try {
-        const modelsDir = resolveBundledModelsDir();
-        const assigned = readAssignedBundledModels(modelsDir);
-        const manifest = readBundledModelManifest(modelsDir);
-        const fallback = fallbackFindBundledModels(modelsDir);
-        const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-        return chatModel
-            ? bundleSlugFromModelName(path.basename(chatModel))
-            : tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
-    }
-    catch {
-        // error-policy:J4 explicit degrade — tier slug only picks the Kokoro voice
-        // URL; if discovery throws we use the catalog's first-run voice tier rather
-        // than failing chat load. Cosmetic fallback, not a model source.
-        return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
-    }
+  try {
+    const modelsDir = resolveBundledModelsDir();
+    const assigned = readAssignedBundledModels(modelsDir);
+    const manifest = readBundledModelManifest(modelsDir);
+    const fallback = fallbackFindBundledModels(modelsDir);
+    const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+    return chatModel
+      ? bundleSlugFromModelName(path.basename(chatModel))
+      : tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
+  } catch {
+    // error-policy:J4 explicit degrade — tier slug only picks the Kokoro voice
+    // URL; if discovery throws we use the catalog's first-run voice tier rather
+    // than failing chat load. Cosmetic fallback, not a model source.
+    return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
+  }
 }
-function ensureKokoroTtsAssetsInBackground(bundleRoot: string, tier: string): void {
-    if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1")
-        return;
-    if (kokoroTtsDownloadInflight)
-        return;
-    const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
-    if (existsSync(kokoroDir))
-        return;
-    const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
-    kokoroTtsDownloadInflight = (async () => {
-        removeAospGeneratedStagingDir(stagingDir, bundleRoot);
-        mkdirSync(stagingDir, { recursive: true });
-        const downloads: Array<{
-            url: string;
-            name: string;
-        }> = [
-            {
-                url: `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/kokoro/${KOKORO_GGUF_FILE}`,
-                name: KOKORO_GGUF_FILE,
-            },
-            {
-                url: `https://huggingface.co/elizaos/eliza-1/resolve/main/voice/kokoro/voices/${KOKORO_VOICE_FILE}`,
-                name: KOKORO_VOICE_FILE,
-            },
-        ];
-        for (const { url, name } of downloads) {
-            logger.info(`[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`);
-            const response = await fetch(url, { redirect: "follow" });
-            if (!response.ok || !response.body) {
-                throw new Error(`Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`);
-            }
-            await pipeline(Readable.fromWeb(response.body as never), createWriteStream(path.join(stagingDir, name)));
-        }
-        // Atomic publish: tts/kokoro/ appears only when both files are complete.
-        renameSync(stagingDir, kokoroDir);
-        logger.info(`[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`);
-    })()
-        // error-policy:J4 explicit degrade — Kokoro voice is an optional enhancement;
-        // a failed background download logs + cleans staging and the agent uses the
-        // platform system TTS. Not a model/inference failure.
-        .catch((err) => {
-        logger.warn(`[aosp-local-inference] Kokoro voice auto-download failed (falling back to system TTS): ${err instanceof Error ? err.message : String(err)}`);
-        removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+function ensureKokoroTtsAssetsInBackground(
+  bundleRoot: string,
+  tier: string,
+): void {
+  if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
+  if (kokoroTtsDownloadInflight) return;
+  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
+  if (existsSync(kokoroDir)) return;
+  const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+  kokoroTtsDownloadInflight = (async () => {
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+    mkdirSync(stagingDir, { recursive: true });
+    const downloads: Array<{
+      url: string;
+      name: string;
+    }> = [
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/kokoro/${KOKORO_GGUF_FILE}`,
+        name: KOKORO_GGUF_FILE,
+      },
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/voice/kokoro/voices/${KOKORO_VOICE_FILE}`,
+        name: KOKORO_VOICE_FILE,
+      },
+    ];
+    for (const { url, name } of downloads) {
+      logger.info(
+        `[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`,
+      );
+      const response = await fetch(url, { redirect: "follow" });
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      await pipeline(
+        Readable.fromWeb(response.body as never),
+        createWriteStream(path.join(stagingDir, name)),
+      );
+    }
+    // Atomic publish: tts/kokoro/ appears only when both files are complete.
+    renameSync(stagingDir, kokoroDir);
+    logger.info(
+      `[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`,
+    );
+  })()
+    // error-policy:J4 explicit degrade — Kokoro voice is an optional enhancement;
+    // a failed background download logs + cleans staging and the agent uses the
+    // platform system TTS. Not a model/inference failure.
+    .catch((err) => {
+      logger.warn(
+        `[aosp-local-inference] Kokoro voice auto-download failed (falling back to system TTS): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     })
-        .finally(() => {
-        kokoroTtsDownloadInflight = null;
+    .finally(() => {
+      kokoroTtsDownloadInflight = null;
     });
 }
-export function removeAospGeneratedStagingDir(stagingDir: string, bundleRoot: string): void {
-    const root = path.resolve(bundleRoot);
-    const target = path.resolve(stagingDir);
-    if (!path.basename(target).endsWith(".staging") ||
-        target === root ||
-        target === process.cwd() ||
-        target === path.parse(target).root ||
-        !target.startsWith(`${root}${path.sep}`)) {
-        throw new Error(`[aosp-local-inference] Refusing to remove unsafe staging directory: ${stagingDir}`);
-    }
-    rmSync(target, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 100,
-    });
+export function removeAospGeneratedStagingDir(
+  stagingDir: string,
+  bundleRoot: string,
+): void {
+  const root = path.resolve(bundleRoot);
+  const target = path.resolve(stagingDir);
+  if (
+    !path.basename(target).endsWith(".staging") ||
+    target === root ||
+    target === process.cwd() ||
+    target === path.parse(target).root ||
+    !target.startsWith(`${root}${path.sep}`)
+  ) {
+    throw new Error(
+      `[aosp-local-inference] Refusing to remove unsafe staging directory: ${stagingDir}`,
+    );
+  }
+  rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
 }
 /**
  * Glob-fallback for missing manifest: pick the first `*.gguf` whose name
@@ -1286,57 +1487,54 @@ export function removeAospGeneratedStagingDir(stagingDir: string, bundleRoot: st
  * functional even on dev images where the manifest didn't get copied.
  */
 function fallbackFindBundledModels(modelsDir: string): {
-    chat: string | null;
-    embedding: string | null;
+  chat: string | null;
+  embedding: string | null;
 } {
-    if (!existsSync(modelsDir))
-        return { chat: null, embedding: null };
-    let chat: string | null = null;
-    let embedding: string | null = null;
-    const visit = (dir: string, depth: number): void => {
-        if (depth > 4 || (chat && embedding))
-            return;
-        for (const name of readdirSync(dir)) {
-            const abs = path.join(dir, name);
-            let isDirectory = false;
-            let isFile = false;
-            try {
-                const stats = statSync(abs);
-                isDirectory = stats.isDirectory();
-                isFile = stats.isFile();
-            }
-            catch {
-                // error-policy:J3 skip an unstattable dir entry while walking for staged
-                // voice assets; the walk continues, no fabricated result.
-                continue;
-            }
-            if (isDirectory) {
-                visit(abs, depth + 1);
-                continue;
-            }
-            if (!isFile || !name.endsWith(".gguf"))
-                continue;
-            const lowerPath = abs.toLowerCase();
-            const lowerName = name.toLowerCase();
-            // Embedding match runs first so a dedicated embedding GGUF is assigned
-            // before the broader Eliza-1 chat rule below.
-            if (!embedding && lowerPath.includes("embedding")) {
-                embedding = abs;
-            }
-            else if (!chat &&
-                lowerName.includes("eliza-1") &&
-                !lowerPath.includes("/mtp/") &&
-                !lowerPath.includes("/tts/") &&
-                !lowerPath.includes("/asr/") &&
-                !lowerPath.includes("/vad/") &&
-                !lowerName.includes("drafter") &&
-                !lowerName.includes("mmproj")) {
-                chat = abs;
-            }
-        }
-    };
-    visit(modelsDir, 0);
-    return { chat, embedding };
+  if (!existsSync(modelsDir)) return { chat: null, embedding: null };
+  let chat: string | null = null;
+  let embedding: string | null = null;
+  const visit = (dir: string, depth: number): void => {
+    if (depth > 4 || (chat && embedding)) return;
+    for (const name of readdirSync(dir)) {
+      const abs = path.join(dir, name);
+      let isDirectory = false;
+      let isFile = false;
+      try {
+        const stats = statSync(abs);
+        isDirectory = stats.isDirectory();
+        isFile = stats.isFile();
+      } catch {
+        // error-policy:J3 skip an unstattable dir entry while walking for staged
+        // voice assets; the walk continues, no fabricated result.
+        continue;
+      }
+      if (isDirectory) {
+        visit(abs, depth + 1);
+        continue;
+      }
+      if (!isFile || !name.endsWith(".gguf")) continue;
+      const lowerPath = abs.toLowerCase();
+      const lowerName = name.toLowerCase();
+      // Embedding match runs first so a dedicated embedding GGUF is assigned
+      // before the broader Eliza-1 chat rule below.
+      if (!embedding && lowerPath.includes("embedding")) {
+        embedding = abs;
+      } else if (
+        !chat &&
+        lowerName.includes("eliza-1") &&
+        !lowerPath.includes("/mtp/") &&
+        !lowerPath.includes("/tts/") &&
+        !lowerPath.includes("/asr/") &&
+        !lowerPath.includes("/vad/") &&
+        !lowerName.includes("drafter") &&
+        !lowerName.includes("mmproj")
+      ) {
+        chat = abs;
+      }
+    }
+  };
+  visit(modelsDir, 0);
+  return { chat, embedding };
 }
 /**
  * Resolve chat / embedding GGUF paths from on-disk state, in priority order:
@@ -1345,29 +1543,33 @@ function fallbackFindBundledModels(modelsDir: string): {
  * fallback. Pure fs reads; safe to re-run on a long-lived process.
  */
 function resolveBundledModelPaths(modelsDir: string): {
-    chat: string | null;
-    embedding: string | null;
+  chat: string | null;
+  embedding: string | null;
 } {
-    const assigned = readAssignedBundledModels(modelsDir);
-    const manifest = readBundledModelManifest(modelsDir);
-    let resolved = {
-        chat: assigned.chat ?? manifest.chat,
-        embedding: [
-            assigned.embedding,
-            manifest.embedding,
-            path.join(modelsDir, BGE_EMBEDDING_MODEL.filename),
-        ].find((candidate) => candidate !== null &&
-            path.basename(candidate) === BGE_EMBEDDING_MODEL.filename &&
-            existsSync(candidate)) ?? null,
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  let resolved = {
+    chat: assigned.chat ?? manifest.chat,
+    embedding:
+      [
+        assigned.embedding,
+        manifest.embedding,
+        path.join(modelsDir, BGE_EMBEDDING_MODEL.filename),
+      ].find(
+        (candidate) =>
+          candidate !== null &&
+          path.basename(candidate) === BGE_EMBEDDING_MODEL.filename &&
+          existsSync(candidate),
+      ) ?? null,
+  };
+  if (!resolved.chat || !resolved.embedding) {
+    const fallback = fallbackFindBundledModels(modelsDir);
+    resolved = {
+      chat: resolved.chat ?? fallback.chat,
+      embedding: resolved.embedding,
     };
-    if (!resolved.chat || !resolved.embedding) {
-        const fallback = fallbackFindBundledModels(modelsDir);
-        resolved = {
-            chat: resolved.chat ?? fallback.chat,
-            embedding: resolved.embedding,
-        };
-    }
-    return resolved;
+  }
+  return resolved;
 }
 /**
  * Per-modelType auto-load gate. We track which model role is currently
@@ -1377,266 +1579,272 @@ function resolveBundledModelPaths(modelsDir: string): {
  */
 type LoadedRole = "chat" | "embedding" | null;
 function makeLoaderLifecycle(loader: AospLoader): {
-    ensureChatLoaded(): Promise<void>;
-    ensureEmbeddingLoaded(): Promise<void>;
-    markEvicted(): void;
+  ensureChatLoaded(): Promise<void>;
+  ensureEmbeddingLoaded(): Promise<void>;
+  markEvicted(): void;
 } {
-    let currentRole: LoadedRole = null;
-    let inflight: Promise<void> | null = null;
-    const modelsDir = resolveBundledModelsDir();
-    let resolved = resolveBundledModelPaths(modelsDir);
-    async function loadRole(role: "chat" | "embedding"): Promise<void> {
-        if (inflight) {
-            await inflight;
-            return loadRole(role);
-        }
-        if (currentRole === role)
-            return;
-        // Reserve ownership before downloads yield so another role cannot bypass
-        // model admission while the first request is still provisioning its file.
-        inflight = Promise.resolve().then(async () => {
-            let target = role === "chat" ? resolved.chat : resolved.embedding;
-            if (!target) {
-                // The models dir is empty at first boot, so the lifecycle's initial
-                // resolve returns null. A device/UI download (the recommendation engine
-                // picks a device-appropriate tier) lands the GGUF + assignments.json +
-                // registry.json AFTER boot. Re-scan here before deciding to auto-download
-                // or fail — otherwise a long-lived agent never sees a model installed
-                // post-boot, and on a build with ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1
-                // (UI owns downloads) chat fails permanently with "No bundled model".
-                const rescan = resolveBundledModelPaths(modelsDir);
-                resolved = {
-                    chat: resolved.chat ?? rescan.chat,
-                    embedding: resolved.embedding ?? rescan.embedding,
-                };
-                target = role === "chat" ? resolved.chat : resolved.embedding;
-            }
-            if (!target) {
-                if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
-                    throw new Error(`[aosp-local-inference] No bundled ${role} model found under ${modelsDir} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1).`);
-                }
-                target = await downloadRecommendedAospModel(role, modelsDir);
-                if (role === "chat") {
-                    resolved.chat = target;
-                }
-                else {
-                    resolved.embedding = target;
-                }
-            }
-            writeAospLlamaDebugLog("bootstrap:loadRole:start", {
-                role,
-                model: path.basename(target),
-            });
-            logger.info(`[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`);
-            try {
-                await loader.loadModel(buildAospLoadModelArgs(role, target));
-                currentRole = role;
-                writeAospActiveModelState({
-                    status: "ready",
-                    role,
-                    provider: PROVIDER,
-                    path: target,
-                    loadedAt: new Date().toISOString(),
-                });
-            }
-            catch (err) {
-                // error-policy:J2 context-adding rethrow — record the per-role load failure
-                // in the status sidecar (observable), then rethrow; the role is not marked
-                // ready.
-                writeAospActiveModelState({
-                    status: "error",
-                    role,
-                    provider: PROVIDER,
-                    path: target,
-                    error: err instanceof Error ? err.message : String(err),
-                    updatedAt: new Date().toISOString(),
-                });
-                throw err;
-            }
-            writeAospLlamaDebugLog("bootstrap:loadRole:done", {
-                role,
-                model: path.basename(target),
-            });
-            logger.info(`[aosp-local-inference] Loaded ${role} model (path=${target})`);
-        });
-        try {
-            await inflight;
-        }
-        finally {
-            inflight = null;
-        }
+  let currentRole: LoadedRole = null;
+  let inflight: Promise<void> | null = null;
+  const modelsDir = resolveBundledModelsDir();
+  let resolved = resolveBundledModelPaths(modelsDir);
+  async function loadRole(role: "chat" | "embedding"): Promise<void> {
+    if (inflight) {
+      await inflight;
+      return loadRole(role);
     }
-    return {
-        ensureChatLoaded: () => loadRole("chat"),
-        ensureEmbeddingLoaded: () => loadRole("embedding"),
-        // Out-of-band eviction (voice handlers free the chat model directly via
-        // loader.unloadModel() to reclaim RAM for the cold ASR/TTS load). That
-        // bypasses loadRole, so `currentRole` would stay stale ("chat") and the
-        // next ensureChatLoaded() would short-circuit and run generate() against a
-        // null ctx. Resetting `currentRole` here forces the next ensure*Loaded()
-        // to actually reload. Safe to call when no load is in flight; if a load is
-        // mid-flight the clear just means the subsequent ensure reloads, which is
-        // the intended post-eviction behaviour anyway.
-        markEvicted: () => {
-            currentRole = null;
-        },
-    };
+    if (currentRole === role) return;
+    // Reserve ownership before downloads yield so another role cannot bypass
+    // model admission while the first request is still provisioning its file.
+    inflight = Promise.resolve().then(async () => {
+      let target = role === "chat" ? resolved.chat : resolved.embedding;
+      if (!target) {
+        // The models dir is empty at first boot, so the lifecycle's initial
+        // resolve returns null. A device/UI download (the recommendation engine
+        // picks a device-appropriate tier) lands the GGUF + assignments.json +
+        // registry.json AFTER boot. Re-scan here before deciding to auto-download
+        // or fail — otherwise a long-lived agent never sees a model installed
+        // post-boot, and on a build with ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1
+        // (UI owns downloads) chat fails permanently with "No bundled model".
+        const rescan = resolveBundledModelPaths(modelsDir);
+        resolved = {
+          chat: resolved.chat ?? rescan.chat,
+          embedding: resolved.embedding ?? rescan.embedding,
+        };
+        target = role === "chat" ? resolved.chat : resolved.embedding;
+      }
+      if (!target) {
+        if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
+          throw new Error(
+            `[aosp-local-inference] No bundled ${role} model found under ${modelsDir} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1).`,
+          );
+        }
+        target = await downloadRecommendedAospModel(role, modelsDir);
+        if (role === "chat") {
+          resolved.chat = target;
+        } else {
+          resolved.embedding = target;
+        }
+      }
+      writeAospLlamaDebugLog("bootstrap:loadRole:start", {
+        role,
+        model: path.basename(target),
+      });
+      logger.info(
+        `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
+      );
+      try {
+        await loader.loadModel(buildAospLoadModelArgs(role, target));
+        currentRole = role;
+        writeAospActiveModelState({
+          status: "ready",
+          role,
+          provider: PROVIDER,
+          path: target,
+          loadedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        // error-policy:J2 context-adding rethrow — record the per-role load failure
+        // in the status sidecar (observable), then rethrow; the role is not marked
+        // ready.
+        writeAospActiveModelState({
+          status: "error",
+          role,
+          provider: PROVIDER,
+          path: target,
+          error: err instanceof Error ? err.message : String(err),
+          updatedAt: new Date().toISOString(),
+        });
+        throw err;
+      }
+      writeAospLlamaDebugLog("bootstrap:loadRole:done", {
+        role,
+        model: path.basename(target),
+      });
+      logger.info(
+        `[aosp-local-inference] Loaded ${role} model (path=${target})`,
+      );
+    });
+    try {
+      await inflight;
+    } finally {
+      inflight = null;
+    }
+  }
+  return {
+    ensureChatLoaded: () => loadRole("chat"),
+    ensureEmbeddingLoaded: () => loadRole("embedding"),
+    // Out-of-band eviction (voice handlers free the chat model directly via
+    // loader.unloadModel() to reclaim RAM for the cold ASR/TTS load). That
+    // bypasses loadRole, so `currentRole` would stay stale ("chat") and the
+    // next ensureChatLoaded() would short-circuit and run generate() against a
+    // null ctx. Resetting `currentRole` here forces the next ensure*Loaded()
+    // to actually reload. Safe to call when no load is in flight; if a load is
+    // mid-flight the clear just means the subsequent ensure reloads, which is
+    // the intended post-eviction behaviour anyway.
+    markEvicted: () => {
+      currentRole = null;
+    },
+  };
 }
 export interface AospLocalInferenceBootstrapOptions {
-    /** Deterministic builder injection for boot-order ownership tests. */
-    buildLoader?: () => Promise<AospLoader | null>;
-    /** Disable latency-only prewarm tasks while retaining production lifecycle. */
-    prewarm?: boolean;
+  /** Deterministic builder injection for boot-order ownership tests. */
+  buildLoader?: () => Promise<AospLoader | null>;
+  /** Disable latency-only prewarm tasks while retaining production lifecycle. */
+  prewarm?: boolean;
 }
 interface AospLoaderOwner {
-    readonly loader: AospLoader;
-    readonly lifecycle: ReturnType<typeof makeLoaderLifecycle>;
-    registerTtsPrewarm(start: () => () => Promise<void>): void;
-    start(): void;
-    stop(): Promise<void>;
+  readonly loader: AospLoader;
+  readonly lifecycle: ReturnType<typeof makeLoaderLifecycle>;
+  registerTtsPrewarm(start: () => () => Promise<void>): void;
+  start(): void;
+  stop(): Promise<void>;
 }
-async function buildAospLoaderOwner(runtime: IAgentRuntime, options: AospLocalInferenceBootstrapOptions): Promise<AospLoaderOwner | null> {
-    const rawLoader = await (options.buildLoader ?? tryBuildAospFusedTextLoader)();
-    if (!rawLoader)
-        return null;
-    const inferenceRamClass = classifyInferenceRamClass();
-    const idleUnloadMs = resolveInferenceIdleUnloadMs(inferenceRamClass);
-    let markLifecycleEvicted: () => void = () => { };
-    const idleUnloader = new InferenceIdleUnloader({
+async function buildAospLoaderOwner(
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions,
+): Promise<AospLoaderOwner | null> {
+  const rawLoader = await (
+    options.buildLoader ?? tryBuildAospFusedTextLoader
+  )();
+  if (!rawLoader) return null;
+  const inferenceRamClass = classifyInferenceRamClass();
+  const idleUnloadMs = resolveInferenceIdleUnloadMs(inferenceRamClass);
+  let markLifecycleEvicted: () => void = () => {};
+  const idleUnloader = new InferenceIdleUnloader({
+    idleUnloadMs,
+    // The bun agent never receives onTrimMemory (it is not an Android
+    // component), so /proc/meminfo MemAvailable is its pressure signal.
+    pressureCheck: makeProcMeminfoPressureCheck(inferenceRamClass),
+    isLoaded: () => rawLoader.currentModelPath() !== null,
+    unload: async () => {
+      await rawLoader.unloadModel();
+      markLifecycleEvicted();
+      writeAospLlamaDebugLog("bootstrap:idleUnload:released", {
         idleUnloadMs,
-        // The bun agent never receives onTrimMemory (it is not an Android
-        // component), so /proc/meminfo MemAvailable is its pressure signal.
-        pressureCheck: makeProcMeminfoPressureCheck(inferenceRamClass),
-        isLoaded: () => rawLoader.currentModelPath() !== null,
-        unload: async () => {
-            await rawLoader.unloadModel();
-            markLifecycleEvicted();
-            writeAospLlamaDebugLog("bootstrap:idleUnload:released", {
-                idleUnloadMs,
-                ramClass: inferenceRamClass,
-            });
-        },
-        logger: {
-            info: (msg) => logger.info(msg),
-            warn: (msg) => logger.warn(msg),
-        },
-    });
-    const loader = instrumentLoaderForIdleTracking(rawLoader, idleUnloader);
-    const lifecycle = makeLoaderLifecycle(loader);
-    markLifecycleEvicted = lifecycle.markEvicted;
-    let started = false;
-    let stopped = false;
-    let chatPrewarm: Promise<void> | null = null;
-    let startTtsPrewarm: (() => () => Promise<void>) | null = null;
-    let stopTtsPrewarm: (() => Promise<void>) | null = null;
-    let stopPromise: Promise<void> | null = null;
-    const shouldPrewarm = options.prewarm !== false;
-    const owner: AospLoaderOwner = {
-        loader,
-        lifecycle,
-        registerTtsPrewarm(start) {
-            startTtsPrewarm = start;
-            if (started && !stopped && shouldPrewarm && !stopTtsPrewarm) {
-                stopTtsPrewarm = start();
-            }
-        },
-        start() {
-            if (started || stopped)
-                return;
-            started = true;
-            idleUnloader.start();
-            logger.info(`[aosp-local-inference] inference memory policy: ramClass=${inferenceRamClass} idleUnloadMs=${idleUnloadMs} (#11760)`);
-            if (!shouldPrewarm)
-                return;
-            chatPrewarm = lifecycle.ensureChatLoaded().catch((err) => {
-                // error-policy:J7 chat prewarm is a latency optimization; the first
-                // real TEXT request retries through the same lifecycle.
-                logger.warn("[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
-                    (err instanceof Error ? err.message : String(err)));
-            });
-            if (startTtsPrewarm)
-                stopTtsPrewarm = startTtsPrewarm();
-        },
-        stop() {
-            if (stopPromise)
-                return stopPromise;
-            stopped = true;
-            const idleStopped = idleUnloader.stop();
-            stopPromise = (async () => {
-                await idleStopped;
-                await stopTtsPrewarm?.();
-                await chatPrewarm;
-                let unloadError: unknown;
-                try {
-                    if (loader.currentModelPath() !== null) {
-                        await loader.unloadModel();
-                    }
-                }
-                catch (error) {
-                    // error-policy:J6 teardown still closes the dlopen handle before the
-                    // original unload failure is rethrown to the runtime boundary.
-                    unloadError = error;
-                }
-                try {
-                    await loader.close?.();
-                }
-                catch (closeError) {
-                    // error-policy:J6 report both native teardown failures without
-                    // skipping either release operation.
-                    if (unloadError) {
-                        throw new AggregateError([unloadError, closeError], "AOSP local-inference unload and library close both failed");
-                    }
-                    throw closeError;
-                }
-                finally {
-                    if (routeActivationLoader === loader)
-                        routeActivationLoader = null;
-                    registeredRuntimes.delete(runtime as AgentRuntime);
-                    aospOwnerPromises.delete(runtime);
-                }
-                if (unloadError)
-                    throw unloadError;
-            })();
-            return stopPromise;
-        },
-    };
-    try {
-        await registerAospLoaderService(runtime, loader, {
-            start: owner.start,
-            stop: owner.stop,
-        });
-    }
-    catch (registrationError) {
-        // error-policy:J6 service registration owns the native handle transfer;
-        // construction rollback releases it before preserving the primary failure.
+        ramClass: inferenceRamClass,
+      });
+    },
+    logger: {
+      info: (msg) => logger.info(msg),
+      warn: (msg) => logger.warn(msg),
+    },
+  });
+  const loader = instrumentLoaderForIdleTracking(rawLoader, idleUnloader);
+  const lifecycle = makeLoaderLifecycle(loader);
+  markLifecycleEvicted = lifecycle.markEvicted;
+  let started = false;
+  let stopped = false;
+  let chatPrewarm: Promise<void> | null = null;
+  let startTtsPrewarm: (() => () => Promise<void>) | null = null;
+  let stopTtsPrewarm: (() => Promise<void>) | null = null;
+  let stopPromise: Promise<void> | null = null;
+  const shouldPrewarm = options.prewarm !== false;
+  const owner: AospLoaderOwner = {
+    loader,
+    lifecycle,
+    registerTtsPrewarm(start) {
+      startTtsPrewarm = start;
+      if (started && !stopped && shouldPrewarm && !stopTtsPrewarm) {
+        stopTtsPrewarm = start();
+      }
+    },
+    start() {
+      if (started || stopped) return;
+      started = true;
+      idleUnloader.start();
+      logger.info(
+        `[aosp-local-inference] inference memory policy: ramClass=${inferenceRamClass} idleUnloadMs=${idleUnloadMs} (#11760)`,
+      );
+      if (!shouldPrewarm) return;
+      chatPrewarm = lifecycle.ensureChatLoaded().catch((err) => {
+        // error-policy:J7 chat prewarm is a latency optimization; the first
+        // real TEXT request retries through the same lifecycle.
+        logger.warn(
+          "[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      });
+      if (startTtsPrewarm) stopTtsPrewarm = startTtsPrewarm();
+    },
+    stop() {
+      if (stopPromise) return stopPromise;
+      stopped = true;
+      const idleStopped = idleUnloader.stop();
+      stopPromise = (async () => {
+        await idleStopped;
+        await stopTtsPrewarm?.();
+        await chatPrewarm;
+        let unloadError: unknown;
         try {
-            await owner.stop();
+          if (loader.currentModelPath() !== null) {
+            await loader.unloadModel();
+          }
+        } catch (error) {
+          // error-policy:J6 teardown still closes the dlopen handle before the
+          // original unload failure is rethrown to the runtime boundary.
+          unloadError = error;
         }
-        catch (cleanupError) {
-            // error-policy:J6 rollback attempted every owner release operation; keep
-            // both the primary registration and teardown failures observable.
-            throw new AggregateError([registrationError, cleanupError], "AOSP local-inference service registration and rollback both failed", { cause: registrationError });
+        try {
+          await loader.close?.();
+        } catch (closeError) {
+          // error-policy:J6 report both native teardown failures without
+          // skipping either release operation.
+          if (unloadError) {
+            throw new AggregateError(
+              [unloadError, closeError],
+              "AOSP local-inference unload and library close both failed",
+            );
+          }
+          throw closeError;
+        } finally {
+          if (routeActivationLoader === loader) routeActivationLoader = null;
+          registeredRuntimes.delete(runtime as AgentRuntime);
+          aospOwnerPromises.delete(runtime);
         }
-        throw registrationError;
-    }
-    routeActivationLoader = loader;
-    return owner;
-}
-async function ensureAospLoaderOwner(runtime: IAgentRuntime, options: AospLocalInferenceBootstrapOptions): Promise<AospLoaderOwner | null> {
-    const existing = aospOwnerPromises.get(runtime);
-    if (existing)
-        return existing;
-    const pending = buildAospLoaderOwner(runtime, options);
-    aospOwnerPromises.set(runtime, pending);
-    let owner: AospLoaderOwner | null = null;
+        if (unloadError) throw unloadError;
+      })();
+      return stopPromise;
+    },
+  };
+  try {
+    await registerAospLoaderService(runtime, loader, {
+      start: owner.start,
+      stop: owner.stop,
+    });
+  } catch (registrationError) {
+    // error-policy:J6 service registration owns the native handle transfer;
+    // construction rollback releases it before preserving the primary failure.
     try {
-        owner = await pending;
-        return owner;
+      await owner.stop();
+    } catch (cleanupError) {
+      // error-policy:J6 rollback attempted every owner release operation; keep
+      // both the primary registration and teardown failures observable.
+      throw new AggregateError(
+        [registrationError, cleanupError],
+        "AOSP local-inference service registration and rollback both failed",
+        { cause: registrationError },
+      );
     }
-    finally {
-        if (!owner)
-            aospOwnerPromises.delete(runtime);
-    }
+    throw registrationError;
+  }
+  routeActivationLoader = loader;
+  return owner;
+}
+async function ensureAospLoaderOwner(
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions,
+): Promise<AospLoaderOwner | null> {
+  const existing = aospOwnerPromises.get(runtime);
+  if (existing) return existing;
+  const pending = buildAospLoaderOwner(runtime, options);
+  aospOwnerPromises.set(runtime, pending);
+  let owner: AospLoaderOwner | null = null;
+  try {
+    owner = await pending;
+    return owner;
+  } finally {
+    if (!owner) aospOwnerPromises.delete(runtime);
+  }
 }
 /**
  * Route one text generation through the process-wide interactive-over-
@@ -1652,38 +1860,51 @@ async function ensureAospLoaderOwner(runtime: IAgentRuntime, options: AospLocalI
  * Exported for unit tests; production callers go through the registered
  * TEXT_SMALL / TEXT_LARGE handlers.
  */
-export async function generateOnPriorityLane(loader: AospLoader, lifecycle: ReturnType<typeof makeLoaderLifecycle>, params: GenerateTextParams): Promise<string> {
-    const priority = params.priority ?? "interactive";
-    const args = buildGenerateArgsFromParams(params);
-    let lockWaitMs: number | undefined;
-    if (priority === "background") {
-        const budget = resolveBackgroundInferenceBudget(classifyInferenceRamClass());
-        const budgetedArgs = applyBackgroundInferenceBudget({ prompt: args.prompt, maxTokens: args.maxTokens }, budget);
-        args.prompt = budgetedArgs.prompt;
-        args.maxTokens = budgetedArgs.maxTokens;
-        lockWaitMs = budget.lockWaitMs;
-    }
-    return getInferencePriorityGate().runExclusive({
+export async function generateOnPriorityLane(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  params: GenerateTextParams,
+): Promise<string> {
+  const priority = params.priority ?? "interactive";
+  const args = buildGenerateArgsFromParams(params);
+  let lockWaitMs: number | undefined;
+  if (priority === "background") {
+    const budget = resolveBackgroundInferenceBudget(
+      classifyInferenceRamClass(),
+    );
+    const budgetedArgs = applyBackgroundInferenceBudget(
+      { prompt: args.prompt, maxTokens: args.maxTokens },
+      budget,
+    );
+    args.prompt = budgetedArgs.prompt;
+    args.maxTokens = budgetedArgs.maxTokens;
+    lockWaitMs = budget.lockWaitMs;
+  }
+  return getInferencePriorityGate().runExclusive(
+    {
+      priority,
+      label: `aosp-text (${args.prompt.length} chars, maxTokens=${args.maxTokens ?? "default"})`,
+      ...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
+      ...(params.signal ? { signal: params.signal } : {}),
+    },
+    async () => {
+      writeAospLlamaDebugLog("bootstrap:generate:ensureChat:start", {
+        maxTokens: args.maxTokens ?? null,
         priority,
-        label: `aosp-text (${args.prompt.length} chars, maxTokens=${args.maxTokens ?? "default"})`,
-        ...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
-        ...(params.signal ? { signal: params.signal } : {}),
-    }, async () => {
-        writeAospLlamaDebugLog("bootstrap:generate:ensureChat:start", {
-            maxTokens: args.maxTokens ?? null,
-            priority,
-            hasGrammar: typeof args.grammar === "string" && args.grammar.trim().length > 0,
-        });
-        await lifecycle.ensureChatLoaded();
-        writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
-        writeAospLlamaDebugLog("bootstrap:generate:start", {
-            promptChars: args.prompt.length,
-            maxTokens: args.maxTokens ?? null,
-            priority,
-            grammarBytes: args.grammar?.trim().length ?? 0,
-        });
-        return loader.generate(args);
-    });
+        hasGrammar:
+          typeof args.grammar === "string" && args.grammar.trim().length > 0,
+      });
+      await lifecycle.ensureChatLoaded();
+      writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
+      writeAospLlamaDebugLog("bootstrap:generate:start", {
+        promptChars: args.prompt.length,
+        maxTokens: args.maxTokens ?? null,
+        priority,
+        grammarBytes: args.grammar?.trim().length ?? 0,
+      });
+      return loader.generate(args);
+    },
+  );
 }
 /**
  * Internal: attempt local generate and classify the outcome explicitly.
@@ -1691,35 +1912,42 @@ export async function generateOnPriorityLane(loader: AospLoader, lifecycle: Retu
  * to a cloud handler. Load errors and generate errors classify through the
  * same {@link classifyLocalError} table.
  */
-async function tryLocalGenerate(loader: AospLoader, lifecycle: ReturnType<typeof makeLoaderLifecycle>, params: GenerateTextParams): Promise<LocalGenerateOutcome> {
-    try {
-        const text = await generateOnPriorityLane(loader, lifecycle, params);
-        return { kind: "ok", text };
+async function tryLocalGenerate(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  params: GenerateTextParams,
+): Promise<LocalGenerateOutcome> {
+  try {
+    const text = await generateOnPriorityLane(loader, lifecycle, params);
+    return { kind: "ok", text };
+  } catch (err) {
+    // error-policy:J4 explicit degrade — classify the local-inference failure:
+    // non-fallbackable errors rethrow (surface to the caller); only errors the
+    // classifier marks as fallback-eligible degrade to the cloud path below. The
+    // fallback is a typed outcome, not a fabricated completion.
+    const cls = classifyLocalError(err);
+    if (!cls.fallback) {
+      throw err;
     }
-    catch (err) {
-        // error-policy:J4 explicit degrade — classify the local-inference failure:
-        // non-fallbackable errors rethrow (surface to the caller); only errors the
-        // classifier marks as fallback-eligible degrade to the cloud path below. The
-        // fallback is a typed outcome, not a fabricated completion.
-        const cls = classifyLocalError(err);
-        if (!cls.fallback) {
-            throw err;
-        }
-        return {
-            kind: "fallback",
-            reason: cls.reason,
-            cause: err instanceof Error ? err : undefined,
-        };
-    }
+    return {
+      kind: "fallback",
+      reason: cls.reason,
+      cause: err instanceof Error ? err : undefined,
+    };
+  }
 }
-function makeGenerateHandler(loader: AospLoader, lifecycle: ReturnType<typeof makeLoaderLifecycle>): GenerateTextHandler {
-    // The runtime injects `signal` into `params` from the active streaming
-    // context's `abortSignal` when the caller didn't pass one explicitly
-    // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
-    // `generateOnPriorityLane` forwards it into the FFI decode loop so
-    // APP_PAUSE etc. can cancel an in-flight phone-CPU prefill that would
-    // otherwise pin the bun process for minutes.
-    return async (_runtime, params) => generateOnPriorityLane(loader, lifecycle, params);
+function makeGenerateHandler(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+): GenerateTextHandler {
+  // The runtime injects `signal` into `params` from the active streaming
+  // context's `abortSignal` when the caller didn't pass one explicitly
+  // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
+  // `generateOnPriorityLane` forwards it into the FFI decode loop so
+  // APP_PAUSE etc. can cancel an in-flight phone-CPU prefill that would
+  // otherwise pin the bun process for minutes.
+  return async (_runtime, params) =>
+    generateOnPriorityLane(loader, lifecycle, params);
 }
 /**
  * Build a TEXT_* handler that tries local first, then forwards to the
@@ -1732,34 +1960,45 @@ function makeGenerateHandler(loader: AospLoader, lifecycle: ReturnType<typeof ma
  * Exported for unit tests; production callers go through
  * `ensureAospLocalInferenceHandlers`.
  */
-function makeCloudFallbackHandler(loader: AospLoader, lifecycle: ReturnType<typeof makeLoaderLifecycle>, modelType: (typeof ModelType)[keyof typeof ModelType]): GenerateTextHandler {
-    return async (runtime, params) => {
-        const outcome = await tryLocalGenerate(loader, lifecycle, params);
-        if (outcome.kind === "ok") {
-            return outcome.text;
-        }
-        const candidate = findCloudCandidate(runtime, modelType, PROVIDER);
-        logger.info({
-            src: "aosp-local-inference",
-            event: "cloud-fallback-engaged",
-            modelType: String(modelType),
-            reason: outcome.reason,
-            candidateProvider: candidate?.provider ?? null,
-            cause: outcome.cause?.message,
-        }, "[aosp-local-inference] cloud-fallback engaged");
-        if (!candidate) {
-            // No cloud handler available — surface a typed error so callers see
-            // the real reason instead of a generic "no handler" message.
-            const err = new Error(`[aosp-local-inference] Local inference unavailable (${outcome.reason}) and no cloud handler is registered for ${String(modelType)}. Pair Eliza Cloud or install a provider plugin to enable fallback.`);
-            if (outcome.cause) {
-                (err as Error & {
-                    cause?: unknown;
-                }).cause = outcome.cause;
-            }
-            throw err;
-        }
-        return candidate.handler(runtime, params);
-    };
+function makeCloudFallbackHandler(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  modelType: (typeof ModelType)[keyof typeof ModelType],
+): GenerateTextHandler {
+  return async (runtime, params) => {
+    const outcome = await tryLocalGenerate(loader, lifecycle, params);
+    if (outcome.kind === "ok") {
+      return outcome.text;
+    }
+    const candidate = findCloudCandidate(runtime, modelType, PROVIDER);
+    logger.info(
+      {
+        src: "aosp-local-inference",
+        event: "cloud-fallback-engaged",
+        modelType: String(modelType),
+        reason: outcome.reason,
+        candidateProvider: candidate?.provider ?? null,
+        cause: outcome.cause?.message,
+      },
+      "[aosp-local-inference] cloud-fallback engaged",
+    );
+    if (!candidate) {
+      // No cloud handler available — surface a typed error so callers see
+      // the real reason instead of a generic "no handler" message.
+      const err = new Error(
+        `[aosp-local-inference] Local inference unavailable (${outcome.reason}) and no cloud handler is registered for ${String(modelType)}. Pair Eliza Cloud or install a provider plugin to enable fallback.`,
+      );
+      if (outcome.cause) {
+        (
+          err as Error & {
+            cause?: unknown;
+          }
+        ).cause = outcome.cause;
+      }
+      throw err;
+    }
+    return candidate.handler(runtime, params);
+  };
 }
 /**
  * Normalize the runtime's TEXT_EMBEDDING input shape — `params` may be the
@@ -1769,64 +2008,76 @@ function makeCloudFallbackHandler(loader: AospLoader, lifecycle: ReturnType<type
  *
  * Mirrors `ensure-local-inference-handler.ts:extractEmbeddingText`.
  */
-function extractEmbeddingText(params: TextEmbeddingParams | string | null): string {
-    if (params === null)
-        return "";
-    if (typeof params === "string")
-        return params;
-    return params.text;
+function extractEmbeddingText(
+  params: TextEmbeddingParams | string | null,
+): string {
+  if (params === null) return "";
+  if (typeof params === "string") return params;
+  return params.text;
 }
-function makeEmbeddingHandler(loader: AospLoader, lifecycle: ReturnType<typeof makeLoaderLifecycle>): EmbeddingHandler {
-    return async (_runtime, params) => {
-        if (!isAospLocalEmbeddingEnabled()) {
-            throw new ElizaError("Local embeddings are disabled. Enable ELIZA_LOCAL_EMBEDDING_ENABLED=1 with a verified embedding model before requesting local embeddings.", { code: "LOCAL_EMBEDDING_DISABLED", context: { provider: PROVIDER } });
-        }
-        await lifecycle.ensureEmbeddingLoaded();
-        const text = extractEmbeddingText(params);
-        const result = await loader.embed({ input: text });
-        return result.embedding;
-    };
+function makeEmbeddingHandler(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+): EmbeddingHandler {
+  return async (_runtime, params) => {
+    if (!isAospLocalEmbeddingEnabled()) {
+      throw new ElizaError(
+        "Local embeddings are disabled. Enable ELIZA_LOCAL_EMBEDDING_ENABLED=1 with a verified embedding model before requesting local embeddings.",
+        { code: "LOCAL_EMBEDDING_DISABLED", context: { provider: PROVIDER } },
+      );
+    }
+    await lifecycle.ensureEmbeddingLoaded();
+    const text = extractEmbeddingText(params);
+    const result = await loader.embed({ input: text });
+    return result.embedding;
+  };
 }
 export function extractSpeechText(params: TextToSpeechParams | string): string {
-    if (typeof params === "string")
-        return params;
-    if (params && typeof params === "object" && typeof params.text === "string") {
-        return params.text;
-    }
-    throw new Error("[aosp-local-inference] TEXT_TO_SPEECH requires a string or { text } input");
+  if (typeof params === "string") return params;
+  if (params && typeof params === "object" && typeof params.text === "string") {
+    return params.text;
+  }
+  throw new Error(
+    "[aosp-local-inference] TEXT_TO_SPEECH requires a string or { text } input",
+  );
 }
-export function extractSpeechSignal(params: TextToSpeechParams | string): AbortSignal | undefined {
-    return typeof params === "object" && params !== null
-        ? params.signal
-        : undefined;
+export function extractSpeechSignal(
+  params: TextToSpeechParams | string,
+): AbortSignal | undefined {
+  return typeof params === "object" && params !== null
+    ? params.signal
+    : undefined;
 }
 function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
-    const bytesPerSample = 2;
-    const dataBytes = pcm.length * bytesPerSample;
-    const out = new Uint8Array(44 + dataBytes);
-    const view = new DataView(out.buffer);
-    const writeAscii = (offset: number, text: string) => {
-        for (let i = 0; i < text.length; i++)
-            out[offset + i] = text.charCodeAt(i);
-    };
-    writeAscii(0, "RIFF");
-    view.setUint32(4, 36 + dataBytes, true);
-    writeAscii(8, "WAVE");
-    writeAscii(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * bytesPerSample, true);
-    view.setUint16(32, bytesPerSample, true);
-    view.setUint16(34, bytesPerSample * 8, true);
-    writeAscii(36, "data");
-    view.setUint32(40, dataBytes, true);
-    for (let i = 0; i < pcm.length; i++) {
-        const clamped = Math.max(-1, Math.min(1, pcm[i] ?? 0));
-        view.setInt16(44 + i * bytesPerSample, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
-    }
-    return out;
+  const bytesPerSample = 2;
+  const dataBytes = pcm.length * bytesPerSample;
+  const out = new Uint8Array(44 + dataBytes);
+  const view = new DataView(out.buffer);
+  const writeAscii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) out[offset + i] = text.charCodeAt(i);
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, pcm[i] ?? 0));
+    view.setInt16(
+      44 + i * bytesPerSample,
+      clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+      true,
+    );
+  }
+  return out;
 }
 /**
  * Pre-warm the fused Kokoro TTS pipeline on a delayed timer so the
@@ -1835,63 +2086,79 @@ function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
  * logged at WARN since the foreground request will surface a clean
  * error if the FFI surface is unavailable.
  */
-export function prewarmAospKokoroTextToSpeechHandler(handler: TextToSpeechHandler, opts: AospKokoroPrewarmOptions = {}): () => Promise<void> {
-    if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) {
-        return () => Promise.resolve();
+export function prewarmAospKokoroTextToSpeechHandler(
+  handler: TextToSpeechHandler,
+  opts: AospKokoroPrewarmOptions = {},
+): () => Promise<void> {
+  if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) {
+    return () => Promise.resolve();
+  }
+  const delayMs = readPositiveIntEnv("ELIZA_AOSP_TTS_PREWARM_DELAY_MS", 5000);
+  const timeoutMs = readPositiveIntEnv(
+    "ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS",
+    45000,
+  );
+  const text =
+    process.env.ELIZA_AOSP_TTS_PREWARM_TEXT?.trim() || "Hello from Eliza.";
+  let activeController: AbortController | null = null;
+  let activeTask: Promise<void> | null = null;
+  const delay = setTimeout(() => {
+    if (opts.shouldSkip?.()) {
+      logger.info(
+        "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
+      );
+      return;
     }
-    const delayMs = readPositiveIntEnv("ELIZA_AOSP_TTS_PREWARM_DELAY_MS", 5000);
-    const timeoutMs = readPositiveIntEnv("ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS", 45000);
-    const text = process.env.ELIZA_AOSP_TTS_PREWARM_TEXT?.trim() || "Hello from Eliza.";
-    let activeController: AbortController | null = null;
-    let activeTask: Promise<void> | null = null;
-    const delay = setTimeout(() => {
-        if (opts.shouldSkip?.()) {
-            logger.info("[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend");
-            return;
-        }
-        const started = Date.now();
-        const abortController = new AbortController();
-        activeController = abortController;
-        const timeout = setTimeout(() => abortController.abort(), timeoutMs);
-        activeTask = handler({} as never, {
-            text,
-            signal: abortController.signal,
-        })
-            .then((bytes) => {
-            logger.info(`[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`);
-        })
-            // error-policy:J7 pre-warm is a latency optimization; a failure is logged
-            // and the first real TTS call re-attempts the load. Not a request path.
-            .catch((err) => {
-            logger.warn("[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
-                (err instanceof Error ? err.message : String(err)));
-        })
-            .finally(() => {
-            clearTimeout(timeout);
-            activeController = null;
-        });
-    }, delayMs);
-    if (typeof delay === "object" && "unref" in delay)
-        delay.unref();
-    return async () => {
-        clearTimeout(delay);
-        activeController?.abort(new Error("AOSP local-inference runtime stopped during TTS pre-warm"));
-        await activeTask;
-    };
+    const started = Date.now();
+    const abortController = new AbortController();
+    activeController = abortController;
+    const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    activeTask = handler({} as never, {
+      text,
+      signal: abortController.signal,
+    })
+      .then((bytes) => {
+        logger.info(
+          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
+        );
+      })
+      // error-policy:J7 pre-warm is a latency optimization; a failure is logged
+      // and the first real TTS call re-attempts the load. Not a request path.
+      .catch((err) => {
+        logger.warn(
+          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        activeController = null;
+      });
+  }, delayMs);
+  if (typeof delay === "object" && "unref" in delay) delay.unref();
+  return async () => {
+    clearTimeout(delay);
+    activeController?.abort(
+      new Error("AOSP local-inference runtime stopped during TTS pre-warm"),
+    );
+    await activeTask;
+  };
 }
 function resolveAssignedChatBundleRoot(): string {
-    const modelsDir = resolveBundledModelsDir();
-    const assigned = readAssignedBundledModels(modelsDir);
-    const manifest = readBundledModelManifest(modelsDir);
-    const fallback = fallbackFindBundledModels(modelsDir);
-    const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-    if (!chatModel) {
-        throw new Error(`[aosp-local-inference] voice requires an installed Eliza-1 chat bundle under ${modelsDir}`);
-    }
-    return resolveBundleRootFromModelPath(chatModel);
+  const modelsDir = resolveBundledModelsDir();
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  const fallback = fallbackFindBundledModels(modelsDir);
+  const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+  if (!chatModel) {
+    throw new Error(
+      `[aosp-local-inference] voice requires an installed Eliza-1 chat bundle under ${modelsDir}`,
+    );
+  }
+  return resolveBundleRootFromModelPath(chatModel);
 }
 function isFfiNullPointer(value: unknown): boolean {
-    return value === null || value === undefined || value === 0 || value === 0n;
+  return value === null || value === undefined || value === 0 || value === 0n;
 }
 /**
  * Assert a bun:ffi `dlopen(...).symbols` table as the fused-LLM FFI surface.
@@ -1902,7 +2169,7 @@ function isFfiNullPointer(value: unknown): boolean {
  * every `createAospStreamingLlmBinding` call site (#12452 type-safety guard).
  */
 function asFusedLlmSymbols(symbols: unknown): AospFusedLlmSymbols {
-    return symbols as AospFusedLlmSymbols;
+  return symbols as AospFusedLlmSymbols;
 }
 // Free RAM (MiB) at or above which the resident chat model is KEPT across a cold
 // voice-model load instead of being evicted. Eviction frees room for the ~1.4 GB
@@ -1918,8 +2185,8 @@ export const VOICE_COLOAD_KEEP_AVAIL_MB = 2200;
  * testing the pure parse without touching the filesystem.
  */
 export function parseMemAvailableMb(meminfo: string): number | null {
-    const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
-    return match ? Number(match[1]) / 1024 : null;
+  const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+  return match ? Number(match[1]) / 1024 : null;
 }
 /**
  * Decide whether to evict the resident chat model before a cold voice-model
@@ -1928,259 +2195,301 @@ export function parseMemAvailableMb(meminfo: string): number | null {
  * `/proc/meminfo` is unavailable. Pure; exported for unit testing.
  */
 export function shouldEvictChatForAvailMb(availMb: number | null): boolean {
-    if (availMb === null)
-        return true;
-    return availMb < VOICE_COLOAD_KEEP_AVAIL_MB;
+  if (availMb === null) return true;
+  return availMb < VOICE_COLOAD_KEEP_AVAIL_MB;
 }
 function shouldEvictChatForVoiceLoad(): boolean {
-    try {
-        return shouldEvictChatForAvailMb(parseMemAvailableMb(readFileSync("/proc/meminfo", "utf8")));
-    }
-    catch {
-        // error-policy:J4 explicit degrade — if /proc/meminfo is unreadable we cannot
-        // prove there is headroom, so fail SAFE by evicting chat before loading voice
-        // (avoids an OOM-kill of the whole agent). Conservative, not a swallow.
-        return true;
-    }
+  try {
+    return shouldEvictChatForAvailMb(
+      parseMemAvailableMb(readFileSync("/proc/meminfo", "utf8")),
+    );
+  } catch {
+    // error-policy:J4 explicit degrade — if /proc/meminfo is unreadable we cannot
+    // prove there is headroom, so fail SAFE by evicting chat before loading voice
+    // (avoids an OOM-kill of the whole agent). Conservative, not a swallow.
+    return true;
+  }
 }
 export function makeAospFusedKokoroTextToSpeechHandler(): TextToSpeechHandler {
-    let contextPromise: Promise<{
-        ffi: BunFfiModule;
-        symbols: Record<string, (...args: unknown[]) => unknown>;
-        close: () => void;
-        ctx: unknown;
-        config: AospFusedKokoroConfig;
-        sampleRate: number;
-    }> | null = null;
-    async function ensureContext(): Promise<{
-        ffi: BunFfiModule;
-        symbols: Record<string, (...args: unknown[]) => unknown>;
-        close: () => void;
-        ctx: unknown;
-        config: AospFusedKokoroConfig;
-        sampleRate: number;
-    }> {
-        if (contextPromise)
-            return contextPromise;
-        contextPromise = Promise.resolve()
-            .then(async () => {
-            const config = resolveAospFusedKokoroConfig();
-            if (!config) {
-                throw new Error("[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with a staged tts/kokoro/ voice.");
-            }
-            const ffi = await loadAospVoiceFfi();
-            const T = ffi.FFIType;
-            const usize = T.usize ?? T.ptr;
-            const lib = ffi.dlopen(config.libPath, {
-                eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
-                eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-                eliza_inference_kokoro_supported: { args: [], returns: T.i32 },
-                eliza_inference_kokoro_load: {
-                    // ctx, gguf_path, voice_bin_path, style_dim, out_error
-                    args: [T.ptr, T.ptr, T.ptr, T.i32, T.ptr],
-                    returns: T.i32,
-                },
-                eliza_inference_kokoro_synthesize: {
-                    // ctx, text, text_len, speed, out_pcm, max_samples, out_error
-                    args: [T.ptr, T.ptr, usize, T.f32, T.ptr, usize, T.ptr],
-                    returns: T.i32,
-                },
-                eliza_inference_kokoro_sample_rate: {
-                    args: [T.ptr],
-                    returns: T.i32,
-                },
-                eliza_inference_free_string: { args: [usize], returns: T.void },
-            });
-            const symbols = lib.symbols;
-            const errCreate = Buffer.alloc(8);
-            const bundleArg = cString(config.bundleRoot);
-            const ctx = symbols.eliza_inference_create(ffi.ptr(bundleArg), ffi.ptr(errCreate));
-            if (isFfiNullPointer(ctx)) {
-                const message = readFfiStringAndFree(ffi, symbols, errCreate);
-                try {
-                    lib.close();
-                }
-                catch {
-                    // error-policy:J6 best-effort teardown — close lib on FFI create failure (error thrown next).
-                }
-                throw new Error(`[aosp-local-inference] fused Kokoro create failed: ${message}`);
-            }
-            if ((symbols.eliza_inference_kokoro_supported?.() as number) !== 1) {
-                try {
-                    symbols.eliza_inference_destroy(ctx);
-                }
-                catch {
-                    // error-policy:J6 best-effort teardown — destroy ctx on unsupported-Kokoro (error thrown next).
-                }
-                try {
-                    lib.close();
-                }
-                catch {
-                    // error-policy:J6 best-effort teardown — close lib on unsupported-Kokoro (error thrown next).
-                }
-                throw new Error("[aosp-local-inference] libelizainference.so does not export the Kokoro TTS engine (pre-v10 build); rebuild the fused lib with -DLLAMA_BUILD_KOKORO=ON.");
-            }
-            const errLoad = Buffer.alloc(8);
-            const loadStarted = Date.now();
-            const ggufArg = cString(config.kokoroGgufPath);
-            const voiceArg = cString(config.kokoroVoicePath);
-            const loadRc = symbols.eliza_inference_kokoro_load(ctx, ffi.ptr(ggufArg), ffi.ptr(voiceArg), KOKORO_STYLE_DIM, ffi.ptr(errLoad)) as number;
-            if (loadRc < 0) {
-                const message = readFfiStringAndFree(ffi, symbols, errLoad);
-                try {
-                    symbols.eliza_inference_destroy(ctx);
-                }
-                catch {
-                    // error-policy:J6 best-effort teardown — destroy ctx on Kokoro load failure (error thrown next).
-                }
-                try {
-                    lib.close();
-                }
-                catch {
-                    // error-policy:J6 best-effort teardown — close lib on Kokoro load failure (error thrown next).
-                }
-                throw new Error(`[aosp-local-inference] fused Kokoro load rc=${loadRc}: ${message}`);
-            }
-            const sampleRate = (symbols.eliza_inference_kokoro_sample_rate?.(ctx) as number) ||
-                24000;
-            logger.info(`[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate})`);
-            return {
-                ffi,
-                symbols,
-                close: lib.close,
-                ctx,
-                config,
-                sampleRate,
-            };
-        })
-            // error-policy:J2 context-adding — on load failure clear the cached promise
-            // (so the next call retries a fresh load) and rethrow the original error.
-            .catch((err) => {
-            contextPromise = null;
-            throw err;
+  let contextPromise: Promise<{
+    ffi: BunFfiModule;
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+    ctx: unknown;
+    config: AospFusedKokoroConfig;
+    sampleRate: number;
+  }> | null = null;
+  async function ensureContext(): Promise<{
+    ffi: BunFfiModule;
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+    ctx: unknown;
+    config: AospFusedKokoroConfig;
+    sampleRate: number;
+  }> {
+    if (contextPromise) return contextPromise;
+    contextPromise = Promise.resolve()
+      .then(async () => {
+        const config = resolveAospFusedKokoroConfig();
+        if (!config) {
+          throw new Error(
+            "[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with a staged tts/kokoro/ voice.",
+          );
+        }
+        const ffi = await loadAospVoiceFfi();
+        const T = ffi.FFIType;
+        const usize = T.usize ?? T.ptr;
+        const lib = ffi.dlopen(config.libPath, {
+          eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
+          eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+          eliza_inference_kokoro_supported: { args: [], returns: T.i32 },
+          eliza_inference_kokoro_load: {
+            // ctx, gguf_path, voice_bin_path, style_dim, out_error
+            args: [T.ptr, T.ptr, T.ptr, T.i32, T.ptr],
+            returns: T.i32,
+          },
+          eliza_inference_kokoro_synthesize: {
+            // ctx, text, text_len, speed, out_pcm, max_samples, out_error
+            args: [T.ptr, T.ptr, usize, T.f32, T.ptr, usize, T.ptr],
+            returns: T.i32,
+          },
+          eliza_inference_kokoro_sample_rate: {
+            args: [T.ptr],
+            returns: T.i32,
+          },
+          eliza_inference_free_string: { args: [usize], returns: T.void },
         });
-        return contextPromise;
+        const symbols = lib.symbols;
+        const errCreate = Buffer.alloc(8);
+        const bundleArg = cString(config.bundleRoot);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(bundleArg),
+          ffi.ptr(errCreate),
+        );
+        if (isFfiNullPointer(ctx)) {
+          const message = readFfiStringAndFree(ffi, symbols, errCreate);
+          try {
+            lib.close();
+          } catch {
+            // error-policy:J6 best-effort teardown — close lib on FFI create failure (error thrown next).
+          }
+          throw new Error(
+            `[aosp-local-inference] fused Kokoro create failed: ${message}`,
+          );
+        }
+        if ((symbols.eliza_inference_kokoro_supported?.() as number) !== 1) {
+          try {
+            symbols.eliza_inference_destroy(ctx);
+          } catch {
+            // error-policy:J6 best-effort teardown — destroy ctx on unsupported-Kokoro (error thrown next).
+          }
+          try {
+            lib.close();
+          } catch {
+            // error-policy:J6 best-effort teardown — close lib on unsupported-Kokoro (error thrown next).
+          }
+          throw new Error(
+            "[aosp-local-inference] libelizainference.so does not export the Kokoro TTS engine (pre-v10 build); rebuild the fused lib with -DLLAMA_BUILD_KOKORO=ON.",
+          );
+        }
+        const errLoad = Buffer.alloc(8);
+        const loadStarted = Date.now();
+        const ggufArg = cString(config.kokoroGgufPath);
+        const voiceArg = cString(config.kokoroVoicePath);
+        const loadRc = symbols.eliza_inference_kokoro_load(
+          ctx,
+          ffi.ptr(ggufArg),
+          ffi.ptr(voiceArg),
+          KOKORO_STYLE_DIM,
+          ffi.ptr(errLoad),
+        ) as number;
+        if (loadRc < 0) {
+          const message = readFfiStringAndFree(ffi, symbols, errLoad);
+          try {
+            symbols.eliza_inference_destroy(ctx);
+          } catch {
+            // error-policy:J6 best-effort teardown — destroy ctx on Kokoro load failure (error thrown next).
+          }
+          try {
+            lib.close();
+          } catch {
+            // error-policy:J6 best-effort teardown — close lib on Kokoro load failure (error thrown next).
+          }
+          throw new Error(
+            `[aosp-local-inference] fused Kokoro load rc=${loadRc}: ${message}`,
+          );
+        }
+        const sampleRate =
+          (symbols.eliza_inference_kokoro_sample_rate?.(ctx) as number) ||
+          24000;
+        logger.info(
+          `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate})`,
+        );
+        return {
+          ffi,
+          symbols,
+          close: lib.close,
+          ctx,
+          config,
+          sampleRate,
+        };
+      })
+      // error-policy:J2 context-adding — on load failure clear the cached promise
+      // (so the next call retries a fresh load) and rethrow the original error.
+      .catch((err) => {
+        contextPromise = null;
+        throw err;
+      });
+    return contextPromise;
+  }
+  return async (_runtime, params) => {
+    const text = extractSpeechText(params).trim();
+    if (!text) {
+      throw new Error(
+        "[aosp-local-inference] TEXT_TO_SPEECH requires non-empty text",
+      );
     }
-    return async (_runtime, params) => {
-        const text = extractSpeechText(params).trim();
-        if (!text) {
-            throw new Error("[aosp-local-inference] TEXT_TO_SPEECH requires non-empty text");
-        }
-        const signal = extractSpeechSignal(params);
-        if (signal?.aborted) {
-            throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
-        }
-        // Kokoro-82M is a ~50 MB acoustic model in a SEPARATE FFI allocation from
-        // the resident chat model, so — unlike the retired ~0.66 GB neural TTS
-        // model — it loads alongside chat without tripping lmkd's low watermark.
-        // No chat eviction is needed.
-        const started = Date.now();
-        const { ffi, symbols, ctx, config, sampleRate } = await ensureContext();
-        const readyMs = Date.now() - started;
-        const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
-        const maxSamples = Math.max(sampleRate, maxSeconds * sampleRate);
-        const out = Buffer.alloc(maxSamples * 4);
-        const errTts = Buffer.alloc(8);
-        const textArg = cString(text);
-        const textBytes = Buffer.byteLength(text, "utf8");
-        const synthStarted = Date.now();
-        const rc = symbols.eliza_inference_kokoro_synthesize(ctx, ffi.ptr(textArg), BigInt(textBytes), 1.0, ffi.ptr(out), BigInt(maxSamples), ffi.ptr(errTts)) as number;
-        const synthMs = Date.now() - synthStarted;
-        if (rc < 0) {
-            throw new Error(`[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`);
-        }
-        if (signal?.aborted) {
-            throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
-        }
-        const pcmBytes = out.subarray(0, rc * 4);
-        const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
-        const encodeStarted = Date.now();
-        const wav = encodeWavPcm16(pcm, sampleRate);
-        const encodeMs = Date.now() - encodeStarted;
-        logger.info(`[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} sampleRate=${sampleRate}`);
-        return wav;
-    };
+    const signal = extractSpeechSignal(params);
+    if (signal?.aborted) {
+      throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+    }
+    // Kokoro-82M is a ~50 MB acoustic model in a SEPARATE FFI allocation from
+    // the resident chat model, so — unlike the retired ~0.66 GB neural TTS
+    // model — it loads alongside chat without tripping lmkd's low watermark.
+    // No chat eviction is needed.
+    const started = Date.now();
+    const { ffi, symbols, ctx, config, sampleRate } = await ensureContext();
+    const readyMs = Date.now() - started;
+    const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
+    const maxSamples = Math.max(sampleRate, maxSeconds * sampleRate);
+    const out = Buffer.alloc(maxSamples * 4);
+    const errTts = Buffer.alloc(8);
+    const textArg = cString(text);
+    const textBytes = Buffer.byteLength(text, "utf8");
+    const synthStarted = Date.now();
+    const rc = symbols.eliza_inference_kokoro_synthesize(
+      ctx,
+      ffi.ptr(textArg),
+      BigInt(textBytes),
+      1.0,
+      ffi.ptr(out),
+      BigInt(maxSamples),
+      ffi.ptr(errTts),
+    ) as number;
+    const synthMs = Date.now() - synthStarted;
+    if (rc < 0) {
+      throw new Error(
+        `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
+      );
+    }
+    if (signal?.aborted) {
+      throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+    }
+    const pcmBytes = out.subarray(0, rc * 4);
+    const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
+    const encodeStarted = Date.now();
+    const wav = encodeWavPcm16(pcm, sampleRate);
+    const encodeMs = Date.now() - encodeStarted;
+    logger.info(
+      `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} sampleRate=${sampleRate}`,
+    );
+    return wav;
+  };
 }
-export function makeAospTextToSpeechHandler(opts: {
-    kokoro?: TextToSpeechHandler;
-    onForegroundUse?: () => void;
-} = {}): TextToSpeechHandler {
-    const kokoro = opts.kokoro ?? makeAospFusedKokoroTextToSpeechHandler();
-    return async (runtime, params) => {
-        opts.onForegroundUse?.();
-        return kokoro(runtime, params);
-    };
+export function makeAospTextToSpeechHandler(
+  opts: { kokoro?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
+): TextToSpeechHandler {
+  const kokoro = opts.kokoro ?? makeAospFusedKokoroTextToSpeechHandler();
+  return async (runtime, params) => {
+    opts.onForegroundUse?.();
+    return kokoro(runtime, params);
+  };
 }
 type BunFfiModule = {
-    dlopen: (file: string, symbols: Record<string, {
+  dlopen: (
+    file: string,
+    symbols: Record<
+      string,
+      {
         args: readonly number[];
         returns: number;
-    }>) => {
-        symbols: Record<string, (...args: unknown[]) => unknown>;
-        close: () => void;
-    };
-    FFIType: Record<string, number>;
-    ptr: (value: ArrayBufferView) => bigint | number;
-    read?: {
-        ptr?: (value: ArrayBufferView, offset?: number) => bigint | number;
-    };
-    /** Wrap a raw native pointer as an ArrayBuffer view (used to read the
-     *  malloc'd `int*` token buffer out of `eliza_inference_tokenize`). */
-    toArrayBuffer?: (ptr: bigint | number, byteOffset?: number, byteLength?: number) => ArrayBuffer;
-    CString?: new (ptr: bigint | number) => {
-        toString(): string;
-    };
-    JSCallback?: new (fn: (...args: never[]) => unknown, def: {
-        args: readonly number[];
-        returns: number;
-    }) => {
-        readonly ptr: bigint | number;
-        close: () => void;
-    };
+      }
+    >,
+  ) => {
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+  };
+  FFIType: Record<string, number>;
+  ptr: (value: ArrayBufferView) => bigint | number;
+  read?: {
+    ptr?: (value: ArrayBufferView, offset?: number) => bigint | number;
+  };
+  /** Wrap a raw native pointer as an ArrayBuffer view (used to read the
+   *  malloc'd `int*` token buffer out of `eliza_inference_tokenize`). */
+  toArrayBuffer?: (
+    ptr: bigint | number,
+    byteOffset?: number,
+    byteLength?: number,
+  ) => ArrayBuffer;
+  CString?: new (
+    ptr: bigint | number,
+  ) => {
+    toString(): string;
+  };
+  JSCallback?: new (
+    fn: (...args: never[]) => unknown,
+    def: {
+      args: readonly number[];
+      returns: number;
+    },
+  ) => {
+    readonly ptr: bigint | number;
+    close: () => void;
+  };
 };
 async function loadAospVoiceFfi(): Promise<BunFfiModule> {
-    const ffiSpecifier = "bun" + ":ffi";
-    const ffi = (await import(ffiSpecifier)) as BunFfiModule;
-    if (typeof ffi.dlopen !== "function" ||
-        typeof ffi.ptr !== "function" ||
-        !ffi.FFIType) {
-        throw new Error("[aosp-local-inference] bun:ffi is unavailable");
-    }
-    return ffi;
+  const ffiSpecifier = "bun" + ":ffi";
+  const ffi = (await import(ffiSpecifier)) as BunFfiModule;
+  if (
+    typeof ffi.dlopen !== "function" ||
+    typeof ffi.ptr !== "function" ||
+    !ffi.FFIType
+  ) {
+    throw new Error("[aosp-local-inference] bun:ffi is unavailable");
+  }
+  return ffi;
 }
 function cString(value: string): Buffer {
-    return Buffer.from(`${value}\0`, "utf8");
+  return Buffer.from(`${value}\0`, "utf8");
 }
 function resolveElizaInferenceLibPath(): string {
-    return resolveAospElizaInferenceLibPath();
+  return resolveAospElizaInferenceLibPath();
 }
 function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
-    const libPath = resolveElizaInferenceLibPath();
-    if (!existsSync(libPath))
-        return null;
-    let bundleRoot: string;
-    try {
-        bundleRoot = resolveAssignedChatBundleRoot();
-    }
-    catch {
-        // error-policy:J4 explicit degrade — no resolvable chat bundle means the fused
-        // Kokoro TTS config is unavailable (null); the caller falls back to system TTS.
-        return null;
-    }
-    // Ensure the on-device Kokoro voice is present (Kokoro is the only on-device
-    // TTS backend). Without tts/kokoro/, on-device TTS has nothing to synthesize
-    // and the app falls back to the platform "android voice". This fetches in the
-    // background; the platform TTS covers replies until it lands.
-    ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
-    const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
-    const kokoroGgufPath = path.join(kokoroDir, KOKORO_GGUF_FILE);
-    const kokoroVoicePath = path.join(kokoroDir, KOKORO_VOICE_FILE);
-    if (!existsSync(kokoroGgufPath) || !existsSync(kokoroVoicePath)) {
-        // Kokoro voice not staged yet — the background download above will land it;
-        // until then on-device TTS reports unavailable and the platform TTS covers.
-        return null;
-    }
-    return { libPath, bundleRoot, kokoroGgufPath, kokoroVoicePath };
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) return null;
+  let bundleRoot: string;
+  try {
+    bundleRoot = resolveAssignedChatBundleRoot();
+  } catch {
+    // error-policy:J4 explicit degrade — no resolvable chat bundle means the fused
+    // Kokoro TTS config is unavailable (null); the caller falls back to system TTS.
+    return null;
+  }
+  // Ensure the on-device Kokoro voice is present (Kokoro is the only on-device
+  // TTS backend). Without tts/kokoro/, on-device TTS has nothing to synthesize
+  // and the app falls back to the platform "android voice". This fetches in the
+  // background; the platform TTS covers replies until it lands.
+  ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
+  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
+  const kokoroGgufPath = path.join(kokoroDir, KOKORO_GGUF_FILE);
+  const kokoroVoicePath = path.join(kokoroDir, KOKORO_VOICE_FILE);
+  if (!existsSync(kokoroGgufPath) || !existsSync(kokoroVoicePath)) {
+    // Kokoro voice not staged yet — the background download above will land it;
+    // until then on-device TTS reports unavailable and the platform TTS covers.
+    return null;
+  }
+  return { libPath, bundleRoot, kokoroGgufPath, kokoroVoicePath };
 }
 /**
  * The fused lib resolves the chat GGUF strictly as `<bundleRoot>/text/*.gguf`,
@@ -2192,58 +2501,58 @@ function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
  * on failure the fused create/tokenize surfaces its own loud
  * "no text GGUF found" diagnostic (verified live on emulator-5554).
  */
-function ensureFusedTextBundleLayout(modelPath: string, bundleRoot: string): void {
+function ensureFusedTextBundleLayout(
+  modelPath: string,
+  bundleRoot: string,
+): void {
+  try {
+    if (!modelPath.endsWith(".gguf") || !existsSync(modelPath)) return;
+    if (path.basename(path.dirname(modelPath)) === "text") return;
+    const textDir = path.join(bundleRoot, "text");
+    const target = path.join(textDir, path.basename(modelPath));
+    if (existsSync(target)) return;
+    mkdirSync(textDir, { recursive: true });
     try {
-        if (!modelPath.endsWith(".gguf") || !existsSync(modelPath))
-            return;
-        if (path.basename(path.dirname(modelPath)) === "text")
-            return;
-        const textDir = path.join(bundleRoot, "text");
-        const target = path.join(textDir, path.basename(modelPath));
-        if (existsSync(target))
-            return;
-        mkdirSync(textDir, { recursive: true });
-        try {
-            linkSync(modelPath, target);
-        }
-        catch {
-            // error-policy:J6 best-effort — hardlink failed (cross-device), fall back to
-            // a symlink so the flat GGUF still appears under <bundleRoot>/text/.
-            symlinkSync(modelPath, target);
-        }
-        writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShim", {
-            modelPath,
-            target,
-        });
+      linkSync(modelPath, target);
+    } catch {
+      // error-policy:J6 best-effort — hardlink failed (cross-device), fall back to
+      // a symlink so the flat GGUF still appears under <bundleRoot>/text/.
+      symlinkSync(modelPath, target);
     }
-    catch (err) {
-        // error-policy:J4 explicit degrade — the flat-bundle shim is a convenience
-        // hardlink; on failure the debug log records it and the fused create/tokenize
-        // surfaces its own loud "no text GGUF found" diagnostic (documented above).
-        writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShimFailed", {
-            modelPath,
-            error: err instanceof Error ? err.message : String(err),
-        });
-    }
+    writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShim", {
+      modelPath,
+      target,
+    });
+  } catch (err) {
+    // error-policy:J4 explicit degrade — the flat-bundle shim is a convenience
+    // hardlink; on failure the debug log records it and the fused create/tokenize
+    // surfaces its own loud "no text GGUF found" diagnostic (documented above).
+    writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShimFailed", {
+      modelPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 function resolveBundleRootFromModelPath(modelPath: string): string {
-    const parts = modelPath.replaceAll("\\", "/").split("/");
-    const bundleIndex = parts.findIndex((part) => part.endsWith(".bundle"));
-    if (bundleIndex >= 0) {
-        return path.join("/", ...parts.slice(0, bundleIndex + 1));
-    }
-    const textIndex = parts.lastIndexOf("text");
-    if (textIndex > 0) {
-        return path.join("/", ...parts.slice(0, textIndex));
-    }
-    return path.dirname(modelPath);
+  const parts = modelPath.replaceAll("\\", "/").split("/");
+  const bundleIndex = parts.findIndex((part) => part.endsWith(".bundle"));
+  if (bundleIndex >= 0) {
+    return path.join("/", ...parts.slice(0, bundleIndex + 1));
+  }
+  const textIndex = parts.lastIndexOf("text");
+  if (textIndex > 0) {
+    return path.join("/", ...parts.slice(0, textIndex));
+  }
+  return path.dirname(modelPath);
 }
 function resolveAssignedVoiceBundleRoot(): string {
-    const bundleRoot = resolveAssignedChatBundleRoot();
-    if (!existsSync(path.join(bundleRoot, "asr"))) {
-        throw new Error(`[aosp-local-inference] TRANSCRIPTION requires ASR assets under ${bundleRoot}/asr`);
-    }
-    return bundleRoot;
+  const bundleRoot = resolveAssignedChatBundleRoot();
+  if (!existsSync(path.join(bundleRoot, "asr"))) {
+    throw new Error(
+      `[aosp-local-inference] TRANSCRIPTION requires ASR assets under ${bundleRoot}/asr`,
+    );
+  }
+  return bundleRoot;
 }
 /**
  * Non-throwing check for whether the assigned chat bundle carries the ASR
@@ -2255,286 +2564,350 @@ function resolveAssignedVoiceBundleRoot(): string {
  * — and the honest signal is simply "no local TRANSCRIPTION handler".
  */
 export function aospAsrAssetsPresent(): boolean {
-    try {
-        return existsSync(path.join(resolveAssignedChatBundleRoot(), "asr"));
-    }
-    catch {
-        // error-policy:J4 explicit degrade — ASR/whisper is optional (a missing bundle
-        // is the normal case, see the doc above); any error means "no local
-        // TRANSCRIPTION", the honest absent-capability signal.
-        return false;
-    }
+  try {
+    return existsSync(path.join(resolveAssignedChatBundleRoot(), "asr"));
+  } catch {
+    // error-policy:J4 explicit degrade — ASR/whisper is optional (a missing bundle
+    // is the normal case, see the doc above); any error means "no local
+    // TRANSCRIPTION", the honest absent-capability signal.
+    return false;
+  }
 }
-function readFfiStringAndFree(ffi: BunFfiModule, symbols: Record<string, (...args: unknown[]) => unknown>, ptrBuffer: Buffer): string {
-    const raw = readFfiPointer(ffi, ptrBuffer, 0);
-    if (!raw || raw === 0n)
-        return "(no diagnostic)";
-    let text = "(unreadable diagnostic)";
-    try {
-        text = ffi.CString
-            ? new ffi.CString(Number(raw)).toString()
-            : "(no CString)";
-    }
-    catch {
-        // error-policy:J6 best-effort teardown — CString read of an FFI diagnostic; falls back to a marker.
-    }
-    try {
-        symbols.eliza_inference_free_string?.(raw);
-    }
-    catch {
-        // error-policy:J6 best-effort teardown — free the FFI diagnostic string pointer.
-    }
-    return text;
+function readFfiStringAndFree(
+  ffi: BunFfiModule,
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+  ptrBuffer: Buffer,
+): string {
+  const raw = readFfiPointer(ffi, ptrBuffer, 0);
+  if (!raw || raw === 0n) return "(no diagnostic)";
+  let text = "(unreadable diagnostic)";
+  try {
+    text = ffi.CString
+      ? new ffi.CString(Number(raw)).toString()
+      : "(no CString)";
+  } catch {
+    // error-policy:J6 best-effort teardown — CString read of an FFI diagnostic; falls back to a marker.
+  }
+  try {
+    symbols.eliza_inference_free_string?.(raw);
+  } catch {
+    // error-policy:J6 best-effort teardown — free the FFI diagnostic string pointer.
+  }
+  return text;
 }
-function readFfiPointer(_ffi: BunFfiModule, ptrBuffer: Buffer, offset = 0): bigint {
-    // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
-    // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
-    // on-device, bun 1.3.14). That throw masked every native error diagnostic
-    // on the fused-lib error paths. The out-param bytes live in JS memory, so a
-    // DataView read is always correct.
-    const view = new DataView(ptrBuffer.buffer, ptrBuffer.byteOffset, ptrBuffer.byteLength);
-    return view.getBigUint64(offset, true);
+function readFfiPointer(
+  _ffi: BunFfiModule,
+  ptrBuffer: Buffer,
+  offset = 0,
+): bigint {
+  // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
+  // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
+  // on-device, bun 1.3.14). That throw masked every native error diagnostic
+  // on the fused-lib error paths. The out-param bytes live in JS memory, so a
+  // DataView read is always correct.
+  const view = new DataView(
+    ptrBuffer.buffer,
+    ptrBuffer.byteOffset,
+    ptrBuffer.byteLength,
+  );
+  return view.getBigUint64(offset, true);
 }
 function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
-    samples: Float32Array;
-    sampleRate: number;
+  samples: Float32Array;
+  sampleRate: number;
 } {
-    const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (buffer.length < 44 ||
-        buffer.toString("ascii", 0, 4) !== "RIFF" ||
-        buffer.toString("ascii", 8, 12) !== "WAVE") {
-        throw new Error("[aosp-local-inference] TRANSCRIPTION expected PCM WAV bytes");
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (
+    buffer.length < 44 ||
+    buffer.toString("ascii", 0, 4) !== "RIFF" ||
+    buffer.toString("ascii", 8, 12) !== "WAVE"
+  ) {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION expected PCM WAV bytes",
+    );
+  }
+  let offset = 12;
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataOffset = -1;
+  let dataLength = 0;
+  while (offset + 8 <= buffer.length) {
+    const id = buffer.toString("ascii", offset, offset + 4);
+    const size = buffer.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === "fmt " && body + 16 <= buffer.length) {
+      channels = buffer.readUInt16LE(body + 2);
+      sampleRate = buffer.readUInt32LE(body + 4);
+      bitsPerSample = buffer.readUInt16LE(body + 14);
+    } else if (id === "data") {
+      dataOffset = body;
+      dataLength = Math.min(size, buffer.length - body);
     }
-    let offset = 12;
-    let channels = 0;
-    let sampleRate = 0;
-    let bitsPerSample = 0;
-    let dataOffset = -1;
-    let dataLength = 0;
-    while (offset + 8 <= buffer.length) {
-        const id = buffer.toString("ascii", offset, offset + 4);
-        const size = buffer.readUInt32LE(offset + 4);
-        const body = offset + 8;
-        if (id === "fmt " && body + 16 <= buffer.length) {
-            channels = buffer.readUInt16LE(body + 2);
-            sampleRate = buffer.readUInt32LE(body + 4);
-            bitsPerSample = buffer.readUInt16LE(body + 14);
-        }
-        else if (id === "data") {
-            dataOffset = body;
-            dataLength = Math.min(size, buffer.length - body);
-        }
-        offset = body + size + (size % 2);
+    offset = body + size + (size % 2);
+  }
+  if (channels <= 0 || sampleRate <= 0 || dataOffset < 0) {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION WAV missing fmt/data",
+    );
+  }
+  if (bitsPerSample !== 16) {
+    throw new Error(
+      `[aosp-local-inference] TRANSCRIPTION expected PCM16 WAV, got ${bitsPerSample} bits`,
+    );
+  }
+  const frames = Math.floor(dataLength / 2 / channels);
+  const samples = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    for (let channel = 0; channel < channels; channel++) {
+      sum += buffer.readInt16LE(dataOffset + (i * channels + channel) * 2);
     }
-    if (channels <= 0 || sampleRate <= 0 || dataOffset < 0) {
-        throw new Error("[aosp-local-inference] TRANSCRIPTION WAV missing fmt/data");
-    }
-    if (bitsPerSample !== 16) {
-        throw new Error(`[aosp-local-inference] TRANSCRIPTION expected PCM16 WAV, got ${bitsPerSample} bits`);
-    }
-    const frames = Math.floor(dataLength / 2 / channels);
-    const samples = new Float32Array(frames);
-    for (let i = 0; i < frames; i++) {
-        let sum = 0;
-        for (let channel = 0; channel < channels; channel++) {
-            sum += buffer.readInt16LE(dataOffset + (i * channels + channel) * 2);
-        }
-        samples[i] = sum / channels / 32768;
-    }
-    return { samples, sampleRate };
+    samples[i] = sum / channels / 32768;
+  }
+  return { samples, sampleRate };
 }
-function resampleLinear(samples: Float32Array, fromHz: number, toHz: number): Float32Array {
-    const minRateHz = 1000;
-    const maxRateHz = 192000;
-    const maxDurationSeconds = 120;
-    const maxOutputSamples = 16000 * maxDurationSeconds;
-    for (const [label, rate] of [
-        ["source", fromHz],
-        ["target", toHz],
-    ] as const) {
-        if (!Number.isSafeInteger(rate) || rate < minRateHz || rate > maxRateHz) {
-            throw new ElizaError(`Invalid ${label} audio sample rate`, {
-                code: "AUDIO_RESAMPLE_RATE_INVALID",
-                context: { label, rate },
-            });
-        }
+function resampleLinear(
+  samples: Float32Array,
+  fromHz: number,
+  toHz: number,
+): Float32Array {
+  const minRateHz = 1000;
+  const maxRateHz = 192000;
+  const maxDurationSeconds = 120;
+  const maxOutputSamples = 16000 * maxDurationSeconds;
+  for (const [label, rate] of [
+    ["source", fromHz],
+    ["target", toHz],
+  ] as const) {
+    if (!Number.isSafeInteger(rate) || rate < minRateHz || rate > maxRateHz) {
+      throw new ElizaError(`Invalid ${label} audio sample rate`, {
+        code: "AUDIO_RESAMPLE_RATE_INVALID",
+        context: { label, rate },
+      });
     }
-    const durationSeconds = samples.length / fromHz;
-    if (durationSeconds > maxDurationSeconds) {
-        throw new ElizaError("Audio frame exceeds the resampling duration budget", {
-            code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
-            context: { durationSeconds, maxDurationSeconds },
-        });
-    }
-    if (fromHz === toHz)
-        return samples;
-    const ratio = toHz / fromHz;
-    const outLen = Math.max(1, Math.round(samples.length * ratio));
-    if (!Number.isSafeInteger(outLen) || outLen > maxOutputSamples) {
-        throw new ElizaError("Audio resample output exceeds the sample budget", {
-            code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
-            context: { outLen, maxOutputSamples },
-        });
-    }
-    const out = new Float32Array(outLen);
-    for (let i = 0; i < out.length; i++) {
-        const src = i / ratio;
-        const i0 = Math.floor(src);
-        const i1 = Math.min(samples.length - 1, i0 + 1);
-        const f = src - i0;
-        out[i] = (samples[i0] ?? 0) * (1 - f) + (samples[i1] ?? 0) * f;
-    }
-    return out;
+  }
+  const durationSeconds = samples.length / fromHz;
+  if (durationSeconds > maxDurationSeconds) {
+    throw new ElizaError("Audio frame exceeds the resampling duration budget", {
+      code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+      context: { durationSeconds, maxDurationSeconds },
+    });
+  }
+  if (fromHz === toHz) return samples;
+  const ratio = toHz / fromHz;
+  const outLen = Math.max(1, Math.round(samples.length * ratio));
+  if (!Number.isSafeInteger(outLen) || outLen > maxOutputSamples) {
+    throw new ElizaError("Audio resample output exceeds the sample budget", {
+      code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
+      context: { outLen, maxOutputSamples },
+    });
+  }
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < out.length; i++) {
+    const src = i / ratio;
+    const i0 = Math.floor(src);
+    const i1 = Math.min(samples.length - 1, i0 + 1);
+    const f = src - i0;
+    out[i] = (samples[i0] ?? 0) * (1 - f) + (samples[i1] ?? 0) * f;
+  }
+  return out;
 }
-function bytesFromTranscriptionInput(value: Uint8Array | ArrayBuffer | Buffer): Uint8Array {
-    if (value instanceof Uint8Array) {
-        return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-    }
-    return new Uint8Array(value);
+function bytesFromTranscriptionInput(
+  value: Uint8Array | ArrayBuffer | Buffer,
+): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
 }
-function extractAospTranscriptionAudio(params: TranscriptionParams | Buffer | string | LocalTranscriptionParams): {
-    samples: Float32Array;
-    sampleRate: number;
-    signal?: AbortSignal;
+function extractAospTranscriptionAudio(
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+): {
+  samples: Float32Array;
+  sampleRate: number;
+  signal?: AbortSignal;
 } {
-    if (typeof params === "string") {
-        throw new Error("[aosp-local-inference] TRANSCRIPTION via local ASR requires WAV bytes or { pcm, sampleRateHz }; URL/path strings are not fetched");
+  if (typeof params === "string") {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION via local ASR requires WAV bytes or { pcm, sampleRateHz }; URL/path strings are not fetched",
+    );
+  }
+  if (params instanceof Uint8Array || params instanceof ArrayBuffer) {
+    return decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params));
+  }
+  if (!params || typeof params !== "object") {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION requires WAV bytes or { pcm, sampleRateHz }",
+    );
+  }
+  if ("pcm" in params && params.pcm instanceof Float32Array) {
+    const sampleRate =
+      ("sampleRateHz" in params ? params.sampleRateHz : undefined) ??
+      ("sampleRate" in params ? params.sampleRate : undefined);
+    if (typeof sampleRate !== "number" || sampleRate <= 0) {
+      throw new Error(
+        "[aosp-local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
+      );
     }
-    if (params instanceof Uint8Array || params instanceof ArrayBuffer) {
-        return decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params));
-    }
-    if (!params || typeof params !== "object") {
-        throw new Error("[aosp-local-inference] TRANSCRIPTION requires WAV bytes or { pcm, sampleRateHz }");
-    }
-    if ("pcm" in params && params.pcm instanceof Float32Array) {
-        const sampleRate = ("sampleRateHz" in params ? params.sampleRateHz : undefined) ??
-            ("sampleRate" in params ? params.sampleRate : undefined);
-        if (typeof sampleRate !== "number" || sampleRate <= 0) {
-            throw new Error("[aosp-local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz");
-        }
-        return { samples: params.pcm, sampleRate, signal: params.signal };
-    }
-    if ("audio" in params &&
-        (params.audio instanceof Uint8Array || params.audio instanceof ArrayBuffer)) {
-        return {
-            ...decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params.audio)),
-            signal: params.signal,
-        };
-    }
-    throw new Error("[aosp-local-inference] TRANSCRIPTION requires PCM16 WAV bytes or { pcm, sampleRateHz }");
+    return { samples: params.pcm, sampleRate, signal: params.signal };
+  }
+  if (
+    "audio" in params &&
+    (params.audio instanceof Uint8Array || params.audio instanceof ArrayBuffer)
+  ) {
+    return {
+      ...decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params.audio)),
+      signal: params.signal,
+    };
+  }
+  throw new Error(
+    "[aosp-local-inference] TRANSCRIPTION requires PCM16 WAV bytes or { pcm, sampleRateHz }",
+  );
 }
 function assertNotAborted(signal: AbortSignal | undefined): void {
-    if (!signal?.aborted)
-        return;
-    throw signal.reason instanceof Error
-        ? signal.reason
-        : new DOMException("Aborted", "AbortError");
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Aborted", "AbortError");
 }
-async function transcribeWithAospElizaInference(audio: {
+async function transcribeWithAospElizaInference(
+  audio: {
     samples: Float32Array;
     sampleRate: number;
-}, signal?: AbortSignal, loader?: AospLoader, onEvicted?: () => void): Promise<string> {
+  },
+  signal?: AbortSignal,
+  loader?: AospLoader,
+  onEvicted?: () => void,
+): Promise<string> {
+  assertNotAborted(signal);
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) {
+    throw new Error(
+      `[aosp-local-inference] libelizainference.so missing at ${libPath}`,
+    );
+  }
+  // Release the resident chat model before the cold ASR load. The fused ASR
+  // context (eliza_inference_create + mmap_acquire("asr")) maps the ~1.4 GB
+  // Eliza-1 ASR model + projector; loading it while the ~0.55 GB chat model
+  // and its hot KV/compute buffers are still resident spikes RAM past lmkd's
+  // low watermark and the detached agent — which an unprivileged app cannot
+  // oom-protect — gets killed mid-load. The chat model auto-reloads on the
+  // next TEXT turn (makeGenerateHandler -> lifecycle.ensureChatLoaded), so the
+  // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
+  if (
+    loader &&
+    shouldEvictChatForVoiceLoad() &&
+    typeof loader.currentModelPath === "function" &&
+    loader.currentModelPath() !== null &&
+    typeof loader.unloadModel === "function"
+  ) {
+    try {
+      await loader.unloadModel();
+      // Tell the lifecycle the chat model is gone so the next text turn
+      // actually reloads it (loadRole short-circuits on a stale currentRole
+      // otherwise). Done after the unload succeeds so we never mark evicted
+      // when the model is in fact still resident.
+      onEvicted?.();
+      logger.info(
+        "[aosp-local-inference] released chat model before fused ASR load to free memory",
+      );
+    } catch {
+      // error-policy:J6 best-effort — a failed pre-ASR eviction just means ASR
+      // loads under the prior (possibly tight) memory conditions; no worse than
+      // before, and not a load failure.
+    }
+  }
+  const bundleRoot = resolveAssignedVoiceBundleRoot();
+  const ffi = await loadAospVoiceFfi();
+  const T = ffi.FFIType;
+  const usize = T.usize ?? T.ptr;
+  const lib = ffi.dlopen(libPath, {
+    eliza_inference_create: { args: [T.cstring, T.ptr], returns: T.ptr },
+    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.cstring, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_transcribe: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_free_string: { args: [usize], returns: T.void },
+  });
+  const symbols = lib.symbols;
+  const errCreate = Buffer.alloc(8);
+  const ctx = symbols.eliza_inference_create(
+    cString(bundleRoot),
+    ffi.ptr(errCreate),
+  ) as bigint;
+  if (!ctx || ctx === 0n) {
+    const message = readFfiStringAndFree(ffi, symbols, errCreate);
+    try {
+      lib.close();
+    } catch {
+      // error-policy:J6 best-effort teardown — close lib on ASR create failure (error thrown next).
+    }
+    throw new Error(`[aosp-local-inference] ASR create failed: ${message}`);
+  }
+  try {
+    const errAcquire = Buffer.alloc(8);
+    const acquireRc = symbols.eliza_inference_mmap_acquire(
+      ctx,
+      cString("asr"),
+      ffi.ptr(errAcquire),
+    ) as number;
+    if (acquireRc < 0) {
+      throw new Error(
+        `[aosp-local-inference] ASR mmap_acquire rc=${acquireRc}: ${readFfiStringAndFree(ffi, symbols, errAcquire)}`,
+      );
+    }
     assertNotAborted(signal);
-    const libPath = resolveElizaInferenceLibPath();
-    if (!existsSync(libPath)) {
-        throw new Error(`[aosp-local-inference] libelizainference.so missing at ${libPath}`);
+    const pcm16k = resampleLinear(audio.samples, audio.sampleRate, 16000);
+    const pcmBytes = Buffer.from(
+      pcm16k.buffer,
+      pcm16k.byteOffset,
+      pcm16k.byteLength,
+    );
+    const out = Buffer.alloc(4096);
+    const errAsr = Buffer.alloc(8);
+    const rc = symbols.eliza_inference_asr_transcribe(
+      ctx,
+      ffi.ptr(pcmBytes),
+      BigInt(pcm16k.length),
+      16000,
+      ffi.ptr(out),
+      BigInt(out.length),
+      ffi.ptr(errAsr),
+    ) as number;
+    if (rc < 0) {
+      throw new Error(
+        `[aosp-local-inference] ASR transcribe rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errAsr)}`,
+      );
     }
-    // Release the resident chat model before the cold ASR load. The fused ASR
-    // context (eliza_inference_create + mmap_acquire("asr")) maps the ~1.4 GB
-    // Eliza-1 ASR model + projector; loading it while the ~0.55 GB chat model
-    // and its hot KV/compute buffers are still resident spikes RAM past lmkd's
-    // low watermark and the detached agent — which an unprivileged app cannot
-    // oom-protect — gets killed mid-load. The chat model auto-reloads on the
-    // next TEXT turn (makeGenerateHandler -> lifecycle.ensureChatLoaded), so the
-    // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
-    if (loader &&
-        shouldEvictChatForVoiceLoad() &&
-        typeof loader.currentModelPath === "function" &&
-        loader.currentModelPath() !== null &&
-        typeof loader.unloadModel === "function") {
-        try {
-            await loader.unloadModel();
-            // Tell the lifecycle the chat model is gone so the next text turn
-            // actually reloads it (loadRole short-circuits on a stale currentRole
-            // otherwise). Done after the unload succeeds so we never mark evicted
-            // when the model is in fact still resident.
-            onEvicted?.();
-            logger.info("[aosp-local-inference] released chat model before fused ASR load to free memory");
-        }
-        catch {
-            // error-policy:J6 best-effort — a failed pre-ASR eviction just means ASR
-            // loads under the prior (possibly tight) memory conditions; no worse than
-            // before, and not a load failure.
-        }
-    }
-    const bundleRoot = resolveAssignedVoiceBundleRoot();
-    const ffi = await loadAospVoiceFfi();
-    const T = ffi.FFIType;
-    const usize = T.usize ?? T.ptr;
-    const lib = ffi.dlopen(libPath, {
-        eliza_inference_create: { args: [T.cstring, T.ptr], returns: T.ptr },
-        eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-        eliza_inference_mmap_acquire: {
-            args: [T.ptr, T.cstring, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_asr_transcribe: {
-            args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_free_string: { args: [usize], returns: T.void },
-    });
-    const symbols = lib.symbols;
-    const errCreate = Buffer.alloc(8);
-    const ctx = symbols.eliza_inference_create(cString(bundleRoot), ffi.ptr(errCreate)) as bigint;
-    if (!ctx || ctx === 0n) {
-        const message = readFfiStringAndFree(ffi, symbols, errCreate);
-        try {
-            lib.close();
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — close lib on ASR create failure (error thrown next).
-        }
-        throw new Error(`[aosp-local-inference] ASR create failed: ${message}`);
+    assertNotAborted(signal);
+    return out.toString("utf8", 0, rc).trim();
+  } finally {
+    try {
+      symbols.eliza_inference_destroy(ctx);
+    } catch {
+      // error-policy:J6 best-effort teardown — destroy ctx in finally teardown.
     }
     try {
-        const errAcquire = Buffer.alloc(8);
-        const acquireRc = symbols.eliza_inference_mmap_acquire(ctx, cString("asr"), ffi.ptr(errAcquire)) as number;
-        if (acquireRc < 0) {
-            throw new Error(`[aosp-local-inference] ASR mmap_acquire rc=${acquireRc}: ${readFfiStringAndFree(ffi, symbols, errAcquire)}`);
-        }
-        assertNotAborted(signal);
-        const pcm16k = resampleLinear(audio.samples, audio.sampleRate, 16000);
-        const pcmBytes = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
-        const out = Buffer.alloc(4096);
-        const errAsr = Buffer.alloc(8);
-        const rc = symbols.eliza_inference_asr_transcribe(ctx, ffi.ptr(pcmBytes), BigInt(pcm16k.length), 16000, ffi.ptr(out), BigInt(out.length), ffi.ptr(errAsr)) as number;
-        if (rc < 0) {
-            throw new Error(`[aosp-local-inference] ASR transcribe rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errAsr)}`);
-        }
-        assertNotAborted(signal);
-        return out.toString("utf8", 0, rc).trim();
+      lib.close();
+    } catch {
+      // error-policy:J6 best-effort teardown — close lib in finally teardown.
     }
-    finally {
-        try {
-            symbols.eliza_inference_destroy(ctx);
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — destroy ctx in finally teardown.
-        }
-        try {
-            lib.close();
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — close lib in finally teardown.
-        }
-    }
+  }
 }
-export function makeAospTranscriptionHandler(loader?: AospLoader, onEvicted?: () => void): TranscriptionHandler {
-    return async (_runtime, params) => {
-        const { signal, ...audio } = extractAospTranscriptionAudio(params);
-        return transcribeWithAospElizaInference(audio, signal, loader, onEvicted);
-    };
+export function makeAospTranscriptionHandler(
+  loader?: AospLoader,
+  onEvicted?: () => void,
+): TranscriptionHandler {
+  return async (_runtime, params) => {
+    const { signal, ...audio } = extractAospTranscriptionAudio(params);
+    return transcribeWithAospElizaInference(audio, signal, loader, onEvicted);
+  };
 }
 /* -------------------------------------------------------------------- */
 /* Fused libelizainference text loader (bun:ffi, no JNI).                */
@@ -2550,199 +2923,256 @@ export function makeAospTranscriptionHandler(loader?: AospLoader, onEvicted?: ()
 /* -------------------------------------------------------------------- */
 const ELIZA_POOLING_CLS = 2;
 /** Map an `AospLoadModelArgs` KV-cache type onto the fused config string. */
-function fusedCacheTypeName(value: AospLoadModelArgs["cacheTypeK"] | undefined): string | null {
-    return value && value.length > 0 ? value : null;
+function fusedCacheTypeName(
+  value: AospLoadModelArgs["cacheTypeK"] | undefined,
+): string | null {
+  return value && value.length > 0 ? value : null;
 }
 /**
  * Build the bun:ffi pointer helpers the streaming binding needs from a
  * loaded `BunFfiModule` + its symbol table (for `eliza_inference_free_string`).
  */
-function makeFusedFfiHelpers(ffi: BunFfiModule, symbols: Record<string, (...args: unknown[]) => unknown>): AospFfiPointerHelpers {
-    return {
-        // bun:ffi `FFIType.ptr` arguments take a NUMBER `Pointer`, not a bigint —
-        // handing a bigint throws "Unable to convert <addr> to a pointer". Return
-        // bun's native `ptr()` result verbatim (a number); only the explicit
-        // `usize`/`u64` args (text_len, the stream handle) are widened to bigint at
-        // their call sites. (create() worked because it used ffi.ptr directly.)
-        ptr: (view: ArrayBufferView) => {
-            const p = ffi.ptr(view);
-            return typeof p === "bigint" ? Number(p) : p;
-        },
-        takeError: (buf: Buffer) => {
-            const raw = readFfiPointer(ffi, buf, 0);
-            if (!raw || raw === 0n)
-                return null;
-            let text: string | null = null;
-            try {
-                text = ffi.CString ? new ffi.CString(Number(raw)).toString() : null;
-            }
-            catch {
-                // error-policy:J6 best-effort — reading an FFI diagnostic C-string; if the
-                // read itself fails we return null (no diagnostic), never crash teardown.
-                text = null;
-            }
-            try {
-                symbols.eliza_inference_free_string?.(raw);
-            }
-            catch {
-                // error-policy:J6 best-effort teardown — free the FFI diagnostic string pointer.
-            }
-            return text;
-        },
-        cString,
-    };
+function makeFusedFfiHelpers(
+  ffi: BunFfiModule,
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+): AospFfiPointerHelpers {
+  return {
+    // bun:ffi `FFIType.ptr` arguments take a NUMBER `Pointer`, not a bigint —
+    // handing a bigint throws "Unable to convert <addr> to a pointer". Return
+    // bun's native `ptr()` result verbatim (a number); only the explicit
+    // `usize`/`u64` args (text_len, the stream handle) are widened to bigint at
+    // their call sites. (create() worked because it used ffi.ptr directly.)
+    ptr: (view: ArrayBufferView) => {
+      const p = ffi.ptr(view);
+      return typeof p === "bigint" ? Number(p) : p;
+    },
+    takeError: (buf: Buffer) => {
+      const raw = readFfiPointer(ffi, buf, 0);
+      if (!raw || raw === 0n) return null;
+      let text: string | null = null;
+      try {
+        text = ffi.CString ? new ffi.CString(Number(raw)).toString() : null;
+      } catch {
+        // error-policy:J6 best-effort — reading an FFI diagnostic C-string; if the
+        // read itself fails we return null (no diagnostic), never crash teardown.
+        text = null;
+      }
+      try {
+        symbols.eliza_inference_free_string?.(raw);
+      } catch {
+        // error-policy:J6 best-effort teardown — free the FFI diagnostic string pointer.
+      }
+      return text;
+    },
+    cString,
+  };
 }
 interface AospFusedTextLoaderState {
-    ffi: BunFfiModule;
-    symbols: Record<string, (...args: unknown[]) => unknown>;
-    helpers: AospFfiPointerHelpers;
-    ctx: bigint;
-    binding: AospFusedStreamingLlmBinding;
-    bundleRoot: string;
-    modelPath: string;
-    gpuLayers?: number;
-    contextSize: number | null;
-    draftModelPath: string | null;
-    /** Set after a one-time f16 retry when the build rejects KV-quant. */
-    kvQuantRejected?: boolean;
-    embeddingContextInitialized?: boolean;
-    embeddingContextSetting?: string;
+  ffi: BunFfiModule;
+  symbols: Record<string, (...args: unknown[]) => unknown>;
+  helpers: AospFfiPointerHelpers;
+  ctx: bigint;
+  binding: AospFusedStreamingLlmBinding;
+  bundleRoot: string;
+  modelPath: string;
+  gpuLayers?: number;
+  contextSize: number | null;
+  draftModelPath: string | null;
+  /** Set after a one-time f16 retry when the build rejects KV-quant. */
+  kvQuantRejected?: boolean;
+  embeddingContextInitialized?: boolean;
+  embeddingContextSetting?: string;
 }
 interface AospPreparedTextRequestArgs {
-    modelPath: string;
-    contextWindowTokens: number;
-    prompt: string;
-    promptTokenCount: number;
-    stopSequences?: string[];
-    grammar?: string;
-    stopOnFirstSentence?: boolean;
-    minFirstSentenceChars?: number;
-    config: AospLlmStreamConfig;
+  modelPath: string;
+  contextWindowTokens: number;
+  prompt: string;
+  promptTokenCount: number;
+  stopSequences?: string[];
+  grammar?: string;
+  stopOnFirstSentence?: boolean;
+  minFirstSentenceChars?: number;
+  config: AospLlmStreamConfig;
 }
 /**
  * Admit the exact AOSP request after native tokenization and before stream
  * open. The tokenizer count is authoritative for the loaded GGUF; rebuilding
  * the projection on every attempt also detects mutation before the f16 retry.
  */
-export function createAospPreparedTextRequestGuard(args: AospPreparedTextRequestArgs) {
-    return createPreparedModelRequestGuard({
-        provider: PROVIDER,
-        model: path.basename(args.modelPath),
-        contextWindowTokens: args.contextWindowTokens,
-        outputReserveTokens: args.config.maxTokens,
-        projectRequest: () => ({
-            prompt: args.prompt,
-            stopSequences: args.stopSequences ? [...args.stopSequences] : undefined,
-            grammar: args.grammar,
-            stopOnFirstSentence: args.stopOnFirstSentence,
-            minFirstSentenceChars: args.minFirstSentenceChars,
-            config: { ...args.config },
-        }),
-        countInputTokens: () => args.promptTokenCount,
-        countInputTokensIsExact: true,
-    });
+export function createAospPreparedTextRequestGuard(
+  args: AospPreparedTextRequestArgs,
+) {
+  return createPreparedModelRequestGuard({
+    provider: PROVIDER,
+    model: path.basename(args.modelPath),
+    contextWindowTokens: args.contextWindowTokens,
+    outputReserveTokens: args.config.maxTokens,
+    projectRequest: () => ({
+      prompt: args.prompt,
+      stopSequences: args.stopSequences ? [...args.stopSequences] : undefined,
+      grammar: args.grammar,
+      stopOnFirstSentence: args.stopOnFirstSentence,
+      minFirstSentenceChars: args.minFirstSentenceChars,
+      config: { ...args.config },
+    }),
+    countInputTokens: () => args.promptTokenCount,
+    countInputTokensIsExact: true,
+  });
 }
 /**
  * Tokenize `text` against the fused context via `eliza_inference_tokenize`,
  * copying the malloc'd `int*` buffer into a JS-owned `Int32Array` and freeing
  * the native allocation. Mirrors the desktop binding's `tokenize`.
  */
-function tokenizeFused(state: AospFusedTextLoaderState, text: string, parseSpecial = true): Int32Array {
-    const { ffi, symbols, helpers } = state;
-    const tokenize = symbols.eliza_inference_tokenize;
-    const freeTokens = symbols.eliza_inference_free_tokens;
-    if (typeof tokenize !== "function" || typeof freeTokens !== "function") {
-        throw new Error("[aosp-local-inference] fused tokenize unavailable (eliza_inference_tokenize not exported)");
-    }
-    const textBuf = cString(text);
-    // text_len excludes the trailing NUL.
-    const textLen = Math.max(0, textBuf.length - 1);
-    const outTokensPtr = new BigUint64Array(1);
-    const outN = new BigUint64Array(1);
-    const err = Buffer.alloc(8);
-    const rc = tokenize(state.ctx, helpers.ptr(textBuf), BigInt(textLen), 
+function tokenizeFused(
+  state: AospFusedTextLoaderState,
+  text: string,
+  parseSpecial = true,
+): Int32Array {
+  const { ffi, symbols, helpers } = state;
+  const tokenize = symbols.eliza_inference_tokenize;
+  const freeTokens = symbols.eliza_inference_free_tokens;
+  if (typeof tokenize !== "function" || typeof freeTokens !== "function") {
+    throw new Error(
+      "[aosp-local-inference] fused tokenize unavailable (eliza_inference_tokenize not exported)",
+    );
+  }
+  const textBuf = cString(text);
+  // text_len excludes the trailing NUL.
+  const textLen = Math.max(0, textBuf.length - 1);
+  const outTokensPtr = new BigUint64Array(1);
+  const outN = new BigUint64Array(1);
+  const err = Buffer.alloc(8);
+  const rc = tokenize(
+    state.ctx,
+    helpers.ptr(textBuf),
+    BigInt(textLen),
     // add_special=1, parse_special=1 — render Gemma control tokens as real
     // control tokens (the prompt is already Gemma-formatted upstream).
-    1, parseSpecial ? 1 : 0, helpers.ptr(outTokensPtr), helpers.ptr(outN), helpers.ptr(err)) as number;
-    if (rc !== 0) {
-        throw new Error(helpers.takeError(err) ??
-            `[aosp-local-inference] fused tokenize rc=${rc}`);
+    1,
+    parseSpecial ? 1 : 0,
+    helpers.ptr(outTokensPtr),
+    helpers.ptr(outN),
+    helpers.ptr(err),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(
+      helpers.takeError(err) ??
+        `[aosp-local-inference] fused tokenize rc=${rc}`,
+    );
+  }
+  const n = Number(outN[0] ?? 0n);
+  const tokensRaw = outTokensPtr[0] ?? 0n;
+  if (n === 0) {
+    if (tokensRaw !== 0n) freeTokens(tokensRaw);
+    return new Int32Array(0);
+  }
+  try {
+    if (typeof ffi.toArrayBuffer !== "function") {
+      throw new Error(
+        "[aosp-local-inference] bun:ffi toArrayBuffer unavailable; cannot read fused tokens",
+      );
     }
-    const n = Number(outN[0] ?? 0n);
-    const tokensRaw = outTokensPtr[0] ?? 0n;
-    if (n === 0) {
-        if (tokensRaw !== 0n)
-            freeTokens(tokensRaw);
-        return new Int32Array(0);
-    }
-    try {
-        if (typeof ffi.toArrayBuffer !== "function") {
-            throw new Error("[aosp-local-inference] bun:ffi toArrayBuffer unavailable; cannot read fused tokens");
-        }
-        // bun:ffi `toArrayBuffer` takes a NUMBER pointer (the `Pointer` type), not a
-        // bigint — passing the bigint `tokensRaw` throws "Unable to convert <n> to a
-        // pointer". `tokensRaw` is a real heap address (< 2^53) so Number() is exact.
-        const view = ffi.toArrayBuffer(Number(tokensRaw), 0, n * 4);
-        return new Int32Array(new Uint8Array(view).slice(0, n * 4).buffer);
-    }
-    finally {
-        freeTokens(tokensRaw);
-    }
+    // bun:ffi `toArrayBuffer` takes a NUMBER pointer (the `Pointer` type), not a
+    // bigint — passing the bigint `tokensRaw` throws "Unable to convert <n> to a
+    // pointer". `tokensRaw` is a real heap address (< 2^53) so Number() is exact.
+    const view = ffi.toArrayBuffer(Number(tokensRaw), 0, n * 4);
+    return new Int32Array(new Uint8Array(view).slice(0, n * 4).buffer);
+  } finally {
+    freeTokens(tokensRaw);
+  }
 }
 /** Embed `input` via the fused `eliza_inference_embed`. */
-function embedFused(state: AospFusedTextLoaderState, input: string): {
-    embedding: number[];
-    tokens: number;
+function embedFused(
+  state: AospFusedTextLoaderState,
+  input: string,
+): {
+  embedding: number[];
+  tokens: number;
 } {
-    const { symbols, helpers } = state;
-    const configured = process.env.ELIZA_EMBED_N_CTX;
-    if (state.embeddingContextInitialized &&
-        state.embeddingContextSetting !== configured) {
-        throw new ElizaError("Reload the embedding model after changing ELIZA_EMBED_N_CTX", { code: "EMBEDDING_CONTEXT_CHANGED" });
-    }
-    if (configured !== undefined &&
-        (!/^[1-9][0-9]*$/.test(configured) ||
-            !Number.isSafeInteger(Number(configured)) ||
-            Number(configured) > 2147483647)) {
-        throw new ElizaError("ELIZA_EMBED_N_CTX must be a positive native integer", { code: "EMBEDDING_CONTEXT_INVALID" });
-    }
-    const contextLimit = Math.min(BGE_EMBEDDING_MODEL.contextSize, configured === undefined ? 512 : Number(configured));
-    const prepared = prepareBgeEmbeddingInput(input, contextLimit);
-    const nativeTokens = tokenizeFused(state, prepared.text, true);
-    assertBgeTokenAgreement(prepared, nativeTokens);
-    const tokens = nativeTokens.length;
-    const embed = symbols.eliza_inference_embed_with_options;
-    if (typeof embed !== "function") {
-        throw new ElizaError("Canonical BGE embeddings require eliza_inference_embed_with_options; rebuild the native library", { code: "EMBEDDING_BACKEND_UNAVAILABLE" });
-    }
-    const textBuf = cString(prepared.text);
-    const textLen = Math.max(0, textBuf.length - 1);
-    const cap = 4096;
-    const outEmbedding = new Float32Array(cap);
-    const outDim = new Int32Array(1);
-    const err = Buffer.alloc(8);
-    const rc = embed(state.ctx, helpers.ptr(textBuf), BigInt(textLen), ELIZA_POOLING_CLS, 1, helpers.ptr(outEmbedding), BigInt(cap), helpers.ptr(outDim), helpers.ptr(err)) as number;
-    state.embeddingContextInitialized = true;
-    state.embeddingContextSetting = configured;
-    if (rc !== 0) {
-        throw new Error(helpers.takeError(err) ?? `[aosp-local-inference] fused embed rc=${rc}`);
-    }
-    const dim = outDim[0] ?? 0;
-    if (dim !== BGE_EMBEDDING_MODEL.dimensions) {
-        throw new ElizaError("The BGE encoder returned an incompatible dimension", {
-            code: "EMBEDDING_DIMENSION_MISMATCH",
-            context: { dimension: dim },
-        });
-    }
-    const embedding = Array.from(outEmbedding.subarray(0, dim));
-    const norm = Math.hypot(...embedding);
-    if (!Number.isFinite(norm) || norm === 0) {
-        throw new ElizaError("The BGE encoder returned a zero or non-finite vector", { code: "EMBEDDING_VECTOR_INVALID" });
-    }
-    return {
-        embedding: identifyEmbeddingVector(embedding.map((value) => value / norm), BGE_SMALL_VECTOR_SPACE),
-        tokens,
-    };
+  const { symbols, helpers } = state;
+  const configured = process.env.ELIZA_EMBED_N_CTX;
+  if (
+    state.embeddingContextInitialized &&
+    state.embeddingContextSetting !== configured
+  ) {
+    throw new ElizaError(
+      "Reload the embedding model after changing ELIZA_EMBED_N_CTX",
+      { code: "EMBEDDING_CONTEXT_CHANGED" },
+    );
+  }
+  if (
+    configured !== undefined &&
+    (!/^[1-9][0-9]*$/.test(configured) ||
+      !Number.isSafeInteger(Number(configured)) ||
+      Number(configured) > 2147483647)
+  ) {
+    throw new ElizaError(
+      "ELIZA_EMBED_N_CTX must be a positive native integer",
+      { code: "EMBEDDING_CONTEXT_INVALID" },
+    );
+  }
+  const contextLimit = Math.min(
+    BGE_EMBEDDING_MODEL.contextSize,
+    configured === undefined ? 512 : Number(configured),
+  );
+  const prepared = prepareBgeEmbeddingInput(input, contextLimit);
+  const nativeTokens = tokenizeFused(state, prepared.text, true);
+  assertBgeTokenAgreement(prepared, nativeTokens);
+  const tokens = nativeTokens.length;
+  const embed = symbols.eliza_inference_embed_with_options;
+  if (typeof embed !== "function") {
+    throw new ElizaError(
+      "Canonical BGE embeddings require eliza_inference_embed_with_options; rebuild the native library",
+      { code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+    );
+  }
+  const textBuf = cString(prepared.text);
+  const textLen = Math.max(0, textBuf.length - 1);
+  const cap = 4096;
+  const outEmbedding = new Float32Array(cap);
+  const outDim = new Int32Array(1);
+  const err = Buffer.alloc(8);
+  const rc = embed(
+    state.ctx,
+    helpers.ptr(textBuf),
+    BigInt(textLen),
+    ELIZA_POOLING_CLS,
+    1,
+    helpers.ptr(outEmbedding),
+    BigInt(cap),
+    helpers.ptr(outDim),
+    helpers.ptr(err),
+  ) as number;
+  state.embeddingContextInitialized = true;
+  state.embeddingContextSetting = configured;
+  if (rc !== 0) {
+    throw new Error(
+      helpers.takeError(err) ?? `[aosp-local-inference] fused embed rc=${rc}`,
+    );
+  }
+  const dim = outDim[0] ?? 0;
+  if (dim !== BGE_EMBEDDING_MODEL.dimensions) {
+    throw new ElizaError("The BGE encoder returned an incompatible dimension", {
+      code: "EMBEDDING_DIMENSION_MISMATCH",
+      context: { dimension: dim },
+    });
+  }
+  const embedding = Array.from(outEmbedding.subarray(0, dim));
+  const norm = Math.hypot(...embedding);
+  if (!Number.isFinite(norm) || norm === 0) {
+    throw new ElizaError(
+      "The BGE encoder returned a zero or non-finite vector",
+      { code: "EMBEDDING_VECTOR_INVALID" },
+    );
+  }
+  return {
+    embedding: identifyEmbeddingVector(
+      embedding.map((value) => value / norm),
+      BGE_SMALL_VECTOR_SPACE,
+    ),
+    tokens,
+  };
 }
 /**
  * The libelizainference symbol table the fused text loader binds. Mirrors the
@@ -2750,60 +3180,61 @@ function embedFused(state: AospFusedTextLoaderState, input: string): {
  * pointer handles handed back into C.
  */
 function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
-    const T = ffi.FFIType;
-    const usize = T.usize ?? T.ptr;
-    const definitions = {
-        eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
-        eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-        eliza_inference_mmap_acquire: {
-            args: [T.ptr, T.ptr, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_free_string: { args: [usize], returns: T.void },
-        eliza_inference_free_tokens: { args: [usize], returns: T.void },
-        eliza_inference_llm_stream_supported: { args: [], returns: T.i32 },
-        eliza_inference_llm_mtp_supported: { args: [], returns: T.i32 },
-        eliza_inference_llm_kv_quant_supported: { args: [], returns: T.i32 },
-        eliza_inference_llm_stream_open: {
-            args: [T.ptr, T.ptr, T.ptr],
-            returns: T.ptr,
-        },
-        eliza_inference_llm_stream_prefill: {
-            args: [usize, T.ptr, usize, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_llm_stream_next: {
-            args: [usize, T.ptr, usize, T.ptr, T.ptr, usize, T.ptr, T.ptr, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_llm_stream_cancel: { args: [usize], returns: T.i32 },
-        eliza_inference_llm_stream_close: { args: [usize], returns: T.void },
-        eliza_inference_tokenize: {
-            args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, T.ptr, T.ptr],
-            returns: T.i32,
-        },
-        eliza_inference_embed: {
-            args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr, T.ptr],
-            returns: T.i32,
-        },
-    };
-    try {
-        return ffi.dlopen(libPath, {
-            ...definitions,
-            eliza_inference_embed_with_options: {
-                args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, usize, T.ptr, T.ptr],
-                returns: T.i32,
-            },
-        });
-    }
-    catch (error) {
-        // error-policy:J4 Older libraries retain text support; canonical embedding
-        // calls explicitly report the missing option instead of using legacy parsing.
-        if (!(error instanceof Error) ||
-            !error.message.includes("eliza_inference_embed_with_options"))
-            throw error;
-        return ffi.dlopen(libPath, definitions);
-    }
+  const T = ffi.FFIType;
+  const usize = T.usize ?? T.ptr;
+  const definitions = {
+    eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
+    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_free_string: { args: [usize], returns: T.void },
+    eliza_inference_free_tokens: { args: [usize], returns: T.void },
+    eliza_inference_llm_stream_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_mtp_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_kv_quant_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_stream_open: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_llm_stream_prefill: {
+      args: [usize, T.ptr, usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_next: {
+      args: [usize, T.ptr, usize, T.ptr, T.ptr, usize, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_cancel: { args: [usize], returns: T.i32 },
+    eliza_inference_llm_stream_close: { args: [usize], returns: T.void },
+    eliza_inference_tokenize: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_embed: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+  };
+  try {
+    return ffi.dlopen(libPath, {
+      ...definitions,
+      eliza_inference_embed_with_options: {
+        args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, usize, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+    });
+  } catch (error) {
+    // error-policy:J4 Older libraries retain text support; canonical embedding
+    // calls explicitly report the missing option instead of using legacy parsing.
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("eliza_inference_embed_with_options")
+    )
+      throw error;
+    return ffi.dlopen(libPath, definitions);
+  }
 }
 /**
  * Build the fused libelizainference text loader, or return `null` when the
@@ -2821,282 +3252,313 @@ function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
  * prompt and runs the streaming open→prefill→next→close loop.
  */
 export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> {
-    const libPath = resolveElizaInferenceLibPath();
-    if (!existsSync(libPath)) {
-        writeAospLlamaDebugLog("bootstrap:fusedText:libMissing", { libPath });
-        return null;
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) {
+    writeAospLlamaDebugLog("bootstrap:fusedText:libMissing", { libPath });
+    return null;
+  }
+  const ffi = await loadAospVoiceFfi();
+  const lib = dlopenFusedTextLib(ffi, libPath);
+  const symbols = lib.symbols;
+  const helpers = makeFusedFfiHelpers(ffi, symbols);
+  // Probe support against the LIBRARY (no context needed) before creating one.
+  const streamProbe = symbols.eliza_inference_llm_stream_supported;
+  const mtpProbe = symbols.eliza_inference_llm_mtp_supported;
+  const kvProbe = symbols.eliza_inference_llm_kv_quant_supported;
+  const libSupportsFusedText =
+    typeof streamProbe === "function" &&
+    streamProbe() === 1 &&
+    typeof mtpProbe === "function" &&
+    mtpProbe() === 1 &&
+    typeof kvProbe === "function" &&
+    kvProbe() === 1;
+  if (!libSupportsFusedText) {
+    writeAospLlamaDebugLog("bootstrap:fusedText:unsupported", {
+      libPath,
+      stream: typeof streamProbe === "function" ? streamProbe() : null,
+      mtp: typeof mtpProbe === "function" ? mtpProbe() : null,
+      kvQuant: typeof kvProbe === "function" ? kvProbe() : null,
+    });
+    try {
+      lib.close();
+    } catch {
+      // error-policy:J6 best-effort teardown — close lib after fused-text ABI gate rejects (returns null next).
     }
-    const ffi = await loadAospVoiceFfi();
-    const lib = dlopenFusedTextLib(ffi, libPath);
-    const symbols = lib.symbols;
-    const helpers = makeFusedFfiHelpers(ffi, symbols);
-    // Probe support against the LIBRARY (no context needed) before creating one.
-    const streamProbe = symbols.eliza_inference_llm_stream_supported;
-    const mtpProbe = symbols.eliza_inference_llm_mtp_supported;
-    const kvProbe = symbols.eliza_inference_llm_kv_quant_supported;
-    const libSupportsFusedText = typeof streamProbe === "function" &&
-        streamProbe() === 1 &&
-        typeof mtpProbe === "function" &&
-        mtpProbe() === 1 &&
-        typeof kvProbe === "function" &&
-        kvProbe() === 1;
-    if (!libSupportsFusedText) {
-        writeAospLlamaDebugLog("bootstrap:fusedText:unsupported", {
-            libPath,
-            stream: typeof streamProbe === "function" ? streamProbe() : null,
-            mtp: typeof mtpProbe === "function" ? mtpProbe() : null,
-            kvQuant: typeof kvProbe === "function" ? kvProbe() : null,
-        });
-        try {
-            lib.close();
-        }
-        catch {
-            // error-policy:J6 best-effort teardown — close lib after fused-text ABI gate rejects (returns null next).
-        }
-        logger.error("[aosp-local-inference] fused libelizainference present but lacks streaming-LLM/MTP/KV-quant (ABI <v9); local text inference unavailable");
-        return null;
+    logger.error(
+      "[aosp-local-inference] fused libelizainference present but lacks streaming-LLM/MTP/KV-quant (ABI <v9); local text inference unavailable",
+    );
+    return null;
+  }
+  let state: AospFusedTextLoaderState | null = null;
+  let embeddingState: AospFusedTextLoaderState | null = null;
+  let libraryClosed = false;
+  const destroyState = (): void => {
+    if (embeddingState) {
+      symbols.eliza_inference_destroy?.(embeddingState.ctx);
+      embeddingState = null;
     }
-    let state: AospFusedTextLoaderState | null = null;
-    let embeddingState: AospFusedTextLoaderState | null = null;
-    let libraryClosed = false;
-    const destroyState = (): void => {
-        if (embeddingState) {
-            symbols.eliza_inference_destroy?.(embeddingState.ctx);
-            embeddingState = null;
+    if (!state) return;
+    try {
+      state.symbols.eliza_inference_destroy?.(state.ctx);
+    } catch {
+      // error-policy:J6 best-effort teardown — destroy ctx during loader teardown.
+    }
+    state = null;
+  };
+  const closeLibrary = (): void => {
+    if (libraryClosed) return;
+    destroyState();
+    lib.close();
+    libraryClosed = true;
+  };
+  const loader: AospLoader = {
+    currentModelPath: () => state?.modelPath ?? null,
+    async loadModel(args: AospLoadModelArgs): Promise<void> {
+      if (libraryClosed) {
+        throw new Error(
+          "[aosp-local-inference] fused text loader used after runtime teardown",
+        );
+      }
+      if (args.role === "embedding") {
+        if (typeof symbols.eliza_inference_embed_with_options !== "function") {
+          throw new ElizaError(
+            "Rebuild the native library to enable canonical BGE token parsing",
+            {
+              code: "EMBEDDING_BACKEND_UNAVAILABLE",
+            },
+          );
         }
-        if (!state)
-            return;
-        try {
-            state.symbols.eliza_inference_destroy?.(state.ctx);
+        if (embeddingState?.modelPath === args.modelPath) return;
+        const bundleRoot = prepareAospEmbeddingBundle(args.modelPath);
+        const errCreate = Buffer.alloc(8);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(cString(bundleRoot)),
+          ffi.ptr(errCreate),
+        ) as bigint;
+        if (isFfiNullPointer(ctx)) {
+          throw new ElizaError(
+            "Could not create the dedicated BGE embedding context",
+            {
+              code: "LOCAL_EMBEDDING_UNAVAILABLE",
+              context: {
+                diagnostic: readFfiStringAndFree(ffi, symbols, errCreate),
+              },
+            },
+          );
         }
-        catch {
-            // error-policy:J6 best-effort teardown — destroy ctx during loader teardown.
-        }
+        if (embeddingState)
+          symbols.eliza_inference_destroy?.(embeddingState.ctx);
+        embeddingState = {
+          ffi,
+          symbols,
+          helpers,
+          ctx,
+          binding: createAospStreamingLlmBinding({
+            ctx,
+            symbols: asFusedLlmSymbols(symbols),
+            helpers,
+          }),
+          bundleRoot,
+          modelPath: args.modelPath,
+          contextSize: BGE_EMBEDDING_MODEL.contextSize,
+          draftModelPath: null,
+        };
+        return;
+      }
+      // The native embedding API reads its context's text GGUF. Keep BGE
+      // isolated while chat, speech and speculative decoding retain their owner.
+      if (state && state.modelPath !== args.modelPath) {
+        symbols.eliza_inference_destroy?.(state.ctx);
         state = null;
-    };
-    const closeLibrary = (): void => {
-        if (libraryClosed)
-            return;
-        destroyState();
-        lib.close();
-        libraryClosed = true;
-    };
-    const loader: AospLoader = {
-        currentModelPath: () => state?.modelPath ?? null,
-        async loadModel(args: AospLoadModelArgs): Promise<void> {
-            if (libraryClosed) {
-                throw new Error("[aosp-local-inference] fused text loader used after runtime teardown");
-            }
-            if (args.role === "embedding") {
-                if (typeof symbols.eliza_inference_embed_with_options !== "function") {
-                    throw new ElizaError("Rebuild the native library to enable canonical BGE token parsing", {
-                        code: "EMBEDDING_BACKEND_UNAVAILABLE",
-                    });
-                }
-                if (embeddingState?.modelPath === args.modelPath)
-                    return;
-                const bundleRoot = prepareAospEmbeddingBundle(args.modelPath);
-                const errCreate = Buffer.alloc(8);
-                const ctx = symbols.eliza_inference_create(ffi.ptr(cString(bundleRoot)), ffi.ptr(errCreate)) as bigint;
-                if (isFfiNullPointer(ctx)) {
-                    throw new ElizaError("Could not create the dedicated BGE embedding context", {
-                        code: "LOCAL_EMBEDDING_UNAVAILABLE",
-                        context: {
-                            diagnostic: readFfiStringAndFree(ffi, symbols, errCreate),
-                        },
-                    });
-                }
-                if (embeddingState)
-                    symbols.eliza_inference_destroy?.(embeddingState.ctx);
-                embeddingState = {
-                    ffi,
-                    symbols,
-                    helpers,
-                    ctx,
-                    binding: createAospStreamingLlmBinding({
-                        ctx,
-                        symbols: asFusedLlmSymbols(symbols),
-                        helpers,
-                    }),
-                    bundleRoot,
-                    modelPath: args.modelPath,
-                    contextSize: BGE_EMBEDDING_MODEL.contextSize,
-                    draftModelPath: null,
-                };
-                return;
-            }
-            // The native embedding API reads its context's text GGUF. Keep BGE
-            // isolated while chat, speech and speculative decoding retain their owner.
-            if (state && state.modelPath !== args.modelPath) {
-                symbols.eliza_inference_destroy?.(state.ctx);
-                state = null;
-            }
-            ensureFusedTextBundleLayout(args.modelPath, state?.bundleRoot ?? resolveBundleRootFromModelPath(args.modelPath));
-            if (!state) {
-                const bundleRoot = resolveBundleRootFromModelPath(args.modelPath);
-                const errCreate = Buffer.alloc(8);
-                const ctx = symbols.eliza_inference_create(ffi.ptr(cString(bundleRoot)), ffi.ptr(errCreate)) as bigint;
-                if (isFfiNullPointer(ctx)) {
-                    throw new Error(`[aosp-local-inference] fused create failed: ${readFfiStringAndFree(ffi, symbols, errCreate)}`);
-                }
-                state = {
-                    ffi,
-                    symbols,
-                    helpers,
-                    ctx,
-                    binding: createAospStreamingLlmBinding({
-                        ctx,
-                        symbols: asFusedLlmSymbols(symbols),
-                        helpers,
-                    }),
-                    bundleRoot,
-                    modelPath: args.modelPath,
-                    contextSize: args.contextSize ?? null,
-                    draftModelPath: null,
-                };
-            }
-            const kvCacheTypes = {
-                cacheTypeK: fusedCacheTypeName(args.cacheTypeK ?? args.kvCacheType?.k),
-                cacheTypeV: fusedCacheTypeName(args.cacheTypeV ?? args.kvCacheType?.v),
-            };
-            const draftModelPath = args.draftModelPath ?? null;
-            state.modelPath = args.modelPath;
-            state.contextSize = args.contextSize ?? state.contextSize ?? null;
-            state.draftModelPath = draftModelPath;
-            if (typeof args.gpuLayers === "number") {
-                state.gpuLayers = args.gpuLayers;
-            }
-            state.binding = createAospStreamingLlmBinding({
-                ctx: state.ctx,
-                symbols: asFusedLlmSymbols(symbols),
-                helpers,
-                ...(typeof args.gpuLayers === "number"
-                    ? { gpuLayers: args.gpuLayers }
-                    : {}),
-                kvCacheTypes,
-            });
-            writeAospLlamaDebugLog("bootstrap:fusedText:loaded", {
-                model: path.basename(args.modelPath),
-                gpuLayers: args.gpuLayers ?? null,
-                cacheTypeK: kvCacheTypes.cacheTypeK,
-                cacheTypeV: kvCacheTypes.cacheTypeV,
-                draftModelPath,
-            });
-            logger.info(`[aosp-local-inference] fused libelizainference text backend ready (model=${path.basename(args.modelPath)}, mtpDrafter=${draftModelPath ? path.basename(draftModelPath) : "none"})`);
-        },
-        async unloadModel(): Promise<void> {
-            destroyState();
-        },
-        async close(): Promise<void> {
-            closeLibrary();
-        },
-        async generate(args): Promise<string> {
-            const active = state;
-            if (!active) {
-                throw new Error("[aosp-local-inference] fused text generate called before loadModel");
-            }
-            if (args.signal?.aborted) {
-                throw new Error("[aosp-local-inference] fused text generate aborted");
-            }
-            const promptTokens = tokenizeFused(active, args.prompt);
-            const maxTokens = resolveAospCompletionBudget({
-                ...(args.maxTokens !== undefined
-                    ? { requestedMaxTokens: args.maxTokens }
-                    : {}),
-                contextSize: active.contextSize ?? 32768,
-                promptTokenCount: promptTokens.length,
-            });
-            const config: AospLlmStreamConfig = {
-                maxTokens,
-                temperature: args.temperature ?? 0.7,
-                topP: 0.9,
-                topK: 40,
-                repeatPenalty: 1.1,
-                slotId: -1,
-                promptCacheKey: null,
-                // MTP drafter path drives speculative decode; null = target-only.
-                draftMin: active.draftModelPath ? 1 : 0,
-                draftMax: active.draftModelPath ? 16 : 0,
-                mtpDrafterPath: active.draftModelPath,
-                disableThinking: false,
-                contextSize: active.contextSize,
-            };
-            const preparedRequest = createAospPreparedTextRequestGuard({
-                modelPath: active.modelPath,
-                contextWindowTokens: active.contextSize ?? readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
-                prompt: args.prompt,
-                promptTokenCount: promptTokens.length,
-                stopSequences: args.stopSequences,
-                grammar: args.grammar,
-                stopOnFirstSentence: args.stopOnFirstSentence,
-                minFirstSentenceChars: args.minFirstSentenceChars,
-                config,
-            });
-            const runStream = async () => {
-                preparedRequest.assertBeforeAttempt();
-                const result = await streamGenerate(active.binding, {
-                    ctx: active.ctx,
-                    config,
-                    promptTokens,
-                    ...(args.signal ? { signal: args.signal } : {}),
-                    ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
-                });
-                if (result.accepted >= maxTokens) {
-                    throw new ElizaError("AOSP local model output reached the decode boundary before a stop condition", {
-                        code: "MODEL_OUTPUT_INCOMPLETE",
-                        context: { maxTokens, outputTokens: result.accepted },
-                    });
-                }
-                return result.text;
-            };
-            try {
-                return await runStream();
-            }
-            catch (err) {
-                // error-policy:J4 explicit degrade — ONLY the specific, recoverable
-                // "KV-quant cache rejected" error retries once with an f16 KV cache; any
-                // other error (or a second KV-quant rejection) rethrows and fails the
-                // generation. The retry is a typed recovery, not a swallowed failure.
-                const message = err instanceof Error ? err.message : String(err);
-                // Some fused-lib builds reject a quantized V cache without flash_attn
-                // ("V cache quantization requires flash_attn" → llm_stream_open fails
-                // to init the llama context). Retry ONCE with f16 KV so local text
-                // inference stays alive, and log loudly — the eliza-1 KV-quant memory
-                // optimization is disabled for the rest of this load.
-                const kvQuantRejection = /flash_attn|failed to init llama context/i.test(message);
-                if (active.kvQuantRejected || !kvQuantRejection) {
-                    throw err;
-                }
-                active.kvQuantRejected = true;
-                logger.warn(`[aosp-local-inference] fused llm_stream_open rejected the KV-quant cache config (${message}); retrying with f16 KV cache — eliza-1 KV-quant memory optimization DISABLED for this model load. Set ELIZA_LLAMA_KV_TYPE_K/V=f16 to silence this retry, or ship a fused lib with flash_attn wired for quantized V cache.`);
-                writeAospLlamaDebugLog("bootstrap:fusedText:kvQuantRejected", {
-                    message,
-                });
-                active.binding = createAospStreamingLlmBinding({
-                    ctx: active.ctx,
-                    symbols: asFusedLlmSymbols(active.symbols),
-                    helpers: active.helpers,
-                    ...(typeof active.gpuLayers === "number"
-                        ? { gpuLayers: active.gpuLayers }
-                        : {}),
-                    kvCacheTypes: { cacheTypeK: "f16", cacheTypeV: "f16" },
-                });
-                return await runStream();
-            }
-        },
-        async embed(args): Promise<{
-            embedding: number[];
-            tokens: number;
-        }> {
-            const active = embeddingState;
-            if (!active) {
-                throw new Error("[aosp-local-inference] fused embed called before loadModel");
-            }
-            return embedFused(active, args.input);
-        },
-    };
-    logger.info("[aosp-local-inference] fused libelizainference text loader selected (ABI v9 streaming-LLM + MTP + KV-quant)");
-    return loader;
+      }
+      ensureFusedTextBundleLayout(
+        args.modelPath,
+        state?.bundleRoot ?? resolveBundleRootFromModelPath(args.modelPath),
+      );
+      if (!state) {
+        const bundleRoot = resolveBundleRootFromModelPath(args.modelPath);
+        const errCreate = Buffer.alloc(8);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(cString(bundleRoot)),
+          ffi.ptr(errCreate),
+        ) as bigint;
+        if (isFfiNullPointer(ctx)) {
+          throw new Error(
+            `[aosp-local-inference] fused create failed: ${readFfiStringAndFree(ffi, symbols, errCreate)}`,
+          );
+        }
+        state = {
+          ffi,
+          symbols,
+          helpers,
+          ctx,
+          binding: createAospStreamingLlmBinding({
+            ctx,
+            symbols: asFusedLlmSymbols(symbols),
+            helpers,
+          }),
+          bundleRoot,
+          modelPath: args.modelPath,
+          contextSize: args.contextSize ?? null,
+          draftModelPath: null,
+        };
+      }
+      const kvCacheTypes = {
+        cacheTypeK: fusedCacheTypeName(args.cacheTypeK ?? args.kvCacheType?.k),
+        cacheTypeV: fusedCacheTypeName(args.cacheTypeV ?? args.kvCacheType?.v),
+      };
+      const draftModelPath = args.draftModelPath ?? null;
+      state.modelPath = args.modelPath;
+      state.contextSize = args.contextSize ?? state.contextSize ?? null;
+      state.draftModelPath = draftModelPath;
+      if (typeof args.gpuLayers === "number") {
+        state.gpuLayers = args.gpuLayers;
+      }
+      state.binding = createAospStreamingLlmBinding({
+        ctx: state.ctx,
+        symbols: asFusedLlmSymbols(symbols),
+        helpers,
+        ...(typeof args.gpuLayers === "number"
+          ? { gpuLayers: args.gpuLayers }
+          : {}),
+        kvCacheTypes,
+      });
+      writeAospLlamaDebugLog("bootstrap:fusedText:loaded", {
+        model: path.basename(args.modelPath),
+        gpuLayers: args.gpuLayers ?? null,
+        cacheTypeK: kvCacheTypes.cacheTypeK,
+        cacheTypeV: kvCacheTypes.cacheTypeV,
+        draftModelPath,
+      });
+      logger.info(
+        `[aosp-local-inference] fused libelizainference text backend ready (model=${path.basename(args.modelPath)}, mtpDrafter=${draftModelPath ? path.basename(draftModelPath) : "none"})`,
+      );
+    },
+    async unloadModel(): Promise<void> {
+      destroyState();
+    },
+    async close(): Promise<void> {
+      closeLibrary();
+    },
+    async generate(args): Promise<string> {
+      const active = state;
+      if (!active) {
+        throw new Error(
+          "[aosp-local-inference] fused text generate called before loadModel",
+        );
+      }
+      if (args.signal?.aborted) {
+        throw new Error("[aosp-local-inference] fused text generate aborted");
+      }
+      const promptTokens = tokenizeFused(active, args.prompt);
+      const maxTokens = resolveAospCompletionBudget({
+        ...(args.maxTokens !== undefined
+          ? { requestedMaxTokens: args.maxTokens }
+          : {}),
+        contextSize: active.contextSize ?? 32768,
+        promptTokenCount: promptTokens.length,
+      });
+      const config: AospLlmStreamConfig = {
+        maxTokens,
+        temperature: args.temperature ?? 0.7,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.1,
+        slotId: -1,
+        promptCacheKey: null,
+        // MTP drafter path drives speculative decode; null = target-only.
+        draftMin: active.draftModelPath ? 1 : 0,
+        draftMax: active.draftModelPath ? 16 : 0,
+        mtpDrafterPath: active.draftModelPath,
+        disableThinking: false,
+        contextSize: active.contextSize,
+      };
+      const preparedRequest = createAospPreparedTextRequestGuard({
+        modelPath: active.modelPath,
+        contextWindowTokens:
+          active.contextSize ?? readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
+        prompt: args.prompt,
+        promptTokenCount: promptTokens.length,
+        stopSequences: args.stopSequences,
+        grammar: args.grammar,
+        stopOnFirstSentence: args.stopOnFirstSentence,
+        minFirstSentenceChars: args.minFirstSentenceChars,
+        config,
+      });
+      const runStream = async () => {
+        preparedRequest.assertBeforeAttempt();
+        const result = await streamGenerate(active.binding, {
+          ctx: active.ctx,
+          config,
+          promptTokens,
+          ...(args.signal ? { signal: args.signal } : {}),
+          ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
+        });
+        if (result.accepted >= maxTokens) {
+          throw new ElizaError(
+            "AOSP local model output reached the decode boundary before a stop condition",
+            {
+              code: "MODEL_OUTPUT_INCOMPLETE",
+              context: { maxTokens, outputTokens: result.accepted },
+            },
+          );
+        }
+        return result.text;
+      };
+      try {
+        return await runStream();
+      } catch (err) {
+        // error-policy:J4 explicit degrade — ONLY the specific, recoverable
+        // "KV-quant cache rejected" error retries once with an f16 KV cache; any
+        // other error (or a second KV-quant rejection) rethrows and fails the
+        // generation. The retry is a typed recovery, not a swallowed failure.
+        const message = err instanceof Error ? err.message : String(err);
+        // Some fused-lib builds reject a quantized V cache without flash_attn
+        // ("V cache quantization requires flash_attn" → llm_stream_open fails
+        // to init the llama context). Retry ONCE with f16 KV so local text
+        // inference stays alive, and log loudly — the eliza-1 KV-quant memory
+        // optimization is disabled for the rest of this load.
+        const kvQuantRejection =
+          /flash_attn|failed to init llama context/i.test(message);
+        if (active.kvQuantRejected || !kvQuantRejection) {
+          throw err;
+        }
+        active.kvQuantRejected = true;
+        logger.warn(
+          `[aosp-local-inference] fused llm_stream_open rejected the KV-quant cache config (${message}); retrying with f16 KV cache — eliza-1 KV-quant memory optimization DISABLED for this model load. Set ELIZA_LLAMA_KV_TYPE_K/V=f16 to silence this retry, or ship a fused lib with flash_attn wired for quantized V cache.`,
+        );
+        writeAospLlamaDebugLog("bootstrap:fusedText:kvQuantRejected", {
+          message,
+        });
+        active.binding = createAospStreamingLlmBinding({
+          ctx: active.ctx,
+          symbols: asFusedLlmSymbols(active.symbols),
+          helpers: active.helpers,
+          ...(typeof active.gpuLayers === "number"
+            ? { gpuLayers: active.gpuLayers }
+            : {}),
+          kvCacheTypes: { cacheTypeK: "f16", cacheTypeV: "f16" },
+        });
+        return await runStream();
+      }
+    },
+    async embed(args): Promise<{
+      embedding: number[];
+      tokens: number;
+    }> {
+      const active = embeddingState;
+      if (!active) {
+        throw new Error(
+          "[aosp-local-inference] fused embed called before loadModel",
+        );
+      }
+      return embedFused(active, args.input);
+    },
+  };
+  logger.info(
+    "[aosp-local-inference] fused libelizainference text loader selected (ABI v9 streaming-LLM + MTP + KV-quant)",
+  );
+  return loader;
 }
 /**
  * Register the AOSP llama.cpp FFI loader and matching ModelType handlers
@@ -3108,105 +3570,139 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
  * is an explicit operator opt-in — silent fall-through to "No handler"
  * crashes is unacceptable.
  */
-export async function ensureAospLocalInferenceHandlers(runtime: AgentRuntime, options: AospLocalInferenceBootstrapOptions = {}): Promise<boolean> {
-    // console.log because logger.info routing in the mobile agent process
-    // sometimes hides early bootstrap output behind the pino transport,
-    // and we need a visible signal that the post-startEliza hook ran.
-    console.log("[aosp-local-inference] bootstrap entered");
-    if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
-        console.log("[aosp-local-inference] ELIZA_LOCAL_LLAMA != '1', returning early");
-        return false;
-    }
-    if (registeredRuntimes.has(runtime)) {
-        console.log("[aosp-local-inference] handlers already registered");
-        return true;
-    }
-    const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
-    if (typeof runtimeWithRegistration.getModel !== "function" ||
-        typeof runtimeWithRegistration.registerModel !== "function") {
-        console.error("[aosp-local-inference] runtime missing getModel/registerModel");
-        logger.error("[aosp-local-inference] Runtime is missing getModel/registerModel; cannot wire handlers.");
-        return false;
-    }
-    console.log("[aosp-local-inference] runtime has model-registration surface");
-    // Build the fused libelizainference text loader (ABI-v9 streaming-LLM + MTP
-    // + KV-quant). This is the SOLE text backend on AOSP: it runs on the SAME
-    // libelizainference handle the bun agent uses for voice, so text + TTS + ASR
-    // share one native library. When the fused lib is absent or too old the
-    // loader is null and we fail LOUD — `ELIZA_LOCAL_LLAMA=1` is an explicit
-    // operator opt-in, so a missing local backend must surface clearly (the
-    // cloud-fallback handler at priority -1 then routes recoverable failures to
-    // a cloud provider via the local-unavailable classifier).
-    console.log("[aosp-local-inference] building fused text loader…");
-    const owner = await ensureAospLoaderOwner(runtime, options);
-    console.log(`[aosp-local-inference] fused text loader ${owner ? "ready" : "unavailable"}`);
-    if (!owner) {
-        console.error("[aosp-local-inference] fused text loader unavailable");
-        logger.error("[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.");
-        return false;
-    }
-    const textLoader = owner.loader;
-    const lifecycle = owner.lifecycle;
-    // The embedding handler rejects disabled requests before loading; enabled
-    // requests use the dedicated verified BGE context owned by this loader.
-    const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
-        ModelType.TEXT_SMALL,
-        ModelType.TEXT_LARGE,
-        ModelType.TEXT_EMBEDDING,
-        ModelType.TEXT_TO_SPEECH,
-    ];
-    // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
-    // Registering it unconditionally made the readiness probe report local
-    // transcription as available while every invocation threw "requires ASR
-    // assets". TEXT_TO_SPEECH stays unconditional because its handler degrades to
-    // the system TTS engine when neural assets are absent — TRANSCRIPTION has no
-    // such in-handler fallback (native SpeechRecognizer covers STT separately).
-    const asrAssetsPresent = aospAsrAssetsPresent();
-    if (asrAssetsPresent) {
-        slots.push(ModelType.TRANSCRIPTION);
-    }
-    else {
-        logger.info("[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.");
-    }
-    const baseKokoroTextToSpeechHandler = makeAospFusedKokoroTextToSpeechHandler();
-    let foregroundKokoroTextToSpeechUsed = false;
-    const textToSpeechHandler = makeAospTextToSpeechHandler({
-        kokoro: baseKokoroTextToSpeechHandler,
-        onForegroundUse: () => {
-            foregroundKokoroTextToSpeechUsed = true;
-        },
-    });
-    for (const modelType of slots) {
-        const handler = modelType === ModelType.TEXT_EMBEDDING
-            ? makeEmbeddingHandler(textLoader, lifecycle)
-            : modelType === ModelType.TEXT_TO_SPEECH
-                ? textToSpeechHandler
-                : modelType === ModelType.TRANSCRIPTION
-                    ? makeAospTranscriptionHandler(textLoader, lifecycle.markEvicted)
-                    : makeGenerateHandler(textLoader, lifecycle);
-        runtimeWithRegistration.registerModel(modelType, handler, PROVIDER, LOCAL_INFERENCE_PRIORITY);
-    }
-    // Register a cloud-fallback wrapper at priority -1 for the text-generation
-    // slots (NOT embeddings — there's no cloud embedding fallback on this
-    // bundle today). The wrapper tries local first; on a classified
-    // recoverable failure it delegates to the next registered TEXT_* handler.
-    // The runtime always picks the local handler first by priority — this
-    // sits one rung below as the safety net.
-    const fallbackSlots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
-        ModelType.TEXT_SMALL,
-        ModelType.TEXT_LARGE,
-    ];
-    for (const modelType of fallbackSlots) {
-        runtimeWithRegistration.registerModel(modelType, makeCloudFallbackHandler(textLoader, lifecycle, modelType), `${PROVIDER}-cloud-fallback`, CLOUD_FALLBACK_PRIORITY);
-    }
-    // Runtime service start owns both prewarm tasks; service stop cancels/joins
-    // them before unloading and closing the exact loader used by these handlers.
-    owner.registerTtsPrewarm(() => prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
-        shouldSkip: () => foregroundKokoroTextToSpeechUsed,
-    }));
-    const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${asrAssetsPresent ? " / TRANSCRIPTION" : ""}`;
-    console.log(`[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend fused-libelizainference)`);
-    logger.info(`[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend fused-libelizainference)`);
-    registeredRuntimes.add(runtime);
+export async function ensureAospLocalInferenceHandlers(
+  runtime: AgentRuntime,
+  options: AospLocalInferenceBootstrapOptions = {},
+): Promise<boolean> {
+  // console.log because logger.info routing in the mobile agent process
+  // sometimes hides early bootstrap output behind the pino transport,
+  // and we need a visible signal that the post-startEliza hook ran.
+  console.log("[aosp-local-inference] bootstrap entered");
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
+    console.log(
+      "[aosp-local-inference] ELIZA_LOCAL_LLAMA != '1', returning early",
+    );
+    return false;
+  }
+  if (registeredRuntimes.has(runtime)) {
+    console.log("[aosp-local-inference] handlers already registered");
     return true;
+  }
+  const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
+  if (
+    typeof runtimeWithRegistration.getModel !== "function" ||
+    typeof runtimeWithRegistration.registerModel !== "function"
+  ) {
+    console.error(
+      "[aosp-local-inference] runtime missing getModel/registerModel",
+    );
+    logger.error(
+      "[aosp-local-inference] Runtime is missing getModel/registerModel; cannot wire handlers.",
+    );
+    return false;
+  }
+  console.log("[aosp-local-inference] runtime has model-registration surface");
+  // Build the fused libelizainference text loader (ABI-v9 streaming-LLM + MTP
+  // + KV-quant). This is the SOLE text backend on AOSP: it runs on the SAME
+  // libelizainference handle the bun agent uses for voice, so text + TTS + ASR
+  // share one native library. When the fused lib is absent or too old the
+  // loader is null and we fail LOUD — `ELIZA_LOCAL_LLAMA=1` is an explicit
+  // operator opt-in, so a missing local backend must surface clearly (the
+  // cloud-fallback handler at priority -1 then routes recoverable failures to
+  // a cloud provider via the local-unavailable classifier).
+  console.log("[aosp-local-inference] building fused text loader…");
+  const owner = await ensureAospLoaderOwner(runtime, options);
+  console.log(
+    `[aosp-local-inference] fused text loader ${owner ? "ready" : "unavailable"}`,
+  );
+  if (!owner) {
+    console.error("[aosp-local-inference] fused text loader unavailable");
+    logger.error(
+      "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.",
+    );
+    return false;
+  }
+  const textLoader = owner.loader;
+  const lifecycle = owner.lifecycle;
+  // The embedding handler rejects disabled requests before loading; enabled
+  // requests use the dedicated verified BGE context owned by this loader.
+  const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+    ModelType.TEXT_EMBEDDING,
+    ModelType.TEXT_TO_SPEECH,
+  ];
+  // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
+  // Registering it unconditionally made the readiness probe report local
+  // transcription as available while every invocation threw "requires ASR
+  // assets". TEXT_TO_SPEECH stays unconditional because its handler degrades to
+  // the system TTS engine when neural assets are absent — TRANSCRIPTION has no
+  // such in-handler fallback (native SpeechRecognizer covers STT separately).
+  const asrAssetsPresent = aospAsrAssetsPresent();
+  if (asrAssetsPresent) {
+    slots.push(ModelType.TRANSCRIPTION);
+  } else {
+    logger.info(
+      "[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.",
+    );
+  }
+  const baseKokoroTextToSpeechHandler =
+    makeAospFusedKokoroTextToSpeechHandler();
+  let foregroundKokoroTextToSpeechUsed = false;
+  const textToSpeechHandler = makeAospTextToSpeechHandler({
+    kokoro: baseKokoroTextToSpeechHandler,
+    onForegroundUse: () => {
+      foregroundKokoroTextToSpeechUsed = true;
+    },
+  });
+  for (const modelType of slots) {
+    const handler =
+      modelType === ModelType.TEXT_EMBEDDING
+        ? makeEmbeddingHandler(textLoader, lifecycle)
+        : modelType === ModelType.TEXT_TO_SPEECH
+          ? textToSpeechHandler
+          : modelType === ModelType.TRANSCRIPTION
+            ? makeAospTranscriptionHandler(textLoader, lifecycle.markEvicted)
+            : makeGenerateHandler(textLoader, lifecycle);
+    runtimeWithRegistration.registerModel(
+      modelType,
+      handler,
+      PROVIDER,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+  }
+  // Register a cloud-fallback wrapper at priority -1 for the text-generation
+  // slots (NOT embeddings — there's no cloud embedding fallback on this
+  // bundle today). The wrapper tries local first; on a classified
+  // recoverable failure it delegates to the next registered TEXT_* handler.
+  // The runtime always picks the local handler first by priority — this
+  // sits one rung below as the safety net.
+  const fallbackSlots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+  ];
+  for (const modelType of fallbackSlots) {
+    runtimeWithRegistration.registerModel(
+      modelType,
+      makeCloudFallbackHandler(textLoader, lifecycle, modelType),
+      `${PROVIDER}-cloud-fallback`,
+      CLOUD_FALLBACK_PRIORITY,
+    );
+  }
+  // Runtime service start owns both prewarm tasks; service stop cancels/joins
+  // them before unloading and closing the exact loader used by these handlers.
+  owner.registerTtsPrewarm(() =>
+    prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
+      shouldSkip: () => foregroundKokoroTextToSpeechUsed,
+    }),
+  );
+  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${asrAssetsPresent ? " / TRANSCRIPTION" : ""}`;
+  console.log(
+    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend fused-libelizainference)`,
+  );
+  logger.info(
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend fused-libelizainference)`,
+  );
+  registeredRuntimes.add(runtime);
+  return true;
 }

@@ -3,17 +3,14 @@
  * preserving stripped constraints in model-visible descriptions.
  */
 
-import { assertMcpJsonSchemaBudget } from "@elizaos/plugin-mcp/protocol-utils/schema-budget";
+import { assertMcpJsonSchemaBudget } from "./schema-budget.js";
 
 export type McpJsonSchema = Readonly<Record<string, unknown>>;
 
 export interface McpSchemaCompatibilityPolicy {
   readonly applies: boolean;
   unsupportedFor(type: string | undefined): readonly string[];
-  describe(
-    original: string | undefined,
-    constraints: Readonly<Record<string, unknown>>,
-  ): string;
+  describe(original: string | undefined, constraints: Readonly<Record<string, unknown>>): string;
 }
 
 const CONSTRAINT_KEYS = [
@@ -46,22 +43,18 @@ function policyTypes(value: unknown): readonly (string | undefined)[] {
   if (typeof value === "string") return [value];
   if (!Array.isArray(value)) return [undefined];
   const types = Array.from(
-    new Set(
-      value.filter((member): member is string => typeof member === "string"),
-    ),
+    new Set(value.filter((member): member is string => typeof member === "string"))
   ).sort();
   return types.length > 0 ? types : [undefined];
 }
 
 function rewriteSchema(
   schema: McpJsonSchema,
-  policy: McpSchemaCompatibilityPolicy,
+  policy: McpSchemaCompatibilityPolicy
 ): Record<string, unknown> {
   const output: Record<string, unknown> = { ...schema };
   const unsupported = Array.from(
-    new Set(
-      policyTypes(schema.type).flatMap((type) => policy.unsupportedFor(type)),
-    ),
+    new Set(policyTypes(schema.type).flatMap((type) => policy.unsupportedFor(type)))
   );
   const constraints: Record<string, unknown> = {};
   for (const key of CONSTRAINT_KEYS) {
@@ -81,7 +74,7 @@ function rewriteSchema(
       Object.entries(properties).map(([key, value]) => {
         const child = asSchema(value);
         return [key, child ? rewriteSchema(child, policy) : value];
-      }),
+      })
     );
   }
 
@@ -98,7 +91,7 @@ function rewriteSchema(
   if (Object.keys(constraints).length > 0) {
     output.description = policy.describe(
       typeof schema.description === "string" ? schema.description : undefined,
-      constraints,
+      constraints
     );
   }
   return output;
@@ -106,7 +99,7 @@ function rewriteSchema(
 
 export function transformMcpToolSchema<TSchema extends McpJsonSchema>(
   schema: TSchema,
-  policy: McpSchemaCompatibilityPolicy,
+  policy: McpSchemaCompatibilityPolicy
 ): TSchema {
   assertMcpJsonSchemaBudget(schema);
   if (!policy.applies) return schema;

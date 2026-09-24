@@ -5,270 +5,286 @@
  * pipeline, and a scriptable platform adapter. Used by the vitest suites; not
  * exported from the package root.
  */
-import { MeetingBillingError } from "./types.js";
-import { MeetingService } from "./service.js";
-import { type Action } from "@elizaos/core";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type MeetingBillingSession } from "./types.js";
-import { type MeetingBillingState } from "@elizaos/core/meetings";
-import { type MeetingBotSession } from "./types.js";
-import { type MeetingEndReason } from "@elizaos/core/meetings";
-import { type MeetingParticipant } from "@elizaos/core/meetings";
-import { type MeetingPipelineInstance } from "./service.js";
-import { type MeetingPipelineOptions } from "./types.js";
-import { type MeetingPlatform } from "@elizaos/core/meetings";
-import { type MeetingPlatformAdapter } from "./types.js";
-import { type MeetingServiceDependencies } from "./service.js";
-import { type MeetingSessionStatus } from "@elizaos/core/meetings";
-import { type Memory } from "@elizaos/core";
-import { type PipelineTranscriptUpdate } from "./types.js";
-import { type Plugin } from "@elizaos/core";
+
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
+import {
+  type MeetingBillingState,
+  type MeetingEndReason,
+  type MeetingParticipant,
+  type MeetingPlatform,
+  type MeetingSessionStatus,
+} from "@elizaos/core/meetings";
 import { type TranscriptSegment } from "@elizaos/core/transcripts";
-import { type UUID } from "@elizaos/core";
+import {
+  type MeetingPipelineInstance,
+  MeetingService,
+  type MeetingServiceDependencies,
+} from "./service.js";
+import {
+  MeetingBillingError,
+  type MeetingBillingSession,
+  type MeetingBotSession,
+  type MeetingPipelineOptions,
+  type MeetingPlatformAdapter,
+  type PipelineTranscriptUpdate,
+} from "./types.js";
 export interface FakeRuntime {
-    runtime: IAgentRuntime;
-    memories: Map<string, Memory>;
-    tables: Map<string, string>;
-    worlds: Array<Record<string, unknown>>;
-    rooms: Array<Record<string, unknown>>;
-    entities: Array<Record<string, unknown>>;
-    broadcasts: object[];
-    documents: Array<Record<string, unknown>>;
-    events: Array<{
-        event: string | string[];
-        payload: unknown;
-    }>;
-    reportedErrors: Array<{
-        scope: string;
-        error: unknown;
-        context?: unknown;
-    }>;
-    settings: Record<string, string>;
+  runtime: IAgentRuntime;
+  memories: Map<string, Memory>;
+  tables: Map<string, string>;
+  worlds: Array<Record<string, unknown>>;
+  rooms: Array<Record<string, unknown>>;
+  entities: Array<Record<string, unknown>>;
+  broadcasts: object[];
+  documents: Array<Record<string, unknown>>;
+  events: Array<{
+    event: string | string[];
+    payload: unknown;
+  }>;
+  reportedErrors: Array<{
+    scope: string;
+    error: unknown;
+    context?: unknown;
+  }>;
+  settings: Record<string, string>;
 }
 export function makeFakeRuntime(): FakeRuntime {
-    const memories = new Map<string, Memory>();
-    const tables = new Map<string, string>();
-    const worlds: Array<Record<string, unknown>> = [];
-    const rooms: Array<Record<string, unknown>> = [];
-    const entities: Array<Record<string, unknown>> = [];
-    const broadcasts: object[] = [];
-    const documents: Array<Record<string, unknown>> = [];
-    const events: Array<{
-        event: string | string[];
-        payload: unknown;
-    }> = [];
-    const reportedErrors: Array<{
-        scope: string;
-        error: unknown;
-        context?: unknown;
-    }> = [];
-    const settings: Record<string, string> = {};
-    const connectorSetup = {
-        broadcastWs: (data: object) => {
-            broadcasts.push(data);
-        },
-    };
-    const documentsService = {
-        addDocument: async (options: Record<string, unknown>) => {
-            documents.push(options);
-            return { storedDocumentMemoryId: crypto.randomUUID() as UUID };
-        },
-    };
-    const runtime = {
-        agentId: "00000000-0000-0000-0000-00000000a9e7" as UUID,
-        character: { name: "Eliza" },
-        getSetting: (key: string) => settings[key] ?? null,
-        getService: (name: string) => {
-            if (name === "connector-setup")
-                return connectorSetup;
-            if (name === "documents")
-                return documentsService;
-            return null;
-        },
-        ensureWorldExists: async (world: Record<string, unknown>) => {
-            worlds.push(world);
-        },
-        ensureRoomExists: async (room: Record<string, unknown>) => {
-            rooms.push(room);
-        },
-        createEntity: async (entity: Record<string, unknown>) => {
-            entities.push(entity);
-            return true;
-        },
-        createMemory: async (memory: Memory, tableName: string) => {
-            memories.set(memory.id as string, memory);
-            tables.set(memory.id as string, tableName);
-            return memory.id as UUID;
-        },
-        getMemoryById: async (id: UUID) => memories.get(id) ?? null,
-        updateMemory: async (patch: Partial<Memory> & {
-            id: UUID;
-        }) => {
-            const existing = memories.get(patch.id);
-            if (!existing)
-                return false;
-            memories.set(patch.id, { ...existing, ...patch });
-            return true;
-        },
-        emitEvent: async (event: string | string[], payload: unknown) => {
-            events.push({ event, payload });
-        },
-        reportError: (scope: string, error: unknown, context?: unknown) => {
-            reportedErrors.push({ scope, error, context });
-        },
-    } as unknown as IAgentRuntime;
-    return {
-        runtime,
-        memories,
-        tables,
-        worlds,
-        rooms,
-        entities,
-        broadcasts,
-        documents,
-        events,
-        reportedErrors,
-        settings,
-    };
+  const memories = new Map<string, Memory>();
+  const tables = new Map<string, string>();
+  const worlds: Array<Record<string, unknown>> = [];
+  const rooms: Array<Record<string, unknown>> = [];
+  const entities: Array<Record<string, unknown>> = [];
+  const broadcasts: object[] = [];
+  const documents: Array<Record<string, unknown>> = [];
+  const events: Array<{
+    event: string | string[];
+    payload: unknown;
+  }> = [];
+  const reportedErrors: Array<{
+    scope: string;
+    error: unknown;
+    context?: unknown;
+  }> = [];
+  const settings: Record<string, string> = {};
+  const connectorSetup = {
+    broadcastWs: (data: object) => {
+      broadcasts.push(data);
+    },
+  };
+  const documentsService = {
+    addDocument: async (options: Record<string, unknown>) => {
+      documents.push(options);
+      return { storedDocumentMemoryId: crypto.randomUUID() as UUID };
+    },
+  };
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-00000000a9e7" as UUID,
+    character: { name: "Eliza" },
+    getSetting: (key: string) => settings[key] ?? null,
+    getService: (name: string) => {
+      if (name === "connector-setup") return connectorSetup;
+      if (name === "documents") return documentsService;
+      return null;
+    },
+    ensureWorldExists: async (world: Record<string, unknown>) => {
+      worlds.push(world);
+    },
+    ensureRoomExists: async (room: Record<string, unknown>) => {
+      rooms.push(room);
+    },
+    createEntity: async (entity: Record<string, unknown>) => {
+      entities.push(entity);
+      return true;
+    },
+    createMemory: async (memory: Memory, tableName: string) => {
+      memories.set(memory.id as string, memory);
+      tables.set(memory.id as string, tableName);
+      return memory.id as UUID;
+    },
+    getMemoryById: async (id: UUID) => memories.get(id) ?? null,
+    updateMemory: async (
+      patch: Partial<Memory> & {
+        id: UUID;
+      },
+    ) => {
+      const existing = memories.get(patch.id);
+      if (!existing) return false;
+      memories.set(patch.id, { ...existing, ...patch });
+      return true;
+    },
+    emitEvent: async (event: string | string[], payload: unknown) => {
+      events.push({ event, payload });
+    },
+    reportError: (scope: string, error: unknown, context?: unknown) => {
+      reportedErrors.push({ scope, error, context });
+    },
+  } as unknown as IAgentRuntime;
+  return {
+    runtime,
+    memories,
+    tables,
+    worlds,
+    rooms,
+    entities,
+    broadcasts,
+    documents,
+    events,
+    reportedErrors,
+    settings,
+  };
 }
 /** A scripted pipeline the test drives directly. */
 export class ScriptedPipeline implements MeetingPipelineInstance {
-    updates: Array<(update: PipelineTranscriptUpdate) => void> = [];
-    pushed: Array<{
-        speakerKey: string;
-        samples: Float32Array;
-    }> = [];
-    named = new Map<string, string>();
-    flushed: string[] = [];
-    joined: MeetingParticipant[] = [];
-    left: Array<{
-        participantId: string;
-        atMs: number;
-    }> = [];
-    finalSegments: TranscriptSegment[] = [];
-    finalizeError: Error | null = null;
-    audioWav: Buffer | null = null;
-    finalized = false;
-    pushSpeakerAudio(speakerKey: string, samples: Float32Array): void {
-        this.pushed.push({ speakerKey, samples });
-    }
-    setSpeakerName(speakerKey: string, displayName: string): void {
-        this.named.set(speakerKey, displayName);
-    }
-    flushSpeaker(speakerKey: string): void {
-        this.flushed.push(speakerKey);
-    }
-    participantJoined(participant: MeetingParticipant): void {
-        this.joined.push(participant);
-    }
-    participantLeft(participantId: string, atMs: number): void {
-        this.left.push({ participantId, atMs });
-    }
-    onUpdate(listener: (update: PipelineTranscriptUpdate) => void): () => void {
-        this.updates.push(listener);
-        return () => {
-            this.updates = this.updates.filter((l) => l !== listener);
-        };
-    }
-    emit(update: PipelineTranscriptUpdate): void {
-        for (const listener of this.updates)
-            listener(update);
-    }
-    async finalize(): Promise<TranscriptSegment[]> {
-        this.finalized = true;
-        if (this.finalizeError)
-            throw this.finalizeError;
-        return this.finalSegments;
-    }
-    speakerNames(): string[] {
-        return [...new Set(this.named.values())];
-    }
-    sessionAudioWav(): Buffer | null {
-        return this.audioWav;
-    }
+  updates: Array<(update: PipelineTranscriptUpdate) => void> = [];
+  pushed: Array<{
+    speakerKey: string;
+    samples: Float32Array;
+  }> = [];
+  named = new Map<string, string>();
+  flushed: string[] = [];
+  joined: MeetingParticipant[] = [];
+  left: Array<{
+    participantId: string;
+    atMs: number;
+  }> = [];
+  finalSegments: TranscriptSegment[] = [];
+  finalizeError: Error | null = null;
+  audioWav: Buffer | null = null;
+  finalized = false;
+  pushSpeakerAudio(speakerKey: string, samples: Float32Array): void {
+    this.pushed.push({ speakerKey, samples });
+  }
+  setSpeakerName(speakerKey: string, displayName: string): void {
+    this.named.set(speakerKey, displayName);
+  }
+  flushSpeaker(speakerKey: string): void {
+    this.flushed.push(speakerKey);
+  }
+  participantJoined(participant: MeetingParticipant): void {
+    this.joined.push(participant);
+  }
+  participantLeft(participantId: string, atMs: number): void {
+    this.left.push({ participantId, atMs });
+  }
+  onUpdate(listener: (update: PipelineTranscriptUpdate) => void): () => void {
+    this.updates.push(listener);
+    return () => {
+      this.updates = this.updates.filter((l) => l !== listener);
+    };
+  }
+  emit(update: PipelineTranscriptUpdate): void {
+    for (const listener of this.updates) listener(update);
+  }
+  async finalize(): Promise<TranscriptSegment[]> {
+    this.finalized = true;
+    if (this.finalizeError) throw this.finalizeError;
+    return this.finalSegments;
+  }
+  speakerNames(): string[] {
+    return [...new Set(this.named.values())];
+  }
+  sessionAudioWav(): Buffer | null {
+    return this.audioWav;
+  }
 }
 export class FakeMeetingBillingSession implements MeetingBillingSession {
-    readonly state: MeetingBillingState = {
-        status: "reserved",
-        reservedMs: 0,
-        consumedMs: 0,
-        capMs: 60000,
-        reservationIds: [] as string[],
-    };
-    initialReserveError: Error | null = null;
-    reconcileError: Error | null = null;
-    failAfterConsumedMs: number | null = null;
-    reserveInitialCalls = 0;
-    reconcileCalls: MeetingEndReason[] = [];
-    constructor(options?: {
-        capMs?: number;
-        reservedMs?: number;
-    }) {
-        this.state.capMs = options?.capMs ?? this.state.capMs;
-        this.state.reservedMs = options?.reservedMs ?? 0;
+  readonly state: MeetingBillingState = {
+    status: "reserved",
+    reservedMs: 0,
+    consumedMs: 0,
+    capMs: 60000,
+    reservationIds: [] as string[],
+  };
+  initialReserveError: Error | null = null;
+  reconcileError: Error | null = null;
+  failAfterConsumedMs: number | null = null;
+  reserveInitialCalls = 0;
+  reconcileCalls: MeetingEndReason[] = [];
+  constructor(options?: {
+    capMs?: number;
+    reservedMs?: number;
+  }) {
+    this.state.capMs = options?.capMs ?? this.state.capMs;
+    this.state.reservedMs = options?.reservedMs ?? 0;
+  }
+  async reserveInitial(): Promise<void> {
+    this.reserveInitialCalls += 1;
+    if (this.initialReserveError) throw this.initialReserveError;
+    if (this.state.reservedMs === 0) this.state.reservedMs = 15000;
+    this.state.reservationIds?.push(`reserve-${this.reserveInitialCalls}`);
+  }
+  async ensureTranscriptionWindow(durationMs: number): Promise<void> {
+    const nextConsumed = this.state.consumedMs + durationMs;
+    if (
+      this.failAfterConsumedMs !== null &&
+      nextConsumed > this.failAfterConsumedMs
+    ) {
+      this.state.status = "spend_cap_reached";
+      this.state.error = "insufficient credits for meeting transcription";
+      throw new MeetingBillingError(
+        "insufficient_credits",
+        "insufficient credits for meeting transcription",
+      );
     }
-    async reserveInitial(): Promise<void> {
-        this.reserveInitialCalls += 1;
-        if (this.initialReserveError)
-            throw this.initialReserveError;
-        if (this.state.reservedMs === 0)
-            this.state.reservedMs = 15000;
-        this.state.reservationIds?.push(`reserve-${this.reserveInitialCalls}`);
+    this.state.consumedMs = nextConsumed;
+    while (this.state.reservedMs < nextConsumed) {
+      this.state.reservedMs += 15000;
+      this.state.reservationIds?.push(
+        `reserve-${this.state.reservationIds.length + 1}`,
+      );
     }
-    async ensureTranscriptionWindow(durationMs: number): Promise<void> {
-        const nextConsumed = this.state.consumedMs + durationMs;
-        if (this.failAfterConsumedMs !== null &&
-            nextConsumed > this.failAfterConsumedMs) {
-            this.state.status = "spend_cap_reached";
-            this.state.error = "insufficient credits for meeting transcription";
-            throw new MeetingBillingError("insufficient_credits", "insufficient credits for meeting transcription");
-        }
-        this.state.consumedMs = nextConsumed;
-        while (this.state.reservedMs < nextConsumed) {
-            this.state.reservedMs += 15000;
-            this.state.reservationIds?.push(`reserve-${this.state.reservationIds.length + 1}`);
-        }
-    }
-    async reconcile(reason: MeetingEndReason) {
-        this.reconcileCalls.push(reason);
-        if (this.reconcileError)
-            throw this.reconcileError;
-        this.state.status = "reconciled";
-        return this.state;
-    }
+  }
+  async reconcile(reason: MeetingEndReason) {
+    this.reconcileCalls.push(reason);
+    if (this.reconcileError) throw this.reconcileError;
+    this.state.status = "reconciled";
+    return this.state;
+  }
 }
 /** An adapter whose lifecycle the test resolves/queues explicitly. */
 export class ScriptedAdapter implements MeetingPlatformAdapter {
-    session: MeetingBotSession | null = null;
-    private resolveRun!: (reason: MeetingEndReason) => void;
-    private rejectRun!: (err: Error) => void;
-    readonly started: Promise<MeetingBotSession>;
-    private markStarted!: (session: MeetingBotSession) => void;
-    constructor(readonly platform: MeetingPlatform) {
-        this.started = new Promise((resolve) => {
-            this.markStarted = resolve;
-        });
-    }
-    run(session: MeetingBotSession): Promise<MeetingEndReason> {
-        this.session = session;
-        this.markStarted(session);
-        return new Promise((resolve, reject) => {
-            this.resolveRun = resolve;
-            this.rejectRun = reject;
-        });
-    }
-    report(status: MeetingSessionStatus): void {
-        this.session?.reportStatus(status);
-    }
-    end(reason: MeetingEndReason): void {
-        this.resolveRun(reason);
-    }
-    fail(err: Error): void {
-        this.rejectRun(err);
-    }
+  session: MeetingBotSession | null = null;
+  private resolveRun!: (reason: MeetingEndReason) => void;
+  private rejectRun!: (err: Error) => void;
+  readonly started: Promise<MeetingBotSession>;
+  private markStarted!: (session: MeetingBotSession) => void;
+  constructor(readonly platform: MeetingPlatform) {
+    this.started = new Promise((resolve) => {
+      this.markStarted = resolve;
+    });
+  }
+  run(session: MeetingBotSession): Promise<MeetingEndReason> {
+    this.session = session;
+    this.markStarted(session);
+    return new Promise((resolve, reject) => {
+      this.resolveRun = resolve;
+      this.rejectRun = reject;
+    });
+  }
+  report(status: MeetingSessionStatus): void {
+    this.session?.reportStatus(status);
+  }
+  end(reason: MeetingEndReason): void {
+    this.resolveRun(reason);
+  }
+  fail(err: Error): void {
+    this.rejectRun(err);
+  }
 }
-export function segment(id: string, speaker: string, text: string, startMs: number, endMs: number): TranscriptSegment {
-    return { id, speakerLabel: speaker, startMs, endMs, text, words: [] };
+export function segment(
+  id: string,
+  speaker: string,
+  text: string,
+  startMs: number,
+  endMs: number,
+): TranscriptSegment {
+  return { id, speakerLabel: speaker, startMs, endMs, text, words: [] };
 }
 // ---------------------------------------------------------------------------
 // Mock injection seam for the scenario-runner (browser-free, ASR-free E2E).
@@ -294,51 +310,50 @@ export function segment(id: string, speaker: string, text: string, startMs: numb
 // ---------------------------------------------------------------------------
 /** A scripted speaker turn the mock pipeline emits as a confirmed segment. */
 export interface MockSpeakerTurn {
-    speakerKey: string;
-    displayName: string;
-    text: string;
-    startMs: number;
-    endMs: number;
+  speakerKey: string;
+  displayName: string;
+  text: string;
+  startMs: number;
+  endMs: number;
 }
 /** Behavior of one mocked meeting, keyed by canonical native meeting id. */
 export interface MockMeetingScript {
-    /** Exact production adapter expected to receive this meeting id. */
-    platform: MeetingPlatform;
-    /**
-     * Keep the session `active` until the user requests a leave (abort) — like a
-     * real bot sitting in a call. When false, the bot auto-ends after emitting so
-     * the transcript finalizes to `ready` within the scenario.
-     */
-    holdUntilLeave: boolean;
-    turns: MockSpeakerTurn[];
-    /** Exact adapter-call cardinality. Defaults to one. */
-    times?: number;
+  /** Exact production adapter expected to receive this meeting id. */
+  platform: MeetingPlatform;
+  /**
+   * Keep the session `active` until the user requests a leave (abort) — like a
+   * real bot sitting in a call. When false, the bot auto-ends after emitting so
+   * the transcript finalizes to `ready` within the scenario.
+   */
+  holdUntilLeave: boolean;
+  turns: MockSpeakerTurn[];
+  /** Exact adapter-call cardinality. Defaults to one. */
+  times?: number;
 }
 const MOCK_AUDIO_SAMPLE_RATE = 16000;
 /** Default 16 kHz mono PCM chunk a scripted turn "captures" (deterministic). */
 function fakePcm(ms: number): Float32Array {
-    const samples = Math.max(1, Math.round((MOCK_AUDIO_SAMPLE_RATE * ms) / 1000));
-    const pcm = new Float32Array(samples);
-    for (let i = 0; i < samples; i++)
-        pcm[i] = Math.sin(i / 8) * 0.1;
-    return pcm;
+  const samples = Math.max(1, Math.round((MOCK_AUDIO_SAMPLE_RATE * ms) / 1000));
+  const pcm = new Float32Array(samples);
+  for (let i = 0; i < samples; i++) pcm[i] = Math.sin(i / 8) * 0.1;
+  return pcm;
 }
 /** Two speakers, one exchange — the canned transcript most scenarios assert. */
 export const DEFAULT_MOCK_TURNS: MockSpeakerTurn[] = [
-    {
-        speakerKey: "s1",
-        displayName: "Alice",
-        text: "Hi everyone, thanks for joining the sync.",
-        startMs: 0,
-        endMs: 2500,
-    },
-    {
-        speakerKey: "s2",
-        displayName: "Bob",
-        text: "Happy to be here — let us review the roadmap.",
-        startMs: 2600,
-        endMs: 5400,
-    },
+  {
+    speakerKey: "s1",
+    displayName: "Alice",
+    text: "Hi everyone, thanks for joining the sync.",
+    startMs: 0,
+    endMs: 2500,
+  },
+  {
+    speakerKey: "s2",
+    displayName: "Bob",
+    text: "Happy to be here — let us review the roadmap.",
+    startMs: 2600,
+    endMs: 5400,
+  },
 ];
 /**
  * Registry the mock adapter + pipeline read at run time, keyed by canonical
@@ -346,138 +361,158 @@ export const DEFAULT_MOCK_TURNS: MockSpeakerTurn[] = [
  * absent, wrong-platform, and over-consumed calls fail without a fallback.
  */
 export type MockMeetingExpectation = {
-    script: MockMeetingScript;
-    consumed: number;
+  script: MockMeetingScript;
+  consumed: number;
 };
 export type MockMeetingProviderState = {
-    scripts: Map<string, MockMeetingExpectation>;
-    calls: MockMeetingProviderCall[];
+  scripts: Map<string, MockMeetingExpectation>;
+  calls: MockMeetingProviderCall[];
 };
 export interface MockMeetingProviderCall {
-    sequence: number;
-    platform: MeetingPlatform;
-    nativeMeetingId: string;
-    matched: boolean;
-    reason?: string;
+  sequence: number;
+  platform: MeetingPlatform;
+  nativeMeetingId: string;
+  matched: boolean;
+  reason?: string;
 }
-const mockProviderStates = new WeakMap<IAgentRuntime, MockMeetingProviderState>();
+const mockProviderStates = new WeakMap<
+  IAgentRuntime,
+  MockMeetingProviderState
+>();
 function mockProviderState(runtime: IAgentRuntime): MockMeetingProviderState {
-    const existing = mockProviderStates.get(runtime);
-    if (existing)
-        return existing;
-    const created = {
-        scripts: new Map<string, MockMeetingExpectation>(),
-        calls: [],
-    };
-    mockProviderStates.set(runtime, created);
-    return created;
+  const existing = mockProviderStates.get(runtime);
+  if (existing) return existing;
+  const created = {
+    scripts: new Map<string, MockMeetingExpectation>(),
+    calls: [],
+  };
+  mockProviderStates.set(runtime, created);
+  return created;
 }
-export function setMockMeetingScript(runtime: IAgentRuntime, nativeMeetingId: string, script: MockMeetingScript): void {
-    const state = mockProviderState(runtime);
-    const times = script.times ?? 1;
-    if (!Number.isInteger(times) || times <= 0) {
-        throw new Error(`[MockMeetingAdapter] script ${nativeMeetingId} requires a positive integer times`);
-    }
-    if (state.scripts.has(nativeMeetingId)) {
-        throw new Error(`[MockMeetingAdapter] duplicate script for meeting ${nativeMeetingId}`);
-    }
-    state.scripts.set(nativeMeetingId, {
-        script: { ...script, times },
-        consumed: 0,
-    });
+export function setMockMeetingScript(
+  runtime: IAgentRuntime,
+  nativeMeetingId: string,
+  script: MockMeetingScript,
+): void {
+  const state = mockProviderState(runtime);
+  const times = script.times ?? 1;
+  if (!Number.isInteger(times) || times <= 0) {
+    throw new Error(
+      `[MockMeetingAdapter] script ${nativeMeetingId} requires a positive integer times`,
+    );
+  }
+  if (state.scripts.has(nativeMeetingId)) {
+    throw new Error(
+      `[MockMeetingAdapter] duplicate script for meeting ${nativeMeetingId}`,
+    );
+  }
+  state.scripts.set(nativeMeetingId, {
+    script: { ...script, times },
+    consumed: 0,
+  });
 }
 export function clearMockMeetingScripts(runtime: IAgentRuntime): void {
-    const state = mockProviderState(runtime);
-    state.scripts.clear();
-    state.calls.length = 0;
+  const state = mockProviderState(runtime);
+  state.scripts.clear();
+  state.calls.length = 0;
 }
 /** Drop the runtime-owned state when its companion plugin is disposed. */
 export function disposeMockMeetingProviderState(runtime: IAgentRuntime): void {
-    mockProviderStates.delete(runtime);
+  mockProviderStates.delete(runtime);
 }
-function scriptFor(state: MockMeetingProviderState, platform: MeetingPlatform, nativeMeetingId: string): MockMeetingScript {
-    const expectation = state.scripts.get(nativeMeetingId);
-    if (!expectation) {
-        const reason = `unexpected ${platform} meeting ${nativeMeetingId}; no script registered`;
-        state.calls.push({
-            sequence: state.calls.length + 1,
-            platform,
-            nativeMeetingId,
-            matched: false,
-            reason,
-        });
-        throw new Error(`[MockMeetingAdapter] ${reason}`);
-    }
-    const max = expectation.script.times ?? 1;
-    if (expectation.script.platform !== platform) {
-        const reason = `meeting ${nativeMeetingId} expected ${expectation.script.platform}, received ${platform}`;
-        state.calls.push({
-            sequence: state.calls.length + 1,
-            platform,
-            nativeMeetingId,
-            matched: false,
-            reason,
-        });
-        throw new Error(`[MockMeetingAdapter] ${reason}`);
-    }
-    if (expectation.consumed >= max) {
-        const reason = `meeting ${nativeMeetingId} over-consumed (${expectation.consumed + 1}/${max})`;
-        state.calls.push({
-            sequence: state.calls.length + 1,
-            platform,
-            nativeMeetingId,
-            matched: false,
-            reason,
-        });
-        throw new Error(`[MockMeetingAdapter] ${reason}`);
-    }
-    expectation.consumed += 1;
+function scriptFor(
+  state: MockMeetingProviderState,
+  platform: MeetingPlatform,
+  nativeMeetingId: string,
+): MockMeetingScript {
+  const expectation = state.scripts.get(nativeMeetingId);
+  if (!expectation) {
+    const reason = `unexpected ${platform} meeting ${nativeMeetingId}; no script registered`;
     state.calls.push({
-        sequence: state.calls.length + 1,
-        platform,
-        nativeMeetingId,
-        matched: true,
+      sequence: state.calls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
     });
-    return expectation.script;
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  const max = expectation.script.times ?? 1;
+  if (expectation.script.platform !== platform) {
+    const reason = `meeting ${nativeMeetingId} expected ${expectation.script.platform}, received ${platform}`;
+    state.calls.push({
+      sequence: state.calls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
+    });
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  if (expectation.consumed >= max) {
+    const reason = `meeting ${nativeMeetingId} over-consumed (${expectation.consumed + 1}/${max})`;
+    state.calls.push({
+      sequence: state.calls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
+    });
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  expectation.consumed += 1;
+  state.calls.push({
+    sequence: state.calls.length + 1,
+    platform,
+    nativeMeetingId,
+    matched: true,
+  });
+  return expectation.script;
 }
 /** Serializable exact-call ledger emitted into scenario action evidence. */
 export function getMockMeetingProviderLedger(runtime: IAgentRuntime): {
-    expectations: Array<{
-        nativeMeetingId: string;
-        platform: MeetingPlatform;
-        consumed: number;
-        expected: number;
-    }>;
-    calls: MockMeetingProviderCall[];
-    problems: string[];
+  expectations: Array<{
+    nativeMeetingId: string;
+    platform: MeetingPlatform;
+    consumed: number;
+    expected: number;
+  }>;
+  calls: MockMeetingProviderCall[];
+  problems: string[];
 } {
-    const state = mockProviderState(runtime);
-    const expectations = [...state.scripts.entries()].map(([nativeMeetingId, expectation]) => ({
-        nativeMeetingId,
-        platform: expectation.script.platform,
-        consumed: expectation.consumed,
-        expected: expectation.script.times ?? 1,
-    }));
-    const problems = expectations
-        .filter((expectation) => expectation.consumed !== expectation.expected)
-        .map((expectation) => `${expectation.platform}:${expectation.nativeMeetingId} consumed ${expectation.consumed}/${expectation.expected}`);
-    for (const call of state.calls) {
-        if (!call.matched)
-            problems.push(call.reason ?? "unexpected provider call");
-    }
-    return {
-        expectations,
-        calls: state.calls.map((call) => ({ ...call })),
-        problems,
-    };
+  const state = mockProviderState(runtime);
+  const expectations = [...state.scripts.entries()].map(
+    ([nativeMeetingId, expectation]) => ({
+      nativeMeetingId,
+      platform: expectation.script.platform,
+      consumed: expectation.consumed,
+      expected: expectation.script.times ?? 1,
+    }),
+  );
+  const problems = expectations
+    .filter((expectation) => expectation.consumed !== expectation.expected)
+    .map(
+      (expectation) =>
+        `${expectation.platform}:${expectation.nativeMeetingId} consumed ${expectation.consumed}/${expectation.expected}`,
+    );
+  for (const call of state.calls) {
+    if (!call.matched) problems.push(call.reason ?? "unexpected provider call");
+  }
+  return {
+    expectations,
+    calls: state.calls.map((call) => ({ ...call })),
+    problems,
+  };
 }
 /** Assert exact completeness and then erase this runtime's synthetic provider state. */
-export function finalizeMockMeetingProviderLedger(runtime: IAgentRuntime): string | undefined {
-    const ledger = getMockMeetingProviderLedger(runtime);
-    clearMockMeetingScripts(runtime);
-    return ledger.problems.length === 0
-        ? undefined
-        : `strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}; ledger=${JSON.stringify(ledger)}`;
+export function finalizeMockMeetingProviderLedger(
+  runtime: IAgentRuntime,
+): string | undefined {
+  const ledger = getMockMeetingProviderLedger(runtime);
+  clearMockMeetingScripts(runtime);
+  return ledger.problems.length === 0
+    ? undefined
+    : `strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}; ledger=${JSON.stringify(ledger)}`;
 }
 /**
  * Mock transcription pipeline: buffers nothing, emits the scripted turns as
@@ -485,52 +520,52 @@ export function finalizeMockMeetingProviderLedger(runtime: IAgentRuntime): strin
  * them on finalize(). Fully deterministic; no ASR, no runtime model call.
  */
 export class MockTranscriptionPipeline implements MeetingPipelineInstance {
-    private listeners: Array<(u: PipelineTranscriptUpdate) => void> = [];
-    private readonly confirmed: TranscriptSegment[] = [];
-    private readonly names = new Set<string>();
-    pushSpeakerAudio(): void { }
-    setSpeakerName(_speakerKey: string, displayName: string): void {
-        this.names.add(displayName);
+  private listeners: Array<(u: PipelineTranscriptUpdate) => void> = [];
+  private readonly confirmed: TranscriptSegment[] = [];
+  private readonly names = new Set<string>();
+  pushSpeakerAudio(): void {}
+  setSpeakerName(_speakerKey: string, displayName: string): void {
+    this.names.add(displayName);
+  }
+  flushSpeaker(): void {}
+  participantJoined(participant: MeetingParticipant): void {
+    this.names.add(participant.displayName);
+  }
+  participantLeft(): void {}
+  onUpdate(listener: (u: PipelineTranscriptUpdate) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener);
+    };
+  }
+  /**
+   * Publish one scripted line as a confirmed segment — the mock ASR "resolving"
+   * a flushed speaker buffer. Driven by the adapter, which owns the script.
+   */
+  emitTurn(turn: MockSpeakerTurn): void {
+    const seg: TranscriptSegment = {
+      id: `${turn.speakerKey}-${turn.startMs}`,
+      speakerLabel: turn.displayName,
+      startMs: turn.startMs,
+      endMs: turn.endMs,
+      text: turn.text,
+      words: [],
+    };
+    this.confirmed.push(seg);
+    this.names.add(turn.displayName);
+    for (const listener of this.listeners) {
+      listener({ confirmed: [seg], pending: [] });
     }
-    flushSpeaker(): void { }
-    participantJoined(participant: MeetingParticipant): void {
-        this.names.add(participant.displayName);
-    }
-    participantLeft(): void { }
-    onUpdate(listener: (u: PipelineTranscriptUpdate) => void): () => void {
-        this.listeners.push(listener);
-        return () => {
-            this.listeners = this.listeners.filter((l) => l !== listener);
-        };
-    }
-    /**
-     * Publish one scripted line as a confirmed segment — the mock ASR "resolving"
-     * a flushed speaker buffer. Driven by the adapter, which owns the script.
-     */
-    emitTurn(turn: MockSpeakerTurn): void {
-        const seg: TranscriptSegment = {
-            id: `${turn.speakerKey}-${turn.startMs}`,
-            speakerLabel: turn.displayName,
-            startMs: turn.startMs,
-            endMs: turn.endMs,
-            text: turn.text,
-            words: [],
-        };
-        this.confirmed.push(seg);
-        this.names.add(turn.displayName);
-        for (const listener of this.listeners) {
-            listener({ confirmed: [seg], pending: [] });
-        }
-    }
-    async finalize(): Promise<TranscriptSegment[]> {
-        return [...this.confirmed];
-    }
-    speakerNames(): string[] {
-        return [...this.names];
-    }
-    sessionAudioWav(): Buffer | null {
-        return null;
-    }
+  }
+  async finalize(): Promise<TranscriptSegment[]> {
+    return [...this.confirmed];
+  }
+  speakerNames(): string[] {
+    return [...this.names];
+  }
+  sessionAudioWav(): Buffer | null {
+    return null;
+  }
 }
 /**
  * Mock platform adapter: reports joining → active, drives the sink with the
@@ -540,40 +575,50 @@ export class MockTranscriptionPipeline implements MeetingPipelineInstance {
  * launches a browser.
  */
 export class MockMeetingAdapter implements MeetingPlatformAdapter {
-    constructor(readonly platform: MeetingPlatform, private readonly nextPipeline: () => MockTranscriptionPipeline, private readonly providerState: MockMeetingProviderState) { }
-    async run(session: MeetingBotSession): Promise<MeetingEndReason> {
-        const script = scriptFor(this.providerState, this.platform, session.config.nativeMeetingId);
-        // The pipeline the service just created for this same session (FIFO handoff).
-        const pipeline = this.nextPipeline();
-        session.reportStatus("joining");
-        session.reportStatus("active");
-        const speakers = new Set<string>();
-        for (const turn of script.turns) {
-            if (!speakers.has(turn.speakerKey)) {
-                speakers.add(turn.speakerKey);
-                session.sink.participantJoined({
-                    id: turn.speakerKey,
-                    displayName: turn.displayName,
-                    joinedAtMs: turn.startMs,
-                });
-            }
-            session.sink.setSpeakerName(turn.speakerKey, turn.displayName);
-            session.sink.pushSpeakerAudio(turn.speakerKey, fakePcm(turn.endMs - turn.startMs));
-            session.sink.flushSpeaker(turn.speakerKey);
-            // The mock ASR "resolves" the flushed line into a confirmed segment.
-            pipeline.emitTurn(turn);
-        }
-        if (!script.holdUntilLeave) {
-            return "normal_completion";
-        }
-        // Sit in the meeting until the user asks the bot to leave (abort signal).
-        await new Promise<void>((resolve) => {
-            if (session.signal.aborted)
-                return resolve();
-            session.signal.addEventListener("abort", () => resolve(), { once: true });
+  constructor(
+    readonly platform: MeetingPlatform,
+    private readonly nextPipeline: () => MockTranscriptionPipeline,
+    private readonly providerState: MockMeetingProviderState,
+  ) {}
+  async run(session: MeetingBotSession): Promise<MeetingEndReason> {
+    const script = scriptFor(
+      this.providerState,
+      this.platform,
+      session.config.nativeMeetingId,
+    );
+    // The pipeline the service just created for this same session (FIFO handoff).
+    const pipeline = this.nextPipeline();
+    session.reportStatus("joining");
+    session.reportStatus("active");
+    const speakers = new Set<string>();
+    for (const turn of script.turns) {
+      if (!speakers.has(turn.speakerKey)) {
+        speakers.add(turn.speakerKey);
+        session.sink.participantJoined({
+          id: turn.speakerKey,
+          displayName: turn.displayName,
+          joinedAtMs: turn.startMs,
         });
-        return "requested_stop";
+      }
+      session.sink.setSpeakerName(turn.speakerKey, turn.displayName);
+      session.sink.pushSpeakerAudio(
+        turn.speakerKey,
+        fakePcm(turn.endMs - turn.startMs),
+      );
+      session.sink.flushSpeaker(turn.speakerKey);
+      // The mock ASR "resolves" the flushed line into a confirmed segment.
+      pipeline.emitTurn(turn);
     }
+    if (!script.holdUntilLeave) {
+      return "normal_completion";
+    }
+    // Sit in the meeting until the user asks the bot to leave (abort signal).
+    await new Promise<void>((resolve) => {
+      if (session.signal.aborted) return resolve();
+      session.signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    return "requested_stop";
+  }
 }
 /**
  * Build the mock MeetingServiceDependencies. `createPipeline` enqueues each new
@@ -582,32 +627,36 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
  * that lets the adapter drive scripted turns onto exactly that session's
  * pipeline without service.ts changes.
  */
-export function mockMeetingDependencies(runtime: IAgentRuntime): MeetingServiceDependencies {
-    const pipelineQueue: MockTranscriptionPipeline[] = [];
-    const providerState = mockProviderState(runtime);
-    const nextPipeline = (): MockTranscriptionPipeline => {
-        const pipeline = pipelineQueue.shift();
-        if (!pipeline) {
-            throw new Error("[MockMeetingAdapter] no pipeline queued for this session");
-        }
-        return pipeline;
-    };
-    const adapters = new Map<MeetingPlatform, MeetingPlatformAdapter>([
-        [
-            "google_meet",
-            new MockMeetingAdapter("google_meet", nextPipeline, providerState),
-        ],
-        ["teams", new MockMeetingAdapter("teams", nextPipeline, providerState)],
-        ["zoom", new MockMeetingAdapter("zoom", nextPipeline, providerState)],
-    ]);
-    return {
-        adapters,
-        createPipeline: (_options: MeetingPipelineOptions) => {
-            const pipeline = new MockTranscriptionPipeline();
-            pipelineQueue.push(pipeline);
-            return pipeline;
-        },
-    };
+export function mockMeetingDependencies(
+  runtime: IAgentRuntime,
+): MeetingServiceDependencies {
+  const pipelineQueue: MockTranscriptionPipeline[] = [];
+  const providerState = mockProviderState(runtime);
+  const nextPipeline = (): MockTranscriptionPipeline => {
+    const pipeline = pipelineQueue.shift();
+    if (!pipeline) {
+      throw new Error(
+        "[MockMeetingAdapter] no pipeline queued for this session",
+      );
+    }
+    return pipeline;
+  };
+  const adapters = new Map<MeetingPlatform, MeetingPlatformAdapter>([
+    [
+      "google_meet",
+      new MockMeetingAdapter("google_meet", nextPipeline, providerState),
+    ],
+    ["teams", new MockMeetingAdapter("teams", nextPipeline, providerState)],
+    ["zoom", new MockMeetingAdapter("zoom", nextPipeline, providerState)],
+  ]);
+  return {
+    adapters,
+    createPipeline: (_options: MeetingPipelineOptions) => {
+      const pipeline = new MockTranscriptionPipeline();
+      pipelineQueue.push(pipeline);
+      return pipeline;
+    },
+  };
 }
 /**
  * Overwrite MeetingService.dependencyFactory with the mock. Call AFTER the real
@@ -615,23 +664,25 @@ export function mockMeetingDependencies(runtime: IAgentRuntime): MeetingServiceD
  * ran and the ESM module is cached) and BEFORE the meetings service starts.
  */
 export function installMockMeetingDependencies(runtime: IAgentRuntime): void {
-    MeetingService.setRuntimeDependencyFactory(runtime, mockMeetingDependencies);
+  MeetingService.setRuntimeDependencyFactory(runtime, mockMeetingDependencies);
 }
 export const ASSERT_MEETING_MOCK_LEDGER = "ASSERT_MEETING_MOCK_LEDGER";
 const assertMeetingMockLedgerAction: Action = {
-    name: ASSERT_MEETING_MOCK_LEDGER,
-    description: "Snapshot the runtime-scoped meetings provider ledger for reviewer evidence.",
-    validate: async () => true,
-    handler: async (runtime) => {
-        const ledger = getMockMeetingProviderLedger(runtime);
-        return {
-            success: ledger.problems.length === 0,
-            text: ledger.problems.length === 0
-                ? `Strict meetings provider ledger matched ${ledger.calls.length} call(s).`
-                : `Strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}`,
-            data: ledger,
-        };
-    },
+  name: ASSERT_MEETING_MOCK_LEDGER,
+  description:
+    "Snapshot the runtime-scoped meetings provider ledger for reviewer evidence.",
+  validate: async () => true,
+  handler: async (runtime) => {
+    const ledger = getMockMeetingProviderLedger(runtime);
+    return {
+      success: ledger.problems.length === 0,
+      text:
+        ledger.problems.length === 0
+          ? `Strict meetings provider ledger matched ${ledger.calls.length} call(s).`
+          : `Strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}`,
+      data: ledger,
+    };
+  },
 };
 /**
  * A tiny companion plugin whose only job is to install the mock dependency
@@ -639,52 +690,57 @@ const assertMeetingMockLedgerAction: Action = {
  * plugins via the plugin array. Its `init` runs before service `start`.
  */
 export const mockMeetingsCompanionPlugin: Plugin = {
-    name: "plugin-meetings/test-support",
-    description: "Installs the mock MeetingService dependency factory for tests",
-    actions: [assertMeetingMockLedgerAction],
-    init: async (_config, runtime) => {
-        installMockMeetingDependencies(runtime);
-    },
-    dispose: async (runtime) => {
-        disposeMockMeetingProviderState(runtime);
-        MeetingService.clearRuntimeDependencyFactory(runtime);
-    },
+  name: "plugin-meetings/test-support",
+  description: "Installs the mock MeetingService dependency factory for tests",
+  actions: [assertMeetingMockLedgerAction],
+  init: async (_config, runtime) => {
+    installMockMeetingDependencies(runtime);
+  },
+  dispose: async (runtime) => {
+    disposeMockMeetingProviderState(runtime);
+    MeetingService.clearRuntimeDependencyFactory(runtime);
+  },
 };
 /** One-line factory: pipeline + deps for a MeetingService under test. */
-export function scriptedDeps(adapters: MeetingPlatformAdapter[], billingSessions: FakeMeetingBillingSession[] = []): {
-    deps: {
-        adapters: Map<MeetingPlatform, MeetingPlatformAdapter>;
-        createPipeline: (options: MeetingPipelineOptions) => MeetingPipelineInstance;
-        createBillingSession?: MeetingServiceDependencies["createBillingSession"];
-        importZoomCloudMeeting?: MeetingServiceDependencies["importZoomCloudMeeting"];
-    };
-    pipelines: ScriptedPipeline[];
-    pipelineOptions: MeetingPipelineOptions[];
+export function scriptedDeps(
+  adapters: MeetingPlatformAdapter[],
+  billingSessions: FakeMeetingBillingSession[] = [],
+): {
+  deps: {
+    adapters: Map<MeetingPlatform, MeetingPlatformAdapter>;
+    createPipeline: (
+      options: MeetingPipelineOptions,
+    ) => MeetingPipelineInstance;
+    createBillingSession?: MeetingServiceDependencies["createBillingSession"];
+    importZoomCloudMeeting?: MeetingServiceDependencies["importZoomCloudMeeting"];
+  };
+  pipelines: ScriptedPipeline[];
+  pipelineOptions: MeetingPipelineOptions[];
 } {
-    const pipelines: ScriptedPipeline[] = [];
-    const pipelineOptions: MeetingPipelineOptions[] = [];
-    return {
-        deps: {
-            adapters: new Map(adapters.map((a) => [a.platform, a])),
-            createPipeline: (options) => {
-                pipelineOptions.push(options);
-                const pipeline = new ScriptedPipeline();
-                pipelines.push(pipeline);
-                return pipeline;
+  const pipelines: ScriptedPipeline[] = [];
+  const pipelineOptions: MeetingPipelineOptions[] = [];
+  return {
+    deps: {
+      adapters: new Map(adapters.map((a) => [a.platform, a])),
+      createPipeline: (options) => {
+        pipelineOptions.push(options);
+        const pipeline = new ScriptedPipeline();
+        pipelines.push(pipeline);
+        return pipeline;
+      },
+      ...(billingSessions.length > 0
+        ? {
+            createBillingSession: () => {
+              const billing = billingSessions.shift();
+              if (!billing) {
+                throw new Error("[scriptedDeps] no billing session queued");
+              }
+              return billing;
             },
-            ...(billingSessions.length > 0
-                ? {
-                    createBillingSession: () => {
-                        const billing = billingSessions.shift();
-                        if (!billing) {
-                            throw new Error("[scriptedDeps] no billing session queued");
-                        }
-                        return billing;
-                    },
-                }
-                : {}),
-        },
-        pipelines,
-        pipelineOptions,
-    };
+          }
+        : {}),
+    },
+    pipelines,
+    pipelineOptions,
+  };
 }

@@ -2,7 +2,7 @@
 # Multi-tenant Discord gateway for Eliza Cloud
 #
 # BUILD CONTEXT IS THE REPOSITORY ROOT, not this directory. The service depends
-# on the `@elizaos/cloud-services-common` and `@elizaos/shared` workspace packages, and `workspace:*`
+# on the `@elizaos/cloud-services-common` and `@elizaos/core` workspace packages, and `workspace:*`
 # cannot resolve from a context that contains only this package — which is why
 # every build since that dependency landed failed and the deployed image stayed
 # frozen. Matching the gateway-webhook pattern (#17841), the deps stage writes a

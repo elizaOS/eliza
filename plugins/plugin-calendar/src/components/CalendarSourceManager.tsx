@@ -9,7 +9,10 @@
  * never gains a source the owner cannot also remove from the same surface.
  */
 
-import { type LifeOpsCalendarSourceHealth, type LifeOpsIcsCalendarSource } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsIcsCalendarSource,
+} from "@elizaos/core/contracts/calendar";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import {

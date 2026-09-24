@@ -26,10 +26,7 @@ function utf8ByteLength(value: string): number {
   return UTF8_ENCODER.encode(value).byteLength;
 }
 
-function addSerializedBytes(
-  bytes: number,
-  acc: SchemaBudgetAccumulator,
-): string | undefined {
+function addSerializedBytes(bytes: number, acc: SchemaBudgetAccumulator): string | undefined {
   acc.serializedBytes += bytes;
   if (acc.serializedBytes > MAX_MCP_SCHEMA_JSON_BYTES) {
     return `MCP JSON schema serialized size exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`;
@@ -37,10 +34,7 @@ function addSerializedBytes(
   return undefined;
 }
 
-function addSerializedString(
-  value: string,
-  acc: SchemaBudgetAccumulator,
-): string | undefined {
+function addSerializedString(value: string, acc: SchemaBudgetAccumulator): string | undefined {
   const remaining = MAX_MCP_SCHEMA_JSON_BYTES - acc.serializedBytes;
   // UTF-8 uses at least one byte per UTF-16 code unit. Reject giant strings
   // before UTF-8 encoding or JSON escaping has to scan the whole value.
@@ -67,7 +61,7 @@ function hasUnsafeToJsonHook(value: object): boolean {
 function walkSchema(
   node: unknown,
   depth: number,
-  acc: SchemaBudgetAccumulator,
+  acc: SchemaBudgetAccumulator
 ): string | undefined {
   if (depth > MAX_MCP_SCHEMA_DEPTH) {
     return `MCP JSON schema nesting depth exceeds ${MAX_MCP_SCHEMA_DEPTH}`;
@@ -88,8 +82,7 @@ function walkSchema(
     return addSerializedBytes(node ? 4 : 5, acc);
   }
   if (typeof node === "number") {
-    if (!Number.isFinite(node))
-      return "MCP JSON schema contains a non-JSON number";
+    if (!Number.isFinite(node)) return "MCP JSON schema contains a non-JSON number";
     return addSerializedBytes(utf8ByteLength(JSON.stringify(node)), acc);
   }
   if (typeof node !== "object") {
@@ -143,8 +136,7 @@ function walkSchema(
       if (!Object.hasOwn(node, key)) continue;
       const descriptor = Object.getOwnPropertyDescriptor(node, key);
       if (!descriptor?.enumerable) continue;
-      if (!("value" in descriptor))
-        return "MCP JSON schema contains an accessor";
+      if (!("value" in descriptor)) return "MCP JSON schema contains an accessor";
       if (entries > 0) {
         error = addSerializedBytes(1, acc);
         if (error) return error;
@@ -162,9 +154,7 @@ function walkSchema(
   return undefined;
 }
 
-export function getMcpJsonSchemaBudgetError(
-  schema: unknown,
-): string | undefined {
+export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
   try {
     // Measure JSON tokens during the bounded descriptor walk. This keeps deep,
     // cyclic, broad, sparse, giant-string, and accessor-backed graphs from

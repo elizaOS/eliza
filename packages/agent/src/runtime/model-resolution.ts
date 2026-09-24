@@ -5,7 +5,11 @@
  * and the plugin package that provider maps to. Returns undefined when nothing is
  * explicitly configured, so elizaOS falls back to whichever model plugin loads.
  */
-import { getFirstRunProviderOption, normalizeFirstRunProviderId, resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
+import {
+  getFirstRunProviderOption,
+  normalizeFirstRunProviderId,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/core/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
 
 function trimEnvString(value: unknown): string | undefined {

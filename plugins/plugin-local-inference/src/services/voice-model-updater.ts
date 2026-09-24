@@ -39,9 +39,17 @@
 
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { compareVoiceModelSemver, VOICE_MODEL_VERSIONS, type VoiceModelId, type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { type Ed25519PublicKey, verifyManifestSignatureText } from "@elizaos/plugin-native-inference/model-catalog/manifest-signature";
-import { type NetworkPolicyDecision } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import {
+	type Ed25519PublicKey,
+	verifyManifestSignatureText,
+} from "@elizaos/plugin-native-inference/model-catalog/manifest-signature";
+import type { NetworkPolicyDecision } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import {
+	compareVoiceModelSemver,
+	VOICE_MODEL_VERSIONS,
+	type VoiceModelId,
+	type VoiceModelVersion,
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { hashFile } from "./verify";
 
 const DEFAULT_CHECK_INTERVAL_MS = 14_400_000; // 4 hours

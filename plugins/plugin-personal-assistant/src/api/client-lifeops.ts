@@ -9,12 +9,90 @@
  * The `@elizaos/plugin-personal-assistant/widgets` entry point imports this transitively.
  */
 
+import {
+  type CaptureLifeOpsActivitySignalRequest,
+  type CaptureLifeOpsManualOverrideRequest,
+  type CompleteLifeOpsBrowserSessionRequest,
+  type CompleteLifeOpsOccurrenceRequest,
+  type ConfirmLifeOpsBrowserSessionRequest,
+  type CreateLifeOpsBrowserSessionRequest,
+  type CreateLifeOpsDefinitionRequest,
+  type CreateLifeOpsGmailReplyDraftRequest,
+  type CreateLifeOpsGoalRequest,
+  type DisconnectLifeOpsGoogleConnectorRequest,
+  type GetLifeOpsGmailRecommendationsRequest,
+  type GetLifeOpsGmailSearchRequest,
+  type GetLifeOpsGmailSpamReviewRequest,
+  type GetLifeOpsGmailTriageRequest,
+  type GetLifeOpsGmailUnrespondedRequest,
+  type GetLifeOpsHealthSummaryRequest,
+  type GetLifeOpsIMessageMessagesRequest,
+  type IngestLifeOpsGmailEventRequest,
+  type LifeOpsActivitySignal,
+  type LifeOpsBrowserSession,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsDefinitionRecord,
+  type LifeOpsGmailEventIngestResult,
+  type LifeOpsGmailImportedDataPurgeReceipt,
+  type LifeOpsGmailManageResult,
+  type LifeOpsGmailNeedsResponseFeed,
+  type LifeOpsGmailRecommendationsFeed,
+  type LifeOpsGmailReplyDraft,
+  type LifeOpsGmailSearchFeed,
+  type LifeOpsGmailSeedReceipt,
+  type LifeOpsGmailSpamReviewFeed,
+  type LifeOpsGmailSpamReviewItem,
+  type LifeOpsGmailSyncHealth,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsGmailUnrespondedFeed,
+  type LifeOpsGoalRecord,
+  type LifeOpsGoalReview,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsHealthConnectorProvider,
+  type LifeOpsHealthConnectorStatus,
+  type LifeOpsHealthSummaryResponse,
+  type LifeOpsIMessageChat,
+  type LifeOpsIMessageMessage,
+  type LifeOpsManualOverrideResult,
+  type LifeOpsOccurrenceActionResult,
+  type LifeOpsOccurrenceExplanation,
+  type LifeOpsOverview,
+  type LifeOpsPersonalBaselineResponse,
+  type LifeOpsReminderInspection,
+  type LifeOpsScreenTimeBreakdown,
+  type LifeOpsScreenTimeHistoryResponse,
+  type LifeOpsScreenTimeRangeKey,
+  type LifeOpsScreenTimeSummary,
+  type LifeOpsScreenTimeSummaryRequest,
+  type LifeOpsSleepHistoryResponse,
+  type LifeOpsSleepRegularityResponse,
+  type LifeOpsSocialHabitSummary,
+  type ManageLifeOpsGmailMessagesRequest,
+  type PurgeLifeOpsGmailImportedDataRequest,
+  type SeedLifeOpsGmailRequest,
+  type SendLifeOpsDiscordMessageRequest,
+  type SendLifeOpsDiscordMessageResponse,
+  type SendLifeOpsGmailReplyRequest,
+  type SendLifeOpsIMessageRequest,
+  type SendLifeOpsWhatsAppMessageRequest,
+  type SnoozeLifeOpsOccurrenceRequest,
+  type StartLifeOpsGoogleConnectorRequest,
+  type StartLifeOpsGoogleConnectorResponse,
+  type UpdateLifeOpsBrowserSessionProgressRequest,
+  type UpdateLifeOpsDefinitionRequest,
+  type UpdateLifeOpsGmailSpamReviewItemRequest,
+  type UpdateLifeOpsGoalRequest,
+  type VerifyLifeOpsDiscordConnectorRequest,
+  type VerifyLifeOpsDiscordConnectorResponse,
+  type VerifyLifeOpsTelegramConnectorRequest,
+  type VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
 import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import { type CaptureLifeOpsActivitySignalRequest, type CaptureLifeOpsManualOverrideRequest, type CompleteLifeOpsBrowserSessionRequest, type CompleteLifeOpsOccurrenceRequest, type ConfirmLifeOpsBrowserSessionRequest, type CreateLifeOpsBrowserSessionRequest, type CreateLifeOpsDefinitionRequest, type CreateLifeOpsGmailReplyDraftRequest, type CreateLifeOpsGoalRequest, type DisconnectLifeOpsGoogleConnectorRequest, type GetLifeOpsGmailRecommendationsRequest, type GetLifeOpsGmailSearchRequest, type GetLifeOpsGmailSpamReviewRequest, type GetLifeOpsGmailTriageRequest, type GetLifeOpsGmailUnrespondedRequest, type GetLifeOpsHealthSummaryRequest, type GetLifeOpsIMessageMessagesRequest, type IngestLifeOpsGmailEventRequest, type LifeOpsActivitySignal, type LifeOpsBrowserSession, type LifeOpsConnectorMode, type LifeOpsConnectorSide, type LifeOpsDefinitionRecord, type LifeOpsGmailEventIngestResult, type LifeOpsGmailImportedDataPurgeReceipt, type LifeOpsGmailManageResult, type LifeOpsGmailNeedsResponseFeed, type LifeOpsGmailRecommendationsFeed, type LifeOpsGmailReplyDraft, type LifeOpsGmailSearchFeed, type LifeOpsGmailSeedReceipt, type LifeOpsGmailSpamReviewFeed, type LifeOpsGmailSpamReviewItem, type LifeOpsGmailSyncHealth, type LifeOpsGmailTriageFeed, type LifeOpsGmailUnrespondedFeed, type LifeOpsGoalRecord, type LifeOpsGoalReview, type LifeOpsGoogleConnectorStatus, type LifeOpsHealthConnectorProvider, type LifeOpsHealthConnectorStatus, type LifeOpsHealthSummaryResponse, type LifeOpsIMessageChat, type LifeOpsIMessageMessage, type LifeOpsManualOverrideResult, type LifeOpsOccurrenceActionResult, type LifeOpsOccurrenceExplanation, type LifeOpsOverview, type LifeOpsPersonalBaselineResponse, type LifeOpsReminderInspection, type LifeOpsScreenTimeBreakdown, type LifeOpsScreenTimeHistoryResponse, type LifeOpsScreenTimeRangeKey, type LifeOpsScreenTimeSummary, type LifeOpsScreenTimeSummaryRequest, type LifeOpsSleepHistoryResponse, type LifeOpsSleepRegularityResponse, type LifeOpsSocialHabitSummary, type ManageLifeOpsGmailMessagesRequest, type PurgeLifeOpsGmailImportedDataRequest, type SeedLifeOpsGmailRequest, type SendLifeOpsDiscordMessageRequest, type SendLifeOpsDiscordMessageResponse, type SendLifeOpsGmailReplyRequest, type SendLifeOpsIMessageRequest, type SendLifeOpsWhatsAppMessageRequest, type SnoozeLifeOpsOccurrenceRequest, type StartLifeOpsGoogleConnectorRequest, type StartLifeOpsGoogleConnectorResponse, type UpdateLifeOpsBrowserSessionProgressRequest, type UpdateLifeOpsDefinitionRequest, type UpdateLifeOpsGmailSpamReviewItemRequest, type UpdateLifeOpsGoalRequest, type VerifyLifeOpsDiscordConnectorRequest, type VerifyLifeOpsDiscordConnectorResponse, type VerifyLifeOpsTelegramConnectorRequest, type VerifyLifeOpsTelegramConnectorResponse } from "@elizaos/core/contracts/personal-assistant";
 // Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
 // app/api/client.ts imports this file (LifeOps extension) as a side-effect
 // before re-exporting `ElizaClient` from its root barrel, so a root-barrel
@@ -48,7 +126,21 @@ type LifeOpsScheduleMergedStateRequest = {
   refresh?: boolean;
 };
 
-export { type LifeOpsHabitCategory, type LifeOpsHabitDevice, type LifeOpsScreenTimeBreakdown, type LifeOpsScreenTimeBreakdownItem, type LifeOpsScreenTimeBucket, type LifeOpsScreenTimeHistoryResponse, type LifeOpsScreenTimeRangeKey, type LifeOpsScreenTimeSource, type LifeOpsScreenTimeSummary, type LifeOpsScreenTimeSummaryItem, type LifeOpsScreenTimeSummaryRequest, type LifeOpsSocialHabitDataSource, type LifeOpsSocialHabitSummary } from "@elizaos/core/contracts/personal-assistant";
+export {
+  type LifeOpsHabitCategory,
+  type LifeOpsHabitDevice,
+  type LifeOpsScreenTimeBreakdown,
+  type LifeOpsScreenTimeBreakdownItem,
+  type LifeOpsScreenTimeBucket,
+  type LifeOpsScreenTimeHistoryResponse,
+  type LifeOpsScreenTimeRangeKey,
+  type LifeOpsScreenTimeSource,
+  type LifeOpsScreenTimeSummary,
+  type LifeOpsScreenTimeSummaryItem,
+  type LifeOpsScreenTimeSummaryRequest,
+  type LifeOpsSocialHabitDataSource,
+  type LifeOpsSocialHabitSummary,
+} from "@elizaos/core/contracts/personal-assistant";
 
 // Exported for consumers that import `client` from the `@elizaos/ui/api`
 // subpath (headless chunks that must not touch the root barrel): the

@@ -26,12 +26,12 @@
  * and the caller gates it behind `isPlatform("android") && isNativePlatform()`.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import {
   EchoReferenceBuffer,
   NlmsEchoCanceller,
   platformPlaybackDelaySamples,
 } from "@elizaos/core/voice/aec";
+import { logger } from "@elizaos/ui/logger";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,

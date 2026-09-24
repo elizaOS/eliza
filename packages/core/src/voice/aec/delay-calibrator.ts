@@ -15,7 +15,7 @@
  * rejection) cannot drift between consumers.
  */
 
-import { estimateEchoDelaySamples } from "@elizaos/core/voice/aec/echo-delay";
+import { estimateEchoDelaySamples } from "./echo-delay.js";
 
 /** Accumulate this many playback-active samples before estimating the delay
  * (1 s @16 kHz — enough correlated echo overlap for a stable cross-correlation
@@ -37,106 +37,106 @@ export const ECHO_CAL_CAP_EDGE_SAMPLES = 320;
 export const ECHO_CAL_FAR_ENERGY_FLOOR = 1e-7;
 
 function concatFloat32(chunks: Float32Array[]): Float32Array {
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const out = new Float32Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    out.set(c, off);
-    off += c.length;
-  }
-  return out;
+	let total = 0;
+	for (const c of chunks) total += c.length;
+	const out = new Float32Array(total);
+	let off = 0;
+	for (const c of chunks) {
+		out.set(c, off);
+		off += c.length;
+	}
+	return out;
 }
 
 export interface EchoDelayState {
-  delaySamples: number;
-  confidence: number;
-  calibrated: boolean;
+	delaySamples: number;
+	confidence: number;
+	calibrated: boolean;
 }
 
 export class StreamingEchoDelayCalibrator {
-  private delay: number;
-  private conf = 0;
-  private locked = false;
-  /** Rolling near/far windows accumulated only while the far-end is active,
-   * used once to estimate the delay. Cleared after an estimate and on
-   * {@link resetWindow}. */
-  private calNear: Float32Array[] = [];
-  private calFar: Float32Array[] = [];
-  private calSampleCount = 0;
+	private delay: number;
+	private conf = 0;
+	private locked = false;
+	/** Rolling near/far windows accumulated only while the far-end is active,
+	 * used once to estimate the delay. Cleared after an estimate and on
+	 * {@link resetWindow}. */
+	private calNear: Float32Array[] = [];
+	private calFar: Float32Array[] = [];
+	private calSampleCount = 0;
 
-  constructor(seedDelaySamples: number) {
-    this.delay = Math.max(0, Math.floor(seedDelaySamples));
-  }
+	constructor(seedDelaySamples: number) {
+		this.delay = Math.max(0, Math.floor(seedDelaySamples));
+	}
 
-  get delaySamples(): number {
-    return this.delay;
-  }
+	get delaySamples(): number {
+		return this.delay;
+	}
 
-  get confidence(): number {
-    return this.conf;
-  }
+	get confidence(): number {
+		return this.conf;
+	}
 
-  get calibrated(): boolean {
-    return this.locked;
-  }
+	get calibrated(): boolean {
+		return this.locked;
+	}
 
-  state(): EchoDelayState {
-    return {
-      delaySamples: this.delay,
-      confidence: this.conf,
-      calibrated: this.locked,
-    };
-  }
+	state(): EchoDelayState {
+		return {
+			delaySamples: this.delay,
+			confidence: this.conf,
+			calibrated: this.locked,
+		};
+	}
 
-  /**
-   * Feed one mic frame plus the RAW (delay-0) far-end read for the same window.
-   * Calibration recovers the delay, so callers must not pre-apply the value
-   * under measurement. No-op once locked or when the far-end is silent.
-   */
-  observe(nearPcm: Float32Array, farPcm: Float32Array): void {
-    if (this.locked || nearPcm.length === 0) return;
-    let farEnergy = 0;
-    for (let i = 0; i < farPcm.length; i++) farEnergy += farPcm[i] * farPcm[i];
-    if (farEnergy / Math.max(1, farPcm.length) < ECHO_CAL_FAR_ENERGY_FLOOR) {
-      return; // no playback → nothing to calibrate against
-    }
+	/**
+	 * Feed one mic frame plus the RAW (delay-0) far-end read for the same window.
+	 * Calibration recovers the delay, so callers must not pre-apply the value
+	 * under measurement. No-op once locked or when the far-end is silent.
+	 */
+	observe(nearPcm: Float32Array, farPcm: Float32Array): void {
+		if (this.locked || nearPcm.length === 0) return;
+		let farEnergy = 0;
+		for (let i = 0; i < farPcm.length; i++) farEnergy += farPcm[i] * farPcm[i];
+		if (farEnergy / Math.max(1, farPcm.length) < ECHO_CAL_FAR_ENERGY_FLOOR) {
+			return; // no playback → nothing to calibrate against
+		}
 
-    this.calNear.push(nearPcm.slice());
-    this.calFar.push(farPcm);
-    this.calSampleCount += nearPcm.length;
-    while (
-      this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
-      this.calNear.length > 1
-    ) {
-      this.calSampleCount -= (this.calNear.shift() as Float32Array).length;
-      this.calFar.shift();
-    }
-    if (this.calSampleCount < ECHO_CAL_TARGET_SAMPLES) return;
+		this.calNear.push(nearPcm.slice());
+		this.calFar.push(farPcm);
+		this.calSampleCount += nearPcm.length;
+		while (
+			this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
+			this.calNear.length > 1
+		) {
+			this.calSampleCount -= (this.calNear.shift() as Float32Array).length;
+			this.calFar.shift();
+		}
+		if (this.calSampleCount < ECHO_CAL_TARGET_SAMPLES) return;
 
-    const near = concatFloat32(this.calNear);
-    const farWin = concatFloat32(this.calFar);
-    const est = estimateEchoDelaySamples(near, farWin, {
-      maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
-    });
-    if (
-      est.confidence >= ECHO_CAL_MIN_CONFIDENCE &&
-      est.lagSamples < ECHO_CAL_MAX_LAG_SAMPLES - ECHO_CAL_CAP_EDGE_SAMPLES
-    ) {
-      this.delay = est.lagSamples;
-      this.conf = est.confidence;
-      this.locked = true;
-    }
-    this.calNear = [];
-    this.calFar = [];
-    this.calSampleCount = 0;
-  }
+		const near = concatFloat32(this.calNear);
+		const farWin = concatFloat32(this.calFar);
+		const est = estimateEchoDelaySamples(near, farWin, {
+			maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
+		});
+		if (
+			est.confidence >= ECHO_CAL_MIN_CONFIDENCE &&
+			est.lagSamples < ECHO_CAL_MAX_LAG_SAMPLES - ECHO_CAL_CAP_EDGE_SAMPLES
+		) {
+			this.delay = est.lagSamples;
+			this.conf = est.confidence;
+			this.locked = true;
+		}
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
+	}
 
-  /** Drop the in-progress accumulation window (playback stopped / barge-in —
-   * it would otherwise straddle a playback gap). The learned delay is kept. */
-  resetWindow(): void {
-    this.calNear = [];
-    this.calFar = [];
-    this.calSampleCount = 0;
-  }
+	/** Drop the in-progress accumulation window (playback stopped / barge-in —
+	 * it would otherwise straddle a playback gap). The learned delay is kept. */
+	resetWindow(): void {
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
+	}
 }

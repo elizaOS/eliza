@@ -21,14 +21,16 @@ export const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
  * `MAX_RESTORABLE_AGENT_BACKUP_BYTES` (#17172). Retaining more than that
  * yields a snapshot that authorizes a cutover and can never be restored.
  */
-export const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES);
+export const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
+  process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
+);
 export const SNAPSHOT_MAX_FILES = (() => {
-    const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
-    return Number.isFinite(raw) && raw > 0 ? raw : 5000;
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5000;
 })();
 export const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
-    const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
-    return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
 })();
 /**
  * Stream a Response body, enforcing a hard byte budget (#16639): the read is
@@ -37,35 +39,37 @@ export const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
  * observable error.
  */
 export async function readBodyWithinBudget(res: Response, maxBytes: number): Promise<string> {
-    const reader = res.body?.getReader();
-    if (!reader) {
-        const text = await res.text();
-        if (Buffer.byteLength(text, "utf-8") > maxBytes) {
-            throw new Error(`Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`);
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf-8") > maxBytes) {
+      throw new Error(
+        `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+      );
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        received += value.byteLength;
+        if (received > maxBytes) {
+          throw new Error(
+            `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+          );
         }
-        return text;
+        chunks.push(value);
+      }
     }
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-    try {
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done)
-                break;
-            if (value) {
-                received += value.byteLength;
-                if (received > maxBytes) {
-                    throw new Error(`Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`);
-                }
-                chunks.push(value);
-            }
-        }
-    }
-    finally {
-        // Release the connection whether we finished or bailed over budget.
-        reader.cancel().catch(() => { });
-    }
-    return Buffer.concat(chunks).toString("utf-8");
+  } finally {
+    // Release the connection whether we finished or bailed over budget.
+    reader.cancel().catch(() => {});
+  }
+  return Buffer.concat(chunks).toString("utf-8");
 }
 /**
  * Validate the parsed snapshot's expanded budgets BEFORE it is persisted
@@ -74,48 +78,53 @@ export async function readBodyWithinBudget(res: Response, maxBytes: number): Pro
  * payload over budget is rejected outright, never partially restored.
  */
 export function assertSnapshotExpandedBudgets(stateData: AgentBackupStateData): void {
-    let files = 0;
-    let expandedBytes = 0;
-    const workspace = stateData.workspaceFiles ?? {};
-    for (const content of Object.values(workspace)) {
+  let files = 0;
+  let expandedBytes = 0;
+  const workspace = stateData.workspaceFiles ?? {};
+  for (const content of Object.values(workspace)) {
+    files += 1;
+    expandedBytes += typeof content === "string" ? Buffer.byteLength(content, "utf-8") : 0;
+  }
+  const components = stateData.manifest?.components;
+  if (components) {
+    const fileSets = [
+      components.database?.pglite,
+      components.media,
+      components.vault,
+      components.stateFiles,
+    ];
+    for (const fileSet of fileSets) {
+      for (const entry of fileSet?.files ?? []) {
         files += 1;
-        expandedBytes += typeof content === "string" ? Buffer.byteLength(content, "utf-8") : 0;
+        // `size` is the declared decoded size; the base64 payload is the
+        // retained one — count the larger of the two so a lying manifest
+        // cannot under-declare.
+        const decoded =
+          typeof entry.bytesBase64 === "string"
+            ? Math.floor((entry.bytesBase64.length * 3) / 4)
+            : 0;
+        expandedBytes += Math.max(typeof entry.size === "number" ? entry.size : 0, decoded);
+      }
     }
-    const components = stateData.manifest?.components;
-    if (components) {
-        const fileSets = [
-            components.database?.pglite,
-            components.media,
-            components.vault,
-            components.stateFiles,
-        ];
-        for (const fileSet of fileSets) {
-            for (const entry of fileSet?.files ?? []) {
-                files += 1;
-                // `size` is the declared decoded size; the base64 payload is the
-                // retained one — count the larger of the two so a lying manifest
-                // cannot under-declare.
-                const decoded = typeof entry.bytesBase64 === "string"
-                    ? Math.floor((entry.bytesBase64.length * 3) / 4)
-                    : 0;
-                expandedBytes += Math.max(typeof entry.size === "number" ? entry.size : 0, decoded);
-            }
-        }
-        const configFile = components.character?.configFile;
-        if (configFile) {
-            files += 1;
-            expandedBytes +=
-                typeof configFile.bytesBase64 === "string"
-                    ? Math.floor((configFile.bytesBase64.length * 3) / 4)
-                    : 0;
-        }
+    const configFile = components.character?.configFile;
+    if (configFile) {
+      files += 1;
+      expandedBytes +=
+        typeof configFile.bytesBase64 === "string"
+          ? Math.floor((configFile.bytesBase64.length * 3) / 4)
+          : 0;
     }
-    if (files > SNAPSHOT_MAX_FILES) {
-        throw new Error(`Snapshot exceeds the file budget (${files} > ${SNAPSHOT_MAX_FILES}) — refusing to retain it`);
-    }
-    if (expandedBytes > SNAPSHOT_MAX_EXPANDED_BYTES) {
-        throw new Error(`Snapshot exceeds the expanded byte budget (${expandedBytes} > ${SNAPSHOT_MAX_EXPANDED_BYTES}) — refusing to retain it`);
-    }
+  }
+  if (files > SNAPSHOT_MAX_FILES) {
+    throw new Error(
+      `Snapshot exceeds the file budget (${files} > ${SNAPSHOT_MAX_FILES}) — refusing to retain it`,
+    );
+  }
+  if (expandedBytes > SNAPSHOT_MAX_EXPANDED_BYTES) {
+    throw new Error(
+      `Snapshot exceeds the expanded byte budget (${expandedBytes} > ${SNAPSHOT_MAX_EXPANDED_BYTES}) — refusing to retain it`,
+    );
+  }
 }
 /**
  * Read a bounded excerpt of an error response body for diagnostic logging.
@@ -129,84 +138,77 @@ export function assertSnapshotExpandedBudgets(stateData: AgentBackupStateData): 
  * never buffering the full response (a malicious upstream could OOM the
  * Worker with an unbounded body).
  */
-export async function readErrorBodyExcerpt(res: Pick<Response, "body" | "headers">): Promise<string | null> {
-    // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
-    // a null excerpt (status-only message) without aborting the snapshot path.
+export async function readErrorBodyExcerpt(
+  res: Pick<Response, "body" | "headers">,
+): Promise<string | null> {
+  // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
+  // a null excerpt (status-only message) without aborting the snapshot path.
+  try {
+    if (!res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    const chunks: string[] = [];
+    let totalBytes = 0;
     try {
-        if (!res.body)
-            return null;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder("utf-8", { fatal: false });
-        const chunks: string[] = [];
-        let totalBytes = 0;
-        try {
-            // error-policy:J2 stream cancellation after the byte budget is reached.
-            while (totalBytes < SNAPSHOT_ERROR_BODY_EXCERPT_BYTES) {
-                const { done, value } = await reader.read();
-                if (done)
-                    break;
-                const remaining = SNAPSHOT_ERROR_BODY_EXCERPT_BYTES - totalBytes;
-                const sliced = value.length >= remaining ? truncateUtf8Bytes(value, remaining) : value;
-                chunks.push(decoder.decode(sliced, { stream: true }));
-                totalBytes += sliced.length;
-            }
-        }
-        finally {
-            // Cancel the reader to release the connection even if the body is larger.
-            await reader.cancel().catch(() => { });
-        }
-        // Flush any trailing multi-byte UTF-8 sequence held by the stream decoder.
-        chunks.push(decoder.decode());
-        const body = chunks.join("");
-        if (!body.trim())
-            return null;
-        const contentType = res.headers.get("content-type") ?? "";
-        // JSON error bodies carry structured diagnostics — try to extract a message.
-        if (contentType.includes("application/json")) {
-            try {
-                const data = JSON.parse(body) as {
-                    error?: unknown;
-                    message?: unknown;
-                };
-                const msg = data.error ?? data.message;
-                if (typeof msg === "string" && msg.trim()) {
-                    return msg.trim();
-                }
-            }
-            catch {
-                // Not valid JSON — fall through to raw excerpt.
-            }
-        }
-        return body.trim();
+      // error-policy:J2 stream cancellation after the byte budget is reached.
+      while (totalBytes < SNAPSHOT_ERROR_BODY_EXCERPT_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = SNAPSHOT_ERROR_BODY_EXCERPT_BYTES - totalBytes;
+        const sliced = value.length >= remaining ? truncateUtf8Bytes(value, remaining) : value;
+        chunks.push(decoder.decode(sliced, { stream: true }));
+        totalBytes += sliced.length;
+      }
+    } finally {
+      // Cancel the reader to release the connection even if the body is larger.
+      await reader.cancel().catch(() => {});
     }
-    catch {
-        return null;
+    // Flush any trailing multi-byte UTF-8 sequence held by the stream decoder.
+    chunks.push(decoder.decode());
+    const body = chunks.join("");
+    if (!body.trim()) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    // JSON error bodies carry structured diagnostics — try to extract a message.
+    if (contentType.includes("application/json")) {
+      try {
+        const data = JSON.parse(body) as {
+          error?: unknown;
+          message?: unknown;
+        };
+        const msg = data.error ?? data.message;
+        if (typeof msg === "string" && msg.trim()) {
+          return msg.trim();
+        }
+      } catch {
+        // Not valid JSON — fall through to raw excerpt.
+      }
     }
+    return body.trim();
+  } catch {
+    return null;
+  }
 }
 /** Truncate UTF-8 bytes without splitting a multi-byte code point. */
 export function truncateUtf8Bytes(bytes: Uint8Array, maxBytes: number): Uint8Array {
-    const limit = Math.min(bytes.length, maxBytes);
-    let safeEnd = limit;
-    while (safeEnd > 0) {
-        const byte = bytes[safeEnd - 1]!;
-        if ((byte & 0x80) === 0) {
-            return bytes.slice(0, safeEnd);
-        }
-        if ((byte & 0xc0) === 0x80) {
-            safeEnd--;
-            continue;
-        }
-        let sequenceLength = 1;
-        if ((byte & 0xf8) === 0xf0)
-            sequenceLength = 4;
-        else if ((byte & 0xf0) === 0xe0)
-            sequenceLength = 3;
-        else if ((byte & 0xe0) === 0xc0)
-            sequenceLength = 2;
-        if (safeEnd - 1 + sequenceLength <= limit) {
-            return bytes.slice(0, limit);
-        }
-        return bytes.slice(0, safeEnd - 1);
+  const limit = Math.min(bytes.length, maxBytes);
+  let safeEnd = limit;
+  while (safeEnd > 0) {
+    const byte = bytes[safeEnd - 1]!;
+    if ((byte & 0x80) === 0) {
+      return bytes.slice(0, safeEnd);
     }
-    return bytes.slice(0, 0);
+    if ((byte & 0xc0) === 0x80) {
+      safeEnd--;
+      continue;
+    }
+    let sequenceLength = 1;
+    if ((byte & 0xf8) === 0xf0) sequenceLength = 4;
+    else if ((byte & 0xf0) === 0xe0) sequenceLength = 3;
+    else if ((byte & 0xe0) === 0xc0) sequenceLength = 2;
+    if (safeEnd - 1 + sequenceLength <= limit) {
+      return bytes.slice(0, limit);
+    }
+    return bytes.slice(0, safeEnd - 1);
+  }
+  return bytes.slice(0, 0);
 }

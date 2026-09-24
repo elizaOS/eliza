@@ -13,27 +13,30 @@
  * suites can exercise authed surfaces against a mock stack.
  */
 import { Capacitor } from "@capacitor/core";
-import { LocalStewardAuthContext } from "../shell/StewardProvider";
-import { decodeJwtPayload } from "./jwt";
-import { getBootConfig } from "../../config/boot-config";
 import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { tokenIsExpired } from "../shell/StewardProvider";
-import { type LocalStewardAuthValue } from "../shell/StewardProvider";
-import { useContext } from "react";
-import { useEffect } from "react";
-import { useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+import {
+  LocalStewardAuthContext,
+  type LocalStewardAuthValue,
+  tokenIsExpired,
+} from "../shell/StewardProvider";
+import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
+import { decodeJwtPayload } from "./jwt";
 export type StewardSessionUser = {
-    id: string;
-    email: string;
-    walletAddress?: string;
+  id: string;
+  email: string;
+  walletAddress?: string;
 } | null;
-const STEWARD_AUTH_FALLBACK: Pick<LocalStewardAuthValue, "isAuthenticated" | "isLoading" | "user"> = {
-    isAuthenticated: false,
-    isLoading: false,
-    user: null,
+const STEWARD_AUTH_FALLBACK: Pick<
+  LocalStewardAuthValue,
+  "isAuthenticated" | "isLoading" | "user"
+> = {
+  isAuthenticated: false,
+  isLoading: false,
+  user: null,
 };
 const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth";
 const PLAYWRIGHT_TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -44,151 +47,154 @@ const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
  * silently disables the Playwright test-auth bypass.
  */
 function isPlaywrightTestAuthEnabled(): boolean {
-    if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true")
-        return true;
-    if (typeof process !== "undefined" &&
-        process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true") {
-        return true;
-    }
-    return false;
+  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
+  ) {
+    return true;
+  }
+  return false;
 }
 function hasCookie(name: string, value?: string): boolean {
-    if (typeof document === "undefined")
-        return false;
-    const expected = value ? `${name}=${value}` : `${name}=`;
-    return document.cookie
-        .split(";")
-        .some((part) => part.trim().startsWith(expected));
+  if (typeof document === "undefined") return false;
+  const expected = value ? `${name}=${value}` : `${name}=`;
+  return document.cookie
+    .split(";")
+    .some((part) => part.trim().startsWith(expected));
 }
 function readPlaywrightTestSession(): StewardSessionUser {
-    if (!isPlaywrightTestAuthEnabled())
-        return null;
-    if (!hasCookie(PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE, "1"))
-        return null;
-    return {
-        id: PLAYWRIGHT_TEST_USER_ID,
-        email: PLAYWRIGHT_TEST_USER_EMAIL,
-    };
+  if (!isPlaywrightTestAuthEnabled()) return null;
+  if (!hasCookie(PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE, "1")) return null;
+  return {
+    id: PLAYWRIGHT_TEST_USER_ID,
+    email: PLAYWRIGHT_TEST_USER_EMAIL,
+  };
 }
 function isNativeCloudRuntime(): boolean {
-    return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
 }
 function nativeCloudApiKey(): string | null {
-    if (!isNativeCloudRuntime())
-        return null;
-    // Only a real cloud key (not the on-device agent bearer) counts as a native
-    // cloud session.
-    return (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
-        normalizeCloudApiKeyToken(getElizaApiToken()));
+  if (!isNativeCloudRuntime()) return null;
+  // Only a real cloud key (not the on-device agent bearer) counts as a native
+  // cloud session.
+  return (
+    normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+    normalizeCloudApiKeyToken(getElizaApiToken())
+  );
 }
 function apiKeySessionId(token: string): string {
-    let hash = 2166136261;
-    for (let index = 0; index < token.length; index++) {
-        hash ^= token.charCodeAt(index);
-        hash = Math.imul(hash, 16777619);
-    }
-    return `native-api-key:${(hash >>> 0).toString(36)}`;
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index++) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `native-api-key:${(hash >>> 0).toString(36)}`;
 }
 function readNativeApiKeySession(): StewardSessionUser {
-    const token = nativeCloudApiKey();
-    if (!token)
-        return null;
-    return {
-        id: apiKeySessionId(token),
-        email: "",
-    };
+  const token = nativeCloudApiKey();
+  if (!token) return null;
+  return {
+    id: apiKeySessionId(token),
+    email: "",
+  };
 }
 function decodeStewardToken(token: string): {
-    id: string;
-    email: string;
-    walletAddress?: string;
+  id: string;
+  email: string;
+  walletAddress?: string;
 } | null {
-    const payload = decodeJwtPayload(token);
-    if (!payload)
-        return null;
-    return {
-        id: payload.userId ?? payload.sub ?? "",
-        email: payload.email ?? "",
-        walletAddress: payload.address ?? undefined,
-    };
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  return {
+    id: payload.userId ?? payload.sub ?? "",
+    email: payload.email ?? "",
+    walletAddress: payload.address ?? undefined,
+  };
 }
 /** Read a valid non-expired Steward session directly from localStorage. */
 function readStewardSessionFromStorage(): StewardSessionUser {
-    if (typeof window === "undefined")
-        return null;
-    try {
-        const token = readStoredStewardToken();
-        if (!token)
-            return null;
-        // Keep reload-time identity gating aligned with the canonical Steward
-        // validator. Steward always issues `exp`; accepting an expiry-less foreign
-        // or malformed JWT here would falsely open authenticated Cloud surfaces
-        // until the provider runtime eventually rejects it.
-        if (tokenIsExpired(token))
-            return null;
-        const decoded = decodeStewardToken(token);
-        if (!decoded?.id)
-            return null;
-        return {
-            id: decoded.id,
-            email: decoded.email,
-            walletAddress: decoded.walletAddress,
-        };
-    }
-    catch {
-        // error-policy:J3 unreadable storage or undecodable token reads as
-        // signed-out (fail-closed) — never a fabricated session.
-        return null;
-    }
+  if (typeof window === "undefined") return null;
+  try {
+    const token = readStoredStewardToken();
+    if (!token) return null;
+    // Keep reload-time identity gating aligned with the canonical Steward
+    // validator. Steward always issues `exp`; accepting an expiry-less foreign
+    // or malformed JWT here would falsely open authenticated Cloud surfaces
+    // until the provider runtime eventually rejects it.
+    if (tokenIsExpired(token)) return null;
+    const decoded = decodeStewardToken(token);
+    if (!decoded?.id) return null;
+    return {
+      id: decoded.id,
+      email: decoded.email,
+      walletAddress: decoded.walletAddress,
+    };
+  } catch {
+    // error-policy:J3 unreadable storage or undecodable token reads as
+    // signed-out (fail-closed) — never a fabricated session.
+    return null;
+  }
 }
 /**
  * Safe accessor for the cloud-shell Steward auth context. Returns a signed-out
  * fallback when the provider is not mounted (reads the context directly instead
  * of calling `useAuth()` in a try/catch, which would violate Rules of Hooks).
  */
-function useStewardAuthContext(): Pick<LocalStewardAuthValue, "isAuthenticated" | "isLoading" | "user"> {
-    const ctx = useContext(LocalStewardAuthContext);
-    return ctx ?? STEWARD_AUTH_FALLBACK;
+function useStewardAuthContext(): Pick<
+  LocalStewardAuthValue,
+  "isAuthenticated" | "isLoading" | "user"
+> {
+  const ctx = useContext(LocalStewardAuthContext);
+  return ctx ?? STEWARD_AUTH_FALLBACK;
 }
 export interface SessionAuthState {
-    ready: boolean;
-    authenticated: boolean;
-    user: StewardSessionUser;
+  ready: boolean;
+  authenticated: boolean;
+  user: StewardSessionUser;
 }
 export function useSessionAuth(): SessionAuthState {
-    const providerAuth = useStewardAuthContext();
-    const [storageUser, setStorageUser] = useState<StewardSessionUser>(readStewardSessionFromStorage);
-    const [apiKeyUser, setApiKeyUser] = useState<StewardSessionUser>(readNativeApiKeySession);
-    const [testUser, setTestUser] = useState<StewardSessionUser>(readPlaywrightTestSession);
-    useEffect(() => {
-        const handler = () => {
-            setStorageUser(readStewardSessionFromStorage());
-            setApiKeyUser(readNativeApiKeySession());
-            setTestUser(readPlaywrightTestSession());
-        };
-        handler();
-        window.addEventListener("storage", handler);
-        window.addEventListener("steward-token-sync", handler);
-        const timer = setTimeout(handler, 250);
-        return () => {
-            window.removeEventListener("storage", handler);
-            window.removeEventListener("steward-token-sync", handler);
-            clearTimeout(timer);
-        };
-    }, []);
-    const providerUserId = providerAuth.user?.id.trim();
-    const providerUser: StewardSessionUser = providerAuth.isAuthenticated && providerAuth.user && providerUserId
-        ? {
-            id: providerUserId,
-            email: providerAuth.user.email ?? "",
-            walletAddress: providerAuth.user.walletAddress,
+  const providerAuth = useStewardAuthContext();
+  const [storageUser, setStorageUser] = useState<StewardSessionUser>(
+    readStewardSessionFromStorage,
+  );
+  const [apiKeyUser, setApiKeyUser] = useState<StewardSessionUser>(
+    readNativeApiKeySession,
+  );
+  const [testUser, setTestUser] = useState<StewardSessionUser>(
+    readPlaywrightTestSession,
+  );
+  useEffect(() => {
+    const handler = () => {
+      setStorageUser(readStewardSessionFromStorage());
+      setApiKeyUser(readNativeApiKeySession());
+      setTestUser(readPlaywrightTestSession());
+    };
+    handler();
+    window.addEventListener("storage", handler);
+    window.addEventListener("steward-token-sync", handler);
+    const timer = setTimeout(handler, 250);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("steward-token-sync", handler);
+      clearTimeout(timer);
+    };
+  }, []);
+  const providerUserId = providerAuth.user?.id.trim();
+  const providerUser: StewardSessionUser =
+    providerAuth.isAuthenticated && providerAuth.user && providerUserId
+      ? {
+          id: providerUserId,
+          email: providerAuth.user.email ?? "",
+          walletAddress: providerAuth.user.walletAddress,
         }
-        : null;
-    const user = providerUser ?? storageUser ?? apiKeyUser ?? testUser;
-    const authenticated = providerUser !== null ||
-        storageUser !== null ||
-        apiKeyUser !== null ||
-        testUser !== null;
-    const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
-    return { ready, authenticated, user };
+      : null;
+  const user = providerUser ?? storageUser ?? apiKeyUser ?? testUser;
+  const authenticated =
+    providerUser !== null ||
+    storageUser !== null ||
+    apiKeyUser !== null ||
+    testUser !== null;
+  const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
+  return { ready, authenticated, user };
 }

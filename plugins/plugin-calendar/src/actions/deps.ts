@@ -11,7 +11,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { type CreateLifeOpsCalendarEventAttendee, type CreateLifeOpsCalendarEventRequest, type LifeOpsCalendarAllDayRange, type LifeOpsCalendarEvent, type LifeOpsCalendarRecurrenceScope } from "@elizaos/core/contracts/calendar";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarAllDayRange,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarRecurrenceScope,
+} from "@elizaos/core/contracts/calendar";
 
 /**
  * Arguments for a single LLM call routed through the host's model runner.

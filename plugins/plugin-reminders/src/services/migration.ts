@@ -18,7 +18,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { assertCarveOutProjectionComplete, type CarveOutDatabase, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 
 export const REMINDERS_LOG_PREFIX = "[Reminders]";
 export const REMINDERS_MIGRATION_SERVICE_TYPE = "reminders_migration";

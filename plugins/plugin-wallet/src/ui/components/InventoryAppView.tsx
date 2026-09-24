@@ -9,7 +9,15 @@
  * {@link InventoryView} renders it as the real-DOM child of its `Escape` hatch.
  * This is the DOM-only dashboard reached only through that wrapper.
  */
-import { type WalletBalancesResponse, type WalletConfigStatus, type WalletMarketMover, type WalletMarketOverviewResponse, type WalletMarketOverviewSource, type WalletNftsResponse, type WalletTradingProfileResponse } from "@elizaos/core/contracts/wallet-types";
+import {
+  type WalletBalancesResponse,
+  type WalletConfigStatus,
+  type WalletMarketMover,
+  type WalletMarketOverviewResponse,
+  type WalletMarketOverviewSource,
+  type WalletNftsResponse,
+  type WalletTradingProfileResponse,
+} from "@elizaos/core/contracts/wallet-types";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";

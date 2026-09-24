@@ -11,7 +11,10 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
-import { CODING_AGENT_BACKEND_PREFLIGHTS, CODING_AGENT_BACKENDS } from "@elizaos/core/contracts/coding-agent-capabilities";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import {
   captureHostExecutionBaseline,
   getHostExecutionBaseline,

@@ -1,8 +1,19 @@
 /** View-facing contracts for the focused LifeOps connection manager. */
 
-import { type LifeOpsCalendarFeed, type LifeOpsCalendarImportedDataPurgeReceipt, type LifeOpsCalendarSummary, type LifeOpsLinkedCalendarControl, type UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsGmailImportedDataPurgeReceipt, type LifeOpsGmailSyncHealth, type LifeOpsGoogleCapability, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarImportedDataPurgeReceipt,
+  type LifeOpsCalendarSummary,
+  type LifeOpsLinkedCalendarControl,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
 import { type PermissionState } from "@elizaos/core/contracts/permissions";
+import {
+  type LifeOpsGmailImportedDataPurgeReceipt,
+  type LifeOpsGmailSyncHealth,
+  type LifeOpsGoogleCapability,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 
 export type LifeOpsSeedRangeDays = 7 | 30 | 90;
 export type LifeOpsSeedPhase =

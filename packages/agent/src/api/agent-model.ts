@@ -13,7 +13,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { normalizeFirstRunProviderId, resolveDeploymentTargetInConfig, resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
+import {
+  normalizeFirstRunProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/core/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
 
 /**

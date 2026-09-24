@@ -1,6 +1,6 @@
-import { type IAgentRuntime } from "../types/runtime.js";
 import { resolveOwnerEntityIdOrDefault } from "../roles.js";
-import { requireAgentId } from "@elizaos/core/lifeops-normalize/service-normalize";
+import type { IAgentRuntime } from "../types/runtime.js";
+import { requireAgentId } from "./service-normalize.js";
 
 /**
  * Owner-entity scope for LifeOps rows: the core `resolveOwnerEntityIdOrDefault`
@@ -12,6 +12,6 @@ import { requireAgentId } from "@elizaos/core/lifeops-normalize/service-normaliz
  * or rows written on one surface become invisible to the others.
  */
 export function defaultOwnerEntityId(runtime: IAgentRuntime): string {
-  requireAgentId(runtime);
-  return resolveOwnerEntityIdOrDefault(runtime);
+	requireAgentId(runtime);
+	return resolveOwnerEntityIdOrDefault(runtime);
 }

@@ -11,9 +11,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, type ViewDeclaration, type ViewType } from "@elizaos/core";
-import { generateViewHeroSvgFor } from "@elizaos/ui/view-hero-art";
 import { getViewModalities } from "@elizaos/core/views/view-declarations";
 import { resolveViewKind } from "@elizaos/core/views/view-kind";
+import { generateViewHeroSvgFor } from "@elizaos/ui/view-hero-art";
 import type { AgentPlatform } from "./platform-detect.ts";
 
 export type { ViewRegistryEntry } from "./view-registry-types.ts";

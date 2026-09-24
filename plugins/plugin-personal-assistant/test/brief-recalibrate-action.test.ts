@@ -20,13 +20,13 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { EventType, runWithTrajectoryContext } from "@elizaos/core";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
   manageMessageAction,
   respondToMessageAction,
 } from "@elizaos/plugin-assistant";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   afterAll,
   beforeAll,

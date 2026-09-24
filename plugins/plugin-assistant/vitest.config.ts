@@ -4,7 +4,7 @@ export default defineConfig({
   resolve: {
     conditions: ["eliza-source", "node"],
     alias: {
-      "../../packages/core/src/media/index.ts": new URL(
+      "@elizaos/core/media": new URL(
         "../../packages/core/src/media/index.ts",
         import.meta.url,
       ).pathname,

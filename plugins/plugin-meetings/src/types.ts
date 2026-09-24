@@ -10,18 +10,23 @@
  *  - service.ts ORCHESTRATES: session state machine, transcript persistence,
  *    live event fan-out, actions/routes.
  *
- * Public (cross-package) shapes live in @elizaos/shared (meetings.ts,
+ * Public (cross-package) shapes live in @elizaos/core (meetings.ts,
  * transcripts.ts) — keep this file plugin-internal.
  */
-
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { type MeetingAutoLeaveConfig, type MeetingBillingState, type MeetingEndReason, type MeetingJoinRequest, type MeetingParticipant, type MeetingPlatform, type MeetingSessionStatus } from "@elizaos/core/meetings";
+import { type IAgentRuntime, type UUID } from "@elizaos/core";
+import {
+  type MeetingAutoLeaveConfig,
+  type MeetingBillingState,
+  type MeetingEndReason,
+  type MeetingJoinRequest,
+  type MeetingParticipant,
+  type MeetingPlatform,
+  type MeetingSessionStatus,
+} from "@elizaos/core/meetings";
 import { type SpeakerNameEvidence } from "@elizaos/core/speaker-name-inference";
 import { type TranscriptSegment } from "@elizaos/core/transcripts";
-
 /** Audio produced by every platform adapter: mono Float32 PCM at 16 kHz. */
-export const MEETING_AUDIO_SAMPLE_RATE = 16_000;
-
+export const MEETING_AUDIO_SAMPLE_RATE = 16000;
 /**
  * Where platform adapters push captured audio + roster observations.
  * Implemented by the transcription pipeline. All methods are non-blocking;
@@ -44,7 +49,6 @@ export interface MeetingAudioSink {
   /** Roster observation: participant left at `atMs` (ms from session start). */
   participantLeft(participantId: string, atMs: number): void;
 }
-
 /** Fully-resolved bot configuration (defaults applied). */
 export interface ResolvedMeetingBotConfig {
   platform: MeetingPlatform;
@@ -55,7 +59,6 @@ export interface ResolvedMeetingBotConfig {
   autoLeave: MeetingAutoLeaveConfig;
   retainAudio: boolean;
 }
-
 /**
  * Everything a platform adapter gets for one meeting: config, the audio sink,
  * an abort signal (user-requested stop → graceful leave), and lifecycle
@@ -70,7 +73,6 @@ export interface MeetingBotSession {
   /** Report a lifecycle transition (joining → awaiting_admission → active …). */
   reportStatus(status: MeetingSessionStatus): void;
 }
-
 /**
  * One meeting platform's bot implementation. Separate class per platform —
  * no platform branching inside an adapter.
@@ -85,7 +87,6 @@ export interface MeetingPlatformAdapter {
    */
   run(session: MeetingBotSession): Promise<MeetingEndReason>;
 }
-
 /** Confirmed/pending segment updates emitted by the pipeline. */
 export interface PipelineTranscriptUpdate {
   /** Newly confirmed (stable) segments since the last update. */
@@ -93,7 +94,6 @@ export interface PipelineTranscriptUpdate {
   /** Current mutable tail — replaces any previously reported pending state. */
   pending: TranscriptSegment[];
 }
-
 /**
  * The transcription pipeline for one meeting session. Created by the service,
  * handed to the platform adapter as its `sink`.
@@ -109,9 +109,7 @@ export interface MeetingTranscriptionPipeline extends MeetingAudioSink {
   /** All distinct speaker display names observed so far. */
   speakerNames(): string[];
 }
-
 export type MeetingBillingErrorCode = "insufficient_credits" | "billing_failed";
-
 export class MeetingBillingError extends Error {
   constructor(
     readonly code: MeetingBillingErrorCode,
@@ -121,24 +119,23 @@ export class MeetingBillingError extends Error {
     this.name = "MeetingBillingError";
   }
 }
-
 export function isMeetingInsufficientCreditsError(
   error: unknown,
-): error is Error & { code: "insufficient_credits" } {
+): error is Error & {
+  code: "insufficient_credits";
+} {
   return (
     error instanceof Error &&
     "code" in error &&
     error.code === "insufficient_credits"
   );
 }
-
 export interface MeetingBillingSessionInput {
   runtime: IAgentRuntime;
   sessionId: UUID;
   request: MeetingJoinRequest;
   maxDurationMs: number;
 }
-
 /**
  * Metered meeting billing seam. Cloud wiring reserves/debits/refunds through
  * its credit ledger; local/self-hosted runtimes omit it and remain unmetered.
@@ -149,7 +146,6 @@ export interface MeetingBillingSession {
   ensureTranscriptionWindow(durationMs: number): Promise<void>;
   reconcile(reason: MeetingEndReason): Promise<MeetingBillingState>;
 }
-
 export interface MeetingPipelineOptions {
   runtime: IAgentRuntime;
   sessionId: UUID;
@@ -160,5 +156,9 @@ export interface MeetingPipelineOptions {
   /** Calendar candidates available before platform roster/self-introduction. */
   calendarSpeakerEvidence?: readonly SpeakerNameEvidence[];
   billing?: MeetingBillingSession;
-  onSpendCapReached?: (error: Error & { code: "insufficient_credits" }) => void;
+  onSpendCapReached?: (
+    error: Error & {
+      code: "insufficient_credits";
+    },
+  ) => void;
 }

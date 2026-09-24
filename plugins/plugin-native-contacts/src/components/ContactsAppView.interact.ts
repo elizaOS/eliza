@@ -4,11 +4,11 @@
  * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/plugin-native-contacts/bridge";
-import { ElizaError } from "@elizaos/core";
 import type { ContactsViewCapabilityId } from "../view-capabilities";
 import { matchesQuery } from "./ContactsAppView.helpers";
 

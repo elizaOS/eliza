@@ -4,6 +4,6 @@
  * (e.g. plugin-coding-tools inside a bundled ACP child) would.
  */
 
-import { getHostExecutionBaseline } from "@elizaos/core/host-execution-env";
+import { getHostExecutionBaseline } from "./host-execution-env.ts";
 
 process.stdout.write(JSON.stringify(getHostExecutionBaseline()));

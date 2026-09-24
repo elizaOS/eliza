@@ -23,17 +23,28 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import { asRecord } from "@elizaos/core/type-guards";
-import { type DeploymentTargetConfig, normalizeDeploymentTargetConfig, normalizeLinkedAccountFlagsConfig, normalizeServiceRoutingConfig, type ServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
-import { getDirectAccountProviderForFirstRunProvider, isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig, normalizeFirstRunCredentialInputs } from "@elizaos/core/contracts/first-run-options";
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  isCloudInferenceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunCredentialInputs,
+} from "@elizaos/core/contracts/first-run-options";
 import { PostFirstRunRequestSchema } from "@elizaos/core/contracts/first-run-routes";
-import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
+import {
+  type DeploymentTargetConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeLinkedAccountFlagsConfig,
+  normalizeServiceRoutingConfig,
+  type ServiceRoutingConfig,
+} from "@elizaos/core/contracts/service-routing";
+import { asRecord } from "@elizaos/core/type-guards";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
+import { prepareFirstRunConnectors } from "../first-run-config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { syncDirectProviderCredentials } from "./accounts-routes.ts";
 import {
@@ -270,7 +281,7 @@ export {
   type BlooioFirstRunResolution,
   type CanonicalBlooioConnectorConfig,
   resolveBlooioFirstRunConfig,
-} from "@elizaos/agent/first-run-config";
+} from "../first-run-config.js";
 
 function restoreProcessEnvironment(
   snapshot: NodeJS.ProcessEnv,

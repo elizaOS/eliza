@@ -13,16 +13,14 @@
  * health, x-relay, and travel-provider-relay routes. Hosting them under
  * `cloud/` matches their actual ownership.
  */
-
-import { defaultCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-
-import type { ElizaConfig } from "../lib/config-like";
-
+import { defaultCloudSiteUrl } from "../cloud-config/base-url.js";
+import { resolveDevCloudAuthorityEnvValue } from "../cloud-config/dev-cloud-env-authority.js";
+import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
+import { type ElizaConfig } from "../lib/config-like";
 /**
  * The cloud API an unconfigured agent talks to. Environment-dependent: `bun run
  * dev` targets staging, everything else production — see
- * `defaultCloudSiteUrl()` in `@elizaos/shared`, which owns that decision for the
+ * `defaultCloudSiteUrl()` in `@elizaos/core`, which owns that decision for the
  * whole repo so the agent, the CLI, and the web bundles cannot disagree.
  *
  * A function, not a constant: the dev flag is read from the environment at call
@@ -30,87 +28,64 @@ import type { ElizaConfig } from "../lib/config-like";
  * set when this module was first imported.
  */
 export function defaultCloudApiBaseUrl(): string {
-  return `${defaultCloudSiteUrl()}/api/v1`;
+    return `${defaultCloudSiteUrl()}/api/v1`;
 }
-
 export type CloudApiKeyRuntimeLike = {
-  getSetting?: (key: string) => unknown;
-  character?: {
-    secrets?: Record<string, unknown>;
-  } | null;
+    getSetting?: (key: string) => unknown;
+    character?: {
+        secrets?: Record<string, unknown>;
+    } | null;
 } | null;
-
-export function normalizeCloudSecret(
-  value: string | null | undefined,
-): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+export function normalizeCloudSecret(value: string | null | undefined): string | null {
+    if (typeof value !== "string")
+        return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
 }
-
-function resolveRuntimeCloudApiKey(
-  runtime?: CloudApiKeyRuntimeLike,
-): string | null {
-  const fromSetting = runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY");
-  if (typeof fromSetting === "string") {
-    return normalizeCloudSecret(fromSetting);
-  }
-
-  const fromSecrets = runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
-  return typeof fromSecrets === "string"
-    ? normalizeCloudSecret(fromSecrets)
-    : null;
-}
-
-export function resolveCloudApiBaseUrl(
-  rawBaseUrl?: string | null,
-): string | null {
-  const candidate =
-    normalizeCloudSecret(rawBaseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL) ??
-    defaultCloudApiBaseUrl();
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
+function resolveRuntimeCloudApiKey(runtime?: CloudApiKeyRuntimeLike): string | null {
+    const fromSetting = runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY");
+    if (typeof fromSetting === "string") {
+        return normalizeCloudSecret(fromSetting);
     }
-    parsed.hash = "";
-    parsed.search = "";
-    const normalizedBase = parsed.toString().replace(/\/+$/, "");
-    return normalizedBase.endsWith("/api/v1")
-      ? normalizedBase
-      : `${normalizedBase}/api/v1`;
-  } catch {
-    return null;
-  }
+    const fromSecrets = runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
+    return typeof fromSecrets === "string"
+        ? normalizeCloudSecret(fromSecrets)
+        : null;
 }
-
-export function resolveCloudApiKey(
-  config?: Pick<ElizaConfig, "cloud"> | null,
-  runtime?: CloudApiKeyRuntimeLike,
-): string | null {
-  if (resolveDevCloudEnvAuthority()) {
-    return normalizeCloudSecret(
-      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
-    );
-  }
-  return normalizeCloudSecret(
-    config?.cloud?.apiKey ??
-      resolveRuntimeCloudApiKey(runtime) ??
-      process.env.ELIZAOS_CLOUD_API_KEY,
-  );
+export function resolveCloudApiBaseUrl(rawBaseUrl?: string | null): string | null {
+    const candidate = normalizeCloudSecret(rawBaseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL) ??
+        defaultCloudApiBaseUrl();
+    try {
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            return null;
+        }
+        parsed.hash = "";
+        parsed.search = "";
+        const normalizedBase = parsed.toString().replace(/\/+$/, "");
+        return normalizedBase.endsWith("/api/v1")
+            ? normalizedBase
+            : `${normalizedBase}/api/v1`;
+    }
+    catch {
+        return null;
+    }
 }
-
+export function resolveCloudApiKey(config?: Pick<ElizaConfig, "cloud"> | null, runtime?: CloudApiKeyRuntimeLike): string | null {
+    if (resolveDevCloudEnvAuthority()) {
+        return normalizeCloudSecret(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"));
+    }
+    return normalizeCloudSecret(config?.cloud?.apiKey ??
+        resolveRuntimeCloudApiKey(runtime) ??
+        process.env.ELIZAOS_CLOUD_API_KEY);
+}
 /**
  * Preserve a live CloudAuth-service key outside dev authority while making the
  * frozen launcher tuple the sole credential source when authority is active.
  */
-export function resolveCloudApiKeyWithRuntimeOverride(
-  runtimeApiKey: string | null | undefined,
-  config?: Pick<ElizaConfig, "cloud"> | null,
-  runtime?: CloudApiKeyRuntimeLike,
-): string | null {
-  const resolved = resolveCloudApiKey(config, runtime);
-  return resolveDevCloudEnvAuthority()
-    ? resolved
-    : (normalizeCloudSecret(runtimeApiKey) ?? resolved);
+export function resolveCloudApiKeyWithRuntimeOverride(runtimeApiKey: string | null | undefined, config?: Pick<ElizaConfig, "cloud"> | null, runtime?: CloudApiKeyRuntimeLike): string | null {
+    const resolved = resolveCloudApiKey(config, runtime);
+    return resolveDevCloudEnvAuthority()
+        ? resolved
+        : (normalizeCloudSecret(runtimeApiKey) ?? resolved);
 }

@@ -6,7 +6,12 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsCalendarFeed, type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSummary, type SetLifeOpsCalendarIncludedRequest } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSummary,
+  type SetLifeOpsCalendarIncludedRequest,
+} from "@elizaos/core/contracts/calendar";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CalendarService } from "../service/CalendarService.js";

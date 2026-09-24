@@ -31,20 +31,21 @@
  * fills gaps for plugins that haven't migrated yet. When all plugins ship a
  * manifest, the central maps and the old engine can be deleted.
  */
+
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  type PluginAutoEnableContext,
+  type PluginAutoEnableModule,
+} from "@elizaos/core";
+import { type ElizaConfig } from "@elizaos/core/config/types.eliza";
 
-import { type PluginAutoEnableContext, type PluginAutoEnableModule } from "@elizaos/core";
-
-import type { ElizaConfig } from "@elizaos/core/config/types.eliza";
-
-// Re-export the runtime types so consumers that import from @elizaos/shared
+// Re-export the runtime types so consumers that import from @elizaos/core
 // keep working. The canonical home for these is @elizaos/core (plugin author
 // API surface) — they live there so plugin packages don't need to depend on
 // app/shared just to type a manifest predicate.
 export type { PluginAutoEnableContext, PluginAutoEnableModule };
-
 /** Subset of package.json the manifest reader cares about. */
 export interface PluginPackageManifestBlock {
   /**
@@ -65,7 +66,6 @@ export interface PluginPackageManifestBlock {
    */
   force?: boolean;
 }
-
 export interface PluginPackageManifest {
   name: string;
   version?: string;
@@ -73,7 +73,6 @@ export interface PluginPackageManifest {
     plugin?: PluginPackageManifestBlock;
   };
 }
-
 /**
  * Minimal candidate shape for the autoEnable manifest evaluator.
  *
@@ -88,7 +87,6 @@ export interface PluginManifestCandidate {
   /** Absolute path to the package root (the dir containing package.json). */
   packageRoot: string;
 }
-
 function assertPackageJsonObject(
   value: unknown,
   packageRoot: string,
@@ -97,7 +95,6 @@ function assertPackageJsonObject(
     throw new Error(`invalid package.json object at ${packageRoot}`);
   }
 }
-
 /** Verdict for a single candidate after evaluating its manifest. */
 export interface PluginManifestVerdict {
   packageName: string;
@@ -114,7 +111,6 @@ export interface PluginManifestVerdict {
   /** When non-null the manifest existed but the check module failed to load/run; the plugin is treated as not-enabled. */
   error: string | null;
 }
-
 /**
  * Derive the short id used for `plugins.allow` and `plugins.entries` lookups.
  * Mirrors the logic in plugin-auto-enable-engine.addToAllowlist.
@@ -124,7 +120,6 @@ export function pluginShortId(packageName: string): string {
     ? packageName.slice(packageName.lastIndexOf("/plugin-") + "/plugin-".length)
     : packageName;
 }
-
 /**
  * Read `package.json` for a candidate and extract the elizaos.plugin block.
  * Returns null when no package.json exists or it doesn't declare an elizaos.plugin block.
@@ -144,12 +139,10 @@ export async function readPluginPackageManifest(
   if (!parsed.elizaos?.plugin) return null;
   return parsed;
 }
-
 const CHECK_MODULE_CACHE = new Map<
   string,
   PluginAutoEnableModule | "missing"
 >();
-
 /**
  * Dynamic-import the check module declared by a manifest. Cached per absolute
  * module path so re-evaluation across multiple boots in the same process
@@ -163,14 +156,12 @@ async function loadCheckModule(
   const cached = CHECK_MODULE_CACHE.get(absolute);
   if (cached === "missing") return null;
   if (cached) return cached;
-
   try {
     await fs.access(absolute);
   } catch {
     CHECK_MODULE_CACHE.set(absolute, "missing");
     return null;
   }
-
   const url = pathToFileURL(absolute).href;
   // Dynamic file:// import — Vite's static analyzer flags this on the client
   // bundle even though the engine only runs server-side at boot. Suppress.
@@ -190,16 +181,13 @@ async function loadCheckModule(
             shouldForce: mod.default.shouldForce,
           }
         : null;
-
   if (!resolved) {
     CHECK_MODULE_CACHE.set(absolute, "missing");
     return null;
   }
-
   CHECK_MODULE_CACHE.set(absolute, resolved);
   return resolved;
 }
-
 /**
  * Evaluate one candidate's manifest against the runtime context. Pure
  * verdict — caller decides how to apply it to the allow list / force overrides.
@@ -210,13 +198,11 @@ export async function evaluatePluginManifest(
 ): Promise<PluginManifestVerdict | null> {
   const manifest = await readPluginPackageManifest(candidate.packageRoot);
   if (!manifest) return null;
-
   const block = manifest.elizaos?.plugin ?? {};
   const shortId = pluginShortId(candidate.packageName);
   const capabilities = Array.isArray(block.capabilities)
     ? block.capabilities.filter((c): c is string => typeof c === "string")
     : [];
-
   if (!block.autoEnableModule) {
     // Manifest exists but no check module — treat as not-auto-enabled (the
     // plugin can still be enabled via explicit user config). Still surface
@@ -231,7 +217,6 @@ export async function evaluatePluginManifest(
       error: null,
     };
   }
-
   let module: PluginAutoEnableModule | null;
   try {
     module = await loadCheckModule(
@@ -246,12 +231,9 @@ export async function evaluatePluginManifest(
       force: block.force === true,
       capabilities,
       reason: null,
-      error: `failed to import autoEnableModule "${block.autoEnableModule}": ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      error: `failed to import autoEnableModule "${block.autoEnableModule}": ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-
   if (!module) {
     return {
       packageName: candidate.packageName,
@@ -263,7 +245,6 @@ export async function evaluatePluginManifest(
       error: `autoEnableModule "${block.autoEnableModule}" did not export a shouldEnable function`,
     };
   }
-
   let enabled: boolean;
   try {
     enabled = Boolean(await module.shouldEnable(ctx));
@@ -278,7 +259,6 @@ export async function evaluatePluginManifest(
       error: `shouldEnable threw: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-
   let force = block.force === true;
   if (module.shouldForce) {
     try {
@@ -288,7 +268,6 @@ export async function evaluatePluginManifest(
       force = block.force === true;
     }
   }
-
   return {
     packageName: candidate.packageName,
     shortId,
@@ -302,7 +281,6 @@ export async function evaluatePluginManifest(
     error: null,
   };
 }
-
 /**
  * Evaluate every candidate. Verdicts come back in the same order as the input.
  * Failures are reported in the verdict's `error` field — this function never
@@ -324,9 +302,7 @@ export async function evaluatePluginManifests(
           force: false,
           capabilities: [],
           reason: null,
-          error: `manifest read failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          error: `manifest read failed: ${err instanceof Error ? err.message : String(err)}`,
         };
       }
     }),
@@ -334,7 +310,6 @@ export async function evaluatePluginManifests(
     entries.filter((v): v is PluginManifestVerdict => v !== null),
   );
 }
-
 /**
  * Apply manifest verdicts to a config: push enabled plugins onto
  * `plugins.allow` (with the short id and full package name), set
@@ -350,7 +325,6 @@ export function applyPluginManifestVerdicts(
   const pluginsConfig = config.plugins;
   pluginsConfig.allow = pluginsConfig.allow ?? [];
   pluginsConfig.entries = pluginsConfig.entries ?? {};
-
   for (const verdict of verdicts) {
     if (verdict.error) {
       changes.push(
@@ -359,22 +333,18 @@ export function applyPluginManifestVerdicts(
       continue;
     }
     if (!verdict.enabled && !verdict.force) continue;
-
     const explicitlyDisabled =
       pluginsConfig.entries[verdict.shortId]?.enabled === false;
-
     if (explicitlyDisabled && !verdict.force) {
       // User explicitly disabled — respect that unless force is set.
       continue;
     }
-
     if (verdict.force && explicitlyDisabled) {
       pluginsConfig.entries[verdict.shortId] = {
         ...pluginsConfig.entries[verdict.shortId],
         enabled: true,
       };
     }
-
     let added = false;
     if (!pluginsConfig.allow.includes(verdict.shortId)) {
       pluginsConfig.allow.push(verdict.shortId);

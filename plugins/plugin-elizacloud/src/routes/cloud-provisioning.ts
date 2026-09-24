@@ -1,4 +1,4 @@
 // Keep the plugin's historical export path, but make the shared host-layer
 // detector the only implementation. This prevents route/UI consumers from
 // drifting away from the immutable local-development Cloud authority policy.
-export { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
+export { isCloudProvisionedContainer } from "../cloud-config/cloud-provisioning.js";

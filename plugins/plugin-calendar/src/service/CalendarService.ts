@@ -21,6 +21,51 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type CreateLifeOpsIcsCalendarSourceRequest,
+  type CreateLifeOpsLinkedCalendarLinkRequest,
+  type DisconnectLifeOpsLinkedCalendarRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarAllDayRange,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarImportedDataPurgeReceipt,
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSeedReceipt,
+  type LifeOpsCalendarSourceError,
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSourceKey,
+  type LifeOpsCalendarSummary,
+  type LifeOpsIcsCalendarSource,
+  type LifeOpsIcsCalendarSyncResponse,
+  type LifeOpsLinkedCalendarControl,
+  type LifeOpsLinkedCalendarControlMutationResult,
+  type LifeOpsLinkedCalendarEventView,
+  type LifeOpsLinkedCalendarLink,
+  type LifeOpsLinkedCalendarMutationResponse,
+  type LifeOpsNextCalendarEventContext,
+  type ListLifeOpsCalendarsRequest,
+  type PurgeLifeOpsCalendarImportedDataRequest,
+  type RebindLifeOpsLinkedCalendarRequest,
+  type RebindLifeOpsLinkedCalendarResponse,
+  type ResolveLifeOpsLinkedCalendarConflictRequest,
+  type RunLifeOpsLinkedCalendarReconciliationRequest,
+  type SeedLifeOpsCalendarRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type SetLifeOpsCalendarIncludedResponse,
+  type UpdateLifeOpsIcsCalendarSourceRequest,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
+import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
   isSerializedSecretHandle,
   SECRETS_SERVICE_TYPE,
 } from "@elizaos/plugin-assistant";
@@ -42,9 +87,6 @@ import {
   type ScheduledTaskDispatchRecord,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { type CreateLifeOpsCalendarEventAttendee, type CreateLifeOpsCalendarEventRequest, type CreateLifeOpsCalendarEventResponse, type CreateLifeOpsIcsCalendarSourceRequest, type CreateLifeOpsLinkedCalendarLinkRequest, type DisconnectLifeOpsLinkedCalendarRequest, type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarAllDayRange, type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsCalendarImportedDataPurgeReceipt, type LifeOpsCalendarProvider, type LifeOpsCalendarRecurrenceScope, type LifeOpsCalendarSeedReceipt, type LifeOpsCalendarSourceError, type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSourceKey, type LifeOpsCalendarSummary, type LifeOpsIcsCalendarSource, type LifeOpsIcsCalendarSyncResponse, type LifeOpsLinkedCalendarControl, type LifeOpsLinkedCalendarControlMutationResult, type LifeOpsLinkedCalendarEventView, type LifeOpsLinkedCalendarLink, type LifeOpsLinkedCalendarMutationResponse, type LifeOpsNextCalendarEventContext, type ListLifeOpsCalendarsRequest, type PurgeLifeOpsCalendarImportedDataRequest, type RebindLifeOpsLinkedCalendarRequest, type RebindLifeOpsLinkedCalendarResponse, type ResolveLifeOpsLinkedCalendarConflictRequest, type RunLifeOpsLinkedCalendarReconciliationRequest, type SeedLifeOpsCalendarRequest, type SetLifeOpsCalendarIncludedRequest, type SetLifeOpsCalendarIncludedResponse, type UpdateLifeOpsIcsCalendarSourceRequest, type UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/core/contracts/calendar";
-import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
-import { type LifeOpsConnectorGrant, type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   APPLE_CALENDAR_ACCOUNT_LABEL,
   APPLE_CALENDAR_GRANT_ID,

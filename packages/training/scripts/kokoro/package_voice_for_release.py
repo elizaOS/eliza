@@ -132,9 +132,9 @@ def _manifest_fragment(
         "engine": engine,
         "artifacts": artifacts,
         "integration": {
-            "runtimeBackendDir": "packages/shared/src/local-inference/kokoro/",
-            "voicePresetFormat": "packages/shared/src/local-inference/kokoro/types.ts",
-            "catalogTable": "packages/shared/src/local-inference/kokoro/voice-presets.ts",
+            "runtimeBackendDir": "plugins/plugin-local-inference/src/services/voice/kokoro/",
+            "voicePresetFormat": "plugins/plugin-local-inference/src/services/voice/kokoro/types.ts",
+            "catalogTable": "plugins/plugin-local-inference/src/services/voice/kokoro/voice-presets.ts",
         },
     }
 
@@ -178,7 +178,7 @@ def _readme(*, voice_name: str, eval_report: dict[str, Any] | None) -> str:
             "1. Copy the bundle into the per-tier release tree at "
             "`elizaos/eliza-1:voice/kokoro/voices/<voice_name>.bin`.",
             "2. Append the `voice` block from `manifest-fragment.json` to "
-            "`packages/shared/src/local-inference/kokoro/voice-presets.ts`.",
+            "`plugins/plugin-local-inference/src/services/voice/kokoro/voice-presets.ts`.",
             "3. Re-run the elizaos/eliza-1 publish preflight and verify "
             "`plugins/plugin-native-inference/src/model-catalog/voice-models.ts` records "
             "`voice/kokoro/voices/<voice_name>.bin`.",

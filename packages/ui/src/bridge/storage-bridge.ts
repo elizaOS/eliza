@@ -11,12 +11,12 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/ui/logger";
 import {
   registerStewardTokenPersistence,
   registerStewardTokenRemoval,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { logger } from "@elizaos/ui/logger";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
 import {

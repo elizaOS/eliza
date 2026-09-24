@@ -5,7 +5,10 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
-import { findBySku, HARDWARE_SKUS } from "@elizaos/cloud-shared/hardware-catalog";
+import {
+  findBySku,
+  HARDWARE_SKUS,
+} from "@elizaos/cloud-shared/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";

@@ -35,54 +35,60 @@
  */
 import type * as http from "node:http";
 import path from "node:path";
-import { VoiceProfileStore } from "../services/voice/profile-store.js";
-import { logger } from "@elizaos/core";
-import { readJsonBody } from "@elizaos/core/api/http-helpers";
-import { resolveStateDir } from "@elizaos/core";
-import { sendJson } from "@elizaos/core/api/http-helpers";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
-import { type VoiceProfileRecord } from "../services/voice/profile-store.js";
+import { logger, resolveStateDir } from "@elizaos/core";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/core/api/http-helpers";
+import {
+	type VoiceProfileRecord,
+	VoiceProfileStore,
+} from "../services/voice/profile-store.js";
+
 // ---------------------------------------------------------------------------
 // Injectable test hook (mirrors family-member-route.ts)
 // ---------------------------------------------------------------------------
 let profileStoreOverride: VoiceProfileStore | null = null;
-export function setVoiceSpeakerProfileStore(store: VoiceProfileStore | null): void {
-    profileStoreOverride = store;
+export function setVoiceSpeakerProfileStore(
+	store: VoiceProfileStore | null,
+): void {
+	profileStoreOverride = store;
 }
 async function getProfileStore(): Promise<VoiceProfileStore> {
-    if (profileStoreOverride)
-        return profileStoreOverride;
-    const store = new VoiceProfileStore({
-        rootDir: path.join(resolveStateDir(), "voice-profiles"),
-    });
-    await store.init();
-    return store;
+	if (profileStoreOverride) return profileStoreOverride;
+	const store = new VoiceProfileStore({
+		rootDir: path.join(resolveStateDir(), "voice-profiles"),
+	});
+	await store.init();
+	return store;
 }
 // ---------------------------------------------------------------------------
 // Response shape
 // ---------------------------------------------------------------------------
 export interface SpeakerProfileSummary {
-    profileId: string;
-    entityId: string | null;
-    label: string | null;
-    embeddingModel: string;
-    sampleCount: number;
-    confidence: number;
-    firstObservedAt: string;
-    lastObservedAt: string;
+	profileId: string;
+	entityId: string | null;
+	label: string | null;
+	embeddingModel: string;
+	sampleCount: number;
+	confidence: number;
+	firstObservedAt: string;
+	lastObservedAt: string;
 }
 function summarize(record: VoiceProfileRecord): SpeakerProfileSummary {
-    const label = typeof record.metadata?.label === "string" ? record.metadata.label : null;
-    return {
-        profileId: record.profileId,
-        entityId: record.entityId,
-        label,
-        embeddingModel: record.embeddingModel,
-        sampleCount: record.sampleCount,
-        confidence: record.confidence,
-        firstObservedAt: record.firstObservedAt,
-        lastObservedAt: record.lastObservedAt,
-    };
+	const label =
+		typeof record.metadata?.label === "string" ? record.metadata.label : null;
+	return {
+		profileId: record.profileId,
+		entityId: record.entityId,
+		label,
+		embeddingModel: record.embeddingModel,
+		sampleCount: record.sampleCount,
+		confidence: record.confidence,
+		firstObservedAt: record.firstObservedAt,
+		lastObservedAt: record.lastObservedAt,
+	};
 }
 // ---------------------------------------------------------------------------
 // Route handler
@@ -91,14 +97,13 @@ const PROFILE_ID_RE = /^[A-Za-z0-9._-]+$/;
 const BIND_RE = /^\/v1\/voice\/speaker-profiles\/([^/]+)\/bind$/;
 const UNBIND_RE = /^\/v1\/voice\/speaker-profiles\/([^/]+)\/unbind$/;
 function decodeProfileId(raw: string): string | null {
-    try {
-        return decodeURIComponent(raw);
-    }
-    catch {
-        // error-policy:J3 Malformed percent-encoding is invalid path input, not a
-        // speaker-profile store outage.
-        return null;
-    }
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 Malformed percent-encoding is invalid path input, not a
+		// speaker-profile store outage.
+		return null;
+	}
 }
 /**
  * Handle `/v1/voice/speaker-profiles*` requests.
@@ -107,79 +112,88 @@ function decodeProfileId(raw: string): string | null {
  * written), `false` when the path does not match so the caller can fall
  * through to the next handler.
  */
-export async function handleVoiceSpeakerProfileRoutes(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
-    const method = (req.method ?? "GET").toUpperCase();
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const pathname = url.pathname;
-    if (!pathname.startsWith("/v1/voice/speaker-profiles"))
-        return false;
-    // GET /v1/voice/speaker-profiles — list recognized speaker profiles.
-    if (method === "GET" && pathname === "/v1/voice/speaker-profiles") {
-        const store = await getProfileStore();
-        const records = await store.list();
-        sendJson(res, { profiles: records.map(summarize) });
-        return true;
-    }
-    // POST /v1/voice/speaker-profiles/:id/bind { entityId, label? }
-    const bindMatch = BIND_RE.exec(pathname);
-    if (method === "POST" && bindMatch) {
-        const profileId = decodeProfileId(bindMatch[1] ?? "");
-        if (profileId === null) {
-            sendJsonError(res, "Invalid profile id: malformed URL encoding", 400);
-            return true;
-        }
-        if (!PROFILE_ID_RE.test(profileId)) {
-            sendJsonError(res, `invalid profile id: ${profileId}`, 400);
-            return true;
-        }
-        const body = await readJsonBody<Record<string, unknown>>(req, res);
-        if (!body)
-            return true; // readJsonBody already sent a 4xx
-        const entityId = typeof body.entityId === "string" ? body.entityId.trim() : "";
-        if (!entityId) {
-            sendJsonError(res, "entityId is required", 400);
-            return true;
-        }
-        const label = typeof body.label === "string" && body.label.trim().length > 0
-            ? body.label.trim()
-            : undefined;
-        const store = await getProfileStore();
-        let updated: VoiceProfileRecord | null;
-        try {
-            updated = await store.bindEntity({ profileId, entityId, label });
-        }
-        catch (err) {
-            logger.error({ err, profileId, entityId }, "[voice-speaker-profile-route] bindEntity failed");
-            sendJsonError(res, err instanceof Error ? err.message : "failed to bind entity", 500);
-            return true;
-        }
-        if (!updated) {
-            sendJsonError(res, `profile not found: ${profileId}`, 404);
-            return true;
-        }
-        sendJson(res, summarize(updated));
-        return true;
-    }
-    // POST /v1/voice/speaker-profiles/:id/unbind
-    const unbindMatch = UNBIND_RE.exec(pathname);
-    if (method === "POST" && unbindMatch) {
-        const profileId = decodeProfileId(unbindMatch[1] ?? "");
-        if (profileId === null) {
-            sendJsonError(res, "Invalid profile id: malformed URL encoding", 400);
-            return true;
-        }
-        if (!PROFILE_ID_RE.test(profileId)) {
-            sendJsonError(res, `invalid profile id: ${profileId}`, 400);
-            return true;
-        }
-        const store = await getProfileStore();
-        const updated = await store.unbindEntity(profileId);
-        if (!updated) {
-            sendJsonError(res, `profile not found: ${profileId}`, 404);
-            return true;
-        }
-        sendJson(res, summarize(updated));
-        return true;
-    }
-    return false;
+export async function handleVoiceSpeakerProfileRoutes(
+	req: http.IncomingMessage,
+	res: http.ServerResponse,
+): Promise<boolean> {
+	const method = (req.method ?? "GET").toUpperCase();
+	const url = new URL(req.url ?? "/", "http://localhost");
+	const pathname = url.pathname;
+	if (!pathname.startsWith("/v1/voice/speaker-profiles")) return false;
+	// GET /v1/voice/speaker-profiles — list recognized speaker profiles.
+	if (method === "GET" && pathname === "/v1/voice/speaker-profiles") {
+		const store = await getProfileStore();
+		const records = await store.list();
+		sendJson(res, { profiles: records.map(summarize) });
+		return true;
+	}
+	// POST /v1/voice/speaker-profiles/:id/bind { entityId, label? }
+	const bindMatch = BIND_RE.exec(pathname);
+	if (method === "POST" && bindMatch) {
+		const profileId = decodeProfileId(bindMatch[1] ?? "");
+		if (profileId === null) {
+			sendJsonError(res, "Invalid profile id: malformed URL encoding", 400);
+			return true;
+		}
+		if (!PROFILE_ID_RE.test(profileId)) {
+			sendJsonError(res, `invalid profile id: ${profileId}`, 400);
+			return true;
+		}
+		const body = await readJsonBody<Record<string, unknown>>(req, res);
+		if (!body) return true; // readJsonBody already sent a 4xx
+		const entityId =
+			typeof body.entityId === "string" ? body.entityId.trim() : "";
+		if (!entityId) {
+			sendJsonError(res, "entityId is required", 400);
+			return true;
+		}
+		const label =
+			typeof body.label === "string" && body.label.trim().length > 0
+				? body.label.trim()
+				: undefined;
+		const store = await getProfileStore();
+		let updated: VoiceProfileRecord | null;
+		try {
+			updated = await store.bindEntity({ profileId, entityId, label });
+		} catch (err) {
+			logger.error(
+				{ err, profileId, entityId },
+				"[voice-speaker-profile-route] bindEntity failed",
+			);
+			sendJsonError(
+				res,
+				err instanceof Error ? err.message : "failed to bind entity",
+				500,
+			);
+			return true;
+		}
+		if (!updated) {
+			sendJsonError(res, `profile not found: ${profileId}`, 404);
+			return true;
+		}
+		sendJson(res, summarize(updated));
+		return true;
+	}
+	// POST /v1/voice/speaker-profiles/:id/unbind
+	const unbindMatch = UNBIND_RE.exec(pathname);
+	if (method === "POST" && unbindMatch) {
+		const profileId = decodeProfileId(unbindMatch[1] ?? "");
+		if (profileId === null) {
+			sendJsonError(res, "Invalid profile id: malformed URL encoding", 400);
+			return true;
+		}
+		if (!PROFILE_ID_RE.test(profileId)) {
+			sendJsonError(res, `invalid profile id: ${profileId}`, 400);
+			return true;
+		}
+		const store = await getProfileStore();
+		const updated = await store.unbindEntity(profileId);
+		if (!updated) {
+			sendJsonError(res, `profile not found: ${profileId}`, 404);
+			return true;
+		}
+		sendJson(res, summarize(updated));
+		return true;
+	}
+	return false;
 }

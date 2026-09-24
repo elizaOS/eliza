@@ -10,7 +10,7 @@
  *
  * Implementation uses Web Crypto's Ed25519 primitive (Node ≥ 24, browsers
  * since 2023). No vendor crypto dep — the runtime already targets Node 24+
- * (`packages/shared/package.json:"engines.node": ">=24.0.0"`).
+ * (`plugins/plugin-native-inference/package.json:"engines.node": ">=24.0.0"`).
  *
  * Spec: `.swarm/research/R5-versioning.md` §3.1 + §6.4.
  */

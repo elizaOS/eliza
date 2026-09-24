@@ -7,7 +7,10 @@
  */
 
 import { activityEventToPlaintext } from "@elizaos/core/activity-plaintext";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/unicode";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/utils/unicode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";

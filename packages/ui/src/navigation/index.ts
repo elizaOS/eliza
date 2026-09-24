@@ -10,11 +10,11 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { userAgentHasElizaOSMarker } from "@elizaos/shared";
-import type { LucideIcon } from "lucide-react";
+import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
 import {
   Clock3,
   LayoutGrid,
+  type LucideIcon,
   Monitor,
   Phone,
   Radio,
@@ -46,27 +46,21 @@ export { isDeveloperWorkspaceRoute } from "./developer-route";
 type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
 };
-
 const viteEnv = (import.meta as RuntimeImportMeta).env;
-
 function viteEnvFlagEnabled(name: string, defaultValue: boolean): boolean {
   const value = viteEnv?.[name];
   if (value == null) return defaultValue;
   return String(value).toLowerCase() !== "false";
 }
-
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
 export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
-
 /** Stream routes stay addressable; builds can hide the tab without removing it. */
 export const STREAM_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_STREAM", true);
-
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
  * for dynamic plugin-provided nav-page widgets.
  */
 export type Tab = BuiltinTab | (string & {});
-
 export const APPS_TOOL_TABS = [
   "plugins",
   "skills",
@@ -79,14 +73,12 @@ export const APPS_TOOL_TABS = [
   "database",
   "logs",
 ] as const satisfies readonly Tab[];
-
 export interface TabGroup {
   label: string;
   tabs: Tab[];
   icon: LucideIcon;
   description?: string;
 }
-
 function walletLauncherTabs(): Tab[] {
   const tabs = listAppShellPages()
     .filter((entry) => entry.group === "wallet")
@@ -103,14 +95,12 @@ function walletLauncherTabs(): Tab[] {
     );
   return [...new Set(tabs.length ? tabs : ["inventory"])];
 }
-
 export interface AndroidPhoneSurfaceDetection {
   platform?: string;
   isNative?: boolean;
   search?: string;
   hash?: string;
 }
-
 function hasAndroidTestFlag(search: string, hash: string): boolean {
   const searchParams = new URLSearchParams(search);
   if (searchParams.get("android") === "true") return true;
@@ -118,20 +108,20 @@ function hasAndroidTestFlag(search: string, hash: string): boolean {
   if (!hashQuery) return false;
   return new URLSearchParams(hashQuery).get("android") === "true";
 }
-
 /** The Capacitor bridge's injected global — the same object the npm module
  *  reads. Present only inside native WebViews; `null` on web and node. */
 interface CapacitorBridgeGlobal {
   getPlatform?: () => string;
   isNativePlatform?: () => boolean;
 }
-
 function capacitorBridge(): CapacitorBridgeGlobal | null {
-  const bridge = (globalThis as { Capacitor?: CapacitorBridgeGlobal })
-    .Capacitor;
+  const bridge = (
+    globalThis as {
+      Capacitor?: CapacitorBridgeGlobal;
+    }
+  ).Capacitor;
   return bridge ?? null;
 }
-
 export function isAndroidPhoneSurfaceEnabled(
   detection: AndroidPhoneSurfaceDetection = {},
 ): boolean {
@@ -142,14 +132,12 @@ export function isAndroidPhoneSurfaceEnabled(
     detection.hash ??
     (typeof window === "undefined" ? "" : window.location.hash);
   if (hasAndroidTestFlag(search, hash)) return true;
-
   const platform =
     detection.platform ?? capacitorBridge()?.getPlatform?.() ?? "web";
   const isNative =
     detection.isNative ?? capacitorBridge()?.isNativePlatform?.() ?? false;
   return isNative && platform === "android";
 }
-
 /**
  * True only on the **AOSP ElizaOS fork** (the system image whose WebView
  * user-agent carries the `ElizaOS/<tag>` marker), or under an explicit
@@ -176,7 +164,6 @@ export function isAospShellEnabled(
     userAgentHasElizaOSMarker(navigator.userAgent ?? "")
   );
 }
-
 /**
  * The AOSP-ElizaOS-fork-only native device-OS surfaces (dialer, SMS, contacts,
  * camera). They are gated to the fork via {@link isAospShellEnabled} everywhere
@@ -196,7 +183,6 @@ export const NATIVE_OS_VIEW_IDS = [
   "contacts",
   "camera",
 ] as const;
-
 /**
  * Native-OS launcher tiles: the routable native-OS surfaces plus Files — a
  * cross-platform view (`/apps/files`) that stays routable everywhere but is only
@@ -206,7 +192,6 @@ export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
   ...NATIVE_OS_VIEW_IDS,
   "files",
 ] as const;
-
 interface WindowNavigationLocation {
   protocol: string;
   hostname?: string;
@@ -214,11 +199,9 @@ interface WindowNavigationLocation {
   hash: string;
   pathname: string;
 }
-
 function getWindowNavigationLocation(): WindowNavigationLocation | undefined {
   return typeof window === "undefined" ? undefined : window.location;
 }
-
 export function isAppWindowRoute(
   location:
     | Pick<WindowNavigationLocation, "search">
@@ -232,7 +215,6 @@ export function isAppWindowRoute(
     return false;
   }
 }
-
 export function shouldUseHashNavigation(
   location:
     | (Pick<WindowNavigationLocation, "protocol" | "search"> &
@@ -246,7 +228,6 @@ export function shouldUseHashNavigation(
     isDeveloperWorkspaceRoute(location)
   );
 }
-
 export function getWindowNavigationPath(
   location:
     | WindowNavigationLocation
@@ -258,7 +239,6 @@ export function getWindowNavigationPath(
         (isDeveloperWorkspaceRoute(location) ? "/chat" : "/")
     : location.pathname;
 }
-
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
@@ -325,7 +305,6 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Configuration and preferences",
   },
 ];
-
 // Canonical settings-section metadata (pure data) re-exported here so
 // non-renderer consumers (e.g. app's dev-route-catalog parity test) can
 // assert the QA catalog never drifts from the UI's section list.
@@ -333,10 +312,8 @@ export {
   SETTINGS_SECTION_META,
   type SettingsSectionMeta,
 } from "../components/settings/settings-section-meta";
-
 /** Canonical paths derived from the built-in route descriptors. */
 export const TAB_PATHS = mapBuiltinRoutes((descriptor) => descriptor.path);
-
 const PATH_TO_TAB = new Map(
   Object.values(
     mapBuiltinRoutes(
@@ -344,7 +321,6 @@ const PATH_TO_TAB = new Map(
     ),
   ),
 );
-
 function normalizePathForLookup(pathname: string, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   let p = pathname || "/";
@@ -360,18 +336,15 @@ function normalizePathForLookup(pathname: string, basePath = ""): string {
   if (normalized.endsWith("/index.html")) normalized = "/";
   return normalized;
 }
-
 export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
 }
-
 export interface LegacyBuiltinRouteResolution {
   tab: Tab;
   canonicalPath: string;
 }
-
 /**
  * Resolve a retired builtin route through the builtin metadata registry. The
  * canonical destination is always derived from `TAB_PATHS`, so aliases cannot
@@ -385,11 +358,9 @@ export function resolveLegacyBuiltinRoute(
   const tab = resolveBuiltinTabIdForPathAlias(normalized) as Tab | null;
   return tab ? { tab, canonicalPath: pathForTab(tab, basePath) } : null;
 }
-
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
   return normalizePathForLookup(pathname, basePath) === "/";
 }
-
 export function resolveInitialTabForPath(
   pathname: string,
   fallbackTab: Tab,
@@ -400,7 +371,6 @@ export function resolveInitialTabForPath(
   }
   return tabFromPath(pathname, basePath) ?? fallbackTab;
 }
-
 /**
  * Legacy host-owned prefix aliases: `/<prefix>/<sub>` paths whose target tab is
  * NOT derivable from `TAB_PATHS` because the tab's canonical path lives under a
@@ -423,7 +393,6 @@ export const LEGACY_PREFIX_TAB_ALIASES: Record<string, Tab> = {
   "/apps/inventory": "inventory",
   "/character/relationships": "relationships",
 };
-
 /**
  * Resolve a `/<prefix>/<sub>` path to its tab from the canonical `TAB_PATHS`
  * registry (via {@link PATH_TO_TAB}), falling back to the explicitly-marked
@@ -441,14 +410,12 @@ function prefixSubTabFromPath(normalizedPath: string): Tab | null {
     null
   );
 }
-
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
   // The root path "/" lands on the discovered main-tab app. Reads the
   // cached apps catalog synchronously and falls back to the assistant home
   // (clouds/avatar surface) when no app declares elizaos.app.mainTab=true.
   if (normalized === "/") return resolveDefaultLandingTab();
-
   // Apps disabled in production builds — redirect to chat
   if (
     !APPS_ENABLED &&
@@ -460,21 +427,17 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   ) {
     return "chat";
   }
-
   // Historical /tutorial links land in chat because the tutorial is a
   // chat-native flow launched from the home card, not a routable page.
   if (normalized === "/tutorial") {
     return "chat";
   }
-
   const legacyBuiltinRoute = resolveLegacyBuiltinRoute(pathname, basePath);
   if (legacyBuiltinRoute) return legacyBuiltinRoute.tab;
-
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
   }
-
   // Retired My Apps routes (#17031): bare /apps (the old My Apps canonical
   // path) and the /apps/my-apps app-window slug both resolve to the
   // consolidated Projects surface, which pre-selects its Apps segment from
@@ -483,7 +446,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/apps" || normalized === "/apps/my-apps") {
     return "tasks";
   }
-
   // /character/<sub> — resolve nested character paths. The character hub's
   // sections are now top-level views, but their routes keep the /character/*
   // prefix so existing deep links resolve to the promoted tab. Resolution reads
@@ -493,14 +455,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized.startsWith("/character/")) {
     return prefixSubTabFromPath(normalized) ?? "character";
   }
-
   const registeredAppShellPage = listAppShellPages().find((entry) =>
     appShellPageMatchesPath(entry, normalized),
   );
   if (registeredAppShellPage) {
     return registeredAppShellPage.tabAffinity ?? registeredAppShellPage.id;
   }
-
   // /apps/<sub> — known tool tabs resolve to their tab from the TAB_PATHS
   // registry (via prefixSubTabFromPath); a nested sub-path is a plugin view,
   // and everything else is an app slug.
@@ -509,7 +469,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     if (sub.includes("/")) return "views";
     return prefixSubTabFromPath(normalized) ?? "apps";
   }
-
   // /settings/<sub> — resolve nested settings paths
   // /settings/<sub> (including /settings/voice) — the Settings view selects the
   // matching section from the URL hash; the route always resolves to the
@@ -517,14 +476,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized.startsWith("/settings/")) {
     return "settings";
   }
-
   // Legacy /connectors and /connectors/<id> — Settings → Connectors (index or
   // detail). The hash `#connectors` / `#connectors/<id>` is written by the
   // shell when these paths are opened so ConnectorsSection can deep-link.
   if (normalized === "/connectors" || normalized.startsWith("/connectors/")) {
     return "settings";
   }
-
   // Check current paths first, then route unknown top-level paths through the
   // view registry. Plugin views can declare routes that are not built-in tabs;
   // the Views tab can then match the exact registry path and mount the remote
@@ -536,7 +493,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   }
   return null;
 }
-
 function normalizeBasePath(basePath: string): string {
   if (!basePath) return "";
   let base = basePath.trim();
@@ -545,7 +501,6 @@ function normalizeBasePath(basePath: string): string {
   if (base.endsWith("/")) base = base.slice(0, -1);
   return base;
 }
-
 function normalizePath(p: string): string {
   if (!p) return "/";
   let normalized = p.trim();
@@ -554,7 +509,6 @@ function normalizePath(p: string): string {
     normalized = normalized.slice(0, -1);
   return normalized;
 }
-
 /**
  * Extract an app slug from a `/apps/<slug>` path.
  * Returns `null` when the path doesn't contain a slug segment.
@@ -568,7 +522,6 @@ export function getAppSlugFromPath(
   const slug = normalized.slice("/apps/".length);
   return slug || null;
 }
-
 export function titleForTab(tab: Tab): string {
   switch (tab) {
     case "chat":
@@ -642,7 +595,6 @@ export function titleForTab(tab: Tab): string {
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");
   }
 }
-
 export {
   getMainTabApp,
   MAIN_TAB_FALLBACK,

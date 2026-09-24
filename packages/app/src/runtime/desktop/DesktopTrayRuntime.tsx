@@ -8,7 +8,7 @@
  * show/hide/quit — all through the electrobun-rpc bridge. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
-import { logger } from "@elizaos/core/logger";
+
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -21,6 +21,7 @@ import {
   dispatchOpenNotificationCenter,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
+import { logger } from "@elizaos/ui/logger";
 import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
 import {
   type DesktopLauncherEntry,

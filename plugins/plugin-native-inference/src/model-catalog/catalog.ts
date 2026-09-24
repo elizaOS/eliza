@@ -17,18 +17,18 @@
  * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
-import {
-  trimBoundaryCharacters,
-  trimEndCharacters,
-  trimStartCharacters,
-} from "@elizaos/core/utils/string-boundaries";
-import { type HfDownloadBase, resolveHfDownloadBases } from "@elizaos/plugin-native-inference/model-catalog/hf-proxy";
 import type {
   CatalogModel,
   CatalogQuantizationId,
   CatalogQuantizationVariant,
   LocalRuntimeKernel,
 } from "@elizaos/core/contracts/local-inference";
+import {
+  trimBoundaryCharacters,
+  trimEndCharacters,
+  trimStartCharacters,
+} from "@elizaos/core/utils/string-boundaries";
+import { type HfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 
 export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 

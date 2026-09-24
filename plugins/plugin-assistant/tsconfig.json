@@ -6,7 +6,8 @@
       "@elizaos/plugin-assistant": ["./src/index.ts"],
       "@elizaos/core/utils/filesystem": [
         "../../packages/core/src/utils/filesystem.ts"
-      ]
+      ],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
     },
     "outDir": "./dist"
   },

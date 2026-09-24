@@ -6,20 +6,20 @@
  * runtime capability specs into descriptors gated by the loaded actions/plugins.
  */
 
-import { type AgentRuntime } from "./runtime.js";
-import { type UUID } from "./types/primitives.js";
-import type { ElizaConfig } from "@elizaos/core/config/types";
-import type { AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
+import type { ElizaConfig } from "./config/types.js";
+import type { AutomationNodeDescriptor } from "./contracts/automation-nodes.js";
+import type { AgentRuntime } from "./runtime.js";
+import type { UUID } from "./types/primitives.js";
 
 export interface AutomationNodeContributorContext {
-  runtime: AgentRuntime;
-  config: ElizaConfig;
-  agentName: string;
-  adminEntityId: UUID;
+	runtime: AgentRuntime;
+	config: ElizaConfig;
+	agentName: string;
+	adminEntityId: UUID;
 }
 
 export type AutomationNodeContributor = (
-  context: AutomationNodeContributorContext,
+	context: AutomationNodeContributorContext,
 ) => Promise<AutomationNodeDescriptor[]> | AutomationNodeDescriptor[];
 
 /**
@@ -29,57 +29,57 @@ export type AutomationNodeContributor = (
  * registered contributor, so a plugin owns its own catalog entries.
  */
 export interface RuntimeCapabilityNodeSpec {
-  id: string;
-  label: string;
-  description: string;
-  class: AutomationNodeDescriptor["class"];
-  backingCapability: string;
-  actionNames: string[];
-  pluginNames: string[];
-  ownerScoped: boolean;
-  enabledWithoutRuntimeCapability: boolean;
-  disabledReason: string;
+	id: string;
+	label: string;
+	description: string;
+	class: AutomationNodeDescriptor["class"];
+	backingCapability: string;
+	actionNames: string[];
+	pluginNames: string[];
+	ownerScoped: boolean;
+	enabledWithoutRuntimeCapability: boolean;
+	disabledReason: string;
 }
 
 function normalizeCapabilityName(value: string): string {
-  return value.trim().toLowerCase();
+	return value.trim().toLowerCase();
 }
 
 function getRuntimeActionCapabilityNames(runtime: AgentRuntime): Set<string> {
-  const names = new Set<string>();
-  for (const action of runtime.actions ?? []) {
-    names.add(normalizeCapabilityName(action.name));
-    for (const simile of action.similes ?? []) {
-      names.add(normalizeCapabilityName(simile));
-    }
-  }
-  return names;
+	const names = new Set<string>();
+	for (const action of runtime.actions ?? []) {
+		names.add(normalizeCapabilityName(action.name));
+		for (const simile of action.similes ?? []) {
+			names.add(normalizeCapabilityName(simile));
+		}
+	}
+	return names;
 }
 
 function getRuntimePluginNames(runtime: AgentRuntime): Set<string> {
-  return new Set(
-    (runtime.plugins ?? [])
-      .map((plugin) => normalizeCapabilityName(plugin.name))
-      .filter((name) => name.length > 0),
-  );
+	return new Set(
+		(runtime.plugins ?? [])
+			.map((plugin) => normalizeCapabilityName(plugin.name))
+			.filter((name) => name.length > 0),
+	);
 }
 
 function hasMatchingRuntimeCapability(
-  spec: RuntimeCapabilityNodeSpec,
-  actionNames: Set<string>,
-  pluginNames: Set<string>,
+	spec: RuntimeCapabilityNodeSpec,
+	actionNames: Set<string>,
+	pluginNames: Set<string>,
 ): boolean {
-  if (spec.enabledWithoutRuntimeCapability) {
-    return true;
-  }
-  return (
-    spec.actionNames.some((name) =>
-      actionNames.has(normalizeCapabilityName(name)),
-    ) ||
-    spec.pluginNames.some((name) =>
-      pluginNames.has(normalizeCapabilityName(name)),
-    )
-  );
+	if (spec.enabledWithoutRuntimeCapability) {
+		return true;
+	}
+	return (
+		spec.actionNames.some((name) =>
+			actionNames.has(normalizeCapabilityName(name)),
+		) ||
+		spec.pluginNames.some((name) =>
+			pluginNames.has(normalizeCapabilityName(name)),
+		)
+	);
 }
 
 /**
@@ -87,49 +87,49 @@ function hasMatchingRuntimeCapability(
  * node's availability on the runtime's loaded actions/plugins.
  */
 export function buildRuntimeCapabilityNodes(
-  specs: RuntimeCapabilityNodeSpec[],
-  runtime: AgentRuntime,
+	specs: RuntimeCapabilityNodeSpec[],
+	runtime: AgentRuntime,
 ): AutomationNodeDescriptor[] {
-  const actionNames = getRuntimeActionCapabilityNames(runtime);
-  const pluginNames = getRuntimePluginNames(runtime);
-  return specs.map((spec) => {
-    const enabled = hasMatchingRuntimeCapability(
-      spec,
-      actionNames,
-      pluginNames,
-    );
-    return {
-      id: spec.id,
-      label: spec.label,
-      description: spec.description,
-      class: spec.class,
-      source: "static_catalog",
-      backingCapability: spec.backingCapability,
-      ownerScoped: spec.ownerScoped,
-      requiresSetup: !enabled,
-      availability: enabled ? "enabled" : "disabled",
-      ...(enabled ? {} : { disabledReason: spec.disabledReason }),
-    };
-  });
+	const actionNames = getRuntimeActionCapabilityNames(runtime);
+	const pluginNames = getRuntimePluginNames(runtime);
+	return specs.map((spec) => {
+		const enabled = hasMatchingRuntimeCapability(
+			spec,
+			actionNames,
+			pluginNames,
+		);
+		return {
+			id: spec.id,
+			label: spec.label,
+			description: spec.description,
+			class: spec.class,
+			source: "static_catalog",
+			backingCapability: spec.backingCapability,
+			ownerScoped: spec.ownerScoped,
+			requiresSetup: !enabled,
+			availability: enabled ? "enabled" : "disabled",
+			...(enabled ? {} : { disabledReason: spec.disabledReason }),
+		};
+	});
 }
 
 const contributors = new Map<string, AutomationNodeContributor>();
 
 export function registerAutomationNodeContributor(
-  id: string,
-  contributor: AutomationNodeContributor,
+	id: string,
+	contributor: AutomationNodeContributor,
 ): void {
-  const normalizedId = id.trim();
-  if (!normalizedId) {
-    throw new Error("Automation node contributor id is required");
-  }
-  contributors.set(normalizedId, contributor);
+	const normalizedId = id.trim();
+	if (!normalizedId) {
+		throw new Error("Automation node contributor id is required");
+	}
+	contributors.set(normalizedId, contributor);
 }
 
 export function listAutomationNodeContributors(): AutomationNodeContributor[] {
-  return [...contributors.values()];
+	return [...contributors.values()];
 }
 
 export function clearAutomationNodeContributorsForTests(): void {
-  contributors.clear();
+	contributors.clear();
 }

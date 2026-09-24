@@ -3,7 +3,14 @@
  * this turn, keeping prompts, refusal routing, and client handoffs consistent.
  */
 
-import { type AgentCapabilityCatalog, type AgentCapabilityConsequence, type AgentCapabilityDescriptor, type AgentCapabilityId, type AgentCapabilityNextAction, type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
+import {
+  type AgentCapabilityCatalog,
+  type AgentCapabilityConsequence,
+  type AgentCapabilityDescriptor,
+  type AgentCapabilityId,
+  type AgentCapabilityNextAction,
+  type AgentCapabilityTransport,
+} from "@elizaos/core/capability-catalog";
 
 export interface SharedCapabilityFlags {
   webSearch: boolean;

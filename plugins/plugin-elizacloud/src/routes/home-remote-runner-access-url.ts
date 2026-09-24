@@ -1,4 +1,4 @@
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { normalizeCloudSiteUrl } from "../cloud-config/base-url.js";
 
 export const HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM = "homeRemoteRunnerSession";
 

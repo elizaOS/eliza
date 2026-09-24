@@ -2,9 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist/index.d.ts"
-      ]
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
+      "@elizaos/plugin-sqlite": ["../../plugin-sqlite/index.ts"],
+      "@elizaos/plugin-sql/database-utils/*": ["./database-utils/*"]
     }
   }
 }

@@ -7,7 +7,10 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { type ScreenCaptureImageFormat, type ScreenCaptureRequestContract } from "@elizaos/core/contracts/screen-capture";
+import {
+  type ScreenCaptureImageFormat,
+  type ScreenCaptureRequestContract,
+} from "@elizaos/core/contracts/screen-capture";
 
 /** Service type used to resolve the bridge off the runtime. */
 export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE =

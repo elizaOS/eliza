@@ -1,84 +1,35 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "lib": [
-      "ES2023",
-      "WebWorker",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2023", "WebWorker", "DOM", "DOM.Iterable"],
     "composite": false,
     "incremental": false,
     "declaration": false,
     "declarationMap": false,
-    "types": [
-      "@cloudflare/workers-types",
-      "node",
-      "bun-types"
-    ],
+    "types": ["@cloudflare/workers-types", "node", "bun-types"],
     "isolatedModules": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/api-app/*": [
-        "./src/*"
-      ],
-      "@/api-queue/*": [
-        "./src/queue/*"
-      ],
-      "@/lib/*": [
-        "../shared/src/lib/*"
-      ],
-      "@/db/*": [
-        "../shared/src/db/*"
-      ],
-      "@/types/*": [
-        "../shared/src/types/*"
-      ],
-      "@/billing/*": [
-        "../shared/src/billing/*"
-      ],
-      "@/api/*": [
-        "./*"
-      ],
-      "@elizaos/cloud-shared": [
-        "../shared/src/index.ts"
-      ],
-      "@elizaos/cloud-shared/billing": [
-        "../shared/src/billing/index.ts"
-      ],
-      "@elizaos/cloud-shared/db": [
-        "../shared/src/db/index.ts"
-      ],
-      "@elizaos/cloud-shared/db/*": [
-        "../shared/src/db/*"
-      ],
-      "@elizaos/cloud-shared/lib": [
-        "../shared/src/lib/index.ts"
-      ],
-      "@elizaos/cloud-shared/lib/*": [
-        "../shared/src/lib/*"
-      ],
-      "@elizaos/cloud-shared/types": [
-        "../shared/src/types/index.ts"
-      ],
-      "@elizaos/cloud-shared/types/*": [
-        "../shared/src/types/*"
-      ],
-      "@elizaos/cloud-sdk": [
-        "../sdk/src/index.ts"
-      ],
-      "@elizaos/cloud-sdk/*": [
-        "../sdk/src/*"
-      ],
-      "@elizaos/cloud-routing": [
-        "../routing/src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../../../packages/core/src/index.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../../packages/core/src/*"
-      ],
+      "@/api-app/*": ["./src/*"],
+      "@/api-queue/*": ["./src/queue/*"],
+      "@/lib/*": ["../shared/src/lib/*"],
+      "@/db/*": ["../shared/src/db/*"],
+      "@/types/*": ["../shared/src/types/*"],
+      "@/billing/*": ["../shared/src/billing/*"],
+      "@/api/*": ["./*"],
+      "@elizaos/cloud-shared": ["../shared/src/index.ts"],
+      "@elizaos/cloud-shared/billing": ["../shared/src/billing/index.ts"],
+      "@elizaos/cloud-shared/db": ["../shared/src/db/index.ts"],
+      "@elizaos/cloud-shared/db/*": ["../shared/src/db/*"],
+      "@elizaos/cloud-shared/lib": ["../shared/src/lib/index.ts"],
+      "@elizaos/cloud-shared/lib/*": ["../shared/src/lib/*"],
+      "@elizaos/cloud-shared/types": ["../shared/src/types/index.ts"],
+      "@elizaos/cloud-shared/types/*": ["../shared/src/types/*"],
+      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
+      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
+      "@elizaos/core": ["../../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../plugins/plugin-elizacloud/src/index.ts"
       ],
@@ -88,23 +39,51 @@
       "@elizaos/plugin-todos/edge": [
         "../../../plugins/plugin-todos/src/edge.ts"
       ],
-      "@elizaos/plugin-sql": [
-        "../../../plugins/plugin-sql/src/index.ts"
-      ],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-web-search/edge": [
         "../../../plugins/plugin-web-search/src/edge.ts"
       ],
-      "drizzle-orm": [
-        "../../../plugins/plugin-sql/node_modules/drizzle-orm"
-      ],
+      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": [
         "../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
       ],
-      "@/*": [
-        "../shared/*"
-      ],
+      "@/*": ["../shared/*"],
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/bge-input": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/bge-input.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/prompts": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/prompts.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/model-provider": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/model-provider.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/resource-selection": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/resource-selection.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/action-naming": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/action-naming.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/json": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/json.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/schema-converter": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/schema-converter.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
+      ],
+      "@elizaos/ui/brand": ["../../ui/src/brand/index.ts"],
+      "@elizaos/plugin-mcp/protocol-utils/provider-projection": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/provider-projection.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/tool-schema-compatibility": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/tool-schema-compatibility.ts"
+      ],
+      "@elizaos/plugin-wallet/lib/market-overview": [
+        "../../../plugins/plugin-wallet/src/lib/market-overview.ts"
       ]
     }
   },
@@ -115,8 +94,5 @@
     "../shared/src/db/**/*.ts",
     "../shared/src/types/**/*"
   ],
-  "exclude": [
-    "node_modules",
-    "../../../node_modules"
-  ]
+  "exclude": ["node_modules", "../../../node_modules"]
 }

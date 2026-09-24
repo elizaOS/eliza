@@ -5,256 +5,236 @@
  * both environments.
  *
  * Previously each package held its own copy. The authoritative definitions
- * live here; agent and UI now import from @elizaos/shared.
+ * live here; agent and UI now import from @elizaos/core.
  */
 
-import { type TriggerConfig, type TriggerKind, type TriggerLastStatus, type TriggerRunRecord, type TriggerType, type TriggerWakeMode } from "../types/trigger.js";
-import { type UUID } from "../types/primitives.js";
-
+import type { UUID } from "../types/primitives.js";
+import type {
+	TriggerConfig,
+	TriggerKind,
+	TriggerLastStatus,
+	TriggerRunRecord,
+	TriggerType,
+	TriggerWakeMode,
+} from "../types/trigger.js";
 // ── Agent automation mode ────────────────────────────────────────────────────
-
 export type AgentAutomationMode = "connectors-only" | "full";
-
 // ── Stream event types ────────────────────────────────────────────────────────
-
 export type StreamEventType = "agent_event" | "heartbeat_event";
-
 export interface StreamEventEnvelope {
-  type: StreamEventType;
-  version: 1;
-  eventId: string;
-  ts: number;
-  runId?: string;
-  /** Per-event ordinal within an agent run (NOT the buffer sequence). */
-  seq?: number;
-  /**
-   * Monotonic per-agent buffer sequence, mirroring the integer portion of
-   * `eventId`. Used as the cursor for WS reconnect replay so a client can ask
-   * the server to replay only events with `bufferSeq > lastApplied`. Optional
-   * for backward compatibility with envelopes that predate the cursor.
-   */
-  bufferSeq?: number;
-  stream?: string;
-  sessionKey?: string;
-  agentId?: string;
-  roomId?: string | UUID;
-  payload: unknown;
+	type: StreamEventType;
+	version: 1;
+	eventId: string;
+	ts: number;
+	runId?: string;
+	/** Per-event ordinal within an agent run (NOT the buffer sequence). */
+	seq?: number;
+	/**
+	 * Monotonic per-agent buffer sequence, mirroring the integer portion of
+	 * `eventId`. Used as the cursor for WS reconnect replay so a client can ask
+	 * the server to replay only events with `bufferSeq > lastApplied`. Optional
+	 * for backward compatibility with envelopes that predate the cursor.
+	 */
+	bufferSeq?: number;
+	stream?: string;
+	sessionKey?: string;
+	agentId?: string;
+	roomId?: string | UUID;
+	payload: unknown;
 }
-
 // ── Trigger API types ────────────────────────────────────────────────────────
-
 export interface TriggerTaskMetadata {
-  updatedAt?: number;
-  updateInterval?: number;
-  blocking?: boolean;
-  trigger?: TriggerConfig;
-  triggerRuns?: TriggerRunRecord[];
-  [key: string]:
-    | string
-    | number
-    | boolean
-    | string[]
-    | number[]
-    | Record<string, string | number | boolean>
-    | undefined
-    | TriggerConfig
-    | TriggerRunRecord[];
+	updatedAt?: number;
+	updateInterval?: number;
+	blocking?: boolean;
+	trigger?: TriggerConfig;
+	triggerRuns?: TriggerRunRecord[];
+	[key: string]:
+		| string
+		| number
+		| boolean
+		| string[]
+		| number[]
+		| Record<string, string | number | boolean>
+		| undefined
+		| TriggerConfig
+		| TriggerRunRecord[];
 }
-
 export interface TriggerSummary {
-  id: UUID;
-  taskId: UUID;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  eventFilter?: Record<string, unknown>;
-  maxRuns?: number;
-  runCount: number;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-  updatedAt?: number;
-  updateInterval?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
+	id: UUID;
+	taskId: UUID;
+	displayName: string;
+	instructions: string;
+	triggerType: TriggerType;
+	enabled: boolean;
+	wakeMode: TriggerWakeMode;
+	createdBy: string;
+	timezone?: string;
+	intervalMs?: number;
+	scheduledAtIso?: string;
+	cronExpression?: string;
+	eventKind?: string;
+	eventFilter?: Record<string, unknown>;
+	maxRuns?: number;
+	runCount: number;
+	nextRunAtMs?: number;
+	lastRunAtIso?: string;
+	lastStatus?: TriggerLastStatus;
+	lastError?: string;
+	updatedAt?: number;
+	updateInterval?: number;
+	kind?: TriggerKind;
+	workflowId?: string;
+	workflowName?: string;
 }
-
 export interface TriggerHealthSnapshot {
-  triggersEnabled: boolean;
-  activeTriggers: number;
-  disabledTriggers: number;
-  totalExecutions: number;
-  totalFailures: number;
-  totalSkipped: number;
-  lastExecutionAt?: number;
+	triggersEnabled: boolean;
+	activeTriggers: number;
+	disabledTriggers: number;
+	totalExecutions: number;
+	totalFailures: number;
+	totalSkipped: number;
+	lastExecutionAt?: number;
 }
-
 export interface CreateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  createdBy?: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  eventFilter?: Record<string, unknown>;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
+	displayName?: string;
+	instructions?: string;
+	triggerType?: TriggerType;
+	wakeMode?: TriggerWakeMode;
+	enabled?: boolean;
+	createdBy?: string;
+	timezone?: string;
+	intervalMs?: number;
+	scheduledAtIso?: string;
+	cronExpression?: string;
+	eventKind?: string;
+	eventFilter?: Record<string, unknown>;
+	maxRuns?: number;
+	kind?: TriggerKind;
+	workflowId?: string;
+	workflowName?: string;
 }
-
 export interface UpdateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  eventFilter?: Record<string, unknown>;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
+	displayName?: string;
+	instructions?: string;
+	triggerType?: TriggerType;
+	wakeMode?: TriggerWakeMode;
+	enabled?: boolean;
+	timezone?: string;
+	intervalMs?: number;
+	scheduledAtIso?: string;
+	cronExpression?: string;
+	eventKind?: string;
+	eventFilter?: Record<string, unknown>;
+	maxRuns?: number;
+	kind?: TriggerKind;
+	workflowId?: string;
+	workflowName?: string;
 }
-
 // ── Plugin param types ────────────────────────────────────────────────────────
-
 export interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  /** Predefined options for dropdown selection (e.g. model names). */
-  options?: string[];
-  /** Current value from process.env (masked if sensitive). */
-  currentValue: string | null;
-  /** Whether a value is currently set in the environment. */
-  isSet: boolean;
+	key: string;
+	type: string;
+	description: string;
+	required: boolean;
+	sensitive: boolean;
+	default?: string;
+	/** Predefined options for dropdown selection (e.g. model names). */
+	options?: string[];
+	/** Current value from process.env (masked if sensitive). */
+	currentValue: string | null;
+	/** Whether a value is currently set in the environment. */
+	isSet: boolean;
 }
-
 // ── Database status types ─────────────────────────────────────────────────────
-
 export interface DatabaseStatus {
-  provider: string;
-  connected: boolean;
-  serverVersion: string | null;
-  tableCount: number;
-  pgliteDataDir: string | null;
-  postgresHost: string | null;
+	provider: string;
+	connected: boolean;
+	serverVersion: string | null;
+	tableCount: number;
+	pgliteDataDir: string | null;
+	postgresHost: string | null;
 }
-
 export interface ConnectionTestResult {
-  success: boolean;
-  serverVersion: string | null;
-  error: string | null;
-  durationMs: number;
+	success: boolean;
+	serverVersion: string | null;
+	error: string | null;
+	durationMs: number;
 }
-
 export interface ColumnInfo {
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
+	name: string;
+	type: string;
+	nullable: boolean;
+	defaultValue: string | null;
+	isPrimaryKey: boolean;
 }
-
 export interface TableInfo {
-  name: string;
-  schema: string;
-  rowCount: number;
-  columns: ColumnInfo[];
+	name: string;
+	schema: string;
+	rowCount: number;
+	columns: ColumnInfo[];
 }
-
 export interface QueryResult {
-  columns: string[];
-  rows: Record<string, unknown>[];
-  rowCount: number;
-  durationMs: number;
+	columns: string[];
+	rows: Record<string, unknown>[];
+	rowCount: number;
+	durationMs: number;
 }
-
 // ── Runtime order types ───────────────────────────────────────────────────────
-
 export interface RuntimeOrderItem {
-  index: number;
-  name: string;
-  className: string;
-  id: string | null;
+	index: number;
+	name: string;
+	className: string;
+	id: string | null;
 }
-
 export interface RuntimeServiceOrderItem {
-  index: number;
-  serviceType: string;
-  count: number;
-  instances: RuntimeOrderItem[];
+	index: number;
+	serviceType: string;
+	count: number;
+	instances: RuntimeOrderItem[];
 }
-
 // ── Log entry ────────────────────────────────────────────────────────────────
-
 /** A single log line captured by the API server log buffer. */
 export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
+	timestamp: number;
+	level: string;
+	message: string;
+	source: string;
+	tags: string[];
 }
-
 // ── Skill entry ───────────────────────────────────────────────────────────────
-
 /** A skill surfaced by the skills API. */
 export interface SkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  /** Set automatically when a scan report exists for this skill. */
-  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
+	id: string;
+	name: string;
+	description: string;
+	enabled: boolean;
+	/** Set automatically when a scan report exists for this skill. */
+	scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
 }
-
 // ── Agent startup diagnostics ─────────────────────────────────────────────────
-
 /** Tracks agent restart / startup state surfaced by the status endpoint. */
 export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
+	phase: string;
+	attempt: number;
+	lastError?: string;
+	lastErrorAt?: number;
+	nextRetryAt?: number;
 }
-
 // ── Chat image attachment ─────────────────────────────────────────────────────
-
 /** An image attachment sent with a chat message. */
 export interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
-  /**
-   * Optional client-generated downscaled preview (base64, no prefix). Persisted
-   * separately and surfaced as the attachment's `thumbnailUrl` so the chat tile
-   * loads a small image while the full resolution opens in the lightbox.
-   */
-  thumbnail?: { data: string; mimeType: string };
+	/** Base64-encoded image data (no data URL prefix). */
+	data: string;
+	mimeType: string;
+	name: string;
+	/**
+	 * Optional client-generated downscaled preview (base64, no prefix). Persisted
+	 * separately and surfaced as the attachment's `thumbnailUrl` so the chat tile
+	 * loads a small image while the full resolution opens in the lightbox.
+	 */
+	thumbnail?: {
+		data: string;
+		mimeType: string;
+	};
 }

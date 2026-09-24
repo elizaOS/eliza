@@ -9,16 +9,16 @@ import { CODING_PROVIDER_SUPPORT_MATRIX } from "../src/contracts/coding-agent-ca
 
 const outputFlagIndex = process.argv.indexOf("--output");
 const outputPath =
-  outputFlagIndex >= 0 ? process.argv[outputFlagIndex + 1]?.trim() : undefined;
+	outputFlagIndex >= 0 ? process.argv[outputFlagIndex + 1]?.trim() : undefined;
 if (outputFlagIndex >= 0 && !outputPath) {
-  throw new Error("--output requires a destination path");
+	throw new Error("--output requires a destination path");
 }
 
 const serialized = `${JSON.stringify(CODING_PROVIDER_SUPPORT_MATRIX, null, 2)}\n`;
 if (outputPath) {
-  const destination = resolve(outputPath);
-  await writeFile(destination, serialized, "utf8");
-  process.stdout.write(`${destination}\n`);
+	const destination = resolve(outputPath);
+	await writeFile(destination, serialized, "utf8");
+	process.stdout.write(`${destination}\n`);
 } else {
-  process.stdout.write(serialized);
+	process.stdout.write(serialized);
 }

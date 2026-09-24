@@ -17,25 +17,21 @@
  *     own safety rails and ship a build that self-edits in production.
  *
  * Both functions are pure (env / string in → boolean out) and use no
- * node-only APIs, so this module can be imported anywhere `@elizaos/shared`
+ * node-only APIs, so this module can be imported anywhere `@elizaos/core`
  * is consumed (browser, agent runtime, CLI).
  *
  * @module self-edit
  */
-
-import { isTruthyEnvValue } from "@elizaos/core/env-utils";
-
+import { isTruthyEnvValue } from "./env-utils.js";
 /**
  * Env var the operator sets to opt in to self-edit. Defaults off.
  */
 export const SELF_EDIT_ENABLE_ENV = "ELIZA_ENABLE_SELF_EDIT";
-
 /**
  * Env var that, when truthy, marks the process as a developer-mode runtime
  * (in addition to / as an alternative to `NODE_ENV !== "production"`).
  */
 export const DEV_MODE_ENV = "ELIZA_DEV_MODE";
-
 /**
  * Predicate: is self-edit enabled for the current process?
  *
@@ -48,23 +44,19 @@ export const DEV_MODE_ENV = "ELIZA_DEV_MODE";
  * `process.env`.
  */
 export function isSelfEditEnabled(
-  env:
-    | NodeJS.ProcessEnv
-    | Record<string, string | undefined> = readProcessEnv(),
+	env:
+		| NodeJS.ProcessEnv
+		| Record<string, string | undefined> = readProcessEnv(),
 ): boolean {
-  if (!isTruthyEnvValue(env[SELF_EDIT_ENABLE_ENV])) return false;
-
-  const nodeEnv = env.NODE_ENV;
-  const devModeFlag = isTruthyEnvValue(env[DEV_MODE_ENV]);
-  const isProduction = nodeEnv === "production";
-
-  // In production builds, the dev-mode flag must be explicitly set to override.
-  // Non-production runtimes pass through.
-  if (isProduction && !devModeFlag) return false;
-
-  return true;
+	if (!isTruthyEnvValue(env[SELF_EDIT_ENABLE_ENV])) return false;
+	const nodeEnv = env.NODE_ENV;
+	const devModeFlag = isTruthyEnvValue(env[DEV_MODE_ENV]);
+	const isProduction = nodeEnv === "production";
+	// In production builds, the dev-mode flag must be explicitly set to override.
+	// Non-production runtimes pass through.
+	if (isProduction && !devModeFlag) return false;
+	return true;
 }
-
 /**
  * Repo-relative paths that the self-edit flow must NEVER modify. Removing or
  * weakening any of these would allow the agent to disable its own safety
@@ -74,13 +66,12 @@ export function isSelfEditEnabled(
  * Paths are normalized to forward-slash form for cross-platform comparison.
  */
 const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
-  "packages/agent/src/actions/restart.ts",
-  "packages/core/src/restart.ts",
-  "packages/core/src/self-edit.ts",
-  "scripts/run-node.mjs",
-  "packages/app/scripts/run-node.mjs",
+	"packages/agent/src/actions/restart.ts",
+	"packages/core/src/restart.ts",
+	"packages/core/src/self-edit.ts",
+	"scripts/run-node.mjs",
+	"packages/app/scripts/run-node.mjs",
 ];
-
 /**
  * Predicate: is `absolutePath` denied for self-edit modification?
  *
@@ -94,53 +85,45 @@ const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
  * decide how to handle malformed input.
  */
 export function isSelfEditPathDenied(absolutePath: string): boolean {
-  if (typeof absolutePath !== "string") return false;
-  const trimmed = absolutePath.trim();
-  if (!trimmed) return false;
-
-  const normalized = normalizePathSeparators(trimmed);
-
-  if (containsGitDirSegment(normalized)) return true;
-
-  for (const suffix of DENIED_RELATIVE_SUFFIXES) {
-    if (pathEndsWithSegment(normalized, suffix)) return true;
-  }
-  return false;
+	if (typeof absolutePath !== "string") return false;
+	const trimmed = absolutePath.trim();
+	if (!trimmed) return false;
+	const normalized = normalizePathSeparators(trimmed);
+	if (containsGitDirSegment(normalized)) return true;
+	for (const suffix of DENIED_RELATIVE_SUFFIXES) {
+		if (pathEndsWithSegment(normalized, suffix)) return true;
+	}
+	return false;
 }
-
 /**
  * The denied repo-relative suffixes, exposed for tests and tooling that
  * want to surface the denylist (e.g. UI banners, audit logs).
  */
 export function getSelfEditDeniedSuffixes(): readonly string[] {
-  return DENIED_RELATIVE_SUFFIXES;
+	return DENIED_RELATIVE_SUFFIXES;
 }
-
 function readProcessEnv():
-  | NodeJS.ProcessEnv
-  | Record<string, string | undefined> {
-  // `process` may not exist in browser builds; fall back to an empty record.
-  if (typeof process === "undefined" || !process || !process.env) {
-    return {};
-  }
-  return process.env;
+	| NodeJS.ProcessEnv
+	| Record<string, string | undefined> {
+	// `process` may not exist in browser builds; fall back to an empty record.
+	if (typeof process === "undefined" || !process || !process.env) {
+		return {};
+	}
+	return process.env;
 }
-
 function normalizePathSeparators(p: string): string {
-  // Convert Windows-style separators to POSIX for uniform suffix matching.
-  return p.replace(/\\/g, "/");
+	// Convert Windows-style separators to POSIX for uniform suffix matching.
+	return p.replace(/\\/g, "/");
 }
-
 function containsGitDirSegment(normalized: string): boolean {
-  // Match `.git` as a path segment: leading/trailing slash, or end-of-string.
-  // Handles `/.git/`, `/.git` (trailing), and `.git/` at the start of a relative path.
-  if (normalized === ".git" || normalized.startsWith(".git/")) return true;
-  if (normalized.endsWith("/.git")) return true;
-  return normalized.includes("/.git/");
+	// Match `.git` as a path segment: leading/trailing slash, or end-of-string.
+	// Handles `/.git/`, `/.git` (trailing), and `.git/` at the start of a relative path.
+	if (normalized === ".git" || normalized.startsWith(".git/")) return true;
+	if (normalized.endsWith("/.git")) return true;
+	return normalized.includes("/.git/");
 }
-
 function pathEndsWithSegment(normalized: string, suffix: string): boolean {
-  const normalizedSuffix = normalizePathSeparators(suffix);
-  if (normalized === normalizedSuffix) return true;
-  return normalized.endsWith(`/${normalizedSuffix}`);
+	const normalizedSuffix = normalizePathSeparators(suffix);
+	if (normalized === normalizedSuffix) return true;
+	return normalized.endsWith(`/${normalizedSuffix}`);
 }

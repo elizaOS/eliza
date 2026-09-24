@@ -16,7 +16,10 @@
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 
-import { type DeploymentTargetConfig, normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
+import {
+  type DeploymentTargetConfig,
+  normalizeDeploymentTargetConfig,
+} from "@elizaos/core/contracts/service-routing";
 import * as zod from "zod";
 import {
   type EffectiveElizaConfigSnapshot,

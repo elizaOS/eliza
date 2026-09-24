@@ -4,7 +4,7 @@
  * startup via side-effect import; the app-details UI looks up components here.
  */
 import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
-import type { AppDetailExtensionComponent } from "@elizaos/ui/apps/detail-extension-types";
+import type { AppDetailExtensionComponent } from "./detail-extension-types.js";
 
 /**
  * Registry of app detail extension components keyed by the app's

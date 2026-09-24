@@ -10,7 +10,12 @@
     "allowImportingTsExtensions": true,
     "types": ["node"],
     "noEmit": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
+      ]
+    }
   },
   "include": ["src/**/*"],
   "exclude": [

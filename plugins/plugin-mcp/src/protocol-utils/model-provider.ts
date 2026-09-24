@@ -23,15 +23,10 @@ export interface McpRuntimeModelProjection {
   } | null;
 }
 
-export function detectMcpModelProvider(
-  runtime: McpRuntimeModelProjection,
-): McpModelInfo {
+export function detectMcpModelProvider(runtime: McpRuntimeModelProjection): McpModelInfo {
   const settings = runtime.character?.settings;
   const providerText = String(
-    runtime.modelProvider ??
-      settings?.MODEL_PROVIDER ??
-      settings?.modelProvider ??
-      "",
+    runtime.modelProvider ?? settings?.MODEL_PROVIDER ?? settings?.modelProvider ?? ""
   ).toLowerCase();
   const modelId =
     String(runtime.model ?? settings?.MODEL ?? settings?.model ?? providerText)

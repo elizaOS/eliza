@@ -5,4 +5,4 @@ export {
   encryptTokenPayload,
   isEncryptedTokenEnvelope,
   resolveTokenEncryptionKey,
-} from "@elizaos/plugin-health/crypto/token-encryption";
+} from "../crypto/token-encryption.js";

@@ -38,28 +38,28 @@ const RecognisedPermissionNamespaceSchema = z.enum(["fs", "net"]);
  * caught at the bottom of this module via a `satisfies` cross-check.
  */
 export const AppPermissionsViewSchema = z
-  .object({
-    slug: z.string().min(1),
-    trust: AppTrustSchema,
-    isolation: AppIsolationSchema,
-    // `z.union([..., z.null()])` is used in place of `.nullable()`
-    // because zod 4's `.nullable()` infers as `T | undefined` rather
-    // than `T | null` in strict-object mode, which mismatches the
-    // hand-typed `AppPermissionsView.requestedPermissions: ... | null`
-    // / `grantedAt: string | null` interface.
-    requestedPermissions: z.union([
-      z.record(z.string(), z.unknown()),
-      z.null(),
-    ]),
-    recognisedNamespaces: z.array(RecognisedPermissionNamespaceSchema),
-    grantedNamespaces: z.array(RecognisedPermissionNamespaceSchema),
-    grantedAt: z.union([z.string(), z.null()]),
-  })
-  .strict();
+	.object({
+		slug: z.string().min(1),
+		trust: AppTrustSchema,
+		isolation: AppIsolationSchema,
+		// `z.union([..., z.null()])` is used in place of `.nullable()`
+		// because zod 4's `.nullable()` infers as `T | undefined` rather
+		// than `T | null` in strict-object mode, which mismatches the
+		// hand-typed `AppPermissionsView.requestedPermissions: ... | null`
+		// / `grantedAt: string | null` interface.
+		requestedPermissions: z.union([
+			z.record(z.string(), z.unknown()),
+			z.null(),
+		]),
+		recognisedNamespaces: z.array(RecognisedPermissionNamespaceSchema),
+		grantedNamespaces: z.array(RecognisedPermissionNamespaceSchema),
+		grantedAt: z.union([z.string(), z.null()]),
+	})
+	.strict();
 
 /** GET /api/apps/permissions response. */
 export const ListAppPermissionsResponseSchema = z.array(
-  AppPermissionsViewSchema,
+	AppPermissionsViewSchema,
 );
 
 /** GET /api/apps/permissions/:slug response (404 → no body). */
@@ -77,10 +77,10 @@ export const GetAppPermissionsResponseSchema = AppPermissionsViewSchema;
  * is friction we don't need.
  */
 export const PutAppPermissionsRequestSchema = z
-  .object({
-    namespaces: z.array(z.string()),
-  })
-  .strict();
+	.object({
+		namespaces: z.array(z.string()),
+	})
+	.strict();
 
 /** PUT /api/apps/permissions/:slug response (200 success body). */
 export const PutAppPermissionsResponseSchema = AppPermissionsViewSchema;
@@ -88,16 +88,16 @@ export const PutAppPermissionsResponseSchema = AppPermissionsViewSchema;
 // Inferred TS types — the canonical source for client + server use.
 export type AppPermissionsViewWire = z.infer<typeof AppPermissionsViewSchema>;
 export type ListAppPermissionsResponse = z.infer<
-  typeof ListAppPermissionsResponseSchema
+	typeof ListAppPermissionsResponseSchema
 >;
 export type GetAppPermissionsResponse = z.infer<
-  typeof GetAppPermissionsResponseSchema
+	typeof GetAppPermissionsResponseSchema
 >;
 export type PutAppPermissionsRequest = z.infer<
-  typeof PutAppPermissionsRequestSchema
+	typeof PutAppPermissionsRequestSchema
 >;
 export type PutAppPermissionsResponse = z.infer<
-  typeof PutAppPermissionsResponseSchema
+	typeof PutAppPermissionsResponseSchema
 >;
 
 // NOTE on drift between the hand-typed `AppPermissionsView` interface
@@ -117,7 +117,7 @@ export type PutAppPermissionsResponse = z.infer<
  * in the JSON error body so client-side surfaces can localise.
  */
 export const APP_PERMISSIONS_ROUTE_PATHS = {
-  list: "/api/apps/permissions",
-  get: (slug: string) => `/api/apps/permissions/${encodeURIComponent(slug)}`,
-  put: (slug: string) => `/api/apps/permissions/${encodeURIComponent(slug)}`,
+	list: "/api/apps/permissions",
+	get: (slug: string) => `/api/apps/permissions/${encodeURIComponent(slug)}`,
+	put: (slug: string) => `/api/apps/permissions/${encodeURIComponent(slug)}`,
 } as const;

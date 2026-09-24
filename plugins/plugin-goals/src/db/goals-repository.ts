@@ -17,7 +17,13 @@
 
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsActor, type LifeOpsAuditEventType, type LifeOpsGoalDefinition, type LifeOpsGoalLink, type LifeOpsOwnerType } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsActor,
+  type LifeOpsAuditEventType,
+  type LifeOpsGoalDefinition,
+  type LifeOpsGoalLink,
+  type LifeOpsOwnerType,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   parseJsonRecord,

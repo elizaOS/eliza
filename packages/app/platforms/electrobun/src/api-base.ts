@@ -1,8 +1,11 @@
 /** Implements Electrobun desktop api base ts behavior for app shell integration. */
+
+import {
+	resolveApiExposePort,
+	resolveDesktopApiPort,
+} from "@elizaos/core/runtime-env";
 import { DEFAULT_API_PORT } from "./constants";
 import { logger } from "./logger";
-import { resolveApiExposePort } from "@elizaos/core/runtime-env";
-import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
 /**
  * Renderer-facing API base for the desktop local-agent IPC transport (#12180
  * phase 2 / #12355). When local-agent IPC mode is active the renderer's API base
@@ -14,68 +17,75 @@ import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
  */
 export const DESKTOP_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const LOCAL_AGENT_IPC_ENV_KEY = "ELIZA_DESKTOP_LOCAL_AGENT_IPC";
-type ExternalApiBaseEnvKey = "ELIZA_DESKTOP_TEST_API_BASE" | "ELIZA_DESKTOP_API_BASE" | "ELIZA_API_BASE_URL" | "ELIZA_API_BASE";
+type ExternalApiBaseEnvKey =
+	| "ELIZA_DESKTOP_TEST_API_BASE"
+	| "ELIZA_DESKTOP_API_BASE"
+	| "ELIZA_API_BASE_URL"
+	| "ELIZA_API_BASE";
 export type DesktopRuntimeMode = "local" | "external" | "disabled";
 const EXTERNAL_API_BASE_ENV_KEYS: readonly ExternalApiBaseEnvKey[] = [
-    "ELIZA_DESKTOP_TEST_API_BASE",
-    "ELIZA_DESKTOP_API_BASE",
-    "ELIZA_API_BASE_URL",
-    "ELIZA_API_BASE",
+	"ELIZA_DESKTOP_TEST_API_BASE",
+	"ELIZA_DESKTOP_API_BASE",
+	"ELIZA_API_BASE_URL",
+	"ELIZA_API_BASE",
 ];
 export interface ExternalApiBaseResolution {
-    base: string | null;
-    source: ExternalApiBaseEnvKey | null;
-    invalidSources: ExternalApiBaseEnvKey[];
+	base: string | null;
+	source: ExternalApiBaseEnvKey | null;
+	invalidSources: ExternalApiBaseEnvKey[];
 }
 export interface DesktopRuntimeModeResolution {
-    mode: DesktopRuntimeMode;
-    externalApi: ExternalApiBaseResolution;
+	mode: DesktopRuntimeMode;
+	externalApi: ExternalApiBaseResolution;
 }
 export function normalizeApiBase(raw: string | undefined): string | null {
-    if (!raw)
-        return null;
-    try {
-        const parsed = new URL(raw);
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-            return null;
-        }
-        return parsed.origin;
-    }
-    catch {
-        // error-policy:J3 malformed API base URL is not a valid origin
-        return null;
-    }
+	if (!raw) return null;
+	try {
+		const parsed = new URL(raw);
+		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+			return null;
+		}
+		return parsed.origin;
+	} catch {
+		// error-policy:J3 malformed API base URL is not a valid origin
+		return null;
+	}
 }
-export function resolveExternalApiBase(env: Record<string, string | undefined>): ExternalApiBaseResolution {
-    const invalidSources: ExternalApiBaseEnvKey[] = [];
-    for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
-        const rawValue = env[key]?.trim();
-        if (!rawValue)
-            continue;
-        const normalized = normalizeApiBase(rawValue);
-        if (normalized) {
-            return { base: normalized, source: key, invalidSources };
-        }
-        invalidSources.push(key);
-    }
-    return { base: null, source: null, invalidSources };
+export function resolveExternalApiBase(
+	env: Record<string, string | undefined>,
+): ExternalApiBaseResolution {
+	const invalidSources: ExternalApiBaseEnvKey[] = [];
+	for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
+		const rawValue = env[key]?.trim();
+		if (!rawValue) continue;
+		const normalized = normalizeApiBase(rawValue);
+		if (normalized) {
+			return { base: normalized, source: key, invalidSources };
+		}
+		invalidSources.push(key);
+	}
+	return { base: null, source: null, invalidSources };
 }
 function isEnabledFlag(raw: string | undefined): boolean {
-    const normalized = raw?.trim().toLowerCase();
-    return (normalized === "1" ||
-        normalized === "true" ||
-        normalized === "yes" ||
-        normalized === "on");
+	const normalized = raw?.trim().toLowerCase();
+	return (
+		normalized === "1" ||
+		normalized === "true" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
 }
-export function resolveDesktopRuntimeMode(env: Record<string, string | undefined>): DesktopRuntimeModeResolution {
-    const externalApi = resolveExternalApiBase(env);
-    if (externalApi.base) {
-        return { mode: "external", externalApi };
-    }
-    if (isEnabledFlag(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT)) {
-        return { mode: "disabled", externalApi };
-    }
-    return { mode: "local", externalApi };
+export function resolveDesktopRuntimeMode(
+	env: Record<string, string | undefined>,
+): DesktopRuntimeModeResolution {
+	const externalApi = resolveExternalApiBase(env);
+	if (externalApi.base) {
+		return { mode: "external", externalApi };
+	}
+	if (isEnabledFlag(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT)) {
+		return { mode: "disabled", externalApi };
+	}
+	return { mode: "local", externalApi };
 }
 /**
  * The persisted deployment runtime the desktop main process reads from
@@ -92,10 +102,10 @@ export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
  * connected (`null` when none was persisted). `null` ⇒ no persisted target.
  */
 export interface PersistedDeployment {
-    runtime: NonNullable<PersistedDeploymentRuntime>;
-    remoteApiBase: string | null;
-    /** Bearer credential bound to the persisted remote target, if configured. */
-    remoteAccessToken?: string | null;
+	runtime: NonNullable<PersistedDeploymentRuntime>;
+	remoteApiBase: string | null;
+	/** Bearer credential bound to the persisted remote target, if configured. */
+	remoteAccessToken?: string | null;
 }
 /**
  * Resolve the cloud-hosted agent API base the renderer should call when the
@@ -113,11 +123,13 @@ export interface PersistedDeployment {
  * base) is rejected. Returns `null` when no renderer-ready cloud agent base is
  * available, so the caller falls back to running the local agent (topology-1/2).
  */
-export function resolveCloudHostedAgentApiBase(env: Record<string, string | undefined>, persistedRemoteApiBase?: string | null): string | null {
-    const fromEnv = normalizeApiBase(env.ELIZA_DESKTOP_CLOUD_AGENT_BASE?.trim());
-    if (fromEnv)
-        return fromEnv;
-    return normalizeApiBase(persistedRemoteApiBase?.trim() ?? undefined);
+export function resolveCloudHostedAgentApiBase(
+	env: Record<string, string | undefined>,
+	persistedRemoteApiBase?: string | null,
+): string | null {
+	const fromEnv = normalizeApiBase(env.ELIZA_DESKTOP_CLOUD_AGENT_BASE?.trim());
+	if (fromEnv) return fromEnv;
+	return normalizeApiBase(persistedRemoteApiBase?.trim() ?? undefined);
 }
 /**
  * Topology-aware runtime-mode resolution. Layers the persisted deployment
@@ -139,25 +151,31 @@ export function resolveCloudHostedAgentApiBase(env: Record<string, string | unde
  * branded cloud via {@link resolveDesktopRuntimeModeSignal}) and topology 2
  * (all-local) keep `mode === "local"` and still boot the embedded agent.
  */
-export function resolveDesktopRuntimeModeWithDeployment(env: Record<string, string | undefined>, deployment: PersistedDeployment | null): DesktopRuntimeModeResolution {
-    const envResolution = resolveDesktopRuntimeMode(env);
-    if (envResolution.mode === "external") {
-        return envResolution;
-    }
-    if (deployment?.runtime === "cloud" || deployment?.runtime === "remote") {
-        const cloudBase = resolveCloudHostedAgentApiBase(env, deployment.remoteApiBase);
-        if (cloudBase) {
-            return {
-                mode: "external",
-                externalApi: {
-                    base: cloudBase,
-                    source: null,
-                    invalidSources: envResolution.externalApi.invalidSources,
-                },
-            };
-        }
-    }
-    return envResolution;
+export function resolveDesktopRuntimeModeWithDeployment(
+	env: Record<string, string | undefined>,
+	deployment: PersistedDeployment | null,
+): DesktopRuntimeModeResolution {
+	const envResolution = resolveDesktopRuntimeMode(env);
+	if (envResolution.mode === "external") {
+		return envResolution;
+	}
+	if (deployment?.runtime === "cloud" || deployment?.runtime === "remote") {
+		const cloudBase = resolveCloudHostedAgentApiBase(
+			env,
+			deployment.remoteApiBase,
+		);
+		if (cloudBase) {
+			return {
+				mode: "external",
+				externalApi: {
+					base: cloudBase,
+					source: null,
+					invalidSources: envResolution.externalApi.invalidSources,
+				},
+			};
+		}
+	}
+	return envResolution;
 }
 /**
  * Desktop cloud-only opt-in. Returns `"cloud"` when the desktop shell should run
@@ -171,15 +189,15 @@ export function resolveDesktopRuntimeModeWithDeployment(env: Record<string, stri
  * A persisted cloud deployment is also honored so a selected cloud target
  * survives subsequent desktop boots without requiring an environment flag.
  */
-export function resolveDesktopRuntimeModeSignal(env: Record<string, string | undefined>, deployment?: PersistedDeployment | null): "cloud" | null {
-    const explicit = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
-    if (explicit === "cloud" || explicit === "elizacloud")
-        return "cloud";
-    if (isEnabledFlag(env.ELIZA_DESKTOP_CLOUD_ONLY))
-        return "cloud";
-    if (deployment?.runtime === "cloud")
-        return "cloud";
-    return null;
+export function resolveDesktopRuntimeModeSignal(
+	env: Record<string, string | undefined>,
+	deployment?: PersistedDeployment | null,
+): "cloud" | null {
+	const explicit = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
+	if (explicit === "cloud" || explicit === "elizacloud") return "cloud";
+	if (isEnabledFlag(env.ELIZA_DESKTOP_CLOUD_ONLY)) return "cloud";
+	if (deployment?.runtime === "cloud") return "cloud";
+	return null;
 }
 /**
  * True when the desktop local agent should reach the runtime over native
@@ -192,27 +210,30 @@ export function resolveDesktopRuntimeModeSignal(env: Record<string, string | und
  * default, so a desktop boot with neither flag set is byte-for-byte identical to
  * today (loopback HTTP api base, port bound).
  */
-export function resolveLocalAgentIpcMode(env: Record<string, string | undefined>): boolean {
-    if (resolveApiExposePort(env) === true)
-        return false;
-    const raw = env[LOCAL_AGENT_IPC_ENV_KEY];
-    return isEnabledFlag(raw);
+export function resolveLocalAgentIpcMode(
+	env: Record<string, string | undefined>,
+): boolean {
+	if (resolveApiExposePort(env) === true) return false;
+	const raw = env[LOCAL_AGENT_IPC_ENV_KEY];
+	return isEnabledFlag(raw);
 }
-export function resolveInitialApiBase(env: Record<string, string | undefined>): string | null {
-    const resolution = resolveDesktopRuntimeMode(env);
-    if (resolution.mode === "external") {
-        return resolution.externalApi.base;
-    }
-    if (resolveLocalAgentIpcMode(env)) {
-        return DESKTOP_LOCAL_AGENT_IPC_BASE;
-    }
-    const agentPort = resolveDesktopApiPort(env) || DEFAULT_API_PORT;
-    return `http://127.0.0.1:${agentPort}`;
+export function resolveInitialApiBase(
+	env: Record<string, string | undefined>,
+): string | null {
+	const resolution = resolveDesktopRuntimeMode(env);
+	if (resolution.mode === "external") {
+		return resolution.externalApi.base;
+	}
+	if (resolveLocalAgentIpcMode(env)) {
+		return DESKTOP_LOCAL_AGENT_IPC_BASE;
+	}
+	const agentPort = resolveDesktopApiPort(env) || DEFAULT_API_PORT;
+	return `http://127.0.0.1:${agentPort}`;
 }
 /** True when the hostname is a loopback we treat as same-trust as 127.0.0.1. */
 function isLoopbackHttpHostname(hostname: string): boolean {
-    const h = hostname.toLowerCase();
-    return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+	const h = hostname.toLowerCase();
+	return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
 }
 /**
  * When the desktop loads the UI from a local http(s) dev server (Vite), the
@@ -222,71 +243,79 @@ function isLoopbackHttpHostname(hostname: string): boolean {
  *
  * Returns `null` when no dev URL is set or it is not a loopback http(s) origin.
  */
-export function resolveHttpLoopbackRendererOriginForApiClient(env: Record<string, string | undefined>): string | null {
-    const raw = env.ELIZA_RENDERER_URL?.trim() || env.VITE_DEV_SERVER_URL?.trim() || "";
-    if (!raw)
-        return null;
-    try {
-        const u = new URL(raw);
-        if (u.protocol !== "http:" && u.protocol !== "https:")
-            return null;
-        if (!isLoopbackHttpHostname(u.hostname))
-            return null;
-        return u.origin;
-    }
-    catch {
-        // error-policy:J3 malformed renderer URL is not a loopback origin
-        return null;
-    }
+export function resolveHttpLoopbackRendererOriginForApiClient(
+	env: Record<string, string | undefined>,
+): string | null {
+	const raw =
+		env.ELIZA_RENDERER_URL?.trim() || env.VITE_DEV_SERVER_URL?.trim() || "";
+	if (!raw) return null;
+	try {
+		const u = new URL(raw);
+		if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+		if (!isLoopbackHttpHostname(u.hostname)) return null;
+		return u.origin;
+	} catch {
+		// error-policy:J3 malformed renderer URL is not a loopback origin
+		return null;
+	}
 }
 /**
  * Base URL the **renderer** should use for `the appClient` (REST + relative `/api`).
  * Prefer the Vite/dev-server origin when `ELIZA_RENDERER_URL` points at loopback;
  * otherwise the real API listen port on 127.0.0.1.
  */
-export function resolveRendererFacingApiBase(env: Record<string, string | undefined>, apiListenPort: number): string {
-    // Local-agent IPC mode has no reachable HTTP listener to proxy to; the
-    // renderer must address the IPC scheme so requests ride the Electrobun RPC
-    // transport instead of a same-origin dev-server proxy or a loopback port.
-    if (resolveLocalAgentIpcMode(env)) {
-        return DESKTOP_LOCAL_AGENT_IPC_BASE;
-    }
-    const fromDevServer = resolveHttpLoopbackRendererOriginForApiClient(env);
-    if (fromDevServer)
-        return fromDevServer;
-    return `http://127.0.0.1:${apiListenPort}`;
+export function resolveRendererFacingApiBase(
+	env: Record<string, string | undefined>,
+	apiListenPort: number,
+): string {
+	// Local-agent IPC mode has no reachable HTTP listener to proxy to; the
+	// renderer must address the IPC scheme so requests ride the Electrobun RPC
+	// transport instead of a same-origin dev-server proxy or a loopback port.
+	if (resolveLocalAgentIpcMode(env)) {
+		return DESKTOP_LOCAL_AGENT_IPC_BASE;
+	}
+	const fromDevServer = resolveHttpLoopbackRendererOriginForApiClient(env);
+	if (fromDevServer) return fromDevServer;
+	return `http://127.0.0.1:${apiListenPort}`;
 }
 /**
  * Push the API base URL (and optional token) to the renderer via typed
  * RPC message (CSP-safe). The renderer bridge handles `apiBaseUpdate`.
  */
 type ApiBaseUpdateRpc = {
-    send?: {
-        apiBaseUpdate?: (payload: {
-            base: string;
-            token?: string;
-            externalApiBase?: string | null;
-            localApiBase?: string | null;
-        }) => void;
-    };
+	send?: {
+		apiBaseUpdate?: (payload: {
+			base: string;
+			token?: string;
+			externalApiBase?: string | null;
+			localApiBase?: string | null;
+		}) => void;
+	};
 };
-export function pushApiBaseToRenderer(win: {
-    webview: {
-        rpc?: unknown;
-    };
-}, base: string, apiToken?: string, externalApiBase?: string | null, localApiBase?: string | null): void {
-    const trimmedToken = apiToken?.trim();
-    const payload = {
-        base,
-        token: trimmedToken || undefined,
-        externalApiBase: externalApiBase ?? null,
-        localApiBase: localApiBase ?? null,
-    };
-    try {
-        const rpcSend = (win.webview.rpc as ApiBaseUpdateRpc | undefined)?.send;
-        rpcSend?.apiBaseUpdate?.(payload);
-    }
-    catch (err) {
-        logger.warn(`[ApiBase] Push failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+export function pushApiBaseToRenderer(
+	win: {
+		webview: {
+			rpc?: unknown;
+		};
+	},
+	base: string,
+	apiToken?: string,
+	externalApiBase?: string | null,
+	localApiBase?: string | null,
+): void {
+	const trimmedToken = apiToken?.trim();
+	const payload = {
+		base,
+		token: trimmedToken || undefined,
+		externalApiBase: externalApiBase ?? null,
+		localApiBase: localApiBase ?? null,
+	};
+	try {
+		const rpcSend = (win.webview.rpc as ApiBaseUpdateRpc | undefined)?.send;
+		rpcSend?.apiBaseUpdate?.(payload);
+	} catch (err) {
+		logger.warn(
+			`[ApiBase] Push failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 }

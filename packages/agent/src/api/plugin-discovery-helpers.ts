@@ -88,7 +88,12 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export { type LogEntry, type SkillEntry, type StreamEventEnvelope, type StreamEventType } from "@elizaos/core/api/agent-api-types";
+export {
+  type LogEntry,
+  type SkillEntry,
+  type StreamEventEnvelope,
+  type StreamEventType,
+} from "@elizaos/core/api/agent-api-types";
 export type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 import type { PluginEntry, PluginParamDef } from "./server-types.ts";

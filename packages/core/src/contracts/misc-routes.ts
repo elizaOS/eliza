@@ -29,26 +29,26 @@ import z from "zod";
  * whichever fields are present. Keep the schema lenient.
  */
 export const PostIngestShareRequestSchema = z
-  .object({
-    source: z.string().optional(),
-    title: z.string().optional(),
-    url: z.string().optional(),
-    text: z.string().optional(),
-  })
-  .strict();
+	.object({
+		source: z.string().optional(),
+		title: z.string().optional(),
+		url: z.string().optional(),
+		text: z.string().optional(),
+	})
+	.strict();
 
 export const PostAgentEventRequestSchema = z
-  .object({
-    stream: z.string().regex(/\S/, "stream is required"),
-    data: z.record(z.string(), z.unknown()).optional(),
-    roomId: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    stream: value.stream.trim(),
-    ...(value.data !== undefined ? { data: value.data } : {}),
-    ...(value.roomId?.trim() ? { roomId: value.roomId.trim() } : {}),
-  }));
+	.object({
+		stream: z.string().regex(/\S/, "stream is required"),
+		data: z.record(z.string(), z.unknown()).optional(),
+		roomId: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		stream: value.stream.trim(),
+		...(value.data !== undefined ? { data: value.data } : {}),
+		...(value.roomId?.trim() ? { roomId: value.roomId.trim() } : {}),
+	}));
 
 // ---------------------------------------------------------------------------
 // terminal/run
@@ -63,89 +63,89 @@ export const PostAgentEventRequestSchema = z
  * other mechanisms.
  */
 export const PostTerminalRunRequestSchema = z
-  .object({
-    command: z.string(),
-    clientId: z.unknown().optional(),
-    terminalToken: z.string().optional(),
-    captureOutput: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		command: z.string(),
+		clientId: z.unknown().optional(),
+		terminalToken: z.string().optional(),
+		captureOutput: z.boolean().optional(),
+	})
+	.strict();
 
 // ---------------------------------------------------------------------------
 // custom actions
 // ---------------------------------------------------------------------------
 
 const CustomActionParameterSchema = z
-  .object({
-    name: z.string(),
-    description: z.string(),
-    required: z.boolean(),
-  })
-  .strict();
+	.object({
+		name: z.string(),
+		description: z.string(),
+		required: z.boolean(),
+	})
+	.strict();
 
 const CustomActionHttpHandlerSchema = z
-  .object({
-    type: z.literal("http"),
-    method: z.string(),
-    url: z.string().regex(/\S/, "HTTP handler requires a url"),
-    headers: z.record(z.string(), z.string()).optional(),
-    bodyTemplate: z.string().optional(),
-  })
-  .strict();
+	.object({
+		type: z.literal("http"),
+		method: z.string(),
+		url: z.string().regex(/\S/, "HTTP handler requires a url"),
+		headers: z.record(z.string(), z.string()).optional(),
+		bodyTemplate: z.string().optional(),
+	})
+	.strict();
 
 const CustomActionShellHandlerSchema = z
-  .object({
-    type: z.literal("shell"),
-    command: z.string().regex(/\S/, "Shell handler requires a command"),
-  })
-  .strict();
+	.object({
+		type: z.literal("shell"),
+		command: z.string().regex(/\S/, "Shell handler requires a command"),
+	})
+	.strict();
 
 const CustomActionCodeHandlerSchema = z
-  .object({
-    type: z.literal("code"),
-    code: z.string().regex(/\S/, "Code handler requires code"),
-  })
-  .strict();
+	.object({
+		type: z.literal("code"),
+		code: z.string().regex(/\S/, "Code handler requires code"),
+	})
+	.strict();
 
 export const CustomActionHandlerSchema = z.discriminatedUnion("type", [
-  CustomActionHttpHandlerSchema,
-  CustomActionShellHandlerSchema,
-  CustomActionCodeHandlerSchema,
+	CustomActionHttpHandlerSchema,
+	CustomActionShellHandlerSchema,
+	CustomActionCodeHandlerSchema,
 ]);
 
 export const PostCustomActionRequestSchema = z
-  .object({
-    name: z.string().regex(/\S/, "name is required"),
-    description: z.string().regex(/\S/, "description is required"),
-    similes: z.array(z.string()).optional(),
-    parameters: z.array(CustomActionParameterSchema).optional(),
-    handler: CustomActionHandlerSchema,
-    enabled: z.boolean().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    name: value.name.trim(),
-    description: value.description.trim(),
-    similes: value.similes ?? [],
-    parameters: value.parameters ?? [],
-    handler: value.handler,
-    enabled: value.enabled !== false,
-  }));
+	.object({
+		name: z.string().regex(/\S/, "name is required"),
+		description: z.string().regex(/\S/, "description is required"),
+		similes: z.array(z.string()).optional(),
+		parameters: z.array(CustomActionParameterSchema).optional(),
+		handler: CustomActionHandlerSchema,
+		enabled: z.boolean().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		name: value.name.trim(),
+		description: value.description.trim(),
+		similes: value.similes ?? [],
+		parameters: value.parameters ?? [],
+		handler: value.handler,
+		enabled: value.enabled !== false,
+	}));
 
 export const PostCustomActionGenerateRequestSchema = z
-  .object({
-    prompt: z.string().regex(/\S/, "prompt is required"),
-  })
-  .strict()
-  .transform((value) => ({
-    prompt: value.prompt.trim(),
-  }));
+	.object({
+		prompt: z.string().regex(/\S/, "prompt is required"),
+	})
+	.strict()
+	.transform((value) => ({
+		prompt: value.prompt.trim(),
+	}));
 
 export const PostCustomActionTestRequestSchema = z
-  .object({
-    params: z.record(z.string(), z.string()).optional(),
-  })
-  .strict();
+	.object({
+		params: z.record(z.string(), z.string()).optional(),
+	})
+	.strict();
 
 /**
  * PUT update — every field optional, handler optional but if present
@@ -153,32 +153,32 @@ export const PostCustomActionTestRequestSchema = z
  * server-side when this field is absent.
  */
 export const PutCustomActionRequestSchema = z
-  .object({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    similes: z.array(z.string()).optional(),
-    parameters: z.array(CustomActionParameterSchema).optional(),
-    handler: CustomActionHandlerSchema.optional(),
-    enabled: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		name: z.string().optional(),
+		description: z.string().optional(),
+		similes: z.array(z.string()).optional(),
+		parameters: z.array(CustomActionParameterSchema).optional(),
+		handler: CustomActionHandlerSchema.optional(),
+		enabled: z.boolean().optional(),
+	})
+	.strict();
 
 export type PostIngestShareRequest = z.infer<
-  typeof PostIngestShareRequestSchema
+	typeof PostIngestShareRequestSchema
 >;
 export type PostAgentEventRequest = z.infer<typeof PostAgentEventRequestSchema>;
 export type PostTerminalRunRequest = z.infer<
-  typeof PostTerminalRunRequestSchema
+	typeof PostTerminalRunRequestSchema
 >;
 export type PostCustomActionRequest = z.infer<
-  typeof PostCustomActionRequestSchema
+	typeof PostCustomActionRequestSchema
 >;
 export type PostCustomActionGenerateRequest = z.infer<
-  typeof PostCustomActionGenerateRequestSchema
+	typeof PostCustomActionGenerateRequestSchema
 >;
 export type PostCustomActionTestRequest = z.infer<
-  typeof PostCustomActionTestRequestSchema
+	typeof PostCustomActionTestRequestSchema
 >;
 export type PutCustomActionRequest = z.infer<
-  typeof PutCustomActionRequestSchema
+	typeof PutCustomActionRequestSchema
 >;

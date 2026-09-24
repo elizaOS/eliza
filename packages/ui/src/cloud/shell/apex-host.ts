@@ -3,9 +3,11 @@
  * flow. These hosts serve marketing/auth pages but have no same-origin agent
  * backend; managed app and dedicated-agent hosts are deliberately excluded.
  */
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 /** Control-plane hosts minus the API origins (api. / api-staging.), which
  * never serve the UI shell, and minus the app hosts (app. / app-staging.),
  * which serve the agent chat app — not the console. The app hosts sit in
@@ -15,26 +17,24 @@ import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/d
  * them (see AppCatchAllRoute) and send their post-login default to the in-app
  * /cloud view. */
 export const APEX_UI_CONTROL_PLANE_HOSTS = new Set([
-    new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname,
-    new URL(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin).hostname,
-    `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
-    ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames,
-    ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames,
+  new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname,
+  new URL(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin).hostname,
+  `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames,
 ]);
 /** Pure public-site hostname decision for the host-role route matrix. */
 export function isApexControlPlaneHostname(hostname: string): boolean {
-    const role = classifyElizaHostname(hostname).role;
-    return role === "marketing" || role === "legacy-marketing";
+  const role = classifyElizaHostname(hostname).role;
+  return role === "marketing" || role === "legacy-marketing";
 }
 export function isApexControlPlaneHost(): boolean {
-    if (typeof window === "undefined")
-        return false;
-    // Dev-only apex emulation: localhost is never a control-plane host, so the
-    // marketing-host behavior (app path → /cloud, unauth → /login, agent app
-    // never boots) is otherwise untestable in `vite dev`. Vite inlines the env
-    // read on literal access, and production-mode packages/app builds refuse to
-    // bake the flag (packages/app/scripts/forced-host-mode-guard.mjs).
-    if (import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true")
-        return true;
-    return isApexControlPlaneHostname(window.location.hostname);
+  if (typeof window === "undefined") return false;
+  // Dev-only apex emulation: localhost is never a control-plane host, so the
+  // marketing-host behavior (app path → /cloud, unauth → /login, agent app
+  // never boots) is otherwise untestable in `vite dev`. Vite inlines the env
+  // read on literal access, and production-mode packages/app builds refuse to
+  // bake the flag (packages/app/scripts/forced-host-mode-guard.mjs).
+  if (import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true") return true;
+  return isApexControlPlaneHostname(window.location.hostname);
 }

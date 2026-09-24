@@ -5,21 +5,23 @@
  */
 import { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
 export interface AppCloudOnlyBrandingInputs {
-    isDev: boolean;
-    bootApiBase?: string | null;
-    legacyInjectedApiBase?: string | null;
-    isNativePlatform?: boolean;
-    nativeRuntimeMode?: string | null;
-    desktopRuntimeMode?: string | null;
+  isDev: boolean;
+  bootApiBase?: string | null;
+  legacyInjectedApiBase?: string | null;
+  isNativePlatform?: boolean;
+  nativeRuntimeMode?: string | null;
+  desktopRuntimeMode?: string | null;
 }
-export function resolveAppCloudOnlyBranding(inputs: AppCloudOnlyBrandingInputs): boolean {
-    const bootApiBase = inputs.bootApiBase?.trim();
-    const legacyInjectedApiBase = inputs.legacyInjectedApiBase?.trim();
-    return shouldUseCloudOnlyBranding({
-        isDev: inputs.isDev,
-        injectedApiBase: bootApiBase || legacyInjectedApiBase,
-        isNativePlatform: inputs.isNativePlatform,
-        nativeRuntimeMode: inputs.nativeRuntimeMode,
-        desktopRuntimeMode: inputs.desktopRuntimeMode,
-    });
+export function resolveAppCloudOnlyBranding(
+  inputs: AppCloudOnlyBrandingInputs,
+): boolean {
+  const bootApiBase = inputs.bootApiBase?.trim();
+  const legacyInjectedApiBase = inputs.legacyInjectedApiBase?.trim();
+  return shouldUseCloudOnlyBranding({
+    isDev: inputs.isDev,
+    injectedApiBase: bootApiBase || legacyInjectedApiBase,
+    isNativePlatform: inputs.isNativePlatform,
+    nativeRuntimeMode: inputs.nativeRuntimeMode,
+    desktopRuntimeMode: inputs.desktopRuntimeMode,
+  });
 }

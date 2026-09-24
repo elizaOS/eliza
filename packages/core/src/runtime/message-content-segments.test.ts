@@ -5,6 +5,7 @@ import {
 	type Memory,
 	type UUID,
 } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 /**
  * Deterministic unit coverage for native message/attachment source projection:
  * exercises Unicode-safe segmentation, bounded traversal, identity stability,
@@ -12,7 +13,6 @@ import {
  */
 import { describe, expect, it } from "vitest";
 import { readCompleteMessageContent } from "../../../../plugins/plugin-assistant/src/features/messaging/complete-content-read.ts";
-import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import {
 	attachmentTextSourceDescriptor,
 	authorizeMessageContentRead,

@@ -5,8 +5,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, expect, it } from "vitest";
 import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { afterAll, beforeAll, expect, it } from "vitest";
 
 const stubUrl = new URL("./playwright-ui-smoke-api-stub.mjs", import.meta.url);
 let child;

@@ -10,9 +10,22 @@
  */
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
-import { type CloudCodingContainerService, type CloudVfsBundle, type PromoteVfsToCloudContainerRequest } from "@elizaos/core/contracts/cloud-coding-containers";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
-import { PostWorkbenchVfsCompilePluginRequestSchema, PostWorkbenchVfsGitRequestSchema, PostWorkbenchVfsLoadPluginRequestSchema, PostWorkbenchVfsProjectRequestSchema, PostWorkbenchVfsPromoteToCloudRequestSchema, PostWorkbenchVfsRollbackRequestSchema, PostWorkbenchVfsSnapshotRequestSchema, PutWorkbenchVfsFileRequestSchema } from "@elizaos/core/contracts/workbench-routes";
+import {
+  CLOUD_CONTAINER_SERVICE_TYPE,
+  type CloudCodingContainerService,
+  type CloudVfsBundle,
+  type PromoteVfsToCloudContainerRequest,
+} from "@elizaos/core/contracts/cloud-coding-containers";
+import {
+  PostWorkbenchVfsCompilePluginRequestSchema,
+  PostWorkbenchVfsGitRequestSchema,
+  PostWorkbenchVfsLoadPluginRequestSchema,
+  PostWorkbenchVfsProjectRequestSchema,
+  PostWorkbenchVfsPromoteToCloudRequestSchema,
+  PostWorkbenchVfsRollbackRequestSchema,
+  PostWorkbenchVfsSnapshotRequestSchema,
+  PutWorkbenchVfsFileRequestSchema,
+} from "@elizaos/core/contracts/workbench-routes";
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,

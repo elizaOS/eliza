@@ -11,9 +11,9 @@
  * Accepts `unknown` so callers don't need to narrow first (useful for config objects).
  */
 export function normalizeEnvValue(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed || undefined;
 }
 
 /**
@@ -21,7 +21,7 @@ export function normalizeEnvValue(value: unknown): string | undefined {
  * Convenient when building option objects where `null` means "absent".
  */
 export function normalizeEnvValueOrNull(value: unknown): string | null {
-  return normalizeEnvValue(value) ?? null;
+	return normalizeEnvValue(value) ?? null;
 }
 
 /**
@@ -29,36 +29,36 @@ export function normalizeEnvValueOrNull(value: unknown): string | null {
  * Missing or empty values return `false` (i.e. the feature is enabled by default).
  */
 export function isEnvDisabled(value: string | undefined): boolean {
-  const raw = value?.trim().toLowerCase();
-  if (!raw) return false;
-  return raw === "0" || raw === "false" || raw === "off" || raw === "no";
+	const raw = value?.trim().toLowerCase();
+	if (!raw) return false;
+	return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
 
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config";
+import { resolveAliasedEnvValue } from "../config/boot-config.js";
 import {
-  buildBrandEnvSyncAliases,
-  normalizeBrandEnvPrefix,
-} from "@elizaos/core/config/brand-env-aliases";
+	buildBrandEnvSyncAliases,
+	normalizeBrandEnvPrefix,
+} from "../config/brand-env-aliases.js";
 
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
 export const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-github",
-  "@elizaos/plugin-computeruse",
-  "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-workflow",
+	"@elizaos/plugin-personal-assistant",
+	"@elizaos/plugin-github",
+	"@elizaos/plugin-computeruse",
+	"@elizaos/plugin-elizacloud",
+	"@elizaos/plugin-workflow",
 ];
 
 export interface SyncElizaEnvAliasOptions {
-  brandedPrefix?: string;
-  cloudManagedAgentsApiSegment?: string;
-  appRoutePluginModules?: readonly string[];
+	brandedPrefix?: string;
+	cloudManagedAgentsApiSegment?: string;
+	appRoutePluginModules?: readonly string[];
 }
 
 function buildEnvPairs(
-  brandedPrefix: string,
+	brandedPrefix: string,
 ): Array<readonly [string, string]> {
-  return buildBrandEnvSyncAliases(brandedPrefix);
+	return buildBrandEnvSyncAliases(brandedPrefix);
 }
 
 /**
@@ -73,7 +73,7 @@ function buildEnvPairs(
  * was removed in #13423.
  */
 export function readAliasedEnv(key: string): string | undefined {
-  return normalizeEnvValue(resolveAliasedEnvValue(key));
+	return normalizeEnvValue(resolveAliasedEnvValue(key));
 }
 
 /**
@@ -89,30 +89,30 @@ export function readAliasedEnv(key: string): string | undefined {
  * BootConfig reader ({@link readAliasedEnv}) and never mutates `process.env`.
  */
 export function syncElizaEnvAliases(
-  options: SyncElizaEnvAliasOptions = {},
+	options: SyncElizaEnvAliasOptions = {},
 ): void {
-  const env = (
-    globalThis as {
-      process?: { env?: Record<string, string | undefined> };
-    }
-  ).process?.env;
-  if (!env) return;
+	const env = (
+		globalThis as {
+			process?: { env?: Record<string, string | undefined> };
+		}
+	).process?.env;
+	if (!env) return;
 
-  const brandedPrefix = normalizeBrandEnvPrefix(
-    options.brandedPrefix ?? DEFAULT_BRANDED_PREFIX,
-  );
-  for (const [from, to] of buildEnvPairs(brandedPrefix)) {
-    if (env[to] === undefined && env[from] !== undefined) {
-      env[to] = env[from];
-    }
-  }
-  if (!env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT) {
-    env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT =
-      options.cloudManagedAgentsApiSegment ?? "eliza";
-  }
-  if (!env.ELIZA_APP_ROUTE_PLUGIN_MODULES) {
-    env.ELIZA_APP_ROUTE_PLUGIN_MODULES = (
-      options.appRoutePluginModules ?? DEFAULT_APP_ROUTE_PLUGIN_MODULES
-    ).join(",");
-  }
+	const brandedPrefix = normalizeBrandEnvPrefix(
+		options.brandedPrefix ?? DEFAULT_BRANDED_PREFIX,
+	);
+	for (const [from, to] of buildEnvPairs(brandedPrefix)) {
+		if (env[to] === undefined && env[from] !== undefined) {
+			env[to] = env[from];
+		}
+	}
+	if (!env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT) {
+		env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT =
+			options.cloudManagedAgentsApiSegment ?? "eliza";
+	}
+	if (!env.ELIZA_APP_ROUTE_PLUGIN_MODULES) {
+		env.ELIZA_APP_ROUTE_PLUGIN_MODULES = (
+			options.appRoutePluginModules ?? DEFAULT_APP_ROUTE_PLUGIN_MODULES
+		).join(",");
+	}
 }

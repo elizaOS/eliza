@@ -1,6 +1,6 @@
 /**
  * The background-catalog NAME INDEX — the shared, code-free metadata half of the
- * curated background catalog (#13538). It lives in `@elizaos/shared` so BOTH
+ * curated background catalog (#13538). It lives in `@elizaos/core` so BOTH
  * halves read one source of truth:
  *
  *  - `@elizaos/ui` (`state/ui-preferences.ts`) imports this index and attaches
@@ -13,10 +13,8 @@
  * paintable, so naming a catalog entry can never smuggle code or an unvetted
  * URL across the broker (#11088 / #13523).
  */
-
 /** How a catalog entry ultimately renders (the renderer owns the source). */
 export type BackgroundCatalogKind = "color" | "glsl" | "image";
-
 /** Pure metadata for one curated background — no render source. */
 export interface BackgroundCatalogMeta {
   /** Stable slug used by the gallery, chat name-select, and tests. */
@@ -34,7 +32,6 @@ export interface BackgroundCatalogMeta {
   /** Search/agent tags ("nature", "forest", "warm"). */
   tags: readonly string[];
 }
-
 /**
  * The curated natural-background metadata. The renderer attaches a code-free SVG
  * gradient data URL to each of these (keyed by id).
@@ -86,7 +83,6 @@ export const NATURAL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
     tags: ["warm", "ember", "dark", "cozy"],
   },
 ];
-
 /**
  * The curated PHOTO-wallpaper metadata (#14 default-wallpapers): five painterly
  * scenes shipped as compressed WebP static assets from `packages/app/public/
@@ -147,7 +143,6 @@ export const PHOTO_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
     tags: ["nature", "jungle", "forest", "green", "misty"],
   },
 ];
-
 /**
  * The named GLSL-preset metadata, mirrored as catalog entries. `id` doubles as
  * the shader preset id the renderer resolves to source (never GLSL text here).
@@ -199,7 +194,6 @@ export const GLSL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
     tags: ["animated", "nebula", "space", "cosmic"],
   },
 ];
-
 /**
  * The full catalog name index: natural gradient images, then the curated photo
  * wallpapers, then the animated GLSL presets. Both the gallery (via
@@ -210,7 +204,6 @@ export const BACKGROUND_CATALOG_INDEX: readonly BackgroundCatalogMeta[] = [
   ...PHOTO_BACKGROUND_META,
   ...GLSL_BACKGROUND_META,
 ];
-
 /**
  * The curated IMAGE metadata the agent name-select routes to: the gradient
  * natural entries plus the photo wallpapers (both `kind: "image"`). Excludes the
@@ -221,10 +214,8 @@ export const IMAGE_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
   ...NATURAL_BACKGROUND_META,
   ...PHOTO_BACKGROUND_META,
 ];
-
 /** The boot-default catalog id (the curated "Ember Night" gradient). */
 export const DEFAULT_BACKGROUND_CATALOG_ID = "ember-night";
-
 /**
  * Match a free-text / id / label reference to a catalog id. Case- and
  * whitespace-insensitive; matches by id, then exact label, then a label
@@ -252,7 +243,6 @@ export function matchCatalogId(ref: string | undefined): string | undefined {
   });
   return byLabelPart?.id;
 }
-
 /**
  * Detect whether free text names a curated IMAGE catalog background (a gradient
  * natural entry OR a photo wallpaper), returning the matched id. Only image

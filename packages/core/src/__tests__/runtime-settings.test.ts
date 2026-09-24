@@ -5,12 +5,12 @@
  * adapter, no model calls.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 
 describe("AgentRuntime.getSetting", () => {
 	it.each([false, true])(

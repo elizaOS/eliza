@@ -13,15 +13,9 @@
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
-      "@elizaos/ui": [
-        "../ui/dist/index.d.ts"
-      ],
-      "@elizaos/core": [
-        "../core/dist/index.d.ts"
-      ],
-      "@elizaos/agent": [
-        "./src/index.ts"
-      ],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/dist/index.d.ts"
       ],
@@ -29,12 +23,7 @@
         "../../plugins/plugin-browser/dist/index.d.ts"
       ]
     },
-    "types": [
-      "node",
-      "bun-types",
-      "react",
-      "react-dom"
-    ],
+    "types": ["node", "bun-types", "react", "react-dom"],
     "typeRoots": [
       "../../node_modules/@types",
       "../../node_modules/.bun/node_modules/@types",
@@ -53,8 +42,5 @@
     "src/**/__tests__/**",
     "src/**/__fixtures__/**"
   ],
-  "include": [
-    "src",
-    "vite-env.d.ts"
-  ]
+  "include": ["src", "vite-env.d.ts"]
 }

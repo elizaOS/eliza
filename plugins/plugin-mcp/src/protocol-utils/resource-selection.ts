@@ -1,6 +1,6 @@
 /** Validates and describes model-selected MCP resources without host dependencies. */
 
-import type { McpKernelProviderData } from "@elizaos/plugin-mcp/protocol-utils/protocol";
+import type { McpKernelProviderData } from "./protocol.js";
 
 export interface McpResourceSelection {
   readonly serverName?: string;
@@ -18,15 +18,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function validateMcpResourceSelection(
-  selection: unknown,
+  selection: unknown
 ): McpSelectionValidation<McpResourceSelection> {
   if (!isRecord(selection)) {
     return { success: false, error: "Resource selection must be an object" };
   }
   const reasoning =
-    typeof selection.reasoning === "string"
-      ? { reasoning: selection.reasoning }
-      : {};
+    typeof selection.reasoning === "string" ? { reasoning: selection.reasoning } : {};
   if (selection.noResourceAvailable === true) {
     return {
       success: true,
@@ -64,7 +62,7 @@ export function describeMcpResources(data: McpKernelProviderData): string {
         `Resource: ${uri} (Server: ${serverName})`,
         `Name: ${resource.name || "No name available"}`,
         `Description: ${resource.description || "No description available"}`,
-        "",
+        ""
       );
     }
   }

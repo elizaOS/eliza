@@ -6,7 +6,11 @@
  * the two without exposing provider IDs through action handles.
  */
 
-import { type LifeOpsCalendarProvider, type LifeOpsCalendarSourceHealth, type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
 import { toCalendarSourceHealthRows } from "./source-health.js";
 
 export type CalendarSourceManagerStatus =

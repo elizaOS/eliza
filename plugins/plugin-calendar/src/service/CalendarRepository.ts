@@ -6,8 +6,16 @@
  * `app_calendar.` prefix.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarProvider, type LifeOpsCalendarSourceError, type LifeOpsIcsSourceSyncStatus } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsConnectorGrant, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSourceError,
+  type LifeOpsIcsSourceSyncStatus,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   parseJsonArray,

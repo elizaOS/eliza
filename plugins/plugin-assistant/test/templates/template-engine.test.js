@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import Handlebars from "handlebars";
-import { compileTemplate } from "../dist/text/template-rendering.js";
+import { compileTemplate } from "../../dist/text/template-rendering.js";
 import { authoredTemplates as prompts } from "./authored-template-fixtures.ts";
 
 const contexts = [
@@ -87,7 +87,7 @@ describe("interpreted template rendering", () => {
     const script = `
       import assert from 'node:assert/strict';
       import {readFileSync} from 'node:fs';
-      import {compileTemplate} from ${JSON.stringify(new URL("../dist/text/template-rendering.js", import.meta.url).href)};
+      import {compileTemplate} from ${JSON.stringify(new URL("../../dist/text/template-rendering.js", import.meta.url).href)};
       assert.throws(() => new Function('return 1'), EvalError);
       for (const row of JSON.parse(readFileSync(0, 'utf8'))) {
         assert.equal(compileTemplate(row.template)(row.context), row.expected);

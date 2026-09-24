@@ -4,6 +4,11 @@
  * itinerary into the owner's calendar. Booking is a sensitive action gated by
  * owner approval upstream in the action/route layer.
  */
+
+import {
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarEvent,
+} from "@elizaos/core/contracts/calendar";
 import {
   createOrder,
   createPayment,
@@ -17,7 +22,6 @@ import {
   type SearchFlightsResult,
   searchFlights,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
-import { type CreateLifeOpsCalendarEventRequest, type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import type {
   FlightBookingExecutionResult,

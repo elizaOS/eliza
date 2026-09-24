@@ -11,30 +11,39 @@
  * Migrated from packages/app/src/api/wallet-market-overview-route.ts.
  */
 import type http from "node:http";
+import {
+  type HttpPlugin as Plugin,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
-import { type HttpPlugin as Plugin } from "@elizaos/shared";
-import { type Route } from "@elizaos/shared";
-async function marketOverviewHandler(req: unknown, res: unknown, _runtime: unknown): Promise<void> {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    await handleWalletMarketOverviewRoute(httpReq, httpRes);
+
+async function marketOverviewHandler(
+  req: unknown,
+  res: unknown,
+  _runtime: unknown,
+): Promise<void> {
+  const httpReq = req as http.IncomingMessage;
+  const httpRes = res as http.ServerResponse;
+  await handleWalletMarketOverviewRoute(httpReq, httpRes);
 }
 const walletHttpRoutes: Route[] = [
-    // GET /api/wallet/market-overview — public cached market overview for
-    // wallet empty states and cloud feeds. The handler also responds to
-    // OPTIONS preflight with 204 and rejects other methods with 405.
-    {
-        type: "GET",
-        path: "/api/wallet/market-overview",
-        rawPath: true,
-        public: true,
-        name: "wallet-market-overview",
-        publicReason: "Market overview is cached public market data for unauthenticated wallet empty states.",
-        handler: marketOverviewHandler,
-    },
+  // GET /api/wallet/market-overview — public cached market overview for
+  // wallet empty states and cloud feeds. The handler also responds to
+  // OPTIONS preflight with 204 and rejects other methods with 405.
+  {
+    type: "GET",
+    path: "/api/wallet/market-overview",
+    rawPath: true,
+    public: true,
+    name: "wallet-market-overview",
+    publicReason:
+      "Market overview is cached public market data for unauthenticated wallet empty states.",
+    handler: marketOverviewHandler,
+  },
 ];
 export const walletRoutePlugin: Plugin = {
-    name: "@elizaos/plugin-wallet:routes",
-    description: "Wallet HTTP route handlers (market overview, etc.) — extracted from packages/app/src/api.",
-    routes: walletHttpRoutes,
+  name: "@elizaos/plugin-wallet:routes",
+  description:
+    "Wallet HTTP route handlers (market overview, etc.) — extracted from packages/app/src/api.",
+  routes: walletHttpRoutes,
 };

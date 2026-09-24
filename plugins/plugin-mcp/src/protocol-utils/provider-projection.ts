@@ -4,12 +4,12 @@ import type {
   McpKernelProviderData,
   McpKernelProviderProjection,
   McpKernelServer,
-} from "@elizaos/plugin-mcp/protocol-utils/protocol";
+} from "./protocol.js";
 
 const NO_DESCRIPTION = "No description available";
 
 export function buildMcpProviderProjection(
-  servers: readonly McpKernelServer[],
+  servers: readonly McpKernelServer[]
 ): McpKernelProviderProjection {
   if (servers.length === 0) {
     return {
@@ -27,10 +27,7 @@ export function buildMcpProviderProjection(
       string,
       { description: string; inputSchema?: Readonly<Record<string, unknown>> }
     > = {};
-    const resources: Record<
-      string,
-      { name: string; description: string; mimeType?: string }
-    > = {};
+    const resources: Record<string, { name: string; description: string; mimeType?: string }> = {};
     lines.push(`## Server: ${server.name} (${server.status})`, "");
 
     if (server.tools?.length) {
@@ -68,9 +65,7 @@ export function buildMcpProviderProjection(
 }
 
 /** Compact prompt projection used by the local provider facade. */
-export function formatMcpProviderForPrompt(
-  data: McpKernelProviderData,
-): string {
+export function formatMcpProviderForPrompt(data: McpKernelProviderData): string {
   const entries = Object.entries(data);
   if (entries.length === 0) return "No MCP servers are available.";
   return [

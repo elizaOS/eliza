@@ -7,8 +7,8 @@
  */
 import { rejectAtDeadline } from "@elizaos/core/utils/deadline";
 export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return rejectAtDeadline(promise, {
-        timeoutMs: ms,
-        onTimeout: () => new Error(`timed out after ${ms}ms`),
-    });
+  return rejectAtDeadline(promise, {
+    timeoutMs: ms,
+    onTimeout: () => new Error(`timed out after ${ms}ms`),
+  });
 }

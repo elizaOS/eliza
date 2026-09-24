@@ -361,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(CANONICAL_CATALOG_PATH),
         help=(
             "Catalog .ts file to compute a unified diff against. Defaults to "
-            f"{CANONICAL_CATALOG_PATH} (the canonical @elizaos/shared catalog). "
+            f"{CANONICAL_CATALOG_PATH} (the canonical @elizaos/plugin-native-inference/model-catalog/catalog catalog). "
             "Pass --print-entry to skip the diff and only emit the entry block."
         ),
     )

@@ -5,7 +5,10 @@
  * client. On the Electrobun desktop it can additionally attach local diagnostics
  * — collected via `../../utils/desktop-bug-report` — and open the logs folder.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/unicode";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/utils/unicode";
 import { logger } from "@elizaos/ui/logger";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

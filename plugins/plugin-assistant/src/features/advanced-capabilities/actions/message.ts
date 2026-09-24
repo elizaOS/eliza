@@ -196,6 +196,10 @@ function numberParam(value: unknown): number | undefined {
   return undefined;
 }
 
+function requestedLimit(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : Math.max(1, Math.floor(value));
+}
+
 function clampLimit(
   value: number | undefined,
   fallback: number,
@@ -3789,7 +3793,7 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
   target: TargetInfo,
   params: ParamRecord,
-  limit: number,
+  limit: number | undefined,
 ) {
   return {
     target,
@@ -3804,7 +3808,7 @@ async function fetchRecentMessagesFromConnector(
   connector: ConnectorWithHooks,
   context: MessageConnectorQueryContext,
   params: ParamRecord,
-  limit: number,
+  limit: number | undefined,
 ): Promise<Memory[]> {
   if (!connector.fetchMessages || !connector.listRecentTargets) return [];
   const recent = await connector.listRecentTargets(context);

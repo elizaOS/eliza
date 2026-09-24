@@ -7,7 +7,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildMeetingArtifactFixtures } from "@elizaos/core/meeting-artifacts";
-import { DEFAULT_MEETING_MAX_DURATION_MS, MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/core/meetings";
+import {
+  DEFAULT_MEETING_MAX_DURATION_MS,
+  MEETING_TRANSCRIPT_FINALIZED_EVENT,
+} from "@elizaos/core/meetings";
 import { describe, expect, it, vi } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {

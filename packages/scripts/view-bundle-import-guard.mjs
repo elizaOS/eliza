@@ -39,7 +39,6 @@ const LOADER_PATH = path.join(
   repoRoot,
   "packages/ui/src/components/views/DynamicViewLoader.tsx",
 );
-
 // Build-variant entrypoints contribute plugin-owned host-external specifiers
 // through `registerHostExternalImporter` (the loader's trunk map stays
 // framework-only). These specifiers are just as loadable as the trunk ones, so
@@ -51,7 +50,6 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
     registrationPath: path.join(repoRoot, "packages/app/src/host-externals.ts"),
   },
 ];
-
 // Relative imports are loader-private implementation paths, so their public
 // specifier binding cannot be inferred from string equality. Keep the mapping
 // exact: any new alias must identify the concrete module it exposes.
@@ -144,7 +142,6 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/components/ui/textarea", "../ui/textarea.tsx"],
   ["@elizaos/ui/components/ui/tooltip-extended", "../ui/tooltip-extended.tsx"],
 ]);
-
 // Compatibility importers assemble curated namespaces rather than importing a
 // same-named package. Their function identities are therefore part of the
 // loader contract and must not be interchangeable across map keys.
@@ -153,17 +150,14 @@ const LOADER_NAMED_IMPORTER_BINDINGS = new Map([
   ["@elizaos/app/browser", "importAppCoreViewCompat"],
   ["@elizaos/app/ui-compat", "importAppCoreViewCompat"],
   ["@elizaos/core", "importCoreViewCompat"],
-  ["@elizaos/shared", "importSharedViewCompat"],
   ["@elizaos/ui", "importUiRootCompat"],
   ["@elizaos/ui/app-navigate-view", "importUiAppNavigateViewCompat"],
   ["@elizaos/ui/bridge", "importUiBridgeCompat"],
   ["@elizaos/ui/components", "importUiComponentsCompat"],
 ]);
-
 const LOADER_NAMESPACE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/agent-surface", "../../agent-surface"],
 ]);
-
 function parseSource(source, file, scriptKind) {
   const sourceFile = ts.createSourceFile(
     file,
@@ -180,7 +174,6 @@ function parseSource(source, file, scriptKind) {
   }
   return sourceFile;
 }
-
 function unwrapExpression(expression) {
   let current = expression;
   while (
@@ -192,7 +185,6 @@ function unwrapExpression(expression) {
   }
   return current;
 }
-
 function staticPropertyName(property, file) {
   const name = property.name;
   if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) {
@@ -208,13 +200,11 @@ function staticPropertyName(property, file) {
     `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${file} contains a non-static property`,
   );
 }
-
 function hasExportModifier(node) {
   return node.modifiers?.some(
     (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
   );
 }
-
 function bindingIdentifiers(name, identifiers = []) {
   if (ts.isIdentifier(name)) {
     identifiers.push(name);
@@ -230,7 +220,6 @@ function bindingIdentifiers(name, identifiers = []) {
   }
   return identifiers;
 }
-
 function directScopeBindings(scope) {
   const bindings = new Map();
   const statements =
@@ -263,7 +252,6 @@ function directScopeBindings(scope) {
   }
   return bindings;
 }
-
 function nearestBinding(identifier) {
   let current = identifier.parent;
   while (current) {
@@ -296,7 +284,6 @@ function nearestBinding(identifier) {
   }
   return undefined;
 }
-
 function topLevelUnits(sourceFile) {
   const units = new Map();
   const add = (name, unit) => {
@@ -334,7 +321,6 @@ function topLevelUnits(sourceFile) {
   }
   return units;
 }
-
 function assertLoaderMapIsRuntimeReachable(declaration, loaderFile, units) {
   const unitByDeclaration = new Map(
     [...units.values()].map((unit) => [unit.declaration, unit]),
@@ -389,7 +375,6 @@ function assertLoaderMapIsRuntimeReachable(declaration, loaderFile, units) {
     `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} is not consumed by the exported hostImport call path`,
   );
 }
-
 function returnedExpression(callable) {
   if (ts.isArrowFunction(callable) && !ts.isBlock(callable.body)) {
     return callable.body;
@@ -401,7 +386,6 @@ function returnedExpression(callable) {
   const statement = body.statements[0];
   return ts.isReturnStatement(statement) ? statement.expression : undefined;
 }
-
 function unwrapReturnedExpression(expression) {
   let current = expression && unwrapExpression(expression);
   while (current && ts.isAwaitExpression(current)) {
@@ -409,7 +393,6 @@ function unwrapReturnedExpression(expression) {
   }
   return current;
 }
-
 function assertHostImportWrapper(identifier, file) {
   const declaration = nearestBinding(identifier);
   const fn =
@@ -442,7 +425,6 @@ function assertHostImportWrapper(identifier, file) {
     );
   }
 }
-
 function directImporterCallSpecifier(expression, file) {
   const value = unwrapReturnedExpression(expression);
   if (!value || !ts.isCallExpression(value)) return undefined;
@@ -462,7 +444,6 @@ function directImporterCallSpecifier(expression, file) {
   }
   return value.arguments[0].text;
 }
-
 function hasTerminalValueReturn(unit) {
   const root = unit.node;
   if (ts.isArrowFunction(root) && !ts.isBlock(root.body)) return true;
@@ -473,7 +454,6 @@ function hasTerminalValueReturn(unit) {
     finalStatement.expression !== undefined
   );
 }
-
 function hasDirectThrow(callable) {
   let found = false;
   const visit = (node) => {
@@ -491,7 +471,6 @@ function hasDirectThrow(callable) {
   visit(callable);
   return found;
 }
-
 function validateLoaderSpecifierBinding(key, imported, file) {
   if (imported.startsWith(".")) {
     const expected = LOADER_RELATIVE_IMPORT_BINDINGS.get(key);
@@ -506,7 +485,6 @@ function validateLoaderSpecifierBinding(key, imported, file) {
     );
   }
 }
-
 function namespaceImportSpecifier(identifier) {
   const binding = nearestBinding(identifier);
   const namespaceImport = binding?.parent;
@@ -522,7 +500,6 @@ function namespaceImportSpecifier(identifier) {
   }
   return declaration.moduleSpecifier.text;
 }
-
 function validateJsxDevRuntimeImporter(callable, key, file) {
   const imports = [];
   let hasReturn = false;
@@ -573,7 +550,6 @@ function validateJsxDevRuntimeImporter(callable, key, file) {
     );
   }
 }
-
 function validateLoaderImporter(property, key, units, file) {
   if (!ts.isPropertyAssignment(property)) {
     throw new Error(
@@ -648,7 +624,6 @@ function validateLoaderImporter(property, key, units, file) {
     `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} callable in ${file} must directly return its module`,
   );
 }
-
 function importedLocalName(sourceFile, imported, moduleSpecifier, file) {
   const names = [];
   for (const statement of sourceFile.statements) {
@@ -678,7 +653,6 @@ function importedLocalName(sourceFile, imported, moduleSpecifier, file) {
   }
   return names[0];
 }
-
 function exportedSynchronousInitializers(sourceFile, file) {
   const initializers = [];
   for (const statement of sourceFile.statements) {
@@ -703,7 +677,6 @@ function exportedSynchronousInitializers(sourceFile, file) {
   }
   return initializers;
 }
-
 function directRegistrationCalls(initializer, localRegistrationName, file) {
   let shadowed = false;
   const findShadow = (node) => {
@@ -756,7 +729,6 @@ function directRegistrationCalls(initializer, localRegistrationName, file) {
   }
   return calls;
 }
-
 function callableImporterSpecifier(expression, file) {
   const callable = unwrapExpression(expression);
   if (!ts.isArrowFunction(callable) && !ts.isFunctionExpression(callable)) {
@@ -781,7 +753,6 @@ function callableImporterSpecifier(expression, file) {
   }
   return specifier;
 }
-
 function registrationModuleSpecifier(registrationFile, entryFile) {
   const relative = path.posix.relative(
     path.posix.dirname(entryFile),
@@ -789,7 +760,6 @@ function registrationModuleSpecifier(registrationFile, entryFile) {
   );
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
-
 function assertInitializerRunsAtEntry(
   initializerName,
   registrationFile,
@@ -826,7 +796,6 @@ function assertInitializerRunsAtEntry(
     );
   }
 }
-
 /**
  * Extract the exact runtime host-external contract from parsed source.
  *
@@ -875,7 +844,6 @@ export function hostExternalSpecifiersFromSources(
       `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} must be an object literal`,
     );
   }
-
   const specifiers = new Set();
   for (const property of objectLiteral.properties) {
     if (ts.isSpreadAssignment(property)) {
@@ -898,7 +866,6 @@ export function hostExternalSpecifiersFromSources(
     );
   }
   assertLoaderMapIsRuntimeReachable(declarations[0], loaderFile, units);
-
   for (const { entryFile, entrySource, file, source } of registrationSources) {
     const sourceFile = parseSource(source, file, ts.ScriptKind.TS);
     const localRegistrationName = importedLocalName(
@@ -974,7 +941,6 @@ export function hostExternalSpecifiersFromSources(
   }
   return specifiers;
 }
-
 /** Read the host runtime sources and return their exact external specifiers. */
 export async function getHostExternalSpecifiers() {
   const loaderSource = await fs.readFile(LOADER_PATH, "utf8");
@@ -993,7 +959,6 @@ export async function getHostExternalSpecifiers() {
   );
   return hostExternalSpecifiersFromSources(loaderSource, registrationSources);
 }
-
 /** Pull every static or literal dynamic bare import from an emitted ESM bundle. */
 export function bareImportSpecifiers(source, file = "<view-bundle>") {
   const sourceFile = ts.createSourceFile(
@@ -1009,7 +974,6 @@ export function bareImportSpecifiers(source, file = "<view-bundle>") {
       `[view-bundle-guard] ${file} is not parseable JavaScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
     );
   }
-
   const out = new Set();
   const add = (specifier) => {
     if (!specifier || !ts.isStringLiteralLike(specifier)) return;
@@ -1048,7 +1012,6 @@ export function bareImportSpecifiers(source, file = "<view-bundle>") {
   visit(sourceFile);
   return out;
 }
-
 /** Require an emitted bundle to contribute a non-empty runtime namespace. */
 export function assertViewBundleExports(source, file = "<view-bundle>") {
   const sourceFile = ts.createSourceFile(
@@ -1087,7 +1050,6 @@ export function assertViewBundleExports(source, file = "<view-bundle>") {
     throw new Error(`[view-bundle-guard] ${file} exports no runtime bindings`);
   }
 }
-
 /**
  * Resolve every expected bundle through the same workspace inventory as the
  * producer. Tests may inject inventory options to exercise malformed trees.
@@ -1105,7 +1067,6 @@ export function listExpectedViewBundles(options = {}) {
     relativeConfig: target.config,
   }));
 }
-
 async function listBuiltBundles(options = {}) {
   const expected = options.expected ?? listExpectedViewBundles(options);
   const bundles = [];
@@ -1137,7 +1098,6 @@ async function listBuiltBundles(options = {}) {
   }
   return { bundles, missingBundles, expectedBundleCount: expected.length };
 }
-
 /** Classify a directory entry without treating devices or sockets as absent. */
 export function viewOutputEntryKind(entry, file) {
   if (entry.isDirectory()) return "directory";
@@ -1146,7 +1106,6 @@ export function viewOutputEntryKind(entry, file) {
     `[view-bundle-guard] unsupported filesystem entry in view output: ${file}`,
   );
 }
-
 async function listOutputFiles(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   const files = [];
@@ -1161,7 +1120,6 @@ async function listOutputFiles(directory) {
   }
   return files;
 }
-
 async function listUnexpectedOutputs(expected) {
   const chunks = [];
   const artifacts = [];
@@ -1211,7 +1169,6 @@ async function listUnexpectedOutputs(expected) {
   }
   return { unexpectedChunks: chunks, unexpectedArtifacts: artifacts };
 }
-
 /**
  * Validate every expected view bundle. Returns missing bundle records plus
  * import violations `{ plugin, specifier }`; both empty when every bundle is
@@ -1251,7 +1208,6 @@ export async function validateViewBundles(options = {}) {
     allowedCount: allowed.size,
   };
 }
-
 // CLI entry: `bun packages/scripts/view-bundle-import-guard.mjs`
 if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
   const {

@@ -1,5 +1,8 @@
 /** Exercises server-derived review decisions against deterministic account/calendar boundaries, including forged facts and foreign sources. */
-import { type LifeOpsCalendarSummary, type LifeOpsLinkedCalendarLink } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarSummary,
+  type LifeOpsLinkedCalendarLink,
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import { deriveAccountHandoffGoogleReview } from "./account-handoff-google-review.js";

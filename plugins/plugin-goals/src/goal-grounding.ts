@@ -6,8 +6,10 @@
  * Consumed by `goal-semantic-evaluator.ts` (which fills these from an LLM pass);
  * PA re-exports this module for back-compat, so keep the exported shapes stable.
  */
-import { type LifeOpsGoalReviewState } from "@elizaos/core/contracts/personal-assistant";
-import { LIFEOPS_REVIEW_STATES } from "@elizaos/core/contracts/personal-assistant";
+import {
+  LIFEOPS_REVIEW_STATES,
+  type LifeOpsGoalReviewState,
+} from "@elizaos/core/contracts/personal-assistant";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",

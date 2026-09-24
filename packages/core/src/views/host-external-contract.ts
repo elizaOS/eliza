@@ -21,7 +21,7 @@
  * specifier is neither a framework trunk external nor a registered one.
  */
 export type HostModuleImporter = (
-  specifier: string,
+	specifier: string,
 ) => Promise<Record<string, unknown>>;
 
 /**
@@ -30,7 +30,7 @@ export type HostModuleImporter = (
  * view component plus any `interact` / `cleanup` exports).
  */
 export type HostExternalBundleFactory = (
-  hostImport: HostModuleImporter,
+	hostImport: HostModuleImporter,
 ) => Promise<Record<string, unknown>>;
 
 /** URL query flag the loader sets to request the host-external factory serve. */

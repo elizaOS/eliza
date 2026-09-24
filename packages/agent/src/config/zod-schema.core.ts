@@ -7,8 +7,13 @@
  * refinement helpers (`requireOpenAllowFrom`, `normalizeAllowFrom`) reused to
  * gate an "open" DM policy behind an explicit `allowFrom: ["*"]`.
  */
+
+import {
+  ModelDefinitionInputSchema,
+  ModelApiSchema as SharedModelApiSchema,
+  ModelCompatSchema as SharedModelCompatSchema,
+} from "@elizaos/core/config/zod-schema.core";
 import { isSafeExecutableValue } from "@elizaos/core/utils/exec-safety";
-import { ModelDefinitionInputSchema, ModelApiSchema as SharedModelApiSchema, ModelCompatSchema as SharedModelCompatSchema } from "@elizaos/core/config/zod-schema.core";
 import * as zod from "zod";
 import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 

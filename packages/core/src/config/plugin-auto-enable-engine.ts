@@ -6,17 +6,16 @@
  *
  * The configured-detection helpers (isConnectorConfigured, isWechatConfigured)
  * live in @elizaos/core and are re-exported here for back-compat with callers
- * that still import them from @elizaos/shared. Per-plugin auto-enable itself
+ * that still import them from @elizaos/core. Per-plugin auto-enable itself
  * lives in ./plugin-manifest.ts (each plugin declares conditions via
  * package.json's `elizaos.plugin.autoEnableModule`).
  */
 import channelPluginMap from "@elizaos/core/catalog/channel-plugin-map.json" with {
-  type: "json",
+	type: "json",
 };
 
 export {
-  isConnectorConfigured,
-  isWechatConfigured,
+	isConnectorConfigured,
+	isWechatConfigured,
 } from "../connectors/connector-config.js";
-
 export const CONNECTOR_PLUGINS: Record<string, string> = channelPluginMap;

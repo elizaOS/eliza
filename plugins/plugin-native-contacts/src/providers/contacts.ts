@@ -14,11 +14,11 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import {
   type ContactSummary,
   Contacts,
 } from "@elizaos/plugin-native-contacts/bridge";
-import { ElizaError } from "@elizaos/core";
 
 const CONTACTS_PROVIDER_NAME = "androidContacts";
 const COMPLETE_CONTACTS_READ_LIMIT = 2_147_483_647;

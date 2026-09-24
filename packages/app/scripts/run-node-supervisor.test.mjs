@@ -13,10 +13,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" with {
   type: "json",
 };
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_NODE = path.join(SCRIPT_DIR, "run-node.mjs");

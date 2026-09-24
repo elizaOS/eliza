@@ -57,13 +57,10 @@ import {
 // exports (MediaFetchError, the shared streaming cap reader) stay real so the
 // local-branch read path under test runs its actual code.
 const fetchRemoteMediaMock = vi.fn();
-vi.mock(
-  "@elizaos/core/media/fetch",
-  async (importActual) => ({
-    ...(await importActual<typeof import("@elizaos/core")>()),
-    fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
-  }),
-);
+vi.mock("@elizaos/core/media/fetch", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core")>()),
+  fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
+}));
 
 const { readAttachmentAction } = await import("./readAttachmentAction.ts");
 

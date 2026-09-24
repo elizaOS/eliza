@@ -53,4 +53,3 @@ export interface PublicRegistration {
   priority: number;
   registeredAt: string;
 }
-

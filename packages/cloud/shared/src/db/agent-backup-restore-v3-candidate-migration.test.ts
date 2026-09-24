@@ -5,7 +5,17 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS, AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION, AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION, AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS, AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT, type AgentBackupRestoreV3CandidateReceipt, type AgentBackupRestoreV3SourceAuthority, canonicalizeAgentBackupRestoreV3CandidateReceipt, canonicalizeAgentBackupRestoreV3SourceAuthority } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+import {
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
+  AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
+  AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
+  AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
+  type AgentBackupRestoreV3CandidateReceipt,
+  type AgentBackupRestoreV3SourceAuthority,
+  canonicalizeAgentBackupRestoreV3CandidateReceipt,
+  canonicalizeAgentBackupRestoreV3SourceAuthority,
+} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import { AGENT_BACKUP_RESTORE_V3_CANDIDATE_COMPONENTS } from "./schemas/agent-backup-restore-v3-candidates";
 
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");

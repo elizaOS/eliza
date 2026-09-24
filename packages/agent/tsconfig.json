@@ -1,34 +1,20 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun",
-      "react",
-      "react-dom"
-    ],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types"
-    ],
+    "types": ["node", "bun", "react", "react-dom"],
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/testing": [
-        "../testing/src/index.ts"
-      ],
+      "@elizaos/testing": ["../testing/src/index.ts"],
       "@elizaos/plugin-assistant": [
         "../../plugins/plugin-assistant/src/index.ts"
       ],
@@ -38,33 +24,21 @@
       "@elizaos/plugin-assistant/actions/generate-media": [
         "../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts"
       ],
-      "@elizaos/core": [
-        "../core/src/index.ts"
-      ],
-      "@elizaos/core/edge": [
-        "../core/src/index.edge.ts"
-      ],
-      "@elizaos/core/atomic-json": [
-        "../core/src/utils/atomic-json.ts"
-      ],
-      "@elizaos/core/*": [
-        "../core/src/*"
-      ],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/core/edge": ["../core/src/index.edge.ts"],
+      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
       "@elizaos/plugin-scheduling": [
         "../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-todos": [
-        "../../plugins/plugin-todos/src/index.ts"
-      ],
+      "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/plugin": [
         "../../plugins/plugin-todos/src/plugin.ts"
       ],
-      "@elizaos/plugin-todos/edge": [
-        "../../plugins/plugin-todos/src/edge.ts"
-      ],
+      "@elizaos/plugin-todos/edge": ["../../plugins/plugin-todos/src/edge.ts"],
       "@elizaos/plugin-todos/service": [
         "../../plugins/plugin-todos/src/service.ts"
       ],
@@ -80,12 +54,8 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/plugin-form": [
-        "../../plugins/plugin-form/src/index.ts"
-      ],
-      "@elizaos/plugin-wallet": [
-        "../../plugins/plugin-wallet/src/index.ts"
-      ],
+      "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/diagnostic": [
         "../../plugins/plugin-wallet/src/diagnostic.ts"
       ],
@@ -95,12 +65,8 @@
       "@elizaos/plugin-native-wifi/plugin": [
         "../../plugins/plugin-native-wifi/src/plugin.ts"
       ],
-      "@elizaos/ui": [
-        "../ui/src/index.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../ui/src/*"
-      ],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
@@ -116,24 +82,16 @@
       "@elizaos/plugin-native-contacts/plugin": [
         "../../plugins/plugin-native-contacts/src/plugin.ts"
       ],
-      "@elizaos/agent": [
-        "./src/index.ts"
-      ],
-      "@elizaos/agent/*": [
-        "./src/*"
-      ],
-      "@elizaos/cloud-sdk": [
-        "../cloud/sdk/src/index.ts"
-      ],
+      "@elizaos/agent": ["./src/index.ts"],
+      "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/browser-contracts": [
         "../cloud/sdk/src/browser-contracts/index.ts"
       ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
@@ -146,48 +104,24 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/agent/api": [
-        "./src/api/index.ts"
-      ],
-      "@elizaos/agent/runtime": [
-        "./src/runtime/index.ts"
-      ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/index.ts"
-      ],
-      "@elizaos/auth/auth": [
-        "../auth/src/auth/index.ts"
-      ],
-      "@elizaos/auth/auth/*": [
-        "../auth/src/auth/*"
-      ],
-      "@elizaos/auth/vault": [
-        "../auth/src/vault/index.ts"
-      ],
-      "@elizaos/plugin-discord": [
-        "../../plugins/plugin-discord/index.ts"
-      ],
-      "@elizaos/plugin-discord/*": [
-        "../../plugins/plugin-discord/*"
-      ],
+      "@elizaos/agent/api": ["./src/api/index.ts"],
+      "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
+      "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
       "@elizaos/plugin-elizacloud/endpoint-config": [
         "../../plugins/plugin-elizacloud/src/utils/config.ts"
       ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/src/*"
-      ],
-      "@elizaos/plugin-mcp": [
-        "../../plugins/plugin-mcp/src/index.ts"
-      ],
-      "@elizaos/plugin-video": [
-        "../../plugins/plugin-video/src/index.ts"
-      ],
-      "@elizaos/plugin-vision": [
-        "../../plugins/plugin-vision/src/index.ts"
-      ],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
+      "@elizaos/plugin-vision": ["../../plugins/plugin-vision/src/index.ts"],
       "@elizaos/plugin-notes/plugin": [
         "../../plugins/plugin-notes/src/plugin.ts"
       ],
@@ -215,9 +149,7 @@
       "@elizaos/plugin-native-contacts/bridge": [
         "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
-      "@elizaos/capacitor-*": [
-        "../../plugins/plugin-native-*/src/index.ts"
-      ],
+      "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
       "@elizaos/plugin-native-inference/llama": [
         "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],
@@ -251,23 +183,16 @@
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
       ],
-      "@elizaos/cloud-sdk/*": [
-        "../cloud/sdk/src/*"
-      ],
-      "@elizaos/plugin-anthropic": [
-        "../../plugins/plugin-anthropic/index.ts"
-      ],
-      "@elizaos/plugin-openai": [
-        "../../plugins/plugin-openai/index.ts"
-      ],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/plugin-anthropic": ["../../plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-native-inference/model-catalog": [
         "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
+      ],
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
       ]
     }
   },
-  "include": [
-    "src",
-    "test",
-    "scripts/**/*.test.ts"
-  ]
+  "include": ["src", "test", "scripts/**/*.test.ts"]
 }

@@ -21,22 +21,16 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../packages/core/src/*"
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/plugin-sql/database-utils/pglite-storage": [
+        "../plugin-sql/src/database-utils/pglite-storage.ts"
       ]
     }
   },
-  "include": [
-    "./**/*"
-  ],
+  "include": ["./**/*"],
   "exclude": [
     "node_modules",
     "dist",

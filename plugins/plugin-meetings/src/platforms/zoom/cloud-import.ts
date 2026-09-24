@@ -11,7 +11,15 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { assertValidMeetingArtifact, MEETING_ARTIFACT_SCHEMA_VERSION, type MeetingArtifact, type MeetingArtifactMediaRef, type MeetingArtifactPlatformParticipant, type MeetingArtifactSourceStream, type MeetingArtifactTranscriptSpan } from "@elizaos/core/meeting-artifacts";
+import {
+  assertValidMeetingArtifact,
+  MEETING_ARTIFACT_SCHEMA_VERSION,
+  type MeetingArtifact,
+  type MeetingArtifactMediaRef,
+  type MeetingArtifactPlatformParticipant,
+  type MeetingArtifactSourceStream,
+  type MeetingArtifactTranscriptSpan,
+} from "@elizaos/core/meeting-artifacts";
 import { persistMeetingMedia } from "../../transcripts/meeting-transcript-writer.js";
 
 const ZOOM_API_BASE = "https://api.zoom.us/v2";

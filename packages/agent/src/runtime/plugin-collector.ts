@@ -17,10 +17,6 @@ import {
   isGoogleChatConfigured,
   lifeOpsPassiveConnectorsSetting,
 } from "@elizaos/core";
-import { getFirstRunProviderOption, hasExplicitCanonicalRuntimeConfig, migrateLegacyRuntimeConfig, normalizeFirstRunProviderId, resolveDeploymentTargetInConfig, resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
-import { isAndroidMobile, isMobilePlatform } from "@elizaos/core/runtime-env";
-import { type ResolvedElizaCloudTopology, resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import channelPluginMap from "@elizaos/core/catalog/channel-plugin-map.json" with {
   type: "json",
 };
@@ -30,6 +26,20 @@ import providerPluginMap from "@elizaos/core/catalog/provider-plugin-map.json" w
 import shortIdPluginMap from "@elizaos/core/catalog/short-id-plugin-map.json" with {
   type: "json",
 };
+import {
+  type ResolvedElizaCloudTopology,
+  resolveElizaCloudTopology,
+} from "@elizaos/core/contracts/cloud-topology";
+import {
+  getFirstRunProviderOption,
+  hasExplicitCanonicalRuntimeConfig,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/core/contracts/first-run-options";
+import { isAndroidMobile, isMobilePlatform } from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyDevCloudConfigAuthority,

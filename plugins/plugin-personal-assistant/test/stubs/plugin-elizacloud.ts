@@ -3,7 +3,10 @@
  * by LifeOps cloud-feature tests.
  */
 import { normalizeCloudSiteUrl as normalizeSharedCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 const DEFAULT_CLOUD_SITE_URL = "https://api.eliza.app";
 

@@ -17,7 +17,6 @@ import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/plugin-native-contacts/bridge";
-import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
 import {
   AvatarFallback,
   Avatar as AvatarRoot,
@@ -25,6 +24,7 @@ import {
   Input,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
 import { isNative } from "@elizaos/ui/platform";
 import {

@@ -14,7 +14,10 @@
  * keep resolving; there is no longer a second runtime class to branch on.
  */
 
-import type { CatalogModel, InstalledModel } from "@elizaos/core/contracts/local-inference";
+import type {
+  CatalogModel,
+  InstalledModel,
+} from "@elizaos/core/contracts/local-inference";
 
 /**
  * Which desktop text runtime a model is served by. The local stack is Eliza-1

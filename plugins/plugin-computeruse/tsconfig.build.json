@@ -9,24 +9,11 @@
     "incremental": false,
     "noEmit": false,
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/dist/index.d.ts"
-      ],
-      "@elizaos/ui": [
-        "../../packages/ui/dist/index.d.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../../packages/ui/dist/*"
-      ]
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
     }
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

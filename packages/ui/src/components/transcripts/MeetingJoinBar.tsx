@@ -6,102 +6,164 @@
  * button per session. Presentational + prop-driven; the page container wires
  * `client.requestMeetingBot` / `client.stopMeeting`.
  */
+
+import {
+  MEETING_PLATFORM_LABELS,
+  type MeetingJoinRequest,
+  type MeetingSession,
+  parseMeetingUrl,
+} from "@elizaos/core/meetings";
+import { Video } from "lucide-react";
+import * as React from "react";
+import { useAgentElement } from "../../agent-surface";
+import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
 import { SemanticForm } from "../ui/semantic-form";
 import { StatusDot } from "../ui/status-badge";
-import { Video } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { parseMeetingUrl } from "@elizaos/core/meetings";
-import { type MeetingJoinRequest } from "@elizaos/core/meetings";
-import { type MeetingSession } from "@elizaos/core/meetings";
-import { useAgentElement } from "../../agent-surface";
-import * as React from "react";
 export interface MeetingJoinBarProps {
-    activeMeetings: MeetingSession[];
-    onJoin(input: MeetingJoinRequest): void;
-    onStop(sessionId: string): void;
-    /** True while a join request is in flight. */
-    joining?: boolean;
-    error?: string | null;
-    className?: string;
+  activeMeetings: MeetingSession[];
+  onJoin(input: MeetingJoinRequest): void;
+  onStop(sessionId: string): void;
+  /** True while a join request is in flight. */
+  joining?: boolean;
+  error?: string | null;
+  className?: string;
 }
 const SESSION_STATUS_LABEL: Record<MeetingSession["status"], string> = {
-    requested: "Requested",
-    joining: "Joining",
-    awaiting_admission: "Waiting to be admitted",
-    active: "In meeting",
-    leaving: "Leaving",
-    ended: "Ended",
-    failed: "Failed",
+  requested: "Requested",
+  joining: "Joining",
+  awaiting_admission: "Waiting to be admitted",
+  active: "In meeting",
+  leaving: "Leaving",
+  ended: "Ended",
+  failed: "Failed",
 };
-export function MeetingJoinBar({ activeMeetings, onJoin, onStop, joining, error, className, }: MeetingJoinBarProps): React.JSX.Element {
-    const [url, setUrl] = React.useState("");
-    const [botName, setBotName] = React.useState("");
-    const parsed = React.useMemo(() => (url.trim() ? parseMeetingUrl(url) : null), [url]);
-    const showInvalid = url.trim().length > 0 && parsed === null;
-    const meetingUrlAgent = useAgentElement<HTMLInputElement>({
-        id: "meeting-url",
-        role: "text-input",
-        label: "Meeting URL",
-        group: "meeting-join",
-        getValue: () => url,
-        onFill: setUrl,
+export function MeetingJoinBar({
+  activeMeetings,
+  onJoin,
+  onStop,
+  joining,
+  error,
+  className,
+}: MeetingJoinBarProps): React.JSX.Element {
+  const [url, setUrl] = React.useState("");
+  const [botName, setBotName] = React.useState("");
+  const parsed = React.useMemo(
+    () => (url.trim() ? parseMeetingUrl(url) : null),
+    [url],
+  );
+  const showInvalid = url.trim().length > 0 && parsed === null;
+  const meetingUrlAgent = useAgentElement<HTMLInputElement>({
+    id: "meeting-url",
+    role: "text-input",
+    label: "Meeting URL",
+    group: "meeting-join",
+    getValue: () => url,
+    onFill: setUrl,
+  });
+  const botNameAgent = useAgentElement<HTMLInputElement>({
+    id: "meeting-bot-name",
+    role: "text-input",
+    label: "Bot name",
+    group: "meeting-join",
+    getValue: () => botName,
+    onFill: setBotName,
+  });
+  const joinMeetingAgent = useAgentElement<HTMLButtonElement>({
+    id: "meeting-join",
+    role: "button",
+    label: "Join meeting",
+    group: "meeting-join",
+    status: joining ? "joining" : parsed ? "ready" : "disabled",
+  });
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parsed || joining) return;
+    const name = botName.trim();
+    onJoin({
+      platform: parsed.platform,
+      meetingUrl: parsed.meetingUrl,
+      ...(name ? { botName: name } : {}),
     });
-    const botNameAgent = useAgentElement<HTMLInputElement>({
-        id: "meeting-bot-name",
-        role: "text-input",
-        label: "Bot name",
-        group: "meeting-join",
-        getValue: () => botName,
-        onFill: setBotName,
-    });
-    const joinMeetingAgent = useAgentElement<HTMLButtonElement>({
-        id: "meeting-join",
-        role: "button",
-        label: "Join meeting",
-        group: "meeting-join",
-        status: joining ? "joining" : parsed ? "ready" : "disabled",
-    });
-    const submit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!parsed || joining)
-            return;
-        const name = botName.trim();
-        onJoin({
-            platform: parsed.platform,
-            meetingUrl: parsed.meetingUrl,
-            ...(name ? { botName: name } : {}),
-        });
-        setUrl("");
-    };
-    return (<div className={cn("flex flex-col gap-2", className)}>
-      <SemanticForm data-testid="meeting-join-form" onSubmit={submit} className="flex flex-wrap items-center gap-2">
+    setUrl("");
+  };
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <SemanticForm
+        data-testid="meeting-join-form"
+        onSubmit={submit}
+        className="flex flex-wrap items-center gap-2"
+      >
         <div className="relative min-w-48 flex-1">
-          <Input ref={meetingUrlAgent.ref} {...meetingUrlAgent.agentProps} data-testid="meeting-url-input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a Meet, Teams, or Zoom link" aria-label="Meeting URL" aria-invalid={showInvalid || undefined}/>
-          {parsed ? (<span data-testid="meeting-platform-hint" className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs text-accent-fg">
-              <Video className="size-3.5" aria-hidden/>
+          <Input
+            ref={meetingUrlAgent.ref}
+            {...meetingUrlAgent.agentProps}
+            data-testid="meeting-url-input"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Paste a Meet, Teams, or Zoom link"
+            aria-label="Meeting URL"
+            aria-invalid={showInvalid || undefined}
+          />
+          {parsed ? (
+            <span
+              data-testid="meeting-platform-hint"
+              className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs text-accent-fg"
+            >
+              <Video className="size-3.5" aria-hidden />
               {MEETING_PLATFORM_LABELS[parsed.platform]}
-            </span>) : null}
+            </span>
+          ) : null}
         </div>
-        <Input ref={botNameAgent.ref} {...botNameAgent.agentProps} data-testid="meeting-bot-name" value={botName} onChange={(e) => setBotName(e.target.value)} placeholder="Bot name (optional)" aria-label="Bot name" className="w-48"/>
-        <Button ref={joinMeetingAgent.ref} {...joinMeetingAgent.agentProps} type="submit" size="sm" variant={parsed && !joining ? "default" : "secondary"} data-testid="meeting-join-submit" disabled={!parsed || joining}>
+        <Input
+          ref={botNameAgent.ref}
+          {...botNameAgent.agentProps}
+          data-testid="meeting-bot-name"
+          value={botName}
+          onChange={(e) => setBotName(e.target.value)}
+          placeholder="Bot name (optional)"
+          aria-label="Bot name"
+          className="w-48"
+        />
+        <Button
+          ref={joinMeetingAgent.ref}
+          {...joinMeetingAgent.agentProps}
+          type="submit"
+          size="sm"
+          variant={parsed && !joining ? "default" : "secondary"}
+          data-testid="meeting-join-submit"
+          disabled={!parsed || joining}
+        >
           {joining ? "Joining…" : "Join meeting"}
         </Button>
       </SemanticForm>
-      {showInvalid ? (<p data-testid="meeting-url-invalid" className="text-xs text-muted">
+      {showInvalid ? (
+        <p data-testid="meeting-url-invalid" className="text-xs text-muted">
           Not a recognizable Meet, Teams, or Zoom meeting link.
-        </p>) : null}
-      {error ? (<p role="alert" className="text-xs text-destructive">
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
           {error}
-        </p>) : null}
+        </p>
+      ) : null}
 
-      {activeMeetings.length > 0 ? (<div data-testid="active-meetings" className="flex flex-col gap-1">
-          {activeMeetings.map((m) => (<Card asChild variant="transparent" key={m.id}>
-              <div data-testid={`active-meeting-${m.id}`} className="flex items-center gap-2 px-2 py-1.5 text-sm text-txt">
-                <StatusDot aria-hidden size="compact" tone={m.status === "active" ? "accent" : "muted"} className="shrink-0"/>
+      {activeMeetings.length > 0 ? (
+        <div data-testid="active-meetings" className="flex flex-col gap-1">
+          {activeMeetings.map((m) => (
+            <Card asChild variant="transparent" key={m.id}>
+              <div
+                data-testid={`active-meeting-${m.id}`}
+                className="flex items-center gap-2 px-2 py-1.5 text-sm text-txt"
+              >
+                <StatusDot
+                  aria-hidden
+                  size="compact"
+                  tone={m.status === "active" ? "accent" : "muted"}
+                  className="shrink-0"
+                />
                 <span className="truncate">
                   {MEETING_PLATFORM_LABELS[m.platform]}
                   {m.botName ? ` · ${m.botName}` : ""}
@@ -109,11 +171,21 @@ export function MeetingJoinBar({ activeMeetings, onJoin, onStop, joining, error,
                 <span className="text-xs text-muted">
                   {SESSION_STATUS_LABEL[m.status]}
                 </span>
-                <Button type="button" data-testid={`stop-meeting-${m.id}`} onClick={() => onStop(m.id)} variant="ghostMuted" size="micro" className="ml-auto">
+                <Button
+                  type="button"
+                  data-testid={`stop-meeting-${m.id}`}
+                  onClick={() => onStop(m.id)}
+                  variant="ghostMuted"
+                  size="micro"
+                  className="ml-auto"
+                >
                   Stop
                 </Button>
               </div>
-            </Card>))}
-        </div>) : null}
-    </div>);
+            </Card>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }

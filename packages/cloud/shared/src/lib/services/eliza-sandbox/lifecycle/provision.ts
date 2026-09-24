@@ -1,242 +1,282 @@
 /** Owns sandbox provision operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 import { ElizaError } from "@elizaos/core";
-import { ElizaSandboxServiceTestHooks } from "./provision-hooks.js";
-import { PROVISION_ATTRIBUTION_GUARD_PREFIX } from "./provision-errors.js";
-import { PreparedReviewedProvisionRestore } from "../backup/authority.js";
-import { ProvisionRestoreOverride } from "../backup/restore-contract.js";
-import { ProvisionResult } from "./provision-contracts.js";
-import { RESTORE_AUTHORITY_CHANGED } from "../backup/authority.js";
-import { RESTORE_BACKUP_CHANGED } from "../backup/authority.js";
-import { ReviewedProvisionAdmissionFence } from "../backup/authority.js";
-import { RuntimeAgentSummary } from "../bridge/contracts.js";
-import { SandboxBackup } from "../backup/service.js";
-import { SandboxReachabilityUnresolvedError } from "./provision-errors.js";
-import { SandboxReplacementCleanup } from "./replacement-cleanup.js";
-import { SandboxReplacementCleanupUnresolvedError } from "../../sandbox-provider-types";
-import { SandboxWarmClaim } from "./warm-claim.js";
 import { SnapshotPayloadTooLargeError } from "@elizaos/core/agent-backup-limits";
-import { WARM_POOL_ORG_ID } from "../../../../db/schemas/agent-sandboxes";
-import { acquireReviewedProvisionAdmissionFence } from "../backup/authority.js";
-import { agentBillingRepository } from "../../../../db/repositories/agent-billing";
-import { agentConfigForProvision } from "../agent-config.js";
-import { agentSandboxBackups } from "../../../../db/schemas/agent-sandboxes";
-import { agentSandboxesRepository } from "../../../../db/repositories/agent-sandboxes";
-import { and } from "drizzle-orm";
-import { applyRemoteDockerRuntimeMode } from "../../remote-docker-runtime-mode";
-import { asc } from "drizzle-orm";
-import { assertReviewedFreshBootAuthority } from "../backup/authority.js";
-import { assertReviewedProvisionRestoreAuthority } from "../backup/authority.js";
-import { completeProvisionCompute } from "../../agent-compute-provision";
-import { computeManagedAgentDbEnv } from "../agent-config.js";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
-import { decryptAgentEnvVars } from "../../agent-env-crypto";
-import { digestPinnedImageRef } from "./image-contracts.js";
-import { eq } from "drizzle-orm";
-import { inArray } from "drizzle-orm";
-import { isDockerBackedMetadata } from "./provider-metadata.js";
-import { isDockerSandboxMetadata } from "./provider-metadata.js";
-import { isExplicitBackupRestore } from "../backup/restore-contract.js";
-import { isPermanentlyLostSnapshot } from "../backup/policy.js";
-import { isUnrecoverableSnapshotError } from "../backup/policy.js";
+import { agentBillingRepository } from "../../../../db/repositories/agent-billing";
+import {
+  type AgentSandbox,
+  type AgentSandboxStatus,
+  agentSandboxesRepository,
+} from "../../../../db/repositories/agent-sandboxes";
+import {
+  agentSandboxBackups,
+  type NewAgentSandbox,
+  WARM_POOL_ORG_ID,
+} from "../../../../db/schemas/agent-sandboxes";
 import { logger } from "../../../utils/logger";
-import { prepareManagedElizaEnvironment } from "../../managed-eliza-env";
-import { reconcileFailedProvisionCompute } from "../../agent-compute-provision";
-import { rejectNonContainerBackedProvision } from "./provision-contracts.js";
-import { releaseReviewedProvisionAdmissionFence } from "../backup/authority.js";
-import { reserveProvisionCompute } from "../../agent-compute-provision";
-import { resolveManagedProvisionDockerImage } from "../agent-config.js";
-import { resolveSandboxContainerLaunchConfig } from "../../sandbox-container-launch-config";
-import { restartProvisionCompute } from "../../agent-compute-provision";
-import { startProvisionCompute } from "../../agent-compute-provision";
-import { storedRestoreChainMatchesReviewedAuthority } from "../backup/authority.js";
-import { storedRestoreChainStillCanonical } from "../backup/authority.js";
-import { type AgentSandbox } from "../../../../db/repositories/agent-sandboxes";
-import { type AgentSandboxStatus } from "../../../../db/repositories/agent-sandboxes";
+import {
+  completeProvisionCompute,
+  reconcileFailedProvisionCompute,
+  reserveProvisionCompute,
+  restartProvisionCompute,
+  startProvisionCompute,
+} from "../../agent-compute-provision";
+import { decryptAgentEnvVars } from "../../agent-env-crypto";
 import { type DockerSandboxMetadata } from "../../docker-sandbox-provider";
-import { type NewAgentSandbox } from "../../../../db/schemas/agent-sandboxes";
-import { type SandboxHandle } from "../../sandbox-provider";
-import { type SandboxHealthContext } from "../../sandbox-provider-types";
-import { type SandboxProvider } from "../../sandbox-provider";
+import { prepareManagedElizaEnvironment } from "../../managed-eliza-env";
+import { applyRemoteDockerRuntimeMode } from "../../remote-docker-runtime-mode";
+import { resolveSandboxContainerLaunchConfig } from "../../sandbox-container-launch-config";
+import { type SandboxHandle, type SandboxProvider } from "../../sandbox-provider";
+import {
+  type SandboxHealthContext,
+  SandboxReplacementCleanupUnresolvedError,
+} from "../../sandbox-provider-types";
+import {
+  agentConfigForProvision,
+  computeManagedAgentDbEnv,
+  resolveManagedProvisionDockerImage,
+} from "../agent-config.js";
+import {
+  acquireReviewedProvisionAdmissionFence,
+  assertReviewedFreshBootAuthority,
+  assertReviewedProvisionRestoreAuthority,
+  PreparedReviewedProvisionRestore,
+  RESTORE_AUTHORITY_CHANGED,
+  RESTORE_BACKUP_CHANGED,
+  ReviewedProvisionAdmissionFence,
+  releaseReviewedProvisionAdmissionFence,
+  storedRestoreChainMatchesReviewedAuthority,
+  storedRestoreChainStillCanonical,
+} from "../backup/authority.js";
+import { isPermanentlyLostSnapshot, isUnrecoverableSnapshotError } from "../backup/policy.js";
+import { isExplicitBackupRestore, ProvisionRestoreOverride } from "../backup/restore-contract.js";
+import { SandboxBackup } from "../backup/service.js";
+import { RuntimeAgentSummary } from "../bridge/contracts.js";
+import { digestPinnedImageRef } from "./image-contracts.js";
+import { isDockerBackedMetadata, isDockerSandboxMetadata } from "./provider-metadata.js";
+import { ProvisionResult, rejectNonContainerBackedProvision } from "./provision-contracts.js";
+import {
+  PROVISION_ATTRIBUTION_GUARD_PREFIX,
+  SandboxReachabilityUnresolvedError,
+} from "./provision-errors.js";
+import { ElizaSandboxServiceTestHooks } from "./provision-hooks.js";
+import { SandboxReplacementCleanup } from "./replacement-cleanup.js";
+import { SandboxWarmClaim } from "./warm-claim.js";
 export interface SandboxProvisionHost {
-    getProvisionTestHooks(): ElizaSandboxServiceTestHooks | undefined;
-    retireFailedWarmClaimForRetry(...args: Parameters<SandboxWarmClaim["retireFailedWarmClaimForRetry"]>): ReturnType<SandboxWarmClaim["retireFailedWarmClaimForRetry"]>;
-    getReplacementCleanupLocator(...args: Parameters<SandboxReplacementCleanup["getReplacementCleanupLocator"]>): ReturnType<SandboxReplacementCleanup["getReplacementCleanupLocator"]>;
-    retirePersistedReplacementCleanup(...args: Parameters<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>): ReturnType<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>;
-    getProvider(): Promise<SandboxProvider>;
-    replacementCleanupCallbacks(...args: Parameters<SandboxReplacementCleanup["replacementCleanupCallbacks"]>): ReturnType<SandboxReplacementCleanup["replacementCleanupCallbacks"]>;
-    persistUnresolvedReplacementCleanupFence(...args: Parameters<SandboxReplacementCleanup["persistUnresolvedReplacementCleanupFence"]>): ReturnType<SandboxReplacementCleanup["persistUnresolvedReplacementCleanupFence"]>;
-    ensureRuntimeAgentStarted(rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars" | "bridge_url" | "health_url" | "node_id" | "bridge_port" | "web_ui_port" | "headscale_ip" | "sandbox_id" | "organization_id" | "user_id">): Promise<RuntimeAgentSummary | null>;
-    transferReplacementToPrimary(...args: Parameters<SandboxReplacementCleanup["transferReplacementToPrimary"]>): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]>;
-    pushState(...args: Parameters<SandboxBackup["pushState"]>): ReturnType<SandboxBackup["pushState"]>;
+  getProvisionTestHooks(): ElizaSandboxServiceTestHooks | undefined;
+  retireFailedWarmClaimForRetry(
+    ...args: Parameters<SandboxWarmClaim["retireFailedWarmClaimForRetry"]>
+  ): ReturnType<SandboxWarmClaim["retireFailedWarmClaimForRetry"]>;
+  getReplacementCleanupLocator(
+    ...args: Parameters<SandboxReplacementCleanup["getReplacementCleanupLocator"]>
+  ): ReturnType<SandboxReplacementCleanup["getReplacementCleanupLocator"]>;
+  retirePersistedReplacementCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>;
+  getProvider(): Promise<SandboxProvider>;
+  replacementCleanupCallbacks(
+    ...args: Parameters<SandboxReplacementCleanup["replacementCleanupCallbacks"]>
+  ): ReturnType<SandboxReplacementCleanup["replacementCleanupCallbacks"]>;
+  persistUnresolvedReplacementCleanupFence(
+    ...args: Parameters<SandboxReplacementCleanup["persistUnresolvedReplacementCleanupFence"]>
+  ): ReturnType<SandboxReplacementCleanup["persistUnresolvedReplacementCleanupFence"]>;
+  ensureRuntimeAgentStarted(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+      | "organization_id"
+      | "user_id"
+    >,
+  ): Promise<RuntimeAgentSummary | null>;
+  transferReplacementToPrimary(
+    ...args: Parameters<SandboxReplacementCleanup["transferReplacementToPrimary"]>
+  ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]>;
+  pushState(
+    ...args: Parameters<SandboxBackup["pushState"]>
+  ): ReturnType<SandboxBackup["pushState"]>;
 }
 export class SandboxProvision {
-    constructor(private readonly host: SandboxProvisionHost) { }
-    // Provision
-    /**
-     * `restoreOverride` narrows step 5's backup restore for callers that have
-     * already decided the restore source: `executeWake` (#15603 B6) and manual
-     * `restore()`. `from-backup` restores a specific validated backup and NEVER
-     * degrades an unrecoverable restore error to a fresh boot; manual restore also
-     * requires the endpoint, while wake retains its custom-image 404 compatibility
-     * skip. `fresh-boot` skips restore after explicit data-loss consent. Omitted:
-     * latest-backup auto-restore with the designed unrecoverable-snapshot degrade.
-     */
-    async provision(agentId: string, orgId: string, restoreOverride?: ProvisionRestoreOverride): Promise<ProvisionResult> {
-        let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
-        if (restoreOverride?.kind === "from-reviewed-backup") {
-            try {
-                reviewedRestore = await assertReviewedProvisionRestoreAuthority(agentId, restoreOverride);
-            }
-            catch (error) {
-                // error-policy:J1 preserve restore authority failure for the queue boundary.
-                return {
-                    success: false,
-                    error: error instanceof Error ? error.message : "Reviewed backup authority changed",
-                    failureCause: error,
-                };
-            }
+  constructor(private readonly host: SandboxProvisionHost) {}
+  // Provision
+  /**
+   * `restoreOverride` narrows step 5's backup restore for callers that have
+   * already decided the restore source: `executeWake` (#15603 B6) and manual
+   * `restore()`. `from-backup` restores a specific validated backup and NEVER
+   * degrades an unrecoverable restore error to a fresh boot; manual restore also
+   * requires the endpoint, while wake retains its custom-image 404 compatibility
+   * skip. `fresh-boot` skips restore after explicit data-loss consent. Omitted:
+   * latest-backup auto-restore with the designed unrecoverable-snapshot degrade.
+   */
+  async provision(
+    agentId: string,
+    orgId: string,
+    restoreOverride?: ProvisionRestoreOverride,
+  ): Promise<ProvisionResult> {
+    let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
+    if (restoreOverride?.kind === "from-reviewed-backup") {
+      try {
+        reviewedRestore = await assertReviewedProvisionRestoreAuthority(agentId, restoreOverride);
+      } catch (error) {
+        // error-policy:J1 preserve restore authority failure for the queue boundary.
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed backup authority changed",
+          failureCause: error,
+        };
+      }
+    } else if (restoreOverride?.kind === "reviewed-fresh-boot") {
+      try {
+        await assertReviewedFreshBootAuthority(agentId, restoreOverride);
+      } catch (error) {
+        // error-policy:J1 preserve restore authority failure for the queue boundary.
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed fresh-boot authority changed",
+          failureCause: error,
+        };
+      }
+    }
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      await this.host.getProvisionTestHooks()?.afterReviewedRestorePreflight?.();
+    }
+    const expectedAdmission =
+      restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
+        ? restoreOverride.expectedAdmission
+        : undefined;
+    let rec: AgentSandbox;
+    let previousStatus: AgentSandboxStatus;
+    if (expectedAdmission) {
+      if (expectedAdmission.id !== agentId || expectedAdmission.organization_id !== orgId) {
+        return { success: false, error: RESTORE_AUTHORITY_CHANGED };
+      }
+      // Manual stopped restore selected and hydrated a specific backup from this
+      // exact generation. Admission must therefore be the first lifecycle
+      // action: a replica re-read, cleanup preparation, or generic running-row
+      // reuse could otherwise mutate/report a different generation while
+      // claiming that the selected backup was applied.
+      const lock =
+        await agentSandboxesRepository.trySetProvisioningFromRestoreCapture(expectedAdmission);
+      if (!lock) {
+        return { success: false, error: RESTORE_AUTHORITY_CHANGED };
+      }
+      rec = lock;
+      // Preserve the captured pre-CAS state. The returned row is already
+      // `provisioning`; using that value would incorrectly re-probe a retained
+      // stopped handle instead of creating the restore replacement.
+      previousStatus = expectedAdmission.status;
+    } else {
+      let candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const initialTierRejection = rejectNonContainerBackedProvision(candidate);
+      if (initialTierRejection) return initialTierRejection;
+      if (candidate.claimed_at && candidate.warm_claim_credential_state === "failed") {
+        const retryPreparation = await this.host.retireFailedWarmClaimForRetry(agentId, orgId);
+        if (!retryPreparation.success) {
+          return {
+            success: false,
+            sandboxRecord: candidate,
+            error: retryPreparation.error,
+          };
         }
-        else if (restoreOverride?.kind === "reviewed-fresh-boot") {
-            try {
-                await assertReviewedFreshBootAuthority(agentId, restoreOverride);
-            }
-            catch (error) {
-                // error-policy:J1 preserve restore authority failure for the queue boundary.
-                return {
-                    success: false,
-                    error: error instanceof Error ? error.message : "Reviewed fresh-boot authority changed",
-                    failureCause: error,
-                };
-            }
-        }
-        if (restoreOverride?.kind === "from-reviewed-backup" ||
-            restoreOverride?.kind === "reviewed-fresh-boot") {
-            await this.host.getProvisionTestHooks()?.afterReviewedRestorePreflight?.();
-        }
-        const expectedAdmission = restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
-            ? restoreOverride.expectedAdmission
-            : undefined;
-        let rec: AgentSandbox;
-        let previousStatus: AgentSandboxStatus;
-        if (expectedAdmission) {
-            if (expectedAdmission.id !== agentId || expectedAdmission.organization_id !== orgId) {
-                return { success: false, error: RESTORE_AUTHORITY_CHANGED };
-            }
-            // Manual stopped restore selected and hydrated a specific backup from this
-            // exact generation. Admission must therefore be the first lifecycle
-            // action: a replica re-read, cleanup preparation, or generic running-row
-            // reuse could otherwise mutate/report a different generation while
-            // claiming that the selected backup was applied.
-            const lock = await agentSandboxesRepository.trySetProvisioningFromRestoreCapture(expectedAdmission);
-            if (!lock) {
-                return { success: false, error: RESTORE_AUTHORITY_CHANGED };
-            }
-            rec = lock;
-            // Preserve the captured pre-CAS state. The returned row is already
-            // `provisioning`; using that value would incorrectly re-probe a retained
-            // stopped handle instead of creating the restore replacement.
-            previousStatus = expectedAdmission.status;
-        }
-        else {
-            let candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-            if (!candidate)
-                return { success: false, error: "Agent not found" } as ProvisionResult;
-            const initialTierRejection = rejectNonContainerBackedProvision(candidate);
-            if (initialTierRejection)
-                return initialTierRejection;
-            if (candidate.claimed_at && candidate.warm_claim_credential_state === "failed") {
-                const retryPreparation = await this.host.retireFailedWarmClaimForRetry(agentId, orgId);
-                if (!retryPreparation.success) {
-                    return {
-                        success: false,
-                        sandboxRecord: candidate,
-                        error: retryPreparation.error,
-                    };
-                }
-                candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-                if (!candidate)
-                    return { success: false, error: "Agent not found" } as ProvisionResult;
-                const retryTierRejection = rejectNonContainerBackedProvision(candidate);
-                if (retryTierRejection)
-                    return retryTierRejection;
-            }
-            if (this.host.getReplacementCleanupLocator(candidate)) {
-                try {
-                    await this.host.retirePersistedReplacementCleanup(agentId, orgId);
-                }
-                catch (error) {
-                    // error-policy:J1 provisioning boundary translation — unresolved cleanup
-                    // becomes an explicit retryable failure while the durable fence remains.
-                    return {
-                        success: false,
-                        retryable: true,
-                        sandboxRecord: candidate,
-                        error: `Replacement cleanup is still pending: ${error instanceof Error ? error.message : String(error)}`,
-                        failureCause: error,
-                    };
-                }
-                candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-                if (!candidate)
-                    return { success: false, error: "Agent not found" } as ProvisionResult;
-                const cleanupTierRejection = rejectNonContainerBackedProvision(candidate);
-                if (cleanupTierRejection)
-                    return cleanupTierRejection;
-            }
-            previousStatus = candidate.status;
-            const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
-            if (!lock) {
-                if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
-                    if (isExplicitBackupRestore(restoreOverride)) {
-                        return {
-                            success: false,
-                            sandboxRecord: candidate,
-                            error: RESTORE_AUTHORITY_CHANGED,
-                        };
-                    }
-                    return {
-                        success: true,
-                        sandboxRecord: candidate,
-                        bridgeUrl: candidate.bridge_url,
-                        healthUrl: candidate.health_url,
-                    };
-                }
-                return {
-                    success: false,
-                    sandboxRecord: candidate,
-                    error: "Agent is already being provisioned",
-                };
-            }
-            rec = lock;
-        }
-        let reviewedAdmissionFence: ReviewedProvisionAdmissionFence | undefined;
-        if (restoreOverride?.kind === "from-reviewed-backup" ||
-            restoreOverride?.kind === "reviewed-fresh-boot") {
-            try {
-                reviewedAdmissionFence = await acquireReviewedProvisionAdmissionFence(rec.id, rec.organization_id, restoreOverride);
-                reviewedRestore = reviewedAdmissionFence.reviewedRestore;
-                await this.host.getProvisionTestHooks()?.afterReviewedRestoreFence?.();
-            }
-            catch (error) {
-                // error-policy:J1 translate rejected restore admission with its original cause.
-                const message = error instanceof Error ? error.message : "Reviewed restore authority changed";
-                if (reviewedAdmissionFence) {
-                    await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
-                    reviewedAdmissionFence = undefined;
-                }
-                rec = (await this.markError(rec, message)) ?? rec;
-                return {
-                    success: false,
-                    sandboxRecord: await agentSandboxesRepository.findById(rec.id),
-                    error: message,
-                    failureCause: error,
-                };
-            }
-        }
-        let computeFundingId: string | undefined;
-        let retainedCompute = false;
-        let skipFundingCleanup = false;
-        // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
+        candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+        if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+        const retryTierRejection = rejectNonContainerBackedProvision(candidate);
+        if (retryTierRejection) return retryTierRejection;
+      }
+      if (this.host.getReplacementCleanupLocator(candidate)) {
         try {
+          await this.host.retirePersistedReplacementCleanup(agentId, orgId);
+        } catch (error) {
+          // error-policy:J1 provisioning boundary translation — unresolved cleanup
+          // becomes an explicit retryable failure while the durable fence remains.
+          return {
+            success: false,
+            retryable: true,
+            sandboxRecord: candidate,
+            error: `Replacement cleanup is still pending: ${error instanceof Error ? error.message : String(error)}`,
+            failureCause: error,
+          };
+        }
+        candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+        if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+        const cleanupTierRejection = rejectNonContainerBackedProvision(candidate);
+        if (cleanupTierRejection) return cleanupTierRejection;
+      }
+      previousStatus = candidate.status;
+      const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
+      if (!lock) {
+        if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
+          if (isExplicitBackupRestore(restoreOverride)) {
+            return {
+              success: false,
+              sandboxRecord: candidate,
+              error: RESTORE_AUTHORITY_CHANGED,
+            };
+          }
+          return {
+            success: true,
+            sandboxRecord: candidate,
+            bridgeUrl: candidate.bridge_url,
+            healthUrl: candidate.health_url,
+          };
+        }
+        return {
+          success: false,
+          sandboxRecord: candidate,
+          error: "Agent is already being provisioned",
+        };
+      }
+      rec = lock;
+    }
+    let reviewedAdmissionFence: ReviewedProvisionAdmissionFence | undefined;
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      try {
+        reviewedAdmissionFence = await acquireReviewedProvisionAdmissionFence(
+          rec.id,
+          rec.organization_id,
+          restoreOverride,
+        );
+        reviewedRestore = reviewedAdmissionFence.reviewedRestore;
+        await this.host.getProvisionTestHooks()?.afterReviewedRestoreFence?.();
+      } catch (error) {
+        // error-policy:J1 translate rejected restore admission with its original cause.
+        const message =
+          error instanceof Error ? error.message : "Reviewed restore authority changed";
+        if (reviewedAdmissionFence) {
+          await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+          reviewedAdmissionFence = undefined;
+        }
+        rec = (await this.markError(rec, message)) ?? rec;
+        return {
+          success: false,
+          sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+          error: message,
+          failureCause: error,
+        };
+      }
+    }
+    let computeFundingId: string | undefined;
+    let retainedCompute = false;
+    let skipFundingCleanup = false;
+    // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
+    try {
             const provisionProvider = await this.host.getProvider();
             const isWarmPoolProvision = rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
             if (provisionProvider.computeFundingCapability === "host-lease-v1" && !isWarmPoolProvision) {
@@ -886,144 +926,159 @@ export class SandboxProvision {
                 }
             }
         }
+  }
+  /**
+   * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
+   * cannot restore on THIS provision (#15210): log it loudly, then boot fresh
+   * instead of bricking the agent. Never throws — the caller continues to a
+   * fresh boot, which must not be derailed by cleanup.
+   *
+   * Pruning the backup chain is gated on `isPermanentlyLostSnapshot` (#15274):
+   * only drop it when the snapshot can NEVER be restored (crypto corruption /
+   * gone-key, or HTTP 404/410). For a RECOVERABLE auth failure (401/403) we
+   * still boot fresh but PRESERVE the chain, so a later token-corrected resume
+   * (#15263) can restore it — pruning a recoverable snapshot on a transient 401
+   * is silent, permanent data loss (`pruneBackups(agentId, 0)` deletes the
+   * whole chain and there is no undo).
+   */
+  async degradeUnrecoverableSnapshot(
+    agentId: string,
+    backupId: string | undefined,
+    error: unknown,
+  ): Promise<void> {
+    const permanentlyLost = isPermanentlyLostSnapshot(error);
+    logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
+      agentId,
+      backupId,
+      permanentlyLost,
+      // A recoverable auth failure keeps the chain for the next authenticated
+      // resume; a permanent loss drops it so the next resume boots clean.
+      backupChain: permanentlyLost ? "pruned" : "preserved",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Preserve the chain on a recoverable failure (auth 401/403): a
+    // token-corrected resume can still restore it, so pruning here would be
+    // silent, permanent data loss (#15274).
+    if (!permanentlyLost) return;
+    // error-policy:J6 best-effort — a failed prune only means we warn + degrade
+    // again next boot, never that we fail to boot fresh, so it must not throw
+    // out of the provision.
+    await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
+      logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
+        agentId,
+        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+      });
+    });
+  }
+  async markError(rec: AgentSandbox, msg: string) {
+    return agentSandboxesRepository.markProvisionFailed(rec, msg);
+  }
+  /**
+   * Resume a prior transport-unresolved provision attempt before creating a new
+   * deterministic Docker container. The provider's container name is
+   * `agent-${id}`; calling create again while the preserved container still
+   * exists turns Docker's "already in use" into a cleanup path that removes the
+   * very container the retry was meant to save.
+   */
+  buildProvisioningRetryHandle(rec: AgentSandbox): SandboxHandle | null {
+    if (!rec.sandbox_id || !rec.bridge_url || !rec.health_url) return null;
+    const hasDockerFleetColumns = Boolean(
+      rec.node_id || rec.container_name || rec.bridge_port || rec.web_ui_port,
+    );
+    return {
+      sandboxId: rec.sandbox_id,
+      bridgeUrl: rec.bridge_url,
+      healthUrl: rec.health_url,
+      metadata: hasDockerFleetColumns
+        ? {
+            provider: "docker",
+            nodeId: rec.node_id ?? "",
+            hostname: rec.node_id ?? "",
+            containerName: rec.container_name ?? "",
+            bridgePort: rec.bridge_port ?? undefined,
+            webUiPort: rec.web_ui_port ?? undefined,
+            headscaleIp: rec.headscale_ip ?? undefined,
+          }
+        : rec.headscale_ip
+          ? { headscaleIp: rec.headscale_ip }
+          : undefined,
+    };
+  }
+  /**
+   * Persist a freshly-created container's handle onto the sandbox row while
+   * KEEPING `status: "provisioning"`. Used when the post-create readiness probe
+   * came back `transport_unresolved` (the probe never reached the container, so
+   * it is likely healthy): writing `sandbox_id` + ingress/metadata columns is
+   * what lets the daemon stuck-provisioning reconciler FIND the row (it filters
+   * on `sandbox_id IS NOT NULL`) and re-probe it, and what lets a provision-job
+   * retry adopt the existing container instead of colliding on its
+   * deterministic name. Deliberately does NOT flip to `running` — only a
+   * confirmed-healthy re-probe may do that. The same write transfers ownership
+   * from the temporary cleanup fence to the primary row; if it fails, the
+   * durable fence remains and the cleanup reconciler retires the candidate.
+   */
+  async persistContainerHandleForRetry(
+    agentId: string,
+    organizationId: string,
+    environmentRevision: number,
+    handle: SandboxHandle,
+    dockerMeta: DockerSandboxMetadata | undefined,
+  ): Promise<void> {
+    if (isDockerBackedMetadata(handle.metadata) && !dockerMeta?.nodeId) {
+      logger.error(
+        "[agent-sandbox] Refusing to persist retry handle: docker-backed handle has no durable node_id",
+        {
+          agentId,
+          sandboxId: handle.sandboxId,
+          hasDockerMeta: Boolean(dockerMeta),
+        },
+      );
+      throw new Error(
+        `${PROVISION_ATTRIBUTION_GUARD_PREFIX} docker-backed sandbox ${handle.sandboxId} produced no durable node_id during transport-unresolved retry; refusing to preserve an unattributable container handle`,
+      );
     }
-    /**
-     * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
-     * cannot restore on THIS provision (#15210): log it loudly, then boot fresh
-     * instead of bricking the agent. Never throws — the caller continues to a
-     * fresh boot, which must not be derailed by cleanup.
-     *
-     * Pruning the backup chain is gated on `isPermanentlyLostSnapshot` (#15274):
-     * only drop it when the snapshot can NEVER be restored (crypto corruption /
-     * gone-key, or HTTP 404/410). For a RECOVERABLE auth failure (401/403) we
-     * still boot fresh but PRESERVE the chain, so a later token-corrected resume
-     * (#15263) can restore it — pruning a recoverable snapshot on a transient 401
-     * is silent, permanent data loss (`pruneBackups(agentId, 0)` deletes the
-     * whole chain and there is no undo).
-     */
-    async degradeUnrecoverableSnapshot(agentId: string, backupId: string | undefined, error: unknown): Promise<void> {
-        const permanentlyLost = isPermanentlyLostSnapshot(error);
-        logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
-            agentId,
-            backupId,
-            permanentlyLost,
-            // A recoverable auth failure keeps the chain for the next authenticated
-            // resume; a permanent loss drops it so the next resume boots clean.
-            backupChain: permanentlyLost ? "pruned" : "preserved",
-            error: error instanceof Error ? error.message : String(error),
-        });
-        // Preserve the chain on a recoverable failure (auth 401/403): a
-        // token-corrected resume can still restore it, so pruning here would be
-        // silent, permanent data loss (#15274).
-        if (!permanentlyLost)
-            return;
-        // error-policy:J6 best-effort — a failed prune only means we warn + degrade
-        // again next boot, never that we fail to boot fresh, so it must not throw
-        // out of the provision.
-        await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
-            logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
-                agentId,
-                error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
-            });
-        });
+    const updateData: Partial<NewAgentSandbox> = {
+      sandbox_id: handle.sandboxId,
+      bridge_url: handle.bridgeUrl,
+      health_url: handle.healthUrl,
+    };
+    if (dockerMeta) {
+      if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
+      if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
+      if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
+      if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
+      if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
+      if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+      updateData.image_digest = dockerMeta.imageDigest;
     }
-    async markError(rec: AgentSandbox, msg: string) {
-        return agentSandboxesRepository.markProvisionFailed(rec, msg);
+    await this.host.transferReplacementToPrimary(
+      agentId,
+      organizationId,
+      handle,
+      environmentRevision,
+      updateData,
+    );
+  }
+  async provisionAgentDatabase(rec: AgentSandbox): Promise<{
+    success: boolean;
+    connectionUri?: string;
+    error?: string;
+  }> {
+    // Use the shared Railway cloud database instead of per-agent databases.
+    // ElizaOS plugin-sql tables scope all data by agent UUID, so multiple agents
+    // safely coexist in one database.
+    const sharedDbUrl = process.env.DATABASE_URL;
+    if (!sharedDbUrl) {
+      return {
+        success: false,
+        error: "DATABASE_URL not configured in cloud environment",
+      };
     }
-    /**
-     * Resume a prior transport-unresolved provision attempt before creating a new
-     * deterministic Docker container. The provider's container name is
-     * `agent-${id}`; calling create again while the preserved container still
-     * exists turns Docker's "already in use" into a cleanup path that removes the
-     * very container the retry was meant to save.
-     */
-    buildProvisioningRetryHandle(rec: AgentSandbox): SandboxHandle | null {
-        if (!rec.sandbox_id || !rec.bridge_url || !rec.health_url)
-            return null;
-        const hasDockerFleetColumns = Boolean(rec.node_id || rec.container_name || rec.bridge_port || rec.web_ui_port);
-        return {
-            sandboxId: rec.sandbox_id,
-            bridgeUrl: rec.bridge_url,
-            healthUrl: rec.health_url,
-            metadata: hasDockerFleetColumns
-                ? {
-                    provider: "docker",
-                    nodeId: rec.node_id ?? "",
-                    hostname: rec.node_id ?? "",
-                    containerName: rec.container_name ?? "",
-                    bridgePort: rec.bridge_port ?? undefined,
-                    webUiPort: rec.web_ui_port ?? undefined,
-                    headscaleIp: rec.headscale_ip ?? undefined,
-                }
-                : rec.headscale_ip
-                    ? { headscaleIp: rec.headscale_ip }
-                    : undefined,
-        };
-    }
-    /**
-     * Persist a freshly-created container's handle onto the sandbox row while
-     * KEEPING `status: "provisioning"`. Used when the post-create readiness probe
-     * came back `transport_unresolved` (the probe never reached the container, so
-     * it is likely healthy): writing `sandbox_id` + ingress/metadata columns is
-     * what lets the daemon stuck-provisioning reconciler FIND the row (it filters
-     * on `sandbox_id IS NOT NULL`) and re-probe it, and what lets a provision-job
-     * retry adopt the existing container instead of colliding on its
-     * deterministic name. Deliberately does NOT flip to `running` — only a
-     * confirmed-healthy re-probe may do that. The same write transfers ownership
-     * from the temporary cleanup fence to the primary row; if it fails, the
-     * durable fence remains and the cleanup reconciler retires the candidate.
-     */
-    async persistContainerHandleForRetry(agentId: string, organizationId: string, environmentRevision: number, handle: SandboxHandle, dockerMeta: DockerSandboxMetadata | undefined): Promise<void> {
-        if (isDockerBackedMetadata(handle.metadata) && !dockerMeta?.nodeId) {
-            logger.error("[agent-sandbox] Refusing to persist retry handle: docker-backed handle has no durable node_id", {
-                agentId,
-                sandboxId: handle.sandboxId,
-                hasDockerMeta: Boolean(dockerMeta),
-            });
-            throw new Error(`${PROVISION_ATTRIBUTION_GUARD_PREFIX} docker-backed sandbox ${handle.sandboxId} produced no durable node_id during transport-unresolved retry; refusing to preserve an unattributable container handle`);
-        }
-        const updateData: Partial<NewAgentSandbox> = {
-            sandbox_id: handle.sandboxId,
-            bridge_url: handle.bridgeUrl,
-            health_url: handle.healthUrl,
-        };
-        if (dockerMeta) {
-            if (dockerMeta.nodeId)
-                updateData.node_id = dockerMeta.nodeId;
-            if (dockerMeta.containerName)
-                updateData.container_name = dockerMeta.containerName;
-            if (dockerMeta.bridgePort)
-                updateData.bridge_port = dockerMeta.bridgePort;
-            if (dockerMeta.webUiPort)
-                updateData.web_ui_port = dockerMeta.webUiPort;
-            if (dockerMeta.headscaleIp)
-                updateData.headscale_ip = dockerMeta.headscaleIp;
-            if (dockerMeta.dockerImage)
-                updateData.docker_image = dockerMeta.dockerImage;
-            updateData.image_digest = dockerMeta.imageDigest;
-        }
-        await this.host.transferReplacementToPrimary(agentId, organizationId, handle, environmentRevision, updateData);
-    }
-    async provisionAgentDatabase(rec: AgentSandbox): Promise<{
-        success: boolean;
-        connectionUri?: string;
-        error?: string;
-    }> {
-        // Use the shared Railway cloud database instead of per-agent databases.
-        // ElizaOS plugin-sql tables scope all data by agent UUID, so multiple agents
-        // safely coexist in one database.
-        const sharedDbUrl = process.env.DATABASE_URL;
-        if (!sharedDbUrl) {
-            return {
-                success: false,
-                error: "DATABASE_URL not configured in cloud environment",
-            };
-        }
-        await agentSandboxesRepository.update(rec.id, {
-            database_uri: sharedDbUrl,
-            database_status: "ready",
-            database_error: null,
-        });
-        return { success: true, connectionUri: sharedDbUrl };
-    }
+    await agentSandboxesRepository.update(rec.id, {
+      database_uri: sharedDbUrl,
+      database_status: "ready",
+      database_error: null,
+    });
+    return { success: true, connectionUri: sharedDbUrl };
+  }
 }

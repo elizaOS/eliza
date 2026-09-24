@@ -11,7 +11,7 @@
  * side, and a different question-tag set. This module is the one canonical
  * implementation both surfaces consume.
  *
- * It lives in `@elizaos/shared` (which both already depend on), is pure +
+ * It lives in `@elizaos/core` (which both already depend on), is pure +
  * browser-safe (no Node deps), and ships via the `@elizaos/core/voice-eot`
  * subpath without pulling the whole barrel — mirroring `voice-wer`.
  *
@@ -20,112 +20,107 @@
  * its high-precision syntactic co-signal, so consolidating here also feeds the
  * model path one definition.
  */
-
-import { trimEndCharacters } from "@elizaos/core/utils/string-boundaries";
+import { trimEndCharacters } from "./utils/string-boundaries.js";
 
 /** Conjunctions that strongly suggest the speaker is mid-clause. */
 const TRAILING_CONJUNCTIONS = new Set([
-  "and",
-  "but",
-  "or",
-  "nor",
-  "yet",
-  "so",
-  "because",
-  "although",
-  "though",
-  "while",
-  "whereas",
-  "if",
-  "unless",
-  "until",
-  "since",
-  "when",
-  "where",
-  "which",
-  "that",
-  "who",
-  "whom",
-  "whose",
+	"and",
+	"but",
+	"or",
+	"nor",
+	"yet",
+	"so",
+	"because",
+	"although",
+	"though",
+	"while",
+	"whereas",
+	"if",
+	"unless",
+	"until",
+	"since",
+	"when",
+	"where",
+	"which",
+	"that",
+	"who",
+	"whom",
+	"whose",
 ]);
-
 /** Prepositions / articles that imply an incomplete noun phrase follows. */
 const TRAILING_INCOMPLETE = new Set([
-  "a",
-  "an",
-  "the",
-  "to",
-  "of",
-  "in",
-  "on",
-  "at",
-  "by",
-  "for",
-  "with",
-  "from",
-  "into",
-  "about",
-  "through",
-  "between",
-  "against",
-  "during",
-  "before",
-  "after",
-  "without",
-  "under",
-  "over",
-  "above",
-  "below",
-  "around",
-  "beside",
-  "beyond",
-  "like",
-  "near",
-  "past",
-  "via",
+	"a",
+	"an",
+	"the",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"by",
+	"for",
+	"with",
+	"from",
+	"into",
+	"about",
+	"through",
+	"between",
+	"against",
+	"during",
+	"before",
+	"after",
+	"without",
+	"under",
+	"over",
+	"above",
+	"below",
+	"around",
+	"beside",
+	"beyond",
+	"like",
+	"near",
+	"past",
+	"via",
 ]);
-
 /** Spoken fillers / hedges that usually mean the user is holding the floor. */
 const TRAILING_FILLERS = new Set([
-  "um",
-  "uh",
-  "uhh",
-  "umm",
-  "erm",
-  "er",
-  "hmm",
-  "hm",
-  "ah",
-  "maybe",
+	"um",
+	"uh",
+	"uhh",
+	"umm",
+	"erm",
+	"er",
+	"hmm",
+	"hm",
+	"ah",
+	"maybe",
 ]);
-
 /** Dangling auxiliaries/modals that need another clause or phrase to land. */
 const TRAILING_CONTINUATIONS = new Set([
-  "am",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "being",
-  "been",
-  "do",
-  "does",
-  "did",
-  "have",
-  "has",
-  "had",
-  "can",
-  "could",
-  "will",
-  "would",
-  "shall",
-  "should",
-  "may",
-  "might",
-  "must",
+	"am",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"being",
+	"been",
+	"do",
+	"does",
+	"did",
+	"have",
+	"has",
+	"had",
+	"can",
+	"could",
+	"will",
+	"would",
+	"shall",
+	"should",
+	"may",
+	"might",
+	"must",
 ]);
-
 /**
  * Question-tag suffixes that end an utterance (matched case-insensitively).
  * The union of both prior surfaces: punctuated forms (the UI set) plus the
@@ -134,19 +129,18 @@ const TRAILING_CONTINUATIONS = new Set([
  * punctuation rule, which fires first.
  */
 const QUESTION_TAGS = [
-  "right?",
-  "yeah?",
-  "ok?",
-  "okay?",
-  "correct?",
-  "hm?",
-  "huh?",
-  "eh?",
-  "right",
-  "yeah",
-  "correct",
+	"right?",
+	"yeah?",
+	"ok?",
+	"okay?",
+	"correct?",
+	"hm?",
+	"huh?",
+	"eh?",
+	"right",
+	"yeah",
+	"correct",
 ];
-
 /**
  * Probability in [0,1] that `transcript` is a COMPLETE turn (the speaker is
  * done). High → commit; low → the utterance trails off, keep listening.
@@ -168,39 +162,33 @@ const QUESTION_TAGS = [
  * short command.
  */
 export function scoreEndOfTurnHeuristic(transcript: string): number {
-  const text = transcript.trim();
-  if (text.length === 0) return 0.5;
-
-  // A trailing ellipsis is the strongest trail-off signal — the speaker paused
-  // mid-thought. Checked BEFORE sentence-final punctuation, since "..." ends in ".".
-  if (/(\.{2,}|…)$/.test(text)) return 0.2;
-  // Sentence-final punctuation → almost certainly done.
-  if (/[.!?]$/.test(text)) return 0.95;
-
-  const lower = text.toLowerCase();
-  for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
-  }
-
-  const words = lower
-    .replace(/[^a-z0-9'\s-]/gi, "")
-    .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return 0.5;
-
-  const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
-  // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
-  // is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
-  // ("going to", "and so", "we could") is NOT misread as a complete command.
-  if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
-  if (TRAILING_FILLERS.has(lastWord)) return 0.2;
-  if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
-  if (TRAILING_CONTINUATIONS.has(lastWord)) return 0.2;
-
-  // Short utterance that doesn't trail off (a command / acknowledgement) →
-  // likely complete ("go home", "yes", "stop").
-  if (words.length < 3) return 0.7;
-
-  // No strong signal either way — the recognizer's silence is enough.
-  return 0.5;
+	const text = transcript.trim();
+	if (text.length === 0) return 0.5;
+	// A trailing ellipsis is the strongest trail-off signal — the speaker paused
+	// mid-thought. Checked BEFORE sentence-final punctuation, since "..." ends in ".".
+	if (/(\.{2,}|…)$/.test(text)) return 0.2;
+	// Sentence-final punctuation → almost certainly done.
+	if (/[.!?]$/.test(text)) return 0.95;
+	const lower = text.toLowerCase();
+	for (const tag of QUESTION_TAGS) {
+		if (lower.endsWith(tag)) return 0.85;
+	}
+	const words = lower
+		.replace(/[^a-z0-9'\s-]/gi, "")
+		.split(/\s+/)
+		.filter(Boolean);
+	if (words.length === 0) return 0.5;
+	const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
+	// Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
+	// is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
+	// ("going to", "and so", "we could") is NOT misread as a complete command.
+	if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
+	if (TRAILING_FILLERS.has(lastWord)) return 0.2;
+	if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
+	if (TRAILING_CONTINUATIONS.has(lastWord)) return 0.2;
+	// Short utterance that doesn't trail off (a command / acknowledgement) →
+	// likely complete ("go home", "yes", "stop").
+	if (words.length < 3) return 0.7;
+	// No strong signal either way — the recognizer's silence is enough.
+	return 0.5;
 }

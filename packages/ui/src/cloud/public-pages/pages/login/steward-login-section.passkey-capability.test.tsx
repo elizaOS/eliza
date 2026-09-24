@@ -56,16 +56,19 @@ const sessionSpies = vi.hoisted(() => ({
   hasCookie: false,
 }));
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../../../../core/src/steward-session-client/index.ts")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasCookie,
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasCookie,
+    };
+  },
+);
 
 vi.mock("@elizaos/auth", () => ({
   LoginApiError: class LoginApiError extends Error {

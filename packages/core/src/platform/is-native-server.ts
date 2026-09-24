@@ -6,8 +6,8 @@
  * server processes do not.
  */
 export function isNativeServerPlatform(): boolean {
-  const cap = (globalThis as Record<string, unknown>).Capacitor as
-    | { isNativePlatform?: () => boolean }
-    | undefined;
-  return cap?.isNativePlatform?.() === true;
+	const cap = (globalThis as Record<string, unknown>).Capacitor as
+		| { isNativePlatform?: () => boolean }
+		| undefined;
+	return cap?.isNativePlatform?.() === true;
 }

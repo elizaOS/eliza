@@ -12,7 +12,9 @@
     "./synthetic-world": "./synthetic-world/src/index.ts",
     "./browser-mocks": "./src/browser-mocks.ts",
     "./content-evidence": "./src/content-evidence/index.ts",
-    "./content-evidence/*": "./src/content-evidence/*.ts"
+    "./content-evidence/*": "./src/content-evidence/*.ts",
+    "./package-paths": "./src/eliza-package-paths.ts",
+    "./pglite-runtime": "./src/pglite-runtime.ts"
   },
   "scripts": {
     "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",

@@ -14,37 +14,43 @@
  * partial broadcast can only ever write a known continuous mode or a fully
  * numeric VAD pair, never a malformed value into the capture path.
  */
-import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/events";
-import { loadOsIntentAutoStartConsent } from "../state/persistence";
-import { readContinuousMode } from "./voice-settings-payload";
-import { readVadAutoStop } from "./voice-settings-payload";
-import { saveContinuousChatMode } from "../state/persistence";
-import { saveOsIntentAutoStartConsent } from "../state/persistence";
-import { saveVadAutoStop } from "../state/persistence";
-import { type VoiceSettingsApplyPayload } from "@elizaos/core/events";
+import {
+  VOICE_SETTINGS_APPLY_EVENT,
+  type VoiceSettingsApplyPayload,
+} from "@elizaos/core/events";
 import { useViewEvent } from "../hooks/useViewEvent";
-export { type VoiceSettingsApplyPayload } from "@elizaos/core/events";
+import {
+  loadOsIntentAutoStartConsent,
+  saveContinuousChatMode,
+  saveOsIntentAutoStartConsent,
+  saveVadAutoStop,
+} from "../state/persistence";
+import { readContinuousMode, readVadAutoStop } from "./voice-settings-payload";
+
+export type { VoiceSettingsApplyPayload } from "@elizaos/core/events";
 export { VOICE_SETTINGS_APPLY_EVENT };
 export function useVoiceSettingsApplyChannel(): void {
-    useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
-        const payload = event.payload as VoiceSettingsApplyPayload;
-        const continuous = readContinuousMode(payload.continuous);
-        if (continuous)
-            saveContinuousChatMode(continuous);
-        const vadAutoStop = readVadAutoStop(payload.vadAutoStop);
-        if (vadAutoStop)
-            saveVadAutoStop(vadAutoStop);
-        if (typeof payload.osIntentAutoStartVoice === "boolean" ||
-            typeof payload.osIntentAutoStartTranscription === "boolean") {
-            const current = loadOsIntentAutoStartConsent();
-            saveOsIntentAutoStartConsent({
-                voice: typeof payload.osIntentAutoStartVoice === "boolean"
-                    ? payload.osIntentAutoStartVoice
-                    : current.voice,
-                transcription: typeof payload.osIntentAutoStartTranscription === "boolean"
-                    ? payload.osIntentAutoStartTranscription
-                    : current.transcription,
-            });
-        }
-    });
+  useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
+    const payload = event.payload as VoiceSettingsApplyPayload;
+    const continuous = readContinuousMode(payload.continuous);
+    if (continuous) saveContinuousChatMode(continuous);
+    const vadAutoStop = readVadAutoStop(payload.vadAutoStop);
+    if (vadAutoStop) saveVadAutoStop(vadAutoStop);
+    if (
+      typeof payload.osIntentAutoStartVoice === "boolean" ||
+      typeof payload.osIntentAutoStartTranscription === "boolean"
+    ) {
+      const current = loadOsIntentAutoStartConsent();
+      saveOsIntentAutoStartConsent({
+        voice:
+          typeof payload.osIntentAutoStartVoice === "boolean"
+            ? payload.osIntentAutoStartVoice
+            : current.voice,
+        transcription:
+          typeof payload.osIntentAutoStartTranscription === "boolean"
+            ? payload.osIntentAutoStartTranscription
+            : current.transcription,
+      });
+    }
+  });
 }

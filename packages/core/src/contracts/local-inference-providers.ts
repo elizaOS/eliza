@@ -11,38 +11,38 @@
  * `@elizaos/app/src/services/local-inference/providers.ts` — it is
  * the authoritative source for `/api/local-inference/providers`.
  *
- * UI consumers (`client-local-inference.ts`, `ios-local-agent-kernel.ts`)
+ * UI consumers (`client-local-inference.ts`)
  * only see `ProviderStatus` (the response shape) and `ProviderMeta` /
  * `ProviderEnableState` / `ProviderId` — never the runtime definition.
  */
 
-import type { AgentModelSlot } from "@elizaos/core/contracts/local-inference";
+import type { AgentModelSlot } from "./local-inference.js";
 
 export type ProviderId =
-  | "eliza-local-inference"
-  | "eliza-device-bridge"
-  | "capacitor-llama"
-  | "anthropic-subscription"
-  | "openai-codex"
-  | "gemini-cli"
-  | "zai-coding"
-  | "kimi-coding"
-  | "deepseek-coding"
-  | "anthropic"
-  | "openai"
-  | "deepseek"
-  | "nearai"
-  | "zai"
-  | "moonshot"
-  | "grok"
-  | "elizacloud"
-  | "google"
-  | "mistral";
+	| "eliza-local-inference"
+	| "eliza-device-bridge"
+	| "capacitor-llama"
+	| "anthropic-subscription"
+	| "openai-codex"
+	| "gemini-cli"
+	| "zai-coding"
+	| "kimi-coding"
+	| "deepseek-coding"
+	| "anthropic"
+	| "openai"
+	| "deepseek"
+	| "nearai"
+	| "zai"
+	| "moonshot"
+	| "grok"
+	| "elizacloud"
+	| "google"
+	| "mistral";
 
 export interface ProviderEnableState {
-  enabled: boolean;
-  /** Short reason, e.g. "API key set", "Device connected", "No API key". */
-  reason: string;
+	enabled: boolean;
+	/** Short reason, e.g. "API key set", "Device connected", "No API key". */
+	reason: string;
 }
 
 /**
@@ -51,38 +51,38 @@ export interface ProviderEnableState {
  * this with a `getEnableState()` callable.
  */
 export interface ProviderMeta {
-  id: ProviderId;
-  label: string;
-  kind: "cloud-api" | "cloud-subscription" | "local" | "device-bridge";
-  /** Short blurb shown in the UI. */
-  description: string;
-  /** Agent slots this provider can plausibly serve. */
-  supportedSlots: AgentModelSlot[];
-  /**
-   * Link to the settings UI where enable/configure actually happens.
-   * UI sends the user here via anchor-scroll when they click "Configure".
-   * `null` means the provider has no separate config surface.
-   */
-  configureHref: string | null;
+	id: ProviderId;
+	label: string;
+	kind: "cloud-api" | "cloud-subscription" | "local" | "device-bridge";
+	/** Short blurb shown in the UI. */
+	description: string;
+	/** Agent slots this provider can plausibly serve. */
+	supportedSlots: AgentModelSlot[];
+	/**
+	 * Link to the settings UI where enable/configure actually happens.
+	 * UI sends the user here via anchor-scroll when they click "Configure".
+	 * `null` means the provider has no separate config surface.
+	 */
+	configureHref: string | null;
 }
 
 export interface ProviderStatus {
-  id: ProviderId;
-  label: string;
-  kind: ProviderMeta["kind"];
-  description: string;
-  supportedSlots: AgentModelSlot[];
-  configureHref: string | null;
-  enableState: ProviderEnableState;
-  /** Registered model types this provider has handlers for, right now. */
-  registeredSlots: string[];
-  /**
-   * capacitor-llama only: which live path serves the handlers right now.
-   * "bionic-host" is the in-process Android GPU host (handlers bound via
-   * bionic-host AND the host socket accepts connections); "device-bridge" is
-   * a paired cross-process device; null/absent = nothing can serve (#11498).
-   */
-  servingVia?: "bionic-host" | "device-bridge" | null;
-  /** capacitor-llama only: the trigger that bound the handlers, if any. */
-  registeredTrigger?: "bionic-host" | "device-bridge" | null;
+	id: ProviderId;
+	label: string;
+	kind: ProviderMeta["kind"];
+	description: string;
+	supportedSlots: AgentModelSlot[];
+	configureHref: string | null;
+	enableState: ProviderEnableState;
+	/** Registered model types this provider has handlers for, right now. */
+	registeredSlots: string[];
+	/**
+	 * capacitor-llama only: which live path serves the handlers right now.
+	 * "bionic-host" is the in-process Android GPU host (handlers bound via
+	 * bionic-host AND the host socket accepts connections); "device-bridge" is
+	 * a paired cross-process device; null/absent = nothing can serve (#11498).
+	 */
+	servingVia?: "bionic-host" | "device-bridge" | null;
+	/** capacitor-llama only: the trigger that bound the handlers, if any. */
+	registeredTrigger?: "bionic-host" | "device-bridge" | null;
 }

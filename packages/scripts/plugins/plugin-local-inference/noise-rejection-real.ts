@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { wordErrorRate } from "@elizaos/core/voice-wer";
 /**
  * Noise-rejection regression suite (#10726 scope item: "noise-rejection /
  * WER-vs-SNR curve with a real gate"). Real weights end to end: the clean
@@ -28,10 +31,6 @@
  *   NOISE_MAX_CLEAN_WER (default 0.35) / NOISE_SNR_FLOOR_DB (default 10)
  *   NOISE_MAX_FLOOR_WER (default 0.55) / NOISE_MONOTONIC_TOL (default 0.15)
  */
-
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { wordErrorRate } from "@elizaos/shared";
 import {
   BABBLE_CORPUS,
   mixAtSnr,
@@ -56,16 +55,13 @@ import {
 const TAG = "noise-rejection";
 const gates = makeBenchGates(TAG, "NOISE_SUITE_REQUIRE");
 const log = (msg: string) => console.log(`[${TAG}] ${msg}`);
-
 const SNRS_DB = [20, 10, 5, 0, -5] as const;
 type BenchNoiseKind = NoiseKind | "babble";
 const KINDS: readonly BenchNoiseKind[] = ["white", "pink", "music", "babble"];
-
 const MAX_CLEAN_WER = Number(process.env.NOISE_MAX_CLEAN_WER ?? "0.35");
 const SNR_FLOOR_DB = Number(process.env.NOISE_SNR_FLOOR_DB ?? "10");
 const MAX_FLOOR_WER = Number(process.env.NOISE_MAX_FLOOR_WER ?? "0.55");
 const MONOTONIC_TOL = Number(process.env.NOISE_MONOTONIC_TOL ?? "0.15");
-
 const { ffi, libPath } = bootFusedFfi(gates);
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 if (!bundle || !existsSync(path.join(bundle, "asr"))) {
@@ -75,7 +71,6 @@ if (!bundle || !existsSync(path.join(bundle, "asr"))) {
 }
 log(`lib=${libPath}`);
 log(`bundle=${bundle}`);
-
 const corpus = await ensureKokoroCorpus("clean", STT_BENCH_CORPUS, gates, log);
 const babbleItems = await ensureKokoroCorpus(
   "babble",
@@ -97,23 +92,23 @@ log(
   `corpus: ${corpus.length} utterances; babble track ${(babbleTrack.length / BENCH_SAMPLE_RATE).toFixed(1)}s ` +
     `(${babbleItems.map((b) => b.voiceId).join("+")})`,
 );
-
 const ctx = ffi.create(bundle);
 ffi.mmapAcquire(ctx, "asr");
-
 function transcribe(pcm: Float32Array): string {
   return ffi
     .asrTranscribeTimed({ ctx, pcm, sampleRateHz: BENCH_SAMPLE_RATE })
     .text.trim();
 }
-
 interface ConditionResult {
   kind: BenchNoiseKind | "clean";
   snrDb: number | null;
   meanWer: number;
-  utterances: Array<{ id: string; wer: number; transcript: string }>;
+  utterances: Array<{
+    id: string;
+    wer: number;
+    transcript: string;
+  }>;
 }
-
 const conditions: ConditionResult[] = [];
 try {
   // Clean baseline first.
@@ -167,7 +162,6 @@ try {
   ffi.mmapEvict(ctx, "asr");
   ffi.destroy(ctx);
 }
-
 // --- report -------------------------------------------------------------------
 const cleanRow = conditions.find((c) => c.kind === "clean");
 const kindRows = KINDS.map((kind) => {
@@ -183,7 +177,6 @@ const table = [
   ...kindRows,
 ].join("\n");
 console.log(`\nclean mean WER: ${cleanRow?.meanWer.toFixed(3)}\n${table}\n`);
-
 // --- gates --------------------------------------------------------------------
 const failures: string[] = [];
 if ((cleanRow?.meanWer ?? 1) > MAX_CLEAN_WER) {
@@ -206,7 +199,6 @@ for (const kind of KINDS) {
     failures.push(`${kind}: ${violation}`);
   }
 }
-
 const { jsonPath, mdPath } = writeBenchReport(
   defaultReportDir(),
   "noise-rejection",
@@ -240,7 +232,6 @@ const { jsonPath, mdPath } = writeBenchReport(
 );
 log(`report: ${jsonPath}`);
 log(`report: ${mdPath}`);
-
 if (failures.length > 0) {
   gates.fail(
     `${failures.length} gate failure(s):\n  - ${failures.join("\n  - ")}`,

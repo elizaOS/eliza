@@ -6,12 +6,12 @@
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
+  getRecentMessagesData,
   ModelType,
   parseJsonModelRecord,
   runExtractorPipeline,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/core";
 import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 export const LIFE_OPERATION_VALUES = [

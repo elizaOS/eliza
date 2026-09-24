@@ -13,12 +13,16 @@
  * {@link FusedWakeSink}. The host wires the sink to its renderer transport
  * (Capacitor event / Electrobun RPC / WebSocket push) where the renderer's
  * `emitFusedWake` dispatches the `eliza:fused-wake` window event. The event
- * shape is the same `@elizaos/shared` contract the renderer consumes, so the
+ * shape is the same `@elizaos/core` contract the renderer consumes, so the
  * two halves can never drift.
  */
-import { type FusedWakeEventDetail } from "@elizaos/core/events";
-import { type WakeFireInfo } from "./wake-word";
-export { type FusedWakeEventDetail, type FusedWakeStage } from "@elizaos/core/events";
+import type { FusedWakeEventDetail } from "@elizaos/core/events";
+import type { WakeFireInfo } from "./wake-word";
+
+export type {
+	FusedWakeEventDetail,
+	FusedWakeStage,
+} from "@elizaos/core/events";
 /**
  * Sink the host wires to forward a fused-wake stage to the renderer. The
  * transport is the host's concern; this seam is transport-agnostic, which is
@@ -35,8 +39,10 @@ export type FusedWakeSink = (event: FusedWakeEventDetail) => void;
  * (the head fast-path in `wake-controller.ts`). The classifier probability that
  * crossed threshold rides along as `confidence`.
  */
-export function bridgeDetectorToFusedWake(sink: FusedWakeSink): (info: WakeFireInfo) => void {
-    return (info: WakeFireInfo): void => {
-        sink({ stage: "head-fired", confidence: info.confidence });
-    };
+export function bridgeDetectorToFusedWake(
+	sink: FusedWakeSink,
+): (info: WakeFireInfo) => void {
+	return (info: WakeFireInfo): void => {
+		sink({ stage: "head-fired", confidence: info.confidence });
+	};
 }

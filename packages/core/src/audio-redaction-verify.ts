@@ -22,25 +22,25 @@
  *    never a vacuous pass; a transcriber that throws mid-run fails the run.
  */
 
+import { normalizeSpokenText } from "./audio-redaction.js";
 import { ElizaError } from "./errors.js";
-import { normalizeSpokenText } from "@elizaos/core/audio-redaction";
-import type { TranscriptWord } from "@elizaos/core/transcripts";
+import type { TranscriptWord } from "./transcripts.js";
 
 /** Input to one verifier transcription call. */
 export interface RedactionTranscribeInput {
-  /** The redacted audio bytes to re-transcribe. */
-  audio: Uint8Array;
-  /** Container mime (e.g. `audio/wav`, `audio/ogg`). */
-  mimeType: string;
-  /** Expected-language hint for multilingual backends (BCP-47 / ISO 639-1). */
-  languageHint?: string;
+	/** The redacted audio bytes to re-transcribe. */
+	audio: Uint8Array;
+	/** Container mime (e.g. `audio/wav`, `audio/ogg`). */
+	mimeType: string;
+	/** Expected-language hint for multilingual backends (BCP-47 / ISO 639-1). */
+	languageHint?: string;
 }
 
 /** One verifier transcription result. Timestamps are optional by contract. */
 export interface RedactionTranscript {
-  text: string;
-  /** Per-word spans when the backend has them — never required for verify. */
-  words?: readonly TranscriptWord[];
+	text: string;
+	/** Per-word spans when the backend has them — never required for verify. */
+	words?: readonly TranscriptWord[];
 }
 
 /**
@@ -49,45 +49,45 @@ export interface RedactionTranscript {
  * transcript for "could not transcribe" would fabricate a PII-absent pass.
  */
 export interface RedactionTranscriber {
-  /** Stable id for logs/evidence (e.g. `"local-transcription"`). */
-  readonly id: string;
-  transcribe(input: RedactionTranscribeInput): Promise<RedactionTranscript>;
+	/** Stable id for logs/evidence (e.g. `"local-transcription"`). */
+	readonly id: string;
+	transcribe(input: RedactionTranscribeInput): Promise<RedactionTranscript>;
 }
 
 /** Thrown when the verify step has no usable transcriber — never a pass. */
 export class AudioRedactionVerifyUnavailableError extends ElizaError {
-  constructor(message: string) {
-    super(`audio redaction verify unavailable: ${message}`, {
-      code: "AUDIO_REDACTION_VERIFY_UNAVAILABLE",
-    });
-  }
+	constructor(message: string) {
+		super(`audio redaction verify unavailable: ${message}`, {
+			code: "AUDIO_REDACTION_VERIFY_UNAVAILABLE",
+		});
+	}
 }
 
 /** What the verifier asserts over the redacted transcript. */
 export interface RedactionVerifyExpectation {
-  /** PII surface texts that must be INAUDIBLE (absent from the transcript). */
-  piiTexts: readonly string[];
-  /** Non-PII words that must still be AUDIBLE (over-mute guard). */
-  sentinelTexts?: readonly string[];
+	/** PII surface texts that must be INAUDIBLE (absent from the transcript). */
+	piiTexts: readonly string[];
+	/** Non-PII words that must still be AUDIBLE (over-mute guard). */
+	sentinelTexts?: readonly string[];
 }
 
 /** One verifier backend's judgment. */
 export interface RedactionVerifierFinding {
-  verifierId: string;
-  /** The raw transcript the backend produced (evidence trail). */
-  transcript: string;
-  /** PII texts still present — any entry fails the verify. */
-  piiFound: string[];
-  /** Sentinels no longer present — any entry fails the verify (over-mute). */
-  sentinelsMissing: string[];
-  ok: boolean;
+	verifierId: string;
+	/** The raw transcript the backend produced (evidence trail). */
+	transcript: string;
+	/** PII texts still present — any entry fails the verify. */
+	piiFound: string[];
+	/** Sentinels no longer present — any entry fails the verify (over-mute). */
+	sentinelsMissing: string[];
+	ok: boolean;
 }
 
 /** Aggregated verify outcome across all configured verifier backends. */
 export interface RedactionVerifyResult {
-  /** True only when EVERY configured verifier found no PII + all sentinels. */
-  ok: boolean;
-  findings: RedactionVerifierFinding[];
+	/** True only when EVERY configured verifier found no PII + all sentinels. */
+	ok: boolean;
+	findings: RedactionVerifierFinding[];
 }
 
 /**
@@ -96,59 +96,59 @@ export interface RedactionVerifyResult {
  * and fuzzed-separator hits are the same check by construction.
  */
 export function findResidualPii(
-  transcript: string,
-  piiTexts: readonly string[],
+	transcript: string,
+	piiTexts: readonly string[],
 ): string[] {
-  const haystack = normalizeSpokenText(transcript);
-  const found: string[] = [];
-  for (const pii of piiTexts) {
-    const needle = normalizeSpokenText(pii);
-    if (needle.length > 0 && haystack.includes(needle)) found.push(pii);
-  }
-  return found;
+	const haystack = normalizeSpokenText(transcript);
+	const found: string[] = [];
+	for (const pii of piiTexts) {
+		const needle = normalizeSpokenText(pii);
+		if (needle.length > 0 && haystack.includes(needle)) found.push(pii);
+	}
+	return found;
 }
 
 /** Sentinel texts NOT present in the transcript (normalized containment). */
 export function findMissingSentinels(
-  transcript: string,
-  sentinelTexts: readonly string[],
+	transcript: string,
+	sentinelTexts: readonly string[],
 ): string[] {
-  const haystack = normalizeSpokenText(transcript);
-  const missing: string[] = [];
-  for (const sentinel of sentinelTexts) {
-    const needle = normalizeSpokenText(sentinel);
-    if (needle.length === 0 || !haystack.includes(needle)) {
-      missing.push(sentinel);
-    }
-  }
-  return missing;
+	const haystack = normalizeSpokenText(transcript);
+	const missing: string[] = [];
+	for (const sentinel of sentinelTexts) {
+		const needle = normalizeSpokenText(sentinel);
+		if (needle.length === 0 || !haystack.includes(needle)) {
+			missing.push(sentinel);
+		}
+	}
+	return missing;
 }
 
 /** Pure judgment of one transcript against the expectation. */
 export function judgeRedactedTranscript(
-  verifierId: string,
-  transcript: string,
-  expectation: RedactionVerifyExpectation,
+	verifierId: string,
+	transcript: string,
+	expectation: RedactionVerifyExpectation,
 ): RedactionVerifierFinding {
-  assertVerifyExpectation(expectation);
-  if (normalizeSpokenText(transcript).length === 0) {
-    throw new ElizaError(
-      "audio redaction verifier returned an empty transcript",
-      { code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
-    );
-  }
-  const piiFound = findResidualPii(transcript, expectation.piiTexts);
-  const sentinelsMissing = findMissingSentinels(
-    transcript,
-    expectation.sentinelTexts ?? [],
-  );
-  return {
-    verifierId,
-    transcript,
-    piiFound,
-    sentinelsMissing,
-    ok: piiFound.length === 0 && sentinelsMissing.length === 0,
-  };
+	assertVerifyExpectation(expectation);
+	if (normalizeSpokenText(transcript).length === 0) {
+		throw new ElizaError(
+			"audio redaction verifier returned an empty transcript",
+			{ code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
+		);
+	}
+	const piiFound = findResidualPii(transcript, expectation.piiTexts);
+	const sentinelsMissing = findMissingSentinels(
+		transcript,
+		expectation.sentinelTexts ?? [],
+	);
+	return {
+		verifierId,
+		transcript,
+		piiFound,
+		sentinelsMissing,
+		ok: piiFound.length === 0 && sentinelsMissing.length === 0,
+	};
 }
 
 /**
@@ -159,58 +159,58 @@ export function judgeRedactedTranscript(
  * step fails observably, it never silently passes.
  */
 export async function verifyAudioRedaction(
-  transcribers: readonly RedactionTranscriber[],
-  input: RedactionTranscribeInput,
-  expectation: RedactionVerifyExpectation,
+	transcribers: readonly RedactionTranscriber[],
+	input: RedactionTranscribeInput,
+	expectation: RedactionVerifyExpectation,
 ): Promise<RedactionVerifyResult> {
-  if (transcribers.length === 0) {
-    throw new AudioRedactionVerifyUnavailableError(
-      "no verifier transcriber configured — refusing a vacuous pass",
-    );
-  }
-  assertVerifyExpectation(expectation);
-  const findings: RedactionVerifierFinding[] = [];
-  for (const transcriber of transcribers) {
-    const transcript = await transcriber.transcribe(input);
-    if (
-      !transcript ||
-      typeof transcript.text !== "string" ||
-      normalizeSpokenText(transcript.text).length === 0
-    ) {
-      throw new ElizaError(
-        `audio redaction verifier ${transcriber.id} returned no usable transcript text`,
-        { code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
-      );
-    }
-    findings.push(
-      judgeRedactedTranscript(transcriber.id, transcript.text, expectation),
-    );
-  }
-  return { ok: findings.every((finding) => finding.ok), findings };
+	if (transcribers.length === 0) {
+		throw new AudioRedactionVerifyUnavailableError(
+			"no verifier transcriber configured — refusing a vacuous pass",
+		);
+	}
+	assertVerifyExpectation(expectation);
+	const findings: RedactionVerifierFinding[] = [];
+	for (const transcriber of transcribers) {
+		const transcript = await transcriber.transcribe(input);
+		if (
+			!transcript ||
+			typeof transcript.text !== "string" ||
+			normalizeSpokenText(transcript.text).length === 0
+		) {
+			throw new ElizaError(
+				`audio redaction verifier ${transcriber.id} returned no usable transcript text`,
+				{ code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
+			);
+		}
+		findings.push(
+			judgeRedactedTranscript(transcriber.id, transcript.text, expectation),
+		);
+	}
+	return { ok: findings.every((finding) => finding.ok), findings };
 }
 
 function assertVerifyExpectation(
-  expectation: RedactionVerifyExpectation,
+	expectation: RedactionVerifyExpectation,
 ): void {
-  if (
-    expectation.piiTexts.length === 0 ||
-    expectation.piiTexts.some((text) => normalizeSpokenText(text).length === 0)
-  ) {
-    throw new ElizaError(
-      "audio redaction verification requires non-empty normalized PII texts",
-      { code: "AUDIO_REDACTION_VERIFY_EXPECTATION_INVALID" },
-    );
-  }
-  if (
-    !expectation.sentinelTexts ||
-    expectation.sentinelTexts.length === 0 ||
-    expectation.sentinelTexts.some(
-      (text) => normalizeSpokenText(text).length === 0,
-    )
-  ) {
-    throw new ElizaError(
-      "audio redaction verification requires non-empty normalized sentinel texts",
-      { code: "AUDIO_REDACTION_VERIFY_EXPECTATION_INVALID" },
-    );
-  }
+	if (
+		expectation.piiTexts.length === 0 ||
+		expectation.piiTexts.some((text) => normalizeSpokenText(text).length === 0)
+	) {
+		throw new ElizaError(
+			"audio redaction verification requires non-empty normalized PII texts",
+			{ code: "AUDIO_REDACTION_VERIFY_EXPECTATION_INVALID" },
+		);
+	}
+	if (
+		!expectation.sentinelTexts ||
+		expectation.sentinelTexts.length === 0 ||
+		expectation.sentinelTexts.some(
+			(text) => normalizeSpokenText(text).length === 0,
+		)
+	) {
+		throw new ElizaError(
+			"audio redaction verification requires non-empty normalized sentinel texts",
+			{ code: "AUDIO_REDACTION_VERIFY_EXPECTATION_INVALID" },
+		);
+	}
 }

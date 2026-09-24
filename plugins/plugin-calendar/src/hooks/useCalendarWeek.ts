@@ -5,7 +5,11 @@
  * state together, so a failed source can never render as a healthy empty week.
  */
 
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeedState, type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeedState,
+  type LifeOpsCalendarSourceHealth,
+} from "@elizaos/core/contracts/calendar";
 import { client, isApiError } from "@elizaos/ui/api";
 import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useAppSelector } from "@elizaos/ui/state";

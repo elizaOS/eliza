@@ -4,6 +4,9 @@ import { resolveAtDeadline } from "@elizaos/core/utils/deadline";
  * before answering 503 (the import keeps loading; retries land once warm). */
 export const PLUGIN_REGISTRY_LOAD_DEADLINE_MS = 2000;
 /** Resolve `promise` or null after `ms` - never rejects from the timer side. */
-export async function resolveWithinDeadline<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-    return resolveAtDeadline(promise, { timeoutMs: ms, onTimeout: () => null });
+export async function resolveWithinDeadline<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | null> {
+  return resolveAtDeadline(promise, { timeoutMs: ms, onTimeout: () => null });
 }

@@ -4,16 +4,12 @@
  * `replaceNameTokens` (`{{name}}` / `{{agentName}}`) and
  * `replaceIndexedNameTokens` (`{{name1}}` / `{{user1}}` example slots) are owned
  * by `@elizaos/core` — both whitespace-tolerant and `$`-sequence safe — and
- * re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
+ * re-exported here so existing `@elizaos/core` / `@elizaos/ui` consumers keep
  * their import path through the shared browser contracts. `tokenizeNameOccurrences`
  * below is the inverse: it rewrites literal name occurrences back into
  * `{{name}}` tokens so a later rename keeps propagating.
  */
-export {
-  replaceIndexedNameTokens,
-  replaceNameTokens,
-} from "../name-tokens.js";
-
+export { replaceIndexedNameTokens, replaceNameTokens } from "../name-tokens.js";
 /**
  * Reverse of `replaceNameTokens` — rewrite whole-word occurrences of the
  * given literal character name back into `{{name}}` tokens so that a
@@ -32,16 +28,16 @@ export {
  * @returns The text with whole-word occurrences replaced by `{{name}}`.
  */
 export function tokenizeNameOccurrences(text: string, name: string): string {
-  if (!text || !name) return text;
-  const trimmed = name.trim();
-  if (trimmed.length < 2) return text;
-  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // `\b` only understands ASCII `[A-Za-z0-9_]`, so non-ASCII names
-  // (e.g. "小美", "Émile") would never match — use Unicode-aware
-  // letter/number lookarounds as the whole-word boundary instead.
-  const pattern = new RegExp(
-    `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
-    "gu",
-  );
-  return text.replace(pattern, "{{name}}");
+	if (!text || !name) return text;
+	const trimmed = name.trim();
+	if (trimmed.length < 2) return text;
+	const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	// `\b` only understands ASCII `[A-Za-z0-9_]`, so non-ASCII names
+	// (e.g. "小美", "Émile") would never match — use Unicode-aware
+	// letter/number lookarounds as the whole-word boundary instead.
+	const pattern = new RegExp(
+		`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+		"gu",
+	);
+	return text.replace(pattern, "{{name}}");
 }

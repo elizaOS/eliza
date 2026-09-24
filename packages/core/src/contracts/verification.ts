@@ -3,7 +3,7 @@
  */
 
 export interface VerificationResult {
-  verified: boolean;
-  error: string | null;
-  handle: string | null;
+	verified: boolean;
+	error: string | null;
+	handle: string | null;
 }

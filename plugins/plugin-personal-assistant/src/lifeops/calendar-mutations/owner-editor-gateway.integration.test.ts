@@ -5,13 +5,13 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   APPROVAL_SERVICE,
   ApprovalService,
   resolveApprovalService,
 } from "@elizaos/plugin-assistant";
 import { CalendarServiceError } from "@elizaos/plugin-calendar";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

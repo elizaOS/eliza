@@ -10,38 +10,45 @@
  * a platform badge + participant count + a LIVE dot while recording, and the
  * detail pane renders the {@link LiveMeetingPane} for an in-progress meeting.
  */
+
+import {
+  MEETING_PLATFORM_LABELS,
+  type MeetingJoinRequest,
+  type MeetingPlatform,
+  type MeetingSession,
+} from "@elizaos/core/meetings";
+import {
+  type Transcript,
+  type TranscriptCapturePrivacyState,
+  type TranscriptConsentState,
+  type TranscriptRetentionState,
+  type TranscriptSharingState,
+  type TranscriptStatus,
+  type TranscriptSummary,
+  transcriptCapturePrivacyState,
+} from "@elizaos/core/transcripts";
 import { AudioLines } from "lucide-react";
+import type * as React from "react";
+import { useAgentElement } from "../../agent-surface";
+import { cn } from "../../lib/utils";
+import { PagePanel } from "../composites/page-panel";
+import { RedactedBadge } from "../RedactedBadge";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { LiveMeetingPane } from "./LiveMeetingPane";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
-import { MeetingJoinBar } from "./MeetingJoinBar";
-import { PagePanel } from "../composites/page-panel";
-import { RedactedBadge } from "../RedactedBadge";
-import { Select } from "../ui/select";
-import { SelectContent } from "../ui/select";
-import { SelectItem } from "../ui/select";
-import { SelectTrigger } from "../ui/select";
-import { SelectValue } from "../ui/select";
-import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { StatusDot } from "../ui/status-badge";
-import { TranscriptPlayer } from "./TranscriptPlayer";
-import { cn } from "../../lib/utils";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { LiveMeetingPane } from "./LiveMeetingPane";
+import { MeetingJoinBar } from "./MeetingJoinBar";
 import { meetingTranscriptMeta } from "./meeting-live";
-import { transcriptCapturePrivacyState } from "@elizaos/core/transcripts";
-import { type MeetingJoinRequest } from "@elizaos/core/meetings";
-import { type MeetingPlatform } from "@elizaos/core/meetings";
-import { type MeetingSession } from "@elizaos/core/meetings";
-import { type Transcript } from "@elizaos/core/transcripts";
-import { type TranscriptCapturePrivacyState } from "@elizaos/core/transcripts";
-import { type TranscriptConsentState } from "@elizaos/core/transcripts";
-import { type TranscriptRetentionState } from "@elizaos/core/transcripts";
-import { type TranscriptSharingState } from "@elizaos/core/transcripts";
-import { type TranscriptStatus } from "@elizaos/core/transcripts";
-import { type TranscriptSummary } from "@elizaos/core/transcripts";
-import { useAgentElement } from "../../agent-surface";
-import type * as React from "react";
+import { TranscriptPlayer } from "./TranscriptPlayer";
 /**
  * List-row projection. `source` + the server-computed `meeting` fields are
  * already part of {@link TranscriptSummary}; this alias documents the intent at
@@ -50,57 +57,70 @@ import type * as React from "react";
 export type MeetingAwareTranscriptSummary = TranscriptSummary;
 /** Look up the label for a summary's platform, only if it's a known platform. */
 function platformLabel(platform: string | undefined): string | null {
-    if (!platform)
-        return null;
-    return platform in MEETING_PLATFORM_LABELS
-        ? MEETING_PLATFORM_LABELS[platform as MeetingPlatform]
-        : null;
+  if (!platform) return null;
+  return platform in MEETING_PLATFORM_LABELS
+    ? MEETING_PLATFORM_LABELS[platform as MeetingPlatform]
+    : null;
 }
 export interface TranscriptsViewProps {
-    transcripts: MeetingAwareTranscriptSummary[];
-    selectedId: string | null;
-    selected: Transcript | null;
-    onSelect(id: string): void;
-    loading?: boolean;
-    error?: string | null;
-    selectedLoading?: boolean;
-    selectedError?: string | null;
-    onUpdatePrivacy?(sharing: Partial<TranscriptCapturePrivacyState["sharing"]>): void;
-    onDeleteSourceAudio?(): void;
-    privacySaving?: boolean;
-    privacyError?: string | null;
-    /** Sessions not yet ended/failed (GET /api/meetings?active=1). */
-    activeMeetings?: MeetingSession[];
-    onJoinMeeting?(input: MeetingJoinRequest): void;
-    onStopMeeting?(sessionId: string): void;
-    joiningMeeting?: boolean;
-    meetingError?: string | null;
+  transcripts: MeetingAwareTranscriptSummary[];
+  selectedId: string | null;
+  selected: Transcript | null;
+  onSelect(id: string): void;
+  loading?: boolean;
+  error?: string | null;
+  selectedLoading?: boolean;
+  selectedError?: string | null;
+  onUpdatePrivacy?(
+    sharing: Partial<TranscriptCapturePrivacyState["sharing"]>,
+  ): void;
+  onDeleteSourceAudio?(): void;
+  privacySaving?: boolean;
+  privacyError?: string | null;
+  /** Sessions not yet ended/failed (GET /api/meetings?active=1). */
+  activeMeetings?: MeetingSession[];
+  onJoinMeeting?(input: MeetingJoinRequest): void;
+  onStopMeeting?(sessionId: string): void;
+  joiningMeeting?: boolean;
+  meetingError?: string | null;
 }
 type ArtifactSharingKey = keyof TranscriptCapturePrivacyState["sharing"];
 const ARTIFACT_SHARING_CONTROLS: ReadonlyArray<{
-    key: ArtifactSharingKey;
-    label: string;
+  key: ArtifactSharingKey;
+  label: string;
 }> = [
-    { key: "transcript", label: "Transcript" },
-    { key: "notes", label: "Notes" },
-    { key: "sourceAudio", label: "Source audio" },
-    { key: "artifacts", label: "Generated artifacts" },
+  { key: "transcript", label: "Transcript" },
+  { key: "notes", label: "Notes" },
+  { key: "sourceAudio", label: "Source audio" },
+  { key: "artifacts", label: "Generated artifacts" },
 ];
 const MANAGEABLE_SHARING_STATES: readonly TranscriptSharingState[] = [
-    "owner_private",
-    "restricted",
-    "shared",
-    "disabled",
+  "owner_private",
+  "restricted",
+  "shared",
+  "disabled",
 ];
-export function ArtifactPrivacyControls({ transcript, onUpdate, onDeleteSourceAudio, saving, error, }: {
-    transcript: Transcript;
-    onUpdate(sharing: Partial<TranscriptCapturePrivacyState["sharing"]>): void;
-    onDeleteSourceAudio(): void;
-    saving: boolean;
-    error?: string | null;
+export function ArtifactPrivacyControls({
+  transcript,
+  onUpdate,
+  onDeleteSourceAudio,
+  saving,
+  error,
+}: {
+  transcript: Transcript;
+  onUpdate(sharing: Partial<TranscriptCapturePrivacyState["sharing"]>): void;
+  onDeleteSourceAudio(): void;
+  saving: boolean;
+  error?: string | null;
 }): React.JSX.Element {
-    const state = transcriptCapturePrivacyState(transcript);
-    return (<Card asChild variant="insetPadded" data-testid="transcript-artifact-privacy-controls" aria-label="Meeting artifact privacy">
+  const state = transcriptCapturePrivacyState(transcript);
+  return (
+    <Card
+      asChild
+      variant="insetPadded"
+      data-testid="transcript-artifact-privacy-controls"
+      aria-label="Meeting artifact privacy"
+    >
       <section>
         <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div>
@@ -109,335 +129,545 @@ export function ArtifactPrivacyControls({ transcript, onUpdate, onDeleteSourceAu
               Control each retained artifact independently.
             </p>
           </div>
-          {transcript.audioUrl && !state.sourceAudioDeleted ? (<Button type="button" variant="destructive" size="sm" className="justify-self-start sm:justify-self-end" disabled={saving} onClick={onDeleteSourceAudio}>
+          {transcript.audioUrl && !state.sourceAudioDeleted ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="justify-self-start sm:justify-self-end"
+              disabled={saving}
+              onClick={onDeleteSourceAudio}
+            >
               Delete source audio
-            </Button>) : null}
+            </Button>
+          ) : null}
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {ARTIFACT_SHARING_CONTROLS.map(({ key, label }) => {
             const value = state.sharing[key] ?? "owner_private";
-            return (<div key={key} className="grid gap-1 text-xs text-muted">
+            return (
+              <div key={key} className="grid gap-1 text-xs text-muted">
                 <span>{label}</span>
-                <Select value={value} disabled={saving ||
-                    (key === "sourceAudio" && state.sourceAudioDeleted)} onValueChange={(next) => onUpdate({ [key]: next as TranscriptSharingState })}>
-                  <SelectTrigger data-testid={`transcript-sharing-${key}`} className="h-9" aria-label={`${label} visibility`}>
+                <Select
+                  value={value}
+                  disabled={
+                    saving ||
+                    (key === "sourceAudio" && state.sourceAudioDeleted)
+                  }
+                  onValueChange={(next) =>
+                    onUpdate({ [key]: next as TranscriptSharingState })
+                  }
+                >
+                  <SelectTrigger
+                    data-testid={`transcript-sharing-${key}`}
+                    className="h-9"
+                    aria-label={`${label} visibility`}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MANAGEABLE_SHARING_STATES.map((option) => (<SelectItem key={option} value={option}>
+                    {MANAGEABLE_SHARING_STATES.map((option) => (
+                      <SelectItem key={option} value={option}>
                         {SHARING_LABEL[option]}
-                      </SelectItem>))}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-              </div>);
-        })}
+              </div>
+            );
+          })}
         </div>
-        {saving ? (<p className="mt-2 text-xs text-muted" role="status">
+        {saving ? (
+          <p className="mt-2 text-xs text-muted" role="status">
             Saving privacy settings…
-          </p>) : null}
-        {state.sourceAudioDeleted ? (<p data-testid="transcript-source-audio-deleted" className="mt-2 text-xs text-muted">
+          </p>
+        ) : null}
+        {state.sourceAudioDeleted ? (
+          <p
+            data-testid="transcript-source-audio-deleted"
+            className="mt-2 text-xs text-muted"
+          >
             Audio deleted, transcript retained
-          </p>) : null}
-        {error ? (<p className="mt-2 text-xs text-destructive" role="alert">
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 text-xs text-destructive" role="alert">
             {error}
-          </p>) : null}
+          </p>
+        ) : null}
       </section>
-    </Card>);
+    </Card>
+  );
 }
 function formatDuration(ms: number): string {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 function formatDate(ms: number): string {
-    return new Date(ms).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-    });
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 function agentSafeId(value: string): string {
-    return (value
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 80) || "item");
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "item"
+  );
 }
 const STATUS_LABEL: Record<TranscriptStatus, string> = {
-    recording: "Recording",
-    processing: "Processing",
-    ready: "",
-    failed: "Failed",
+  recording: "Recording",
+  processing: "Processing",
+  ready: "",
+  failed: "Failed",
 };
 const CAPTURE_MODE_LABEL: Record<string, string> = {
-    bot: "Bot",
-    platform_import: "Platform import",
-    bot_free_tab_system: "Bot-free tab/system",
-    local_mic: "Local mic",
-    mobile_room_mic: "Mobile room mic",
-    benchmark_import: "Benchmark",
-    imported_artifact: "Imported artifact",
-    unknown: "Unknown capture",
+  bot: "Bot",
+  platform_import: "Platform import",
+  bot_free_tab_system: "Bot-free tab/system",
+  local_mic: "Local mic",
+  mobile_room_mic: "Mobile room mic",
+  benchmark_import: "Benchmark",
+  imported_artifact: "Imported artifact",
+  unknown: "Unknown capture",
 };
 const CONSENT_LABEL: Record<TranscriptConsentState, string> = {
-    not_required: "Not required",
-    pending: "Pending",
-    granted: "Granted",
-    denied: "Denied",
-    revoked: "Revoked",
-    unknown: "Unknown",
+  not_required: "Not required",
+  pending: "Pending",
+  granted: "Granted",
+  denied: "Denied",
+  revoked: "Revoked",
+  unknown: "Unknown",
 };
 const POLICY_LABEL: Record<string, string> = {
-    allowed: "Allowed",
-    org_blocked: "Org blocked",
-    user_blocked: "User blocked",
-    unknown: "Unknown",
+  allowed: "Allowed",
+  org_blocked: "Org blocked",
+  user_blocked: "User blocked",
+  unknown: "Unknown",
 };
 const PERMISSION_LABEL: Record<string, string> = {
-    prompt: "Prompt",
-    granted: "Granted",
-    denied: "Denied",
-    stopped: "Stopped",
-    revoked: "Revoked",
-    not_required: "Not required",
-    unknown: "Unknown",
+  prompt: "Prompt",
+  granted: "Granted",
+  denied: "Denied",
+  stopped: "Stopped",
+  revoked: "Revoked",
+  not_required: "Not required",
+  unknown: "Unknown",
 };
 const RETENTION_LABEL: Record<TranscriptRetentionState, string> = {
-    audio_retained: "Audio retained",
-    audio_deleted_transcript_retained: "Audio deleted, transcript retained",
-    transcript_only: "Transcript only",
-    delete_pending: "Delete pending",
-    unknown: "Unknown",
+  audio_retained: "Audio retained",
+  audio_deleted_transcript_retained: "Audio deleted, transcript retained",
+  transcript_only: "Transcript only",
+  delete_pending: "Delete pending",
+  unknown: "Unknown",
 };
 const SHARING_LABEL: Record<TranscriptSharingState, string> = {
-    owner_private: "Private",
-    restricted: "Restricted",
-    shared: "Shared",
-    public: "Public",
-    disabled: "Disabled",
-    unknown: "Unknown",
+  owner_private: "Private",
+  restricted: "Restricted",
+  shared: "Shared",
+  public: "Public",
+  disabled: "Disabled",
+  unknown: "Unknown",
 };
 /** Small accent dot + label shown on live meeting rows/headers. */
-function LiveIndicator({ testId }: {
-    testId: string;
-}): React.JSX.Element {
-    return (<span data-testid={testId} className="inline-flex items-center gap-1 text-xs font-medium text-accent">
-      <StatusDot aria-hidden size="compact" tone="accent"/>
+function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
+  return (
+    <span
+      data-testid={testId}
+      className="inline-flex items-center gap-1 text-xs font-medium text-accent"
+    >
+      <StatusDot aria-hidden size="compact" tone="accent" />
       LIVE
-    </span>);
+    </span>
+  );
 }
-function TranscriptRow({ summary, active, onSelect, }: {
-    summary: MeetingAwareTranscriptSummary;
-    active: boolean;
-    onSelect(id: string): void;
+function TranscriptRow({
+  summary,
+  active,
+  onSelect,
+}: {
+  summary: MeetingAwareTranscriptSummary;
+  active: boolean;
+  onSelect(id: string): void;
 }): React.JSX.Element {
-    const isMeeting = summary.source === "meeting";
-    const isLive = isMeeting && summary.status === "recording";
-    // The server projects the meeting badge + participant count onto the summary
-    // (summarizeTranscript); the row only displays them — it never counts a
-    // roster array here.
-    const meeting = isMeeting ? summary.meeting : undefined;
-    const meetingPlatformLabel = platformLabel(meeting?.platform);
-    const participantCount = meeting?.participantCount ?? 0;
-    const status = STATUS_LABEL[summary.status];
-    const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-        id: `transcript-${agentSafeId(summary.id)}`,
-        role: "button",
-        label: `Open transcript ${summary.title}`,
-        group: "transcripts-list",
-        status: active ? "active" : summary.status,
-        description: "Select this recording in the Transcripts view",
-        onActivate: () => onSelect(summary.id),
-    });
-    return (<Button ref={ref} {...agentProps} variant="selection" size="row" align="start" data-state={active ? "on" : "off"} data-testid={`transcript-row-${summary.id}`} data-active={active ? "true" : undefined} onClick={() => onSelect(summary.id)}>
+  const isMeeting = summary.source === "meeting";
+  const isLive = isMeeting && summary.status === "recording";
+  // The server projects the meeting badge + participant count onto the summary
+  // (summarizeTranscript); the row only displays them — it never counts a
+  // roster array here.
+  const meeting = isMeeting ? summary.meeting : undefined;
+  const meetingPlatformLabel = platformLabel(meeting?.platform);
+  const participantCount = meeting?.participantCount ?? 0;
+  const status = STATUS_LABEL[summary.status];
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `transcript-${agentSafeId(summary.id)}`,
+    role: "button",
+    label: `Open transcript ${summary.title}`,
+    group: "transcripts-list",
+    status: active ? "active" : summary.status,
+    description: "Select this recording in the Transcripts view",
+    onActivate: () => onSelect(summary.id),
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="selection"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
+      data-testid={`transcript-row-${summary.id}`}
+      data-active={active ? "true" : undefined}
+      onClick={() => onSelect(summary.id)}
+    >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate font-medium">{summary.title}</span>
-        {summary.redacted ? (<RedactedBadge testId={`transcript-redacted-${summary.id}`}/>) : null}
-        {isLive ? (<LiveIndicator testId={`transcript-live-${summary.id}`}/>) : null}
+        {summary.redacted ? (
+          <RedactedBadge testId={`transcript-redacted-${summary.id}`} />
+        ) : null}
+        {isLive ? (
+          <LiveIndicator testId={`transcript-live-${summary.id}`} />
+        ) : null}
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted [&>span]:shrink-0">
-        {meetingPlatformLabel ? (<>
-            <span className="truncate" data-testid={`transcript-platform-${summary.id}`}>
+        {meetingPlatformLabel ? (
+          <>
+            <span
+              className="truncate"
+              data-testid={`transcript-platform-${summary.id}`}
+            >
               {meetingPlatformLabel}
             </span>
             <span aria-hidden>·</span>
-          </>) : null}
+          </>
+        ) : null}
         <span>{formatDate(summary.createdAt)}</span>
         <span aria-hidden>·</span>
         <span>{formatDuration(summary.durationMs)}</span>
-        {isMeeting && participantCount > 0 ? (<>
+        {isMeeting && participantCount > 0 ? (
+          <>
             <span aria-hidden>·</span>
             <span data-testid={`transcript-participants-${summary.id}`}>
               {participantCount}{" "}
               {participantCount === 1 ? "participant" : "participants"}
             </span>
-          </>) : !isMeeting && summary.speakerCount > 1 ? (<>
+          </>
+        ) : !isMeeting && summary.speakerCount > 1 ? (
+          <>
             <span aria-hidden>·</span>
             <span>{summary.speakerCount} speakers</span>
-          </>) : null}
-        {status && !isLive ? (<>
+          </>
+        ) : null}
+        {status && !isLive ? (
+          <>
             <span aria-hidden>·</span>
             <span>{status}</span>
-          </>) : null}
+          </>
+        ) : null}
       </div>
-      {summary.preview ? (<div className="mt-1 truncate text-xs text-muted">
+      {summary.preview ? (
+        <div className="mt-1 truncate text-xs text-muted">
           {summary.preview}
-        </div>) : null}
-    </Button>);
+        </div>
+      ) : null}
+    </Button>
+  );
 }
 /** Detail-pane header for a meeting record: platform badge + roster. */
-function MeetingDetailHeader({ transcript, }: {
-    transcript: Transcript;
+function MeetingDetailHeader({
+  transcript,
+}: {
+  transcript: Transcript;
 }): React.JSX.Element | null {
-    const meta = meetingTranscriptMeta(transcript);
-    if (!meta.platform && meta.participants.length === 0)
-        return null;
-    return (<div data-testid="meeting-detail-meta" className="flex flex-wrap items-center gap-2 text-xs text-muted">
-      {meta.platform ? (<Badge asChild variant="meetingPlatform" size="microBold" data-testid="meeting-detail-platform">
+  const meta = meetingTranscriptMeta(transcript);
+  if (!meta.platform && meta.participants.length === 0) return null;
+  return (
+    <div
+      data-testid="meeting-detail-meta"
+      className="flex flex-wrap items-center gap-2 text-xs text-muted"
+    >
+      {meta.platform ? (
+        <Badge
+          asChild
+          variant="meetingPlatform"
+          size="microBold"
+          data-testid="meeting-detail-platform"
+        >
           <span>{MEETING_PLATFORM_LABELS[meta.platform]}</span>
-        </Badge>) : null}
-      {meta.participants.length > 0 ? (<span data-testid="meeting-detail-participants" className="truncate">
+        </Badge>
+      ) : null}
+      {meta.participants.length > 0 ? (
+        <span data-testid="meeting-detail-participants" className="truncate">
           {meta.participants.map((p) => p.displayName).join(", ")}
-        </span>) : null}
-    </div>);
+        </span>
+      ) : null}
+    </div>
+  );
 }
-function MeetingCapturePrivacyStrip({ transcript, }: {
-    transcript: Transcript;
+function MeetingCapturePrivacyStrip({
+  transcript,
+}: {
+  transcript: Transcript;
 }): React.JSX.Element | null {
-    const state = transcriptCapturePrivacyState(transcript);
-    const chips = capturePrivacyChips(state);
-    if (chips.length === 0)
-        return null;
-    return (<div data-testid="meeting-capture-privacy-state" className="flex flex-wrap gap-1.5 text-xs">
-      {chips.map((chip) => (<Badge asChild variant={chip.alert ? "meetingPrivacyDanger" : "meetingPrivacy"} size="microBold" key={`${chip.label}:${chip.value}`} data-testid={`meeting-privacy-chip-${agentSafeId(chip.label)}`}>
+  const state = transcriptCapturePrivacyState(transcript);
+  const chips = capturePrivacyChips(state);
+  if (chips.length === 0) return null;
+  return (
+    <div
+      data-testid="meeting-capture-privacy-state"
+      className="flex flex-wrap gap-1.5 text-xs"
+    >
+      {chips.map((chip) => (
+        <Badge
+          asChild
+          variant={chip.alert ? "meetingPrivacyDanger" : "meetingPrivacy"}
+          size="microBold"
+          key={`${chip.label}:${chip.value}`}
+          data-testid={`meeting-privacy-chip-${agentSafeId(chip.label)}`}
+        >
           <span>
             <span className="font-medium text-txt">{chip.label}:</span>{" "}
             {chip.value}
           </span>
-        </Badge>))}
-    </div>);
+        </Badge>
+      ))}
+    </div>
+  );
 }
 function capturePrivacyChips(state: TranscriptCapturePrivacyState): Array<{
+  label: string;
+  value: string;
+  alert?: boolean;
+}> {
+  const chips: Array<{
     label: string;
     value: string;
     alert?: boolean;
-}> {
-    const chips: Array<{
-        label: string;
-        value: string;
-        alert?: boolean;
-    }> = [];
-    if (state.captureMode) {
-        chips.push({
-            label: "Capture",
-            value: CAPTURE_MODE_LABEL[state.captureMode] ?? state.captureMode,
-        });
-    }
-    if (state.consentState) {
-        chips.push({
-            label: "Consent",
-            value: CONSENT_LABEL[state.consentState],
-            alert: state.consentState === "denied" || state.consentState === "revoked",
-        });
-    }
-    if (state.policyState) {
-        chips.push({
-            label: "Policy",
-            value: POLICY_LABEL[state.policyState] ?? state.policyState,
-            alert: state.policyState === "org_blocked" ||
-                state.policyState === "user_blocked",
-        });
-    }
-    if (state.permissionState) {
-        chips.push({
-            label: "Permission",
-            value: PERMISSION_LABEL[state.permissionState] ?? state.permissionState,
-            alert: state.permissionState === "denied" ||
-                state.permissionState === "revoked",
-        });
-    }
-    if (state.retentionState) {
-        chips.push({
-            label: "Retention",
-            value: RETENTION_LABEL[state.retentionState],
-            alert: state.retentionState === "delete_pending",
-        });
-    }
-    if (state.sharing.transcript) {
-        chips.push({
-            label: "Transcript",
-            value: SHARING_LABEL[state.sharing.transcript],
-        });
-    }
-    if (state.sharing.notes) {
-        chips.push({ label: "Notes", value: SHARING_LABEL[state.sharing.notes] });
-    }
-    if (state.sharing.sourceAudio) {
-        chips.push({
-            label: "Source audio",
-            value: SHARING_LABEL[state.sharing.sourceAudio],
-            alert: state.sourceAudioDeleted,
-        });
-    }
-    if (state.sharing.artifacts) {
-        chips.push({
-            label: "Artifacts",
-            value: SHARING_LABEL[state.sharing.artifacts],
-        });
-    }
-    return chips;
+  }> = [];
+  if (state.captureMode) {
+    chips.push({
+      label: "Capture",
+      value: CAPTURE_MODE_LABEL[state.captureMode] ?? state.captureMode,
+    });
+  }
+  if (state.consentState) {
+    chips.push({
+      label: "Consent",
+      value: CONSENT_LABEL[state.consentState],
+      alert:
+        state.consentState === "denied" || state.consentState === "revoked",
+    });
+  }
+  if (state.policyState) {
+    chips.push({
+      label: "Policy",
+      value: POLICY_LABEL[state.policyState] ?? state.policyState,
+      alert:
+        state.policyState === "org_blocked" ||
+        state.policyState === "user_blocked",
+    });
+  }
+  if (state.permissionState) {
+    chips.push({
+      label: "Permission",
+      value: PERMISSION_LABEL[state.permissionState] ?? state.permissionState,
+      alert:
+        state.permissionState === "denied" ||
+        state.permissionState === "revoked",
+    });
+  }
+  if (state.retentionState) {
+    chips.push({
+      label: "Retention",
+      value: RETENTION_LABEL[state.retentionState],
+      alert: state.retentionState === "delete_pending",
+    });
+  }
+  if (state.sharing.transcript) {
+    chips.push({
+      label: "Transcript",
+      value: SHARING_LABEL[state.sharing.transcript],
+    });
+  }
+  if (state.sharing.notes) {
+    chips.push({ label: "Notes", value: SHARING_LABEL[state.sharing.notes] });
+  }
+  if (state.sharing.sourceAudio) {
+    chips.push({
+      label: "Source audio",
+      value: SHARING_LABEL[state.sharing.sourceAudio],
+      alert: state.sourceAudioDeleted,
+    });
+  }
+  if (state.sharing.artifacts) {
+    chips.push({
+      label: "Artifacts",
+      value: SHARING_LABEL[state.sharing.artifacts],
+    });
+  }
+  return chips;
 }
-export function TranscriptsView({ transcripts, selectedId, selected, onSelect, loading, error, selectedLoading = false, selectedError, onUpdatePrivacy, onDeleteSourceAudio, privacySaving = false, privacyError, activeMeetings = [], onJoinMeeting, onStopMeeting, joiningMeeting, meetingError, }: TranscriptsViewProps): React.JSX.Element {
-    const joinBar = onJoinMeeting && onStopMeeting ? (<MeetingJoinBar activeMeetings={activeMeetings} onJoin={onJoinMeeting} onStop={onStopMeeting} joining={joiningMeeting} error={meetingError}/>) : null;
-    if (!error && !loading && transcripts.length === 0) {
-        return (<ShellViewAgentSurface viewId="transcripts">
-        <div data-testid="transcripts-view" className="flex h-full min-h-0 w-full flex-col gap-4">
+export function TranscriptsView({
+  transcripts,
+  selectedId,
+  selected,
+  onSelect,
+  loading,
+  error,
+  selectedLoading = false,
+  selectedError,
+  onUpdatePrivacy,
+  onDeleteSourceAudio,
+  privacySaving = false,
+  privacyError,
+  activeMeetings = [],
+  onJoinMeeting,
+  onStopMeeting,
+  joiningMeeting,
+  meetingError,
+}: TranscriptsViewProps): React.JSX.Element {
+  const joinBar =
+    onJoinMeeting && onStopMeeting ? (
+      <MeetingJoinBar
+        activeMeetings={activeMeetings}
+        onJoin={onJoinMeeting}
+        onStop={onStopMeeting}
+        joining={joiningMeeting}
+        error={meetingError}
+      />
+    ) : null;
+  if (!error && !loading && transcripts.length === 0) {
+    return (
+      <ShellViewAgentSurface viewId="transcripts">
+        <div
+          data-testid="transcripts-view"
+          className="flex h-full min-h-0 w-full flex-col gap-4"
+        >
           {joinBar}
           <div data-testid="transcripts-empty" className="flex flex-1">
-            <PagePanel.Empty className="flex-1" icon={<AudioLines className="size-6" aria-hidden/>} title="No transcripts yet."/>
+            <PagePanel.Empty
+              className="flex-1"
+              icon={<AudioLines className="size-6" aria-hidden />}
+              title="No transcripts yet."
+            />
           </div>
         </div>
-      </ShellViewAgentSurface>);
-    }
-    const selectedIsLiveMeeting = selected?.source === "meeting" && selected.status === "recording";
-    return (<ShellViewAgentSurface viewId="transcripts">
-      <div data-testid="transcripts-view" className="flex h-full min-h-0 w-full flex-col gap-4">
+      </ShellViewAgentSurface>
+    );
+  }
+  const selectedIsLiveMeeting =
+    selected?.source === "meeting" && selected.status === "recording";
+  return (
+    <ShellViewAgentSurface viewId="transcripts">
+      <div
+        data-testid="transcripts-view"
+        className="flex h-full min-h-0 w-full flex-col gap-4"
+      >
         {joinBar}
         <div className="flex min-h-0 w-full flex-1 flex-col gap-4 md:flex-row">
           <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-72">
-            {error ? (<p className="px-3 text-sm text-muted" role="alert">
+            {error ? (
+              <p className="px-3 text-sm text-muted" role="alert">
                 {error}
-              </p>) : loading && transcripts.length === 0 ? (<p className="px-3 text-sm text-muted">Loading…</p>) : (<div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-                {transcripts.map((t) => (<TranscriptRow key={t.id} summary={t} active={t.id === selectedId} onSelect={onSelect}/>))}
-              </div>)}
+              </p>
+            ) : loading && transcripts.length === 0 ? (
+              <p className="px-3 text-sm text-muted">Loading…</p>
+            ) : (
+              <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+                {transcripts.map((t) => (
+                  <TranscriptRow
+                    key={t.id}
+                    summary={t}
+                    active={t.id === selectedId}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
           </aside>
 
-          <section className={cn("min-h-0 min-w-0 flex-1", selectedIsLiveMeeting ? "flex flex-col" : "overflow-y-auto")}>
-            {selectedLoading ? (<div data-testid="transcripts-detail-loading" className="grid h-full place-items-center text-sm text-muted" role="status">
+          <section
+            className={cn(
+              "min-h-0 min-w-0 flex-1",
+              selectedIsLiveMeeting ? "flex flex-col" : "overflow-y-auto",
+            )}
+          >
+            {selectedLoading ? (
+              <div
+                data-testid="transcripts-detail-loading"
+                className="grid h-full place-items-center text-sm text-muted"
+                role="status"
+              >
                 Loading transcript…
-              </div>) : selectedError ? (<div data-testid="transcripts-detail-error" className="grid h-full place-items-center text-sm text-destructive" role="alert">
+              </div>
+            ) : selectedError ? (
+              <div
+                data-testid="transcripts-detail-error"
+                className="grid h-full place-items-center text-sm text-destructive"
+                role="alert"
+              >
                 {selectedError}
-              </div>) : selected ? (<div className={cn("flex flex-col gap-3", selectedIsLiveMeeting && "min-h-0 flex-1")}>
+              </div>
+            ) : selected ? (
+              <div
+                className={cn(
+                  "flex flex-col gap-3",
+                  selectedIsLiveMeeting && "min-h-0 flex-1",
+                )}
+              >
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold text-txt">
                     {selected.title}
                   </h2>
-                  {selected.redacted ? (<RedactedBadge testId="transcript-detail-redacted"/>) : null}
-                  {selectedIsLiveMeeting ? (<LiveIndicator testId="meeting-detail-live"/>) : null}
+                  {selected.redacted ? (
+                    <RedactedBadge testId="transcript-detail-redacted" />
+                  ) : null}
+                  {selectedIsLiveMeeting ? (
+                    <LiveIndicator testId="meeting-detail-live" />
+                  ) : null}
                 </div>
-                {selected.source === "meeting" ? (<>
-                    <MeetingDetailHeader transcript={selected}/>
-                    <MeetingCapturePrivacyStrip transcript={selected}/>
+                {selected.source === "meeting" ? (
+                  <>
+                    <MeetingDetailHeader transcript={selected} />
+                    <MeetingCapturePrivacyStrip transcript={selected} />
                     {!selected.redacted &&
                     onUpdatePrivacy &&
-                    onDeleteSourceAudio ? (<ArtifactPrivacyControls transcript={selected} onUpdate={onUpdatePrivacy} onDeleteSourceAudio={onDeleteSourceAudio} saving={privacySaving} error={privacyError}/>) : null}
-                  </>) : null}
-                {selectedIsLiveMeeting ? (<LiveMeetingPane transcript={selected}/>) : (<TranscriptPlayer transcript={selected} audioUrl={selected.audioUrl}/>)}
-              </div>) : (<div data-testid="transcripts-detail-empty" className="grid h-full place-items-center text-sm text-muted">
+                    onDeleteSourceAudio ? (
+                      <ArtifactPrivacyControls
+                        transcript={selected}
+                        onUpdate={onUpdatePrivacy}
+                        onDeleteSourceAudio={onDeleteSourceAudio}
+                        saving={privacySaving}
+                        error={privacyError}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+                {selectedIsLiveMeeting ? (
+                  <LiveMeetingPane transcript={selected} />
+                ) : (
+                  <TranscriptPlayer
+                    transcript={selected}
+                    audioUrl={selected.audioUrl}
+                  />
+                )}
+              </div>
+            ) : (
+              <div
+                data-testid="transcripts-detail-empty"
+                className="grid h-full place-items-center text-sm text-muted"
+              >
                 Select a recording.
-              </div>)}
+              </div>
+            )}
           </section>
         </div>
       </div>
-    </ShellViewAgentSurface>);
+    </ShellViewAgentSurface>
+  );
 }

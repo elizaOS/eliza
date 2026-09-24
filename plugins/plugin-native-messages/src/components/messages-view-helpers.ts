@@ -9,9 +9,9 @@ import {
   System,
   type SystemStatus,
 } from "@elizaos/capacitor-system";
+import { ElizaError } from "@elizaos/core/errors";
 import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
-import { ElizaError } from "@elizaos/core";
 
 export type ThreadSummary = {
   id: string;

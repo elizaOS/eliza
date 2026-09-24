@@ -15,60 +15,79 @@
  *
  * No access context means the single-owner local boundary: served unchanged.
  */
-import { normalizeTranscriptScope } from "@elizaos/core/transcripts";
-import { parseArtifactShareGrants } from "@elizaos/core";
-import { resolveArtifactDisclosure } from "@elizaos/core";
-import { type AccessContext } from "@elizaos/core";
-import { type IAgentRuntime } from "@elizaos/core";
+
+import {
+  type AccessContext,
+  type IAgentRuntime,
+  type Memory,
+  parseArtifactShareGrants,
+  resolveArtifactDisclosure,
+  type UUID,
+} from "@elizaos/core";
 import { type MeetingSession } from "@elizaos/core/meetings";
-import { type Memory } from "@elizaos/core";
-import { type TranscriptScope } from "@elizaos/core/transcripts";
-import { type UUID } from "@elizaos/core";
+import {
+  normalizeTranscriptScope,
+  type TranscriptScope,
+} from "@elizaos/core/transcripts";
+
 function transcriptScopeFromRow(row: Memory): TranscriptScope {
-    const raw = (row.content as {
-        transcript?: unknown;
-    } | undefined)?.transcript;
-    if (typeof raw !== "string")
-        return "owner-private";
-    try {
-        const parsed: unknown = JSON.parse(raw);
-        return normalizeTranscriptScope(parsed && typeof parsed === "object"
-            ? (parsed as {
-                scope?: unknown;
-            }).scope
-            : undefined);
-    }
-    catch {
-        // error-policy:J3 untrusted stored JSON — an unparseable transcript row
-        // fails CLOSED to owner-private so corruption can never widen visibility.
-        return "owner-private";
-    }
+  const raw = (
+    row.content as
+      | {
+          transcript?: unknown;
+        }
+      | undefined
+  )?.transcript;
+  if (typeof raw !== "string") return "owner-private";
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return normalizeTranscriptScope(
+      parsed && typeof parsed === "object"
+        ? (
+            parsed as {
+              scope?: unknown;
+            }
+          ).scope
+        : undefined,
+    );
+  } catch {
+    // error-policy:J3 untrusted stored JSON — an unparseable transcript row
+    // fails CLOSED to owner-private so corruption can never widen visibility.
+    return "owner-private";
+  }
 }
 /**
  * Select the session DTO for one viewer. Reads the linked transcript row and
  * applies the canonical disclosure decision; a missing row withholds the
  * reference (fail closed — a dangling id must not read as shareable).
  */
-export async function selectSessionForViewer(runtime: Pick<IAgentRuntime, "agentId" | "getMemoryById">, accessContext: AccessContext | undefined, session: MeetingSession): Promise<MeetingSession> {
-    if (!accessContext || !session.transcriptId)
-        return session;
-    const row = await runtime.getMemoryById(session.transcriptId as UUID);
-    if (!row) {
-        const { transcriptId: _transcriptId, ...withheld } = session;
-        return withheld;
-    }
-    const metadata = row.metadata as Record<string, unknown> | undefined;
-    const scopedTo = metadata?.scopedToEntityId;
-    const disclosure = resolveArtifactDisclosure({
-        scope: transcriptScopeFromRow(row),
-        scopedEntityId: typeof scopedTo === "string" ? (scopedTo as UUID) : row.entityId,
-        grants: parseArtifactShareGrants(metadata),
-    }, accessContext, runtime.agentId as UUID);
-    if (disclosure === "full")
-        return session;
-    if (disclosure === "redacted") {
-        return { ...session, transcriptRedacted: true };
-    }
+export async function selectSessionForViewer(
+  runtime: Pick<IAgentRuntime, "agentId" | "getMemoryById">,
+  accessContext: AccessContext | undefined,
+  session: MeetingSession,
+): Promise<MeetingSession> {
+  if (!accessContext || !session.transcriptId) return session;
+  const row = await runtime.getMemoryById(session.transcriptId as UUID);
+  if (!row) {
     const { transcriptId: _transcriptId, ...withheld } = session;
     return withheld;
+  }
+  const metadata = row.metadata as Record<string, unknown> | undefined;
+  const scopedTo = metadata?.scopedToEntityId;
+  const disclosure = resolveArtifactDisclosure(
+    {
+      scope: transcriptScopeFromRow(row),
+      scopedEntityId:
+        typeof scopedTo === "string" ? (scopedTo as UUID) : row.entityId,
+      grants: parseArtifactShareGrants(metadata),
+    },
+    accessContext,
+    runtime.agentId as UUID,
+  );
+  if (disclosure === "full") return session;
+  if (disclosure === "redacted") {
+    return { ...session, transcriptRedacted: true };
+  }
+  const { transcriptId: _transcriptId, ...withheld } = session;
+  return withheld;
 }

@@ -3,11 +3,11 @@
  * owner-approval queue; no provider service participates in this harness.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import type {
   CalendarMutationGatewayDep,
   CalendarTravelBufferResult,
 } from "@elizaos/plugin-calendar";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarMutationApprovalGateway } from "../src/actions/calendar.js";
 import type {

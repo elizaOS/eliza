@@ -6,8 +6,8 @@
  */
 
 import { normalizeKeywordMatchText } from "@elizaos/core/i18n/keyword-matching";
-import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
 import { UI_LANGUAGES, type UiLanguage } from "@elizaos/core/i18n/language";
+import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
 
 type PhraseSpec = {
   value: string;

@@ -17,15 +17,15 @@ import z from "zod";
 const LogExportFormatSchema = z.enum(["json", "csv"]);
 
 export const PostLogExportRequestSchema = z
-  .object({
-    format: LogExportFormatSchema,
-    source: z.string().optional(),
-    level: z.string().optional(),
-    tags: z.union([z.string(), z.array(z.string())]).optional(),
-    since: z.union([z.string(), z.number()]).optional(),
-    limit: z.number().optional(),
-  })
-  .strict();
+	.object({
+		format: LogExportFormatSchema,
+		source: z.string().optional(),
+		level: z.string().optional(),
+		tags: z.union([z.string(), z.array(z.string())]).optional(),
+		since: z.union([z.string(), z.number()]).optional(),
+		limit: z.number().optional(),
+	})
+	.strict();
 
 export type PostLogExportRequest = z.infer<typeof PostLogExportRequestSchema>;
 export type LogExportFormat = z.infer<typeof LogExportFormatSchema>;

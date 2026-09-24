@@ -15,16 +15,16 @@
 import z from "zod";
 
 export const PostAuthPairRequestSchema = z
-  .object({
-    code: z.string().min(1, "code is required"),
-  })
-  .strict();
+	.object({
+		code: z.string().min(1, "code is required"),
+	})
+	.strict();
 
 export const PostAuthPairResponseSchema = z
-  .object({
-    token: z.string(),
-  })
-  .strict();
+	.object({
+		token: z.string(),
+	})
+	.strict();
 
 export type PostAuthPairRequest = z.infer<typeof PostAuthPairRequestSchema>;
 export type PostAuthPairResponse = z.infer<typeof PostAuthPairResponseSchema>;

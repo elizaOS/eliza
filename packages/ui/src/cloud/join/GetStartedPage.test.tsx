@@ -29,12 +29,15 @@ const confirmTelegramAccountClaim = vi.fn(async () => {
   clearPendingOnboardingSession();
 });
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../../core/src/steward-session-client/index.ts")
-  >()),
-  readStoredStewardToken: () => "existing-steward-token",
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    readStoredStewardToken: () => "existing-steward-token",
+  }),
+);
 
 vi.mock("../public-pages/lib/steward-session", () => ({
   confirmTelegramAccountClaim,

@@ -72,7 +72,9 @@ export async function runAutonomousCli(
     // desktop AgentManager, dev api-supervisor) for a clean restart instead of
     // a silent death. One-shot commands and tests keep default behavior.
     if (process.env.NODE_ENV !== "test") {
-      const { installProcessCrashGuards } = await import("@elizaos/core/process-guards");
+      const { installProcessCrashGuards } = await import(
+        "@elizaos/core/process-guards"
+      );
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
     const { startElizaProcess } = await import("../runtime/index.ts");

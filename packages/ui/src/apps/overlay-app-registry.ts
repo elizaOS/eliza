@@ -7,8 +7,8 @@
 
 import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
-import { getUiRegistryStore } from "@elizaos/ui/registry-host";
-import type { OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
+import { getUiRegistryStore } from "../registry-host.js";
+import type { OverlayApp } from "./overlay-app-api.js";
 
 const OVERLAY_APP_REGISTRY_STORE = "overlay-apps";
 

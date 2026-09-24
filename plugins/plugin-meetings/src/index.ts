@@ -25,57 +25,92 @@
  * Host support (mobile vs desktop/server) is a typed probe —
  * {@link resolveMeetingRuntimeSupport}; see docs/DEPLOYMENT.md for the matrix.
  */
-import { GoogleMeetAdapter } from "./platforms/googlemeet/adapter.js";
-import { MeetingService } from "./service.js";
-import { MsTeamsAdapter } from "./platforms/msteams/adapter.js";
-import { ZoomAdapter } from "./platforms/zoom/adapter.js";
-import { activeMeetingsProvider } from "./providers/active-meetings.js";
-import { createMeetingTranscriptionPipeline } from "./pipeline/pipeline.js";
+
+import { type IAgentRuntime } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { type MeetingPlatform } from "@elizaos/core/meetings";
 import { getMeetingTranscriptAction } from "./actions/get-meeting-transcript.js";
-import { importZoomCloudMeeting } from "./platforms/zoom/cloud-import.js";
 import { joinMeetingAction } from "./actions/join-meeting.js";
 import { leaveMeetingAction } from "./actions/leave-meeting.js";
+import { createMeetingTranscriptionPipeline } from "./pipeline/pipeline.js";
+import { GoogleMeetAdapter } from "./platforms/googlemeet/adapter.js";
+import { MsTeamsAdapter } from "./platforms/msteams/adapter.js";
+import { ZoomAdapter } from "./platforms/zoom/adapter.js";
+import { importZoomCloudMeeting } from "./platforms/zoom/cloud-import.js";
+import { activeMeetingsProvider } from "./providers/active-meetings.js";
 import { meetingsRoutes } from "./routes/meetings-routes.js";
-import { type HttpPlugin as Plugin } from "@elizaos/shared";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type MeetingPlatform } from "@elizaos/shared";
+import { MeetingService } from "./service.js";
 import { type MeetingPlatformAdapter } from "./types.js";
+
 export { MeetingEventEmitter } from "./events.js";
 export { isHallucination } from "./pipeline/hallucination-filter";
 export { createMeetingTranscriptionPipeline } from "./pipeline/pipeline";
-export { type AsrSegment, type AsrSegmentWord, type ConfirmedSegmentEvent, SpeakerStreamManager, type SpeakerStreamManagerConfig, } from "./pipeline/speaker-streams";
-export { type AsrBackend, type AsrTranscribeOptions, type AsrTranscribeResult, RuntimeModelAsrBackend, type RuntimeModelAsrBackendConfig, } from "./pipeline/transcriber";
+export {
+  type AsrSegment,
+  type AsrSegmentWord,
+  type ConfirmedSegmentEvent,
+  SpeakerStreamManager,
+  type SpeakerStreamManagerConfig,
+} from "./pipeline/speaker-streams";
+export {
+  type AsrBackend,
+  type AsrTranscribeOptions,
+  type AsrTranscribeResult,
+  RuntimeModelAsrBackend,
+  type RuntimeModelAsrBackendConfig,
+} from "./pipeline/transcriber";
 export { concatFloat32, float32ToWav, wavToFloat32 } from "./pipeline/wav";
-export { type BrowserChannel, type ChromiumSource, chromiumExecutable, hasDisplay, type MeetingRuntimeSupport, type ResolvedChromium, resolveHeadlessMode, resolveMeetingRuntimeSupport, } from "./platform-support.js";
+export {
+  type BrowserChannel,
+  type ChromiumSource,
+  chromiumExecutable,
+  hasDisplay,
+  type MeetingRuntimeSupport,
+  type ResolvedChromium,
+  resolveHeadlessMode,
+  resolveMeetingRuntimeSupport,
+} from "./platform-support.js";
 export * from "./platforms/zoom/cloud-import.js";
 export * from "./platforms/zoom/shared-artifact.js";
 export { meetingsRoutes } from "./routes/meetings-routes.js";
-export { MeetingJoinError, type MeetingPipelineInstance, MeetingService, type MeetingServiceDependencies, type ZoomMeetingImportRequest, type ZoomMeetingImportResult, } from "./service.js";
-export { MeetingTranscriptWriter, readTranscriptRow, } from "./transcripts/meeting-transcript-writer.js";
+export {
+  MeetingJoinError,
+  type MeetingPipelineInstance,
+  MeetingService,
+  type MeetingServiceDependencies,
+  type ZoomMeetingImportRequest,
+  type ZoomMeetingImportResult,
+} from "./service.js";
+export {
+  MeetingTranscriptWriter,
+  readTranscriptRow,
+} from "./transcripts/meeting-transcript-writer.js";
 export * from "./types.js";
 export { getMeetingTranscriptAction, joinMeetingAction, leaveMeetingAction };
+
 // Concrete wiring for the injectable seams: the browser platform adapters and
 // the ASR pipeline. Kept here (not in service.ts) so the orchestration layer
 // stays independently testable with scripted adapters/pipelines.
 MeetingService.dependencyFactory = (_runtime: IAgentRuntime) => ({
-    adapters: new Map<MeetingPlatform, MeetingPlatformAdapter>([
-        ["google_meet", new GoogleMeetAdapter()],
-        ["teams", new MsTeamsAdapter()],
-        ["zoom", new ZoomAdapter()],
-    ]),
-    createPipeline: createMeetingTranscriptionPipeline,
-    importZoomCloudMeeting,
+  adapters: new Map<MeetingPlatform, MeetingPlatformAdapter>([
+    ["google_meet", new GoogleMeetAdapter()],
+    ["teams", new MsTeamsAdapter()],
+    ["zoom", new ZoomAdapter()],
+  ]),
+  createPipeline: createMeetingTranscriptionPipeline,
+  importZoomCloudMeeting,
 });
 export const meetingsPlugin: Plugin = {
-    name: "meetings",
-    description: "Meeting transcription — joins Google Meet / Microsoft Teams / Zoom as a notetaker bot and produces live, diarized transcripts",
-    services: [MeetingService],
-    actions: [joinMeetingAction, leaveMeetingAction, getMeetingTranscriptAction],
-    providers: [activeMeetingsProvider],
-    routes: meetingsRoutes,
-    // Auto-enable lives in the package manifest, not here: the runtime only
-    // consumes `elizaos.plugin.autoEnableModule` (./auto-enable.ts) — a bare
-    // `Plugin.autoEnable` field has no runtime consumer. See ./auto-enable.ts for
-    // the predicate (config `features.meetings` toggle + a native-platform veto).
+  name: "meetings",
+  description:
+    "Meeting transcription — joins Google Meet / Microsoft Teams / Zoom as a notetaker bot and produces live, diarized transcripts",
+  services: [MeetingService],
+  actions: [joinMeetingAction, leaveMeetingAction, getMeetingTranscriptAction],
+  providers: [activeMeetingsProvider],
+  routes: meetingsRoutes,
+  // Auto-enable lives in the package manifest, not here: the runtime only
+  // consumes `elizaos.plugin.autoEnableModule` (./auto-enable.ts) — a bare
+  // `Plugin.autoEnable` field has no runtime consumer. See ./auto-enable.ts for
+  // the predicate (config `features.meetings` toggle + a native-platform veto).
 };
 export default meetingsPlugin;

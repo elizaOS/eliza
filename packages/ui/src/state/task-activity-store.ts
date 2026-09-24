@@ -22,9 +22,9 @@ import type {
   SwarmActivityTool,
   SwarmEvent,
 } from "@elizaos/core";
-import { toSwarmActivity } from "@elizaos/ui/views/swarm-activity";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
+import { toSwarmActivity } from "../views/swarm-activity.js";
 
 /** Cap on retained tool steps per sub-agent — a long task must not grow unbounded. */
 const MAX_STEPS_PER_AGENT = 60;

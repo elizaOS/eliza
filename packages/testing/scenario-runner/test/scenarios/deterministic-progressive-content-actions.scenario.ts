@@ -19,11 +19,11 @@ import type {
   ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
-import { scenario } from "@elizaos/testing";
 import {
   type ProgressiveContentTargetFactory,
   type ProgressiveContentTargetFamily,
   runProgressiveContentTargetConformance,
+  scenario,
 } from "@elizaos/testing";
 import { DocumentService } from "../../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";

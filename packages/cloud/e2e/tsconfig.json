@@ -30,6 +30,12 @@
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/bge-input": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/bge-input.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../../../plugins/plugin-elizacloud/src/steward-session-client/index.ts"
       ]
     },
     "lib": ["ES2024", "DOM", "DOM.Iterable"]

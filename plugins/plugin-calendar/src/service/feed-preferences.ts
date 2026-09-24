@@ -8,7 +8,10 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsCalendarProvider, type LifeOpsCalendarSourceKey } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSourceKey,
+} from "@elizaos/core/contracts/calendar";
 import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,

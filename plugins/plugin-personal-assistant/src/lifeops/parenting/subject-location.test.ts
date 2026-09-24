@@ -4,7 +4,10 @@
  * real storage and household grants are covered by the PGlite suite.
  */
 
-import { type Entity, type EntityAttribute } from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  type Entity,
+  type EntityAttribute,
+} from "@elizaos/core/knowledge-graph/entity-types";
 import { describe, expect, it } from "vitest";
 import {
   createParentingSubjectLocationAttribute,

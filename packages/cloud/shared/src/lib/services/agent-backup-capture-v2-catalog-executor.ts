@@ -10,7 +10,12 @@
  */
 
 import { isDeepStrictEqual } from "node:util";
-import { AGENT_BACKUP_CAPTURE_V2_LIMITS, AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT, AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION, type AgentBackupCaptureV2Request } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import {
+  AGENT_BACKUP_CAPTURE_V2_LIMITS,
+  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+  AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
+  type AgentBackupCaptureV2Request,
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { type AgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import {
   type AgentBackupOperationClaim,

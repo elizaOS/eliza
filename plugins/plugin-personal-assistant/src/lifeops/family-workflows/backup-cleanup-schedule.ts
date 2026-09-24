@@ -4,11 +4,11 @@
  * archives, shorten retention, or substitute a new deletion operation.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { readFamilyDeletionJob } from "./workspace-deletion.js";
 
 export const FAMILY_BACKUP_CLEANUP_OPERATION = "agent.familyBackupCleanup";

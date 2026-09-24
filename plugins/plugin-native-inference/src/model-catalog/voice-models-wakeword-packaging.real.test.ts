@@ -8,12 +8,12 @@
  * re-publish drifts the bytes or the catalog records a stale hash.
  *
  * Network-bound, so it lives in the `*.real.test.ts` post-merge lane (skipped in
- * the default PR lane). Run: `TEST_LANE=post-merge bun run --cwd packages/shared test`.
+ * the default PR lane). Run: `TEST_LANE=post-merge bun run --cwd plugins/plugin-native-inference test`.
  */
 
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { latestVoiceModelVersion, voiceModelAssetUrl } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { latestVoiceModelVersion, voiceModelAssetUrl } from "./voice-models.js";
 
 const GGUF_MAGIC = "GGUF";
 

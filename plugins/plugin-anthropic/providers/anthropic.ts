@@ -13,7 +13,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { IAgentRuntime, PreparedModelRequestGuard } from "@elizaos/core";
 import { createPreparedModelRequestGuard, ElizaError, logger } from "@elizaos/core";
-import { getApiKeyOptional, getAuthMode, getBaseURL, isBrowser } from "../utils/config";
+import { getApiKeyOptional, getAuthMode, getBaseURL } from "../utils/config";
 import {
   clearTokenCache,
   getClaudeOAuthToken,

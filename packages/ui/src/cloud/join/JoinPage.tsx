@@ -18,7 +18,6 @@ import {
   formatHourlyRate,
   formatUSD,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/ui/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
@@ -30,6 +29,7 @@ import type {
   DedicatedActivationConfirmationQuote,
   DedicatedActivationConfirmationRequester,
 } from "../../api/dedicated-activation-confirmation";
+import { BRAND_PATHS, LOGO_FILES } from "../../brand/index.js";
 import { Button } from "../../components/ui/button";
 import {
   savePersistedActiveServer,

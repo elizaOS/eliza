@@ -1,7 +1,10 @@
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
 import { ElizaError } from "@elizaos/core";
-import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/core/capability-catalog";
+import {
+  type CapabilityHandoffRequest,
+  capabilityHandoffTargetAgentId,
+} from "@elizaos/core/capability-catalog";
 
 export type SharedDedicatedCapability =
   | "calendar"

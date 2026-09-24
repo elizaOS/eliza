@@ -12,7 +12,10 @@ import type {
 	ImageDescriptionResult,
 } from "@elizaos/core";
 import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+	resolveDevCloudAuthorityEnvValue,
+	resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type VisionFallbackReason =
 	| "local-unavailable"

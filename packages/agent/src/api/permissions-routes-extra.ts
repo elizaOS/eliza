@@ -11,11 +11,9 @@ import { logger } from "@elizaos/core";
 import { type AgentAutomationMode } from "@elizaos/core/api/agent-api-types";
 import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
-import type { ElizaConfig } from "../config/config.ts";
-import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
-
-// AgentAutomationMode is canonical in @elizaos/shared (imported above).
-
+import { type ElizaConfig } from "../config/config.ts";
+import { type LocalTradeExecutionOptions } from "./trade-safety.ts";
+// AgentAutomationMode is canonical in @elizaos/core (imported above).
 export interface PermissionsExtraRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -42,20 +40,20 @@ export interface PermissionsExtraRouteContext {
   ) => boolean;
   parseAgentAutomationMode: (value: unknown) => AgentAutomationMode | null;
   persistAgentAutomationMode: (
-    state: { config: ElizaConfig; agentAutomationMode?: AgentAutomationMode },
+    state: {
+      config: ElizaConfig;
+      agentAutomationMode?: AgentAutomationMode;
+    },
     mode: AgentAutomationMode,
   ) => void;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export async function handlePermissionsExtraRoutes(
   ctx: PermissionsExtraRouteContext,
 ): Promise<boolean> {
   const { res, method, pathname, state, json, error, readJsonBody } = ctx;
-
   // ── GET /api/permissions/automation-mode ──────────────────────────────
   if (method === "GET" && pathname === "/api/permissions/automation-mode") {
     const mode = state.agentAutomationMode ?? "full";
@@ -65,27 +63,25 @@ export async function handlePermissionsExtraRoutes(
     });
     return true;
   }
-
   // ── PUT /api/permissions/automation-mode ──────────────────────────────
   if (method === "PUT" && pathname === "/api/permissions/automation-mode") {
-    const body = await readJsonBody<{ mode?: unknown }>(ctx.req, res);
+    const body = await readJsonBody<{
+      mode?: unknown;
+    }>(ctx.req, res);
     if (!body) return true;
     const parsed = ctx.parseAgentAutomationMode(body.mode);
     if (!parsed) {
       error(res, 'Invalid mode. Expected "connectors-only" or "full".', 400);
       return true;
     }
-
     ctx.persistAgentAutomationMode(state, parsed);
     ctx.saveElizaConfig(state.config);
-
     json(res, {
       mode: parsed,
       options: ["connectors-only", "full"] as AgentAutomationMode[],
     });
     return true;
   }
-
   // ── GET /api/permissions/trade-mode ────────────────────────────────────
   if (method === "GET" && pathname === "/api/permissions/trade-mode") {
     const mode = ctx.resolveTradePermissionMode(state.config);
@@ -98,12 +94,12 @@ export async function handlePermissionsExtraRoutes(
     });
     return true;
   }
-
   // ── PUT /api/permissions/trade-mode ────────────────────────────────────
   if (method === "PUT" && pathname === "/api/permissions/trade-mode") {
-    const body = await readJsonBody<{ mode?: string }>(ctx.req, res);
+    const body = await readJsonBody<{
+      mode?: string;
+    }>(ctx.req, res);
     if (!body) return true;
-
     const newMode = body.mode;
     if (
       newMode !== "user-sign-only" &&
@@ -117,13 +113,11 @@ export async function handlePermissionsExtraRoutes(
       );
       return true;
     }
-
     if (!state.config.features) {
       state.config.features = {};
     }
     (state.config.features as Record<string, unknown>).tradePermissionMode =
       newMode;
-
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
@@ -131,7 +125,6 @@ export async function handlePermissionsExtraRoutes(
         `[api] Trade-mode config save failed: ${err instanceof Error ? err.message : err}`,
       );
     }
-
     json(res, {
       ok: true,
       tradePermissionMode: newMode,
@@ -145,6 +138,5 @@ export async function handlePermissionsExtraRoutes(
     });
     return true;
   }
-
   return false;
 }

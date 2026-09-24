@@ -170,7 +170,7 @@ const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/core/src",
   "plugins/plugin-assistant/src/prompts",
   "packages/core/src/catalog",
-  "packages/shared/src",
+  "packages/core/src",
   "packages/auth/src/vault",
   "plugins/plugin-aosp-local-inference/src",
   "plugins/plugin-native-inference/src",
@@ -188,7 +188,7 @@ const IGNORED_SOURCE_ARTIFACT_SEGMENTS = new Set([
 ]);
 const GENERATED_SOURCE_OUTPUT_PATHS = [
   "packages/core/src/i18n/generated",
-  "packages/shared/src/i18n/generated",
+  "packages/core/src/i18n/generated",
 ] as const;
 
 export interface Distribution {

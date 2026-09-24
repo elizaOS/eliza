@@ -10,8 +10,27 @@
  * contract surface the client + task-coordinator depend on.
  */
 
-import { type CreateLifeOpsCalendarEventRequest, type CreateLifeOpsIcsCalendarSourceRequest, type CreateLifeOpsLinkedCalendarLinkRequest, type DisconnectLifeOpsLinkedCalendarRequest, type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarEventUpdate, type LifeOpsCalendarRecurrenceScope, type ListLifeOpsCalendarsRequest, type PurgeLifeOpsCalendarImportedDataRequest, type RebindLifeOpsLinkedCalendarRequest, type ResolveLifeOpsLinkedCalendarConflictRequest, type RunLifeOpsLinkedCalendarReconciliationRequest, type SeedLifeOpsCalendarRequest, type SetLifeOpsCalendarIncludedRequest, type UpdateLifeOpsIcsCalendarSourceRequest } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsIcsCalendarSourceRequest,
+  type CreateLifeOpsLinkedCalendarLinkRequest,
+  type DisconnectLifeOpsLinkedCalendarRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEventUpdate,
+  type LifeOpsCalendarRecurrenceScope,
+  type ListLifeOpsCalendarsRequest,
+  type PurgeLifeOpsCalendarImportedDataRequest,
+  type RebindLifeOpsLinkedCalendarRequest,
+  type ResolveLifeOpsLinkedCalendarConflictRequest,
+  type RunLifeOpsLinkedCalendarReconciliationRequest,
+  type SeedLifeOpsCalendarRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type UpdateLifeOpsIcsCalendarSourceRequest,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
 export type CalendarRouteRateLimitKey =

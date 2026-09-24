@@ -1,147 +1,93 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "esModuleInterop": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "./dist",
-    "rootDir": "../../../",
-    "lib": [
-      "ES2024",
-      "DOM"
-    ],
-    "types": [
-      "node"
-    ],
-    "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
-    "paths": {
-      "@elizaos/plugin-local-inference": [
-        "./src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "./src/*"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../../packages/agent/src/index.ts"
-      ],
-      "@elizaos/agent/*": [
-        "../../packages/agent/src/*"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog": [
-        "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/*": [
-        "../../packages/shared/src/local-inference/*.ts"
-      ],
-      "@elizaos/plugin-native-inference/host-bridge": [
-        "../plugin-native-inference/src/bridge.ts"
-      ],
-      "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap": [
-        "../plugin-native-inference/src/mobile-device-bridge-bootstrap.ts"
-      ],
-      "@elizaos/plugin-computeruse/mobile/ios-bridge": [
-        "../plugin-computeruse/src/mobile/ios-bridge.ts"
-      ],
-      "@elizaos/plugin-coding-tools": [
-        "../plugin-coding-tools/src/index.ts"
-      ],
-      "@elizaos/plugin-coding-tools/*": [
-        "../plugin-coding-tools/src/*"
-      ],
-      "@elizaos/plugin-browser": [
-        "../plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-browser/*": [
-        "../plugin-browser/src/*"
-      ],
-      "@elizaos/plugin-agent-orchestrator/ui": [
-        "../plugin-agent-orchestrator/src/ui/index.ts"
-      ],
-      "@elizaos/plugin-agent-orchestrator/ui/*": [
-        "../plugin-agent-orchestrator/src/ui/*"
-      ],
-      "@elizaos/plugin-health": [
-        "../plugin-health/src/index.ts"
-      ],
-      "@elizaos/plugin-health/*": [
-        "../plugin-health/src/*"
-      ],
-      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
-        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
-      ],
-      "@elizaos/plugin-elizacloud": [
-        "../plugin-elizacloud/src/index.node.ts"
-      ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../plugin-elizacloud/src/*"
-      ],
-      "@elizaos/plugin-workflow": [
-        "../plugin-workflow/src/index.ts"
-      ],
-      "@elizaos/app": [
-        "../../packages/app/src/index.ts"
-      ],
-      "@elizaos/app/*": [
-        "../../packages/app/src/*"
-      ],
-      "@elizaos/ui": [
-        "../../packages/ui/src/index.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../../packages/ui/src/*"
-      ],
-      "@elizaos/auth/vault": [
-        "../../packages/auth/src/vault/index.ts"
-      ],
-      "@elizaos/auth/vault/*": [
-        "../../packages/auth/src/vault/*"
-      ],
-      "@elizaos/cloud-sdk": [
-        "../../packages/cloud/sdk/src/index.ts"
-      ],
-      "@elizaos/cloud-sdk/*": [
-        "../../packages/cloud/sdk/src/*"
-      ],
-      "@elizaos/plugin-wallet": [
-        "../plugin-wallet/src/index.ts"
-      ],
-      "@elizaos/plugin-wallet/*": [
-        "../plugin-wallet/src/*"
-      ],
-      "csstype": [
-        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
-      ],
-      "@elizaos/plugin-native-inference": [
-        "../plugin-native-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/*": [
-        "../plugin-native-inference/src/*"
-      ]
-    }
-  },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/**/__tests__/**",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.e2e.test.ts",
-    "build.ts"
-  ]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"esModuleInterop": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0",
+		"declaration": true,
+		"declarationMap": true,
+		"outDir": "./dist",
+		"rootDir": "../../../",
+		"lib": ["ES2024", "DOM"],
+		"types": ["node"],
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
+		"paths": {
+			"@elizaos/plugin-local-inference": ["./src/index.ts"],
+			"@elizaos/plugin-local-inference/*": ["./src/*"],
+			"@elizaos/core": ["../../packages/core/src/index.ts"],
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/plugin-native-inference/model-catalog": [
+				"../../plugins/plugin-native-inference/src/model-catalog/index.ts"
+			],
+			"@elizaos/plugin-native-inference/model-catalog/*": [
+				"../plugin-native-inference/src/model-catalog/*.ts"
+			],
+			"@elizaos/plugin-native-inference/host-bridge": [
+				"../plugin-native-inference/src/bridge.ts"
+			],
+			"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap": [
+				"../plugin-native-inference/src/mobile-device-bridge-bootstrap.ts"
+			],
+			"@elizaos/plugin-computeruse/mobile/ios-bridge": [
+				"../plugin-computeruse/src/mobile/ios-bridge.ts"
+			],
+			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
+			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
+			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+			"@elizaos/plugin-agent-orchestrator/ui": [
+				"../plugin-agent-orchestrator/src/ui/index.ts"
+			],
+			"@elizaos/plugin-agent-orchestrator/ui/*": [
+				"../plugin-agent-orchestrator/src/ui/*"
+			],
+			"@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
+			"@elizaos/plugin-health/*": ["../plugin-health/src/*"],
+			"@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+				"../plugin-health/src/screen-time/mobile-signal-setup.ts"
+			],
+			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
+			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
+			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
+			"@elizaos/app": ["../../packages/app/src/index.ts"],
+			"@elizaos/app/*": ["../../packages/app/src/*"],
+			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/src/*"],
+			"@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+			"@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
+			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
+			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
+			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
+			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+			"csstype": [
+				"../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+			],
+			"@elizaos/plugin-native-inference": [
+				"../plugin-native-inference/src/index.ts"
+			],
+			"@elizaos/plugin-native-inference/*": [
+				"../plugin-native-inference/src/*"
+			],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.test.tsx",
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts",
+		"build.ts"
+	]
 }

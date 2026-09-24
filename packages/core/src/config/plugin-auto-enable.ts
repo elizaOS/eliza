@@ -7,6 +7,6 @@
  * data, not auto-enable logic.
  */
 export {
-  CONNECTOR_PLUGINS,
-  isConnectorConfigured,
-} from "@elizaos/core/config/plugin-auto-enable-engine";
+	CONNECTOR_PLUGINS,
+	isConnectorConfigured,
+} from "./plugin-auto-enable-engine.js";

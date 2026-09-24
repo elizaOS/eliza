@@ -1,7 +1,7 @@
 /** Barrel for Eliza Cloud helpers: base-URL resolution, provisioning, secrets, reachability, and server-side TTS. */
-export * from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-export * from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
-export * from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
-export * from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-export * from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-export * from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
+export * from "./base-url.js";
+export * from "./cloud-provisioning.js";
+export * from "./cloud-secrets.js";
+export * from "./dev-cloud-env-authority.js";
+export * from "./domain-contract.js";
+export * from "./is-cloud-reachable.js";

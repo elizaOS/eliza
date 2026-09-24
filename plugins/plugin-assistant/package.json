@@ -57,7 +57,8 @@
     "lint:check": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format --write src",
-    "format:check": "bunx @biomejs/biome format src"
+    "format:check": "bunx @biomejs/biome format src",
+    "test:templates": "node --test test/templates/*.test.js"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

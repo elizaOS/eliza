@@ -6,27 +6,27 @@
 export const CLOUD_PAIR_LEGACY_STORAGE_KEY = "eliza:cloud-pair:api-token";
 export const CLOUD_PAIR_SCOPED_STORAGE_PREFIX = `${CLOUD_PAIR_LEGACY_STORAGE_KEY}:`;
 export const CLOUD_PAIR_LOCAL_OWNER_HINT_KEY =
-  "eliza:cloud-pair:local-owner-agent-id";
+	"eliza:cloud-pair:local-owner-agent-id";
 
 const CLOUD_AGENT_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface CloudPairExchangeResponse {
-  message: string;
-  apiKey: string;
-  agentName: string;
-  agentId: string;
+	message: string;
+	apiKey: string;
+	agentName: string;
+	agentId: string;
 }
 
 export interface CloudPairRelaySession {
-  apiKey: string;
-  agentId: string;
-  agentName?: string;
+	apiKey: string;
+	agentId: string;
+	agentName?: string;
 }
 
 /** The dedicated-agent identity format accepted at every pairing boundary. */
 export function isCloudPairAgentId(value: unknown): value is string {
-  return typeof value === "string" && CLOUD_AGENT_ID_PATTERN.test(value);
+	return typeof value === "string" && CLOUD_AGENT_ID_PATTERN.test(value);
 }
 
 /**
@@ -35,38 +35,38 @@ export function isCloudPairAgentId(value: unknown): value is string {
  * non-UUID identifiers through this stable key-builder contract.
  */
 export function cloudPairTokenKeyForAgent(agentId: string): string {
-  return `${CLOUD_PAIR_SCOPED_STORAGE_PREFIX}${agentId}`;
+	return `${CLOUD_PAIR_SCOPED_STORAGE_PREFIX}${agentId}`;
 }
 
 /** True only for HTTP origins whose host is bound to the local machine. */
 export function isCloudPairLoopbackOrigin(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    if (hostname === "localhost" || hostname === "::1") return true;
-    const parts = hostname.split("@elizaos/core/contracts");
-    return (
-      parts.length === 4 &&
-      parts[0] === "127" &&
-      parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
-    );
-  } catch {
-    // error-policy:J3 malformed origins are untrusted input, not loopback.
-    return false;
-  }
+	if (typeof value !== "string") return false;
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+		const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+		if (hostname === "localhost" || hostname === "::1") return true;
+		const parts = hostname.split(".");
+		return (
+			parts.length === 4 &&
+			parts[0] === "127" &&
+			parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+		);
+	} catch {
+		// error-policy:J3 malformed origins are untrusted input, not loopback.
+		return false;
+	}
 }
 
 /** Resolve the platform-owned agent identity injected into a local relay. */
 export function resolveCloudPairAgentIdFromEnv(
-  env: Readonly<Record<string, string | undefined>>,
+	env: Readonly<Record<string, string | undefined>>,
 ): string | null {
-  const candidate =
-    env.ELIZA_CLOUD_AGENT_ID?.trim() ||
-    env.WAIFU_ELIZA_CLOUD_AGENT_ID?.trim() ||
-    "";
-  return isCloudPairAgentId(candidate) ? candidate : null;
+	const candidate =
+		env.ELIZA_CLOUD_AGENT_ID?.trim() ||
+		env.WAIFU_ELIZA_CLOUD_AGENT_ID?.trim() ||
+		"";
+	return isCloudPairAgentId(candidate) ? candidate : null;
 }
 
 /**
@@ -75,18 +75,18 @@ export function resolveCloudPairAgentIdFromEnv(
  * bearer bytes inert inside the script element.
  */
 export function renderCloudPairHandoffHtml(
-  apiKey: string,
-  agentId: string,
+	apiKey: string,
+	agentId: string,
 ): string {
-  const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
-  const safeAgentId = JSON.stringify(agentId).replace(/</g, "\\u003c");
-  const safeStorageKey = JSON.stringify(
-    cloudPairTokenKeyForAgent(agentId),
-  ).replace(/</g, "\\u003c");
-  const safeOwnerHintKey = JSON.stringify(
-    CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
-  ).replace(/</g, "\\u003c");
-  return `<!doctype html>
+	const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
+	const safeAgentId = JSON.stringify(agentId).replace(/</g, "\\u003c");
+	const safeStorageKey = JSON.stringify(
+		cloudPairTokenKeyForAgent(agentId),
+	).replace(/</g, "\\u003c");
+	const safeOwnerHintKey = JSON.stringify(
+		CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+	).replace(/</g, "\\u003c");
+	return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -157,26 +157,26 @@ export function renderCloudPairHandoffHtml(
 
 /** Validate the successful dependency payload before a relay writes a bearer. */
 export function parseCloudPairRelaySession(
-  value: unknown,
+	value: unknown,
 ): CloudPairRelaySession | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
 
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.apiKey !== "string" ||
-    !record.apiKey.trim() ||
-    !isCloudPairAgentId(record.agentId)
-  ) {
-    return null;
-  }
+	const record = value as Record<string, unknown>;
+	if (
+		typeof record.apiKey !== "string" ||
+		!record.apiKey.trim() ||
+		!isCloudPairAgentId(record.agentId)
+	) {
+		return null;
+	}
 
-  return {
-    apiKey: record.apiKey,
-    agentId: record.agentId,
-    ...(typeof record.agentName === "string"
-      ? { agentName: record.agentName }
-      : {}),
-  };
+	return {
+		apiKey: record.apiKey,
+		agentId: record.agentId,
+		...(typeof record.agentName === "string"
+			? { agentName: record.agentName }
+			: {}),
+	};
 }

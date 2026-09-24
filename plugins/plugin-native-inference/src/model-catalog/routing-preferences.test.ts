@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readRoutingPreferences,
   setTextRouting,
-} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
+} from "./routing-preferences.js";
 
 describe("routing preference persistence", () => {
   const previousStateDir = process.env.ELIZA_STATE_DIR;

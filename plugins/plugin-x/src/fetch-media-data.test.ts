@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchMediaData } from "./utils";
 
 vi.mock("@elizaos/core/media", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../packages/core/src/media/index.ts")>();
+  const actual = await importOriginal<typeof import("@elizaos/core/media")>();
   return {
     ...actual,
     fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia),

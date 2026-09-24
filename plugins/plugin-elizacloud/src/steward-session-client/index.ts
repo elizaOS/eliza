@@ -12,7 +12,7 @@
  * Browser-only helpers return cleanly under SSR (`typeof window === "undefined"`).
  */
 
-import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { classifyElizaHostname } from "../cloud-config/domain-contract.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -234,7 +234,7 @@ export interface StewardSessionResponse {
   welcomeBonusWithheld?: boolean;
   // Mirrors `SignupGrantWithheldReason` in
   // packages/cloud/shared/src/lib/services/signup-grant-guard.ts (the source of
-  // truth). Kept as an inline literal union because `packages/shared` cannot
+  // truth). Kept as an inline literal union because `packages/core` cannot
   // depend on `packages/cloud/shared`; keep in sync when reasons are added.
   welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
   welcomeBonusWithheldMessage?: string;
@@ -676,7 +676,7 @@ export {
   type StewardOAuthProvider,
   type StewardPkcePair,
   storeStewardPkceVerifier,
-} from "@elizaos/plugin-elizacloud/steward-session-client/steward-oauth-pkce";
+} from "./steward-oauth-pkce.js";
 
 export function clearStewardSession(opts: ClearOpts = {}): void {
   const endpoints = opts.endpoints ?? [STEWARD_SESSION_ENDPOINT];

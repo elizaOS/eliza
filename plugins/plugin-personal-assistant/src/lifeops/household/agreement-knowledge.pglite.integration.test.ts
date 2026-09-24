@@ -29,6 +29,8 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   createDocumentsPlugin,
   DocumentService,
@@ -41,8 +43,6 @@ import {
   registerScheduledTaskChannelDispatcher,
   unregisterScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   afterAll,
   afterEach,

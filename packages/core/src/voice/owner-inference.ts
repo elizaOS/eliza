@@ -20,34 +20,34 @@
 
 /** One recognized voice turn: which enrolled/clustered speaker, how confident. */
 export interface OwnerObservation {
-  /** The entity/cluster the recognized voice resolved to (null = unrecognized). */
-  entityId: string | null;
-  /** Recognition confidence 0..1 (cosine-rescaled by the attribution pipeline). */
-  confidence: number;
+	/** The entity/cluster the recognized voice resolved to (null = unrecognized). */
+	entityId: string | null;
+	/** Recognition confidence 0..1 (cosine-rescaled by the attribution pipeline). */
+	confidence: number;
 }
 
 export interface OwnerInferenceOptions {
-  /** Minimum qualifying observations before any candidate is proposed. */
-  minObservations?: number;
-  /** Confidence floor; observations below it don't count toward a candidate. */
-  minConfidence?: number;
-  /**
-   * Minimum lead (in confidence-weighted score) the top speaker must hold over
-   * the runner-up to be unambiguous. Prevents naming an owner in a two-equals
-   * household.
-   */
-  minMargin?: number;
+	/** Minimum qualifying observations before any candidate is proposed. */
+	minObservations?: number;
+	/** Confidence floor; observations below it don't count toward a candidate. */
+	minConfidence?: number;
+	/**
+	 * Minimum lead (in confidence-weighted score) the top speaker must hold over
+	 * the runner-up to be unambiguous. Prevents naming an owner in a two-equals
+	 * household.
+	 */
+	minMargin?: number;
 }
 
 export interface OwnerInferenceResult {
-  /** The proposed owner entity, or null when the evidence is insufficient. */
-  ownerEntityId: string | null;
-  /** Confidence-weighted share of the proposed owner (0..1), 0 when undecided. */
-  share: number;
-  /** Number of qualifying (confident, recognized) observations considered. */
-  qualifyingObservations: number;
-  /** Why the function decided / declined — surfaced for the provider's logs. */
-  reason: string;
+	/** The proposed owner entity, or null when the evidence is insufficient. */
+	ownerEntityId: string | null;
+	/** Confidence-weighted share of the proposed owner (0..1), 0 when undecided. */
+	share: number;
+	/** Number of qualifying (confident, recognized) observations considered. */
+	qualifyingObservations: number;
+	/** Why the function decided / declined — surfaced for the provider's logs. */
+	reason: string;
 }
 
 const DEFAULT_MIN_OBSERVATIONS = 3;
@@ -55,9 +55,9 @@ const DEFAULT_MIN_CONFIDENCE = 0.7;
 const DEFAULT_MIN_MARGIN = 1;
 
 function assertUnitInterval(value: number, name: string): void {
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    throw new RangeError(`${name} must be a finite number between 0 and 1`);
-  }
+	if (!Number.isFinite(value) || value < 0 || value > 1) {
+		throw new RangeError(`${name} must be a finite number between 0 and 1`);
+	}
 }
 
 /**
@@ -72,69 +72,69 @@ function assertUnitInterval(value: number, name: string): void {
  * @throws {TypeError} When a recognized observation has an empty entity id.
  */
 export function resolveOwnerCandidate(
-  observations: ReadonlyArray<OwnerObservation>,
-  options: OwnerInferenceOptions = {},
+	observations: ReadonlyArray<OwnerObservation>,
+	options: OwnerInferenceOptions = {},
 ): OwnerInferenceResult {
-  const minObservations = options.minObservations ?? DEFAULT_MIN_OBSERVATIONS;
-  const minConfidence = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
-  const minMargin = options.minMargin ?? DEFAULT_MIN_MARGIN;
+	const minObservations = options.minObservations ?? DEFAULT_MIN_OBSERVATIONS;
+	const minConfidence = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+	const minMargin = options.minMargin ?? DEFAULT_MIN_MARGIN;
 
-  if (!Number.isSafeInteger(minObservations) || minObservations <= 0) {
-    throw new RangeError("minObservations must be a positive safe integer");
-  }
-  assertUnitInterval(minConfidence, "minConfidence");
-  if (!Number.isFinite(minMargin) || minMargin < 0) {
-    throw new RangeError("minMargin must be a finite non-negative number");
-  }
+	if (!Number.isSafeInteger(minObservations) || minObservations <= 0) {
+		throw new RangeError("minObservations must be a positive safe integer");
+	}
+	assertUnitInterval(minConfidence, "minConfidence");
+	if (!Number.isFinite(minMargin) || minMargin < 0) {
+		throw new RangeError("minMargin must be a finite non-negative number");
+	}
 
-  const scores = new Map<string, number>();
-  let qualifying = 0;
-  let totalScore = 0;
-  for (const [index, obs] of observations.entries()) {
-    assertUnitInterval(obs.confidence, `observations[${index}].confidence`);
-    if (obs.entityId === null) continue;
-    if (obs.entityId.trim().length === 0) {
-      throw new TypeError(
-        `observations[${index}].entityId must be null or a non-empty string`,
-      );
-    }
-    if (!(obs.confidence >= minConfidence)) continue;
-    qualifying += 1;
-    const next = (scores.get(obs.entityId) ?? 0) + obs.confidence;
-    scores.set(obs.entityId, next);
-    totalScore += obs.confidence;
-  }
+	const scores = new Map<string, number>();
+	let qualifying = 0;
+	let totalScore = 0;
+	for (const [index, obs] of observations.entries()) {
+		assertUnitInterval(obs.confidence, `observations[${index}].confidence`);
+		if (obs.entityId === null) continue;
+		if (obs.entityId.trim().length === 0) {
+			throw new TypeError(
+				`observations[${index}].entityId must be null or a non-empty string`,
+			);
+		}
+		if (!(obs.confidence >= minConfidence)) continue;
+		qualifying += 1;
+		const next = (scores.get(obs.entityId) ?? 0) + obs.confidence;
+		scores.set(obs.entityId, next);
+		totalScore += obs.confidence;
+	}
 
-  if (qualifying < minObservations) {
-    return {
-      ownerEntityId: null,
-      share: 0,
-      qualifyingObservations: qualifying,
-      reason: `insufficient evidence (${qualifying}/${minObservations} confident observations)`,
-    };
-  }
+	if (qualifying < minObservations) {
+		return {
+			ownerEntityId: null,
+			share: 0,
+			qualifyingObservations: qualifying,
+			reason: `insufficient evidence (${qualifying}/${minObservations} confident observations)`,
+		};
+	}
 
-  const ranked = [...scores.entries()].sort((a, b) => {
-    const bScore = typeof b[1] === "number" && Number.isFinite(b[1]) ? b[1] : 0;
-    const aScore = typeof a[1] === "number" && Number.isFinite(a[1]) ? a[1] : 0;
-    return bScore - aScore || a[0].localeCompare(b[0]);
-  });
-  const [topId, topScore] = ranked[0];
-  const runnerUpScore = ranked[1]?.[1] ?? 0;
-  const lead = topScore - runnerUpScore;
-  if (lead <= 0 || lead < minMargin) {
-    return {
-      ownerEntityId: null,
-      share: totalScore > 0 ? topScore / totalScore : 0,
-      qualifyingObservations: qualifying,
-      reason: `ambiguous lead (top ${topScore.toFixed(2)} vs runner-up ${runnerUpScore.toFixed(2)}, required margin ${minMargin})`,
-    };
-  }
+	const ranked = [...scores.entries()].sort((a, b) => {
+		const bScore = typeof b[1] === "number" && Number.isFinite(b[1]) ? b[1] : 0;
+		const aScore = typeof a[1] === "number" && Number.isFinite(a[1]) ? a[1] : 0;
+		return bScore - aScore || a[0].localeCompare(b[0]);
+	});
+	const [topId, topScore] = ranked[0];
+	const runnerUpScore = ranked[1]?.[1] ?? 0;
+	const lead = topScore - runnerUpScore;
+	if (lead <= 0 || lead < minMargin) {
+		return {
+			ownerEntityId: null,
+			share: totalScore > 0 ? topScore / totalScore : 0,
+			qualifyingObservations: qualifying,
+			reason: `ambiguous lead (top ${topScore.toFixed(2)} vs runner-up ${runnerUpScore.toFixed(2)}, required margin ${minMargin})`,
+		};
+	}
 
-  return {
-    ownerEntityId: topId,
-    share: totalScore > 0 ? topScore / totalScore : 0,
-    qualifyingObservations: qualifying,
-    reason: `dominant speaker (${topScore.toFixed(2)} of ${totalScore.toFixed(2)} over ${qualifying} observations)`,
-  };
+	return {
+		ownerEntityId: topId,
+		share: totalScore > 0 ? topScore / totalScore : 0,
+		qualifyingObservations: qualifying,
+		reason: `dominant speaker (${topScore.toFixed(2)} of ${totalScore.toFixed(2)} over ${qualifying} observations)`,
+	};
 }

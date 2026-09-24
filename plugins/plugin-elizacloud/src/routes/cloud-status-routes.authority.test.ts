@@ -1,4 +1,4 @@
-import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { captureDevCloudEnvAuthoritySnapshot, resetDevCloudEnvAuthorityForTests } from "../cloud-config/dev-cloud-env-authority.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resolveCloudApiKeysUrl,

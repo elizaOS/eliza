@@ -1,17 +1,22 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "declaration": true,
-    "declarationMap": false,
-    "rewriteRelativeImportExtensions": true,
-    "paths": {
-      "@elizaos/core": ["./src/index.ts"],
-      "@elizaos/core/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.fixture.ts", "src/**/fixtures/**"]
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"rootDir": "./src",
+		"outDir": "./dist",
+		"declaration": true,
+		"declarationMap": false,
+		"rewriteRelativeImportExtensions": true,
+		"paths": {
+			"@elizaos/core": ["./src/index.ts"],
+			"@elizaos/core/*": ["./src/*"]
+		}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": [
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.fixture.ts",
+		"src/**/fixtures/**"
+	]
 }

@@ -4,287 +4,452 @@
  * panel exposes an agent-addressable activation control. An unsigned-in
  * Cloud panel signs the user in rather than pretending the route is live.
  */
-import { AccountList } from "../accounts/AccountList";
-import { Alert } from "../ui/alert";
-import { AlertDescription } from "../ui/alert";
-import { ApiKeyConfig } from "./ApiKeyConfig";
-import { Button } from "../ui/button";
-import { Cloud } from "lucide-react";
-import { Cpu } from "lucide-react";
-import { KeyRound } from "lucide-react";
-import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
-import { LogIn } from "lucide-react";
-import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
-import { SettingsActionButton } from "./settings-agent-rows";
-import { ShieldCheck } from "lucide-react";
-import { openExternalUrl } from "../../utils/openExternalUrl";
-import { servingProviderLabel } from "./resolveServingAxes";
-import { type CloudModelSchema } from "./cloud-model-schema";
-import { type ComponentType } from "react";
-import { type ModelOption } from "@elizaos/core/contracts/first-run-options";
-import { type PluginInfo } from "./useProviderEntries";
-import { type ReactNode } from "react";
-import { type SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
-import { type ServingAxes } from "./resolveServingAxes";
-import { type SubscriptionProviderSelectionId } from "../../providers";
+
+import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
+import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
+import { type ComponentType, type ReactNode, useState } from "react";
+import type {
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
+  SubscriptionProviderSelectionId,
+} from "../../providers";
 import { useAppSelector } from "../../state";
-import { useState } from "react";
-type SubscriptionProviderSelection = (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
+import { openExternalUrl } from "../../utils/openExternalUrl";
+import { AccountList } from "../accounts/AccountList";
+import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Button } from "../ui/button";
+import { ApiKeyConfig } from "./ApiKeyConfig";
+import type { CloudModelSchema } from "./cloud-model-schema";
+import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
+import { type ServingAxes, servingProviderLabel } from "./resolveServingAxes";
+import { SettingsActionButton } from "./settings-agent-rows";
+import type { PluginInfo } from "./useProviderEntries";
+
+type SubscriptionProviderSelection =
+  (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
 /**
  * Unsigned Cloud is an account fact, not a serving-source fact. Keep its copy
  * aligned with the same live serving axes used by the Intelligence summary so
  * a working direct provider is never mislabeled as Local.
  */
-export function describeUnsignedCloudChat(axes: ServingAxes, t: Translate, surface: "panel" | "tile"): string {
-    if (axes.inference === "external") {
-        const provider = servingProviderLabel(axes.activeChatProvider) || "an external provider";
-        return surface === "tile"
-            ? t("providerswitcher.cloudTileUnsignedExternalDescription", {
-                defaultValue: `Sign in to use managed models. Chat replies keep using ${provider} until then.`,
-                provider,
-            })
-            : t("providerpanels.cloudUnsignedUsingExternal", {
-                defaultValue: `Eliza Cloud isn't signed in. Chat replies are using ${provider}.`,
-                provider,
-            });
-    }
-    if (axes.inference === "local") {
-        return surface === "tile"
-            ? t("providerswitcher.cloudTileUnsignedDescription", {
-                defaultValue: "Sign in to use managed models. Chat replies use Local until then.",
-            })
-            : t("providerpanels.cloudUnsignedUsingLocal", {
-                defaultValue: "Eliza Cloud isn't signed in. Chat replies are using Local.",
-            });
-    }
+export function describeUnsignedCloudChat(
+  axes: ServingAxes,
+  t: Translate,
+  surface: "panel" | "tile",
+): string {
+  if (axes.inference === "external") {
+    const provider =
+      servingProviderLabel(axes.activeChatProvider) || "an external provider";
     return surface === "tile"
-        ? t("providerswitcher.cloudTileUnsignedCurrentDescription", {
-            defaultValue: "Sign in to use managed models. Your current chat provider stays unchanged until then.",
+      ? t("providerswitcher.cloudTileUnsignedExternalDescription", {
+          defaultValue: `Sign in to use managed models. Chat replies keep using ${provider} until then.`,
+          provider,
         })
-        : t("providerpanels.cloudUnsignedCurrentProvider", {
-            defaultValue: "Eliza Cloud isn't signed in. Your current chat provider stays unchanged.",
+      : t("providerpanels.cloudUnsignedUsingExternal", {
+          defaultValue: `Eliza Cloud isn't signed in. Chat replies are using ${provider}.`,
+          provider,
         });
+  }
+  if (axes.inference === "local") {
+    return surface === "tile"
+      ? t("providerswitcher.cloudTileUnsignedDescription", {
+          defaultValue:
+            "Sign in to use managed models. Chat replies use Local until then.",
+        })
+      : t("providerpanels.cloudUnsignedUsingLocal", {
+          defaultValue:
+            "Eliza Cloud isn't signed in. Chat replies are using Local.",
+        });
+  }
+  return surface === "tile"
+    ? t("providerswitcher.cloudTileUnsignedCurrentDescription", {
+        defaultValue:
+          "Sign in to use managed models. Your current chat provider stays unchanged until then.",
+      })
+    : t("providerpanels.cloudUnsignedCurrentProvider", {
+        defaultValue:
+          "Eliza Cloud isn't signed in. Your current chat provider stays unchanged.",
+      });
 }
-function ProviderPanelHeader({ icon: Icon, title, children, }: {
-    icon: ComponentType<{
-        className?: string;
-        "aria-hidden"?: boolean;
-    }>;
-    title: string;
-    children?: ReactNode;
+function ProviderPanelHeader({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: ComponentType<{
+    className?: string;
+    "aria-hidden"?: boolean;
+  }>;
+  title: string;
+  children?: ReactNode;
 }) {
-    return (<header className="flex min-h-[3rem] flex-wrap items-center justify-between gap-2 py-2.5">
+  return (
+    <header className="flex min-h-[3rem] flex-wrap items-center justify-between gap-2 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
-        <Icon className="size-[18px] shrink-0 text-muted/80" aria-hidden/>
+        <Icon className="size-[18px] shrink-0 text-muted/80" aria-hidden />
         <h3 className="truncate text-sm font-medium leading-5 text-txt-strong">
           {title}
         </h3>
       </div>
       {children ? <div className="shrink-0">{children}</div> : null}
-    </header>);
+    </header>
+  );
 }
-export function LocalProviderPanel({ cloudCallsDisabled, routingModeSaving, onSelectLocalOnly, runtime, servingFallback = false, }: {
-    cloudCallsDisabled: boolean;
-    routingModeSaving: boolean;
-    onSelectLocalOnly: () => void;
-    runtime: ServingAxes["runtime"];
-    /** Cloud is configured but unsigned-in, so Local is answering chat. */
-    servingFallback?: boolean;
+export function LocalProviderPanel({
+  cloudCallsDisabled,
+  routingModeSaving,
+  onSelectLocalOnly,
+  runtime,
+  servingFallback = false,
+}: {
+  cloudCallsDisabled: boolean;
+  routingModeSaving: boolean;
+  onSelectLocalOnly: () => void;
+  runtime: ServingAxes["runtime"];
+  /** Cloud is configured but unsigned-in, so Local is answering chat. */
+  servingFallback?: boolean;
 }) {
-    const t = useAppSelector((s) => s.t);
-    const remoteRuntime = runtime === "remote";
-    return (<div className={remoteRuntime ? "min-w-0" : "min-h-[28rem] min-w-0 sm:min-h-[32rem]"}>
-      <ProviderPanelHeader icon={Cpu} title={t("providerpanels.localProvider", {
-            defaultValue: "Local provider",
-        })}>
-        <SettingsActionButton agentId="local-use-local-only" agentStatus={cloudCallsDisabled ? "active" : undefined} type="button" variant={cloudCallsDisabled ? "default" : "outline"} className="h-9 rounded-md px-3 text-xs font-medium" disabled={routingModeSaving} aria-label={cloudCallsDisabled
-            ? t("providerpanels.localOnlyActive", {
-                defaultValue: "Local only active",
-            })
-            : t("providerpanels.useLocalOnly", {
-                defaultValue: "Use local only",
-            })} onClick={onSelectLocalOnly}>
-          <ShieldCheck className="size-4" aria-hidden/>
+  const t = useAppSelector((s) => s.t);
+  const remoteRuntime = runtime === "remote";
+  return (
+    <div
+      className={
+        remoteRuntime ? "min-w-0" : "min-h-[28rem] min-w-0 sm:min-h-[32rem]"
+      }
+    >
+      <ProviderPanelHeader
+        icon={Cpu}
+        title={t("providerpanels.localProvider", {
+          defaultValue: "Local provider",
+        })}
+      >
+        <SettingsActionButton
+          agentId="local-use-local-only"
+          agentStatus={cloudCallsDisabled ? "active" : undefined}
+          type="button"
+          variant={cloudCallsDisabled ? "default" : "outline"}
+          className="h-9 rounded-md px-3 text-xs font-medium"
+          disabled={routingModeSaving}
+          aria-label={
+            cloudCallsDisabled
+              ? t("providerpanels.localOnlyActive", {
+                  defaultValue: "Local only active",
+                })
+              : t("providerpanels.useLocalOnly", {
+                  defaultValue: "Use local only",
+                })
+          }
+          onClick={onSelectLocalOnly}
+        >
+          <ShieldCheck className="size-4" aria-hidden />
           {t("providerpanels.localOnly", { defaultValue: "Local only" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
       <div className="p-3 sm:px-4">
-        {servingFallback ? (<div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
+        {servingFallback ? (
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localFallbackBecauseCloudUnsigned", {
-                defaultValue: "Answering chat because Eliza Cloud isn't signed in.",
+              defaultValue:
+                "Answering chat because Eliza Cloud isn't signed in.",
             })}
-          </div>) : null}
-        {remoteRuntime ? (<p className="text-sm text-muted">
+          </div>
+        ) : null}
+        {remoteRuntime ? (
+          <p className="text-sm text-muted">
             {t("providerpanels.remoteHostReady", {
-                defaultValue: "Ready on your remote host.",
+              defaultValue: "Ready on your remote host.",
             })}
-          </p>) : (<LocalInferencePanel />)}
+          </p>
+        ) : (
+          <LocalInferencePanel />
+        )}
       </div>
-    </div>);
+    </div>
+  );
 }
 export interface CloudPanelProps {
-    cloudCallsDisabled: boolean;
-    isCloudSelected: boolean;
-    routingModeSaving: boolean;
-    onSelectCloud: () => void;
-    /** Opens the interactive Cloud login when the account is unsigned-in. */
-    onSignIn: () => void;
-    elizaCloudConnected: boolean;
-    largeModelOptions: ModelOption[];
-    cloudModelSchema: CloudModelSchema | null;
-    modelValues: {
-        values: Record<string, unknown>;
-        setKeys: Set<string>;
-    };
-    currentLargeModel: string;
-    modelSaving: boolean;
-    modelSaveSuccess: boolean;
-    onModelFieldChange: (key: string, value: unknown) => void;
-    servingAxes: ServingAxes;
+  cloudCallsDisabled: boolean;
+  isCloudSelected: boolean;
+  routingModeSaving: boolean;
+  onSelectCloud: () => void;
+  /** Opens the interactive Cloud login when the account is unsigned-in. */
+  onSignIn: () => void;
+  elizaCloudConnected: boolean;
+  largeModelOptions: ModelOption[];
+  cloudModelSchema: CloudModelSchema | null;
+  modelValues: {
+    values: Record<string, unknown>;
+    setKeys: Set<string>;
+  };
+  currentLargeModel: string;
+  modelSaving: boolean;
+  modelSaveSuccess: boolean;
+  onModelFieldChange: (key: string, value: unknown) => void;
+  servingAxes: ServingAxes;
 }
-export function CloudPanel({ cloudCallsDisabled, isCloudSelected, routingModeSaving, onSelectCloud, onSignIn, elizaCloudConnected, largeModelOptions, cloudModelSchema, modelValues, currentLargeModel, modelSaving, modelSaveSuccess, onModelFieldChange, servingAxes, }: CloudPanelProps) {
-    const t = useAppSelector((s) => s.t);
-    const loginBusy = useAppSelector((s) => s.elizaCloudLoginBusy);
-    const loginError = useAppSelector((s) => s.elizaCloudLoginError);
-    const loginUrl = useAppSelector((s) => s.elizaCloudLoginFallbackUrl);
-    const setActionNotice = useAppSelector((s) => s.setActionNotice);
-    const [reopening, setReopening] = useState(false);
-    const reopenSignIn = async () => {
-        if (!loginUrl || reopening)
-            return;
-        setReopening(true);
-        const reportFailure = () => setActionNotice(t("providerpanels.browserReopenFailed", {
-            defaultValue: "Couldn't open the sign-in browser. Try again.",
-        }), "error");
-        try {
-            if (!(await openExternalUrl(loginUrl)))
-                reportFailure();
-        }
-        catch {
-            // error-policy:J4 Browser handoff failure remains a visible, retryable notice.
-            reportFailure();
-        }
-        finally {
-            setReopening(false);
-        }
-    };
-    const cloudActive = !cloudCallsDisabled && isCloudSelected && elizaCloudConnected;
-    const needsSignIn = !elizaCloudConnected;
-    return (<div className="min-w-0">
+export function CloudPanel({
+  cloudCallsDisabled,
+  isCloudSelected,
+  routingModeSaving,
+  onSelectCloud,
+  onSignIn,
+  elizaCloudConnected,
+  largeModelOptions,
+  cloudModelSchema,
+  modelValues,
+  currentLargeModel,
+  modelSaving,
+  modelSaveSuccess,
+  onModelFieldChange,
+  servingAxes,
+}: CloudPanelProps) {
+  const t = useAppSelector((s) => s.t);
+  const loginBusy = useAppSelector((s) => s.elizaCloudLoginBusy);
+  const loginError = useAppSelector((s) => s.elizaCloudLoginError);
+  const loginUrl = useAppSelector((s) => s.elizaCloudLoginFallbackUrl);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const [reopening, setReopening] = useState(false);
+  const reopenSignIn = async () => {
+    if (!loginUrl || reopening) return;
+    setReopening(true);
+    const reportFailure = () =>
+      setActionNotice(
+        t("providerpanels.browserReopenFailed", {
+          defaultValue: "Couldn't open the sign-in browser. Try again.",
+        }),
+        "error",
+      );
+    try {
+      if (!(await openExternalUrl(loginUrl))) reportFailure();
+    } catch {
+      // error-policy:J4 Browser handoff failure remains a visible, retryable notice.
+      reportFailure();
+    } finally {
+      setReopening(false);
+    }
+  };
+  const cloudActive =
+    !cloudCallsDisabled && isCloudSelected && elizaCloudConnected;
+  const needsSignIn = !elizaCloudConnected;
+  return (
+    <div className="min-w-0">
       <ProviderPanelHeader icon={Cloud} title="Eliza Cloud">
-        <SettingsActionButton agentId={needsSignIn ? "cloud-sign-in" : "cloud-use-cloud"} agentStatus={cloudActive ? "active" : undefined} agentLabel={needsSignIn
-            ? t("providerpanels.signInToCloud", {
-                defaultValue: "Sign in to Eliza Cloud",
-            })
-            : cloudActive
+        <SettingsActionButton
+          agentId={needsSignIn ? "cloud-sign-in" : "cloud-use-cloud"}
+          agentStatus={cloudActive ? "active" : undefined}
+          agentLabel={
+            needsSignIn
+              ? t("providerpanels.signInToCloud", {
+                  defaultValue: "Sign in to Eliza Cloud",
+                })
+              : cloudActive
                 ? t("providerpanels.cloudActive", {
                     defaultValue: "Cloud active",
-                })
+                  })
                 : t("providerpanels.useCloud", {
                     defaultValue: "Use Eliza Cloud",
-                })} type="button" variant={cloudActive || needsSignIn ? "default" : "outline"} className="h-9 rounded-md px-3 text-xs font-medium" disabled={routingModeSaving || loginBusy} aria-label={needsSignIn
-            ? t("providerpanels.signInToCloud", {
-                defaultValue: "Sign in to Eliza Cloud",
-            })
-            : cloudActive
+                  })
+          }
+          type="button"
+          variant={cloudActive || needsSignIn ? "default" : "outline"}
+          className="h-9 rounded-md px-3 text-xs font-medium"
+          disabled={routingModeSaving || loginBusy}
+          aria-label={
+            needsSignIn
+              ? t("providerpanels.signInToCloud", {
+                  defaultValue: "Sign in to Eliza Cloud",
+                })
+              : cloudActive
                 ? t("providerpanels.cloudActive", {
                     defaultValue: "Cloud active",
-                })
+                  })
                 : t("providerpanels.useCloud", {
                     defaultValue: "Use Eliza Cloud",
-                })} onClick={needsSignIn ? onSignIn : onSelectCloud}>
-          {needsSignIn ? (<LogIn className="size-4" aria-hidden/>) : (<Cloud className="size-4" aria-hidden/>)}
+                  })
+          }
+          onClick={needsSignIn ? onSignIn : onSelectCloud}
+        >
+          {needsSignIn ? (
+            <LogIn className="size-4" aria-hidden />
+          ) : (
+            <Cloud className="size-4" aria-hidden />
+          )}
           {needsSignIn
             ? t("providerpanels.signIn", { defaultValue: "Sign in" })
             : t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
-      {loginError ? (<Alert variant="destructive">
+      {loginError ? (
+        <Alert variant="destructive">
           <AlertDescription>{loginError}</AlertDescription>
-        </Alert>) : loginBusy ? (<Alert role="status" aria-busy="true">
+        </Alert>
+      ) : loginBusy ? (
+        <Alert role="status" aria-busy="true">
           <AlertDescription>
             {loginUrl
-                ? t("providerpanels.waitingForBrowserSignIn", {
-                    defaultValue: "Complete sign-in in your browser.",
+              ? t("providerpanels.waitingForBrowserSignIn", {
+                  defaultValue: "Complete sign-in in your browser.",
                 })
-                : t("providerpanels.openingCloudSignIn", {
-                    defaultValue: "Opening Cloud sign-in…",
+              : t("providerpanels.openingCloudSignIn", {
+                  defaultValue: "Opening Cloud sign-in…",
                 })}
-            {loginUrl ? (<Button variant="outline" size="sm" className="mt-2" disabled={reopening} onClick={() => void reopenSignIn()}>
+            {loginUrl ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={reopening}
+                onClick={() => void reopenSignIn()}
+              >
                 {t("providerpanels.reopenSignIn", {
-                    defaultValue: "Reopen sign-in",
+                  defaultValue: "Reopen sign-in",
                 })}
-              </Button>) : null}
+              </Button>
+            ) : null}
           </AlertDescription>
-        </Alert>) : null}
-      {needsSignIn ? (<div className="p-3 sm:px-4">
+        </Alert>
+      ) : null}
+      {needsSignIn ? (
+        <div className="p-3 sm:px-4">
           <div className="rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {describeUnsignedCloudChat(servingAxes, t, "panel")}
           </div>
-        </div>) : (<ProviderRoutingPanel largeModelOptions={largeModelOptions} cloudModelSchema={cloudModelSchema} modelValues={modelValues} currentLargeModel={currentLargeModel} modelSaving={modelSaving} modelSaveSuccess={modelSaveSuccess} onModelFieldChange={onModelFieldChange} showCloudControls={cloudActive} elizaCloudConnected={elizaCloudConnected}/>)}
-    </div>);
+        </div>
+      ) : (
+        <ProviderRoutingPanel
+          largeModelOptions={largeModelOptions}
+          cloudModelSchema={cloudModelSchema}
+          modelValues={modelValues}
+          currentLargeModel={currentLargeModel}
+          modelSaving={modelSaving}
+          modelSaveSuccess={modelSaveSuccess}
+          onModelFieldChange={onModelFieldChange}
+          showCloudControls={cloudActive}
+          elizaCloudConnected={elizaCloudConnected}
+        />
+      )}
+    </div>
+  );
 }
 export interface SubscriptionPanelProps {
-    selection: SubscriptionProviderSelection;
-    visibleProviderPanelId: string;
-    resolvedSelectedId: string | null;
-    cloudCallsDisabled: boolean;
-    onSelectSubscription: (providerId: SubscriptionProviderSelectionId, activate?: boolean) => Promise<void>;
+  selection: SubscriptionProviderSelection;
+  visibleProviderPanelId: string;
+  resolvedSelectedId: string | null;
+  cloudCallsDisabled: boolean;
+  onSelectSubscription: (
+    providerId: SubscriptionProviderSelectionId,
+    activate?: boolean,
+  ) => Promise<void>;
 }
-export function SubscriptionPanel({ selection, visibleProviderPanelId, resolvedSelectedId, cloudCallsDisabled, onSelectSubscription, }: SubscriptionPanelProps) {
-    const t = useAppSelector((s) => s.t);
-    const showUseButton = cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
-    return (<div className="min-w-0">
-      <ProviderPanelHeader icon={KeyRound} title={t(selection.labelKey, { defaultValue: selection.id })}>
-        {showUseButton ? (<SettingsActionButton agentId={`sub-use-${selection.id}`} type="button" variant="outline" className="h-9 rounded-md px-3 text-xs font-medium" onClick={() => void onSelectSubscription(selection.id)}>
+export function SubscriptionPanel({
+  selection,
+  visibleProviderPanelId,
+  resolvedSelectedId,
+  cloudCallsDisabled,
+  onSelectSubscription,
+}: SubscriptionPanelProps) {
+  const t = useAppSelector((s) => s.t);
+  const showUseButton =
+    cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
+  return (
+    <div className="min-w-0">
+      <ProviderPanelHeader
+        icon={KeyRound}
+        title={t(selection.labelKey, { defaultValue: selection.id })}
+      >
+        {showUseButton ? (
+          <SettingsActionButton
+            agentId={`sub-use-${selection.id}`}
+            type="button"
+            variant="outline"
+            className="h-9 rounded-md px-3 text-xs font-medium"
+            onClick={() => void onSelectSubscription(selection.id)}
+          >
             {t("providerpanels.useSubscription", {
-                defaultValue: "Use subscription",
+              defaultValue: "Use subscription",
             })}
-          </SettingsActionButton>) : null}
+          </SettingsActionButton>
+        ) : null}
       </ProviderPanelHeader>
       <div className="p-3 sm:px-4">
-        {cloudCallsDisabled ? (<div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
+        {cloudCallsDisabled ? (
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlySubscriptionPaused", {
-                defaultValue: "Local only is active. Remote routing is paused.",
+              defaultValue: "Local only is active. Remote routing is paused.",
             })}
-          </div>) : null}
+          </div>
+        ) : null}
         <p className="mb-2 text-xs text-muted">
           Add and manage subscription accounts below. Login state is preserved
           while an external browser or device authorization is active.
         </p>
-        <AccountList providerId={selection.storedProvider}/>
+        <AccountList providerId={selection.storedProvider} />
       </div>
-    </div>);
+    </div>
+  );
 }
 export interface ApiKeyPanelProps {
-    selectedProvider: PluginInfo;
-    panelLabel: string;
-    visibleProviderPanelId: string;
-    resolvedSelectedId: string | null;
-    cloudCallsDisabled: boolean;
-    onSwitchProvider: (id: string) => void;
-    pluginSaving: Set<string>;
-    pluginSaveSuccess: Set<string>;
-    handlePluginConfigSave: (pluginId: string, values: Record<string, string>) => void;
-    loadPlugins: () => Promise<void>;
+  selectedProvider: PluginInfo;
+  panelLabel: string;
+  visibleProviderPanelId: string;
+  resolvedSelectedId: string | null;
+  cloudCallsDisabled: boolean;
+  onSwitchProvider: (id: string) => void;
+  pluginSaving: Set<string>;
+  pluginSaveSuccess: Set<string>;
+  handlePluginConfigSave: (
+    pluginId: string,
+    values: Record<string, string>,
+  ) => void;
+  loadPlugins: () => Promise<void>;
 }
-export function ApiKeyPanel({ selectedProvider, panelLabel, visibleProviderPanelId, resolvedSelectedId, cloudCallsDisabled, onSwitchProvider, pluginSaving, pluginSaveSuccess, handlePluginConfigSave, loadPlugins, }: ApiKeyPanelProps) {
-    const t = useAppSelector((s) => s.t);
-    const showUseButton = cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
-    return (<div className="min-w-0">
+export function ApiKeyPanel({
+  selectedProvider,
+  panelLabel,
+  visibleProviderPanelId,
+  resolvedSelectedId,
+  cloudCallsDisabled,
+  onSwitchProvider,
+  pluginSaving,
+  pluginSaveSuccess,
+  handlePluginConfigSave,
+  loadPlugins,
+}: ApiKeyPanelProps) {
+  const t = useAppSelector((s) => s.t);
+  const showUseButton =
+    cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
+  return (
+    <div className="min-w-0">
       <ProviderPanelHeader icon={KeyRound} title={panelLabel}>
-        {showUseButton ? (<SettingsActionButton agentId={`apikey-use-${visibleProviderPanelId}`} type="button" variant="outline" className="h-9 rounded-md px-3 text-xs font-medium" onClick={() => onSwitchProvider(visibleProviderPanelId)}>
+        {showUseButton ? (
+          <SettingsActionButton
+            agentId={`apikey-use-${visibleProviderPanelId}`}
+            type="button"
+            variant="outline"
+            className="h-9 rounded-md px-3 text-xs font-medium"
+            onClick={() => onSwitchProvider(visibleProviderPanelId)}
+          >
             {t("providerpanels.useProvider", { defaultValue: "Use provider" })}
-          </SettingsActionButton>) : null}
+          </SettingsActionButton>
+        ) : null}
       </ProviderPanelHeader>
       <div className="p-3 sm:px-4">
-        {cloudCallsDisabled ? (<div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
+        {cloudCallsDisabled ? (
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlyApiPaused", {
-                defaultValue: "Local only is active. Remote routing is paused.",
+              defaultValue: "Local only is active. Remote routing is paused.",
             })}
-          </div>) : null}
-        <ApiKeyConfig selectedProvider={selectedProvider} pluginSaving={pluginSaving} pluginSaveSuccess={pluginSaveSuccess} handlePluginConfigSave={handlePluginConfigSave} loadPlugins={loadPlugins}/>
+          </div>
+        ) : null}
+        <ApiKeyConfig
+          selectedProvider={selectedProvider}
+          pluginSaving={pluginSaving}
+          pluginSaveSuccess={pluginSaveSuccess}
+          handlePluginConfigSave={handlePluginConfigSave}
+          loadPlugins={loadPlugins}
+        />
       </div>
-    </div>);
+    </div>
+  );
 }

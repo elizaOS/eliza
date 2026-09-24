@@ -12,16 +12,16 @@
 import z from "zod";
 
 export const PostRelationshipLinkRequestSchema = z
-  .object({
-    targetEntityId: z.string().regex(/\S/, "targetEntityId is required"),
-    evidence: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    targetEntityId: value.targetEntityId.trim(),
-    ...(value.evidence ? { evidence: value.evidence } : {}),
-  }));
+	.object({
+		targetEntityId: z.string().regex(/\S/, "targetEntityId is required"),
+		evidence: z.record(z.string(), z.unknown()).optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		targetEntityId: value.targetEntityId.trim(),
+		...(value.evidence ? { evidence: value.evidence } : {}),
+	}));
 
 export type PostRelationshipLinkRequest = z.infer<
-  typeof PostRelationshipLinkRequestSchema
+	typeof PostRelationshipLinkRequestSchema
 >;

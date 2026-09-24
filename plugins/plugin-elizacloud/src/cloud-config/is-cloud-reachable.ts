@@ -11,7 +11,7 @@
  * written anywhere durable, so a later process start re-probes from scratch.
  */
 
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveCloudApiBaseUrl } from "./base-url.js";
 
 const PROBE_TIMEOUT_MS = 1_000;
 

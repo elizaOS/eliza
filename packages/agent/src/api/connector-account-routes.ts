@@ -28,8 +28,8 @@ import {
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { extractRows } from "@elizaos/plugin-sql/database-utils/raw-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";

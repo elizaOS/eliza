@@ -31,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { type VoiceCancellationReason } from "@elizaos/core/voice/voice-cancellation-token";
+import type { VoiceCancellationReason } from "@elizaos/core/voice/voice-cancellation-token";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,

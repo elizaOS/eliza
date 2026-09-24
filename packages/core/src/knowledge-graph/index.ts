@@ -7,6 +7,6 @@
  * `@elizaos/plugin-relationships/knowledge-graph`; the wire contracts in
  * `@elizaos/core/contracts/personal-assistant` re-export these shapes.
  */
-export * from "@elizaos/core/knowledge-graph/entity-types";
-export * from "@elizaos/core/knowledge-graph/merge";
-export * from "@elizaos/core/knowledge-graph/relationship-types";
+export * from "./entity-types.js";
+export * from "./merge.js";
+export * from "./relationship-types.js";

@@ -9,12 +9,15 @@
  * The adapter never makes network calls — URL construction is purely
  * declarative against the resolved cloud base URL.
  */
-import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import { toRuntimeSettings } from "@elizaos/cloud-routing";
-import { type DeliveryResult } from "@elizaos/core";
-import { type SensitiveRequestDeliveryAdapter } from "@elizaos/core";
-import { type SensitiveRequestWithPaymentContext } from "@elizaos/core";
+import {
+  type DeliveryResult,
+  type SensitiveRequestDeliveryAdapter,
+  type SensitiveRequestWithPaymentContext,
+} from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 /**
  * Cloud API base used when neither a runtime setting nor an env override
  * supplies one. Exported so the contract test asserts the fallback against this
@@ -28,85 +31,95 @@ export const CLOUD_BASE_FALLBACK = "https://api.eliza.app/api/v1";
  * concrete runtime class.
  */
 interface CloudBaseRuntime {
-    getSetting(key: string): string | boolean | number | bigint | null | undefined;
+  getSetting(
+    key: string,
+  ): string | boolean | number | bigint | null | undefined;
 }
 function isCloudBaseRuntime(value: unknown): value is CloudBaseRuntime {
-    return (typeof value === "object" &&
-        value !== null &&
-        typeof (value as {
-            getSetting?: unknown;
-        }).getSetting === "function");
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (
+      value as {
+        getSetting?: unknown;
+      }
+    ).getSetting === "function"
+  );
 }
 function stripTrailingSlashes(url: string): string {
-    return url.replace(/\/+$/, "");
+  return url.replace(/\/+$/, "");
 }
 function nonEmpty(value: unknown): string | undefined {
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 function resolveCloudBaseUrl(runtime: unknown): string {
-    const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
-    if (authoritySnapshot) {
-        const fromAuthority = nonEmpty(authoritySnapshot.values.ELIZAOS_CLOUD_BASE_URL);
-        return stripTrailingSlashes(fromAuthority ?? CLOUD_BASE_FALLBACK);
+  const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
+  if (authoritySnapshot) {
+    const fromAuthority = nonEmpty(
+      authoritySnapshot.values.ELIZAOS_CLOUD_BASE_URL,
+    );
+    return stripTrailingSlashes(fromAuthority ?? CLOUD_BASE_FALLBACK);
+  }
+  if (isCloudBaseRuntime(runtime)) {
+    const settings = toRuntimeSettings(runtime);
+    const fromSetting = settings.getSetting("ELIZAOS_CLOUD_BASE_URL");
+    if (typeof fromSetting === "string" && fromSetting.trim()) {
+      return stripTrailingSlashes(fromSetting.trim());
     }
-    if (isCloudBaseRuntime(runtime)) {
-        const settings = toRuntimeSettings(runtime);
-        const fromSetting = settings.getSetting("ELIZAOS_CLOUD_BASE_URL");
-        if (typeof fromSetting === "string" && fromSetting.trim()) {
-            return stripTrailingSlashes(fromSetting.trim());
-        }
-    }
-    const fromEnv = nonEmpty(readAliasedEnv("ELIZAOS_CLOUD_BASE_URL"));
-    if (fromEnv)
-        return stripTrailingSlashes(fromEnv);
-    return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
+  }
+  const fromEnv = nonEmpty(readAliasedEnv("ELIZAOS_CLOUD_BASE_URL"));
+  if (fromEnv) return stripTrailingSlashes(fromEnv);
+  return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
 }
-function readAppId(request: SensitiveRequestWithPaymentContext): string | undefined {
-    const target = request.target as Record<string, unknown>;
-    const fromTarget = target.appId;
-    if (typeof fromTarget === "string" && fromTarget.trim()) {
-        return fromTarget.trim();
-    }
-    const callback = request.callback as Record<string, unknown> | undefined;
-    const fromCallback = callback?.appId;
-    if (typeof fromCallback === "string" && fromCallback.trim()) {
-        return fromCallback.trim();
-    }
-    return undefined;
+function readAppId(
+  request: SensitiveRequestWithPaymentContext,
+): string | undefined {
+  const target = request.target as Record<string, unknown>;
+  const fromTarget = target.appId;
+  if (typeof fromTarget === "string" && fromTarget.trim()) {
+    return fromTarget.trim();
+  }
+  const callback = request.callback as Record<string, unknown> | undefined;
+  const fromCallback = callback?.appId;
+  if (typeof fromCallback === "string" && fromCallback.trim()) {
+    return fromCallback.trim();
+  }
+  return undefined;
 }
-export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter = {
+export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
+  {
     target: "public_link",
     async deliver({ request, runtime }): Promise<DeliveryResult> {
-        const typed = request as SensitiveRequestWithPaymentContext;
-        if (typed.kind !== "payment") {
-            return {
-                delivered: false,
-                target: "public_link",
-                error: "public_link only allowed for any_payer payment",
-            };
-        }
-        if (typed.paymentContext?.kind !== "any_payer") {
-            return {
-                delivered: false,
-                target: "public_link",
-                error: "public_link only allowed for any_payer payment",
-            };
-        }
-        const appId = readAppId(typed);
-        if (!appId) {
-            return {
-                delivered: false,
-                target: "public_link",
-                error: "public_link payment request is missing appId",
-            };
-        }
-        const cloudBase = resolveCloudBaseUrl(runtime);
-        const url = `${cloudBase}/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(typed.id)}/public`;
+      const typed = request as SensitiveRequestWithPaymentContext;
+      if (typed.kind !== "payment") {
         return {
-            delivered: true,
-            target: "public_link",
-            url,
-            expiresAt: typed.expiresAt,
+          delivered: false,
+          target: "public_link",
+          error: "public_link only allowed for any_payer payment",
         };
+      }
+      if (typed.paymentContext?.kind !== "any_payer") {
+        return {
+          delivered: false,
+          target: "public_link",
+          error: "public_link only allowed for any_payer payment",
+        };
+      }
+      const appId = readAppId(typed);
+      if (!appId) {
+        return {
+          delivered: false,
+          target: "public_link",
+          error: "public_link payment request is missing appId",
+        };
+      }
+      const cloudBase = resolveCloudBaseUrl(runtime);
+      const url = `${cloudBase}/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(typed.id)}/public`;
+      return {
+        delivered: true,
+        target: "public_link",
+        url,
+        expiresAt: typed.expiresAt,
+      };
     },
-};
+  };

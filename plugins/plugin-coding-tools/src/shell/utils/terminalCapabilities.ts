@@ -4,9 +4,8 @@
  * and executables to run, and reports the missing tool for a given command.
  */
 import path from "node:path";
-
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { resolveHostExecutable } from "@elizaos/core/host-execution-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 export const TERMINAL_TOOL_NAMES = [
   "sh",

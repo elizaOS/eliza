@@ -13,7 +13,7 @@ import { isTimeoutError } from "../lib/config-like";
 import { logger } from "@elizaos/core";
 import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
-import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import { scrubCloudSecretsFromEnv } from "../lib/cloud-secrets";
 import { sendJson } from "../lib/http";
 import { sendJsonError } from "../lib/http";

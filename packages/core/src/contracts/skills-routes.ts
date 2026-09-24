@@ -28,51 +28,51 @@
 import z from "zod";
 
 export const PostSkillCatalogInstallRequestSchema = z
-  .object({
-    slug: z.string().regex(/\S/, "slug is required"),
-    version: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    slug: value.slug.trim(),
-    ...(value.version?.trim() ? { version: value.version.trim() } : {}),
-  }));
+	.object({
+		slug: z.string().regex(/\S/, "slug is required"),
+		version: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		slug: value.slug.trim(),
+		...(value.version?.trim() ? { version: value.version.trim() } : {}),
+	}));
 
 export const PostSkillCatalogUninstallRequestSchema = z
-  .object({
-    slug: z.string().regex(/\S/, "slug is required"),
-  })
-  .strict()
-  .transform((value) => ({
-    slug: value.slug.trim(),
-  }));
+	.object({
+		slug: z.string().regex(/\S/, "slug is required"),
+	})
+	.strict()
+	.transform((value) => ({
+		slug: value.slug.trim(),
+	}));
 
 export const PostSkillAcknowledgeRequestSchema = z
-  .object({
-    enable: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		enable: z.boolean().optional(),
+	})
+	.strict();
 
 export const PostSkillCreateRequestSchema = z
-  .object({
-    name: z.string().regex(/\S/, "name is required"),
-    description: z
-      .string()
-      .trim()
-      .max(1024, "description must be 1024 characters or less")
-      .optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    name: value.name.trim(),
-    ...(value.description ? { description: value.description } : {}),
-  }));
+	.object({
+		name: z.string().regex(/\S/, "name is required"),
+		description: z
+			.string()
+			.trim()
+			.max(1024, "description must be 1024 characters or less")
+			.optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		name: value.name.trim(),
+		...(value.description ? { description: value.description } : {}),
+	}));
 
 export const PutSkillSourceRequestSchema = z
-  .object({
-    content: z.string(),
-  })
-  .strict();
+	.object({
+		content: z.string(),
+	})
+	.strict();
 
 const MarketplaceInstallSourceSchema = z.enum(["clawhub", "manual"]);
 
@@ -84,71 +84,71 @@ const MarketplaceInstallSourceSchema = z.enum(["clawhub", "manual"]);
  * descriptive fields are absorbed when whitespace-only.
  */
 export const PostMarketplaceInstallRequestSchema = z
-  .object({
-    slug: z.string().optional(),
-    githubUrl: z.string().optional(),
-    repository: z.string().optional(),
-    path: z.string().optional(),
-    name: z.string().optional(),
-    description: z.string().optional(),
-    source: MarketplaceInstallSourceSchema.optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const slug = value.slug?.trim();
-    const githubUrl = value.githubUrl?.trim();
-    const repository = value.repository?.trim();
-    const pathField = value.path?.trim();
-    const name = value.name?.trim();
-    const description = value.description?.trim();
-    return {
-      ...(slug ? { slug } : {}),
-      ...(githubUrl ? { githubUrl } : {}),
-      ...(repository ? { repository } : {}),
-      ...(pathField ? { path: pathField } : {}),
-      ...(name ? { name } : {}),
-      ...(description ? { description } : {}),
-      ...(value.source ? { source: value.source } : {}),
-    };
-  })
-  .refine(
-    (value) =>
-      [value.slug, value.githubUrl, value.repository].filter(Boolean).length ===
-      1,
-    {
-      message:
-        "Install requires exactly one of: slug, githubUrl, or repository",
-    },
-  );
+	.object({
+		slug: z.string().optional(),
+		githubUrl: z.string().optional(),
+		repository: z.string().optional(),
+		path: z.string().optional(),
+		name: z.string().optional(),
+		description: z.string().optional(),
+		source: MarketplaceInstallSourceSchema.optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const slug = value.slug?.trim();
+		const githubUrl = value.githubUrl?.trim();
+		const repository = value.repository?.trim();
+		const pathField = value.path?.trim();
+		const name = value.name?.trim();
+		const description = value.description?.trim();
+		return {
+			...(slug ? { slug } : {}),
+			...(githubUrl ? { githubUrl } : {}),
+			...(repository ? { repository } : {}),
+			...(pathField ? { path: pathField } : {}),
+			...(name ? { name } : {}),
+			...(description ? { description } : {}),
+			...(value.source ? { source: value.source } : {}),
+		};
+	})
+	.refine(
+		(value) =>
+			[value.slug, value.githubUrl, value.repository].filter(Boolean).length ===
+			1,
+		{
+			message:
+				"Install requires exactly one of: slug, githubUrl, or repository",
+		},
+	);
 
 export const PostMarketplaceUninstallRequestSchema = z
-  .object({
-    id: z.string().regex(/\S/, "id is required"),
-  })
-  .strict()
-  .transform((value) => ({
-    id: value.id.trim(),
-  }));
+	.object({
+		id: z.string().regex(/\S/, "id is required"),
+	})
+	.strict()
+	.transform((value) => ({
+		id: value.id.trim(),
+	}));
 
 export type PostSkillCatalogInstallRequest = z.infer<
-  typeof PostSkillCatalogInstallRequestSchema
+	typeof PostSkillCatalogInstallRequestSchema
 >;
 export type PostSkillCatalogUninstallRequest = z.infer<
-  typeof PostSkillCatalogUninstallRequestSchema
+	typeof PostSkillCatalogUninstallRequestSchema
 >;
 export type PostSkillAcknowledgeRequest = z.infer<
-  typeof PostSkillAcknowledgeRequestSchema
+	typeof PostSkillAcknowledgeRequestSchema
 >;
 export type PostSkillCreateRequest = z.infer<
-  typeof PostSkillCreateRequestSchema
+	typeof PostSkillCreateRequestSchema
 >;
 export type PutSkillSourceRequest = z.infer<typeof PutSkillSourceRequestSchema>;
 export type PostMarketplaceInstallRequest = z.infer<
-  typeof PostMarketplaceInstallRequestSchema
+	typeof PostMarketplaceInstallRequestSchema
 >;
 export type PostMarketplaceUninstallRequest = z.infer<
-  typeof PostMarketplaceUninstallRequestSchema
+	typeof PostMarketplaceUninstallRequestSchema
 >;
 export type MarketplaceInstallSource = z.infer<
-  typeof MarketplaceInstallSourceSchema
+	typeof MarketplaceInstallSourceSchema
 >;

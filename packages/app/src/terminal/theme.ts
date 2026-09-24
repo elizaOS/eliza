@@ -2,8 +2,9 @@
  * Chalk-based color theme for CLI output, built from the shared `CLI_PALETTE`.
  * Honors `NO_COLOR` and `FORCE_COLOR` when deciding whether to emit ANSI colors.
  */
-import chalk, { Chalk } from "chalk";
+
 import { CLI_PALETTE } from "@elizaos/ui/terminal/palette";
+import chalk, { Chalk } from "chalk";
 
 // The shared barrel is imported by browser bundles; a bare `process`
 // identifier at module scope throws ReferenceError there and kills the whole

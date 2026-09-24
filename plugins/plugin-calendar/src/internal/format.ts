@@ -3,7 +3,11 @@
  * date/times, the aggregated feed summary, and next-event context into the
  * human-readable strings the CALENDAR action returns to the owner.
  */
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsNextCalendarEventContext } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
 
 function formatCalendarDatePart(
   date: Date,

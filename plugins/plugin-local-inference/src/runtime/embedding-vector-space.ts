@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
@@ -14,7 +14,6 @@ import {
 	ELIZA_POOLING_LAST,
 	ELIZA_POOLING_MEAN,
 } from "../services/voice/ffi-bindings";
-
 /** Resolves an explicit context-local setting or the detected hardware default. */
 export function resolveEmbeddingGpuLayers(
 	configured: string | undefined,
@@ -35,17 +34,18 @@ export function resolveEmbeddingGpuLayers(
 	}
 	return Number(value);
 }
-
 export const BGE_SEMANTIC_PROBE_INPUTS = [
 	"The cat is sleeping on the sofa.",
 	"A kitten rests on a couch.",
 	"Quantum computers use qubits.",
 ] as const;
-
 /** Reject a backend that returns plausible-looking but collapsed BGE vectors. */
 export function verifyBgeSemanticVectors(
 	vectors: ReadonlyArray<ArrayLike<number>>,
-): { related: number; unrelated: number } {
+): {
+	related: number;
+	unrelated: number;
+} {
 	if (vectors.length !== 3 || vectors.some((vector) => vector.length !== 384)) {
 		throw new ElizaError(
 			"Canonical BGE requires three 384-dimensional probe vectors",
@@ -65,7 +65,6 @@ export function verifyBgeSemanticVectors(
 	}
 	return { related, unrelated };
 }
-
 export function resolveEmbeddingPooling(
 	model: string,
 	configured?: string,
@@ -96,7 +95,6 @@ export function resolveEmbeddingPooling(
 			? ELIZA_POOLING_LAST
 			: ELIZA_POOLING_MEAN;
 }
-
 export function normalizeEmbeddingVector(vector: ArrayLike<number>): number[] {
 	const values = Array.from(vector);
 	const scale = values.reduce(
@@ -113,7 +111,6 @@ export function normalizeEmbeddingVector(vector: ArrayLike<number>): number[] {
 	const norm = Math.sqrt(scaled.reduce((sum, value) => sum + value * value, 0));
 	return scaled.map((value) => value / norm);
 }
-
 /** Embeds the identical prepared BGE suffix used by the Cloudflare transport. */
 export function embedBgeInput(
 	text: string,
@@ -125,7 +122,6 @@ export function embedBgeInput(
 	assertBgeTokenAgreement(prepared, tokenize(prepared.text));
 	return embed(prepared.text);
 }
-
 /** Checks the complete tokenizer result before the native encoder can truncate it. */
 export function embedCompleteInput(
 	text: string,
@@ -145,7 +141,6 @@ export function embedCompleteInput(
 	}
 	return embed(text);
 }
-
 /** Resolves the native context setting against BGE-small's 512-token boundary. */
 export function resolveBgeContextLimit(configured?: string): number {
 	if (configured === undefined || configured === "") return 512;
@@ -165,7 +160,6 @@ export function resolveBgeContextLimit(configured?: string): number {
 	}
 	return Math.min(value, 512);
 }
-
 /** Verify the actual isolated GGUF before assigning the canonical BGE representation. Runs once per native handle. */
 export function verifyBgeEmbeddingBundle(
 	bundleRoot: string,
@@ -190,7 +184,6 @@ export function verifyBgeEmbeddingBundle(
 	}
 	return verifyBgeEmbeddingFile(path.join(textDir, models[0]));
 }
-
 /** Checks exact file bytes before a native loader can identify vectors as canonical BGE. */
 export function verifyBgeEmbeddingFile(modelPath: string): string {
 	const actualHash = createHash("sha256")

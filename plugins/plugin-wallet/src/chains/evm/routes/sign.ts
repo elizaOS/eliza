@@ -18,10 +18,10 @@ import { type Address } from "viem";
 import { type Chain } from "viem";
 import { type Hex } from "viem";
 import { type IAgentRuntime } from "@elizaos/core";
-import { type LegacyRouteHandler } from "@elizaos/shared";
-import { type Route } from "@elizaos/shared";
-import { type RouteRequest } from "@elizaos/shared";
-import { type RouteResponse } from "@elizaos/shared";
+import { type LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
+import { type Route } from "@elizaos/core/api/http-plugin";
+import { type RouteRequest } from "@elizaos/core/api/http-plugin";
+import { type RouteResponse } from "@elizaos/core/api/http-plugin";
 import { type TypedDataDefinition } from "viem";
 import * as viemChains from "viem/chains";
 class EvmSignInputError extends Error {

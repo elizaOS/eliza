@@ -13,14 +13,12 @@
  * the bench package's typecheck independent of which app-core / shared
  * subpath exports happen to be wired up at the moment.
  */
-
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "@elizaos/core";
-
 /**
- * Eliza-1 tier ids — kept in lockstep with `@elizaos/shared` catalog. We
+ * Eliza-1 tier ids — kept in lockstep with `@elizaos/plugin-native-inference/model-catalog/catalog` catalog. We
  * re-declare locally so this module doesn't have to import the shared
  * package's subpath types (which aren't always exported from the package
  * manifest, depending on the build phase).
@@ -31,14 +29,12 @@ export type Eliza1TierId =
   | "eliza-1-9b"
   | "eliza-1-27b"
   | "eliza-1-27b-256k";
-
 /** Subset of the `LocalInferenceEngine.generate` shape the bench needs. */
 export interface EngineLike {
   generate(args: EngineGenerateArgs): Promise<string>;
   load(modelPath: string): Promise<void>;
   unload(): Promise<void>;
 }
-
 interface EngineGenerateArgs {
   prompt: string;
   maxTokens?: number;
@@ -49,23 +45,24 @@ interface EngineGenerateArgs {
   onTextChunk?: (chunk: string) => void;
   signal?: AbortSignal;
 }
-
 interface ResolvedEngine {
   engine: EngineLike;
   modelPath: string;
   tierId: Eliza1TierId;
 }
-
 export type ResolveResult =
-  | { kind: "ok"; engine: ResolvedEngine }
-  | { kind: "skip"; reason: string };
-
+  | {
+      kind: "ok";
+      engine: ResolvedEngine;
+    }
+  | {
+      kind: "skip";
+      reason: string;
+    };
 const DEFAULT_TIER: Eliza1TierId = "eliza-1-2b";
-
 interface SharedPathsLike {
   elizaModelsDir: () => string;
 }
-
 /**
  * Inline mirror of `resolveStateDir()` + `elizaModelsDir()` from
  * `@elizaos/plugin-native-inference/model-catalog/paths`. Used as a fallback when the
@@ -84,17 +81,17 @@ export function benchElizaModelsDir(): string {
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");
 }
-
 interface SharedCatalogLike {
-  findCatalogModel: (
-    id: string,
-  ) => { ggufFile: string; hfPathPrefix?: string } | undefined;
+  findCatalogModel: (id: string) =>
+    | {
+        ggufFile: string;
+        hfPathPrefix?: string;
+      }
+    | undefined;
 }
-
 interface AppCoreEngineLike {
   LocalInferenceEngine: new () => EngineLike;
 }
-
 /** Helper around dynamic-import that keeps the type local rather than pulling
  * in package types that may not be exported. */
 async function tryImport<T>(spec: string): Promise<T | null> {
@@ -105,7 +102,6 @@ async function tryImport<T>(spec: string): Promise<T | null> {
     return null;
   }
 }
-
 function pluginLocalInferenceServicesUrl(): string {
   // Source-mode fallback: only reachable when ELIZA_REPO points at an
   // elizaOS checkout. Without it we return a specifier that fails the
@@ -116,14 +112,16 @@ function pluginLocalInferenceServicesUrl(): string {
     `file://${repo}/plugins/plugin-local-inference/src/services/index.ts`,
   ).href;
 }
-
 /**
  * Resolve the eliza-1 model path under the configured local-inference root.
  * Returns null when the GGUF isn't present so the caller can short-circuit.
  */
 async function resolveElizaModelPath(
   tierId: Eliza1TierId = DEFAULT_TIER,
-): Promise<{ modelPath: string; tierId: Eliza1TierId } | null> {
+): Promise<{
+  modelPath: string;
+  tierId: Eliza1TierId;
+} | null> {
   const paths = await tryImport<SharedPathsLike>(
     "@elizaos/plugin-native-inference/model-catalog/paths",
   );
@@ -151,7 +149,6 @@ async function resolveElizaModelPath(
   }
   return null;
 }
-
 /**
  * Try to instantiate the local-inference engine and load the resolved model.
  *
@@ -194,9 +191,7 @@ export async function resolveElizaEngine(
   } catch (err) {
     return {
       kind: "skip",
-      reason: `engine.load failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      reason: `engine.load failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
   return {

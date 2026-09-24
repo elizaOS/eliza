@@ -12,7 +12,15 @@ import { fileURLToPath } from "node:url";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { type CreateLifeOpsCalendarEventAttendee, type CreateLifeOpsCalendarEventRequest, type LifeOpsCalendarEvent, type LifeOpsCalendarEventAttendee, type LifeOpsCalendarFeed, type LifeOpsCalendarSummary, type LifeOpsCalendarWriteOnlyCreateReceipt } from "@elizaos/core/contracts/calendar";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarEventAttendee,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarSummary,
+  type LifeOpsCalendarWriteOnlyCreateReceipt,
+} from "@elizaos/core/contracts/calendar";
 import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
 import { type IPermissionsRegistry } from "@elizaos/core/contracts/permissions";
 import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";

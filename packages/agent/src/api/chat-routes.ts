@@ -3,122 +3,149 @@
  * Conversation routes reuse generation, request admission and reply persistence;
  * Node HTTP event framing lives in the dedicated stream writer.
  */
-
 import crypto from "node:crypto";
 import type http from "node:http";
-import { ChannelType } from "@elizaos/core";
-import { ChatIdempotencyWaitAbortedError } from "../services/chat-idempotency-service.ts";
-import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
-import { ElizaError } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
-import { INFERENCE_MARKS } from "@elizaos/core";
-import { INSUFFICIENT_CREDITS_REPLY } from "@elizaos/core";
-import { InferenceTurnTimer } from "@elizaos/core";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { asRecord } from "@elizaos/core/type-guards";
-import { attestAuthenticatedApiDeliveryAudience } from "@elizaos/core";
-import { cloneWithoutBlockedObjectKeys } from "./server-helpers.ts";
-import { createChatIdempotencyStore } from "../services/chat-idempotency-service.ts";
-import { createMessageMemory } from "@elizaos/core";
-import { decodePathComponent } from "./server-helpers.ts";
-import { detectRuntimeModel } from "./agent-model.ts";
-import { emitInferenceTiming } from "@elizaos/core";
-import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { estimateTokenCount } from "../runtime/prompt-optimization.ts";
-import { executeFallbackParsedActions } from "./fallback-action-helpers.ts";
-import { extractAnthropicSystemAndLastUser } from "./compat-utils.ts";
-import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
-import { extractCompatTextContent } from "./compat-utils.ts";
-import { extractOpenAiSystemAndLastUser } from "./compat-utils.ts";
-import { getEntityRole } from "@elizaos/core";
-import { getErrorMessage } from "./server-helpers.ts";
-import { getInferenceTimer } from "@elizaos/core";
-import { hasAppliedUserFacingEffectProof } from "@elizaos/core";
-import { hasAtLeastRole } from "@elizaos/core";
-import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
-import { initSse } from "./chat-stream-writer.ts";
-import { isAuthorized } from "./server-helpers-auth.ts";
-import { isClientVisibleNoResponse } from "./chat-text-helpers.ts";
 import { isDeepStrictEqual } from "node:util";
-import { isInsufficientCreditsError } from "./credit-detection.ts";
-import { isInsufficientCreditsMessage } from "./credit-detection.ts";
-import { isLinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import { isNoResponsePlaceholder } from "./chat-text-helpers.ts";
-import { isRateLimitError } from "@elizaos/core";
-import { isServerTokenAuthorized } from "./server-helpers-auth.ts";
-import { isTextGenerationModelType } from "@elizaos/core";
-import { listViews } from "./views-registry.ts";
-import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
-import { markInference } from "@elizaos/core";
-import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
-import { maybeAugmentChatMessageWithLanguage } from "./chat-augmentation.ts";
-import { nextInferenceTurnId } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
-import { normalizeEffectReceipts } from "@elizaos/core";
-import { normalizeIncomingChatPrompt } from "./server-helpers.ts";
-import { parseChatFailureKind } from "@elizaos/core/contracts/chat";
-import { parseChatTerminalFailure } from "@elizaos/core/contracts/chat";
-import { parseFallbackActionBlocks } from "./fallback-action-helpers.ts";
-import { persistInferenceTimingSummary } from "@elizaos/plugin-assistant";
-import { readActionReplyFailure } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { recordOwnerGrant } from "@elizaos/core";
-import { recordRoleGrant } from "@elizaos/core";
-import { renderInteractionsAsPlainText } from "@elizaos/core";
-import { resolveAppUserName } from "./server-helpers.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
-import { resolveCompatRoomKey } from "./compat-utils.ts";
-import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
-import { revertedEffectReceiptIds } from "@elizaos/core";
-import { runWithInferenceTiming } from "@elizaos/core";
-import { runWithTrajectoryContext } from "@elizaos/core";
-import { scopeCompatRoomKey } from "./compat-utils.ts";
-import { shouldSkipResponseMemoryPersistence } from "@elizaos/plugin-assistant";
-import { stampAppConversationProvenance } from "@elizaos/core";
-import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
-import { stringToUuid } from "@elizaos/core";
-import { stripDashboardOnlyMarkers } from "@elizaos/core";
-import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
-import { tagsMayProduceEffects } from "@elizaos/core";
-import { timeInferenceSpan } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { trackPostDeliveryTask } from "@elizaos/core";
-import { type ActionReplyFailure } from "@elizaos/core";
-import { type ActionResult } from "@elizaos/core";
-import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
-import { type AgentRuntime } from "@elizaos/core";
-import { type CapturedModelUsage } from "../runtime/prompt-optimization.ts";
-import { type ChatFailureKind } from "@elizaos/core/contracts/chat";
-import { type ChatIdempotencyAdmission } from "../services/chat-idempotency-service.ts";
-import { type ChatIdempotencyReservation } from "../services/chat-idempotency-service.ts";
-import { type ChatImageAttachment } from "./server-types.ts";
-import { type ChatTerminalFailure } from "@elizaos/core/contracts/chat";
-import { type ChatToolCallEvent } from "@elizaos/core/contracts/chat";
-import { type ChatTurnStatus } from "@elizaos/core/contracts/chat";
-import { type Content } from "@elizaos/core";
-import { type EffectReceipt } from "@elizaos/core";
-import { type ElizaConfig } from "../config/config.ts";
-import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import { type LocalInferenceChatMetadata } from "./local-inference-server-api.ts";
-import { type LocalInferenceCommandIntent } from "./local-inference-server-api.ts";
-import { type LocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import {
+  type ActionReplyFailure,
+  type ActionResult,
+  type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
+  ChannelType,
+  type Content,
+  createMessageMemory,
+  type EffectReceipt,
+  ElizaError,
+  EventType,
+  emitInferenceTiming,
+  getEntityRole,
+  getInferenceTimer,
+  hasAppliedUserFacingEffectProof,
+  hasAtLeastRole,
+  INFERENCE_MARKS,
+  INSUFFICIENT_CREDITS_REPLY,
+  InferenceTurnTimer,
+  isRateLimitError,
+  isTextGenerationModelType,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type Memory,
+  type MessageReplyRecoveryContext,
+  ModelType,
+  markInference,
+  nextInferenceTurnId,
+  normalizeEffectReceipts,
+  type RolesWorldMetadata,
+  type RoomHandlerLease,
+  readActionReplyFailure,
+  recordOwnerGrant,
+  recordRoleGrant,
+  renderInteractionsAsPlainText,
+  revertedEffectReceiptIds,
+  runWithInferenceTiming,
+  runWithTrajectoryContext,
+  stampAppConversationProvenance,
+  stringToUuid,
+  stripDashboardOnlyMarkers,
+  type TrustedApiPrincipal,
+  type TurnOutcome,
+  tagsMayProduceEffects,
+  timeInferenceSpan,
+  toWellFormedUnicode,
+  trackPostDeliveryTask,
+  type UUID,
+  withRoomDeliverySettlement,
+} from "@elizaos/core";
 import { type LogEntry } from "@elizaos/core/api/agent-api-types";
-import { type Memory } from "@elizaos/core";
-import { type MessageReplyRecoveryContext } from "@elizaos/core";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import { type RolesWorldMetadata } from "@elizaos/core";
-import { type RoomHandlerLease } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import { type TrustedApiPrincipal } from "@elizaos/core";
-import { type TurnOutcome } from "@elizaos/core";
-import { type UUID } from "@elizaos/core";
+import {
+  type ReadJsonBodyOptions,
+  type RouteRequestContext,
+} from "@elizaos/core/api/route-helpers";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
+import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/core/contracts/chat";
+import {
+  isLinkedAccountProviderId,
+  type LinkedAccountProviderId,
+} from "@elizaos/core/contracts/service-routing";
+import { asRecord } from "@elizaos/core/type-guards";
+import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import {
+  persistInferenceTimingSummary,
+  shouldSkipResponseMemoryPersistence,
+} from "@elizaos/plugin-assistant";
+import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
+import { type ElizaConfig } from "../config/config.ts";
+import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import {
+  type CapturedModelUsage,
+  estimateTokenCount,
+  withModelUsageCapture,
+} from "../runtime/prompt-optimization.ts";
+import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
+import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
+import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
+import {
+  type ChatIdempotencyAdmission,
+  type ChatIdempotencyReservation,
+  ChatIdempotencyWaitAbortedError,
+  createChatIdempotencyStore,
+} from "../services/chat-idempotency-service.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
+import {
+  maybeAugmentChatMessageWithDocuments,
+  maybeAugmentChatMessageWithLanguage,
+} from "./chat-augmentation.ts";
+import { initSse, writeSseData, writeSseJson } from "./chat-stream-writer.ts";
+import {
+  isClientVisibleNoResponse,
+  isNoResponsePlaceholder,
+} from "./chat-text-helpers.ts";
+import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  extractAnthropicSystemAndLastUser,
+  extractCompatTextContent,
+  extractOpenAiSystemAndLastUser,
+  resolveCompatRoomKey,
+  scopeCompatRoomKey,
+} from "./compat-utils.ts";
+import {
+  isInsufficientCreditsError,
+  isInsufficientCreditsMessage,
+} from "./credit-detection.ts";
+import {
+  executeFallbackParsedActions,
+  parseFallbackActionBlocks,
+} from "./fallback-action-helpers.ts";
+import {
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+  type LocalInferenceRouteApi,
+  loadLocalInferenceRouteApi,
+} from "./local-inference-server-api.ts";
+import {
+  cloneWithoutBlockedObjectKeys,
+  decodePathComponent,
+  getErrorMessage,
+  hasBlockedObjectKeyDeep,
+  normalizeIncomingChatPrompt,
+  resolveAppUserName,
+  validateChatImages,
+} from "./server-helpers.ts";
+import {
+  isAuthorized,
+  isServerTokenAuthorized,
+} from "./server-helpers-auth.ts";
+import { type ChatImageAttachment } from "./server-types.ts";
+import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
-import { validateChatImages } from "./server-helpers.ts";
-import { withModelUsageCapture } from "../runtime/prompt-optimization.ts";
-import { withRoomDeliverySettlement } from "@elizaos/core";
-import { writeSseData } from "./chat-stream-writer.ts";
-import { writeSseJson } from "./chat-stream-writer.ts";
 
 export type { ChatImageAttachment, LogEntry };
 
@@ -127,18 +154,15 @@ type LocalInferenceChatApi = Pick<
   LocalInferenceRouteApi,
   "getLocalInferenceChatStatus" | "handleLocalInferenceChatCommand"
 >;
-
 interface StreamingResponseAbortTracker {
   signal: AbortSignal;
   dispose: () => void;
   markCompleted: () => void;
 }
-
 type AbortEventSource = {
   on?: (event: string, listener: () => void) => unknown;
   off?: (event: string, listener: () => void) => unknown;
 };
-
 function createStreamingResponseAbortTracker(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -151,7 +175,6 @@ function createStreamingResponseAbortTracker(
     listener: () => void;
   }> = [];
   let completed = false;
-
   const abort = () => {
     if (!completed && !controller.signal.aborted) {
       controller.abort(new Error(`${operation} client disconnected`));
@@ -169,7 +192,6 @@ function createStreamingResponseAbortTracker(
   const onResponseClose = () => {
     if (!res.writableEnded) abort();
   };
-
   // IncomingMessage.close describes request-body completion on current Node
   // and Bun releases, not the lifetime of the streamed response. The response
   // and socket events remain live after body parsing and therefore own
@@ -180,11 +202,9 @@ function createStreamingResponseAbortTracker(
   register(res, "error", abort);
   register(req.socket, "close", abort);
   register(req.socket, "error", abort);
-
   if (req.aborted || req.destroyed || res.destroyed) {
     abort();
   }
-
   return {
     signal: controller.signal,
     dispose: () => {
@@ -198,9 +218,7 @@ function createStreamingResponseAbortTracker(
     },
   };
 }
-
 let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
-
 /**
  * Resolve the plugin-local-inference chat API used to turn a local-inference
  * failure into a user-facing status (download prompts, switch-model hints, …).
@@ -250,9 +268,7 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
     })();
   return localInferenceChatApiPromise;
 }
-
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
-
 /**
  * Short-window idempotency cache for the HTTP chat path, the analogue of the
  * WebSocket `isDuplicateWsMessage` cache in server.ts. Chat sends go over HTTP
@@ -295,29 +311,27 @@ export interface ChatMessageIdOutcome {
    */
   interrupted?: boolean;
 }
-
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
-
 export type ChatMessageIdAdmission =
   ChatIdempotencyAdmission<ChatMessageIdOutcome>;
 export type ChatMessageIdReservation = ChatIdempotencyReservation;
 export { ChatIdempotencyWaitAbortedError };
-
 /** Join an active keyed turn, replay its durable result, or own a fresh turn. */
 export function admitChatMessageId(
   scope: string,
   clientMessageId: string | null,
-  options: { fingerprint?: string; now?: number } = {},
+  options: {
+    fingerprint?: string;
+    now?: number;
+  } = {},
 ): ChatMessageIdAdmission {
   return chatIdempotency.admit(scope, clientMessageId, options);
 }
-
 /** Normalize a raw body value into a usable idempotency key, or `null` when
  *  absent/invalid. Exported for unit testing the dedupe decision in isolation. */
 export function normalizeClientMessageId(value: unknown): string | null {
   return chatIdempotency.normalize(value);
 }
-
 /**
  * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
  * remain reserved until their owner either settles or explicitly releases the
@@ -334,7 +348,6 @@ export function isDuplicateChatMessage(
 ): boolean {
   return chatIdempotency.reserve(scope, clientMessageId, now);
 }
-
 /**
  * Roll back an idempotency key recorded by {@link isDuplicateChatMessage}.
  *
@@ -356,7 +369,6 @@ export function releaseChatMessageId(
 ): void {
   chatIdempotency.release(scope, clientMessageId, reservation);
 }
-
 /**
  * Original arrival timestamp recorded for a `(scope, clientMessageId)` pair,
  * or `null` when the pair is unknown (never seen, expired and swept, or
@@ -369,7 +381,6 @@ export function getChatMessageIdFirstSeenAt(
 ): number | null {
   return chatIdempotency.firstSeenAt(scope, clientMessageId);
 }
-
 /**
  * Bind the durable terminal result to the exact client idempotency key.
  *
@@ -386,7 +397,6 @@ export function setChatMessageIdOutcome(
 ): void {
   chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
 }
-
 /** Return the durable outcome bound to an exact idempotency key, if settled. */
 export function getChatMessageIdOutcome(
   scope: string,
@@ -394,21 +404,24 @@ export function getChatMessageIdOutcome(
 ): ChatMessageIdOutcome | null {
   return chatIdempotency.outcome(scope, clientMessageId);
 }
-
 /** Test-only: clear the HTTP chat idempotency cache between cases. */
 export function __resetChatDedupeForTests(): void {
   chatIdempotency.reset();
 }
-
 /** Test-only: expose the configured dedupe window without freezing env policy
  *  into the unit fixtures. */
 export function __getChatDedupeTtlMsForTests(): number {
   return chatIdempotency.retentionMs;
 }
-
 export function compareCreatedAtAscending(
-  left: { createdAt?: number; id?: string },
-  right: { createdAt?: number; id?: string },
+  left: {
+    createdAt?: number;
+    id?: string;
+  },
+  right: {
+    createdAt?: number;
+    id?: string;
+  },
 ): number {
   if (left.createdAt === right.createdAt) {
     return (left.id ?? "").localeCompare(right.id ?? "");
@@ -423,11 +436,9 @@ export function compareCreatedAtAscending(
       : -1;
   return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
 }
-
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
-
 /**
  * "Connect another account" request an assistant turn can carry, emitted by the
  * CONNECT_ACCOUNT action when the user asks to add/log into an additional
@@ -439,7 +450,6 @@ export interface AccountConnectRequest {
   providers: LinkedAccountProviderId[];
   reason?: string;
 }
-
 export interface ChatGenerationResult {
   /** Already-delivered progress, retained for display; not final answer text. */
   planningAcknowledgment?: string;
@@ -481,7 +491,6 @@ export interface ChatGenerationResult {
     llmCalls: number;
   };
 }
-
 export interface ChatActionResultSummary {
   effectReceipts?: readonly EffectReceipt[];
   actionName?: string;
@@ -490,7 +499,6 @@ export interface ChatActionResultSummary {
   error?: string;
   values?: Record<string, unknown>;
 }
-
 /**
  * Where a streamed text emission originated. `"model"` text is (or extends)
  * the turn's final reply; `"action_callback"` text is an in-flight action
@@ -500,7 +508,6 @@ export interface ChatActionResultSummary {
  * (the "double-speak" defect: ack spoken, then the reply spoken again).
  */
 export type ChatStreamTextOrigin = "model" | "action_callback";
-
 export interface ChatGenerateOptions {
   /** Internal host timer begun before room admission; never read from a request body. */
   inferenceTimer?: InferenceTurnTimer;
@@ -536,14 +543,15 @@ export interface ChatGenerateOptions {
   /** Validated upstream correlation id for this complete inference turn. */
   traceId?: string;
 }
-
 const POST_COMMIT_INTERRUPTED_REPLY =
   "The action finished before the response was interrupted. It was not run again.";
-
 export function recoverSettledMutatingActionTurn(
   runtime: AgentRuntime,
   settledResults: readonly ActionResult[],
-  interruption: { error: unknown; signal: AbortSignal },
+  interruption: {
+    error: unknown;
+    signal: AbortSignal;
+  },
 ): {
   text: string;
   actionResults: ActionResult[];
@@ -584,11 +592,9 @@ export function recoverSettledMutatingActionTurn(
     );
   });
   if (committedResults.length === 0) return null;
-
   const replyFailure = settledResults
     .map((result) => readActionReplyFailure(result.replyFailure))
     .find((failure) => failure !== undefined);
-
   let verifiedResult: ActionResult | undefined;
   try {
     verifiedResult = [...committedResults]
@@ -646,7 +652,6 @@ export function recoverSettledMutatingActionTurn(
     ...(replyFailure ? { replyFailure } : {}),
   };
 }
-
 function isAppendOnlyStreamDivergenceError(
   error: unknown,
 ): error is ElizaError {
@@ -655,11 +660,8 @@ function isAppendOnlyStreamDivergenceError(
     error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
   );
 }
-
-// LogEntry is canonical in @elizaos/shared and re-exported above.
-
+// LogEntry is canonical in @elizaos/core and re-exported above.
 type CallbackMergeMode = "append" | "replace";
-
 function resolveCallbackMergeMode(
   content: Content,
   fallback: CallbackMergeMode = "replace",
@@ -668,28 +670,22 @@ function resolveCallbackMergeMode(
     ? content.merge
     : fallback;
 }
-
 function normalizeActionCallbackText(text: string): string {
   return text.trim();
 }
-
 function isInternalStructuredStreamPayload(value: unknown): boolean {
   const record = asRecord(value);
   if (!record) return false;
-
   const type = typeof record.type === "string" ? record.type : "";
   if (type === "tool_call" || type === "tool_result" || type === "tool_error") {
     return true;
   }
-
   if (type === "evaluation" && asRecord(record.evaluation)) {
     return true;
   }
-
   if (asRecord(record.toolCall) || asRecord(record.toolResult)) {
     return true;
   }
-
   const contextEvent = asRecord(record.contextEvent);
   if (contextEvent) {
     const contextType =
@@ -702,10 +698,8 @@ function isInternalStructuredStreamPayload(value: unknown): boolean {
       return true;
     }
   }
-
   return false;
 }
-
 function isInternalStructuredStreamText(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return false;
@@ -717,14 +711,12 @@ function isInternalStructuredStreamText(text: string): boolean {
     return false;
   }
 }
-
 function firstNonEmptyString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return undefined;
 }
-
 /** Coerce a tool-call's arguments (object, JSON string, or absent) into a plain
  *  record for the inline tool row, or undefined when there's nothing to show. */
 function normalizeToolArgs(
@@ -744,7 +736,6 @@ function normalizeToolArgs(
   }
   return undefined;
 }
-
 /**
  * Project the runtime's internal planner/tool stream payload — forwarded through
  * `onStreamChunk` as a JSON string, then filtered out of the visible reply by
@@ -753,13 +744,13 @@ function normalizeToolArgs(
  * tool steps, an inline tool-call row. Returns null for payloads with no
  * chat-visible signal (e.g. `context_event`) so the caller drops them (#13535).
  */
-export function chatEventsFromStructuredStreamPayload(
-  payload: unknown,
-): { status?: ChatTurnStatus; toolEvent?: ChatToolCallEvent } | null {
+export function chatEventsFromStructuredStreamPayload(payload: unknown): {
+  status?: ChatTurnStatus;
+  toolEvent?: ChatToolCallEvent;
+} | null {
   const record = asRecord(payload);
   if (!record) return null;
   const type = typeof record.type === "string" ? record.type : "";
-
   if (type === "tool_call") {
     const toolCall = asRecord(record.toolCall);
     if (!toolCall) return null;
@@ -784,7 +775,6 @@ export function chatEventsFromStructuredStreamPayload(
       },
     };
   }
-
   if (type === "tool_result" || type === "tool_error") {
     const toolCall = asRecord(record.toolCall);
     const toolName =
@@ -826,21 +816,19 @@ export function chatEventsFromStructuredStreamPayload(
       },
     };
   }
-
   if (type === "evaluation") {
     return { status: { kind: "evaluating" } };
   }
-
   return null;
 }
-
 /** Text-level companion to {@link chatEventsFromStructuredStreamPayload}: parse a
  *  raw stream chunk and, when it is an internal structured payload, return the
  *  chat events it drives. Null when the chunk is visible reply text or an
  *  internal payload with no chat-visible signal. */
-function chatEventsFromStructuredStreamText(
-  text: string,
-): { status?: ChatTurnStatus; toolEvent?: ChatToolCallEvent } | null {
+function chatEventsFromStructuredStreamText(text: string): {
+  status?: ChatTurnStatus;
+  toolEvent?: ChatToolCallEvent;
+} | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return null;
   let parsed: unknown;
@@ -853,7 +841,6 @@ function chatEventsFromStructuredStreamText(
   if (!isInternalStructuredStreamPayload(parsed)) return null;
   return chatEventsFromStructuredStreamPayload(parsed);
 }
-
 function getLatestVisibleResponseMessageText(
   responseMessages:
     | Array<{
@@ -865,7 +852,6 @@ function getLatestVisibleResponseMessageText(
   if (!Array.isArray(responseMessages) || responseMessages.length === 0) {
     return "";
   }
-
   for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
     const content = responseMessages[index]?.content;
     if (content?.transcriptVisibility === "internal") {
@@ -880,14 +866,11 @@ function getLatestVisibleResponseMessageText(
     }
     return text;
   }
-
   return "";
 }
-
 // ---------------------------------------------------------------------------
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
-
 // Reserved for path #4 — actual generation throw caught by getChatFailureReply.
 // Do NOT use as the generic empty-response fallback; that mislabels every
 // IGNORE / empty-action / empty-normalized-text path as a provider failure.
@@ -927,16 +910,15 @@ function isNoProviderError(err: unknown): boolean {
   if (NO_PROVIDER_ERROR_FRAGMENTS.some((frag) => msg.includes(frag))) {
     return true;
   }
-
   const missingDelegateType = msg.match(MISSING_DELEGATE_TYPE_PATTERN)?.[1];
   return isTextGenerationModelType(missingDelegateType);
 }
 const NO_PROVIDER_CHAT_MESSAGE =
   "Connect an LLM provider to start chatting. Open Settings → Providers, " +
   "or choose Eliza Cloud during first-run setup.";
-const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
+const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180000;
 /** Remote Ollama (Pi → VPS) runs multiple model calls per turn; allow more headroom. */
-const REMOTE_CHAT_GENERATION_TIMEOUT_MS = 600_000;
+const REMOTE_CHAT_GENERATION_TIMEOUT_MS = 600000;
 const CHAT_GENERATION_TIMEOUT_PATTERN =
   /chat generation timed out after \d+ms/i;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
@@ -944,11 +926,9 @@ type SyntheticChatFailureKind =
   | ChatFailureKind
   | "no_response"
   | "transient_failure";
-
 function isExecutableFallbackAction(action: { name: string }): boolean {
   return !NON_EXECUTABLE_FALLBACK_ACTIONS.has(action.name);
 }
-
 function classifySyntheticChatFailureText(
   text: string,
 ): SyntheticChatFailureKind | null {
@@ -987,7 +967,6 @@ function classifySyntheticChatFailureText(
   }
   return null;
 }
-
 /**
  * Validate an untrusted `accountConnect` payload from a response Content into a
  * strict {@link AccountConnectRequest}. Returns `undefined` when the value is
@@ -1015,7 +994,6 @@ export function normalizeAccountConnectRequest(
       : undefined;
   return reason ? { providers, reason } : { providers };
 }
-
 export function markSyntheticChatFailureContent<T extends Content>(
   content: T,
 ): T {
@@ -1025,7 +1003,6 @@ export function markSyntheticChatFailureContent<T extends Content>(
       ? (content.failureKind as SyntheticChatFailureKind)
       : classifySyntheticChatFailureText(text);
   if (!failureKind) return content;
-
   const metadata = asRecord(content.metadata);
   return {
     ...content,
@@ -1036,7 +1013,6 @@ export function markSyntheticChatFailureContent<T extends Content>(
     },
   } as T;
 }
-
 /** Keeps append-only delivery truthful when a late typed failure contradicts prose. */
 function terminalFailureVisibleText(
   deliveredText: string,
@@ -1048,7 +1024,6 @@ function terminalFailureVisibleText(
   if (delivered.includes(failure.message)) return deliveredText;
   return `${delivered}\n\n${replyUnavailable ? "" : "Task failed: "}${failure.message}`;
 }
-
 /** Converts the public DTO to Content's JSON-compatible indexed object shape. */
 function terminalFailureContentValue(
   failure: ChatTerminalFailure,
@@ -1060,32 +1035,36 @@ function terminalFailureContentValue(
     ...(failure.code ? { code: failure.code } : {}),
   };
 }
-
 function normalizeActionName(value: unknown): string {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
-
-function ensureMessageMemoryContent(
-  content: Content,
-): Content & { text: string } {
+function ensureMessageMemoryContent(content: Content): Content & {
+  text: string;
+} {
   return typeof content.text === "string"
     ? { ...content, text: content.text }
     : { ...content, text: "" };
 }
-
 function buildRuntimeActionNameLookup(
   runtime: AgentRuntime,
 ): Map<string, string> {
   const lookup = new Map<string, string>();
   const runtimeActions = Array.isArray(
-    (runtime as { actions?: unknown[] }).actions,
+    (
+      runtime as {
+        actions?: unknown[];
+      }
+    ).actions,
   )
-    ? ((runtime as { actions: unknown[] }).actions as Array<{
+    ? ((
+        runtime as {
+          actions: unknown[];
+        }
+      ).actions as Array<{
         name?: unknown;
         similes?: unknown;
       }>)
     : [];
-
   for (const action of runtimeActions) {
     const canonicalName = normalizeActionName(action.name);
     if (!canonicalName) {
@@ -1102,10 +1081,8 @@ function buildRuntimeActionNameLookup(
       }
     }
   }
-
   return lookup;
 }
-
 function readRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
@@ -1113,7 +1090,6 @@ function readRuntimeActionResults(
   if (!messageId) {
     return [];
   }
-
   const getActionResults = (
     runtime as {
       getActionResults?: (id: UUID) => unknown[];
@@ -1122,14 +1098,12 @@ function readRuntimeActionResults(
   if (typeof getActionResults !== "function") {
     return [];
   }
-
   try {
     return getActionResults(messageId);
   } catch {
     return [];
   }
 }
-
 function readActionResultName(result: unknown): string {
   if (!result || typeof result !== "object") {
     return "";
@@ -1144,7 +1118,6 @@ function readActionResultName(result: unknown): string {
       : null;
   return normalizeActionName(data?.actionName);
 }
-
 function listSuccessfulActionNames(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
@@ -1165,7 +1138,6 @@ function listSuccessfulActionNames(
   }
   return successfulNames;
 }
-
 function listSuccessfulActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
@@ -1185,7 +1157,6 @@ function listSuccessfulActionResults(
     return Boolean(readActionResultName(result));
   });
 }
-
 function isProgressActionCallback(content: Content): boolean {
   const status = normalizeActionName(
     (content as Record<string, unknown>).actionStatus,
@@ -1198,7 +1169,6 @@ function isProgressActionCallback(content: Content): boolean {
     status === "PROGRESS"
   );
 }
-
 function sanitizeActionResultValue(
   value: unknown,
   ancestors: WeakSet<object> = new WeakSet(),
@@ -1241,7 +1211,6 @@ function sanitizeActionResultValue(
   }
   return undefined;
 }
-
 function sanitizeActionResultValues(
   values: unknown,
 ): Record<string, unknown> | undefined {
@@ -1254,7 +1223,6 @@ function sanitizeActionResultValues(
   }
   return Object.keys(output).length > 0 ? output : undefined;
 }
-
 function summarizeActionResultForClient(
   result: unknown,
 ): ChatActionResultSummary | null {
@@ -1295,7 +1263,6 @@ function summarizeActionResultForClient(
     ...(values ? { values } : {}),
   };
 }
-
 export function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
@@ -1309,7 +1276,6 @@ export function summarizeRuntimeActionResults(
     .map(summarizeActionResultForClient)
     .filter((entry): entry is ChatActionResultSummary => Boolean(entry));
 }
-
 function resolveFinalTranscriptVisibility(
   finalText: string,
   actionResults: readonly ActionResult[] | undefined,
@@ -1328,14 +1294,12 @@ function resolveFinalTranscriptVisibility(
     ? "internal"
     : undefined;
 }
-
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
 }
-
 function findRecentInsufficientCreditsLog(
   logBuffer: LogEntry[],
-  lookbackMs = 60_000,
+  lookbackMs = 60000,
 ): LogEntry | null {
   const now = Date.now();
   for (let i = logBuffer.length - 1; i >= 0; i--) {
@@ -1347,7 +1311,6 @@ function findRecentInsufficientCreditsLog(
   }
   return null;
 }
-
 export function resolveNoResponseFallback(
   logBuffer: LogEntry[],
   _runtime?: AgentRuntime | null,
@@ -1358,17 +1321,14 @@ export function resolveNoResponseFallback(
   }
   return NO_RESPONSE_FALLBACK_REPLY;
 }
-
 function getProviderIssueChatReply(): string {
   return PROVIDER_ISSUE_CHAT_REPLY;
 }
-
 export function isChatGenerationTimeoutError(err: unknown): boolean {
   const msg =
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
-
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
     readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
@@ -1381,7 +1341,6 @@ function isRemoteOllamaEndpointConfigured(): boolean {
     return false;
   }
 }
-
 function resolveChatGenerationTimeoutMs(explicit?: number): number {
   if (
     typeof explicit === "number" &&
@@ -1390,26 +1349,21 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   ) {
     return Math.max(1, Math.floor(explicit));
   }
-
   const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
   if (fromEnv) {
     const parsed = Number.parseInt(fromEnv, 10);
     if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.max(1_000, parsed);
+      return Math.max(1000, parsed);
     }
   }
-
   if (isRemoteOllamaEndpointConfigured()) {
     return REMOTE_CHAT_GENERATION_TIMEOUT_MS;
   }
-
   return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
 }
-
 function createChatGenerationTimeoutError(timeoutMs: number): Error {
   return new Error(`Chat generation timed out after ${timeoutMs}ms`);
 }
-
 /**
  * Run a generation under a wall-clock deadline, cancelling it on expiry.
  *
@@ -1428,19 +1382,16 @@ export async function runWithGenerationTimeout<T>(
   const controller = new AbortController();
   const callerSignal = opts?.abortSignal;
   const abortFromCaller = () => controller.abort(callerSignal?.reason);
-
   if (callerSignal?.aborted) {
     abortFromCaller();
   } else {
     callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
   }
-
   let timedOut = false;
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
     controller.abort(createError());
   }, timeoutMs);
-
   try {
     return await run({ ...(opts ?? {}), abortSignal: controller.signal });
   } catch (err) {
@@ -1454,7 +1405,6 @@ export async function runWithGenerationTimeout<T>(
     callerSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
-
 export function getChatFailureReply(
   err: unknown,
   logBuffer: LogEntry[],
@@ -1480,7 +1430,6 @@ export function getChatFailureReply(
   }
   return getProviderIssueChatReply();
 }
-
 export function classifyChatFailure(
   err: unknown,
   logBuffer: LogEntry[],
@@ -1508,7 +1457,6 @@ export function classifyChatFailure(
   }
   return "provider_issue";
 }
-
 function normalizeIntentText(text: string): string {
   return text
     .toLowerCase()
@@ -1517,7 +1465,6 @@ function normalizeIntentText(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
-
 function hasLocalInferenceTopic(text: string): boolean {
   return (
     /\b(local|locally|on device|on-device|device model|local model|local inference|model hub|gguf|llama|inference|provider|runtime)\b/i.test(
@@ -1525,26 +1472,24 @@ function hasLocalInferenceTopic(text: string): boolean {
     ) || /\bmodel\s+(?:download|install|load|setup)\b/i.test(text)
   );
 }
-
 function isImperativeCloudOrLocalRouting(text: string): boolean {
   return /^(?:please\s+)?(?:use|switch|prefer|route|go|move)\s+(?:me\s+)?(?:to\s+)?(?:the\s+)?(?:cloud|local|on device|on-device)\b/i.test(
     text,
   );
 }
-
 export function detectLocalInferenceCommandIntent(
   text: string,
-  options: { localInferenceContext?: boolean } = {},
+  options: {
+    localInferenceContext?: boolean;
+  } = {},
 ): LocalInferenceCommandIntent | null {
   const normalized = normalizeIntentText(text);
   if (!normalized) return null;
-
   const explicitContext =
     options.localInferenceContext === true ||
     hasLocalInferenceTopic(normalized) ||
     isImperativeCloudOrLocalRouting(normalized);
   if (!explicitContext) return null;
-
   if (
     /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?cloud\b/.test(
       normalized,
@@ -1553,7 +1498,6 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "use_cloud";
   }
-
   if (
     /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
       normalized,
@@ -1565,7 +1509,6 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "status";
   }
-
   if (
     /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?(?:local|on device|on device model)\b/.test(
       normalized,
@@ -1576,7 +1519,6 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "use_local";
   }
-
   if (
     /\b(?:smaller|smallest|tiny|lighter|lightweight|less memory|low ram|low memory)\b/.test(
       normalized,
@@ -1585,14 +1527,12 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "switch_smaller";
   }
-
   if (
     /\b(?:cancel|stop|abort|halt)\b/.test(normalized) &&
     /\b(?:download|model|local|inference)\b/.test(normalized)
   ) {
     return "cancel";
   }
-
   if (
     /\b(?:re download|redownload|download again|fresh download)\b/.test(
       normalized,
@@ -1600,7 +1540,6 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "redownload";
   }
-
   if (
     /\b(?:retry|try again|resume|continue|restart)\b/.test(normalized) &&
     /\b(?:download|model|local|inference)\b/.test(normalized)
@@ -1609,7 +1548,6 @@ export function detectLocalInferenceCommandIntent(
       ? "resume"
       : "retry";
   }
-
   if (
     /\b(?:download|install|get|fetch|pull)\b/.test(normalized) &&
     (options.localInferenceContext === true ||
@@ -1617,10 +1555,8 @@ export function detectLocalInferenceCommandIntent(
   ) {
     return "download";
   }
-
   return null;
 }
-
 export function isLocalInferenceError(err: unknown): boolean {
   const message =
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
@@ -1628,7 +1564,6 @@ export function isLocalInferenceError(err: unknown): boolean {
     message,
   );
 }
-
 /**
  * Final text projection for chat-shaped API consumers (the trusted-local
  * `POST /api/agents/:id/message` mirror). These callers render plain chat —
@@ -1644,7 +1579,6 @@ export function renderChatSurfaceText(text: string): string {
   const { text: rendered } = renderInteractionsAsPlainText(text);
   return stripDashboardOnlyMarkers(rendered);
 }
-
 export function normalizeChatResponseText(
   text: string,
   logBuffer: LogEntry[],
@@ -1665,7 +1599,6 @@ export function normalizeChatResponseText(
   if (!isClientVisibleNoResponse(visibleText)) return visibleText;
   return resolveNoResponseFallback(logBuffer, runtime);
 }
-
 function listResponseActions(
   responseContent: Content | null | undefined,
 ): string[] {
@@ -1678,7 +1611,6 @@ function listResponseActions(
     )
     .filter((action) => action.length > 0);
 }
-
 export function isIntentionalNoResponseResult(
   result:
     | {
@@ -1690,19 +1622,16 @@ export function isIntentionalNoResponseResult(
   candidateText: string,
 ): boolean {
   if (!result) return false;
-
   const actions = listResponseActions(result.responseContent);
   const hasSilentTerminalAction =
     actions.length === 1 && (actions[0] === "IGNORE" || actions[0] === "STOP");
   const hasNoVisibleText =
     candidateText.trim().length === 0 ||
     isClientVisibleNoResponse(candidateText);
-
   return (
     hasNoVisibleText && (result.didRespond === false || hasSilentTerminalAction)
   );
 }
-
 function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
   const uniqueNames = [
     ...new Set(
@@ -1721,7 +1650,6 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
 // ---------------------------------------------------------------------------
 // SSE helpers
 // ---------------------------------------------------------------------------
-
 export {
   type ChatTokenStreamProtocol,
   type ChatTokenStreamWriter,
@@ -1741,7 +1669,6 @@ export {
 // ---------------------------------------------------------------------------
 // Persistence helpers
 // ---------------------------------------------------------------------------
-
 function isDuplicateMemoryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -1751,7 +1678,6 @@ function isDuplicateMemoryError(err: unknown): boolean {
     msg.includes("unique constraint")
   );
 }
-
 export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
@@ -1779,7 +1705,6 @@ export async function persistConversationMemory(
   }
   return stampedMemory;
 }
-
 export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
@@ -1795,7 +1720,6 @@ export async function persistExactConversationMemory(
     )
   ).memory;
 }
-
 export async function persistExactConversationMemoryResult(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
@@ -1815,7 +1739,6 @@ export async function persistExactConversationMemoryResult(
     );
   }
   const stampedMemory = stampAppConversationProvenance(runtime.agentId, memory);
-
   const loadExisting = async (): Promise<Memory | null> => {
     const [existing] = await runtime.getMemoriesByIds(
       [stampedMemory.id as UUID],
@@ -1849,10 +1772,8 @@ export async function persistExactConversationMemoryResult(
       },
     );
   };
-
   const existing = await loadExisting();
   if (existing) return { created: false, memory: assertExact(existing) };
-
   try {
     const write = () => {
       assertCurrent?.();
@@ -1880,7 +1801,6 @@ export async function persistExactConversationMemoryResult(
     });
   }
 }
-
 async function hasRecentAssistantMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1889,16 +1809,18 @@ async function hasRecentAssistantMemory(
 ): Promise<boolean> {
   const trimmed = text.trim();
   if (!trimmed) return false;
-
   try {
     const recent = await runtime.getMemories({
       roomId,
       tableName: "messages",
       limit: 12,
     });
-
     return recent.some((memory) => {
-      const contentText = (memory.content as { text?: string })?.text?.trim();
+      const contentText = (
+        memory.content as {
+          text?: string;
+        }
+      )?.text?.trim();
       const createdAt = memory.createdAt ?? 0;
       return (
         memory.entityId === runtime.agentId &&
@@ -1910,7 +1832,6 @@ async function hasRecentAssistantMemory(
     return false;
   }
 }
-
 export async function hasRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1920,7 +1841,6 @@ export async function hasRecentVisibleAssistantMemorySince(
     await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
   );
 }
-
 export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1944,7 +1864,6 @@ export async function getRecentVisibleAssistantMemoryTextSince(
     )?.text ?? null
   );
 }
-
 /**
  * Orders candidate assistant turns newest-first, treating a missing or
  * non-finite `createdAt` as epoch zero so a poisoned timestamp can never make
@@ -1952,8 +1871,14 @@ export async function getRecentVisibleAssistantMemoryTextSince(
  * selected turn is deterministic rather than dependent on storage order.
  */
 export function compareAssistantTurnRecencyDescending(
-  a: { createdAt?: number; id?: string },
-  b: { createdAt?: number; id?: string },
+  a: {
+    createdAt?: number;
+    id?: string;
+  },
+  b: {
+    createdAt?: number;
+    id?: string;
+  },
 ): number {
   const bCreated =
     typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
@@ -1968,20 +1893,21 @@ export function compareAssistantTurnRecencyDescending(
     (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
   );
 }
-
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
   sinceMs: number,
   slackMs: number = 2000,
-): Promise<{ id: UUID; text: string } | null> {
+): Promise<{
+  id: UUID;
+  text: string;
+} | null> {
   try {
     const recent = await runtime.getMemories({
       roomId,
       tableName: "messages",
       limit: 12,
     });
-
     const persistedAssistantTurn = recent
       .filter((memory) => {
         const content = memory.content as {
@@ -1998,9 +1924,12 @@ export async function getRecentVisibleAssistantMemorySince(
         );
       })
       .sort(compareAssistantTurnRecencyDescending)[0];
-
     const text = (
-      persistedAssistantTurn?.content as { text?: string } | undefined
+      persistedAssistantTurn?.content as
+        | {
+            text?: string;
+          }
+        | undefined
     )?.text?.trim();
     return persistedAssistantTurn?.id && text
       ? { id: persistedAssistantTurn.id as UUID, text }
@@ -2009,7 +1938,6 @@ export async function getRecentVisibleAssistantMemorySince(
     return null;
   }
 }
-
 export async function persistAssistantConversationMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2046,7 +1974,6 @@ export async function persistAssistantConversationMemory(
   );
   const trimmed = persistedContent.text.trim();
   if (!trimmed) return null;
-
   if (typeof dedupeSinceMs === "number" && !memoryId) {
     const alreadyPersisted = await hasRecentAssistantMemory(
       runtime,
@@ -2056,7 +1983,6 @@ export async function persistAssistantConversationMemory(
     );
     if (alreadyPersisted) return null;
   }
-
   const memory = createMessageMemory({
     id: memoryId ?? (crypto.randomUUID() as UUID),
     entityId: runtime.agentId,
@@ -2078,7 +2004,6 @@ export async function persistAssistantConversationMemory(
         assertCurrent,
       );
 }
-
 /**
  * Persist visible callback-delivered replies that the message service did not
  * commit. Exact source-turn IDs distinguish equal replies to different turns;
@@ -2160,7 +2085,6 @@ export async function persistUnpersistedChatReply(
     replyId,
   );
 }
-
 /**
  * Persist the terminal receipt for an aborted (Stop/disconnect) turn before
  * the route releases it. Unlike `persistAssistantConversationMemory` this
@@ -2201,13 +2125,10 @@ export async function persistInterruptedAssistantReceipt(
     assertCurrent,
   );
 }
-
 // ---------------------------------------------------------------------------
 // Chat request parsing
 // ---------------------------------------------------------------------------
-
 const VALID_CHANNEL_TYPES = new Set<string>(Object.values(ChannelType));
-
 function parseRequestChannelType(
   value: unknown,
   fallback: ChannelType = ChannelType.DM,
@@ -2224,7 +2145,6 @@ function parseRequestChannelType(
   }
   return normalized as ChannelType;
 }
-
 function readUiLanguageHeader(
   req: http.IncomingMessage | undefined,
 ): string | undefined {
@@ -2239,7 +2159,6 @@ function readUiLanguageHeader(
     ? header.trim()
     : undefined;
 }
-
 export async function readChatRequestPayload(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -2353,7 +2272,6 @@ export async function readChatRequestPayload(
     ...(streamProtocol ? { streamProtocol } : {}),
   };
 }
-
 function readMessageTrajectoryStepId(
   message: ReturnType<typeof createMessageMemory>,
 ): string | null {
@@ -2364,7 +2282,6 @@ function readMessageTrajectoryStepId(
     ? stepId.trim()
     : null;
 }
-
 function readMessageTrajectoryGrouping(
   message: ReturnType<typeof createMessageMemory>,
 ): {
@@ -2380,17 +2297,14 @@ function readMessageTrajectoryGrouping(
     ...messageMetadata,
   });
 }
-
 function scheduleMessageTrajectoryGroupingPersistence(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): void {
   const stepId = readMessageTrajectoryStepId(message);
   if (!stepId) return;
-
   const grouping = readMessageTrajectoryGrouping(message);
   if (!grouping.scenarioId && !grouping.batchId) return;
-
   void trackPostDeliveryTask(
     runtime,
     "chat:trajectory-grouping",
@@ -2412,7 +2326,6 @@ function scheduleMessageTrajectoryGroupingPersistence(
     { kind: "diagnostic" },
   );
 }
-
 function buildChatUsage(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
@@ -2441,7 +2354,6 @@ function buildChatUsage(
       llmCalls: capturedUsage.llmCalls,
     };
   }
-
   const promptText = extractCompatTextContent(message.content);
   const promptTokens = estimateTokenCount(promptText);
   const completionTokens = estimateTokenCount(finalText);
@@ -2454,11 +2366,9 @@ function buildChatUsage(
     llmCalls: 0,
   };
 }
-
 // ---------------------------------------------------------------------------
 // generateChatResponse
 // ---------------------------------------------------------------------------
-
 async function generateChatResponseWithTiming(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
@@ -2643,7 +2553,6 @@ async function generateChatResponseWithTiming(
       }
       replaceCallbackText(incoming, origin);
     };
-
     // Inbound event consumers may persist correlation state or apply
     // turn-shaping policy. Generation cannot safely continue when that
     // prerequisite fails.
@@ -2656,7 +2565,11 @@ async function generateChatResponseWithTiming(
       !(typeof originatingTraceId === "string" && originatingTraceId.trim())
     ) {
       message.metadata ??= { type: "message" };
-      (message.metadata as { traceId?: string }).traceId = requestTraceId;
+      (
+        message.metadata as {
+          traceId?: string;
+        }
+      ).traceId = requestTraceId;
     }
     if (typeof runtime.emitEvent === "function") {
       await timeInferenceSpan("chat:ingress:received-event", () =>
@@ -2672,7 +2585,6 @@ async function generateChatResponseWithTiming(
       typeof trajectoryStepId === "string" && trajectoryStepId.trim().length > 0
         ? { trajectoryStepId: trajectoryStepId.trim() }
         : undefined;
-
     let result:
       | Awaited<
           ReturnType<
@@ -2723,7 +2635,6 @@ async function generateChatResponseWithTiming(
       );
     };
     const fallbackSuccessfulActionNames = new Set<string>();
-
     const generationCapture = await withModelUsageCapture(runtime, () =>
       Promise.resolve(
         runWithTrajectoryContext(trajectoryContext, async () => {
@@ -2757,7 +2668,6 @@ async function generateChatResponseWithTiming(
             return;
           }
           generationAbortController.signal.throwIfAborted();
-
           const languageAugmentedMessage = maybeAugmentChatMessageWithLanguage(
             message,
             opts?.preferredLanguage,
@@ -2784,7 +2694,6 @@ async function generateChatResponseWithTiming(
                     if (content.transcriptVisibility === "internal") {
                       return [];
                     }
-
                     const chunk = extractCompatTextContent(content);
                     const visibleChunk = isInternalStructuredStreamText(chunk)
                       ? ""
@@ -2920,7 +2829,6 @@ async function generateChatResponseWithTiming(
           // but it is not permission to start optional post-processing after a
           // disconnect. The remaining path finalizes that result and only runs
           // new work while the owner signal is live.
-
           terminalFailure = parseChatTerminalFailure(
             result?.outcome.status === "failed"
               ? result.outcome.error
@@ -2946,7 +2854,6 @@ async function generateChatResponseWithTiming(
               responseText = failureText;
             }
           }
-
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
             const responseMessages = Array.isArray(result?.responseMessages)
@@ -3047,7 +2954,6 @@ async function generateChatResponseWithTiming(
               },
               "[eliza-api] Chat response metadata",
             );
-
             const rawActionsPayload = rc?.actions ?? resultRecord?.actions;
             const modelText = String(
               extractCompatTextContent(result.responseContent),
@@ -3063,7 +2969,6 @@ async function generateChatResponseWithTiming(
               result.actionResults,
               actionNameLookup,
             );
-
             const executableFallbackActions = parsedFallbackActions.filter(
               (action) => {
                 if (!isExecutableFallbackAction(action)) {
@@ -3084,7 +2989,6 @@ async function generateChatResponseWithTiming(
                   return canonicalName === "BLOCK";
                 });
               let successfulFallbackActions = new Set<string>();
-
               if (
                 selfControlFallbackActions.length > 0 &&
                 !generationAbortController.signal.aborted
@@ -3118,7 +3022,6 @@ async function generateChatResponseWithTiming(
                   fallbackSuccessfulActionNames.add(actionName);
                 }
               }
-
               const remainingExecutableFallbackActions =
                 executableFallbackActions.filter((action) => {
                   const canonicalName =
@@ -3129,7 +3032,6 @@ async function generateChatResponseWithTiming(
                   }
                   return true;
                 });
-
               if (remainingExecutableFallbackActions.length > 0) {
                 runtime.logger.error(
                   {
@@ -3198,7 +3100,6 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
-
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (
       !terminalFailure &&
@@ -3235,7 +3136,6 @@ async function generateChatResponseWithTiming(
         responseText = resultText;
       }
     }
-
     const noResponseFallback = opts?.resolveNoResponseText?.();
     const normalizedResponseText = terminalFailure
       ? responseText
@@ -3261,7 +3161,6 @@ async function generateChatResponseWithTiming(
             result?.actionResults,
             resultContentCandidates,
           );
-
     if (opts?.onChunk && !opts.onSnapshot && !replyFailure) {
       const authoritativeText =
         transcriptVisibility === "internal" ? "" : finalText;
@@ -3287,7 +3186,6 @@ async function generateChatResponseWithTiming(
         appendOnlyText += remainingText;
       }
     }
-
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages
       : [];
@@ -3374,7 +3272,6 @@ async function generateChatResponseWithTiming(
           ? responseMetadata.chatFailureKind
           : undefined;
     const failureKind = parseChatFailureKind(rawFailureKind);
-
     const thought =
       typeof responseContent?.thought === "string" &&
       responseContent.thought.trim()
@@ -3418,7 +3315,6 @@ async function generateChatResponseWithTiming(
       );
     const usedActionCallbacks =
       successfulDeliveredActionCallbacks.length > 0 || successfulActionMode;
-
     return {
       text: finalText,
       ...(planningAcknowledgment ? { planningAcknowledgment } : {}),
@@ -3461,7 +3357,6 @@ async function generateChatResponseWithTiming(
     closeResponseFinalization?.();
   }
 }
-
 async function generateOwnedChatResponse(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
@@ -3481,7 +3376,6 @@ async function generateOwnedChatResponse(
     markInference(INFERENCE_MARKS.responseFinalized);
     return result;
   }
-
   const timer =
     opts?.inferenceTimer ??
     new InferenceTurnTimer({
@@ -3524,7 +3418,6 @@ async function generateOwnedChatResponse(
     }
   });
 }
-
 export async function generateChatResponse(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
@@ -3553,7 +3446,6 @@ export async function generateChatResponse(
       },
     );
   };
-
   const inheritedLease = runtime.roomHandlerQueue.currentLease(message.roomId);
   const requestedLease = opts?.roomHandlerLease ?? inheritedLease;
   if (requestedLease) {
@@ -3572,20 +3464,16 @@ export async function generateChatResponse(
       () => runOwned(requestedLease),
     );
   }
-
   return runtime.roomHandlerQueue.withLease(message.roomId, runOwned, {
     signal: opts?.abortSignal,
   });
 }
-
 // ---------------------------------------------------------------------------
 // generateConversationTitle
 // ---------------------------------------------------------------------------
-
 interface ConversationTitleGenerationOptions {
   signal?: AbortSignal;
 }
-
 export async function generateConversationTitle(
   runtime: AgentRuntime,
   userMessage: string,
@@ -3593,7 +3481,6 @@ export async function generateConversationTitle(
   options?: ConversationTitleGenerationOptions,
 ): Promise<string | null> {
   const modelClass = ModelType.TEXT_SMALL;
-
   const prompt = `Based on the user's first message in a new chat, generate a very short, concise title (max 4-5 words) for the conversation.
 The agent's name is "${agentName}". The title should reflect the topic or intent of the user.
 Ideally, the title should fit the persona/vibe of the agent if possible, but clarity is more important.
@@ -3602,15 +3489,12 @@ Do not use quotes. Do not include "Title:" prefix.
 User message: "${userMessage}"
 
 Title:`;
-
   const title = await runtime.useModel(modelClass, {
     prompt,
     temperature: 0.7,
     signal: options?.signal,
   });
-
   if (!title) return null;
-
   let cleanTitle = title.trim();
   if (
     (cleanTitle.startsWith('"') && cleanTitle.endsWith('"')) ||
@@ -3618,16 +3502,12 @@ Title:`;
   ) {
     cleanTitle = cleanTitle.slice(1, -1);
   }
-
   if (!cleanTitle || cleanTitle.length > 50) return null;
-
   return cleanTitle;
 }
-
 // ---------------------------------------------------------------------------
 // State interface required by chat routes
 // ---------------------------------------------------------------------------
-
 export interface ChatRouteState {
   runtime: AgentRuntime | null;
   config: ElizaConfig;
@@ -3635,22 +3515,23 @@ export interface ChatRouteState {
   logBuffer: LogEntry[];
   chatRoomId: UUID | null;
   chatUserId: UUID | null;
-  chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
+  chatConnectionReady: {
+    userId: UUID;
+    roomId: UUID;
+    worldId: UUID;
+  } | null;
   chatConnectionPromise: Promise<void> | null;
   adminEntityId: UUID | null;
   /** Wallet trade permission mode for wallet-mode guidance replies. */
   tradePermissionMode?: string;
 }
-
 export interface ChatRouteContext extends RouteRequestContext {
   state: ChatRouteState;
   callerAuthorization?: AgentHttpRequestAuthorization;
 }
-
 export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
   return resolveClientChatAdminEntityId(state);
 }
-
 /**
  * Exported for the machine-session role-grant regression suite; runtime callers
  * are the chat POST paths in this module.
@@ -3662,7 +3543,11 @@ export async function ensureCompatChatConnection(
   channelIdPrefix: string,
   roomKey: string,
   principal: TrustedApiPrincipal,
-): Promise<{ userId: UUID; roomId: UUID; worldId: UUID }> {
+): Promise<{
+  userId: UUID;
+  roomId: UUID;
+  worldId: UUID;
+}> {
   const ownerPrincipal =
     principal.kind === "owner_session" || principal.kind === "owner_api_token";
   const userId = ownerPrincipal
@@ -3678,7 +3563,6 @@ export async function ensureCompatChatConnection(
   ) as UUID;
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-
   await runtime.ensureConnection({
     entityId: userId,
     roomId,
@@ -3690,14 +3574,12 @@ export async function ensureCompatChatConnection(
     messageServerId,
     metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
-
   if (!ownerPrincipal) {
     if (principal.kind === "service_gateway" && principal.sessionRole) {
       await grantSessionUserWorldRole(runtime, worldId, userId);
     }
     return { userId, roomId, worldId };
   }
-
   // Ensure world ownership only for a directly authenticated owner principal.
   // Re-applied on a fresh read when the revision moved underneath (the
   // connection bootstrap and deferred boot maintenance write the same world).
@@ -3710,7 +3592,11 @@ export async function ensureCompatChatConnection(
     if (
       !world.metadata.ownership ||
       typeof world.metadata.ownership !== "object" ||
-      (world.metadata.ownership as { ownerId?: string }).ownerId !== userId
+      (
+        world.metadata.ownership as {
+          ownerId?: string;
+        }
+      ).ownerId !== userId
     ) {
       world.metadata.ownership = { ownerId: userId };
       needsUpdate = true;
@@ -3723,10 +3609,8 @@ export async function ensureCompatChatConnection(
     }
     return needsUpdate;
   });
-
   return { userId, roomId, worldId };
 }
-
 /**
  * Grant-on-first-contact USER world membership for an authenticated
  * machine-session (paired-device) principal's minted external entity, so its
@@ -3773,11 +3657,9 @@ async function grantSessionUserWorldRole(
     );
   }
 }
-
 function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
   return resolveChatAdminEntityId(state);
 }
-
 export function resolveTrustedApiPrincipal(
   req: http.IncomingMessage,
   authorization: AgentHttpRequestAuthorization | undefined,
@@ -3837,22 +3719,18 @@ export function resolveTrustedApiPrincipal(
     principalId: "non-owner-api",
   };
 }
-
 function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {
   if (!state.runtime || !state.config) {
     return;
   }
-
   syncCharacterIntoConfig(
     state.config,
     state.runtime.character as Parameters<typeof syncCharacterIntoConfig>[1],
   );
 }
-
 // ---------------------------------------------------------------------------
 // Main route handler
 // ---------------------------------------------------------------------------
-
 export async function handleChatRoutes(
   ctx: ChatRouteContext,
 ): Promise<boolean> {
@@ -3861,7 +3739,6 @@ export async function handleChatRoutes(
     req,
     ctx.callerAuthorization,
   );
-
   // ── GET /v1/models (OpenAI compatible) ─────────────────────────────────
   if (method === "GET" && pathname === "/v1/models") {
     const created = Math.floor(Date.now() / 1000);
@@ -3870,7 +3747,6 @@ export async function handleChatRoutes(
     if (state.agentName.trim()) ids.add(state.agentName.trim());
     if (state.runtime?.character.name?.trim())
       ids.add(state.runtime.character.name.trim());
-
     json(res, {
       object: "list",
       data: Array.from(ids).map((id) => ({
@@ -3882,7 +3758,6 @@ export async function handleChatRoutes(
     });
     return true;
   }
-
   // ── GET /v1/models/:id (OpenAI compatible) ─────────────────────────────
   if (method === "GET" && /^\/v1\/models\/[^/]+$/.test(pathname)) {
     const created = Math.floor(Date.now() / 1000);
@@ -3906,7 +3781,6 @@ export async function handleChatRoutes(
     json(res, { id, object: "model", created, owned_by: "eliza" });
     return true;
   }
-
   // ── POST /v1/chat/completions (OpenAI compatible) ──────────────────────
   if (method === "POST" && pathname === "/v1/chat/completions") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -3925,7 +3799,6 @@ export async function handleChatRoutes(
       return true;
     }
     const safeBody = cloneWithoutBlockedObjectKeys(body);
-
     const extracted = extractOpenAiSystemAndLastUser(safeBody.messages);
     if (!extracted) {
       json(
@@ -3941,7 +3814,6 @@ export async function handleChatRoutes(
       );
       return true;
     }
-
     const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
@@ -3950,15 +3822,12 @@ export async function handleChatRoutes(
       typeof safeBody.model === "string" && safeBody.model.trim()
         ? safeBody.model.trim()
         : null;
-
     const prompt = extracted.system
       ? `${extracted.system}\n\n${extracted.user}`.trim()
       : extracted.user;
-
     const created = Math.floor(Date.now() / 1000);
     const id = `chatcmpl-${crypto.randomUUID()}`;
     const model = requestedModel ?? state.agentName;
-
     if (wantsStream) {
       initSse(res);
       const disconnectTracker = createStreamingResponseAbortTracker(
@@ -3966,7 +3835,6 @@ export async function handleChatRoutes(
         res,
         "OpenAI-compatible stream",
       );
-
       const sendChunk = (
         delta: Record<string, unknown>,
         finishReason: string | null,
@@ -3988,7 +3856,6 @@ export async function handleChatRoutes(
           }),
         );
       };
-
       try {
         if (!state.runtime) {
           writeSseData(
@@ -4003,12 +3870,9 @@ export async function handleChatRoutes(
           writeSseData(res, "[DONE]");
           return true;
         }
-
         sendChunk({ role: "assistant" }, null);
-
         let fullText = "";
         let transcriptVisibility: "internal" | undefined;
-
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
@@ -4021,7 +3885,6 @@ export async function handleChatRoutes(
             roomKey,
             trustedApiPrincipal,
           );
-
           const message = createMessageMemory({
             id: crypto.randomUUID() as UUID,
             entityId: userId,
@@ -4038,7 +3901,6 @@ export async function handleChatRoutes(
             message,
             trustedApiPrincipal,
           );
-
           const turnStartedAt = Date.now();
           const result = await generateChatResponse(
             runtime,
@@ -4070,7 +3932,6 @@ export async function handleChatRoutes(
           }
           syncRuntimeCharacterToChatStateConfig(state);
         }
-
         const resolved = normalizeChatResponseText(
           fullText,
           state.logBuffer,
@@ -4083,7 +3944,6 @@ export async function handleChatRoutes(
         ) {
           sendChunk({ content: resolved }, null);
         }
-
         sendChunk({}, "stop");
         writeSseData(res, "[DONE]");
       } catch (err) {
@@ -4143,14 +4003,12 @@ export async function handleChatRoutes(
       }
       return true;
     }
-
     // Non-streaming
     try {
       let responseText: string;
       let localInference: LocalInferenceChatMetadata | undefined;
       let failureKind: ChatFailureKind | undefined;
       let transcriptVisibility: "internal" | undefined;
-
       {
         if (!state.runtime) {
           json(
@@ -4214,7 +4072,6 @@ export async function handleChatRoutes(
         localInference = result.localInference;
         failureKind = result.failureKind;
       }
-
       if (failureKind === "no_provider") {
         json(
           res,
@@ -4229,7 +4086,6 @@ export async function handleChatRoutes(
         );
         return true;
       }
-
       const resolvedText =
         transcriptVisibility === "internal"
           ? ""
@@ -4291,7 +4147,6 @@ export async function handleChatRoutes(
     }
     return true;
   }
-
   // ── POST /v1/messages (Anthropic compatible) ───────────────────────────
   if (method === "POST" && pathname === "/v1/messages") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -4310,7 +4165,6 @@ export async function handleChatRoutes(
       return true;
     }
     const safeBody = cloneWithoutBlockedObjectKeys(body);
-
     const extracted = extractAnthropicSystemAndLastUser({
       system: safeBody.system,
       messages: safeBody.messages,
@@ -4329,7 +4183,6 @@ export async function handleChatRoutes(
       );
       return true;
     }
-
     const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
@@ -4338,14 +4191,11 @@ export async function handleChatRoutes(
       typeof safeBody.model === "string" && safeBody.model.trim()
         ? safeBody.model.trim()
         : null;
-
     const prompt = extracted.system
       ? `${extracted.system}\n\n${extracted.user}`.trim()
       : extracted.user;
-
     const id = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
     const model = requestedModel ?? state.agentName;
-
     if (wantsStream) {
       initSse(res);
       const disconnectTracker = createStreamingResponseAbortTracker(
@@ -4353,7 +4203,6 @@ export async function handleChatRoutes(
         res,
         "Anthropic-compatible stream",
       );
-
       try {
         if (!state.runtime) {
           writeSseJson(
@@ -4369,7 +4218,6 @@ export async function handleChatRoutes(
           );
           return true;
         }
-
         // Anthropic's wire format reports input_tokens on message_start (the
         // prompt is fully known here) and accumulates output_tokens on the
         // closing message_delta. We don't have a real model-side prompt count
@@ -4403,11 +4251,9 @@ export async function handleChatRoutes(
           },
           "content_block_start",
         );
-
         let fullText = "";
         let outputTokens = 0;
         let transcriptVisibility: "internal" | undefined;
-
         const onDelta = (chunk: string) => {
           if (!chunk) return;
           fullText += chunk;
@@ -4421,7 +4267,6 @@ export async function handleChatRoutes(
             "content_block_delta",
           );
         };
-
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
@@ -4434,7 +4279,6 @@ export async function handleChatRoutes(
             roomKey,
             trustedApiPrincipal,
           );
-
           const message = createMessageMemory({
             id: crypto.randomUUID() as UUID,
             entityId: userId,
@@ -4451,7 +4295,6 @@ export async function handleChatRoutes(
             message,
             trustedApiPrincipal,
           );
-
           const turnStartedAt = Date.now();
           const generation = await generateChatResponse(
             runtime,
@@ -4474,7 +4317,6 @@ export async function handleChatRoutes(
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
-
         const resolved = normalizeChatResponseText(
           fullText,
           state.logBuffer,
@@ -4487,7 +4329,6 @@ export async function handleChatRoutes(
         ) {
           onDelta(resolved);
         }
-
         writeSseJson(
           res,
           { type: "content_block_stop", index: 0 },
@@ -4547,14 +4388,12 @@ export async function handleChatRoutes(
       }
       return true;
     }
-
     // Non-streaming
     try {
       let responseText: string;
       let inputTokens = estimateTokenCount(prompt);
       let outputTokens = 0;
       let transcriptVisibility: "internal" | undefined;
-
       {
         if (!state.runtime) {
           json(
@@ -4620,7 +4459,6 @@ export async function handleChatRoutes(
           outputTokens = result.usage.completionTokens;
         }
       }
-
       const resolvedText =
         transcriptVisibility === "internal"
           ? ""
@@ -4666,7 +4504,6 @@ export async function handleChatRoutes(
     }
     return true;
   }
-
   // ── POST /api/agents/:id/message ───────────────────────────────────────
   // Local-mode mirror of the cloud agent-server's per-agent message
   // endpoint (`packages/cloud/services/agent-server/src/routes.ts`). Shares the
@@ -4681,12 +4518,10 @@ export async function handleChatRoutes(
       json(res, { error: "agent id is required" }, 400);
       return true;
     }
-
     if (!state.runtime) {
       json(res, { error: "Agent is not running" }, 503);
       return true;
     }
-
     // Surface a 404 only when the caller targeted an agent that this
     // process doesn't actually run — distinct from "route missing", which
     // is what the original issue (#7680) was reporting.
@@ -4694,7 +4529,6 @@ export async function handleChatRoutes(
       json(res, { error: "Agent not found" }, 404);
       return true;
     }
-
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     if (hasBlockedObjectKeyDeep(body)) {
@@ -4702,7 +4536,6 @@ export async function handleChatRoutes(
       return true;
     }
     const safeBody = cloneWithoutBlockedObjectKeys(body);
-
     const userId =
       typeof safeBody.userId === "string" && safeBody.userId.trim().length > 0
         ? safeBody.userId.trim()
@@ -4715,7 +4548,6 @@ export async function handleChatRoutes(
       json(res, { error: "userId and text are required" }, 400);
       return true;
     }
-
     try {
       const runtime = state.runtime;
       const agentName = runtime.character.name ?? "Eliza";
@@ -4740,7 +4572,6 @@ export async function handleChatRoutes(
         scopeCompatRoomKey(`${agentIdParam}:${userId}`),
         messagePrincipal,
       );
-
       const message = createMessageMemory({
         id: crypto.randomUUID() as UUID,
         entityId: connUserId,
@@ -4757,7 +4588,6 @@ export async function handleChatRoutes(
         message,
         messagePrincipal,
       );
-
       // Answer the HTTP caller the moment the reply is settled. The room's
       // post-delivery tasks (facts extraction, topic stamping, ~3 s) still
       // drain inside generateChatResponse before the next same-room turn, but
@@ -4872,6 +4702,5 @@ export async function handleChatRoutes(
     }
     return true;
   }
-
   return false;
 }

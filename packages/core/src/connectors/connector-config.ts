@@ -2,11 +2,10 @@
  * Pure data inspection helpers shared between plugin auto-enable predicates,
  * host-app config sync code, and the agent runtime.
  *
- * These live in @elizaos/core (not @elizaos/shared) so plugin packages can
+ * These live in @elizaos/core so plugin packages can
  * import them without dragging the app/shared layer into their dep graph —
  * external plugins published to npm only need @elizaos/core.
  */
-
 /** Builds the secret-setting key for one account-scoped connector credential. */
 export function connectorAccountCredentialSettingKey(
 	provider: string,
@@ -21,7 +20,6 @@ export function connectorAccountCredentialSettingKey(
 		encodeConnectorKeySegment(field),
 	].join("|");
 }
-
 /** Builds the secret-setting key for an inherited connector credential. */
 export function connectorBaseCredentialSettingKey(
 	provider: string,
@@ -34,14 +32,12 @@ export function connectorBaseCredentialSettingKey(
 		encodeConnectorKeySegment(field),
 	].join("|");
 }
-
 function encodeConnectorKeySegment(value: string): string {
 	// Length-prefixing preserves arbitrary account identifiers without the
 	// collisions caused by slug normalization (for example `support-east` and
 	// `support_east` must never resolve to the same credential).
 	return `${value.length}:${value}`;
 }
-
 /**
  * True when a connector configuration block is present and "configured
  * enough" for the connector plugin to do real work. The exact criteria are
@@ -70,7 +66,6 @@ export function isConnectorConfigured(
 	if (config.botToken || config.token || config.apiKey) {
 		return true;
 	}
-
 	switch (connectorName) {
 		case "bluebubbles":
 			return Boolean(config.serverUrl && config.password);
@@ -111,7 +106,6 @@ export function isConnectorConfigured(
 			return false;
 	}
 }
-
 /**
  * WeChat connector detection. Top-level `apiKey` is caught by the universal
  * check in `isConnectorConfigured`; this helper handles the multi-account
@@ -120,12 +114,10 @@ export function isConnectorConfigured(
 function isNonEmptyString(value: unknown): boolean {
 	return typeof value === "string" && value.trim().length > 0;
 }
-
 /** Object (record) form of a service-account credential — never an array. */
 function isRecordObject(value: unknown): boolean {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 /**
  * True when a Google Chat account row (top-level block or `accounts.*` record
  * entry) carries usable service-account credential material. Mirrors
@@ -142,7 +134,6 @@ function hasGoogleChatCredential(row: Record<string, unknown>): boolean {
 		isNonEmptyString(row.serviceAccountKey)
 	);
 }
-
 /**
  * Google Chat connector detection. The connector authenticates with a service
  * account, so `projectId` or webhook settings alone are not enough. Credential
@@ -177,7 +168,6 @@ export function isGoogleChatConfigured(value: unknown): boolean {
 	}
 	return false;
 }
-
 export function isWechatConfigured(
 	config: Record<string, unknown> | null | undefined,
 ): boolean {

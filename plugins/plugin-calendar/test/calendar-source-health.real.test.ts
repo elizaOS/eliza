@@ -5,10 +5,13 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google-workspace";
 import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
-import { type LifeOpsConnectorGrant, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createConflictDetectAction } from "../src/actions/conflict-detect.js";

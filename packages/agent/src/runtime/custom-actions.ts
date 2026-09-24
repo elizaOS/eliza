@@ -23,7 +23,10 @@ import {
   normalizeHostLike,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { createSelfApiRequestHeaders, resolveServerOnlyPort } from "@elizaos/core/runtime-env";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/core/runtime-env";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 import type {
   CustomActionDef,

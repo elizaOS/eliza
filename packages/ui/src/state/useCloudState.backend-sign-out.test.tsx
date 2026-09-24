@@ -39,12 +39,15 @@ vi.mock("../cloud/shell/StewardProviderShared", () => ({
   clearStaleStewardSession: clearStaleStewardSessionMock,
 }));
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../core/src/steward-session-client/index.ts")
-  >()),
-  clearStoredStewardToken: clearStoredStewardTokenMock,
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    clearStoredStewardToken: clearStoredStewardTokenMock,
+  }),
+);
 
 vi.mock("./cloud-pair-token", () => ({
   clearCloudPairApiToken: clearCloudPairApiTokenMock,

@@ -14,8 +14,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { type ElizaConfig } from "@elizaos/core/config/types";
-import { isElizaSettingsDebugEnabled, sanitizeForSettingsDebug, settingsDebugCloudSummary } from "@elizaos/core/settings-debug";
 import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
+import {
+  isElizaSettingsDebugEnabled,
+  sanitizeForSettingsDebug,
+  settingsDebugCloudSummary,
+} from "@elizaos/core/settings-debug";
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";

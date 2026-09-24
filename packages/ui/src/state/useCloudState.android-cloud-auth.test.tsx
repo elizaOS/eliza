@@ -40,19 +40,22 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => {
-  const original =
-    await importOriginal<
-      typeof import("../../../core/src/steward-session-client/index.ts")
-    >();
-  return {
-    ...original,
-    clearStoredStewardToken: vi.fn(async () => {}),
-    readStoredStewardToken: vi.fn(() => harness.stewardToken),
-    replaceStoredStewardTokenIfCurrent: vi.fn(async () => false),
-    writeStoredStewardToken: vi.fn(async () => {}),
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...original,
+      clearStoredStewardToken: vi.fn(async () => {}),
+      readStoredStewardToken: vi.fn(() => harness.stewardToken),
+      replaceStoredStewardTokenIfCurrent: vi.fn(async () => false),
+      writeStoredStewardToken: vi.fn(async () => {}),
+    };
+  },
+);
 
 vi.mock("../platform/android-runtime", () => ({
   isAndroidCloudBuild: () => true,

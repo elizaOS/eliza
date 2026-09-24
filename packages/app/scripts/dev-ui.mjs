@@ -22,7 +22,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/core/runtime-env";
+import {
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
+} from "@elizaos/core/runtime-env";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";

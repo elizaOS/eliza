@@ -4,7 +4,7 @@
  * without dragging the React component graph into the API process at boot.
  *
  * Registration-surface contracts + registries (overlay apps, detail extensions)
- * are owned by @elizaos/shared — the React-free canonical home — so this shim
+ * are owned by @elizaos/core — the React-free canonical home — so this shim
  * registers app surfaces without touching the React package.
  */
 // Everything below re-exports from its narrow `@elizaos/ui` subpath rather than
@@ -13,15 +13,33 @@
 // `@elizaos/app` barrel (index.ts) — so importing it from the bare barrel
 // dragged ~1000 React modules (and their deps) into the API process at boot.
 // Subpath imports pull only the specific component. Mirrors `browser.ts`.
-export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
-export { type AppRunSummary, type AppSessionJsonValue } from "@elizaos/core/contracts/apps";
-export { type OverlayApp, type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
-export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
-export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
+
+export {
+  type AppRunSummary,
+  type AppSessionJsonValue,
+} from "@elizaos/core/contracts/apps";
 export { client } from "@elizaos/ui/api";
+export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export {
+  type OverlayApp,
+  type OverlayAppContext,
+} from "@elizaos/ui/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
-export { SurfaceCard, SurfaceEmptyState, SurfaceGrid, SurfaceSection, } from "@elizaos/ui/components/apps/extensions/surface";
-export { formatDetailTimestamp, selectLatestRunForApp, toneForHealthState, toneForStatusText, toneForViewerAttachment, } from "@elizaos/ui/components/apps/extensions/surface.helpers";
+export {
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+} from "@elizaos/ui/components/apps/extensions/surface";
+export {
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
@@ -30,5 +48,8 @@ export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 // app-store only pulls React + an erased type (same weight as useApp), so it
 // stays light enough for the Node API process — re-export the selector hooks so
 // app plugins can subscribe to AppContext slices instead of the whole value.
-export { useAppSelector, useAppSelectorShallow, } from "@elizaos/ui/state/app-store";
+export {
+  useAppSelector,
+  useAppSelectorShallow,
+} from "@elizaos/ui/state/app-store";
 export { useApp } from "@elizaos/ui/state/useApp";

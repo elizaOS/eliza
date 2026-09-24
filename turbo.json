@@ -25,15 +25,9 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ],
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!dist/**",
@@ -77,9 +71,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ],
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -87,29 +79,20 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": [
-        "dist/**",
-        "web-dist/**"
-      ]
+      "outputs": ["dist/**", "web-dist/**"]
     },
     "@elizaos/cloud-api#build": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/ui#build": {
       "dependsOn": [
         "@elizaos/core#build",
-        "^build",
+        "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
       ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
@@ -128,37 +111,25 @@
       ]
     },
     "@elizaos/electrobun#build": {
-      "dependsOn": [
-        "@elizaos/app#build:dist",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/app#build:dist", "^build"],
       "cache": false,
       "outputs": []
     },
     "@elizaos/plugin-assistant#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
     },
     "lint": {
       "outputs": [],
       "dependsOn": []
     },
     "@elizaos/capacitor-gateway#lint": {
-      "env": [
-        "DEVELOPER_DIR"
-      ],
+      "env": ["DEVELOPER_DIR"],
       "outputs": [],
       "dependsOn": []
     },
     "@elizaos/capacitor-gateway#lint:check": {
-      "env": [
-        "DEVELOPER_DIR"
-      ],
+      "env": ["DEVELOPER_DIR"],
       "outputs": [],
       "dependsOn": []
     },
@@ -182,9 +153,7 @@
       "dependsOn": []
     },
     "typecheck": {
-      "dependsOn": [
-        "typecheck:deps"
-      ],
+      "dependsOn": ["typecheck:deps"],
       "outputs": []
     },
     "@elizaos/agent#typecheck": {
@@ -239,10 +208,7 @@
       ]
     },
     "@elizaos/plugin-discord#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-relationships#typecheck": {
       "dependsOn": [
@@ -297,16 +263,10 @@
       ]
     },
     "@elizaos/plugin-native-contacts#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-inference#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "format": {
       "outputs": [],
@@ -317,32 +277,22 @@
       "dependsOn": []
     },
     "start": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
+      "env": ["LOG_LEVEL"],
       "cache": false,
       "persistent": true
     },
     "dev": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false,
       "persistent": true
     },
     "migrate": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false
     },
     "migrate:generate": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false
     },
     "clean": {
@@ -351,12 +301,8 @@
     },
     "@elizaos/core#build": {
       "dependsOn": [],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
       "inputs": [
         "src/**",
         "build.ts",
@@ -395,16 +341,10 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": [
-        "dist/**"
-      ]
+      "outputs": ["dist/**"]
     },
     "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/app#build:dist",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
     },
     "@elizaos/testing#typecheck": {
       "dependsOn": [
@@ -417,16 +357,11 @@
       ]
     },
     "typecheck:deps": {
-      "dependsOn": [
-        "^typecheck:deps"
-      ],
+      "dependsOn": ["^typecheck:deps"],
       "outputs": []
     },
     "@elizaos/agent-server#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-sql#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-sql#build"]
     },
     "@elizaos/cloud-e2e#typecheck": {
       "dependsOn": [
@@ -473,34 +408,19 @@
       ]
     },
     "@elizaos/plugin-anthropic#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-browser#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/auth#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
     },
     "@elizaos/plugin-maps#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/ui#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-mcp#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-messages#typecheck": {
       "dependsOn": [
@@ -510,16 +430,10 @@
       ]
     },
     "@elizaos/plugin-native-phone#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/ui#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-native-settings#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/ui#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-native-wifi#typecheck": {
       "dependsOn": [
@@ -538,16 +452,10 @@
       ]
     },
     "@elizaos/plugin-openai#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sql#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-wallet#typecheck": {
       "dependsOn": [
@@ -557,40 +465,22 @@
       ]
     },
     "@elizaos/auth#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/bench-eliza-1#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/bench-eliza-1-vision-cua-e2e#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-computeruse#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-computeruse#build"]
     },
     "@elizaos/bench-vision-language#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/benchmark-framework#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-openai#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-openai#build"]
     },
     "@elizaos/cloud-services-common#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/cloud-test-mocks#typecheck": {
       "dependsOn": [
@@ -607,46 +497,25 @@
       ]
     },
     "@elizaos/gateway-discord#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/gateway-webhook#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/native-activity-tracker#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/os#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-benchmarks#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-coding-tools#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-web-search#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-web-search#build"]
     },
     "@elizaos/plugin-computeruse#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/auth#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
     },
     "@elizaos/plugin-elizacloud#typecheck": {
       "dependsOn": [
@@ -656,52 +525,33 @@
       ]
     },
     "@elizaos/plugin-embeddings#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-form#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-github#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-goals#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-scheduling#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
     },
     "@elizaos/plugin-google-workspace#typecheck": {
       "dependsOn": [
         "typecheck:deps",
+        "@elizaos/core#build",
+        "@elizaos/testing#build",
         "@elizaos/plugin-assistant#build"
       ]
     },
     "@elizaos/plugin-health#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-scheduling#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
     },
     "@elizaos/plugin-imessage#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-inbox#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-knowledge#typecheck": {
       "dependsOn": [
@@ -711,46 +561,25 @@
       ]
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-meetings#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-filesystem#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-pdf#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-pty#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-slack#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sqlite#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-telegram#typecheck": {
       "dependsOn": [
@@ -760,46 +589,25 @@
       ]
     },
     "@elizaos/plugin-trajectory-logger#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/auth#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
     },
     "@elizaos/plugin-video#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-web-search#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-workflow#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-x#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/three-agent-dialogue#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "memperf-suite#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "^build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/ui#typecheck": {
       "dependsOn": [
@@ -808,10 +616,20 @@
       ]
     },
     "@elizaos/plugin-todos#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/ui#typecheck:deps"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
+    },
+    "@elizaos/core#typecheck:deps": {
+      "dependsOn": []
+    },
+    "@elizaos/ui#typecheck:deps": {
+      "dependsOn": ["@elizaos/core#typecheck:deps"]
+    },
+    "@elizaos/plugin-native-inference#typecheck:deps": {
+      "dependsOn": ["@elizaos/core#typecheck:deps"]
+    },
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["dist/**"]
     }
   }
 }

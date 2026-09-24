@@ -66,32 +66,35 @@ vi.mock("../../../../components/primitives", async () => {
   return { Alert, AlertDescription };
 });
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../../../../core/src/steward-session-client/index.ts")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
-    readStoredStewardToken: () => sessionSpies.storedToken,
-    clearStoredStewardToken: async () => {
-      sessionSpies.storedToken = null;
-      sessionSpies.clear();
-    },
-    writeStoredStewardToken: (token: string) => {
-      sessionSpies.storedToken = token;
-      sessionSpies.write(token);
-    },
-    StewardSessionError: class StewardSessionError extends Error {
-      status: number;
-      constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-      }
-    },
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
+      readStoredStewardToken: () => sessionSpies.storedToken,
+      clearStoredStewardToken: async () => {
+        sessionSpies.storedToken = null;
+        sessionSpies.clear();
+      },
+      writeStoredStewardToken: (token: string) => {
+        sessionSpies.storedToken = token;
+        sessionSpies.write(token);
+      },
+      StewardSessionError: class StewardSessionError extends Error {
+        status: number;
+        constructor(message: string, status: number) {
+          super(message);
+          this.status = status;
+        }
+      },
+    };
+  },
+);
 
 vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {

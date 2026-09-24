@@ -302,8 +302,6 @@ export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
   return existsSync(sourceRoot) ? sourceRoot : packageRoot;
 }
 
-
-
 export function getUiSourceRoot(repoRoot: string): string | undefined {
   const packageRoot = getInstalledPackageRoot("@elizaos/ui", repoRoot);
   if (!packageRoot) {

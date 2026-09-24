@@ -12,14 +12,14 @@
  * Single-GPU only: no tensor-split, no NVLink. If `gpuOptions.nGpuLayers`
  * is `-1` the whole model goes to the one card.
  */
-import type { Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import type { Eliza1TierId } from "../model-catalog/catalog.js";
 
 import {
   type BundleRecommendation,
   type GpuYamlProfile,
   getRecommendationsByTier,
   type KvCacheType,
-} from "@elizaos/plugin-native-inference/model-gpu/gpu-profile-schema";
+} from "./gpu-profile-schema.js";
 
 /**
  * Shape of the override patch the runtime applies. Mirrors the subset

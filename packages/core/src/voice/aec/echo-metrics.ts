@@ -16,19 +16,19 @@
  * there is no near-end energy to enhance.
  */
 export function computeErle(
-  nearEnd: Float32Array,
-  residual: Float32Array,
+	nearEnd: Float32Array,
+	residual: Float32Array,
 ): number {
-  let nearEnergy = 0;
-  let residualEnergy = 0;
-  const len = Math.min(nearEnd.length, residual.length);
-  for (let i = 0; i < len; i++) {
-    nearEnergy += nearEnd[i] * nearEnd[i];
-    residualEnergy += residual[i] * residual[i];
-  }
-  if (nearEnergy === 0) return 0;
-  if (residualEnergy === 0) return Number.POSITIVE_INFINITY;
-  return 10 * Math.log10(nearEnergy / residualEnergy);
+	let nearEnergy = 0;
+	let residualEnergy = 0;
+	const len = Math.min(nearEnd.length, residual.length);
+	for (let i = 0; i < len; i++) {
+		nearEnergy += nearEnd[i] * nearEnd[i];
+		residualEnergy += residual[i] * residual[i];
+	}
+	if (nearEnergy === 0) return 0;
+	if (residualEnergy === 0) return Number.POSITIVE_INFINITY;
+	return 10 * Math.log10(nearEnergy / residualEnergy);
 }
 
 /**
@@ -41,38 +41,38 @@ export function computeErle(
  * Returns `erleDb: null` when no block was far-active (no echo present).
  */
 export function computeFarActiveErle(
-  nearEnd: Float32Array,
-  residual: Float32Array,
-  alignedFarEnd: Float32Array,
-  options: { blockSamples?: number; farEnergyFloor?: number } = {},
+	nearEnd: Float32Array,
+	residual: Float32Array,
+	alignedFarEnd: Float32Array,
+	options: { blockSamples?: number; farEnergyFloor?: number } = {},
 ): { erleDb: number | null; farActiveSamples: number } {
-  const block = Math.max(1, Math.floor(options.blockSamples ?? 320));
-  const floor = options.farEnergyFloor ?? 1e-7;
-  const len = Math.min(nearEnd.length, residual.length, alignedFarEnd.length);
-  let nearEnergy = 0;
-  let residualEnergy = 0;
-  let farActiveSamples = 0;
-  for (let start = 0; start < len; start += block) {
-    const end = Math.min(len, start + block);
-    let farEnergy = 0;
-    for (let i = start; i < end; i++) {
-      farEnergy += alignedFarEnd[i] * alignedFarEnd[i];
-    }
-    if (farEnergy / (end - start) < floor) continue;
-    farActiveSamples += end - start;
-    for (let i = start; i < end; i++) {
-      nearEnergy += nearEnd[i] * nearEnd[i];
-      residualEnergy += residual[i] * residual[i];
-    }
-  }
-  if (farActiveSamples === 0 || nearEnergy === 0) {
-    return { erleDb: null, farActiveSamples };
-  }
-  if (residualEnergy === 0) {
-    return { erleDb: Number.POSITIVE_INFINITY, farActiveSamples };
-  }
-  return {
-    erleDb: 10 * Math.log10(nearEnergy / residualEnergy),
-    farActiveSamples,
-  };
+	const block = Math.max(1, Math.floor(options.blockSamples ?? 320));
+	const floor = options.farEnergyFloor ?? 1e-7;
+	const len = Math.min(nearEnd.length, residual.length, alignedFarEnd.length);
+	let nearEnergy = 0;
+	let residualEnergy = 0;
+	let farActiveSamples = 0;
+	for (let start = 0; start < len; start += block) {
+		const end = Math.min(len, start + block);
+		let farEnergy = 0;
+		for (let i = start; i < end; i++) {
+			farEnergy += alignedFarEnd[i] * alignedFarEnd[i];
+		}
+		if (farEnergy / (end - start) < floor) continue;
+		farActiveSamples += end - start;
+		for (let i = start; i < end; i++) {
+			nearEnergy += nearEnd[i] * nearEnd[i];
+			residualEnergy += residual[i] * residual[i];
+		}
+	}
+	if (farActiveSamples === 0 || nearEnergy === 0) {
+		return { erleDb: null, farActiveSamples };
+	}
+	if (residualEnergy === 0) {
+		return { erleDb: Number.POSITIVE_INFINITY, farActiveSamples };
+	}
+	return {
+		erleDb: 10 * Math.log10(nearEnergy / residualEnergy),
+		farActiveSamples,
+	};
 }

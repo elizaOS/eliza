@@ -1,5 +1,8 @@
 /** Complete source-health fixture for tests using the real availability evaluator. */
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarSourceHealth,
+} from "@elizaos/core/contracts/calendar";
 export function freshCalendarSources(
   events: readonly LifeOpsCalendarEvent[] = [],
 ): LifeOpsCalendarSourceHealth[] {

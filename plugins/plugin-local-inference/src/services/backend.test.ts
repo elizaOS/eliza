@@ -5,7 +5,7 @@
 // caller can tell the operator to rebuild instead of letting the model silently
 // run de-optimized. These branches gate that contract, so they are pinned here.
 
-import { type CatalogModel } from "@elizaos/core/contracts/local-inference";
+import type { CatalogModel } from "@elizaos/core/contracts/local-inference";
 import { describe, expect, it } from "vitest";
 import { decideBackend } from "./backend";
 

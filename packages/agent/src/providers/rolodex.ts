@@ -15,11 +15,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
-import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
 
 function formatPerson(person: RelationshipsPersonSummary): string {
   const platforms =

@@ -68,7 +68,10 @@ import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-settings-banner-style";
-import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/core/runtime-env";
+import {
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
+} from "@elizaos/core/runtime-env";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";

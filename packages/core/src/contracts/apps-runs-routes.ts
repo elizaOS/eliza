@@ -14,33 +14,33 @@
 import z from "zod";
 
 export const PostRunMessageRequestSchema = z
-  .object({
-    content: z.string().optional(),
-    message: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const raw =
-      typeof value.content === "string"
-        ? value.content
-        : typeof value.message === "string"
-          ? value.message
-          : "";
-    return { content: raw.trim() };
-  })
-  .pipe(
-    z
-      .object({
-        content: z.string().min(1, "content is required"),
-      })
-      .strict(),
-  );
+	.object({
+		content: z.string().optional(),
+		message: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const raw =
+			typeof value.content === "string"
+				? value.content
+				: typeof value.message === "string"
+					? value.message
+					: "";
+		return { content: raw.trim() };
+	})
+	.pipe(
+		z
+			.object({
+				content: z.string().min(1, "content is required"),
+			})
+			.strict(),
+	);
 
 export const PostRunControlRequestSchema = z
-  .object({
-    action: z.enum(["pause", "resume"]),
-  })
-  .strict();
+	.object({
+		action: z.enum(["pause", "resume"]),
+	})
+	.strict();
 
 export type PostRunMessageRequest = z.infer<typeof PostRunMessageRequestSchema>;
 export type PostRunControlRequest = z.infer<typeof PostRunControlRequestSchema>;

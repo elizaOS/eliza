@@ -6,17 +6,11 @@
     "noEmit": false,
     "ignoreDeprecations": "6.0",
     "paths": {
-      "@elizaos/cloud-sdk": [
-        "../../packages/cloud/sdk/dist/index.d.ts"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/dist/index.d.ts"
-      ]
+      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/dist/index.d.ts"],
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"]
     }
   },
-  "include": [
-    "src"
-  ],
+  "include": ["src"],
   "exclude": [
     "node_modules",
     "dist",

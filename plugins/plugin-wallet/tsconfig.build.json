@@ -8,9 +8,7 @@
     "rootDir": "src",
     "paths": {}
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "src/ui/**",
     "src/ui.ts",

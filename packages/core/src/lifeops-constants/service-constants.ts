@@ -4,19 +4,17 @@
  * Plain constant tables for the personal-assistant scheduled-task / reminder /
  * connector pipelines: overview limits, Google cache TTLs, reminder metadata
  * keys, escalation timing, timezone aliases, and default policies. Depends only
- * on the LifeOps contract types (mirrored in `@elizaos/shared`); no DB, no
+ * on the LifeOps contract types (mirrored in `@elizaos/core`); no DB, no
  * plugin imports. Consumed by `@elizaos/plugin-personal-assistant`, which keeps
  * a thin re-export shim at `lifeops/service-constants.ts` for historical
  * import paths.
  */
-
 import type {
-  LifeOpsReminderIntensity,
-  LifeOpsReminderStep,
-  LifeOpsReminderUrgency,
-  LifeOpsWorkflowPermissionPolicy,
-} from "@elizaos/core/contracts/personal-assistant";
-
+	LifeOpsReminderIntensity,
+	LifeOpsReminderStep,
+	LifeOpsReminderUrgency,
+	LifeOpsWorkflowPermissionPolicy,
+} from "../contracts/personal-assistant.js";
 export const MAX_OVERVIEW_OCCURRENCES = 8;
 export const MAX_OVERVIEW_REMINDERS = 6;
 export const OVERVIEW_HORIZON_MINUTES = 18 * 60;
@@ -38,57 +36,57 @@ export const DEFINITION_PERFORMANCE_LAST7_DAYS = 7;
 export const DEFINITION_PERFORMANCE_LAST30_DAYS = 30;
 export const DEFAULT_REMINDER_INTENSITY: LifeOpsReminderIntensity = "normal";
 export const GLOBAL_REMINDER_PREFERENCE_CHANNEL_REF =
-  "lifeops://owner/reminder-preferences";
+	"lifeops://owner/reminder-preferences";
 export const REMINDER_INTENSITY_METADATA_KEY = "reminderIntensity";
 export const REMINDER_INTENSITY_UPDATED_AT_METADATA_KEY =
-  "reminderIntensityUpdatedAt";
+	"reminderIntensityUpdatedAt";
 export const REMINDER_INTENSITY_NOTE_METADATA_KEY = "reminderIntensityNote";
 export const REMINDER_PREFERENCE_SCOPE_METADATA_KEY = "reminderPreferenceScope";
 export const REMINDER_LIFECYCLE_METADATA_KEY = "lifecycle";
 export const REMINDER_ESCALATION_INDEX_METADATA_KEY = "escalationIndex";
 export const REMINDER_ESCALATION_REASON_METADATA_KEY = "escalationReason";
 export const REMINDER_ESCALATION_ACTIVITY_PLATFORM_METADATA_KEY =
-  "activityPlatform";
+	"activityPlatform";
 export const REMINDER_ESCALATION_ACTIVITY_ACTIVE_METADATA_KEY =
-  "activityActive";
+	"activityActive";
 export const REMINDER_ESCALATION_STARTED_AT_METADATA_KEY =
-  "reminderEscalationStartedAt";
+	"reminderEscalationStartedAt";
 export const REMINDER_ESCALATION_LAST_ATTEMPT_AT_METADATA_KEY =
-  "reminderEscalationLastAttemptAt";
+	"reminderEscalationLastAttemptAt";
 export const REMINDER_ESCALATION_LAST_CHANNEL_METADATA_KEY =
-  "reminderEscalationLastChannel";
+	"reminderEscalationLastChannel";
 export const REMINDER_ESCALATION_LAST_OUTCOME_METADATA_KEY =
-  "reminderEscalationLastOutcome";
+	"reminderEscalationLastOutcome";
 export const REMINDER_ESCALATION_CHANNELS_METADATA_KEY =
-  "reminderEscalationChannels";
+	"reminderEscalationChannels";
 export const REMINDER_ESCALATION_RESOLVED_AT_METADATA_KEY =
-  "reminderEscalationResolvedAt";
+	"reminderEscalationResolvedAt";
 export const REMINDER_ESCALATION_RESOLUTION_METADATA_KEY =
-  "reminderEscalationResolution";
+	"reminderEscalationResolution";
 export const REMINDER_ESCALATION_RESOLUTION_NOTE_METADATA_KEY =
-  "reminderEscalationResolutionNote";
+	"reminderEscalationResolutionNote";
 export const REMINDER_ESCALATION_PROFILE_METADATA_KEY =
-  "reminderEscalationProfile";
+	"reminderEscalationProfile";
 export const REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY =
-  "reminderReviewAfterMinutes";
+	"reminderReviewAfterMinutes";
 export const REMINDER_REVIEW_AT_METADATA_KEY = "reminderReviewAt";
 export const REMINDER_REVIEW_REASON_METADATA_KEY = "reminderReviewReason";
 export const REMINDER_REVIEW_STATUS_METADATA_KEY = "reminderReviewStatus";
 export const REMINDER_REVIEW_DECISION_METADATA_KEY = "reminderReviewDecision";
 export const REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY =
-  "reminderReviewRespondedAt";
+	"reminderReviewRespondedAt";
 export const REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY =
-  "reminderReviewResponseText";
+	"reminderReviewResponseText";
 export const REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY =
-  "reminderReviewClassifierSource";
+	"reminderReviewClassifierSource";
 export const REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY =
-  "reminderReviewSemanticReason";
+	"reminderReviewSemanticReason";
 export const REMINDER_REVIEW_ESCALATED_AT_METADATA_KEY =
-  "reminderReviewEscalatedAt";
+	"reminderReviewEscalatedAt";
 export const REMINDER_REVIEW_ESCALATED_ATTEMPT_ID_METADATA_KEY =
-  "reminderReviewEscalatedAttemptId";
+	"reminderReviewEscalatedAttemptId";
 export const REMINDER_REVIEW_ESCALATED_CHANNEL_METADATA_KEY =
-  "reminderReviewEscalatedChannel";
+	"reminderReviewEscalatedChannel";
 export const REMINDER_ACTIVITY_GATE_METADATA_KEY = "reminderActivityGate";
 export const REMINDER_ACTIVITY_GATES = ["active_on_computer"] as const;
 export type ReminderActivityGate = (typeof REMINDER_ACTIVITY_GATES)[number];
@@ -96,64 +94,67 @@ export const REMINDER_URGENCY_METADATA_KEY = "reminderUrgency";
 export const REMINDER_URGENCY_LEGACY_METADATA_KEY = "urgency";
 export const reminderProcessingQueues = new Map<string, Promise<void>>();
 export const LIFEOPS_TIME_ZONE_ALIASES: Record<string, string> = {
-  pst: "America/Los_Angeles",
-  pdt: "America/Los_Angeles",
-  pt: "America/Los_Angeles",
-  pacific: "America/Los_Angeles",
-  mst: "America/Denver",
-  mdt: "America/Denver",
-  mt: "America/Denver",
-  mountain: "America/Denver",
-  cst: "America/Chicago",
-  cdt: "America/Chicago",
-  ct: "America/Chicago",
-  central: "America/Chicago",
-  est: "America/New_York",
-  edt: "America/New_York",
-  et: "America/New_York",
-  eastern: "America/New_York",
-  utc: "UTC",
-  gmt: "UTC",
+	pst: "America/Los_Angeles",
+	pdt: "America/Los_Angeles",
+	pt: "America/Los_Angeles",
+	pacific: "America/Los_Angeles",
+	mst: "America/Denver",
+	mdt: "America/Denver",
+	mt: "America/Denver",
+	mountain: "America/Denver",
+	cst: "America/Chicago",
+	cdt: "America/Chicago",
+	ct: "America/Chicago",
+	central: "America/Chicago",
+	est: "America/New_York",
+	edt: "America/New_York",
+	et: "America/New_York",
+	eastern: "America/New_York",
+	utc: "UTC",
+	gmt: "UTC",
 };
 export const PROACTIVE_TASK_QUERY_TAGS = [
-  "queue",
-  "repeat",
-  "proactive",
+	"queue",
+	"repeat",
+	"proactive",
 ] as const;
 export const REMINDER_ESCALATION_DELAYS: Record<
-  LifeOpsReminderUrgency,
-  { initialMinutes: number | null; repeatMinutes: number | null }
+	LifeOpsReminderUrgency,
+	{
+		initialMinutes: number | null;
+		repeatMinutes: number | null;
+	}
 > = {
-  low: { initialMinutes: null, repeatMinutes: null },
-  medium: { initialMinutes: 90, repeatMinutes: 180 },
-  high: { initialMinutes: 7, repeatMinutes: 10 },
-  critical: { initialMinutes: 5, repeatMinutes: 10 },
+	low: { initialMinutes: null, repeatMinutes: null },
+	medium: { initialMinutes: 90, repeatMinutes: 180 },
+	high: { initialMinutes: 7, repeatMinutes: 10 },
+	critical: { initialMinutes: 5, repeatMinutes: 10 },
 };
 export const DEFAULT_CALENDAR_REMINDER_STEPS: LifeOpsReminderStep[] = [
-  {
-    channel: "in_app",
-    offsetMinutes: 30,
-    label: "30m before event",
-  },
+	{
+		channel: "in_app",
+		offsetMinutes: 30,
+		label: "30m before event",
+	},
 ];
 export const DEFAULT_WORKFLOW_PERMISSION_POLICY: LifeOpsWorkflowPermissionPolicy =
-  {
-    allowBrowserActions: false,
-    trustedBrowserActions: false,
-    allowXPosts: false,
-    trustedXPosting: false,
-    requireConfirmationForBrowserActions: true,
-    requireConfirmationForXPosts: true,
-  };
+	{
+		allowBrowserActions: false,
+		trustedBrowserActions: false,
+		allowXPosts: false,
+		trustedXPosting: false,
+		requireConfirmationForBrowserActions: true,
+		requireConfirmationForXPosts: true,
+	};
 export const REMINDER_INTENSITY_CANONICAL_ALIASES: Record<
-  string,
-  LifeOpsReminderIntensity
+	string,
+	LifeOpsReminderIntensity
 > = {
-  minimal: "minimal",
-  normal: "normal",
-  persistent: "persistent",
-  high_priority_only: "high_priority_only",
-  paused: "high_priority_only",
-  low: "minimal",
-  high: "persistent",
+	minimal: "minimal",
+	normal: "normal",
+	persistent: "persistent",
+	high_priority_only: "high_priority_only",
+	paused: "high_priority_only",
+	low: "minimal",
+	high: "persistent",
 };

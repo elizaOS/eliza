@@ -12,7 +12,7 @@
  */
 import Ajv from "ajv";
 import JSON5 from "json5";
-import { getMcpJsonSchemaBudgetError } from "@elizaos/plugin-mcp/protocol-utils/schema-budget";
+import { getMcpJsonSchemaBudgetError } from "./schema-budget.js";
 
 export {
   assertMcpJsonSchemaBudget,
@@ -21,7 +21,7 @@ export {
   MAX_MCP_SCHEMA_JSON_BYTES,
   MAX_MCP_SCHEMA_NODES,
   MCP_TOOL_SCHEMA_UNBOUNDED,
-} from "@elizaos/plugin-mcp/protocol-utils/schema-budget";
+} from "./schema-budget.js";
 
 export function parseJSON<T>(input: string): T {
   let cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
@@ -56,7 +56,7 @@ function formatAjvErrors(errors: readonly AjvErrorLike[]): string {
 
 export function validateJsonSchema<T>(
   data: unknown,
-  schema: Readonly<Record<string, unknown>>,
+  schema: Readonly<Record<string, unknown>>
 ): { success: true; data: T } | { success: false; error: string } {
   const budgetError = getMcpJsonSchemaBudgetError(schema);
   if (budgetError) {
@@ -86,19 +86,14 @@ export function stringifyJSON(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function assertJsonObject(
-  value: unknown,
-  context: string,
-): Record<string, unknown> {
+export function assertJsonObject(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${context}: Expected a JSON object, got ${typeof value}`);
   }
   return value as Record<string, unknown>;
 }
 
-export function parseStructuredModelOutput<T = Record<string, unknown>>(
-  input: string,
-): T {
+export function parseStructuredModelOutput<T = Record<string, unknown>>(input: string): T {
   const errors: string[] = [];
 
   try {

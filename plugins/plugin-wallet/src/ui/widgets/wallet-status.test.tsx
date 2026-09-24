@@ -8,7 +8,10 @@
 // formatUsd value, copy buttons, title-click navigation, empty + disabled +
 // auto-load branches. Fixtures use the real runtime-owned wallet shapes.
 
-import { type WalletBalancesResponse, type WalletConfigStatus } from "@elizaos/core/contracts/wallet-types";
+import {
+  type WalletBalancesResponse,
+  type WalletConfigStatus,
+} from "@elizaos/core/contracts/wallet-types";
 import {
   cleanup,
   fireEvent,

@@ -10,62 +10,62 @@
  *   - the write is additive (existing serviceRouting fields survive);
  *   - it does not clobber unrelated config keys.
  */
-import { applyCloudProxyTextRouting } from "../../src/routes/cloud-routes";
-import { describe } from "vitest";
-import { expect } from "vitest";
+
 import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
+import { applyCloudProxyTextRouting } from "../../src/routes/cloud-routes";
+
 describe("applyCloudProxyTextRouting", () => {
-    test("makes isCloudInferenceSelectedInConfig true on an empty config", () => {
-        const config: Record<string, unknown> = {};
-        expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
-        applyCloudProxyTextRouting(config);
-        expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
-        expect(config.serviceRouting).toEqual({
-            llmText: {
-                backend: "elizacloud",
-                transport: "cloud-proxy",
-                accountId: "elizacloud",
-            },
-        });
+  test("makes isCloudInferenceSelectedInConfig true on an empty config", () => {
+    const config: Record<string, unknown> = {};
+    expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
+    applyCloudProxyTextRouting(config);
+    expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
+    expect(config.serviceRouting).toEqual({
+      llmText: {
+        backend: "elizacloud",
+        transport: "cloud-proxy",
+        accountId: "elizacloud",
+      },
     });
-    test("preserves existing serviceRouting siblings (additive)", () => {
-        const config: Record<string, unknown> = {
-            serviceRouting: {
-                embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
-            },
-            cloud: { apiKey: "eliza_existing" },
-        };
-        applyCloudProxyTextRouting(config);
-        const routing = config.serviceRouting as Record<string, unknown>;
-        // Existing embeddings route untouched.
-        expect(routing.embeddings).toEqual({
-            backend: "elizacloud",
-            transport: "cloud-proxy",
-        });
-        // llmText now cloud-proxy.
-        expect(routing.llmText).toEqual({
-            backend: "elizacloud",
-            transport: "cloud-proxy",
-            accountId: "elizacloud",
-        });
-        // Unrelated config preserved.
-        expect(config.cloud).toEqual({ apiKey: "eliza_existing" });
-        expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
+  });
+  test("preserves existing serviceRouting siblings (additive)", () => {
+    const config: Record<string, unknown> = {
+      serviceRouting: {
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+      cloud: { apiKey: "eliza_existing" },
+    };
+    applyCloudProxyTextRouting(config);
+    const routing = config.serviceRouting as Record<string, unknown>;
+    // Existing embeddings route untouched.
+    expect(routing.embeddings).toEqual({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
     });
-    test("overwrites a prior non-cloud llmText route (re-credential wins)", () => {
-        const config: Record<string, unknown> = {
-            serviceRouting: {
-                llmText: { backend: "ollama", transport: "direct" },
-            },
-        };
-        expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
-        applyCloudProxyTextRouting(config);
-        expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
-        expect((config.serviceRouting as Record<string, unknown>).llmText).toEqual({
-            backend: "elizacloud",
-            transport: "cloud-proxy",
-            accountId: "elizacloud",
-        });
+    // llmText now cloud-proxy.
+    expect(routing.llmText).toEqual({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
     });
+    // Unrelated config preserved.
+    expect(config.cloud).toEqual({ apiKey: "eliza_existing" });
+    expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
+  });
+  test("overwrites a prior non-cloud llmText route (re-credential wins)", () => {
+    const config: Record<string, unknown> = {
+      serviceRouting: {
+        llmText: { backend: "ollama", transport: "direct" },
+      },
+    };
+    expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
+    applyCloudProxyTextRouting(config);
+    expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
+    expect((config.serviceRouting as Record<string, unknown>).llmText).toEqual({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
+    });
+  });
 });

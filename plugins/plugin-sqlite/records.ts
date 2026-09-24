@@ -72,9 +72,9 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
+  readMessageContentProjection,
   requireFreshWorldMetadataRevision,
   rerankMemories,
-  readMessageContentProjection,
   resolveMessageContentSourceDescriptor,
   type Task,
   type TaskMetadataPatch,
@@ -1534,23 +1534,31 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async publishMessageContentSegments(
-    params: MessageContentPublicationParams
+    params: MessageContentPublicationParams,
   ): Promise<MessageContentPublicationResult> {
     return this.withMemoryMutationLock(async () => {
       if (!this.storage.applyBatch) {
         throw new ElizaError(
           "The configured in-memory storage cannot atomically publish message content",
-          { code: "MESSAGE_CONTENT_ATOMIC_STORAGE_REQUIRED" }
+          { code: "MESSAGE_CONTENT_ATOMIC_STORAGE_REQUIRED" },
         );
       }
-      const parentId = params.mode === "create" ? params.parent.id : params.messageId;
-      const publicationAgentId = params.mode === "create" ? params.parent.agentId : params.agentId;
+      const parentId =
+        params.mode === "create" ? params.parent.id : params.messageId;
+      const publicationAgentId =
+        params.mode === "create" ? params.parent.agentId : params.agentId;
       if (!parentId || !publicationAgentId) {
-        throw new ElizaError("Message content publication requires parent and agent IDs", {
-          code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
-        });
+        throw new ElizaError(
+          "Message content publication requires parent and agent IDs",
+          {
+            code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+          },
+        );
       }
-      const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, parentId);
+      const existing = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        parentId,
+      );
       if (params.mode === "create" && existing) return { status: "conflict" };
       if (params.mode === "replace") {
         if (
@@ -1560,16 +1568,26 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         ) {
           return { status: "not_found" };
         }
-        if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+        if (
+          JSON.stringify(existing.content) !==
+          JSON.stringify(params.expectedContent)
+        ) {
           return { status: "conflict" };
         }
       }
       const removedIds =
-        params.mode === "replace" ? new Set<string>(params.removeSegmentIds) : new Set<string>();
+        params.mode === "replace"
+          ? new Set<string>(params.removeSegmentIds)
+          : new Set<string>();
       if (params.mode === "replace") {
         for (const segmentId of params.removeSegmentIds) {
-          const segment = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, segmentId);
-          const metadata = segment?.metadata as Record<string, unknown> | undefined;
+          const segment = await this.storage.get<StoredMemory>(
+            COLLECTIONS.MEMORIES,
+            segmentId,
+          );
+          const metadata = segment?.metadata as
+            | Record<string, unknown>
+            | undefined;
           if (
             !segment ||
             segment.agentId !== params.agentId ||
@@ -1581,7 +1599,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
               {
                 code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
                 context: { messageId: params.messageId, segmentId },
-              }
+              },
             );
           }
         }
@@ -1601,7 +1619,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           });
         }
         newSegmentIds.add(segment.id);
-        const collision = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, segment.id);
+        const collision = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          segment.id,
+        );
         if (collision && !removedIds.has(segment.id)) {
           throw new ElizaError("Message content segment id already exists", {
             code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
@@ -1652,17 +1673,19 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           cause,
         });
       }
-      for (const removedId of removedIds) await this.vectorIndex.remove(removedId);
+      for (const removedId of removedIds)
+        await this.vectorIndex.remove(removedId);
       return {
         status: params.mode === "create" ? "created" : "updated",
         parent: toMemory(storedParent),
-        removedSegmentIds: params.mode === "create" ? [] : [...params.removeSegmentIds],
+        removedSegmentIds:
+          params.mode === "create" ? [] : [...params.removeSegmentIds],
       };
     });
   }
 
   async readMessageContentRange(
-    params: MessageContentRangeReadParams
+    params: MessageContentRangeReadParams,
   ): Promise<MessageContentRangeReadResult> {
     if (
       !Number.isSafeInteger(params.offset) ||
@@ -1677,7 +1700,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }
     const storedParent = await this.storage.get<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      params.messageId
+      params.messageId,
     );
     if (
       !storedParent ||
@@ -1692,7 +1715,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (participant) =>
         participant.roomId === parent.roomId &&
-        participant.entityId === params.accessContext.requesterEntityId
+        participant.entityId === params.accessContext.requesterEntityId,
     );
     if (
       !authorizeMessageContentRead({
@@ -1706,25 +1729,36 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     ) {
       return { status: "forbidden" };
     }
-    const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source);
+    const descriptor = resolveMessageContentSourceDescriptor(
+      parent.content,
+      params.source,
+    );
     if (!descriptor) {
       let inline = "";
       if (params.source.kind === "message-text") {
         inline = parent.content.text ?? "";
       } else {
         const attachment = (parent.content.attachments ?? []).find(
-          (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash
+          (item) =>
+            hashAttachmentIdForLocator(item.id) ===
+            params.source.attachmentIdHash,
         );
         inline = attachment ? canonicalAttachmentText(attachment) : "";
       }
-      if (new TextEncoder().encode(inline).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES) {
-        throw new ElizaError("Legacy content requires explicit segmented reindexing", {
-          code:
-            params.source.kind === "message-text"
-              ? "MESSAGE_REINDEX_REQUIRED"
-              : "ATTACHMENT_REINDEX_REQUIRED",
-          context: { messageId: params.messageId },
-        });
+      if (
+        new TextEncoder().encode(inline).length >
+        MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+      ) {
+        throw new ElizaError(
+          "Legacy content requires explicit segmented reindexing",
+          {
+            code:
+              params.source.kind === "message-text"
+                ? "MESSAGE_REINDEX_REQUIRED"
+                : "ATTACHMENT_REINDEX_REQUIRED",
+            context: { messageId: params.messageId },
+          },
+        );
       }
       return { status: "inline", parent, text: inline };
     }
@@ -1733,40 +1767,58 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
       });
     }
-    if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+    if (
+      params.expectedRevision &&
+      params.expectedRevision !== descriptor.revision
+    ) {
       throw new ElizaError("Message content changed before continuation", {
         code: "MESSAGE_CONTENT_STALE_REVISION",
         context: { messageId: params.messageId },
       });
     }
-    const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength);
-    const selected = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (segment) => {
-      const metadata = segment.metadata as Record<string, unknown> | undefined;
-      return (
-        segment.agentId === params.agentId &&
-        storedMemoryTableName(segment) === "message_content_segments" &&
-        metadata?.type === "message-content-segment" &&
-        metadata.messageId === params.messageId &&
-        metadata.sourceKind === params.source.kind &&
-        metadata.attachmentIdHash === params.source.attachmentIdHash &&
-        metadata.sourceRevision === descriptor.revision &&
-        typeof metadata.byteStart === "number" &&
-        typeof metadata.byteEnd === "number" &&
-        metadata.byteEnd > params.offset &&
-        metadata.byteStart < requestedEnd
-      );
-    });
+    const requestedEnd = Math.min(
+      params.offset + params.limit,
+      descriptor.byteLength,
+    );
+    const selected = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (segment) => {
+        const metadata = segment.metadata as
+          | Record<string, unknown>
+          | undefined;
+        return (
+          segment.agentId === params.agentId &&
+          storedMemoryTableName(segment) === "message_content_segments" &&
+          metadata?.type === "message-content-segment" &&
+          metadata.messageId === params.messageId &&
+          metadata.sourceKind === params.source.kind &&
+          metadata.attachmentIdHash === params.source.attachmentIdHash &&
+          metadata.sourceRevision === descriptor.revision &&
+          typeof metadata.byteStart === "number" &&
+          typeof metadata.byteEnd === "number" &&
+          metadata.byteEnd > params.offset &&
+          metadata.byteStart < requestedEnd
+        );
+      },
+    );
     selected.sort((left, right) => {
       const leftMetadata = left.metadata as Record<string, unknown> | undefined;
-      const rightMetadata = right.metadata as Record<string, unknown> | undefined;
-      return Number(leftMetadata?.byteStart ?? -1) - Number(rightMetadata?.byteStart ?? -1);
+      const rightMetadata = right.metadata as
+        | Record<string, unknown>
+        | undefined;
+      return (
+        Number(leftMetadata?.byteStart ?? -1) -
+        Number(rightMetadata?.byteStart ?? -1)
+      );
     });
     return {
       status: "ok",
       parent,
       page: readMessageContentProjection({
         descriptor,
-        segments: selected.slice(0, MESSAGE_CONTENT_READ_MAX_SEGMENTS).map(toMemory),
+        segments: selected
+          .slice(0, MESSAGE_CONTENT_READ_MAX_SEGMENTS)
+          .map(toMemory),
         messageId: params.messageId,
         offset: params.offset,
         limit: params.limit,
@@ -1830,11 +1882,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const offset = params.offset ?? 0;
       const excludedRooms = new Set(params.excludeRoomIds);
       if (!Number.isSafeInteger(offset) || offset < 0) {
-        throw new Error("searchMemories offset must be a non-negative safe integer");
+        throw new Error(
+          "searchMemories offset must be a non-negative safe integer",
+        );
       }
       if (requestedLimit !== undefined) {
         if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 0) {
-          throw new Error("searchMemories limit must be a non-negative safe integer");
+          throw new Error(
+            "searchMemories limit must be a non-negative safe integer",
+          );
         }
         if (offset > Number.MAX_SAFE_INTEGER - requestedLimit) {
           throw new Error("searchMemories page boundary is not representable");

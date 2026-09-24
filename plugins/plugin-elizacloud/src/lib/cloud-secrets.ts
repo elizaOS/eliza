@@ -6,4 +6,4 @@
  * reverse-importing this plugin. This module remains for backwards
  * compatibility with plugin-internal callers.
  */
-export { clearCloudSecrets, getCloudSecret, scrubCloudSecretsFromEnv, _resetCloudSecretsForTesting } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+export { clearCloudSecrets, getCloudSecret, scrubCloudSecretsFromEnv, _resetCloudSecretsForTesting } from "../cloud-config/cloud-secrets.js";

@@ -4,7 +4,14 @@
  * local development process.
  */
 
-import { captureDevCloudEnvAuthoritySnapshot, DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS, type DevCloudEnvAuthority, resetDevCloudEnvAuthorityForTests as resetSharedDevCloudEnvAuthorityForTests, resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority as resolveSharedDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS,
+  type DevCloudEnvAuthority,
+  resetDevCloudEnvAuthorityForTests as resetSharedDevCloudEnvAuthorityForTests,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority as resolveSharedDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export const DEV_CLOUD_ENV_AUTHORITY_KEY =
   "ELIZA_DEV_CLOUD_ENV_AUTHORITY" as const;

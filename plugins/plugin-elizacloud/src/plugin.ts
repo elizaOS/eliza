@@ -27,8 +27,8 @@ import { sendJson } from "./lib/http";
 import { type CloudBillingRouteState } from "./routes/cloud-billing-routes";
 import { type CloudRouteState } from "./routes/cloud-routes";
 import { type ElizaConfig } from "./lib/config-like";
-import { type HttpPlugin as Plugin } from "@elizaos/shared";
-import { type Route } from "@elizaos/shared";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { type Route } from "@elizaos/core/api/http-plugin";
 import { type XRelayRouteState } from "./routes/x-relay-routes";
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 function getHostContext(runtime: unknown) {

@@ -7,11 +7,9 @@
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 
-
 export default defineConfig({
   resolve: {
-    alias: [
-    ],
+    alias: [],
   },
   test: {
     exclude: [...configDefaults.exclude],

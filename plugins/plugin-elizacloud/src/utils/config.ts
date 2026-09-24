@@ -2,10 +2,10 @@
 import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import { ElizaError } from "@elizaos/core";
-import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { captureDevCloudEnvAuthoritySnapshot } from "../cloud-config/dev-cloud-env-authority.js";
 import { logger } from "@elizaos/core";
 import { resolveSetting } from "@elizaos/core";
-import { type DevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { type DevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import { type IAgentRuntime } from "@elizaos/core";
 export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL;
 /**

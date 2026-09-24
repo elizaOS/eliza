@@ -17,28 +17,28 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  indexEntries,
-  type LoadedRegistry,
-  loadRegistryFromRawEntries,
-  normalizeConnectorAuth,
-  RegistryValidationError,
-} from "@elizaos/core/catalog/loader";
-import { type RegistryEntry, registryEntrySchema } from "@elizaos/core/catalog/schema";
+	indexEntries,
+	type LoadedRegistry,
+	loadRegistryFromRawEntries,
+	normalizeConnectorAuth,
+	RegistryValidationError,
+} from "./loader.js";
+import { type RegistryEntry, registryEntrySchema } from "./schema.js";
 
-export * from "@elizaos/core/catalog/app-registry";
+export * from "./app-registry.js";
 export {
-  getApps,
-  getConnectors,
-  getEntry,
-  getEntryByNpmName,
-  getPlugins,
-  indexEntries,
-  type LoadedRegistry,
-  mergeWithRuntime,
-  normalizeConnectorAuth,
-  type RegistryValidationError,
-} from "@elizaos/core/catalog/loader";
-export * from "@elizaos/core/catalog/schema";
+	getApps,
+	getConnectors,
+	getEntry,
+	getEntryByNpmName,
+	getPlugins,
+	indexEntries,
+	type LoadedRegistry,
+	mergeWithRuntime,
+	normalizeConnectorAuth,
+	type RegistryValidationError,
+} from "./loader.js";
+export * from "./schema.js";
 
 // Entries are aggregated at build time (see generate.ts) from plugin-owned
 // `registry-entry.json` files plus the `curated/` set into a single committed
@@ -53,40 +53,40 @@ export * from "@elizaos/core/catalog/schema";
 // bundle's own entrypoint (e.g. `/data/data/.../agent-bundle.js`) so the
 // registry sits at `<bundle-dir>/generated.json`.
 function resolveGeneratedPath(): string {
-  const url =
-    typeof import.meta.url === "string" && import.meta.url
-      ? import.meta.url
-      : null;
-  let moduleDir: string;
-  if (url) {
-    try {
-      moduleDir = dirname(fileURLToPath(url));
-    } catch {
-      moduleDir = dirname(process.argv[1] ?? process.cwd());
-    }
-  } else {
-    moduleDir = dirname(process.argv[1] ?? process.cwd());
-  }
-  return join(moduleDir, "generated.json");
+	const url =
+		typeof import.meta.url === "string" && import.meta.url
+			? import.meta.url
+			: null;
+	let moduleDir: string;
+	if (url) {
+		try {
+			moduleDir = dirname(fileURLToPath(url));
+		} catch {
+			moduleDir = dirname(process.argv[1] ?? process.cwd());
+		}
+	} else {
+		moduleDir = dirname(process.argv[1] ?? process.cwd());
+	}
+	return join(moduleDir, "generated.json");
 }
 
 // Plugin-side registration overlay. Symbol-keyed global so every consumer —
 // regardless of which package instance imports this module — contributes to one
 // store. Entries registered here override bundled JSON twins by `id`.
 const RUNTIME_ENTRIES_KEY = Symbol.for(
-  "elizaos.first-party-registry.runtime-entries",
+	"elizaos.first-party-registry.runtime-entries",
 );
 
 function getRuntimeEntryStore(): { entries: RegistryEntry[] } {
-  const globalObject = globalThis as Record<PropertyKey, unknown>;
-  const existing = globalObject[RUNTIME_ENTRIES_KEY] as
-    | { entries: RegistryEntry[] }
-    | null
-    | undefined;
-  if (existing) return existing;
-  const created = { entries: [] as RegistryEntry[] };
-  globalObject[RUNTIME_ENTRIES_KEY] = created;
-  return created;
+	const globalObject = globalThis as Record<PropertyKey, unknown>;
+	const existing = globalObject[RUNTIME_ENTRIES_KEY] as
+		| { entries: RegistryEntry[] }
+		| null
+		| undefined;
+	if (existing) return existing;
+	const created = { entries: [] as RegistryEntry[] };
+	globalObject[RUNTIME_ENTRIES_KEY] = created;
+	return created;
 }
 
 /**
@@ -97,25 +97,25 @@ function getRuntimeEntryStore(): { entries: RegistryEntry[] } {
  * registered entry overrides a bundled entry with the same `id`.
  */
 export function registerRegistryEntry(entry: RegistryEntry): void {
-  const parsed = registryEntrySchema.safeParse(entry);
-  if (!parsed.success) {
-    throw new Error(
-      `registerRegistryEntry: entry failed validation: ${String(parsed.error)}`,
-    );
-  }
-  const normalized =
-    parsed.data.kind === "connector"
-      ? normalizeConnectorAuth(parsed.data)
-      : parsed.data;
-  const store = getRuntimeEntryStore();
-  const idx = store.entries.findIndex((e) => e.id === normalized.id);
-  if (idx >= 0) {
-    store.entries[idx] = normalized;
-  } else {
-    store.entries.push(normalized);
-  }
-  // Invalidate the cache so the next loadRegistry() observes the new entry.
-  if (cacheSlot) cacheSlot.value = null;
+	const parsed = registryEntrySchema.safeParse(entry);
+	if (!parsed.success) {
+		throw new Error(
+			`registerRegistryEntry: entry failed validation: ${String(parsed.error)}`,
+		);
+	}
+	const normalized =
+		parsed.data.kind === "connector"
+			? normalizeConnectorAuth(parsed.data)
+			: parsed.data;
+	const store = getRuntimeEntryStore();
+	const idx = store.entries.findIndex((e) => e.id === normalized.id);
+	if (idx >= 0) {
+		store.entries[idx] = normalized;
+	} else {
+		store.entries.push(normalized);
+	}
+	// Invalidate the cache so the next loadRegistry() observes the new entry.
+	if (cacheSlot) cacheSlot.value = null;
 }
 
 // TDZ-hardening: this module's cached registry slot must survive being
@@ -126,60 +126,60 @@ export function registerRegistryEntry(entry: RegistryEntry): void {
 var cacheSlot: { value: LoadedRegistry | null } = { value: null };
 
 function readEntriesFromDisk(): RegistryEntry[] {
-  const generatedPath = resolveGeneratedPath();
-  if (!existsSync(generatedPath)) {
-    // error-policy:J4 explicit designed degrade — in packaged builds the
-    // aggregated registry is legitimately not bundled, so an empty first-party
-    // set is a valid state (not a load failure). Warn and continue rather than
-    // crashing the agent subprocess. `console` is intentional: this low-level
-    // package has no `@elizaos/logger` dependency and must stay dependency-free.
-    console.warn(`[registry] generated.json missing: ${generatedPath}`);
-    return [];
-  }
-  const parsed: unknown = JSON.parse(readFileSync(generatedPath, "utf-8"));
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    !("entries" in parsed) ||
-    !Array.isArray(parsed.entries)
-  ) {
-    throw new RegistryValidationError(
-      generatedPath,
-      "expected an object with an entries array",
-    );
-  }
-  const raws = parsed.entries.map((data: unknown, i: number) => ({
-    file: `${generatedPath}#${i}`,
-    data,
-  }));
-  return loadRegistryFromRawEntries(raws).all;
+	const generatedPath = resolveGeneratedPath();
+	if (!existsSync(generatedPath)) {
+		// error-policy:J4 explicit designed degrade — in packaged builds the
+		// aggregated registry is legitimately not bundled, so an empty first-party
+		// set is a valid state (not a load failure). Warn and continue rather than
+		// crashing the agent subprocess. `console` is intentional: this low-level
+		// package has no `@elizaos/logger` dependency and must stay dependency-free.
+		console.warn(`[registry] generated.json missing: ${generatedPath}`);
+		return [];
+	}
+	const parsed: unknown = JSON.parse(readFileSync(generatedPath, "utf-8"));
+	if (
+		parsed === null ||
+		typeof parsed !== "object" ||
+		!("entries" in parsed) ||
+		!Array.isArray(parsed.entries)
+	) {
+		throw new RegistryValidationError(
+			generatedPath,
+			"expected an object with an entries array",
+		);
+	}
+	const raws = parsed.entries.map((data: unknown, i: number) => ({
+		file: `${generatedPath}#${i}`,
+		data,
+	}));
+	return loadRegistryFromRawEntries(raws).all;
 }
 
 export function loadRegistry(): LoadedRegistry {
-  // Self-heal: if a cycle re-entered us before the module-top initializer ran,
-  // hoisted `cacheSlot` is `undefined`. Lazily initialize so we never throw.
-  if (!cacheSlot) {
-    cacheSlot = { value: null };
-  }
-  if (cacheSlot.value) return cacheSlot.value;
+	// Self-heal: if a cycle re-entered us before the module-top initializer ran,
+	// hoisted `cacheSlot` is `undefined`. Lazily initialize so we never throw.
+	if (!cacheSlot) {
+		cacheSlot = { value: null };
+	}
+	if (cacheSlot.value) return cacheSlot.value;
 
-  const fileEntries = readEntriesFromDisk();
-  const runtime = getRuntimeEntryStore().entries;
-  if (runtime.length === 0) {
-    cacheSlot.value = indexEntries(fileEntries);
-    return cacheSlot.value;
-  }
-  // Plugin-registered entries override bundled twins by id.
-  const merged = new Map(fileEntries.map((e) => [e.id, e]));
-  for (const e of runtime) merged.set(e.id, e);
-  cacheSlot.value = indexEntries([...merged.values()]);
-  return cacheSlot.value;
+	const fileEntries = readEntriesFromDisk();
+	const runtime = getRuntimeEntryStore().entries;
+	if (runtime.length === 0) {
+		cacheSlot.value = indexEntries(fileEntries);
+		return cacheSlot.value;
+	}
+	// Plugin-registered entries override bundled twins by id.
+	const merged = new Map(fileEntries.map((e) => [e.id, e]));
+	for (const e of runtime) merged.set(e.id, e);
+	cacheSlot.value = indexEntries([...merged.values()]);
+	return cacheSlot.value;
 }
 
 export function clearRegistryCacheForTests(): void {
-  if (!cacheSlot) {
-    cacheSlot = { value: null };
-    return;
-  }
-  cacheSlot.value = null;
+	if (!cacheSlot) {
+		cacheSlot = { value: null };
+		return;
+	}
+	cacheSlot.value = null;
 }

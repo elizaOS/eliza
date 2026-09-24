@@ -17,7 +17,13 @@ export {
   type TriggerWakeMode,
   type WorkflowTriggerConfig,
 } from "@elizaos/core";
-export { type CreateTriggerRequest, type TriggerHealthSnapshot, type TriggerSummary, type TriggerTaskMetadata as TriggerTaskMetadataBase, type UpdateTriggerRequest } from "@elizaos/core/api/agent-api-types";
+export {
+  type CreateTriggerRequest,
+  type TriggerHealthSnapshot,
+  type TriggerSummary,
+  type TriggerTaskMetadata as TriggerTaskMetadataBase,
+  type UpdateTriggerRequest,
+} from "@elizaos/core/api/agent-api-types";
 
 export interface TriggerTaskMetadata {
   updatedAt?: number;

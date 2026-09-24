@@ -6,37 +6,37 @@
  */
 
 import {
-	createPreparedModelRequestGuard,
-	type PreparedModelRequestGuard,
+  createPreparedModelRequestGuard,
+  type PreparedModelRequestGuard,
 } from "@elizaos/core";
 
 export interface NativeModelRequestGuardArgs {
-	provider: string;
-	model: string;
-	contextWindowTokens: number;
-	outputReserveTokens: number;
-	projectRequest: () => unknown;
-	countInputTokens?: (serializedRequest: string) => number;
-	countInputTokensIsExact?: true;
+  provider: string;
+  model: string;
+  contextWindowTokens: number;
+  outputReserveTokens: number;
+  projectRequest: () => unknown;
+  countInputTokens?: (serializedRequest: string) => number;
+  countInputTokensIsExact?: true;
 }
 
 /** Admit one complete native request before any IPC, socket, or FFI attempt. */
 export function createNativeModelRequestGuard(
-	args: NativeModelRequestGuardArgs,
+  args: NativeModelRequestGuardArgs,
 ): PreparedModelRequestGuard {
-	return createPreparedModelRequestGuard({
-		provider: args.provider,
-		model: args.model,
-		contextWindowTokens: args.contextWindowTokens,
-		outputReserveTokens: args.outputReserveTokens,
-		projectRequest: args.projectRequest,
-		...(args.countInputTokens
-			? {
-					countInputTokens: args.countInputTokens,
-					...(args.countInputTokensIsExact
-						? { countInputTokensIsExact: true as const }
-						: {}),
-				}
-			: {}),
-	});
+  return createPreparedModelRequestGuard({
+    provider: args.provider,
+    model: args.model,
+    contextWindowTokens: args.contextWindowTokens,
+    outputReserveTokens: args.outputReserveTokens,
+    projectRequest: args.projectRequest,
+    ...(args.countInputTokens
+      ? {
+          countInputTokens: args.countInputTokens,
+          ...(args.countInputTokensIsExact
+            ? { countInputTokensIsExact: true as const }
+            : {}),
+        }
+      : {}),
+  });
 }

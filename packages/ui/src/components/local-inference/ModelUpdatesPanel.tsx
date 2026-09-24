@@ -3,7 +3,7 @@
  * (R5-versioning §5 + I10-app-ux). Mounts inside `LocalInferencePanel.tsx`.
  *
  * Data flow:
- * - Reads `VOICE_MODEL_VERSIONS` directly from `@elizaos/shared` for the
+ * - Reads `VOICE_MODEL_VERSIONS` directly from `@elizaos/plugin-native-inference/model-catalog/voice-models` for the
  *   in-binary catalog. The runtime `VoiceModelUpdater` adds remote sources
  *   (Cloud + GitHub + HF) on top; when the live API surface is wired the
  *   `installedVersions` and `pinned` sets come from that API. Until the
@@ -18,92 +18,108 @@
  * `isOwner` defaults to `false` so non-OWNER renders show the toggle
  * disabled. Wire this from the entity-OWNER signal landed by I2.
  */
+
+import {
+  latestVoiceModelVersion,
+  VOICE_MODEL_VERSIONS,
+  type VoiceModelId,
+  type VoiceModelVersion,
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { useId, useMemo } from "react";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { latestVoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { type TranslationContextValue } from "../../state/TranslationContext.hooks";
-import { type VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { useId } from "react";
-import { useMemo } from "react";
-import { useTranslation } from "../../state/TranslationContext.hooks";
+
 type TranslateFn = TranslationContextValue["t"];
 export interface VoiceModelInstallationView {
-    readonly id: VoiceModelId;
-    readonly installedVersion: string | null;
-    readonly pinned: boolean;
-    readonly lastError?: string | null;
+  readonly id: VoiceModelId;
+  readonly installedVersion: string | null;
+  readonly pinned: boolean;
+  readonly lastError?: string | null;
 }
 export interface VoiceUpdatePreferencesView {
-    readonly autoUpdateOnWifi: boolean;
-    readonly autoUpdateOnCellular: boolean;
-    readonly autoUpdateOnMetered: boolean;
+  readonly autoUpdateOnWifi: boolean;
+  readonly autoUpdateOnCellular: boolean;
+  readonly autoUpdateOnMetered: boolean;
 }
 export interface ModelUpdatesPanelProps {
-    /**
-     * Per-id installation state (installed version + pin flag). Caller wires
-     * from the runtime's `/api/local-inference/voice-models/status` endpoint
-     * once it lands; pass an empty array to surface "no models installed" rows
-     * for every id in `VOICE_MODEL_VERSIONS`.
-     */
-    readonly installations: ReadonlyArray<VoiceModelInstallationView>;
-    readonly preferences: VoiceUpdatePreferencesView;
-    readonly isOwner: boolean;
-    readonly lastCheckedAt?: string | null;
-    readonly checking?: boolean;
-    readonly onCheckNow: () => void;
-    readonly onUpdateNow: (id: VoiceModelId) => void;
-    readonly onTogglePin: (id: VoiceModelId, pinned: boolean) => void;
-    readonly onSetPreferences: (next: VoiceUpdatePreferencesView) => void;
+  /**
+   * Per-id installation state (installed version + pin flag). Caller wires
+   * from the runtime's `/api/local-inference/voice-models/status` endpoint
+   * once it lands; pass an empty array to surface "no models installed" rows
+   * for every id in `VOICE_MODEL_VERSIONS`.
+   */
+  readonly installations: ReadonlyArray<VoiceModelInstallationView>;
+  readonly preferences: VoiceUpdatePreferencesView;
+  readonly isOwner: boolean;
+  readonly lastCheckedAt?: string | null;
+  readonly checking?: boolean;
+  readonly onCheckNow: () => void;
+  readonly onUpdateNow: (id: VoiceModelId) => void;
+  readonly onTogglePin: (id: VoiceModelId, pinned: boolean) => void;
+  readonly onSetPreferences: (next: VoiceUpdatePreferencesView) => void;
 }
 /** Format bytes as MB (1 decimal). Used for the per-asset size hint. */
 function formatMb(bytes: number, t: TranslateFn): string {
-    if (bytes <= 0)
-        return t("modelupdates.unpublished", { defaultValue: "(unpublished)" });
-    return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes <= 0)
+    return t("modelupdates.unpublished", { defaultValue: "(unpublished)" });
+  return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 function totalBytes(latest: VoiceModelVersion | undefined): number {
-    if (!latest)
-        return 0;
-    return latest.ggufAssets.reduce((s, a) => s + a.sizeBytes, 0);
+  if (!latest) return 0;
+  return latest.ggufAssets.reduce((s, a) => s + a.sizeBytes, 0);
 }
-function formatLastChecked(iso: string | null | undefined, t: TranslateFn): string {
-    if (!iso)
-        return t("modelupdates.never", { defaultValue: "never" });
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime()))
-        return t("modelupdates.unknown", { defaultValue: "unknown" });
-    return date.toLocaleString();
+function formatLastChecked(
+  iso: string | null | undefined,
+  t: TranslateFn,
+): string {
+  if (!iso) return t("modelupdates.never", { defaultValue: "never" });
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()))
+    return t("modelupdates.unknown", { defaultValue: "unknown" });
+  return date.toLocaleString();
 }
-export function ModelUpdatesPanel({ installations, preferences, isOwner, lastCheckedAt, checking = false, onCheckNow, onUpdateNow, onTogglePin, onSetPreferences, }: ModelUpdatesPanelProps) {
-    const { t } = useTranslation();
-    // Build a per-id view of the catalog: installed + latest + pinned.
-    const rows = useMemo(() => {
-        const installedMap = new Map<VoiceModelId, VoiceModelInstallationView>();
-        for (const inst of installations)
-            installedMap.set(inst.id, inst);
-        const ids = new Set<VoiceModelId>(VOICE_MODEL_VERSIONS.map((v) => v.id));
-        for (const inst of installations)
-            ids.add(inst.id);
-        const list = Array.from(ids).sort();
-        return list.map((id) => {
-            const installation = installedMap.get(id);
-            const latest = latestVoiceModelVersion(id);
-            return {
-                id,
-                installedVersion: installation?.installedVersion ?? null,
-                pinned: installation?.pinned ?? false,
-                lastError: installation?.lastError ?? null,
-                latest,
-                downloadBytes: totalBytes(latest),
-                updateAvailable: installation?.installedVersion != null &&
-                    latest != null &&
-                    latest.version !== installation.installedVersion,
-            };
-        });
-    }, [installations]);
-    return (<section className="rounded-sm border border-border p-4 text-sm">
+export function ModelUpdatesPanel({
+  installations,
+  preferences,
+  isOwner,
+  lastCheckedAt,
+  checking = false,
+  onCheckNow,
+  onUpdateNow,
+  onTogglePin,
+  onSetPreferences,
+}: ModelUpdatesPanelProps) {
+  const { t } = useTranslation();
+  // Build a per-id view of the catalog: installed + latest + pinned.
+  const rows = useMemo(() => {
+    const installedMap = new Map<VoiceModelId, VoiceModelInstallationView>();
+    for (const inst of installations) installedMap.set(inst.id, inst);
+    const ids = new Set<VoiceModelId>(VOICE_MODEL_VERSIONS.map((v) => v.id));
+    for (const inst of installations) ids.add(inst.id);
+    const list = Array.from(ids).sort();
+    return list.map((id) => {
+      const installation = installedMap.get(id);
+      const latest = latestVoiceModelVersion(id);
+      return {
+        id,
+        installedVersion: installation?.installedVersion ?? null,
+        pinned: installation?.pinned ?? false,
+        lastError: installation?.lastError ?? null,
+        latest,
+        downloadBytes: totalBytes(latest),
+        updateAvailable:
+          installation?.installedVersion != null &&
+          latest != null &&
+          latest.version !== installation.installedVersion,
+      };
+    });
+  }, [installations]);
+  return (
+    <section className="rounded-sm border border-border p-4 text-sm">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
         <div>
           <h3 className="text-base font-semibold">
@@ -111,12 +127,18 @@ export function ModelUpdatesPanel({ installations, preferences, isOwner, lastChe
           </h3>
           <p className="text-xs text-muted-foreground">
             {t("modelupdates.checkInterval", {
-            lastChecked: formatLastChecked(lastCheckedAt, t),
-            defaultValue: "Voice sub-models check every 4h. Last checked: {{lastChecked}}.",
-        })}
+              lastChecked: formatLastChecked(lastCheckedAt, t),
+              defaultValue:
+                "Voice sub-models check every 4h. Last checked: {{lastChecked}}.",
+            })}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={onCheckNow} disabled={checking}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onCheckNow}
+          disabled={checking}
+        >
           {checking
             ? t("modelupdates.checking", { defaultValue: "Checking…" })
             : t("modelupdates.checkNow", { defaultValue: "Check now" })}
@@ -124,96 +146,166 @@ export function ModelUpdatesPanel({ installations, preferences, isOwner, lastChe
       </header>
 
       <div className="flex flex-col gap-3">
-        {rows.map((row) => (<ModelUpdateCard key={row.id} row={row} t={t} onUpdateNow={onUpdateNow} onTogglePin={onTogglePin}/>))}
+        {rows.map((row) => (
+          <ModelUpdateCard
+            key={row.id}
+            row={row}
+            t={t}
+            onUpdateNow={onUpdateNow}
+            onTogglePin={onTogglePin}
+          />
+        ))}
       </div>
 
       <footer className="mt-4 flex flex-wrap items-center gap-4 border-t border-border pt-3 text-xs">
-        <ToggleRow label={t("modelupdates.autoUpdateWifi", {
+        <ToggleRow
+          label={t("modelupdates.autoUpdateWifi", {
             defaultValue: "Auto-update on Wi-Fi",
-        })} checked={preferences.autoUpdateOnWifi} onChange={(next) => onSetPreferences({ ...preferences, autoUpdateOnWifi: next })}/>
-        <ToggleRow label={t("modelupdates.autoUpdateCellular", {
+          })}
+          checked={preferences.autoUpdateOnWifi}
+          onChange={(next) =>
+            onSetPreferences({ ...preferences, autoUpdateOnWifi: next })
+          }
+        />
+        <ToggleRow
+          label={t("modelupdates.autoUpdateCellular", {
             defaultValue: "Auto-update on cellular",
-        })} checked={preferences.autoUpdateOnCellular} disabled={!isOwner} hint={!isOwner
-            ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
-            : undefined} onChange={(next) => onSetPreferences({ ...preferences, autoUpdateOnCellular: next })}/>
-        <ToggleRow label={t("modelupdates.autoUpdateMetered", {
+          })}
+          checked={preferences.autoUpdateOnCellular}
+          disabled={!isOwner}
+          hint={
+            !isOwner
+              ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
+              : undefined
+          }
+          onChange={(next) =>
+            onSetPreferences({ ...preferences, autoUpdateOnCellular: next })
+          }
+        />
+        <ToggleRow
+          label={t("modelupdates.autoUpdateMetered", {
             defaultValue: "Auto-update on metered link",
-        })} checked={preferences.autoUpdateOnMetered} disabled={!isOwner} hint={!isOwner
-            ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
-            : undefined} onChange={(next) => onSetPreferences({ ...preferences, autoUpdateOnMetered: next })}/>
+          })}
+          checked={preferences.autoUpdateOnMetered}
+          disabled={!isOwner}
+          hint={
+            !isOwner
+              ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
+              : undefined
+          }
+          onChange={(next) =>
+            onSetPreferences({ ...preferences, autoUpdateOnMetered: next })
+          }
+        />
       </footer>
-    </section>);
+    </section>
+  );
 }
 interface ModelUpdateCardProps {
-    row: {
-        id: VoiceModelId;
-        installedVersion: string | null;
-        pinned: boolean;
-        lastError: string | null;
-        latest: VoiceModelVersion | undefined;
-        downloadBytes: number;
-        updateAvailable: boolean;
-    };
-    onUpdateNow: ModelUpdatesPanelProps["onUpdateNow"];
-    onTogglePin: ModelUpdatesPanelProps["onTogglePin"];
-    t: TranslateFn;
+  row: {
+    id: VoiceModelId;
+    installedVersion: string | null;
+    pinned: boolean;
+    lastError: string | null;
+    latest: VoiceModelVersion | undefined;
+    downloadBytes: number;
+    updateAvailable: boolean;
+  };
+  onUpdateNow: ModelUpdatesPanelProps["onUpdateNow"];
+  onTogglePin: ModelUpdatesPanelProps["onTogglePin"];
+  t: TranslateFn;
 }
-function ModelUpdateCard({ row, onUpdateNow, onTogglePin, t, }: ModelUpdateCardProps) {
-    const versionLabel = row.latest
-        ? row.updateAvailable
-            ? `${row.installedVersion ?? "—"} → ${row.latest.version}`
-            : row.installedVersion
-                ? t("modelupdates.upToDate", {
-                    version: row.installedVersion,
-                    defaultValue: "up to date {{version}}",
-                })
-                : t("modelupdates.notInstalled", {
-                    version: row.latest.version,
-                    defaultValue: "{{version}} (not installed)",
-                })
-        : t("modelupdates.noVersionData", { defaultValue: "no version data" });
-    return (<article className="rounded-sm border border-border p-3">
+function ModelUpdateCard({
+  row,
+  onUpdateNow,
+  onTogglePin,
+  t,
+}: ModelUpdateCardProps) {
+  const versionLabel = row.latest
+    ? row.updateAvailable
+      ? `${row.installedVersion ?? "—"} → ${row.latest.version}`
+      : row.installedVersion
+        ? t("modelupdates.upToDate", {
+            version: row.installedVersion,
+            defaultValue: "up to date {{version}}",
+          })
+        : t("modelupdates.notInstalled", {
+            version: row.latest.version,
+            defaultValue: "{{version}} (not installed)",
+          })
+    : t("modelupdates.noVersionData", { defaultValue: "no version data" });
+  return (
+    <article className="rounded-sm border border-border p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-mono text-sm">{row.id}</div>
         <div className="text-xs text-muted-foreground">{versionLabel}</div>
       </header>
-      {row.latest?.changelogEntry ? (<p className="mt-2 text-xs text-muted-foreground">
+      {row.latest?.changelogEntry ? (
+        <p className="mt-2 text-xs text-muted-foreground">
           {row.latest.changelogEntry}
-        </p>) : null}
-      {row.latest && row.downloadBytes > 0 ? (<p className="mt-1 text-xs text-muted-foreground">
+        </p>
+      ) : null}
+      {row.latest && row.downloadBytes > 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">
           {t("modelupdates.size", {
-                size: formatMb(row.downloadBytes, t),
-                defaultValue: "Size: {{size}}",
-            })}
-        </p>) : null}
-      {row.lastError ? (<p className="mt-2 rounded-sm bg-destructive/10 px-2 py-1 text-xs text-destructive">
+            size: formatMb(row.downloadBytes, t),
+            defaultValue: "Size: {{size}}",
+          })}
+        </p>
+      ) : null}
+      {row.lastError ? (
+        <p className="mt-2 rounded-sm bg-destructive/10 px-2 py-1 text-xs text-destructive">
           {row.lastError}
-        </p>) : null}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="sm" disabled={!row.updateAvailable || row.pinned} onClick={() => onUpdateNow(row.id)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!row.updateAvailable || row.pinned}
+          onClick={() => onUpdateNow(row.id)}
+        >
           {t("modelupdates.updateNow", { defaultValue: "Update now" })}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => onTogglePin(row.id, !row.pinned)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onTogglePin(row.id, !row.pinned)}
+        >
           {row.pinned
             ? t("modelupdates.unpin", { defaultValue: "Unpin" })
             : t("modelupdates.pin", { defaultValue: "Pin" })}
         </Button>
       </div>
-    </article>);
+    </article>
+  );
 }
 interface ToggleRowProps {
-    label: string;
-    checked: boolean;
-    disabled?: boolean;
-    hint?: string;
-    onChange: (next: boolean) => void;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  hint?: string;
+  onChange: (next: boolean) => void;
 }
-function ToggleRow({ label, checked, disabled = false, hint, onChange, }: ToggleRowProps) {
-    const id = useId();
-    return (<div className="flex items-center gap-2">
-      <Checkbox id={id} checked={checked} disabled={disabled} onCheckedChange={(value) => onChange(value === true)}/>
+function ToggleRow({
+  label,
+  checked,
+  disabled = false,
+  hint,
+  onChange,
+}: ToggleRowProps) {
+  const id = useId();
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(value) => onChange(value === true)}
+      />
       <label htmlFor={id}>{label}</label>
       {hint ? <span className="text-muted-foreground">({hint})</span> : null}
-    </div>);
+    </div>
+  );
 }
 export default ModelUpdatesPanel;

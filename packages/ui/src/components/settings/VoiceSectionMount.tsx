@@ -11,203 +11,260 @@
  *   `messages.voice` — the same `getConfig()` / `updateConfig()` path the other
  *   settings sections use (see `IdentitySettingsSection` for `messages.tts`).
  */
-import { Alert } from "../ui/alert";
-import { AlertDescription } from "../ui/alert";
-import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
-import { DEFAULT_VOICE_SECTION_PREFS } from "./VoiceSection.helpers";
-import { VOICE_CONTINUOUS_MODES } from "../../voice/voice-chat-types";
-import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/events";
-import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
-import { VoiceSection } from "./VoiceSection";
+
+import {
+  VOICE_SETTINGS_APPLY_EVENT,
+  type VoiceSettingsApplyPayload,
+} from "@elizaos/core/events";
+import * as React from "react";
 import { client } from "../../api/client";
+import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { loadContinuousChatMode } from "../../state/persistence";
-import { loadOsIntentAutoStartConsent } from "../../state/persistence";
-import { loadWakeWordEnabled } from "../../state/persistence";
-import { readContinuousMode } from "../../voice/voice-settings-payload";
-import { readVadAutoStop as readBroadcastVadAutoStop } from "../../voice/voice-settings-payload";
-import { saveWakeWordEnabled } from "../../state/persistence";
-import { type DeviceTier } from "../../api/client-local-inference";
-import { type VadAutoStopPrefs } from "./VoiceSection";
-import { type VoiceContinuousMode } from "../../voice/voice-chat-types";
-import { type VoiceSectionPrefs } from "./VoiceSection";
-import { type VoiceSettingsApplyPayload } from "@elizaos/core/events";
 import { useBranding } from "../../config/branding";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import {
+  loadContinuousChatMode,
+  loadOsIntentAutoStartConsent,
+  loadWakeWordEnabled,
+  saveWakeWordEnabled,
+} from "../../state/persistence";
+import {
+  VOICE_CONTINUOUS_MODES,
+  type VoiceContinuousMode,
+} from "../../voice/voice-chat-types";
 import { voiceSettingsController } from "../../voice/voice-settings-controller";
-import * as React from "react";
+import {
+  readVadAutoStop as readBroadcastVadAutoStop,
+  readContinuousMode,
+} from "../../voice/voice-settings-payload";
+import { Alert, AlertDescription } from "../ui/alert";
+import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
+import {
+  type VadAutoStopPrefs,
+  VoiceSection,
+  type VoiceSectionPrefs,
+} from "./VoiceSection";
+import {
+  DEFAULT_VAD_AUTO_STOP_PREFS,
+  DEFAULT_VOICE_SECTION_PREFS,
+} from "./VoiceSection.helpers";
+
 const VOICE_PREFS_CONFIG_KEY = "voice";
 const profilesClient = createVoiceProfilesClient(client);
 function isContinuousMode(value: unknown): value is VoiceContinuousMode {
-    return (typeof value === "string" &&
-        VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode));
+  return (
+    typeof value === "string" &&
+    VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
+  );
 }
 function readVadAutoStop(value: unknown): VadAutoStopPrefs {
-    const stored = (value ?? {}) as Record<string, unknown>;
-    return {
-        silenceMs: typeof stored.silenceMs === "number" && Number.isFinite(stored.silenceMs)
-            ? stored.silenceMs
-            : DEFAULT_VAD_AUTO_STOP_PREFS.silenceMs,
-        speechRmsThreshold: typeof stored.speechRmsThreshold === "number" &&
-            Number.isFinite(stored.speechRmsThreshold)
-            ? stored.speechRmsThreshold
-            : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
-    };
+  const stored = (value ?? {}) as Record<string, unknown>;
+  return {
+    silenceMs:
+      typeof stored.silenceMs === "number" && Number.isFinite(stored.silenceMs)
+        ? stored.silenceMs
+        : DEFAULT_VAD_AUTO_STOP_PREFS.silenceMs,
+    speechRmsThreshold:
+      typeof stored.speechRmsThreshold === "number" &&
+      Number.isFinite(stored.speechRmsThreshold)
+        ? stored.speechRmsThreshold
+        : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
+  };
 }
-function readStoredVoicePrefs(config: Record<string, unknown>): VoiceSectionPrefs {
-    const messages = (config.messages ?? {}) as Record<string, unknown>;
-    const stored = (messages[VOICE_PREFS_CONFIG_KEY] ?? {}) as Record<string, unknown>;
-    // Note: legacy `cloudFirstLineCache` / `autoLearnVoices` keys may still sit
-    // in older persisted `messages.voice` blobs; they are dead (no readers) and
-    // intentionally dropped here — see the removal note in VoiceSection.tsx.
-    // Server silence is not revocation: when the fetch failed or the server blob
-    // has no explicit value (fresh/offline server), fall back to the device-local
-    // mirrors so a mount never clobbers explicit user prefs with defaults.
-    // Continuous mode resolves through its loader (not the raw key) so the
-    // appliance query-param override keeps working.
-    const localConsent = loadOsIntentAutoStartConsent();
-    return {
-        continuous: isContinuousMode(stored.continuous)
-            ? stored.continuous
-            : loadContinuousChatMode(),
-        osIntentAutoStartVoice: typeof stored.osIntentAutoStartVoice === "boolean"
-            ? stored.osIntentAutoStartVoice
-            : localConsent.voice,
-        osIntentAutoStartTranscription: typeof stored.osIntentAutoStartTranscription === "boolean"
-            ? stored.osIntentAutoStartTranscription
-            : localConsent.transcription,
-        vadAutoStop: readVadAutoStop(stored.vadAutoStop),
-    };
+function readStoredVoicePrefs(
+  config: Record<string, unknown>,
+): VoiceSectionPrefs {
+  const messages = (config.messages ?? {}) as Record<string, unknown>;
+  const stored = (messages[VOICE_PREFS_CONFIG_KEY] ?? {}) as Record<
+    string,
+    unknown
+  >;
+  // Note: legacy `cloudFirstLineCache` / `autoLearnVoices` keys may still sit
+  // in older persisted `messages.voice` blobs; they are dead (no readers) and
+  // intentionally dropped here — see the removal note in VoiceSection.tsx.
+  // Server silence is not revocation: when the fetch failed or the server blob
+  // has no explicit value (fresh/offline server), fall back to the device-local
+  // mirrors so a mount never clobbers explicit user prefs with defaults.
+  // Continuous mode resolves through its loader (not the raw key) so the
+  // appliance query-param override keeps working.
+  const localConsent = loadOsIntentAutoStartConsent();
+  return {
+    continuous: isContinuousMode(stored.continuous)
+      ? stored.continuous
+      : loadContinuousChatMode(),
+    osIntentAutoStartVoice:
+      typeof stored.osIntentAutoStartVoice === "boolean"
+        ? stored.osIntentAutoStartVoice
+        : localConsent.voice,
+    osIntentAutoStartTranscription:
+      typeof stored.osIntentAutoStartTranscription === "boolean"
+        ? stored.osIntentAutoStartTranscription
+        : localConsent.transcription,
+    vadAutoStop: readVadAutoStop(stored.vadAutoStop),
+  };
 }
 export function VoiceSectionMount(): React.ReactElement {
-    const { cloudOnly } = useBranding();
-    const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(DEFAULT_VOICE_SECTION_PREFS);
-    // Applied fields received during the initial read override only their stale
-    // counterparts; unrelated persisted preferences still hydrate normally.
-    const pendingHydrationUpdates = React.useRef<Partial<VoiceSectionPrefs> | null>({});
-    const [persistError, setPersistError] = React.useState<string | null>(null);
-    // Wake-word listening is a device-local pref (localStorage mirror the shell
-    // reads synchronously — see useShellController's useWakeListenWindow), not part
-    // of the `messages.voice` config blob. Seed from the persisted value.
-    const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() => loadWakeWordEnabled());
-    const [tierError, setTierError] = React.useState(false);
-    const [tier, setTier] = React.useState<DeviceTier | null>(null);
-    const [tierSummary, setTierSummary] = React.useState<string | undefined>(undefined);
-    useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
-        const payload = event.payload as VoiceSettingsApplyPayload;
-        const continuous = readContinuousMode(payload.continuous);
-        const vadAutoStop = readBroadcastVadAutoStop(payload.vadAutoStop);
-        if (!continuous &&
-            !vadAutoStop &&
-            typeof payload.osIntentAutoStartVoice !== "boolean" &&
-            typeof payload.osIntentAutoStartTranscription !== "boolean") {
-            return;
-        }
-        const applied: Partial<VoiceSectionPrefs> = {
-            ...(continuous ? { continuous } : {}),
-            ...(vadAutoStop ? { vadAutoStop } : {}),
-            ...(typeof payload.osIntentAutoStartVoice === "boolean"
-                ? { osIntentAutoStartVoice: payload.osIntentAutoStartVoice }
-                : {}),
-            ...(typeof payload.osIntentAutoStartTranscription === "boolean"
-                ? {
-                    osIntentAutoStartTranscription: payload.osIntentAutoStartTranscription,
-                }
-                : {}),
-        };
-        if (pendingHydrationUpdates.current !== null) {
-            Object.assign(pendingHydrationUpdates.current, applied);
-        }
-        setPrefs((current) => ({ ...current, ...applied }));
-    });
-    React.useEffect(() => {
-        let cancelled = false;
-        void (async () => {
-            let config: Record<string, unknown> = {};
-            try {
-                config = await client.getConfig();
-            }
-            catch {
-                // Config fetch failed (offline / server error) — fall back to the
-                // defaults readStoredVoicePrefs derives from an empty config so the
-                // localStorage mirrors below are still seeded (an unhandled rejection
-                // here would leave the capture hot path with no value at all).
-            }
-            if (cancelled)
-                return;
-            const loaded = {
-                ...readStoredVoicePrefs(config),
-                ...pendingHydrationUpdates.current,
-            };
-            pendingHydrationUpdates.current = null;
-            setPrefs(loaded);
-            // Seed the local mirrors so the capture hot path reads the server value.
-            voiceSettingsController.applyDeviceSettings(loaded);
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-    React.useEffect(() => {
-        let cancelled = false;
-        void (async () => {
-            try {
-                const result = await client.getLocalInferenceDeviceTier();
-                if (cancelled)
-                    return;
-                setTier(result.tier);
-                setTierSummary(result.reason);
-            }
-            catch {
-                // error-policy:J4 A failed assessment stays visibly unavailable, never a positive tier.
-                if (!cancelled)
-                    setTierError(true);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-    // Persist the wake-word toggle and update local state so the control reflects
-    // it immediately; the shell picks the new value up on its next render.
-    const handleWakeWordToggle = React.useCallback((next: boolean) => {
-        setWakeWordEnabled(next);
-        saveWakeWordEnabled(next);
-    }, []);
-    const handlePrefsChange = React.useCallback(async (next: VoiceSectionPrefs) => {
-        setPrefs(next);
-        setPersistError(null);
-        // Mirror to localStorage immediately so the capture path picks up the new
-        // VAD thresholds without waiting on the config round-trip.
-        voiceSettingsController.applyDeviceSettings(next);
-        try {
-            const config = await client.getConfig();
-            const messages = (config.messages ?? {}) as Record<string, unknown>;
-            await client.updateConfig({
-                messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
-            });
-        }
-        catch (error) {
-            setPersistError(error instanceof Error
-                ? error.message
-                : "Failed to save voice settings.");
-        }
-    }, []);
-    return (<>
-      {persistError ? (<p className="px-4 pt-4 text-xs text-warn" role="alert" data-testid="voice-section-persist-error">
+  const { cloudOnly } = useBranding();
+  const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(
+    DEFAULT_VOICE_SECTION_PREFS,
+  );
+  // Applied fields received during the initial read override only their stale
+  // counterparts; unrelated persisted preferences still hydrate normally.
+  const pendingHydrationUpdates =
+    React.useRef<Partial<VoiceSectionPrefs> | null>({});
+  const [persistError, setPersistError] = React.useState<string | null>(null);
+  // Wake-word listening is a device-local pref (localStorage mirror the shell
+  // reads synchronously — see useShellController's useWakeListenWindow), not part
+  // of the `messages.voice` config blob. Seed from the persisted value.
+  const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
+    loadWakeWordEnabled(),
+  );
+  const [tierError, setTierError] = React.useState(false);
+  const [tier, setTier] = React.useState<DeviceTier | null>(null);
+  const [tierSummary, setTierSummary] = React.useState<string | undefined>(
+    undefined,
+  );
+  useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
+    const payload = event.payload as VoiceSettingsApplyPayload;
+    const continuous = readContinuousMode(payload.continuous);
+    const vadAutoStop = readBroadcastVadAutoStop(payload.vadAutoStop);
+    if (
+      !continuous &&
+      !vadAutoStop &&
+      typeof payload.osIntentAutoStartVoice !== "boolean" &&
+      typeof payload.osIntentAutoStartTranscription !== "boolean"
+    ) {
+      return;
+    }
+    const applied: Partial<VoiceSectionPrefs> = {
+      ...(continuous ? { continuous } : {}),
+      ...(vadAutoStop ? { vadAutoStop } : {}),
+      ...(typeof payload.osIntentAutoStartVoice === "boolean"
+        ? { osIntentAutoStartVoice: payload.osIntentAutoStartVoice }
+        : {}),
+      ...(typeof payload.osIntentAutoStartTranscription === "boolean"
+        ? {
+            osIntentAutoStartTranscription:
+              payload.osIntentAutoStartTranscription,
+          }
+        : {}),
+    };
+    if (pendingHydrationUpdates.current !== null) {
+      Object.assign(pendingHydrationUpdates.current, applied);
+    }
+    setPrefs((current) => ({ ...current, ...applied }));
+  });
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let config: Record<string, unknown> = {};
+      try {
+        config = await client.getConfig();
+      } catch {
+        // Config fetch failed (offline / server error) — fall back to the
+        // defaults readStoredVoicePrefs derives from an empty config so the
+        // localStorage mirrors below are still seeded (an unhandled rejection
+        // here would leave the capture hot path with no value at all).
+      }
+      if (cancelled) return;
+      const loaded = {
+        ...readStoredVoicePrefs(config),
+        ...pendingHydrationUpdates.current,
+      };
+      pendingHydrationUpdates.current = null;
+      setPrefs(loaded);
+      // Seed the local mirrors so the capture hot path reads the server value.
+      voiceSettingsController.applyDeviceSettings(loaded);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await client.getLocalInferenceDeviceTier();
+        if (cancelled) return;
+        setTier(result.tier);
+        setTierSummary(result.reason);
+      } catch {
+        // error-policy:J4 A failed assessment stays visibly unavailable, never a positive tier.
+        if (!cancelled) setTierError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Persist the wake-word toggle and update local state so the control reflects
+  // it immediately; the shell picks the new value up on its next render.
+  const handleWakeWordToggle = React.useCallback((next: boolean) => {
+    setWakeWordEnabled(next);
+    saveWakeWordEnabled(next);
+  }, []);
+  const handlePrefsChange = React.useCallback(
+    async (next: VoiceSectionPrefs) => {
+      setPrefs(next);
+      setPersistError(null);
+      // Mirror to localStorage immediately so the capture path picks up the new
+      // VAD thresholds without waiting on the config round-trip.
+      voiceSettingsController.applyDeviceSettings(next);
+      try {
+        const config = await client.getConfig();
+        const messages = (config.messages ?? {}) as Record<string, unknown>;
+        await client.updateConfig({
+          messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
+        });
+      } catch (error) {
+        setPersistError(
+          error instanceof Error
+            ? error.message
+            : "Failed to save voice settings.",
+        );
+      }
+    },
+    [],
+  );
+  return (
+    <>
+      {persistError ? (
+        <p
+          className="px-4 pt-4 text-xs text-warn"
+          role="alert"
+          data-testid="voice-section-persist-error"
+        >
           {persistError}
-        </p>) : null}
-      <VoiceSection tier={tier} tierSummary={tierSummary} prefs={prefs} onPrefsChange={(next) => void handlePrefsChange(next)} profilesClient={profilesClient} showModelsPanel={cloudOnly !== true} wakeWordEnabled={wakeWordEnabled} onWakeWordToggle={handleWakeWordToggle} leadingContent={<>
+        </p>
+      ) : null}
+      <VoiceSection
+        tier={tier}
+        tierSummary={tierSummary}
+        prefs={prefs}
+        onPrefsChange={(next) => void handlePrefsChange(next)}
+        profilesClient={profilesClient}
+        showModelsPanel={cloudOnly !== true}
+        wakeWordEnabled={wakeWordEnabled}
+        onWakeWordToggle={handleWakeWordToggle}
+        leadingContent={
+          <>
             <VoicePresetSettingsContent />
-            {tierError ? (<Alert variant="destructive">
+            {tierError ? (
+              <Alert variant="destructive">
                 <AlertDescription>
                   Hardware assessment unavailable. Reopen Voice settings to try
                   again.
                 </AlertDescription>
-              </Alert>) : tier === null ? (<p role="status" className="text-xs text-muted">
+              </Alert>
+            ) : tier === null ? (
+              <p role="status" className="text-xs text-muted">
                 Checking hardware suitability…
-              </p>) : null}
-          </>}/>
-    </>);
+              </p>
+            ) : null}
+          </>
+        }
+      />
+    </>
+  );
 }
 export default VoiceSectionMount;

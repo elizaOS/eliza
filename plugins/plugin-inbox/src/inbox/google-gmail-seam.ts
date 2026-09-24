@@ -21,13 +21,19 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+  type LifeOpsGmailMessageSummary,
+  type LifeOpsGmailSearchFeed,
+  type LifeOpsGoogleCapability,
+} from "@elizaos/core/contracts/personal-assistant";
+import { fail } from "@elizaos/core/lifeops-normalize/service-normalize";
 import type {
   GoogleMessageSummary,
   GoogleParsedMailto,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google-workspace";
-import { fail } from "@elizaos/core/lifeops-normalize/service-normalize";
-import { type LifeOpsConnectorGrant, type LifeOpsConnectorSide, type LifeOpsGmailMessageSummary, type LifeOpsGmailSearchFeed, type LifeOpsGoogleCapability } from "@elizaos/core/contracts/personal-assistant";
 
 const GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX = "connector-account:";
 

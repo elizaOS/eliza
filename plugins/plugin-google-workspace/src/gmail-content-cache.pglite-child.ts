@@ -1,7 +1,7 @@
 /** Runs one side of Gmail segmented-cache fresh-process PGLite continuity. */
 
-import { ChannelType, stringToUuid, type UUID } from "@elizaos/core/node";
-import { createTestRuntime } from "@elizaos/testing";
+import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import {
   buildGmailContentPublication,
   gmailContentReference,

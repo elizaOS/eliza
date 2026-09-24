@@ -5,10 +5,10 @@
  */
 
 export const TASK_EXECUTION_PROFILES = [
-  "foreground",
-  "bg-light-30s",
-  "bg-heavy-fgs",
-  "notify-only",
+	"foreground",
+	"bg-light-30s",
+	"bg-heavy-fgs",
+	"notify-only",
 ] as const;
 
 export type TaskExecutionProfile = (typeof TASK_EXECUTION_PROFILES)[number];
@@ -20,4 +20,4 @@ export type TaskExecutionProfile = (typeof TASK_EXECUTION_PROFILES)[number];
  * isn't available.
  */
 export const DEFAULT_TASK_EXECUTION_PROFILE: TaskExecutionProfile =
-  "foreground";
+	"foreground";

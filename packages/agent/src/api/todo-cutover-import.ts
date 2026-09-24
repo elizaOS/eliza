@@ -11,13 +11,6 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
-import {
-  deserializeTodoMutationRecord,
-  importTodoMutationRecordsInTransaction,
-  type TodoMutationRecord,
-  type TodoMutationResult,
-} from "@elizaos/plugin-todos/service";
 import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverRecord,
@@ -25,6 +18,13 @@ import {
   TODO_CUTOVER_PROVENANCE_KEY,
   type TodoCutoverJsonValue,
 } from "@elizaos/core/todo-cutover";
+import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
+import {
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  type TodoMutationRecord,
+  type TodoMutationResult,
+} from "@elizaos/plugin-todos/service";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 

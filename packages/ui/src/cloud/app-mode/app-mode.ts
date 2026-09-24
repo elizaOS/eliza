@@ -25,27 +25,31 @@
  * (`AppCatchAllRoute`) and the {@link AppModeEntryRoute} gate; the apex check
  * runs first there, so apex behavior can never be affected by this module.
  */
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 /** Production + staging Eliza app hosts (the staging Pages deploy serves the
  * identical bundle on `app-staging.*`, so staging must mirror prod behavior). */
 export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
-    new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
-    new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
-    ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames,
-    ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames,
+  new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
+  new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames,
 ]);
 /** Trusted apex-console → app-host pairing for cross-origin product entry. */
 export function appModeOriginForApexHostname(hostname: string): string | null {
-    const classified = classifyElizaHostname(hostname);
-    if (classified.role !== "marketing" &&
-        classified.role !== "legacy-marketing") {
-        return null;
-    }
-    return classified.environment
-        ? ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin
-        : null;
+  const classified = classifyElizaHostname(hostname);
+  if (
+    classified.role !== "marketing" &&
+    classified.role !== "legacy-marketing"
+  ) {
+    return null;
+  }
+  return classified.environment
+    ? ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin
+    : null;
 }
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the
  * entry routing is otherwise untestable in `vite dev`. Vite inlines the env
@@ -54,7 +58,7 @@ export function appModeOriginForApexHostname(hostname: string): string | null {
  * build time), so it can never reach a deployed bundle. Mirrors
  * `VITE_FORCE_APEX_CONSOLE` in `../shell/apex-host.ts`. */
 function readAppModeDevFlag(): boolean {
-    return import.meta.env?.VITE_FORCE_APP_MODE === "true";
+  return import.meta.env?.VITE_FORCE_APP_MODE === "true";
 }
 /**
  * Pure hostname decision, exposed for the test matrix. `devFlag` defaults to
@@ -66,48 +70,51 @@ function readAppModeDevFlag(): boolean {
  * straight through — this module owns the comparison so no caller has to
  * remember the normalization.
  */
-export function isAppModeHostname(hostname: string, devFlag: boolean = readAppModeDevFlag()): boolean {
-    if (devFlag)
-        return true;
-    return APP_MODE_HOSTNAMES.has(hostname.trim().toLowerCase().replace(/\.$/, ""));
+export function isAppModeHostname(
+  hostname: string,
+  devFlag: boolean = readAppModeDevFlag(),
+): boolean {
+  if (devFlag) return true;
+  return APP_MODE_HOSTNAMES.has(
+    hostname.trim().toLowerCase().replace(/\.$/, ""),
+  );
 }
 /** True when the current document is served in app-mode. No-DOM (SSR /
  * prerender / native) → false, so server and native builds never branch. */
 export function isAppModeHost(): boolean {
-    if (typeof window === "undefined")
-        return false;
-    return isAppModeHostname(window.location.hostname);
+  if (typeof window === "undefined") return false;
+  return isAppModeHostname(window.location.hostname);
 }
 /** Minimal structural slice of `AgentListItemDto` the routing decision needs
  * (assignable from the full DTO; test fixtures stay small). The lifecycle
  * fields are retained for the planned health-gated background pairing layer;
  * the entry decision itself only branches on org emptiness. */
 export interface AppModeAgent {
-    id: string;
-    agentName: string | null;
-    status: string;
-    executionTier: string;
-    lastHeartbeatAt: string | null;
-    updatedAt: string;
+  id: string;
+  agentName: string | null;
+  status: string;
+  executionTier: string;
+  lastHeartbeatAt: string | null;
+  updatedAt: string;
 }
 /** The deploy-first-agent flow: `/join` select-or-provisions a Cloud agent and
  * drops the user straight into chat. */
 export const APP_MODE_CREATE_PATH = "/join";
-export type AppModeRoute = 
-/** No agents at all — the `/join` deploy-first-agent flow. */
-{
-    kind: "create";
-    to: string;
-}
-/** The org has agents (any tier, any lifecycle state) — the same-origin
- * chat app is home. This is the chat floor: entry never bounces to the
- * console and never pairing-redirects into a per-agent web UI, because a
- * cold-starting agent cannot consume a 60s one-time pairing token and the
- * redirect dead-ends on "Sign-in link expired" (the app-staging cold-start
- * regression this floor exists for). */
- | {
-    kind: "chat-home";
-};
+export type AppModeRoute =
+  /** No agents at all — the `/join` deploy-first-agent flow. */
+  | {
+      kind: "create";
+      to: string;
+    }
+  /** The org has agents (any tier, any lifecycle state) — the same-origin
+   * chat app is home. This is the chat floor: entry never bounces to the
+   * console and never pairing-redirects into a per-agent web UI, because a
+   * cold-starting agent cannot consume a 60s one-time pairing token and the
+   * redirect dead-ends on "Sign-in link expired" (the app-staging cold-start
+   * regression this floor exists for). */
+  | {
+      kind: "chat-home";
+    };
 /**
  * Given the org's agents (GET /api/v1/eliza/agents), decide where app-mode
  * entry lands: any agents → the same-origin chat app; none → `/join`.
@@ -120,10 +127,11 @@ export type AppModeRoute =
  * state makes an entry-time redirect safe. Entering the per-agent web UI is
  * an explicit user action from the Instances console.
  */
-export function decideAppModeRoute(agents: readonly AppModeAgent[]): AppModeRoute {
-    if (agents.length > 0)
-        return { kind: "chat-home" };
-    return { kind: "create", to: APP_MODE_CREATE_PATH };
+export function decideAppModeRoute(
+  agents: readonly AppModeAgent[],
+): AppModeRoute {
+  if (agents.length > 0) return { kind: "chat-home" };
+  return { kind: "create", to: APP_MODE_CREATE_PATH };
 }
 /**
  * Indirection over `window.location.assign` so tests can observe redirects
@@ -131,10 +139,10 @@ export function decideAppModeRoute(agents: readonly AppModeAgent[]): AppModeRout
  * (`../sso-bridge/sso-bridge`) for its full-page bounce.
  */
 export const appModeNavigation = {
-    assign(url: string): void {
-        window.location.assign(url);
-    },
-    replace(url: string): void {
-        window.location.replace(url);
-    },
+  assign(url: string): void {
+    window.location.assign(url);
+  },
+  replace(url: string): void {
+    window.location.replace(url);
+  },
 };

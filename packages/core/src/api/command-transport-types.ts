@@ -15,15 +15,21 @@
  * implementations import one contract without depending on each other.
  */
 
-import { type CommandArgSource, type CommandCategory, type CommandScope, type CommandSurface, type CommandTarget } from "../types/commands.js";
+import type {
+	CommandArgSource,
+	CommandCategory,
+	CommandScope,
+	CommandSurface,
+	CommandTarget,
+} from "../types/commands.js";
 
 export type {
-  ClientCommandAction,
-  CommandArgSource,
-  CommandCategory,
-  CommandScope,
-  CommandSurface,
-  CommandTarget,
+	ClientCommandAction,
+	CommandArgSource,
+	CommandCategory,
+	CommandScope,
+	CommandSurface,
+	CommandTarget,
 } from "@elizaos/core";
 
 /**
@@ -32,12 +38,12 @@ export type {
  * time (function-valued definition choices drop to their tagged source).
  */
 export interface SerializedCommandArg {
-  name: string;
-  description: string;
-  required?: boolean;
-  choices?: string[];
-  dynamicChoices?: CommandArgSource;
-  captureRemaining?: boolean;
+	name: string;
+	description: string;
+	required?: boolean;
+	choices?: string[];
+	dynamicChoices?: CommandArgSource;
+	captureRemaining?: boolean;
 }
 
 /** Where a serialized catalog item came from — drives menu grouping/labels. */
@@ -50,29 +56,29 @@ export type SerializedCommandSource = "builtin" | "custom-action" | "saved";
  * every surface routes on.
  */
 export interface SerializedCommand {
-  key: string;
-  nativeName: string;
-  description: string;
-  textAliases: string[];
-  scope: CommandScope;
-  category?: CommandCategory;
-  acceptsArgs: boolean;
-  args: SerializedCommandArg[];
-  requiresAuth: boolean;
-  requiresElevated: boolean;
-  surfaces?: CommandSurface[];
-  target: CommandTarget;
-  icon?: string;
-  source: SerializedCommandSource;
-  /** View ids this command is scoped to (#8798); omitted when global. */
-  views?: string[];
+	key: string;
+	nativeName: string;
+	description: string;
+	textAliases: string[];
+	scope: CommandScope;
+	category?: CommandCategory;
+	acceptsArgs: boolean;
+	args: SerializedCommandArg[];
+	requiresAuth: boolean;
+	requiresElevated: boolean;
+	surfaces?: CommandSurface[];
+	target: CommandTarget;
+	icon?: string;
+	source: SerializedCommandSource;
+	/** View ids this command is scoped to (#8798); omitted when global. */
+	views?: string[];
 }
 
 /** Response body of `GET /api/commands`. */
 export interface CommandsCatalogResponse {
-  commands: SerializedCommand[];
-  surface: string | null;
-  activeViewId?: string | null;
-  agentId: string | null;
-  generatedAt: string;
+	commands: SerializedCommand[];
+	surface: string | null;
+	activeViewId?: string | null;
+	agentId: string | null;
+	generatedAt: string;
 }

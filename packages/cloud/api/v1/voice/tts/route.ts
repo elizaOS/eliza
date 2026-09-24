@@ -1,40 +1,51 @@
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
+
+import {
+  FIRST_SENTENCE_SNIP_VERSION,
+  firstSentenceSnip,
+} from "@elizaos/core/voice/first-sentence-snip";
+import { Hono } from "hono";
+import { z } from "zod";
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
-import { CartesiaRestTtsError } from "./cartesia-synthesis";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
-import { Hono } from "hono";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { admitFlatGenerativeOperation } from "@/api-app/lib/generative-route-auth";
-import { asGenerativeCacheApiError } from "@/api-app/lib/generative-route-auth";
-import { billFlatUsage } from "@/lib/services/ai-billing";
-import { buildKokoroCacheKey } from "./kokoro-first-line-cache";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
-import { fingerprintCloudVoiceSettings } from "@/lib/services/tts-first-line-cache";
-import { firstSentenceSnip } from "@elizaos/core/voice/first-sentence-snip";
-import { getCloudFirstLineCacheService } from "@/lib/services/tts-first-line-cache";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { getGenerativeExecutionContext } from "@/api-app/lib/generative-route-auth";
-import { getGenerativePricingCacheOptions } from "@/api-app/lib/generative-route-auth";
-import { isKokoroFirstLineCacheEnabled } from "./kokoro-first-line-cache";
-import { logger } from "@/lib/utils/logger";
+import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
 import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
-import { selectTtsProvider } from "./provider-selection";
-import { shouldBypassCloudFirstLineCache } from "@/lib/services/tts-first-line-cache";
-import { synthesizeCartesiaBytes } from "./cartesia-synthesis";
-import { synthesizeCartesiaWav } from "./cartesia-synthesis";
-import { type AppContext } from "@/types/cloud-worker-env";
-import { type AppEnv } from "@/types/cloud-worker-env";
-import { type BillingContext } from "@/lib/services/ai-billing";
-import { type CreditReservation } from "@/lib/services/credits";
-import { type TtsProvider } from "./provider-selection";
+import {
+  fingerprintCloudVoiceSettings,
+  getCloudFirstLineCacheService,
+  shouldBypassCloudFirstLineCache,
+} from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
-import { z } from "zod";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
+import { logger } from "@/lib/utils/logger";
+import { type AppContext, type AppEnv } from "@/types/cloud-worker-env";
+import {
+  CartesiaRestTtsError,
+  synthesizeCartesiaBytes,
+  synthesizeCartesiaWav,
+} from "./cartesia-synthesis";
+import {
+  buildKokoroCacheKey,
+  isKokoroFirstLineCacheEnabled,
+} from "./kokoro-first-line-cache";
+import { selectTtsProvider, type TtsProvider } from "./provider-selection";
+
 /**
  * Voice TTS API (v1)
  *
@@ -69,41 +80,47 @@ const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
  * for the v1 cache we pin a static revision per voice/format and let a future
  * voice-settings change bump it manually.
  */
-function resolveElevenLabsVoiceRevision(voiceId: string, modelId: string): string {
-    return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
+function resolveElevenLabsVoiceRevision(
+  voiceId: string,
+  modelId: string,
+): string {
+  return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
 const MAX_TEXT_LENGTH = 5000;
 const TtsBody = z.object({
-    text: z.string(),
-    voiceId: z.string().optional(),
-    modelId: z.string().optional(),
-    // Optional container format. Default (unset) = MP3, unchanged for every
-    // existing caller. `"wav"` returns PCM16 WAV for clients whose audio stack has
-    // no MP3 decoder (e.g. the Light Phone III / LightOS WebView), which need an
-    // uncompressed container that decodes without a codec.
-    format: z.enum(["mp3", "wav"]).optional(),
+  text: z.string(),
+  voiceId: z.string().optional(),
+  modelId: z.string().optional(),
+  // Optional container format. Default (unset) = MP3, unchanged for every
+  // existing caller. `"wav"` returns PCM16 WAV for clients whose audio stack has
+  // no MP3 decoder (e.g. the Light Phone III / LightOS WebView), which need an
+  // uncompressed container that decodes without a codec.
+  format: z.enum(["mp3", "wav"]).optional(),
 });
 interface TtsTimings {
-    authMs?: number;
-    admissionMs?: number;
-    synthesisMs?: number;
+  authMs?: number;
+  admissionMs?: number;
+  synthesisMs?: number;
 }
-function buildTtsObservabilityHeaders(provider: TtsProvider, timings: TtsTimings): Record<string, string> {
-    const serverTiming = [
-        timings.authMs !== undefined ? `auth;dur=${timings.authMs}` : null,
-        timings.admissionMs !== undefined
-            ? `admission;dur=${timings.admissionMs}`
-            : null,
-        timings.synthesisMs !== undefined
-            ? `synthesis;dur=${timings.synthesisMs}`
-            : null,
-    ].filter((entry): entry is string => entry !== null);
-    return {
-        "X-Eliza-TTS-Provider": provider,
-        ...(serverTiming.length > 0
-            ? { "Server-Timing": serverTiming.join(", ") }
-            : {}),
-    };
+function buildTtsObservabilityHeaders(
+  provider: TtsProvider,
+  timings: TtsTimings,
+): Record<string, string> {
+  const serverTiming = [
+    timings.authMs !== undefined ? `auth;dur=${timings.authMs}` : null,
+    timings.admissionMs !== undefined
+      ? `admission;dur=${timings.admissionMs}`
+      : null,
+    timings.synthesisMs !== undefined
+      ? `synthesis;dur=${timings.synthesisMs}`
+      : null,
+  ].filter((entry): entry is string => entry !== null);
+  return {
+    "X-Eliza-TTS-Provider": provider,
+    ...(serverTiming.length > 0
+      ? { "Server-Timing": serverTiming.join(", ") }
+      : {}),
+  };
 }
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24000;
@@ -115,9 +132,11 @@ const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
  */
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
 function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
-    return (env.CARTESIA_VOICE_ID?.trim() ||
-        env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
-        DEFAULT_CARTESIA_VOICE_ID);
+  return (
+    env.CARTESIA_VOICE_ID?.trim() ||
+    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
+    DEFAULT_CARTESIA_VOICE_ID
+  );
 }
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
@@ -134,37 +153,35 @@ const MAX_CARTESIA_PCM_BYTES = 16 * 1024 * 1024;
  * primary stream remains complete and unmodified.
  */
 const MAX_FIRST_LINE_CACHE_CAPTURE_BYTES = 256 * 1024;
-async function captureExactAudioForCache(stream: ReadableStream<Uint8Array>): Promise<Uint8Array<ArrayBuffer> | null> {
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-        while (true) {
-            const result = await reader.read();
-            if (result.done)
-                break;
-            if (!result.value)
-                continue;
-            total += result.value.byteLength;
-            if (total > MAX_FIRST_LINE_CACHE_CAPTURE_BYTES) {
-                await reader.cancel("TTS cache capture exceeded the per-entry limit");
-                return null;
-            }
-            chunks.push(result.value);
-        }
-    }
-    finally {
-        reader.releaseLock();
-    }
-    if (total === 0)
+async function captureExactAudioForCache(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      if (!result.value) continue;
+      total += result.value.byteLength;
+      if (total > MAX_FIRST_LINE_CACHE_CAPTURE_BYTES) {
+        await reader.cancel("TTS cache capture exceeded the per-entry limit");
         return null;
-    const merged = new Uint8Array(new ArrayBuffer(total));
-    let offset = 0;
-    for (const chunk of chunks) {
-        merged.set(chunk, offset);
-        offset += chunk.byteLength;
+      }
+      chunks.push(result.value);
     }
-    return merged;
+  } finally {
+    reader.releaseLock();
+  }
+  if (total === 0) return null;
+  const merged = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
 }
 /**
  * POST /api/v1/voice/tts
@@ -176,734 +193,835 @@ async function captureExactAudioForCache(stream: ReadableStream<Uint8Array>): Pr
  * @returns Streaming audio response (audio/mpeg).
  */
 async function __hono_POST(c: AppContext) {
-    let reservation: CreditReservation | undefined;
-    let settleUnknown: (() => Promise<unknown>) | undefined;
-    let markProviderDispatched: (() => Promise<void>) | undefined;
-    let providerWorkMayHaveStarted = false;
-    let settlementOrganizationId = "unavailable";
-    let settlementProvider = "unknown";
-    let settlementUserId = "unavailable";
-    const request = c.req.raw;
-    const env = c.env;
-    const requestStart = Date.now();
-    const timings: TtsTimings = {};
-    try {
-        const decodedRawBody = await decodeRequestJson(request);
-        let pendingResponse: Response | undefined;
-        let body: z.infer<typeof TtsBody> | undefined;
-        if (!decodedRawBody.ok) {
-            // error-policy:J3 malformed JSON is an explicit invalid request.
-            pendingResponse = Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  let reservation: CreditReservation | undefined;
+  let settleUnknown: (() => Promise<unknown>) | undefined;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
+  let providerWorkMayHaveStarted = false;
+  let settlementOrganizationId = "unavailable";
+  let settlementProvider = "unknown";
+  let settlementUserId = "unavailable";
+  const request = c.req.raw;
+  const env = c.env;
+  const requestStart = Date.now();
+  const timings: TtsTimings = {};
+  try {
+    const decodedRawBody = await decodeRequestJson(request);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof TtsBody> | undefined;
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
+    } else {
+      const parsed = TtsBody.safeParse(decodedRawBody.value);
+      if (parsed.success) body = parsed.data;
+      else {
+        pendingResponse = Response.json(
+          { error: "Invalid request body", details: parsed.error.flatten() },
+          { status: 400 },
+        );
+      }
+    }
+    const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
+    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
+    const cartesiaVoiceId = resolveCartesiaVoiceId(env);
+    const providerSelection = body
+      ? selectTtsProvider({
+          voiceId: body.voiceId,
+          cartesiaConfigured: Boolean(cartesiaApiKey),
+          kokoroConfigured: Boolean(kokoroBaseUrl),
+        })
+      : undefined;
+    if (body && !body.text) {
+      pendingResponse = Response.json(
+        { error: "No text provided" },
+        { status: 400 },
+      );
+    } else if (body && body.text.length === 0) {
+      pendingResponse = Response.json(
+        { error: "Text cannot be empty" },
+        { status: 400 },
+      );
+    } else if (body && body.text.length > MAX_TEXT_LENGTH) {
+      pendingResponse = Response.json(
+        {
+          error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
+        },
+        { status: 400 },
+      );
+    }
+    const willAdmit =
+      pendingResponse === undefined &&
+      providerSelection?.ok === true &&
+      providerSelection.provider !== "kokoro";
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+        awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: willAdmit,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    settlementOrganizationId = user.organization_id;
+    settlementUserId = user.id;
+    timings.authMs = Date.now() - requestStart;
+    const admissionStart = Date.now();
+    if (pendingResponse) {
+      timings.admissionMs = Date.now() - admissionStart;
+      if (providerSelection && !providerSelection.ok) {
+        for (const [name, value] of Object.entries(
+          buildTtsObservabilityHeaders(providerSelection.provider, timings),
+        )) {
+          pendingResponse.headers.set(name, value);
         }
-        else {
-            const parsed = TtsBody.safeParse(decodedRawBody.value);
-            if (parsed.success)
-                body = parsed.data;
-            else {
-                pendingResponse = Response.json({ error: "Invalid request body", details: parsed.error.flatten() }, { status: 400 });
-            }
-        }
-        const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
-        const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
-        const cartesiaVoiceId = resolveCartesiaVoiceId(env);
-        const providerSelection = body
-            ? selectTtsProvider({
-                voiceId: body.voiceId,
-                cartesiaConfigured: Boolean(cartesiaApiKey),
-                kokoroConfigured: Boolean(kokoroBaseUrl),
+      }
+      return pendingResponse;
+    }
+    if (providerSelection && !providerSelection.ok) {
+      logger.warn?.("[Voice TTS API] TTS provider selection failed", {
+        provider: providerSelection.provider,
+        fallbackReason: providerSelection.fallbackReason,
+        code: providerSelection.code,
+      });
+      timings.admissionMs = Date.now() - admissionStart;
+      return Response.json(
+        {
+          error: providerSelection.error,
+          code: providerSelection.code,
+        },
+        {
+          status: providerSelection.status,
+          headers: buildTtsObservabilityHeaders(
+            providerSelection.provider,
+            timings,
+          ),
+        },
+      );
+    }
+    if (!body || !providerSelection?.ok) {
+      throw new Error("Validated TTS request was not retained");
+    }
+    const { text, voiceId, modelId } = body;
+    // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
+    // different codec); billing/usage are identical to the MP3 path.
+    const wantWav = body.format === "wav";
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "media_generation_prompt",
+      organizationId: user.organization_id,
+      userId: user.id,
+      text: `TTS text: ${text}`,
+      metadata: {
+        type: "tts",
+        model: modelId || "eleven_flash_v2_5",
+        voiceId,
+      },
+    });
+    logger.info(
+      `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
+    );
+    logger.info("[Voice TTS API] Selected TTS provider", {
+      provider: providerSelection.provider,
+      fallbackReason: providerSelection.fallbackReason,
+      voiceId: providerSelection.voiceId ?? "default",
+    });
+    // -------------------------------------------------------------------------
+    // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
+    // is the product default — no credit reservation, no billing. Explicit
+    // custom/ElevenLabs voice ids continue down the paid provider path.
+    // -------------------------------------------------------------------------
+    if (providerSelection.provider === "kokoro") {
+      const kokoroVoice = providerSelection.voiceId;
+      timings.admissionMs = Date.now() - admissionStart;
+      // First-line cache (#14375), gated on the #14370 TTFB benchmark and off by
+      // default. Only WHOLE-input short openers ("Got it.") are cacheable — the
+      // same whole-input-only rule the ElevenLabs path uses (no concat).
+      const kokoroCacheEnabled = isKokoroFirstLineCacheEnabled(
+        env.KOKORO_FIRST_LINE_CACHE,
+      );
+      const kokoroSnip = kokoroCacheEnabled ? firstSentenceSnip(text) : null;
+      const kokoroCacheable =
+        kokoroSnip !== null && kokoroSnip.endOffset === text.trimEnd().length;
+      const kokoroCacheKey =
+        kokoroCacheEnabled && kokoroCacheable && kokoroSnip
+          ? buildKokoroCacheKey({
+              kokoroVoice,
+              normalizedText: kokoroSnip.normalized,
+              imageTag: env.KOKORO_SERVICE_IMAGE_TAG,
             })
-            : undefined;
-        if (body && !body.text) {
-            pendingResponse = Response.json({ error: "No text provided" }, { status: 400 });
-        }
-        else if (body && body.text.length === 0) {
-            pendingResponse = Response.json({ error: "Text cannot be empty" }, { status: 400 });
-        }
-        else if (body && body.text.length > MAX_TEXT_LENGTH) {
-            pendingResponse = Response.json({
-                error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
-            }, { status: 400 });
-        }
-        const willAdmit = pendingResponse === undefined &&
-            providerSelection?.ok === true &&
-            providerSelection.provider !== "kokoro";
-        const { user, apiKeyId, admissionSnapshot, credential } = await requireGenerativeRouteCaller(c, {
-            compatibility: "raw",
-            rateLimitEndpoint: "strict",
-            awaitWarmingMs: 1500,
-            deferStrongCredentialCheck: willAdmit,
-        });
-        await using credentialGuard = deferredCredentialAdmissionGuard({
-            organizationId: () => user.organization_id,
-            credential: () => credential,
-        });
-        settlementOrganizationId = user.organization_id;
-        settlementUserId = user.id;
-        timings.authMs = Date.now() - requestStart;
-        const admissionStart = Date.now();
-        if (pendingResponse) {
-            timings.admissionMs = Date.now() - admissionStart;
-            if (providerSelection && !providerSelection.ok) {
-                for (const [name, value] of Object.entries(buildTtsObservabilityHeaders(providerSelection.provider, timings))) {
-                    pendingResponse.headers.set(name, value);
-                }
-            }
-            return pendingResponse;
-        }
-        if (providerSelection && !providerSelection.ok) {
-            logger.warn?.("[Voice TTS API] TTS provider selection failed", {
-                provider: providerSelection.provider,
-                fallbackReason: providerSelection.fallbackReason,
-                code: providerSelection.code,
-            });
-            timings.admissionMs = Date.now() - admissionStart;
-            return Response.json({
-                error: providerSelection.error,
-                code: providerSelection.code,
-            }, {
-                status: providerSelection.status,
-                headers: buildTtsObservabilityHeaders(providerSelection.provider, timings),
-            });
-        }
-        if (!body || !providerSelection?.ok) {
-            throw new Error("Validated TTS request was not retained");
-        }
-        const { text, voiceId, modelId } = body;
-        // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
-        // different codec); billing/usage are identical to the MP3 path.
-        const wantWav = body.format === "wav";
-        await contentSafetyService.assertSafeForPublicUse({
-            surface: "media_generation_prompt",
-            organizationId: user.organization_id,
-            userId: user.id,
-            text: `TTS text: ${text}`,
-            metadata: {
-                type: "tts",
-                model: modelId || "eleven_flash_v2_5",
-                voiceId,
-            },
-        });
-        logger.info(`[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`);
-        logger.info("[Voice TTS API] Selected TTS provider", {
-            provider: providerSelection.provider,
-            fallbackReason: providerSelection.fallbackReason,
-            voiceId: providerSelection.voiceId ?? "default",
-        });
-        // -------------------------------------------------------------------------
-        // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
-        // is the product default — no credit reservation, no billing. Explicit
-        // custom/ElevenLabs voice ids continue down the paid provider path.
-        // -------------------------------------------------------------------------
-        if (providerSelection.provider === "kokoro") {
-            const kokoroVoice = providerSelection.voiceId;
-            timings.admissionMs = Date.now() - admissionStart;
-            // First-line cache (#14375), gated on the #14370 TTFB benchmark and off by
-            // default. Only WHOLE-input short openers ("Got it.") are cacheable — the
-            // same whole-input-only rule the ElevenLabs path uses (no concat).
-            const kokoroCacheEnabled = isKokoroFirstLineCacheEnabled(env.KOKORO_FIRST_LINE_CACHE);
-            const kokoroSnip = kokoroCacheEnabled ? firstSentenceSnip(text) : null;
-            const kokoroCacheable = kokoroSnip !== null && kokoroSnip.endOffset === text.trimEnd().length;
-            const kokoroCacheKey = kokoroCacheEnabled && kokoroCacheable && kokoroSnip
-                ? buildKokoroCacheKey({
-                    kokoroVoice,
-                    normalizedText: kokoroSnip.normalized,
-                    imageTag: env.KOKORO_SERVICE_IMAGE_TAG,
-                })
-                : null;
-            if (kokoroCacheKey) {
-                try {
-                    const cacheStart = Date.now();
-                    const cached = await getCloudFirstLineCacheService().get(kokoroCacheKey);
-                    if (cached) {
-                        timings.synthesisMs = Date.now() - cacheStart;
-                        logger.info(`[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`);
-                        return new Response(cached.bytes, {
-                            status: 200,
-                            headers: {
-                                "Content-Type": cached.contentType,
-                                "Cache-Control": "no-cache",
-                                ...buildTtsObservabilityHeaders("kokoro", timings),
-                                "X-TTS-Cache": "hit; kokoro; first-sentence",
-                            },
-                        });
-                    }
-                }
-                catch (err) {
-                    // error-policy:J4 cache lookup failure degrades to fresh synthesis;
-                    // the upstream Railway request below is the source of truth.
-                    logger.warn?.("[Voice TTS API] Kokoro first-line cache lookup failed", {
-                        errorType: err instanceof Error ? err.name : "unknown",
-                    });
-                }
-            }
-            const kokoroStart = Date.now();
-            const kokoroResponse = await fetch(`${kokoroBaseUrl!.replace(/\/+$/, "")}/api/tts`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
-                signal: AbortSignal.timeout(30000),
-            });
-            timings.synthesisMs = Date.now() - kokoroStart;
-            if (!kokoroResponse.ok || !kokoroResponse.body) {
-                logger.error(`[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status})`);
-                return Response.json({ error: "TTS synthesis failed" }, { status: 502 });
-            }
-            const kokoroContentType = kokoroResponse.headers.get("Content-Type") ?? "audio/wav";
-            logger.info(`[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`);
-            // Cacheable opener MISS: buffer the (tiny, ≤10-word) WAV so we can serve
-            // it AND populate the cache. Non-cacheable text streams straight through
-            // to preserve time-to-first-byte on long responses.
-            if (kokoroCacheKey && kokoroSnip) {
-                const bytes = new Uint8Array(await kokoroResponse.arrayBuffer());
-                void getCloudFirstLineCacheService()
-                    .put({
-                    ...kokoroCacheKey,
-                    bytes,
-                    rawText: kokoroSnip.raw,
-                    contentType: kokoroContentType,
-                    durationMs: 0,
-                    wordCount: kokoroSnip.wordCount,
-                })
-                    .then((ok) => {
-                    if (ok) {
-                        logger.info(`[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, words=${kokoroSnip.wordCount})`);
-                    }
-                })
-                    .catch((err) => {
-                    // error-policy:J7 populate is a background write; a failure must not
-                    // affect the response the user already receives below.
-                    logger.warn?.("[Voice TTS API] Kokoro first-line cache populate failed", {
-                        errorType: err instanceof Error ? err.name : "unknown",
-                    });
-                });
-                return new Response(bytes, {
-                    status: 200,
-                    headers: {
-                        "Content-Type": kokoroContentType,
-                        "Cache-Control": "no-store",
-                        ...buildTtsObservabilityHeaders("kokoro", timings),
-                        "X-TTS-Cache": "miss; kokoro",
-                    },
-                });
-            }
-            return new Response(kokoroResponse.body, {
-                status: 200,
-                headers: {
-                    "Content-Type": kokoroContentType,
-                    "Cache-Control": "no-store",
-                    ...buildTtsObservabilityHeaders("kokoro", timings),
-                },
-            });
-        }
-        // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
-        // is enrichment only and is resolved with usage recording after response.
-        const isCustomVoice = providerSelection.provider === "elevenlabs" &&
-            providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
-        // ---------------------------------------------------------------------
-        // First-line cache hit path.
-        //
-        // Try to serve the request entirely from the first-line cache when the
-        // whole input is a single short opener (e.g. "Got it.", "No problem!").
-        // For longer messages we currently fall through to fresh synthesis but
-        // still populate the cache in the background — concat-with-remainder is
-        // a follow-up.
-        // ---------------------------------------------------------------------
-        const resolvedVoiceId = providerSelection.provider === "cartesia"
-            ? cartesiaVoiceId
-            : voiceId || "EXAVITQu4vr4xnSDxMaL";
-        const resolvedModelId = modelId || "eleven_flash_v2_5";
-        const snipResult = firstSentenceSnip(text);
-        const cacheBypass = shouldBypassCloudFirstLineCache({
-            modelId: resolvedModelId,
-        });
-        const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
-        const mp3CacheProvider = providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
-        const mp3VoiceRevision = providerSelection.provider === "cartesia"
-            ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
-            : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
-        const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
-            outputFormat: DEFAULT_OUTPUT_FORMAT,
-        });
-        timings.admissionMs = Date.now() - admissionStart;
-        if (!wantWav &&
-            snipResult &&
-            !cacheBypass &&
-            // Cache currently only serves WHOLE-input hits to avoid mp3 stream
-            // alignment hazards on the concat path.
-            snipResult.endOffset === text.trimEnd().length) {
-            try {
-                const cacheStart = Date.now();
-                const cacheService = getCloudFirstLineCacheService();
-                const cached = await cacheService.get({
-                    algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-                    provider: mp3CacheProvider,
-                    voiceId: resolvedVoiceId,
-                    voiceRevision: mp3VoiceRevision,
-                    sampleRate: 44100,
-                    codec: "mp3",
-                    voiceSettingsFingerprint,
-                    normalizedText: snipResult.normalized,
-                    scope: cacheScope,
-                });
-                if (cached) {
-                    timings.synthesisMs = Date.now() - cacheStart;
-                    logger.info(`[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`);
-                    return new Response(cached.bytes, {
-                        headers: {
-                            "Content-Type": cached.contentType,
-                            "Cache-Control": "no-cache",
-                            ...buildTtsObservabilityHeaders(providerSelection.provider, timings),
-                            "X-TTS-Cache": "hit; first-sentence",
-                        },
-                    });
-                }
-            }
-            catch (err) {
-                // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
-                // ElevenLabs request below remains the source of truth.
-                logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
-                    errorType: err instanceof Error ? err.name : "unknown",
-                });
-            }
-        }
-        // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
-        // WAV callers, so codec-less clients paid full synthesis for every short
-        // opener. Same whole-input gate; key is codec/provider/rate-specific so
-        // MP3 and WAV entries can never collide.
-        const cartesiaEligible = providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
-        const wavCacheKey = cartesiaEligible &&
-            wantWav &&
-            snipResult &&
-            !cacheBypass &&
-            snipResult.endOffset === text.trimEnd().length
-            ? {
-                algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-                provider: "cartesia",
-                voiceId: cartesiaVoiceId,
-                voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
-                sampleRate: WAV_PCM_SAMPLE_RATE,
-                codec: "wav" as const,
-                voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
-                    outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}`,
-                }),
-                normalizedText: snipResult.normalized,
-                scope: "global",
-            }
-            : null;
-        if (wavCacheKey) {
-            try {
-                const cacheStart = Date.now();
-                const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
-                if (cached) {
-                    timings.synthesisMs = Date.now() - cacheStart;
-                    logger.info(`[Voice TTS API] WAV first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount})`);
-                    return new Response(cached.bytes, {
-                        headers: {
-                            "Content-Type": "audio/wav",
-                            "Cache-Control": "no-cache",
-                            ...buildTtsObservabilityHeaders("cartesia", timings),
-                            "X-TTS-Cache": "hit; first-sentence; wav",
-                        },
-                    });
-                }
-            }
-            catch (err) {
-                // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
-                // Cartesia request below remains the source of truth.
-                logger.warn?.(`[Voice TTS API] WAV first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`);
-            }
-        }
-        const ttsCost = await calculateTTSCostFromCatalog({
-            model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-            characterCount: text.length,
-            ...(getGenerativePricingCacheOptions(c).cacheOnly
-                ? { cache: getGenerativePricingCacheOptions(c) }
-                : {}),
-        });
-        const estimatedCost = isCustomVoice
-            ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) /
-                1000000
-            : ttsCost.totalCost;
-        const billingCost = {
-            totalCost: estimatedCost,
-            baseTotalCost: isCustomVoice
-                ? Math.round(ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) / 1000000
-                : ttsCost.baseTotalCost,
-            platformMarkup: isCustomVoice
-                ? Math.round(ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1000000) / 1000000
-                : ttsCost.platformMarkup,
-        };
-        // #16425: the client mints one Idempotency-Key per logical utterance and
-        // sends it on BOTH the direct request and the proxy fallback, so a retry
-        // after an ambiguous network outcome replays the committed reservation
-        // instead of charging the utterance twice. Org-scoped inside reserve().
-        const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
-        const billingContext: BillingContext = {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId,
-            model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-            provider: "elevenlabs",
-            billingSource: "elevenlabs",
-            requestId: ttsIdempotencyKey
-                ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
-                : `voice-tts:${crypto.randomUUID()}`,
-            affiliateCode: request.headers.get("X-Affiliate-Code"),
-            description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
-        };
+          : null;
+      if (kokoroCacheKey) {
         try {
-            const admission = await admitFlatGenerativeOperation({
-                c,
-                context: billingContext,
-                apiKeyId,
-                cost: billingCost,
-                admissionSnapshot,
-                credential: credentialGuard.credentialForAdmission(),
-                idempotencyKey: ttsIdempotencyKey ?? undefined,
-                atomicProviderBoundary: true,
-            });
-            reservation = admission.reservation;
-            settleUnknown = admission.settleUnknown;
-            markProviderDispatched = admission.markProviderDispatched;
-        }
-        catch (error) {
-            if (error instanceof InsufficientCreditsError) {
-                return Response.json({
-                    error: "Insufficient credits for text-to-speech",
-                    required: error.required,
-                }, { status: 402 });
-            }
-            throw error;
-        }
-        timings.admissionMs = Date.now() - admissionStart;
-        const startTime = Date.now();
-        // WAV fast path: Cartesia Sonic streams raw PCM (~150 ms to first audio,
-        // ~0.6 s total, measured live) where the buffered ElevenLabs PCM
-        // round-trip takes ~3 s — and WAV requests can't use the MP3 first-line
-        // cache. The engine is only substitutable when the caller did NOT pin a
-        // voice identity: custom voices and explicit (non-proxy-default)
-        // ElevenLabs voice ids keep ElevenLabs. Billing below charges the same
-        // ElevenLabs catalog rate either way, so the engine choice never changes
-        // the user's price (Cartesia's upstream cost is lower, not higher).
-        let wav: Uint8Array<ArrayBuffer> | undefined;
-        let audioStream: ReadableStream<Uint8Array> | undefined;
-        let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
-        let cartesiaMp3ContentType = "audio/mpeg";
-        settlementProvider = providerSelection.provider;
-        const markPaidTtsProviderDispatch = async () => {
-            await markProviderDispatched?.();
-            providerWorkMayHaveStarted = true;
-        };
-        if (cartesiaEligible && cartesiaApiKey) {
-            if (wantWav) {
-                const cartesia = await synthesizeCartesiaWav({
-                    apiKey: cartesiaApiKey,
-                    voiceId: cartesiaVoiceId,
-                    text,
-                    sampleRate: WAV_PCM_SAMPLE_RATE,
-                    maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
-                    beforeProviderDispatch: markPaidTtsProviderDispatch,
-                });
-                wav = cartesia.wav;
-                synthesisEngine = "cartesia";
-                if (wavCacheKey) {
-                    const wavBytes = cartesia.wav;
-                    void (async () => {
-                        try {
-                            await getCloudFirstLineCacheService().put({
-                                ...wavCacheKey,
-                                bytes: wavBytes,
-                                rawText: snipResult?.raw ?? text,
-                                contentType: "audio/wav",
-                                durationMs: 0,
-                                wordCount: snipResult?.wordCount ?? 0,
-                            });
-                            logger.info(`[Voice TTS API] WAV first-line cache POPULATE ok (${wavBytes.byteLength}B)`);
-                        }
-                        catch (err) {
-                            // error-policy:J7 cache populate is diagnostics-adjacent decoration;
-                            // a failed put must not affect the served reply.
-                            logger.warn?.(`[Voice TTS API] WAV first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`);
-                        }
-                    })();
-                }
-                logger.info("[Voice TTS API] Cartesia WAV synthesis", {
-                    firstAudioMs: cartesia.firstAudioMs,
-                    totalMs: cartesia.totalMs,
-                    pcmBytes: cartesia.pcmBytes,
-                });
-            }
-            else {
-                const cartesia = await synthesizeCartesiaBytes({
-                    apiKey: cartesiaApiKey,
-                    voiceId: cartesiaVoiceId,
-                    text,
-                    beforeProviderDispatch: markPaidTtsProviderDispatch,
-                });
-                audioStream = cartesia.body;
-                cartesiaMp3ContentType = cartesia.contentType;
-                synthesisEngine = "cartesia";
-            }
-        }
-        if (wav === undefined) {
-            if (audioStream === undefined) {
-                const elevenlabs = getElevenLabsService(env);
-                await markPaidTtsProviderDispatch();
-                audioStream = await elevenlabs.textToSpeech({
-                    text,
-                    voiceId,
-                    modelId,
-                    // WAV path requests raw PCM (wrapped in a WAV header below); default
-                    // callers get the service's MP3 default.
-                    ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
-                });
-            }
-            if (wantWav) {
-                wav = await drainPcm16ToWav(audioStream, MAX_WAV_PCM_BYTES, WAV_PCM_SAMPLE_RATE);
-            }
-        }
-        const duration = Date.now() - startTime;
-        timings.synthesisMs = duration;
-        logger.info("[Voice TTS API] Stream started", {
-            provider: synthesisEngine,
-            fallbackReason: providerSelection.fallbackReason,
-            durationMs: duration,
-        });
-        let billingApplied = false;
-        const billingTask = (async () => {
-            try {
-                const billing = await billFlatUsage({
-                    ...billingContext,
-                    model: synthesisEngine === "cartesia"
-                        ? "cartesia/sonic-3.5"
-                        : billingContext.model,
-                    provider: synthesisEngine,
-                }, billingCost, reservation);
-                billingApplied = true;
-                let userVoiceId: string | null = null;
-                let voiceName: string | null = null;
-                if (voiceId && isCustomVoice) {
-                    const voiceUsage = await recordCustomVoiceUsage({
-                        elevenLabsVoiceId: voiceId,
-                        organizationId: user.organization_id,
-                    });
-                    userVoiceId = voiceUsage.userVoiceId;
-                    voiceName = voiceUsage.voiceName;
-                }
-                await usageService.create({
-                    organization_id: user.organization_id,
-                    user_id: user.id,
-                    api_key_id: apiKeyId,
-                    type: "tts",
-                    // Attribute the engine that actually synthesized; the CHARGE always
-                    // comes from the ElevenLabs catalog rate (billingSource below), so a
-                    // Cartesia-served request costs the user exactly what the
-                    // ElevenLabs-served one would.
-                    model: synthesisEngine === "cartesia"
-                        ? "sonic-3.5"
-                        : modelId || "eleven_flash_v2_5",
-                    provider: synthesisEngine,
-                    input_tokens: Math.ceil(text.length / 4),
-                    output_tokens: 0,
-                    input_cost: String(billing.totalCost),
-                    output_cost: String(0),
-                    markup: String(billing.platformMarkup),
-                    duration_ms: duration,
-                    is_successful: true,
-                    metadata: {
-                        voiceId: voiceId || "default",
-                        userVoiceId: userVoiceId,
-                        voiceName: voiceName,
-                        textLength: text.length,
-                        characterCount: text.length,
-                        isCustomVoice,
-                        baseTotalCost: billing.baseTotalCost,
-                        billingSource: "elevenlabs",
-                        synthesisEngine,
-                    },
-                });
-            }
-            catch (error) {
-                if (!billingApplied)
-                    await settleUnknown?.();
-                // error-policy:J7 billing and usage persistence run outside the audio
-                // response; conservative settlement remains observable on failure.
-                logger.error("[Voice TTS API] Failed to create usage record", {
-                    errorType: error instanceof Error ? error.name : "unknown",
-                });
-            }
-        })();
-        const executionCtx = getGenerativeExecutionContext(c);
-        if (executionCtx)
-            executionCtx.waitUntil(billingTask);
-        else
-            void billingTask;
-        // Populate only when the cache key describes the complete input. Tee the
-        // already-produced provider stream so cache warming never performs a
-        // second, unmetered synthesis. Partial first sentences are deliberately
-        // not warmed because MP3 frames cannot be sliced losslessly.
-        if (!wantWav &&
-            audioStream &&
-            snipResult &&
-            !cacheBypass &&
-            snipResult.endOffset === text.trimEnd().length) {
-            const [responseStream, cacheStream] = audioStream.tee();
-            audioStream = responseStream;
-            const cacheTask = (async () => {
-                try {
-                    const cacheService = getCloudFirstLineCacheService();
-                    const cacheKey = {
-                        algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-                        provider: mp3CacheProvider,
-                        voiceId: resolvedVoiceId,
-                        voiceRevision: mp3VoiceRevision,
-                        sampleRate: 44100,
-                        codec: "mp3" as const,
-                        voiceSettingsFingerprint,
-                        normalizedText: snipResult.normalized,
-                        scope: cacheScope,
-                    };
-                    const merged = await captureExactAudioForCache(cacheStream);
-                    if (!merged) {
-                        logger.info("[Voice TTS API] first-line cache capture skipped", {
-                            provider: synthesisEngine,
-                            reason: "empty_or_over_entry_limit",
-                            traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-                        });
-                        return;
-                    }
-                    await cacheService.put({
-                        ...cacheKey,
-                        bytes: merged,
-                        rawText: snipResult.raw,
-                        contentType: "audio/mpeg",
-                        durationMs: 0,
-                        wordCount: snipResult.wordCount,
-                    });
-                    logger.info(`[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${merged.byteLength}B, words=${snipResult.wordCount})`);
-                }
-                catch (err) {
-                    // error-policy:J7 cache population is an off-response-path
-                    // optimization; failures are observable and never alter audio.
-                    logger.warn?.("[Voice TTS API] first-line cache populate failed", {
-                        errorType: err instanceof Error ? err.name : "unknown",
-                        provider: synthesisEngine,
-                        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-                    });
-                }
-            })();
-            if (executionCtx)
-                executionCtx.waitUntil(cacheTask);
-            else
-                void cacheTask;
-        }
-        // WAV path: raw PCM (Cartesia frames or the ElevenLabs PCM stream)
-        // buffered and wrapped in a WAV header so codec-less clients can decode
-        // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
-        // keeps its chunked streaming below.)
-        if (wav !== undefined) {
-            return new Response(wav.buffer, {
-                headers: {
-                    "Content-Type": "audio/wav",
-                    "Cache-Control": "no-cache",
-                    ...buildTtsObservabilityHeaders(synthesisEngine, timings),
-                    "X-TTS-Cache": "miss",
-                },
-            });
-        }
-        return new Response(audioStream, {
-            headers: {
-                "Content-Type": cartesiaMp3ContentType,
-                "Transfer-Encoding": "chunked",
+          const cacheStart = Date.now();
+          const cached =
+            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          if (cached) {
+            timings.synthesisMs = Date.now() - cacheStart;
+            logger.info(
+              `[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`,
+            );
+            return new Response(cached.bytes, {
+              status: 200,
+              headers: {
+                "Content-Type": cached.contentType,
                 "Cache-Control": "no-cache",
-                ...buildTtsObservabilityHeaders(synthesisEngine, timings),
-                "X-TTS-Cache": "miss",
-            },
-        });
-    }
-    catch (error) {
-        // error-policy:J1 translate provider, billing, and validation failures at
-        // the authenticated HTTP boundary without leaking provider response data.
-        // Redaction boundary: provider SDK errors can embed the synthesis text or
-        // provider response bodies in their message — log only the error type.
-        logger.error("[Voice TTS API] Request failed", {
-            errorType: error instanceof Error ? error.name : "unknown",
-        });
-        if (reservation) {
-            const settlement = providerWorkMayHaveStarted && settleUnknown
-                ? settleUnknown()
-                : reservation.reconcile(0);
-            const executionCtx = getGenerativeExecutionContext(c);
-            if (executionCtx)
-                executionCtx.waitUntil(settlement);
-            else
-                await settlement;
-            logger.warn("[Voice TTS API] Settled failed paid synthesis", {
-                organizationId: settlementOrganizationId,
-                provider: settlementProvider,
-                providerDispatchState: providerWorkMayHaveStarted
-                    ? "possibly_dispatched"
-                    : "not_dispatched",
-                settlement: providerWorkMayHaveStarted ? "unknown" : "released",
-                traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-                userId: settlementUserId,
+                ...buildTtsObservabilityHeaders("kokoro", timings),
+                "X-TTS-Cache": "hit; kokoro; first-sentence",
+              },
             });
+          }
+        } catch (err) {
+          // error-policy:J4 cache lookup failure degrades to fresh synthesis;
+          // the upstream Railway request below is the source of truth.
+          logger.warn?.(
+            "[Voice TTS API] Kokoro first-line cache lookup failed",
+            {
+              errorType: err instanceof Error ? err.name : "unknown",
+            },
+          );
         }
-        const apiError = error instanceof ApiError ? error : asGenerativeCacheApiError(error);
-        if (apiError) {
-            const serialized = "toJSON" in apiError && typeof apiError.toJSON === "function"
-                ? apiError.toJSON()
-                : { error: apiError.message };
-            return Response.json(serialized, { status: apiError.status ?? 500 });
-        }
-        if (error instanceof CartesiaRestTtsError) {
-            const status = error.classification === "auth"
-                ? error.status === 403
-                    ? 403
-                    : 401
-                : error.classification === "rate_limit" ||
-                    error.classification === "quota"
-                    ? 429
-                    : error.classification === "bad_request"
-                        ? 400
-                        : 502;
-            return Response.json({
-                error: error.safeProviderMessage,
-                provider: "cartesia",
-                code: error.classification,
-            }, { status });
-        }
-        const errorMessage = error instanceof Error
-            ? error.message.toLowerCase()
-            : typeof error === "string"
-                ? error.toLowerCase()
-                : "";
-        if (errorMessage.includes("invalid or expired api key") ||
-            errorMessage.includes("invalid or expired token") ||
-            errorMessage.includes("api key is inactive") ||
-            errorMessage.includes("unauthorized") ||
-            errorMessage.includes("authentication required") ||
-            errorMessage.includes("forbidden")) {
-            return Response.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        if (errorMessage.includes("rate limit")) {
-            return Response.json({ error: "Rate limit exceeded. Please try again in a moment." }, { status: 429 });
-        }
-        if (errorMessage.includes("quota")) {
-            return Response.json({
-                error: "Voice service is temporarily unavailable due to high demand. Please try again in a few moments.",
-                type: "service_unavailable",
-                retryAfter: "5 minutes",
-            }, { status: 503 });
-        }
-        if (errorMessage.includes("voice")) {
-            return Response.json({ error: "Invalid voice ID. Please select a different voice." }, { status: 400 });
-        }
-        if (errorMessage.includes("elevenlabs_api_key")) {
-            return Response.json({ error: "Service not configured" }, { status: 500 });
-        }
-        return Response.json({ error: "Failed to generate speech. Please try again." }, { status: 500 });
+      }
+      const kokoroStart = Date.now();
+      const kokoroResponse = await fetch(
+        `${kokoroBaseUrl!.replace(/\/+$/, "")}/api/tts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
+          signal: AbortSignal.timeout(30000),
+        },
+      );
+      timings.synthesisMs = Date.now() - kokoroStart;
+      if (!kokoroResponse.ok || !kokoroResponse.body) {
+        logger.error(
+          `[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status})`,
+        );
+        return Response.json(
+          { error: "TTS synthesis failed" },
+          { status: 502 },
+        );
+      }
+      const kokoroContentType =
+        kokoroResponse.headers.get("Content-Type") ?? "audio/wav";
+      logger.info(
+        `[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`,
+      );
+      // Cacheable opener MISS: buffer the (tiny, ≤10-word) WAV so we can serve
+      // it AND populate the cache. Non-cacheable text streams straight through
+      // to preserve time-to-first-byte on long responses.
+      if (kokoroCacheKey && kokoroSnip) {
+        const bytes = new Uint8Array(await kokoroResponse.arrayBuffer());
+        void getCloudFirstLineCacheService()
+          .put({
+            ...kokoroCacheKey,
+            bytes,
+            rawText: kokoroSnip.raw,
+            contentType: kokoroContentType,
+            durationMs: 0,
+            wordCount: kokoroSnip.wordCount,
+          })
+          .then((ok) => {
+            if (ok) {
+              logger.info(
+                `[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, words=${kokoroSnip.wordCount})`,
+              );
+            }
+          })
+          .catch((err) => {
+            // error-policy:J7 populate is a background write; a failure must not
+            // affect the response the user already receives below.
+            logger.warn?.(
+              "[Voice TTS API] Kokoro first-line cache populate failed",
+              {
+                errorType: err instanceof Error ? err.name : "unknown",
+              },
+            );
+          });
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            "Content-Type": kokoroContentType,
+            "Cache-Control": "no-store",
+            ...buildTtsObservabilityHeaders("kokoro", timings),
+            "X-TTS-Cache": "miss; kokoro",
+          },
+        });
+      }
+      return new Response(kokoroResponse.body, {
+        status: 200,
+        headers: {
+          "Content-Type": kokoroContentType,
+          "Cache-Control": "no-store",
+          ...buildTtsObservabilityHeaders("kokoro", timings),
+        },
+      });
     }
+    // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
+    // is enrichment only and is resolved with usage recording after response.
+    const isCustomVoice =
+      providerSelection.provider === "elevenlabs" &&
+      providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
+    // ---------------------------------------------------------------------
+    // First-line cache hit path.
+    //
+    // Try to serve the request entirely from the first-line cache when the
+    // whole input is a single short opener (e.g. "Got it.", "No problem!").
+    // For longer messages we currently fall through to fresh synthesis but
+    // still populate the cache in the background — concat-with-remainder is
+    // a follow-up.
+    // ---------------------------------------------------------------------
+    const resolvedVoiceId =
+      providerSelection.provider === "cartesia"
+        ? cartesiaVoiceId
+        : voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const resolvedModelId = modelId || "eleven_flash_v2_5";
+    const snipResult = firstSentenceSnip(text);
+    const cacheBypass = shouldBypassCloudFirstLineCache({
+      modelId: resolvedModelId,
+    });
+    const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
+    const mp3CacheProvider =
+      providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
+    const mp3VoiceRevision =
+      providerSelection.provider === "cartesia"
+        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
+    const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
+      outputFormat: DEFAULT_OUTPUT_FORMAT,
+    });
+    timings.admissionMs = Date.now() - admissionStart;
+    if (
+      !wantWav &&
+      snipResult &&
+      !cacheBypass &&
+      // Cache currently only serves WHOLE-input hits to avoid mp3 stream
+      // alignment hazards on the concat path.
+      snipResult.endOffset === text.trimEnd().length
+    ) {
+      try {
+        const cacheStart = Date.now();
+        const cacheService = getCloudFirstLineCacheService();
+        const cached = await cacheService.get({
+          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+          provider: mp3CacheProvider,
+          voiceId: resolvedVoiceId,
+          voiceRevision: mp3VoiceRevision,
+          sampleRate: 44100,
+          codec: "mp3",
+          voiceSettingsFingerprint,
+          normalizedText: snipResult.normalized,
+          scope: cacheScope,
+        });
+        if (cached) {
+          timings.synthesisMs = Date.now() - cacheStart;
+          logger.info(
+            `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
+          );
+          return new Response(cached.bytes, {
+            headers: {
+              "Content-Type": cached.contentType,
+              "Cache-Control": "no-cache",
+              ...buildTtsObservabilityHeaders(
+                providerSelection.provider,
+                timings,
+              ),
+              "X-TTS-Cache": "hit; first-sentence",
+            },
+          });
+        }
+      } catch (err) {
+        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+        // ElevenLabs request below remains the source of truth.
+        logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
+          errorType: err instanceof Error ? err.name : "unknown",
+        });
+      }
+    }
+    // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
+    // WAV callers, so codec-less clients paid full synthesis for every short
+    // opener. Same whole-input gate; key is codec/provider/rate-specific so
+    // MP3 and WAV entries can never collide.
+    const cartesiaEligible =
+      providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
+    const wavCacheKey =
+      cartesiaEligible &&
+      wantWav &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+        ? {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: "cartesia",
+            voiceId: cartesiaVoiceId,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            sampleRate: WAV_PCM_SAMPLE_RATE,
+            codec: "wav" as const,
+            voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
+              outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}`,
+            }),
+            normalizedText: snipResult.normalized,
+            scope: "global",
+          }
+        : null;
+    if (wavCacheKey) {
+      try {
+        const cacheStart = Date.now();
+        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        if (cached) {
+          timings.synthesisMs = Date.now() - cacheStart;
+          logger.info(
+            `[Voice TTS API] WAV first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount})`,
+          );
+          return new Response(cached.bytes, {
+            headers: {
+              "Content-Type": "audio/wav",
+              "Cache-Control": "no-cache",
+              ...buildTtsObservabilityHeaders("cartesia", timings),
+              "X-TTS-Cache": "hit; first-sentence; wav",
+            },
+          });
+        }
+      } catch (err) {
+        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+        // Cartesia request below remains the source of truth.
+        logger.warn?.(
+          `[Voice TTS API] WAV first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    const ttsCost = await calculateTTSCostFromCatalog({
+      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+      characterCount: text.length,
+      ...(getGenerativePricingCacheOptions(c).cacheOnly
+        ? { cache: getGenerativePricingCacheOptions(c) }
+        : {}),
+    });
+    const estimatedCost = isCustomVoice
+      ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) /
+        1000000
+      : ttsCost.totalCost;
+    const billingCost = {
+      totalCost: estimatedCost,
+      baseTotalCost: isCustomVoice
+        ? Math.round(
+            ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000,
+          ) / 1000000
+        : ttsCost.baseTotalCost,
+      platformMarkup: isCustomVoice
+        ? Math.round(
+            ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1000000,
+          ) / 1000000
+        : ttsCost.platformMarkup,
+    };
+    // #16425: the client mints one Idempotency-Key per logical utterance and
+    // sends it on BOTH the direct request and the proxy fallback, so a retry
+    // after an ambiguous network outcome replays the committed reservation
+    // instead of charging the utterance twice. Org-scoped inside reserve().
+    const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId,
+      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+      provider: "elevenlabs",
+      billingSource: "elevenlabs",
+      requestId: ttsIdempotencyKey
+        ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
+        : `voice-tts:${crypto.randomUUID()}`,
+      affiliateCode: request.headers.get("X-Affiliate-Code"),
+      description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
+    };
+    try {
+      const admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost: billingCost,
+        admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
+        idempotencyKey: ttsIdempotencyKey ?? undefined,
+        atomicProviderBoundary: true,
+      });
+      reservation = admission.reservation;
+      settleUnknown = admission.settleUnknown;
+      markProviderDispatched = admission.markProviderDispatched;
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return Response.json(
+          {
+            error: "Insufficient credits for text-to-speech",
+            required: error.required,
+          },
+          { status: 402 },
+        );
+      }
+      throw error;
+    }
+    timings.admissionMs = Date.now() - admissionStart;
+    const startTime = Date.now();
+    // WAV fast path: Cartesia Sonic streams raw PCM (~150 ms to first audio,
+    // ~0.6 s total, measured live) where the buffered ElevenLabs PCM
+    // round-trip takes ~3 s — and WAV requests can't use the MP3 first-line
+    // cache. The engine is only substitutable when the caller did NOT pin a
+    // voice identity: custom voices and explicit (non-proxy-default)
+    // ElevenLabs voice ids keep ElevenLabs. Billing below charges the same
+    // ElevenLabs catalog rate either way, so the engine choice never changes
+    // the user's price (Cartesia's upstream cost is lower, not higher).
+    let wav: Uint8Array<ArrayBuffer> | undefined;
+    let audioStream: ReadableStream<Uint8Array> | undefined;
+    let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
+    let cartesiaMp3ContentType = "audio/mpeg";
+    settlementProvider = providerSelection.provider;
+    const markPaidTtsProviderDispatch = async () => {
+      await markProviderDispatched?.();
+      providerWorkMayHaveStarted = true;
+    };
+    if (cartesiaEligible && cartesiaApiKey) {
+      if (wantWav) {
+        const cartesia = await synthesizeCartesiaWav({
+          apiKey: cartesiaApiKey,
+          voiceId: cartesiaVoiceId,
+          text,
+          sampleRate: WAV_PCM_SAMPLE_RATE,
+          maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
+        });
+        wav = cartesia.wav;
+        synthesisEngine = "cartesia";
+        if (wavCacheKey) {
+          const wavBytes = cartesia.wav;
+          void (async () => {
+            try {
+              await getCloudFirstLineCacheService().put({
+                ...wavCacheKey,
+                bytes: wavBytes,
+                rawText: snipResult?.raw ?? text,
+                contentType: "audio/wav",
+                durationMs: 0,
+                wordCount: snipResult?.wordCount ?? 0,
+              });
+              logger.info(
+                `[Voice TTS API] WAV first-line cache POPULATE ok (${wavBytes.byteLength}B)`,
+              );
+            } catch (err) {
+              // error-policy:J7 cache populate is diagnostics-adjacent decoration;
+              // a failed put must not affect the served reply.
+              logger.warn?.(
+                `[Voice TTS API] WAV first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          })();
+        }
+        logger.info("[Voice TTS API] Cartesia WAV synthesis", {
+          firstAudioMs: cartesia.firstAudioMs,
+          totalMs: cartesia.totalMs,
+          pcmBytes: cartesia.pcmBytes,
+        });
+      } else {
+        const cartesia = await synthesizeCartesiaBytes({
+          apiKey: cartesiaApiKey,
+          voiceId: cartesiaVoiceId,
+          text,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
+        });
+        audioStream = cartesia.body;
+        cartesiaMp3ContentType = cartesia.contentType;
+        synthesisEngine = "cartesia";
+      }
+    }
+    if (wav === undefined) {
+      if (audioStream === undefined) {
+        const elevenlabs = getElevenLabsService(env);
+        await markPaidTtsProviderDispatch();
+        audioStream = await elevenlabs.textToSpeech({
+          text,
+          voiceId,
+          modelId,
+          // WAV path requests raw PCM (wrapped in a WAV header below); default
+          // callers get the service's MP3 default.
+          ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
+        });
+      }
+      if (wantWav) {
+        wav = await drainPcm16ToWav(
+          audioStream,
+          MAX_WAV_PCM_BYTES,
+          WAV_PCM_SAMPLE_RATE,
+        );
+      }
+    }
+    const duration = Date.now() - startTime;
+    timings.synthesisMs = duration;
+    logger.info("[Voice TTS API] Stream started", {
+      provider: synthesisEngine,
+      fallbackReason: providerSelection.fallbackReason,
+      durationMs: duration,
+    });
+    let billingApplied = false;
+    const billingTask = (async () => {
+      try {
+        const billing = await billFlatUsage(
+          {
+            ...billingContext,
+            model:
+              synthesisEngine === "cartesia"
+                ? "cartesia/sonic-3.5"
+                : billingContext.model,
+            provider: synthesisEngine,
+          },
+          billingCost,
+          reservation,
+        );
+        billingApplied = true;
+        let userVoiceId: string | null = null;
+        let voiceName: string | null = null;
+        if (voiceId && isCustomVoice) {
+          const voiceUsage = await recordCustomVoiceUsage({
+            elevenLabsVoiceId: voiceId,
+            organizationId: user.organization_id,
+          });
+          userVoiceId = voiceUsage.userVoiceId;
+          voiceName = voiceUsage.voiceName;
+        }
+        await usageService.create({
+          organization_id: user.organization_id,
+          user_id: user.id,
+          api_key_id: apiKeyId,
+          type: "tts",
+          // Attribute the engine that actually synthesized; the CHARGE always
+          // comes from the ElevenLabs catalog rate (billingSource below), so a
+          // Cartesia-served request costs the user exactly what the
+          // ElevenLabs-served one would.
+          model:
+            synthesisEngine === "cartesia"
+              ? "sonic-3.5"
+              : modelId || "eleven_flash_v2_5",
+          provider: synthesisEngine,
+          input_tokens: Math.ceil(text.length / 4),
+          output_tokens: 0,
+          input_cost: String(billing.totalCost),
+          output_cost: String(0),
+          markup: String(billing.platformMarkup),
+          duration_ms: duration,
+          is_successful: true,
+          metadata: {
+            voiceId: voiceId || "default",
+            userVoiceId: userVoiceId,
+            voiceName: voiceName,
+            textLength: text.length,
+            characterCount: text.length,
+            isCustomVoice,
+            baseTotalCost: billing.baseTotalCost,
+            billingSource: "elevenlabs",
+            synthesisEngine,
+          },
+        });
+      } catch (error) {
+        if (!billingApplied) await settleUnknown?.();
+        // error-policy:J7 billing and usage persistence run outside the audio
+        // response; conservative settlement remains observable on failure.
+        logger.error("[Voice TTS API] Failed to create usage record", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    })();
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(billingTask);
+    else void billingTask;
+    // Populate only when the cache key describes the complete input. Tee the
+    // already-produced provider stream so cache warming never performs a
+    // second, unmetered synthesis. Partial first sentences are deliberately
+    // not warmed because MP3 frames cannot be sliced losslessly.
+    if (
+      !wantWav &&
+      audioStream &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+    ) {
+      const [responseStream, cacheStream] = audioStream.tee();
+      audioStream = responseStream;
+      const cacheTask = (async () => {
+        try {
+          const cacheService = getCloudFirstLineCacheService();
+          const cacheKey = {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3" as const,
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          };
+          const merged = await captureExactAudioForCache(cacheStream);
+          if (!merged) {
+            logger.info("[Voice TTS API] first-line cache capture skipped", {
+              provider: synthesisEngine,
+              reason: "empty_or_over_entry_limit",
+              traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+            });
+            return;
+          }
+          await cacheService.put({
+            ...cacheKey,
+            bytes: merged,
+            rawText: snipResult.raw,
+            contentType: "audio/mpeg",
+            durationMs: 0,
+            wordCount: snipResult.wordCount,
+          });
+          logger.info(
+            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${merged.byteLength}B, words=${snipResult.wordCount})`,
+          );
+        } catch (err) {
+          // error-policy:J7 cache population is an off-response-path
+          // optimization; failures are observable and never alter audio.
+          logger.warn?.("[Voice TTS API] first-line cache populate failed", {
+            errorType: err instanceof Error ? err.name : "unknown",
+            provider: synthesisEngine,
+            traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+          });
+        }
+      })();
+      if (executionCtx) executionCtx.waitUntil(cacheTask);
+      else void cacheTask;
+    }
+    // WAV path: raw PCM (Cartesia frames or the ElevenLabs PCM stream)
+    // buffered and wrapped in a WAV header so codec-less clients can decode
+    // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
+    // keeps its chunked streaming below.)
+    if (wav !== undefined) {
+      return new Response(wav.buffer, {
+        headers: {
+          "Content-Type": "audio/wav",
+          "Cache-Control": "no-cache",
+          ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+          "X-TTS-Cache": "miss",
+        },
+      });
+    }
+    return new Response(audioStream, {
+      headers: {
+        "Content-Type": cartesiaMp3ContentType,
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache",
+        ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+        "X-TTS-Cache": "miss",
+      },
+    });
+  } catch (error) {
+    // error-policy:J1 translate provider, billing, and validation failures at
+    // the authenticated HTTP boundary without leaking provider response data.
+    // Redaction boundary: provider SDK errors can embed the synthesis text or
+    // provider response bodies in their message — log only the error type.
+    logger.error("[Voice TTS API] Request failed", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    if (reservation) {
+      const settlement =
+        providerWorkMayHaveStarted && settleUnknown
+          ? settleUnknown()
+          : reservation.reconcile(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(settlement);
+      else await settlement;
+      logger.warn("[Voice TTS API] Settled failed paid synthesis", {
+        organizationId: settlementOrganizationId,
+        provider: settlementProvider,
+        providerDispatchState: providerWorkMayHaveStarted
+          ? "possibly_dispatched"
+          : "not_dispatched",
+        settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+        userId: settlementUserId,
+      });
+    }
+    const apiError =
+      error instanceof ApiError ? error : asGenerativeCacheApiError(error);
+    if (apiError) {
+      const serialized =
+        "toJSON" in apiError && typeof apiError.toJSON === "function"
+          ? apiError.toJSON()
+          : { error: apiError.message };
+      return Response.json(serialized, { status: apiError.status ?? 500 });
+    }
+    if (error instanceof CartesiaRestTtsError) {
+      const status =
+        error.classification === "auth"
+          ? error.status === 403
+            ? 403
+            : 401
+          : error.classification === "rate_limit" ||
+              error.classification === "quota"
+            ? 429
+            : error.classification === "bad_request"
+              ? 400
+              : 502;
+      return Response.json(
+        {
+          error: error.safeProviderMessage,
+          provider: "cartesia",
+          code: error.classification,
+        },
+        { status },
+      );
+    }
+    const errorMessage =
+      error instanceof Error
+        ? error.message.toLowerCase()
+        : typeof error === "string"
+          ? error.toLowerCase()
+          : "";
+    if (
+      errorMessage.includes("invalid or expired api key") ||
+      errorMessage.includes("invalid or expired token") ||
+      errorMessage.includes("api key is inactive") ||
+      errorMessage.includes("unauthorized") ||
+      errorMessage.includes("authentication required") ||
+      errorMessage.includes("forbidden")
+    ) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (errorMessage.includes("rate limit")) {
+      return Response.json(
+        { error: "Rate limit exceeded. Please try again in a moment." },
+        { status: 429 },
+      );
+    }
+    if (errorMessage.includes("quota")) {
+      return Response.json(
+        {
+          error:
+            "Voice service is temporarily unavailable due to high demand. Please try again in a few moments.",
+          type: "service_unavailable",
+          retryAfter: "5 minutes",
+        },
+        { status: 503 },
+      );
+    }
+    if (errorMessage.includes("voice")) {
+      return Response.json(
+        { error: "Invalid voice ID. Please select a different voice." },
+        { status: 400 },
+      );
+    }
+    if (errorMessage.includes("elevenlabs_api_key")) {
+      return Response.json(
+        { error: "Service not configured" },
+        { status: 500 },
+      );
+    }
+    return Response.json(
+      { error: "Failed to generate speech. Please try again." },
+      { status: 500 },
+    );
+  }
 }
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", __hono_POST);

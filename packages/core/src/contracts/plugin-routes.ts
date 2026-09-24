@@ -24,85 +24,85 @@
 import z from "zod";
 
 export const PutPluginRequestSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    config: z.record(z.string(), z.string()).optional(),
-  })
-  .strict();
+	.object({
+		enabled: z.boolean().optional(),
+		config: z.record(z.string(), z.string()).optional(),
+	})
+	.strict();
 
 export const PutSecretsRequestSchema = z
-  .object({
-    secrets: z.record(z.string(), z.string()),
-  })
-  .strict();
+	.object({
+		secrets: z.record(z.string(), z.string()),
+	})
+	.strict();
 
 const PluginInstallStreamSchema = z.enum(["latest", "beta"]);
 
 const BasePluginInstallRequestSchema = z
-  .object({
-    name: z.string().regex(/\S/, "name is required"),
-    autoRestart: z.boolean().optional(),
-    stream: PluginInstallStreamSchema.optional(),
-    version: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    name: value.name.trim(),
-    ...(value.autoRestart !== undefined
-      ? { autoRestart: value.autoRestart }
-      : {}),
-    ...(value.stream ? { stream: value.stream } : {}),
-    ...(value.version?.trim() ? { version: value.version.trim() } : {}),
-  }));
+	.object({
+		name: z.string().regex(/\S/, "name is required"),
+		autoRestart: z.boolean().optional(),
+		stream: PluginInstallStreamSchema.optional(),
+		version: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		name: value.name.trim(),
+		...(value.autoRestart !== undefined
+			? { autoRestart: value.autoRestart }
+			: {}),
+		...(value.stream ? { stream: value.stream } : {}),
+		...(value.version?.trim() ? { version: value.version.trim() } : {}),
+	}));
 
 export const PostPluginInstallRequestSchema = BasePluginInstallRequestSchema;
 export const PostPluginUpdateRequestSchema = BasePluginInstallRequestSchema;
 
 export const PostPluginUninstallRequestSchema = z
-  .object({
-    name: z.string().regex(/\S/, "name is required"),
-    autoRestart: z.boolean().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    name: value.name.trim(),
-    ...(value.autoRestart !== undefined
-      ? { autoRestart: value.autoRestart }
-      : {}),
-  }));
+	.object({
+		name: z.string().regex(/\S/, "name is required"),
+		autoRestart: z.boolean().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		name: value.name.trim(),
+		...(value.autoRestart !== undefined
+			? { autoRestart: value.autoRestart }
+			: {}),
+	}));
 
 export const PostPluginCoreToggleRequestSchema = z
-  .object({
-    npmName: z.string().regex(/\S/, "npmName is required"),
-    enabled: z.boolean(),
-  })
-  .strict()
-  .transform((value) => ({
-    npmName: value.npmName.trim(),
-    enabled: value.enabled,
-  }));
+	.object({
+		npmName: z.string().regex(/\S/, "npmName is required"),
+		enabled: z.boolean(),
+	})
+	.strict()
+	.transform((value) => ({
+		npmName: value.npmName.trim(),
+		enabled: value.enabled,
+	}));
 
 export const PutCuratedSkillSourceRequestSchema = z
-  .object({
-    content: z.string(),
-  })
-  .strict();
+	.object({
+		content: z.string(),
+	})
+	.strict();
 
 export type PutPluginRequest = z.infer<typeof PutPluginRequestSchema>;
 export type PutSecretsRequest = z.infer<typeof PutSecretsRequestSchema>;
 export type PostPluginInstallRequest = z.infer<
-  typeof PostPluginInstallRequestSchema
+	typeof PostPluginInstallRequestSchema
 >;
 export type PostPluginUpdateRequest = z.infer<
-  typeof PostPluginUpdateRequestSchema
+	typeof PostPluginUpdateRequestSchema
 >;
 export type PostPluginUninstallRequest = z.infer<
-  typeof PostPluginUninstallRequestSchema
+	typeof PostPluginUninstallRequestSchema
 >;
 export type PostPluginCoreToggleRequest = z.infer<
-  typeof PostPluginCoreToggleRequestSchema
+	typeof PostPluginCoreToggleRequestSchema
 >;
 export type PutCuratedSkillSourceRequest = z.infer<
-  typeof PutCuratedSkillSourceRequestSchema
+	typeof PutCuratedSkillSourceRequestSchema
 >;
 export type PluginInstallStream = z.infer<typeof PluginInstallStreamSchema>;

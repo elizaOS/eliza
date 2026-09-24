@@ -17,12 +17,12 @@ import {
   ModelType,
   NotificationService,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   createAssistantPlugin,
   documentsPlugin,
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,

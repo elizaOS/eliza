@@ -9,7 +9,11 @@ import {
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
 } from "@elizaos/auth/auth/types";
 import type { IAgentRuntime } from "@elizaos/core";
-import { getDirectAccountProviderForFirstRunProvider, getFirstRunProviderOption, resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/core/contracts/first-run-options";
 import { type ServiceRouteConfig } from "@elizaos/core/contracts/service-routing";
 import type { ElizaConfig } from "../config/config.ts";
 import {

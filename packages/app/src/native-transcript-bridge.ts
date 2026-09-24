@@ -6,11 +6,11 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/core/logger";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
 } from "@elizaos/ui/bridge";
+import { logger } from "@elizaos/ui/logger";
 import {
   acceptNativeTranscriptViewModel,
   NATIVE_TRANSCRIPT_RENDERER_EVENT,

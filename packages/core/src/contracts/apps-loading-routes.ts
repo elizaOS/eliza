@@ -24,46 +24,46 @@
 import z from "zod";
 
 export const PostLoadFromDirectoryRequestSchema = z
-  .object({
-    directory: z.string().min(1, "directory is required"),
-  })
-  .strict();
+	.object({
+		directory: z.string().min(1, "directory is required"),
+	})
+	.strict();
 
 const RegisteredItemSchema = z
-  .object({
-    slug: z.string().min(1),
-    canonicalName: z.string().min(1),
-  })
-  .strict();
+	.object({
+		slug: z.string().min(1),
+		canonicalName: z.string().min(1),
+	})
+	.strict();
 
 const RejectedManifestSchema = z
-  .object({
-    directory: z.string(),
-    packageName: z.union([z.string(), z.null()]),
-    reason: z.string(),
-    path: z.string(),
-  })
-  .strict();
+	.object({
+		directory: z.string(),
+		packageName: z.union([z.string(), z.null()]),
+		reason: z.string(),
+		path: z.string(),
+	})
+	.strict();
 
 export const PostLoadFromDirectoryResponseSchema = z
-  .object({
-    ok: z.literal(true),
-    directory: z.string(),
-    registered: z.number().int().nonnegative(),
-    items: z.array(RegisteredItemSchema),
-    rejectedManifests: z.array(RejectedManifestSchema),
-  })
-  .strict();
+	.object({
+		ok: z.literal(true),
+		directory: z.string(),
+		registered: z.number().int().nonnegative(),
+		items: z.array(RegisteredItemSchema),
+		rejectedManifests: z.array(RejectedManifestSchema),
+	})
+	.strict();
 
 export type PostLoadFromDirectoryRequest = z.infer<
-  typeof PostLoadFromDirectoryRequestSchema
+	typeof PostLoadFromDirectoryRequestSchema
 >;
 export type PostLoadFromDirectoryResponse = z.infer<
-  typeof PostLoadFromDirectoryResponseSchema
+	typeof PostLoadFromDirectoryResponseSchema
 >;
 export type LoadFromDirectoryRegisteredItem = z.infer<
-  typeof RegisteredItemSchema
+	typeof RegisteredItemSchema
 >;
 export type LoadFromDirectoryRejectedManifest = z.infer<
-  typeof RejectedManifestSchema
+	typeof RejectedManifestSchema
 >;

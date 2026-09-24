@@ -17,7 +17,22 @@
         "../../plugins/plugin-native-secure-store/src/index.ts"
       ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"]
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../plugin-native-inference/src/model-catalog/routing-policy.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../plugin-native-inference/src/model-catalog/voice-models.ts"
+      ]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

@@ -32,18 +32,24 @@
  * reports the outcome back through the result callback — same
  * pending-request pattern as the views interact round-trip.
  */
-import { DEFAULT_ELIGIBLE_MODEL_IDS } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
-import { FIRST_RUN_DEFAULT_MODEL_ID } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { PendingRequestMap } from "./pending-request-map.ts";
-import { createSelfApiRequestHeaders } from "@elizaos/core/runtime-env";
-import { findCatalogModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { logger } from "@elizaos/core";
+
 import { randomUUID } from "node:crypto";
-import { readJsonBody } from "@elizaos/core/api/http-helpers";
-import { resolveServerOnlyPort } from "@elizaos/core/runtime-env";
-import { type ProviderId } from "@elizaos/core/contracts/local-inference-providers";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
+import { readJsonBody } from "@elizaos/core/api/http-helpers";
+import { type ProviderId } from "@elizaos/core/contracts/local-inference-providers";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/core/runtime-env";
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import { PendingRequestMap } from "./pending-request-map.ts";
+
 // Provider ids as registered with the routing layer. Typed against the shared
 // ProviderId union so a rename upstream fails compilation here. The string
 // values are owned by /plugin-local-inference/provider.ts and
@@ -54,22 +60,19 @@ const CLOUD_TEXT_PROVIDER: ProviderId = "elizacloud";
 const PREFIX = "/api/runtime";
 let modelSwitchOperation: Promise<void> | undefined;
 async function withModelSwitchLock<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = modelSwitchOperation;
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    modelSwitchOperation = current;
-    if (previous)
-        await previous;
-    try {
-        return await operation();
-    }
-    finally {
-        release();
-        if (modelSwitchOperation === current)
-            modelSwitchOperation = undefined;
-    }
+  const previous = modelSwitchOperation;
+  let release: () => void = () => undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  modelSwitchOperation = current;
+  if (previous) await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (modelSwitchOperation === current) modelSwitchOperation = undefined;
+  }
 }
 /** How long the model-load call may take before the switch reports an error. */
 const ACTIVE_LOAD_TIMEOUT_MS = 120000;
@@ -80,306 +83,418 @@ export type ModelSwitchTarget = "local" | "cloud";
 export type ModelSwitchStatus = "ready" | "loading" | "downloading";
 /** Wire response of POST /api/runtime/model-switch. */
 export interface ModelSwitchResponse {
-    ok: true;
-    target: ModelSwitchTarget;
-    model: string;
-    displayName: string;
-    status: ModelSwitchStatus;
-    /** Bundle size in GB when status === "downloading" (from the catalog). */
-    downloadSizeGb?: number;
+  ok: true;
+  target: ModelSwitchTarget;
+  model: string;
+  displayName: string;
+  status: ModelSwitchStatus;
+  /** Bundle size in GB when status === "downloading" (from the catalog). */
+  downloadSizeGb?: number;
 }
 /** Wire response of POST /api/runtime/agent-switch. */
 export interface AgentSwitchResponse {
-    ok: boolean;
-    profileId?: string;
-    profileLabel?: string;
-    /**
-     * Refusal/failure reason when ok=false:
-     * "not-found" | "untrusted-remote" (from the shell's trust gate) or
-     * "no-shell" (no connected shell answered in time).
-     */
-    reason?: string;
+  ok: boolean;
+  profileId?: string;
+  profileLabel?: string;
+  /**
+   * Refusal/failure reason when ok=false:
+   * "not-found" | "untrusted-remote" (from the shell's trust gate) or
+   * "no-shell" (no connected shell answered in time).
+   */
+  reason?: string;
 }
 const pendingAgentSwitches = new PendingRequestMap();
 export interface RuntimeSwitchRouteContext {
-    req: http.IncomingMessage;
-    res: http.ServerResponse;
-    method: string;
-    pathname: string;
-    json: (res: http.ServerResponse, data: unknown, status?: number) => void;
-    error: (res: http.ServerResponse, message: string, status?: number) => void;
-    broadcastWs?: (payload: object) => void;
-    /** Test seam; defaults to global fetch against the server's own loopback. */
-    loopbackFetch?: typeof fetch;
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  method: string;
+  pathname: string;
+  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
+  error: (res: http.ServerResponse, message: string, status?: number) => void;
+  broadcastWs?: (payload: object) => void;
+  /** Test seam; defaults to global fetch against the server's own loopback. */
+  loopbackFetch?: typeof fetch;
 }
 function loopbackBase(): string {
-    return `http://127.0.0.1:${resolveServerOnlyPort(process.env)}`;
+  return `http://127.0.0.1:${resolveServerOnlyPort(process.env)}`;
 }
 interface LoopbackResult {
-    ok: boolean;
-    status: number;
-    body: Record<string, unknown> | null;
+  ok: boolean;
+  status: number;
+  body: Record<string, unknown> | null;
 }
-async function loopbackJson(fetchImpl: typeof fetch, method: "GET" | "POST", path: string, body?: Record<string, unknown>, timeoutMs: number = LOOPBACK_TIMEOUT_MS): Promise<LoopbackResult> {
-    const response = await fetchImpl(`${loopbackBase()}${path}`, {
-        method,
-        headers: {
-            "Content-Type": "application/json",
-            ...createSelfApiRequestHeaders(),
-        },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(timeoutMs),
-    });
-    const parsed: unknown = await response.json().catch(() => null);
-    return {
-        ok: response.ok,
-        status: response.status,
-        body: parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-            ? (parsed as Record<string, unknown>)
-            : null,
-    };
+async function loopbackJson(
+  fetchImpl: typeof fetch,
+  method: "GET" | "POST",
+  path: string,
+  body?: Record<string, unknown>,
+  timeoutMs: number = LOOPBACK_TIMEOUT_MS,
+): Promise<LoopbackResult> {
+  const response = await fetchImpl(`${loopbackBase()}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...createSelfApiRequestHeaders(),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const parsed: unknown = await response.json().catch(() => null);
+  return {
+    ok: response.ok,
+    status: response.status,
+    body:
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null,
+  };
 }
 function sanctionedLocalIds(): string {
-    return [...DEFAULT_ELIGIBLE_MODEL_IDS].join(", ");
+  return [...DEFAULT_ELIGIBLE_MODEL_IDS].join(", ");
 }
 /**
  * Resolve the effective local model id for a switch request: an explicit
  * sanctioned id wins; otherwise the current TEXT_LARGE assignment when it is
  * sanctioned; otherwise the first-run default tier.
  */
-async function resolveLocalModelId(fetchImpl: typeof fetch, requested: string | null): Promise<string> {
-    if (requested)
-        return requested;
-    const assignments = await loopbackJson(fetchImpl, "GET", "/api/local-inference/assignments");
-    const current = (assignments.body?.assignments as Record<string, unknown> | undefined)?.TEXT_LARGE;
-    if (typeof current === "string" && DEFAULT_ELIGIBLE_MODEL_IDS.has(current)) {
-        return current;
-    }
-    return FIRST_RUN_DEFAULT_MODEL_ID;
+async function resolveLocalModelId(
+  fetchImpl: typeof fetch,
+  requested: string | null,
+): Promise<string> {
+  if (requested) return requested;
+  const assignments = await loopbackJson(
+    fetchImpl,
+    "GET",
+    "/api/local-inference/assignments",
+  );
+  const current = (
+    assignments.body?.assignments as Record<string, unknown> | undefined
+  )?.TEXT_LARGE;
+  if (typeof current === "string" && DEFAULT_ELIGIBLE_MODEL_IDS.has(current)) {
+    return current;
+  }
+  return FIRST_RUN_DEFAULT_MODEL_ID;
 }
-async function applyTextRouting(fetchImpl: typeof fetch, provider: ProviderId): Promise<void> {
-    // Provider and policy for both text slots become visible in one canonical
-    // routing transaction; no request can observe a half-switched model stack.
-    const routing = await loopbackJson(fetchImpl, "POST", "/api/local-inference/routing/text", { provider, policy: "manual" });
-    if (!routing.ok) {
-        throw new Error(`routing/text returned ${routing.status}`);
-    }
+async function applyTextRouting(
+  fetchImpl: typeof fetch,
+  provider: ProviderId,
+): Promise<void> {
+  // Provider and policy for both text slots become visible in one canonical
+  // routing transaction; no request can observe a half-switched model stack.
+  const routing = await loopbackJson(
+    fetchImpl,
+    "POST",
+    "/api/local-inference/routing/text",
+    { provider, policy: "manual" },
+  );
+  if (!routing.ok) {
+    throw new Error(`routing/text returned ${routing.status}`);
+  }
 }
-async function isModelInstalled(fetchImpl: typeof fetch, modelId: string): Promise<boolean> {
-    const installed = await loopbackJson(fetchImpl, "GET", "/api/local-inference/installed");
-    const models = installed.body?.models;
-    return (Array.isArray(models) &&
-        models.some((model) => model !== null &&
-            typeof model === "object" &&
-            (model as Record<string, unknown>).id === modelId));
+async function isModelInstalled(
+  fetchImpl: typeof fetch,
+  modelId: string,
+): Promise<boolean> {
+  const installed = await loopbackJson(
+    fetchImpl,
+    "GET",
+    "/api/local-inference/installed",
+  );
+  const models = installed.body?.models;
+  return (
+    Array.isArray(models) &&
+    models.some(
+      (model) =>
+        model !== null &&
+        typeof model === "object" &&
+        (model as Record<string, unknown>).id === modelId,
+    )
+  );
 }
-async function switchToLocal(fetchImpl: typeof fetch, modelId: string): Promise<ModelSwitchResponse> {
-    const catalog = findCatalogModel(modelId);
-    const displayName = catalog?.displayName ?? modelId;
-    // Assign the chat slot first so readiness derivation reflects the chosen
-    // tier even while the bundle is still downloading.
-    const assignment = await loopbackJson(fetchImpl, "POST", "/api/local-inference/assignments", { slot: "TEXT_LARGE", modelId });
-    if (!assignment.ok) {
-        throw new Error(typeof assignment.body?.error === "string"
-            ? assignment.body.error
-            : `assignments returned ${assignment.status}`);
+async function switchToLocal(
+  fetchImpl: typeof fetch,
+  modelId: string,
+): Promise<ModelSwitchResponse> {
+  const catalog = findCatalogModel(modelId);
+  const displayName = catalog?.displayName ?? modelId;
+  // Assign the chat slot first so readiness derivation reflects the chosen
+  // tier even while the bundle is still downloading.
+  const assignment = await loopbackJson(
+    fetchImpl,
+    "POST",
+    "/api/local-inference/assignments",
+    { slot: "TEXT_LARGE", modelId },
+  );
+  if (!assignment.ok) {
+    throw new Error(
+      typeof assignment.body?.error === "string"
+        ? assignment.body.error
+        : `assignments returned ${assignment.status}`,
+    );
+  }
+  if (await isModelInstalled(fetchImpl, modelId)) {
+    const active = await loopbackJson(
+      fetchImpl,
+      "POST",
+      "/api/local-inference/active",
+      { modelId },
+      ACTIVE_LOAD_TIMEOUT_MS,
+    );
+    if (!active.ok) {
+      throw new Error(
+        typeof active.body?.error === "string"
+          ? active.body.error
+          : `active returned ${active.status}`,
+      );
     }
-    if (await isModelInstalled(fetchImpl, modelId)) {
-        const active = await loopbackJson(fetchImpl, "POST", "/api/local-inference/active", { modelId }, ACTIVE_LOAD_TIMEOUT_MS);
-        if (!active.ok) {
-            throw new Error(typeof active.body?.error === "string"
-                ? active.body.error
-                : `active returned ${active.status}`);
-        }
-        const status: ModelSwitchStatus = active.body?.status === "ready" ? "ready" : "loading";
-        if (active.body?.status !== "ready" && active.body?.status !== "loading") {
-            throw new Error(typeof active.body?.error === "string"
-                ? active.body.error
-                : "active model did not enter a serving state");
-        }
-        await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
-        return { ok: true, target: "local", model: modelId, displayName, status };
-    }
-    const download = await loopbackJson(fetchImpl, "POST", "/api/local-inference/downloads", { modelId });
-    if (!download.ok) {
-        throw new Error(typeof download.body?.error === "string"
-            ? download.body.error
-            : `downloads returned ${download.status}`);
+    const status: ModelSwitchStatus =
+      active.body?.status === "ready" ? "ready" : "loading";
+    if (active.body?.status !== "ready" && active.body?.status !== "loading") {
+      throw new Error(
+        typeof active.body?.error === "string"
+          ? active.body.error
+          : "active model did not enter a serving state",
+      );
     }
     await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
-    return {
-        ok: true,
-        target: "local",
-        model: modelId,
-        displayName,
-        status: "downloading",
-        ...(catalog ? { downloadSizeGb: catalog.sizeGb } : {}),
-    };
+    return { ok: true, target: "local", model: modelId, displayName, status };
+  }
+  const download = await loopbackJson(
+    fetchImpl,
+    "POST",
+    "/api/local-inference/downloads",
+    { modelId },
+  );
+  if (!download.ok) {
+    throw new Error(
+      typeof download.body?.error === "string"
+        ? download.body.error
+        : `downloads returned ${download.status}`,
+    );
+  }
+  await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
+  return {
+    ok: true,
+    target: "local",
+    model: modelId,
+    displayName,
+    status: "downloading",
+    ...(catalog ? { downloadSizeGb: catalog.sizeGb } : {}),
+  };
 }
-async function switchToCloud(fetchImpl: typeof fetch, modelId: string): Promise<ModelSwitchResponse> {
-    await applyTextRouting(fetchImpl, CLOUD_TEXT_PROVIDER);
-    return {
-        ok: true,
-        target: "cloud",
-        model: modelId,
-        displayName: `Eliza Cloud (${modelId})`,
-        status: "ready",
-    };
+async function switchToCloud(
+  fetchImpl: typeof fetch,
+  modelId: string,
+): Promise<ModelSwitchResponse> {
+  await applyTextRouting(fetchImpl, CLOUD_TEXT_PROVIDER);
+  return {
+    ok: true,
+    target: "cloud",
+    model: modelId,
+    displayName: `Eliza Cloud (${modelId})`,
+    status: "ready",
+  };
 }
 /**
  * Resolve a pending agent switch from the frontend's result callback. Exposed
  * for the route's own result endpoint and for tests.
  */
 export function resolveAgentSwitchResult(result: {
-    requestId: string;
-    ok: boolean;
-    profileId?: string;
-    profileLabel?: string;
-    reason?: string;
+  requestId: string;
+  ok: boolean;
+  profileId?: string;
+  profileLabel?: string;
+  reason?: string;
 }): void {
-    pendingAgentSwitches.resolve(result.requestId, {
-        requestId: result.requestId,
-        success: result.ok,
-        result: {
-            profileId: result.profileId,
-            profileLabel: result.profileLabel,
-            reason: result.reason,
-        },
-    });
+  pendingAgentSwitches.resolve(result.requestId, {
+    requestId: result.requestId,
+    success: result.ok,
+    result: {
+      profileId: result.profileId,
+      profileLabel: result.profileLabel,
+      reason: result.reason,
+    },
+  });
 }
-export async function handleRuntimeSwitchRoutes(ctx: RuntimeSwitchRouteContext): Promise<boolean> {
-    const { req, res, method, pathname, json, error } = ctx;
-    if (!pathname.startsWith(PREFIX))
-        return false;
-    const fetchImpl = ctx.loopbackFetch ?? fetch;
-    // ── POST /api/runtime/model-switch ────────────────────────────────────────
-    if (method === "POST" && pathname === `${PREFIX}/model-switch`) {
-        const body = await readJsonBody<Record<string, unknown>>(req, res).catch(() => null);
-        if (!body)
-            return true;
-        const target = body.target;
-        if (target !== "local" && target !== "cloud") {
-            error(res, 'target must be "local" or "cloud"', 400);
-            return true;
-        }
-        const requestedModel = typeof body.model === "string" && body.model.trim().length > 0
-            ? body.model.trim()
-            : null;
-        // Sanctioned-models-only is a hard product rule: local = curated Eliza-1
-        // release tiers, cloud = the managed default text model. No other ids.
-        if (target === "local" &&
-            requestedModel &&
-            !DEFAULT_ELIGIBLE_MODEL_IDS.has(requestedModel)) {
-            error(res, `"${requestedModel}" is not a sanctioned local model. Available: ${sanctionedLocalIds()}.`, 400);
-            return true;
-        }
-        if (target === "cloud" &&
-            requestedModel &&
-            requestedModel !== DEFAULT_ELIZA_CLOUD_TEXT_MODEL) {
-            error(res, `"${requestedModel}" is not a sanctioned cloud model. Available: ${DEFAULT_ELIZA_CLOUD_TEXT_MODEL}.`, 400);
-            return true;
-        }
-        try {
-            const result = await withModelSwitchLock(async () => target === "local"
-                ? switchToLocal(fetchImpl, await resolveLocalModelId(fetchImpl, requestedModel))
-                : switchToCloud(fetchImpl, requestedModel ?? DEFAULT_ELIZA_CLOUD_TEXT_MODEL));
-            logger.info({
-                src: "RuntimeSwitchRoutes",
-                target: result.target,
-                model: result.model,
-                status: result.status,
-            }, `[RuntimeSwitchRoutes] Model switch → ${result.target} (${result.model}, ${result.status})`);
-            ctx.broadcastWs?.({
-                type: "shell:model-switch",
-                target: result.target,
-                model: result.model,
-                displayName: result.displayName,
-                status: result.status,
-                ...(result.downloadSizeGb !== undefined
-                    ? { downloadSizeGb: result.downloadSizeGb }
-                    : {}),
-            });
-            json(res, result);
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            logger.error({ src: "RuntimeSwitchRoutes", err: message, target }, `[RuntimeSwitchRoutes] Model switch to ${target} failed: ${message}`);
-            error(res, `Model switch failed: ${message}`, 502);
-        }
-        return true;
+export async function handleRuntimeSwitchRoutes(
+  ctx: RuntimeSwitchRouteContext,
+): Promise<boolean> {
+  const { req, res, method, pathname, json, error } = ctx;
+  if (!pathname.startsWith(PREFIX)) return false;
+  const fetchImpl = ctx.loopbackFetch ?? fetch;
+  // ── POST /api/runtime/model-switch ────────────────────────────────────────
+  if (method === "POST" && pathname === `${PREFIX}/model-switch`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => null,
+    );
+    if (!body) return true;
+    const target = body.target;
+    if (target !== "local" && target !== "cloud") {
+      error(res, 'target must be "local" or "cloud"', 400);
+      return true;
     }
-    // ── POST /api/runtime/agent-switch ────────────────────────────────────────
-    if (method === "POST" && pathname === `${PREFIX}/agent-switch`) {
-        const body = await readJsonBody<Record<string, unknown>>(req, res).catch(() => null);
-        if (!body)
-            return true;
-        const profile = typeof body.profile === "string" && body.profile.trim().length > 0
-            ? body.profile.trim()
-            : null;
-        if (!profile) {
-            error(res, "profile is required", 400);
-            return true;
-        }
-        if (!ctx.broadcastWs) {
-            json(res, {
-                ok: false,
-                reason: "no-shell",
-            } satisfies AgentSwitchResponse);
-            return true;
-        }
-        const requestId = randomUUID();
-        logger.info({ src: "RuntimeSwitchRoutes", requestId, profile }, `[RuntimeSwitchRoutes] Agent switch requested → "${profile}"`);
-        const pending = pendingAgentSwitches.waitFor(requestId, AGENT_SWITCH_TIMEOUT_MS);
-        ctx.broadcastWs({ type: "shell:switch-agent", requestId, profile });
-        try {
-            const outcome = await pending;
-            const detail = outcome.result !== null &&
-                typeof outcome.result === "object" &&
-                !Array.isArray(outcome.result)
-                ? (outcome.result as Record<string, unknown>)
-                : {};
-            const response: AgentSwitchResponse = {
-                ok: outcome.success,
-                ...(typeof detail.profileId === "string"
-                    ? { profileId: detail.profileId }
-                    : {}),
-                ...(typeof detail.profileLabel === "string"
-                    ? { profileLabel: detail.profileLabel }
-                    : {}),
-                ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}),
-            };
-            logger.info({ src: "RuntimeSwitchRoutes", requestId, ...response }, `[RuntimeSwitchRoutes] Agent switch ${response.ok ? "applied" : `refused (${response.reason ?? "unknown"})`}`);
-            json(res, response);
-        }
-        catch {
-            // waitFor timeout — no connected shell resolved the request.
-            logger.warn({ src: "RuntimeSwitchRoutes", requestId, profile }, "[RuntimeSwitchRoutes] Agent switch timed out waiting for a shell");
-            json(res, {
-                ok: false,
-                reason: "no-shell",
-            } satisfies AgentSwitchResponse);
-        }
-        return true;
+    const requestedModel =
+      typeof body.model === "string" && body.model.trim().length > 0
+        ? body.model.trim()
+        : null;
+    // Sanctioned-models-only is a hard product rule: local = curated Eliza-1
+    // release tiers, cloud = the managed default text model. No other ids.
+    if (
+      target === "local" &&
+      requestedModel &&
+      !DEFAULT_ELIGIBLE_MODEL_IDS.has(requestedModel)
+    ) {
+      error(
+        res,
+        `"${requestedModel}" is not a sanctioned local model. Available: ${sanctionedLocalIds()}.`,
+        400,
+      );
+      return true;
     }
-    // ── POST /api/runtime/agent-switch/result ─────────────────────────────────
-    if (method === "POST" && pathname === `${PREFIX}/agent-switch/result`) {
-        const body = await readJsonBody<Record<string, unknown>>(req, res).catch(() => null);
-        if (!body)
-            return true;
-        const requestId = typeof body.requestId === "string" ? body.requestId : null;
-        if (!requestId) {
-            error(res, "requestId is required", 400);
-            return true;
-        }
-        resolveAgentSwitchResult({
-            requestId,
-            ok: body.ok === true,
-            profileId: typeof body.profileId === "string" ? body.profileId : undefined,
-            profileLabel: typeof body.profileLabel === "string" ? body.profileLabel : undefined,
-            reason: typeof body.reason === "string" ? body.reason : undefined,
-        });
-        json(res, { ok: true });
-        return true;
+    if (
+      target === "cloud" &&
+      requestedModel &&
+      requestedModel !== DEFAULT_ELIZA_CLOUD_TEXT_MODEL
+    ) {
+      error(
+        res,
+        `"${requestedModel}" is not a sanctioned cloud model. Available: ${DEFAULT_ELIZA_CLOUD_TEXT_MODEL}.`,
+        400,
+      );
+      return true;
     }
-    return false;
+    try {
+      const result = await withModelSwitchLock(async () =>
+        target === "local"
+          ? switchToLocal(
+              fetchImpl,
+              await resolveLocalModelId(fetchImpl, requestedModel),
+            )
+          : switchToCloud(
+              fetchImpl,
+              requestedModel ?? DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+            ),
+      );
+      logger.info(
+        {
+          src: "RuntimeSwitchRoutes",
+          target: result.target,
+          model: result.model,
+          status: result.status,
+        },
+        `[RuntimeSwitchRoutes] Model switch → ${result.target} (${result.model}, ${result.status})`,
+      );
+      ctx.broadcastWs?.({
+        type: "shell:model-switch",
+        target: result.target,
+        model: result.model,
+        displayName: result.displayName,
+        status: result.status,
+        ...(result.downloadSizeGb !== undefined
+          ? { downloadSizeGb: result.downloadSizeGb }
+          : {}),
+      });
+      json(res, result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { src: "RuntimeSwitchRoutes", err: message, target },
+        `[RuntimeSwitchRoutes] Model switch to ${target} failed: ${message}`,
+      );
+      error(res, `Model switch failed: ${message}`, 502);
+    }
+    return true;
+  }
+  // ── POST /api/runtime/agent-switch ────────────────────────────────────────
+  if (method === "POST" && pathname === `${PREFIX}/agent-switch`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => null,
+    );
+    if (!body) return true;
+    const profile =
+      typeof body.profile === "string" && body.profile.trim().length > 0
+        ? body.profile.trim()
+        : null;
+    if (!profile) {
+      error(res, "profile is required", 400);
+      return true;
+    }
+    if (!ctx.broadcastWs) {
+      json(res, {
+        ok: false,
+        reason: "no-shell",
+      } satisfies AgentSwitchResponse);
+      return true;
+    }
+    const requestId = randomUUID();
+    logger.info(
+      { src: "RuntimeSwitchRoutes", requestId, profile },
+      `[RuntimeSwitchRoutes] Agent switch requested → "${profile}"`,
+    );
+    const pending = pendingAgentSwitches.waitFor(
+      requestId,
+      AGENT_SWITCH_TIMEOUT_MS,
+    );
+    ctx.broadcastWs({ type: "shell:switch-agent", requestId, profile });
+    try {
+      const outcome = await pending;
+      const detail =
+        outcome.result !== null &&
+        typeof outcome.result === "object" &&
+        !Array.isArray(outcome.result)
+          ? (outcome.result as Record<string, unknown>)
+          : {};
+      const response: AgentSwitchResponse = {
+        ok: outcome.success,
+        ...(typeof detail.profileId === "string"
+          ? { profileId: detail.profileId }
+          : {}),
+        ...(typeof detail.profileLabel === "string"
+          ? { profileLabel: detail.profileLabel }
+          : {}),
+        ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}),
+      };
+      logger.info(
+        { src: "RuntimeSwitchRoutes", requestId, ...response },
+        `[RuntimeSwitchRoutes] Agent switch ${response.ok ? "applied" : `refused (${response.reason ?? "unknown"})`}`,
+      );
+      json(res, response);
+    } catch {
+      // waitFor timeout — no connected shell resolved the request.
+      logger.warn(
+        { src: "RuntimeSwitchRoutes", requestId, profile },
+        "[RuntimeSwitchRoutes] Agent switch timed out waiting for a shell",
+      );
+      json(res, {
+        ok: false,
+        reason: "no-shell",
+      } satisfies AgentSwitchResponse);
+    }
+    return true;
+  }
+  // ── POST /api/runtime/agent-switch/result ─────────────────────────────────
+  if (method === "POST" && pathname === `${PREFIX}/agent-switch/result`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => null,
+    );
+    if (!body) return true;
+    const requestId =
+      typeof body.requestId === "string" ? body.requestId : null;
+    if (!requestId) {
+      error(res, "requestId is required", 400);
+      return true;
+    }
+    resolveAgentSwitchResult({
+      requestId,
+      ok: body.ok === true,
+      profileId:
+        typeof body.profileId === "string" ? body.profileId : undefined,
+      profileLabel:
+        typeof body.profileLabel === "string" ? body.profileLabel : undefined,
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    });
+    json(res, { ok: true });
+    return true;
+  }
+  return false;
 }

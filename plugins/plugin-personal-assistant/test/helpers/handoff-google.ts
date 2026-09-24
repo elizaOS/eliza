@@ -1,5 +1,8 @@
 /** Deterministic owner account and read-only provider fixtures shared by handoff verification tests. */
-import { type LifeOpsConnectorGrant, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 import { verifyAccountHandoffGoogle } from "../../src/lifeops/account-handoff-google-verification.js";
 import type { AccountHandoffReview } from "../../src/lifeops/account-handoff-store.js";
 export function googleHandoffFixture() {

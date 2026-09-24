@@ -17,7 +17,7 @@ import {
   type EncryptedTokenEnvelope,
   encryptTokenPayload,
   resolveTokenEncryptionKey,
-} from "@elizaos/plugin-health/crypto/token-encryption";
+} from "./token-encryption.js";
 
 const KEY = Buffer.alloc(32, 7);
 const LEGACY_ENVELOPE = {

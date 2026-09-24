@@ -8,31 +8,31 @@
  */
 
 export interface StripeCheckoutRequest {
-  hardwareSku: string;
-  hardwareColor: string;
-  /** Where Stripe should return the user after success/cancel. */
-  returnUrl: string;
+	hardwareSku: string;
+	hardwareColor: string;
+	/** Where Stripe should return the user after success/cancel. */
+	returnUrl: string;
 }
 
 export interface StripeCheckoutOptions {
-  /**
-   * Absolute base URL of the Cloud API, or empty string for same-origin.
-   * The endpoint path `/api/stripe/create-checkout-session` is appended.
-   */
-  apiBaseUrl: string;
-  /** Optional bearer token (Steward session) for guest-flow auth. */
-  bearerToken?: string | null;
-  /** Whether to send credentials (cookies). Defaults to "include". */
-  credentials?: RequestCredentials;
+	/**
+	 * Absolute base URL of the Cloud API, or empty string for same-origin.
+	 * The endpoint path `/api/stripe/create-checkout-session` is appended.
+	 */
+	apiBaseUrl: string;
+	/** Optional bearer token (Steward session) for guest-flow auth. */
+	bearerToken?: string | null;
+	/** Whether to send credentials (cookies). Defaults to "include". */
+	credentials?: RequestCredentials;
 }
 
 export class StripeCheckoutError extends Error {
-  readonly status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "StripeCheckoutError";
-    this.status = status;
-  }
+	readonly status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "StripeCheckoutError";
+		this.status = status;
+	}
 }
 
 /**
@@ -41,50 +41,50 @@ export class StripeCheckoutError extends Error {
  * a missing URL in the body.
  */
 export async function createStripeCheckoutSession(
-  request: StripeCheckoutRequest,
-  options: StripeCheckoutOptions,
+	request: StripeCheckoutRequest,
+	options: StripeCheckoutOptions,
 ): Promise<string> {
-  const endpoint = `${options.apiBaseUrl}/api/stripe/create-checkout-session`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (options.bearerToken) {
-    headers.Authorization = `Bearer ${options.bearerToken}`;
-  }
+	const endpoint = `${options.apiBaseUrl}/api/stripe/create-checkout-session`;
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (options.bearerToken) {
+		headers.Authorization = `Bearer ${options.bearerToken}`;
+	}
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    credentials: options.credentials ?? "include",
-    headers,
-    body: JSON.stringify(request),
-  });
+	const response = await fetch(endpoint, {
+		method: "POST",
+		credentials: options.credentials ?? "include",
+		headers,
+		body: JSON.stringify(request),
+	});
 
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    // error-policy:J1 invalid provider JSON is a checkout failure at the HTTP boundary.
-    throw new StripeCheckoutError("Could not start checkout.", response.status);
-  }
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		// error-policy:J1 invalid provider JSON is a checkout failure at the HTTP boundary.
+		throw new StripeCheckoutError("Could not start checkout.", response.status);
+	}
 
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new StripeCheckoutError("Could not start checkout.", response.status);
-  }
-  if (
-    !response.ok ||
-    !("url" in body) ||
-    typeof body.url !== "string" ||
-    !body.url
-  ) {
-    throw new StripeCheckoutError(
-      "error" in body && typeof body.error === "string" && body.error
-        ? body.error
-        : "Could not start checkout.",
-      response.status,
-    );
-  }
+	if (body === null || typeof body !== "object" || Array.isArray(body)) {
+		throw new StripeCheckoutError("Could not start checkout.", response.status);
+	}
+	if (
+		!response.ok ||
+		!("url" in body) ||
+		typeof body.url !== "string" ||
+		!body.url
+	) {
+		throw new StripeCheckoutError(
+			"error" in body && typeof body.error === "string" && body.error
+				? body.error
+				: "Could not start checkout.",
+			response.status,
+		);
+	}
 
-  return body.url;
+	return body.url;
 }
 
 /**
@@ -93,9 +93,9 @@ export async function createStripeCheckoutSession(
  * otherwise resolve. Errors propagate to the caller.
  */
 export async function startStripeCheckout(
-  request: StripeCheckoutRequest,
-  options: StripeCheckoutOptions,
+	request: StripeCheckoutRequest,
+	options: StripeCheckoutOptions,
 ): Promise<void> {
-  const url = await createStripeCheckoutSession(request, options);
-  window.location.href = url;
+	const url = await createStripeCheckoutSession(request, options);
+	window.location.href = url;
 }

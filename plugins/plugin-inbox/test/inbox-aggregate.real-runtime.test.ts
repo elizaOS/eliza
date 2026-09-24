@@ -21,7 +21,16 @@ import {
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
-import { type GetLifeOpsGmailTriageRequest, type LifeOpsGmailMessageSummary, type LifeOpsGmailTriageFeed, type LifeOpsGoogleConnectorStatus, type LifeOpsInboxChannel, type LifeOpsInboxMessage, type LifeOpsXConnectorStatus, type LifeOpsXDm } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type GetLifeOpsGmailTriageRequest,
+  type LifeOpsGmailMessageSummary,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsInboxChannel,
+  type LifeOpsInboxMessage,
+  type LifeOpsXConnectorStatus,
+  type LifeOpsXDm,
+} from "@elizaos/core/contracts/personal-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

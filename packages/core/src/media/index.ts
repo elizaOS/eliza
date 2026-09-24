@@ -4,37 +4,37 @@
  * Provides MIME type detection, media parsing, fetching, and format utilities.
  */
 
-export * from "@elizaos/core/media/attachments";
+export * from "./attachments.js";
 export {
-  type FetchLike,
-  type FetchMediaOptions,
-  type FetchMediaResult,
-  fetchRemoteMedia,
-  MediaFetchError,
-  type MediaFetchErrorCode,
-  readResponseWithLimit,
-} from "@elizaos/core/media/fetch";
+	type FetchLike,
+	type FetchMediaOptions,
+	type FetchMediaResult,
+	fetchRemoteMedia,
+	MediaFetchError,
+	type MediaFetchErrorCode,
+	readResponseWithLimit,
+} from "./fetch.js";
 export {
-  type CachedImageDescription,
-  describeImageCached,
-  getCachedImageDescription,
-  imageDescriptionCacheKey,
-  normalizeImageDescription,
-  setCachedImageDescription,
-} from "@elizaos/core/media/image-description-cache";
+	type CachedImageDescription,
+	describeImageCached,
+	getCachedImageDescription,
+	imageDescriptionCacheKey,
+	normalizeImageDescription,
+	setCachedImageDescription,
+} from "./image-description-cache.js";
 export {
-  trustedLocalMediaUrl,
-  VISION_IMAGE_FETCH_TIMEOUT_MS,
-  VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/core/media/local-store";
+	trustedLocalMediaUrl,
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "./local-store.js";
 export {
-  detectMime,
-  extensionForMime,
-  getFileExtension,
-  imageMimeFromFormat,
-  isAudioFileName,
-  isGifMedia,
-  isVoiceCompatibleAudio,
-  type MediaKind,
-  mediaKindFromMime,
-} from "@elizaos/core/media/mime";
+	detectMime,
+	extensionForMime,
+	getFileExtension,
+	imageMimeFromFormat,
+	isAudioFileName,
+	isGifMedia,
+	isVoiceCompatibleAudio,
+	type MediaKind,
+	mediaKindFromMime,
+} from "./mime.js";

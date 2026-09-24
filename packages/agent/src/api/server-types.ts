@@ -9,9 +9,16 @@
  */
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
-import { type AgentAutomationMode, type AgentStartupDiagnostics, type LogEntry, type PluginParamDef, type SkillEntry, type StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
+import {
+  type AgentAutomationMode,
+  type AgentStartupDiagnostics,
+  type LogEntry,
+  type PluginParamDef,
+  type SkillEntry,
+  type StreamEventEnvelope,
+} from "@elizaos/core/api/agent-api-types";
 import { type ConversationMetadata } from "@elizaos/core/contracts/conversation-routes";
+import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
 import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -27,8 +34,21 @@ export interface TelegramAccountAuthSessionLike {
   stop: () => void | Promise<void>;
 }
 
-export { type AgentAutomationMode, type AgentStartupDiagnostics, type ChatImageAttachment, type LogEntry, type PluginParamDef, type SkillEntry, type StreamEventEnvelope, type StreamEventType } from "@elizaos/core/api/agent-api-types";
-export { type ConversationAutomationType, type ConversationMetadata, type ConversationScope } from "@elizaos/core/contracts/conversation-routes";
+export {
+  type AgentAutomationMode,
+  type AgentStartupDiagnostics,
+  type ChatImageAttachment,
+  type LogEntry,
+  type PluginParamDef,
+  type SkillEntry,
+  type StreamEventEnvelope,
+  type StreamEventType,
+} from "@elizaos/core/api/agent-api-types";
+export {
+  type ConversationAutomationType,
+  type ConversationMetadata,
+  type ConversationScope,
+} from "@elizaos/core/contracts/conversation-routes";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -186,7 +206,10 @@ export interface ServerState {
   _codexFlow?: import("@elizaos/auth/auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<string, import("@elizaos/core/contracts/permissions").PermissionState>;
+  permissionStates?: Record<
+    string,
+    import("@elizaos/core/contracts/permissions").PermissionState
+  >;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;
   /** Agent automation permission mode for self-directed config changes. */

@@ -7,34 +7,49 @@
  * helpers shared with the cloud-api route handlers. We re-export the
  * browser-safe surface the cloud domain modules need
  * so they import from one place inside `@elizaos/ui/cloud` instead of reaching
- * into `@elizaos/shared` directly.
+ * into `@elizaos/plugin-elizacloud/steward-session-client` directly.
  *
  * Cookie-sync / nonce-exchange endpoint *selection* deliberately stays in the
  * app shell (it depends on the active connection's base URL), so it is not
  * re-exported here.
  */
-import { STEWARD_AUTHED_COOKIE } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { STEWARD_SESSION_ENDPOINT } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { STEWARD_TENANT_ID } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { StewardSessionError } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { clearStewardSession as clearCanonicalStewardSession } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  type ClearOpts,
+  clearStewardSession as clearCanonicalStewardSession,
+  clearStoredStewardToken,
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_AUTHED_COOKIE,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TENANT_ID,
+  STEWARD_TOKEN_KEY,
+  StewardSessionError,
+  type StewardSessionErrorCode,
+  writeStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  readStoredToken,
+  tokenIsExpired,
+} from "../shell/StewardProviderShared";
 import { decodeJwtPayload } from "./jwt";
-import { hasStewardAuthedCookie } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { invalidateStewardServerCookieSyncMarker } from "./steward-session-cookie-sync-marker";
-import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { readStoredToken } from "../shell/StewardProviderShared";
-import { tokenIsExpired } from "../shell/StewardProviderShared";
-import { type ClearOpts } from "@elizaos/shared";
-import { type StewardSessionErrorCode } from "@elizaos/shared";
-import { writeStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+
 export type { ClearOpts, StewardSessionErrorCode };
-export { clearStoredStewardToken, hasStewardAuthedCookie, readStoredStewardToken, STEWARD_AUTHED_COOKIE, STEWARD_SESSION_ENDPOINT, STEWARD_TENANT_ID, STEWARD_TOKEN_KEY, StewardSessionError, writeStoredStewardToken, };
+export {
+  clearStoredStewardToken,
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_AUTHED_COOKIE,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TENANT_ID,
+  STEWARD_TOKEN_KEY,
+  StewardSessionError,
+  writeStoredStewardToken,
+};
 /** Clear configured server cookies after retiring any explicit-sync proof. */
 export function clearStewardSession(opts: ClearOpts = {}): void {
-    invalidateStewardServerCookieSyncMarker();
-    clearCanonicalStewardSession(opts);
+  invalidateStewardServerCookieSyncMarker();
+  clearCanonicalStewardSession(opts);
 }
 /**
  * Read the current Steward access token (JWT) from localStorage, or `null`
@@ -42,11 +57,11 @@ export function clearStewardSession(opts: ClearOpts = {}): void {
  * {@link readStoredStewardToken} for cloud call sites that just want the token.
  */
 export function getStewardToken(): string | null {
-    return readStoredStewardToken();
+  return readStoredStewardToken();
 }
 /** Whether a Steward session token is currently stored in the browser. */
 export function hasStewardToken(): boolean {
-    return readStoredStewardToken() !== null;
+  return readStoredStewardToken() !== null;
 }
 /**
  * Whether a stored Steward token is worth holding the console auth gate for.
@@ -55,10 +70,9 @@ export function hasStewardToken(): boolean {
  * intended login redirect with an uncloseable busy state.
  */
 export function hasHydratableStewardToken(): boolean {
-    const token = readStoredToken();
-    if (!token || tokenIsExpired(token))
-        return false;
-    const claims = decodeJwtPayload(token);
-    const id = claims?.userId ?? claims?.sub;
-    return typeof id === "string" && id.trim().length > 0;
+  const token = readStoredToken();
+  if (!token || tokenIsExpired(token)) return false;
+  const claims = decodeJwtPayload(token);
+  const id = claims?.userId ?? claims?.sub;
+  return typeof id === "string" && id.trim().length > 0;
 }

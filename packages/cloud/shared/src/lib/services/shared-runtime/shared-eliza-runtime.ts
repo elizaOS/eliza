@@ -37,6 +37,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
+import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
@@ -45,7 +46,6 @@ import {
   webSearchEdgeAction,
   webSearchEdgePlugin,
 } from "@elizaos/plugin-web-search/edge";
-import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
 import {
   generateText,
   type JSONSchema7,

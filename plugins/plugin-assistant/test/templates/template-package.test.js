@@ -9,7 +9,9 @@ import { build } from "esbuild";
 it("runs published browser contracts without Node globals or runtime shims", async () => {
   const result = await build({
     stdin: {
-      contents: `import { replaceNameTokens, resolveEnvAlias, ElizaError } from '@elizaos/shared/browser-contracts';
+      contents: `import { replaceNameTokens } from '@elizaos/core/name-tokens';
+        import { resolveEnvAlias } from '@elizaos/core/utils/env-alias';
+        import { ElizaError } from '@elizaos/core/errors';
         globalThis.result = {
           text: replaceNameTokens('{{name}} and {{ agentName }}', 'M$&M'),
           alias: resolveEnvAlias('ELIZA_KEY', [['ELIZA_KEY', 'HOST_KEY']], {HOST_KEY: 'configured'}),
@@ -30,14 +32,13 @@ it("runs published browser contracts without Node globals or runtime shims", asy
   assert.equal(sandbox.result.alias, "configured");
   assert.equal(sandbox.result.code, "INPUT_INVALID");
 });
-
-it("preserves runtime error classification through shared contracts in Node", () => {
+it("preserves runtime error classification through protocol leaves in Node", () => {
   const probe = `
     import assert from 'node:assert/strict';
     import { ElizaError, isElizaError } from '@elizaos/core';
-    import { ElizaError as SharedError } from '@elizaos/shared/browser-contracts';
+    import { ElizaError as ProtocolError } from '@elizaos/core/errors';
     const cause = new Error('host failed');
-    const error = new SharedError('configuration unavailable', {code: 'CONFIG_UNAVAILABLE', cause});
+    const error = new ProtocolError('configuration unavailable', {code: 'CONFIG_UNAVAILABLE', cause});
     assert.ok(error instanceof ElizaError);
     assert.ok(isElizaError(error));
     assert.equal(error.cause, cause);
@@ -52,9 +53,8 @@ it("preserves runtime error classification through shared contracts in Node", ()
     "ok",
   );
 });
-
-it("loads complete template helpers from the shared distribution in native Node", {
-  timeout: 60_000,
+it("loads complete template helpers from the owning distributions in native Node", {
+  timeout: 60000,
 }, () => {
   const probe = `
     import assert from 'node:assert/strict';

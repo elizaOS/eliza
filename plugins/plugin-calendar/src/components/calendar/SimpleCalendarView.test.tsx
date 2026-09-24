@@ -5,7 +5,10 @@
  * @vitest-environment jsdom
  */
 
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarSourceHealth,
+} from "@elizaos/core/contracts/calendar";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";

@@ -9,8 +9,8 @@ import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-op
 import { normalizeEnvValue } from "./config-like";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { resolveCloudBillingUrl } from "../cloud/base-url.js";
-import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveDevCloudAuthorityEnvValue } from "../cloud-config/dev-cloud-env-authority.js";
+import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import { scrubCloudSecretsFromEnv } from "./cloud-secrets";
 import { settingsDebugCloudSummary } from "@elizaos/core/settings-debug";
 import { type AgentRuntime } from "@elizaos/core";

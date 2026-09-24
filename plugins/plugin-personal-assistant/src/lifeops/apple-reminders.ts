@@ -10,16 +10,16 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
-  appleRemindersMacosBridgeCandidates,
-} from "@elizaos/macosreminders";
 import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
 import { type IPermissionsRegistry } from "@elizaos/core/contracts/permissions";
 import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
 } from "@elizaos/core/platform/native-library-policy";
+import {
+  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
+  appleRemindersMacosBridgeCandidates,
+} from "@elizaos/macosreminders";
 import { isDarwin } from "../platform/host.js";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";

@@ -11,8 +11,8 @@
  * plugins into the result.
  */
 
-import { isCloudReachable } from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
 import { decodeRuntimeRegistry } from "@elizaos/core/catalog/runtime-kernel";
+import { isCloudReachable } from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 

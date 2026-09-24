@@ -6,9 +6,9 @@ import {
   replaceIndexedNameTokens,
 } from "@elizaos/core";
 import type Handlebars from "handlebars";
-import { compileTemplate } from "@elizaos/plugin-assistant/text/template-engine";
+import { compileTemplate } from "./template-engine.js";
 
-export { compileTemplate } from "@elizaos/plugin-assistant/text/template-engine";
+export { compileTemplate } from "./template-engine.js";
 
 type TemplateType = string | ((params: { state: object }) => string);
 interface PromptState {

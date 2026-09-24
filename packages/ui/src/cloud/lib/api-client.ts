@@ -23,31 +23,38 @@
  *   const me = await api<MeResponse>("/api/users/me");
  *   await api("/api/v1/apps/123", { method: "DELETE" });
  */
-import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
-import { Capacitor } from "@capacitor/core";
-import { CapacitorHttp } from "@capacitor/core";
-import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../../api/direct-cloud-endpoints";
-import { STAGING_DIRECT_CLOUD_API_BASE_URL } from "../../api/direct-cloud-endpoints";
-import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { decodeJwtPayload } from "./jwt";
-import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
-import { getBootConfig } from "../../config/boot-config";
+
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/utils/unicode";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { logger } from "@elizaos/ui/logger";
-import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
-import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { resolveDirectCloudAuthApiBase } from "../../api/direct-cloud-endpoints";
-import { toWellFormedUnicode } from "@elizaos/core/utils/unicode";
-import { truncateWellFormed } from "@elizaos/core/utils/unicode";
+import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
+import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
+import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAuthApiBase,
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
+} from "../../api/direct-cloud-endpoints";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
+import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
+import { decodeJwtPayload } from "./jwt";
+
 // The single Eliza Cloud API host the native/Electrobun transport is allowed to
 // reach cross-origin. Kept deliberately narrow: only this exact host relaxes the
 // same-origin throw — every other absolute cross-origin URL still throws.
 const ELIZA_CLOUD_API_HOSTS = new Set([
-    new URL(DEFAULT_DIRECT_CLOUD_API_BASE_URL).hostname,
-    new URL(STAGING_DIRECT_CLOUD_API_BASE_URL).hostname,
+  new URL(DEFAULT_DIRECT_CLOUD_API_BASE_URL).hostname,
+  new URL(STAGING_DIRECT_CLOUD_API_BASE_URL).hostname,
 ]);
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /**
@@ -57,7 +64,7 @@ const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * so every web code path below is unchanged.
  */
 function isNativeCloudRuntime(): boolean {
-    return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
 }
 /**
  * Resolve the absolute Eliza Cloud API base for the native/Electrobun transport,
@@ -66,85 +73,99 @@ function isNativeCloudRuntime(): boolean {
  * `/api/*` paths resolve onto the allowlisted Cloud API origin.
  */
 function resolveNativeCloudApiBase(): string {
-    const configured = getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_API_BASE_URL;
-    return resolveDirectCloudAuthApiBase(configured);
+  const configured =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+  return resolveDirectCloudAuthApiBase(configured);
 }
 /** The single allowlisted cross-origin Cloud API target (https + exact host). */
 function isAllowlistedCloudApiHost(url: URL): boolean {
-    return (url.protocol === "https:" &&
-        ELIZA_CLOUD_API_HOSTS.has(url.hostname.toLowerCase()));
+  return (
+    url.protocol === "https:" &&
+    ELIZA_CLOUD_API_HOSTS.has(url.hostname.toLowerCase())
+  );
 }
 export class ApiError extends Error {
-    constructor(public readonly status: number, public readonly code: string, message: string, public readonly body?: unknown, public readonly responseHeaders?: Headers) {
-        super(message);
-        this.name = "ApiError";
-    }
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly body?: unknown,
+    public readonly responseHeaders?: Headers,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 function usesLoopbackCliAccountTransport(): boolean {
-    // Offline development also advertises staging sign-in. Its cookie-backed
-    // local Cloud API remains authoritative until a CLI Cloud key is claimed.
-    return (isLoopbackStagingStewardDevelopment() &&
-        normalizeCloudApiKeyToken(readStewardToken()) !== null);
+  // Offline development also advertises staging sign-in. Its cookie-backed
+  // local Cloud API remains authoritative until a CLI Cloud key is claimed.
+  return (
+    isLoopbackStagingStewardDevelopment() &&
+    normalizeCloudApiKeyToken(readStewardToken()) !== null
+  );
 }
 function getApiBaseUrl(): string {
-    // The local agent does not own account APIs. The launcher fixes this
-    // loopback lane to staging; never infer its authority from a selected agent.
-    if (usesLoopbackCliAccountTransport())
-        return STAGING_DIRECT_CLOUD_API_BASE_URL;
-    // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
-    // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
-    // same-origin `/api/*` call would hit the wrong backend. Resolve to the single
-    // allowlisted Cloud API host instead (requests then ride `CapacitorHttp`).
-    if (isNativeCloudRuntime())
-        return resolveNativeCloudApiBase();
-    // Deliberately same-origin-only in the (web) browser: every `/api/*` call rides
-    // the page's own origin so the steward-token cookie + Bearer header stay scoped
-    // to Eliza Cloud. There is intentionally NO cross-origin fetch bridge here;
-    // `resolveApiUrl` below enforces this by throwing on any cross-origin URL.
-    if (typeof window !== "undefined")
-        return "";
-    const fromEnv = import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
-    if (typeof fromEnv === "string" && fromEnv.length > 0)
-        return fromEnv.replace(/\/+$/, "");
-    return "";
+  // The local agent does not own account APIs. The launcher fixes this
+  // loopback lane to staging; never infer its authority from a selected agent.
+  if (usesLoopbackCliAccountTransport())
+    return STAGING_DIRECT_CLOUD_API_BASE_URL;
+  // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
+  // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
+  // same-origin `/api/*` call would hit the wrong backend. Resolve to the single
+  // allowlisted Cloud API host instead (requests then ride `CapacitorHttp`).
+  if (isNativeCloudRuntime()) return resolveNativeCloudApiBase();
+  // Deliberately same-origin-only in the (web) browser: every `/api/*` call rides
+  // the page's own origin so the steward-token cookie + Bearer header stay scoped
+  // to Eliza Cloud. There is intentionally NO cross-origin fetch bridge here;
+  // `resolveApiUrl` below enforces this by throwing on any cross-origin URL.
+  if (typeof window !== "undefined") return "";
+  const fromEnv =
+    import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
+  if (typeof fromEnv === "string" && fromEnv.length > 0)
+    return fromEnv.replace(/\/+$/, "");
+  return "";
 }
 function resolveApiUrl(path: string): string {
-    if (/^https?:\/\//i.test(path)) {
-        const parsed = new URL(path);
-        if (typeof window !== "undefined") {
-            // Native/Electrobun ONLY: allow an absolute URL when — and only when — it
-            // targets the single allowlisted Cloud API host. Every other cross-origin
-            // absolute URL still throws, on native exactly as on web, so this never
-            // opens a general cross-origin bridge.
-            if (isNativeCloudRuntime() && isAllowlistedCloudApiHost(parsed)) {
-                return path;
-            }
-            if (usesLoopbackCliAccountTransport() &&
-                parsed.origin === STAGING_DIRECT_CLOUD_API_BASE_URL) {
-                return path;
-            }
-            if (parsed.origin !== window.location.origin) {
-                throw new ApiError(0, "CROSS_ORIGIN_API_URL", "Browser API calls must use same-origin paths so auth cookies and tokens stay scoped to Eliza Cloud.");
-            }
-            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-        }
+  if (/^https?:\/\//i.test(path)) {
+    const parsed = new URL(path);
+    if (typeof window !== "undefined") {
+      // Native/Electrobun ONLY: allow an absolute URL when — and only when — it
+      // targets the single allowlisted Cloud API host. Every other cross-origin
+      // absolute URL still throws, on native exactly as on web, so this never
+      // opens a general cross-origin bridge.
+      if (isNativeCloudRuntime() && isAllowlistedCloudApiHost(parsed)) {
         return path;
+      }
+      if (
+        usesLoopbackCliAccountTransport() &&
+        parsed.origin === STAGING_DIRECT_CLOUD_API_BASE_URL
+      ) {
+        return path;
+      }
+      if (parsed.origin !== window.location.origin) {
+        throw new ApiError(
+          0,
+          "CROSS_ORIGIN_API_URL",
+          "Browser API calls must use same-origin paths so auth cookies and tokens stay scoped to Eliza Cloud.",
+        );
+      }
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
     }
-    if (!path.startsWith("/")) {
-        throw new ApiError(0, "INVALID_API_PATH", "API paths must start with '/'.");
-    }
-    return `${getApiBaseUrl()}${path}`;
+    return path;
+  }
+  if (!path.startsWith("/")) {
+    throw new ApiError(0, "INVALID_API_PATH", "API paths must start with '/'.");
+  }
+  return `${getApiBaseUrl()}${path}`;
 }
 function readStewardToken(): string | null {
-    if (typeof window === "undefined")
-        return null;
-    try {
-        return readStoredStewardToken();
-    }
-    catch {
-        // error-policy:J3 storage unavailable reads as signed-out (fail-closed).
-        return null;
-    }
+  if (typeof window === "undefined") return null;
+  try {
+    return readStoredStewardToken();
+  } catch {
+    // error-policy:J3 storage unavailable reads as signed-out (fail-closed).
+    return null;
+  }
 }
 /**
  * Delete the stored Steward JWT if it is still the one being retired, then
@@ -155,27 +176,29 @@ function readStewardToken(): string | null {
  * live in protected storage.
  */
 async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
-    if (typeof window === "undefined")
-        return;
-    if (readStoredStewardToken() !== token)
-        return;
-    try {
-        await clearStoredStewardToken();
-    }
-    catch (error) {
-        logger.error({ error }, "[api-client] denied delete left the expired Steward JWT in storage; not broadcasting logout");
-        return;
-    }
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  if (typeof window === "undefined") return;
+  if (readStoredStewardToken() !== token) return;
+  try {
+    await clearStoredStewardToken();
+  } catch (error) {
+    logger.error(
+      { error },
+      "[api-client] denied delete left the expired Steward JWT in storage; not broadcasting logout",
+    );
+    return;
+  }
+  window.dispatchEvent(new CustomEvent("steward-token-sync"));
 }
-async function readLiveNativeStewardToken(token: string): Promise<string | null> {
-    const claims = decodeJwtPayload(token);
-    const expMs = typeof claims?.exp === "number" ? claims.exp * 1000 : null;
-    if (!claims || expMs === null || expMs <= Date.now()) {
-        await clearStoredStewardTokenIfCurrent(token);
-        return null;
-    }
-    return token;
+async function readLiveNativeStewardToken(
+  token: string,
+): Promise<string | null> {
+  const claims = decodeJwtPayload(token);
+  const expMs = typeof claims?.exp === "number" ? claims.exp * 1000 : null;
+  if (!claims || expMs === null || expMs <= Date.now()) {
+    await clearStoredStewardTokenIfCurrent(token);
+    return null;
+  }
+  return token;
 }
 /**
  * Resolve the Cloud bearer for the auth header. The Steward session JWT stays
@@ -196,24 +219,22 @@ async function readLiveNativeStewardToken(token: string): Promise<string | null>
  * is observed here rather than raced past.
  */
 export async function readCloudBearerToken(): Promise<string | null> {
-    const nativeRuntime = isNativeCloudRuntime();
-    // Resolve the supported owner-key fallback before expiry cleanup dispatches
-    // the canonical session-clear event. That event may synchronously remove the
-    // rejected account target from boot config; the already-validated fallback
-    // must remain usable for this request on native/Electrobun (#11930).
-    const nativeCloudApiKey = nativeRuntime
-        ? (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
-            normalizeCloudApiKeyToken(getElizaApiToken()))
-        : null;
-    const stewardToken = readStewardToken()?.trim();
-    if (stewardToken) {
-        if (!nativeRuntime)
-            return stewardToken;
-        const liveToken = await readLiveNativeStewardToken(stewardToken);
-        if (liveToken)
-            return liveToken;
-    }
-    return nativeCloudApiKey;
+  const nativeRuntime = isNativeCloudRuntime();
+  // Resolve the supported owner-key fallback before expiry cleanup dispatches
+  // the canonical session-clear event. That event may synchronously remove the
+  // rejected account target from boot config; the already-validated fallback
+  // must remain usable for this request on native/Electrobun (#11930).
+  const nativeCloudApiKey = nativeRuntime
+    ? (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+      normalizeCloudApiKeyToken(getElizaApiToken()))
+    : null;
+  const stewardToken = readStewardToken()?.trim();
+  if (stewardToken) {
+    if (!nativeRuntime) return stewardToken;
+    const liveToken = await readLiveNativeStewardToken(stewardToken);
+    if (liveToken) return liveToken;
+  }
+  return nativeCloudApiKey;
 }
 // ---------------------------------------------------------------------------
 // Capacitor transport — routes the resolved Cloud API request through
@@ -224,254 +245,295 @@ export async function readCloudBearerToken(): Promise<string | null> {
 const NATIVE_BODYLESS_STATUSES = new Set([204, 205, 304]);
 const NATIVE_HTTP_TIMEOUT_MS = 30000;
 function headersToRecord(headers: Headers): Record<string, string> {
-    const record: Record<string, string> = {};
-    headers.forEach((value, key) => {
-        record[key] = value;
-    });
-    return record;
+  const record: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    record[key] = value;
+  });
+  return record;
 }
 /** CapacitorHttp wants a structured `data` value; parse a JSON string body back
  *  to an object, pass other bodies through, treat empty/absent as no body. */
 function nativeRequestData(body: BodyInit | null | undefined): unknown {
-    if (body == null)
-        return undefined;
-    if (typeof body !== "string")
-        return body;
-    const trimmed = body.trim();
-    if (!trimmed)
-        return undefined;
-    try {
-        return JSON.parse(trimmed);
-    }
-    catch {
-        return body;
-    }
+  if (body == null) return undefined;
+  if (typeof body !== "string") return body;
+  const trimmed = body.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return body;
+  }
 }
 function nativeResponseBody(data: unknown): {
-    body: string;
-    contentType: string;
+  body: string;
+  contentType: string;
 } {
-    if (data === null || data === undefined) {
-        return { body: "", contentType: "application/json" };
-    }
-    if (typeof data === "string") {
-        return { body: data, contentType: "text/plain" };
-    }
-    try {
-        return { body: JSON.stringify(data), contentType: "application/json" };
-    }
-    catch {
-        return { body: String(data), contentType: "text/plain" };
-    }
+  if (data === null || data === undefined) {
+    return { body: "", contentType: "application/json" };
+  }
+  if (typeof data === "string") {
+    return { body: data, contentType: "text/plain" };
+  }
+  try {
+    return { body: JSON.stringify(data), contentType: "application/json" };
+  } catch {
+    return { body: String(data), contentType: "text/plain" };
+  }
 }
-function nativeResponseHeaders(raw: Record<string, string> | undefined, fallbackContentType: string): Headers {
-    const headers = new Headers();
-    if (raw) {
-        for (const [key, value] of Object.entries(raw)) {
-            try {
-                headers.set(key, value);
-            }
-            catch {
-                // Skip a header CapacitorHttp surfaced that the WHATWG Headers
-                // constructor rejects (rare; never let it break payload reading).
-            }
-        }
+function nativeResponseHeaders(
+  raw: Record<string, string> | undefined,
+  fallbackContentType: string,
+): Headers {
+  const headers = new Headers();
+  if (raw) {
+    for (const [key, value] of Object.entries(raw)) {
+      try {
+        headers.set(key, value);
+      } catch {
+        // Skip a header CapacitorHttp surfaced that the WHATWG Headers
+        // constructor rejects (rare; never let it break payload reading).
+      }
     }
-    if (!headers.has("content-type")) {
-        headers.set("content-type", fallbackContentType);
-    }
-    return headers;
+  }
+  if (!headers.has("content-type")) {
+    headers.set("content-type", fallbackContentType);
+  }
+  return headers;
 }
 function requestAbortReason(signal: AbortSignal): unknown {
-    return (signal.reason ?? new DOMException("The request was aborted", "AbortError"));
+  return (
+    signal.reason ?? new DOMException("The request was aborted", "AbortError")
+  );
 }
 /**
  * Native bridge promises cannot be cancelled from the WebView. Bound the
  * caller-facing request to its Fetch signal anyway, while retaining rejection
  * handlers on the bridge promise so a later native failure is never unhandled.
  */
-function requestNativeResponseWithAbort(request: () => Promise<Response>, signal: AbortSignal | null | undefined): Promise<Response> {
-    if (signal?.aborted)
-        return Promise.reject(requestAbortReason(signal));
-    const pending = request();
-    if (!signal)
-        return pending;
-    return new Promise<Response>((resolve, reject) => {
-        const onAbort = () => {
-            signal.removeEventListener("abort", onAbort);
-            reject(requestAbortReason(signal));
-        };
-        signal.addEventListener("abort", onAbort, { once: true });
-        if (signal.aborted)
-            onAbort();
-        void pending.then((response) => {
-            signal.removeEventListener("abort", onAbort);
-            resolve(response);
-        }, (error: unknown) => {
-            signal.removeEventListener("abort", onAbort);
-            reject(error);
-        });
-    });
+function requestNativeResponseWithAbort(
+  request: () => Promise<Response>,
+  signal: AbortSignal | null | undefined,
+): Promise<Response> {
+  if (signal?.aborted) return Promise.reject(requestAbortReason(signal));
+  const pending = request();
+  if (!signal) return pending;
+  return new Promise<Response>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(requestAbortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void pending.then(
+      (response) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(response);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
-async function nativeApiFetch(url: string, init: {
+async function nativeApiFetch(
+  url: string,
+  init: {
     method?: string;
     headers: Headers;
     body?: BodyInit | null;
-}): Promise<Response> {
-    const method = (init.method ?? "GET").toUpperCase();
-    const data = nativeRequestData(init.body);
-    const result = await CapacitorHttp.request({
-        url,
-        method,
-        headers: headersToRecord(init.headers),
-        ...(data !== undefined ? { data } : {}),
-        responseType: "json",
-        connectTimeout: NATIVE_HTTP_TIMEOUT_MS,
-        readTimeout: NATIVE_HTTP_TIMEOUT_MS,
-    });
-    const { body, contentType } = nativeResponseBody(result.data);
-    return new Response(NATIVE_BODYLESS_STATUSES.has(result.status) ? null : body, {
-        status: result.status,
-        headers: nativeResponseHeaders(result.headers, contentType),
-    });
+  },
+): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const data = nativeRequestData(init.body);
+  const result = await CapacitorHttp.request({
+    url,
+    method,
+    headers: headersToRecord(init.headers),
+    ...(data !== undefined ? { data } : {}),
+    responseType: "json",
+    connectTimeout: NATIVE_HTTP_TIMEOUT_MS,
+    readTimeout: NATIVE_HTTP_TIMEOUT_MS,
+  });
+  const { body, contentType } = nativeResponseBody(result.data);
+  return new Response(
+    NATIVE_BODYLESS_STATUSES.has(result.status) ? null : body,
+    {
+      status: result.status,
+      headers: nativeResponseHeaders(result.headers, contentType),
+    },
+  );
 }
 export interface ApiRequestInit extends Omit<RequestInit, "body"> {
-    /** JSON body — automatically serialized + Content-Type applied. */
-    json?: unknown;
-    /** Raw body (string / FormData / Blob). Mutually exclusive with `json`. */
-    body?: BodyInit | null;
-    /** Skip steward token injection (e.g. for the steward-session endpoint itself). */
-    skipAuth?: boolean;
+  /** JSON body — automatically serialized + Content-Type applied. */
+  json?: unknown;
+  /** Raw body (string / FormData / Blob). Mutually exclusive with `json`. */
+  body?: BodyInit | null;
+  /** Skip steward token injection (e.g. for the steward-session endpoint itself). */
+  skipAuth?: boolean;
 }
-async function readPayload(res: Response, strictJson: boolean): Promise<unknown> {
-    if (res.status === 204 || res.status === 205)
-        return undefined;
-    const contentType = res.headers.get("content-type") ?? "";
-    const isJson = contentType.includes("application/json");
-    if (!isJson) {
-        const text = await res.text();
-        if (strictJson) {
-            throw new ApiError(res.status, "NON_JSON_RESPONSE", text.trim().startsWith("<")
-                ? `API returned HTML instead of JSON with status ${res.status}`
-                : `API returned a non-JSON response with status ${res.status}`, text);
-        }
-        return text;
+async function readPayload(
+  res: Response,
+  strictJson: boolean,
+): Promise<unknown> {
+  if (res.status === 204 || res.status === 205) return undefined;
+  const contentType = res.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  if (!isJson) {
+    const text = await res.text();
+    if (strictJson) {
+      throw new ApiError(
+        res.status,
+        "NON_JSON_RESPONSE",
+        text.trim().startsWith("<")
+          ? `API returned HTML instead of JSON with status ${res.status}`
+          : `API returned a non-JSON response with status ${res.status}`,
+        text,
+      );
     }
-    try {
-        return await res.json();
+    return text;
+  }
+  try {
+    return await res.json();
+  } catch {
+    if (strictJson) {
+      throw new ApiError(
+        res.status,
+        "INVALID_JSON_RESPONSE",
+        `API returned invalid JSON with status ${res.status}`,
+      );
     }
-    catch {
-        if (strictJson) {
-            throw new ApiError(res.status, "INVALID_JSON_RESPONSE", `API returned invalid JSON with status ${res.status}`);
-        }
-        return null;
-    }
+    return null;
+  }
 }
-function errorDetails(payload: unknown, status: number): {
-    code: string;
-    message: string;
+function errorDetails(
+  payload: unknown,
+  status: number,
+): {
+  code: string;
+  message: string;
 } {
-    if (typeof payload === "object" && payload !== null) {
-        const body = payload as Record<string, unknown>;
-        const message = (typeof body.error === "string" && body.error) ||
-            (typeof body.message === "string" && body.message) ||
-            `Request failed with status ${status}`;
-        const code = typeof body.code === "string" && body.code ? body.code : `HTTP_${status}`;
-        return { code, message };
-    }
-    if (typeof payload === "string" && payload) {
-        const trimmed = payload.trim();
-        const message = trimmed.startsWith("<")
-            ? `Request failed with status ${status}; API returned a non-JSON response`
-            : truncateWellFormed(toWellFormedUnicode(trimmed), 500);
-        return { code: `HTTP_${status}`, message };
-    }
-    return {
-        code: `HTTP_${status}`,
-        message: `Request failed with status ${status}`,
-    };
+  if (typeof payload === "object" && payload !== null) {
+    const body = payload as Record<string, unknown>;
+    const message =
+      (typeof body.error === "string" && body.error) ||
+      (typeof body.message === "string" && body.message) ||
+      `Request failed with status ${status}`;
+    const code =
+      typeof body.code === "string" && body.code ? body.code : `HTTP_${status}`;
+    return { code, message };
+  }
+  if (typeof payload === "string" && payload) {
+    const trimmed = payload.trim();
+    const message = trimmed.startsWith("<")
+      ? `Request failed with status ${status}; API returned a non-JSON response`
+      : truncateWellFormed(toWellFormedUnicode(trimmed), 500);
+    return { code: `HTTP_${status}`, message };
+  }
+  return {
+    code: `HTTP_${status}`,
+    message: `Request failed with status ${status}`,
+  };
 }
-export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
-    const { json, body, skipAuth, headers: rawHeaders, ...rest } = init;
-    const loopbackCloud = usesLoopbackCliAccountTransport();
-    const headers = new Headers(rawHeaders);
-    if (json !== undefined) {
-        headers.set("Content-Type", "application/json");
+export async function apiFetch(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<Response> {
+  const { json, body, skipAuth, headers: rawHeaders, ...rest } = init;
+  const loopbackCloud = usesLoopbackCliAccountTransport();
+  const headers = new Headers(rawHeaders);
+  if (json !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (!skipAuth) {
+    const token = await readCloudBearerToken();
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
     }
-    if (!skipAuth) {
-        const token = await readCloudBearerToken();
-        if (token && !headers.has("Authorization")) {
-            headers.set("Authorization", `Bearer ${token}`);
-        }
+  }
+  // Cloud cookie mutations require an allowed browser origin and a non-simple
+  // request marker, including bodyless lifecycle actions. Preserve a readable
+  // companion token when present; Cloud's marker policy does not require one.
+  // Native and loopback agent transports retain their own authentication rules.
+  const method = (rest.method ?? "GET").toUpperCase();
+  if (
+    !isNativeCloudRuntime() &&
+    !loopbackCloud &&
+    STATE_CHANGING_METHODS.has(method) &&
+    !headers.has(CSRF_HEADER_NAME)
+  ) {
+    const csrfToken = readCsrfTokenFromCookie();
+    headers.set(CSRF_HEADER_NAME, csrfToken ?? "cloud-request");
+  }
+  const url = resolveApiUrl(path);
+  const requestBody =
+    json !== undefined ? JSON.stringify(json) : (body ?? null);
+  // Electrobun has its own main-process HTTP bridge; CapacitorHttp is not
+  // installed in the macOS shell and otherwise falls back to a CORS-blocked
+  // WKWebView request. Capacitor keeps its native plugin, while web retains the
+  // original same-origin fetch path.
+  const desktopTransport = desktopHttpTransportForUrl(url);
+  let res: Response;
+  if (desktopTransport) {
+    res = await requestNativeResponseWithAbort(
+      () =>
+        desktopTransport.request(
+          url,
+          { ...rest, headers, body: requestBody },
+          { timeoutMs: NATIVE_HTTP_TIMEOUT_MS },
+        ),
+      rest.signal,
+    );
+  } else if (Capacitor.isNativePlatform()) {
+    res = await requestNativeResponseWithAbort(
+      () =>
+        nativeApiFetch(url, {
+          method: rest.method,
+          headers,
+          body: requestBody,
+        }),
+      rest.signal,
+    );
+  } else {
+    res = await fetch(url, {
+      ...rest,
+      credentials: loopbackCloud ? "omit" : "include",
+      headers,
+      body: requestBody,
+    });
+  }
+  if (!res.ok) {
+    // A 401 on an authed call means our session was rejected (token revoked or
+    // expired out from under the proactive refresh). Nudge the Steward runtime
+    // to refresh-or-clear so a stale session self-heals instead of leaving the
+    // UI "authed" until the next interaction. The nudge is a side effect only:
+    // the call still throws ApiError, and the listener is single-flight and
+    // never retries the request.
+    if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent("steward-unauthorized"));
+      } catch {
+        // no-op: event dispatch is best-effort
+      }
     }
-    // Cloud cookie mutations require an allowed browser origin and a non-simple
-    // request marker, including bodyless lifecycle actions. Preserve a readable
-    // companion token when present; Cloud's marker policy does not require one.
-    // Native and loopback agent transports retain their own authentication rules.
-    const method = (rest.method ?? "GET").toUpperCase();
-    if (!isNativeCloudRuntime() &&
-        !loopbackCloud &&
-        STATE_CHANGING_METHODS.has(method) &&
-        !headers.has(CSRF_HEADER_NAME)) {
-        const csrfToken = readCsrfTokenFromCookie();
-        headers.set(CSRF_HEADER_NAME, csrfToken ?? "cloud-request");
-    }
-    const url = resolveApiUrl(path);
-    const requestBody = json !== undefined ? JSON.stringify(json) : (body ?? null);
-    // Electrobun has its own main-process HTTP bridge; CapacitorHttp is not
-    // installed in the macOS shell and otherwise falls back to a CORS-blocked
-    // WKWebView request. Capacitor keeps its native plugin, while web retains the
-    // original same-origin fetch path.
-    const desktopTransport = desktopHttpTransportForUrl(url);
-    let res: Response;
-    if (desktopTransport) {
-        res = await requestNativeResponseWithAbort(() => desktopTransport.request(url, { ...rest, headers, body: requestBody }, { timeoutMs: NATIVE_HTTP_TIMEOUT_MS }), rest.signal);
-    }
-    else if (Capacitor.isNativePlatform()) {
-        res = await requestNativeResponseWithAbort(() => nativeApiFetch(url, {
-            method: rest.method,
-            headers,
-            body: requestBody,
-        }), rest.signal);
-    }
-    else {
-        res = await fetch(url, {
-            ...rest,
-            credentials: loopbackCloud ? "omit" : "include",
-            headers,
-            body: requestBody,
-        });
-    }
-    if (!res.ok) {
-        // A 401 on an authed call means our session was rejected (token revoked or
-        // expired out from under the proactive refresh). Nudge the Steward runtime
-        // to refresh-or-clear so a stale session self-heals instead of leaving the
-        // UI "authed" until the next interaction. The nudge is a side effect only:
-        // the call still throws ApiError, and the listener is single-flight and
-        // never retries the request.
-        if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
-            try {
-                window.dispatchEvent(new CustomEvent("steward-unauthorized"));
-            }
-            catch {
-                // no-op: event dispatch is best-effort
-            }
-        }
-        const payload = await readPayload(res, false);
-        const { code, message } = errorDetails(payload, res.status);
-        throw new ApiError(res.status, code, message, payload, res.headers);
-    }
-    return res;
+    const payload = await readPayload(res, false);
+    const { code, message } = errorDetails(payload, res.status);
+    throw new ApiError(res.status, code, message, payload, res.headers);
+  }
+  return res;
 }
-export async function api<T = unknown>(path: string, init: ApiRequestInit = {}): Promise<T> {
-    const res = await apiFetch(path, init);
-    const payload = await readPayload(res, true);
-    return payload as T;
+export async function api<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<T> {
+  const res = await apiFetch(path, init);
+  const payload = await readPayload(res, true);
+  return payload as T;
 }
 /** Result of {@link apiWithStatus}: the raw HTTP status plus the parsed body. */
 export interface ApiStatusResult<T> {
-    status: number;
-    data: T;
+  status: number;
+  data: T;
 }
 /**
  * Status-aware variant of {@link api} for endpoints whose HTTP status IS the
@@ -488,49 +550,53 @@ export interface ApiStatusResult<T> {
  * The body is read leniently (a non-JSON body resolves as its text) because
  * status-branching callers inspect payload fields defensively.
  */
-export async function apiWithStatus<T = unknown>(path: string, init: ApiRequestInit = {}): Promise<ApiStatusResult<T>> {
-    try {
-        const res = await apiFetch(path, init);
-        return { status: res.status, data: (await readPayload(res, false)) as T };
+export async function apiWithStatus<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<ApiStatusResult<T>> {
+  try {
+    const res = await apiFetch(path, init);
+    return { status: res.status, data: (await readPayload(res, false)) as T };
+  } catch (err) {
+    // error-policy:J1 boundary translation — apiFetch throws ApiError for every
+    // non-2xx HTTP response (carrying the parsed body); re-shape it into the
+    // typed { status, data } result this variant promises. Non-HTTP failures
+    // (status 0 URL-policy throws, network TypeErrors) rethrow untouched.
+    if (err instanceof ApiError && err.status > 0) {
+      return { status: err.status, data: err.body as T };
     }
-    catch (err) {
-        // error-policy:J1 boundary translation — apiFetch throws ApiError for every
-        // non-2xx HTTP response (carrying the parsed body); re-shape it into the
-        // typed { status, data } result this variant promises. Non-HTTP failures
-        // (status 0 URL-policy throws, network TypeErrors) rethrow untouched.
-        if (err instanceof ApiError && err.status > 0) {
-            return { status: err.status, data: err.body as T };
-        }
-        throw err;
-    }
+    throw err;
+  }
 }
 /** Status-aware API response that retains protocol headers such as Retry-After. */
 export interface ApiStatusWithHeadersResult<T> extends ApiStatusResult<T> {
-    headers: Headers;
+  headers: Headers;
 }
 /**
  * Header-preserving variant for protocols whose recovery timing is carried in
  * response headers. Existing status-only consumers keep the smaller contract.
  */
-export async function apiWithStatusAndHeaders<T = unknown>(path: string, init: ApiRequestInit = {}): Promise<ApiStatusWithHeadersResult<T>> {
-    try {
-        const res = await apiFetch(path, init);
-        return {
-            status: res.status,
-            data: (await readPayload(res, false)) as T,
-            headers: res.headers,
-        };
+export async function apiWithStatusAndHeaders<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<ApiStatusWithHeadersResult<T>> {
+  try {
+    const res = await apiFetch(path, init);
+    return {
+      status: res.status,
+      data: (await readPayload(res, false)) as T,
+      headers: res.headers,
+    };
+  } catch (err) {
+    // error-policy:J1 boundary translation — preserve the real HTTP status,
+    // parsed body, and recovery headers while transport failures still throw.
+    if (err instanceof ApiError && err.status > 0) {
+      return {
+        status: err.status,
+        data: err.body as T,
+        headers: err.responseHeaders ?? new Headers(),
+      };
     }
-    catch (err) {
-        // error-policy:J1 boundary translation — preserve the real HTTP status,
-        // parsed body, and recovery headers while transport failures still throw.
-        if (err instanceof ApiError && err.status > 0) {
-            return {
-                status: err.status,
-                data: err.body as T,
-                headers: err.responseHeaders ?? new Headers(),
-            };
-        }
-        throw err;
-    }
+    throw err;
+  }
 }

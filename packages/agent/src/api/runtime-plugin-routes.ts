@@ -3,260 +3,289 @@
  * raw Node HTTP server. Core registers paths like `/music-player/stream`; without
  * this bridge those handlers never run.
  */
-import { assertPublicRouteIntent } from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import { isJsonObjectBody } from "@elizaos/core/api/http-helpers";
-import { matchPluginRoutePath } from "./plugin-route-path.ts";
-import { readRequestBodyBuffer } from "@elizaos/core/api/http-helpers";
-import { setRuntimeRouteHostContext } from "@elizaos/core/api/runtime-route-context";
+
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { type AgentRuntime } from "@elizaos/core";
-import { type IncomingMessage } from "node:http";
-import { type PaymentEnabledRoute } from "@elizaos/core/api/http-plugin";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { type RuntimeRouteHostContext } from "@elizaos/core/api/runtime-route-context";
-import { type ServerResponse } from "node:http";
+import {
+  isJsonObjectBody,
+  readRequestBodyBuffer,
+  writeJsonError,
+} from "@elizaos/core/api/http-helpers";
+import {
+  assertPublicRouteIntent,
+  type PaymentEnabledRoute,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import {
+  type RuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
+} from "@elizaos/core/api/runtime-route-context";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import { type X402PluginModule } from "./x402-contract.ts";
-import { writeJsonError } from "@elizaos/core/api/http-helpers";
+
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 type ExpressLikeResponse = ServerResponse & {
-    status?: (code: number) => ExpressLikeResponse;
-    json?: (data: unknown) => ExpressLikeResponse;
-    send?: (data: unknown) => ExpressLikeResponse;
+  status?: (code: number) => ExpressLikeResponse;
+  json?: (data: unknown) => ExpressLikeResponse;
+  send?: (data: unknown) => ExpressLikeResponse;
 };
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
-type X402RoutesModule = Pick<X402PluginModule, "createPaymentAwareHandler" | "isRoutePaymentWrapped">;
+type X402RoutesModule = Pick<
+  X402PluginModule,
+  "createPaymentAwareHandler" | "isRoutePaymentWrapped"
+>;
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 function getX402RoutesModule(): Promise<X402RoutesModule> {
-    const specifier = "@elizaos/plugin-x402";
-    x402RoutesModulePromise ??= import(
-    /* @vite-ignore */ specifier) as Promise<X402RoutesModule>;
-    return x402RoutesModulePromise;
+  const specifier = "@elizaos/plugin-x402";
+  x402RoutesModulePromise ??= import(
+    /* @vite-ignore */ specifier
+  ) as Promise<X402RoutesModule>;
+  return x402RoutesModulePromise;
 }
+
 export { matchPluginRoutePath } from "./plugin-route-path.ts";
 export function isPublicRuntimePluginRoute(options: {
-    runtime: AgentRuntime | null | undefined;
-    method: string;
-    pathname: string;
+  runtime: AgentRuntime | null | undefined;
+  method: string;
+  pathname: string;
 }): boolean {
-    const { runtime, method, pathname } = options;
-    if (!runtime || !getHttpRuntime(runtime).routes.length)
-        return false;
-    return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
-        assertPublicRouteIntent(route, "runtime.routes");
-        if (route.type === "STATIC" ||
-            route.type !== method ||
-            route.public !== true) {
-            return false;
-        }
-        return matchPluginRoutePath(route.path, pathname) !== null;
-    });
+  const { runtime, method, pathname } = options;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
+  return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
+    assertPublicRouteIntent(route, "runtime.routes");
+    if (
+      route.type === "STATIC" ||
+      route.type !== method ||
+      route.public !== true
+    ) {
+      return false;
+    }
+    return matchPluginRoutePath(route.path, pathname) !== null;
+  });
 }
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
-    const out: Record<string, string | string[]> = {};
-    for (const key of url.searchParams.keys()) {
-        const vals = url.searchParams.getAll(key);
-        out[key] = vals.length <= 1 ? (vals[0] ?? "") : vals;
-    }
-    return out;
+  const out: Record<string, string | string[]> = {};
+  for (const key of url.searchParams.keys()) {
+    const vals = url.searchParams.getAll(key);
+    out[key] = vals.length <= 1 ? (vals[0] ?? "") : vals;
+  }
+  return out;
 }
 function attachExpressResponseHelpers(res: ServerResponse): void {
-    const marked = res as ServerResponse & {
-        [EXPRESS_SHIM]?: boolean;
+  const marked = res as ServerResponse & {
+    [EXPRESS_SHIM]?: boolean;
+  };
+  if (marked[EXPRESS_SHIM]) return;
+  marked[EXPRESS_SHIM] = true;
+  const r = res as ExpressLikeResponse;
+  if (typeof r.status !== "function") {
+    r.status = (code: number) => {
+      res.statusCode = code;
+      return r;
     };
-    if (marked[EXPRESS_SHIM])
-        return;
-    marked[EXPRESS_SHIM] = true;
-    const r = res as ExpressLikeResponse;
-    if (typeof r.status !== "function") {
-        r.status = (code: number) => {
-            res.statusCode = code;
-            return r;
-        };
-    }
-    if (typeof r.json !== "function") {
-        r.json = (data: unknown) => {
-            if (res.headersSent)
-                return r;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify(data));
-            return r;
-        };
-    }
-    if (typeof r.send !== "function") {
-        r.send = (data: unknown) => {
-            if (res.headersSent)
-                return r;
-            if (typeof data === "string" || Buffer.isBuffer(data)) {
-                res.end(data);
-            }
-            else {
-                res.setHeader("Content-Type", "application/json; charset=utf-8");
-                res.end(JSON.stringify(data));
-            }
-            return r;
-        };
-    }
+  }
+  if (typeof r.json !== "function") {
+    r.json = (data: unknown) => {
+      if (res.headersSent) return r;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.end(JSON.stringify(data));
+      return r;
+    };
+  }
+  if (typeof r.send !== "function") {
+    r.send = (data: unknown) => {
+      if (res.headersSent) return r;
+      if (typeof data === "string" || Buffer.isBuffer(data)) {
+        res.end(data);
+      } else {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(data));
+      }
+      return r;
+    };
+  }
 }
-function augmentRequest(req: IncomingMessage, url: URL, params: Record<string, string>): IncomingMessage {
-    const query = searchParamsToQuery(url);
-    const protoHeader = req.headers["x-forwarded-proto"];
-    const proto = typeof protoHeader === "string"
-        ? protoHeader.split(",")[0]?.trim() || "http"
-        : "http";
-    const base = req as IncomingMessage & {
-        query?: Record<string, string | string[]>;
-        params?: Record<string, string>;
-        protocol?: string;
-        path?: string;
-        method?: string;
-        get?: (name: string) => string | undefined;
-    };
-    base.query = query;
-    base.params = params;
-    base.protocol = proto;
-    base.path = url.pathname;
-    base.method = req.method ?? "GET";
-    base.get = (name: string) => {
-        const v = req.headers[name.toLowerCase()];
-        return Array.isArray(v) ? v[0] : v;
-    };
-    return req;
+function augmentRequest(
+  req: IncomingMessage,
+  url: URL,
+  params: Record<string, string>,
+): IncomingMessage {
+  const query = searchParamsToQuery(url);
+  const protoHeader = req.headers["x-forwarded-proto"];
+  const proto =
+    typeof protoHeader === "string"
+      ? protoHeader.split(",")[0]?.trim() || "http"
+      : "http";
+  const base = req as IncomingMessage & {
+    query?: Record<string, string | string[]>;
+    params?: Record<string, string>;
+    protocol?: string;
+    path?: string;
+    method?: string;
+    get?: (name: string) => string | undefined;
+  };
+  base.query = query;
+  base.params = params;
+  base.protocol = proto;
+  base.path = url.pathname;
+  base.method = req.method ?? "GET";
+  base.get = (name: string) => {
+    const v = req.headers[name.toLowerCase()];
+    return Array.isArray(v) ? v[0] : v;
+  };
+  return req;
 }
 function requestMayHaveJsonBody(req: IncomingMessage, method: string): boolean {
-    if (method === "GET" || method === "HEAD") {
-        return false;
-    }
-    const contentType = req.headers["content-type"];
-    const contentTypeText = Array.isArray(contentType)
-        ? contentType.join(",")
-        : (contentType ?? "");
-    if (!contentTypeText.toLowerCase().includes("application/json")) {
-        return false;
-    }
-    const contentLength = req.headers["content-length"];
-    if (contentLength === "0") {
-        return false;
-    }
-    return Boolean(contentLength || req.headers["transfer-encoding"]);
+  if (method === "GET" || method === "HEAD") {
+    return false;
+  }
+  const contentType = req.headers["content-type"];
+  const contentTypeText = Array.isArray(contentType)
+    ? contentType.join(",")
+    : (contentType ?? "");
+  if (!contentTypeText.toLowerCase().includes("application/json")) {
+    return false;
+  }
+  const contentLength = req.headers["content-length"];
+  if (contentLength === "0") {
+    return false;
+  }
+  return Boolean(contentLength || req.headers["transfer-encoding"]);
 }
-async function attachJsonBodyIfPresent(req: IncomingMessage, res: ServerResponse, method: string, maxBodyBytes: number | undefined): Promise<boolean> {
-    if (!requestMayHaveJsonBody(req, method)) {
-        return true;
+async function attachJsonBodyIfPresent(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  maxBodyBytes: number | undefined,
+): Promise<boolean> {
+  if (!requestMayHaveJsonBody(req, method)) {
+    return true;
+  }
+  try {
+    const buffer = await readRequestBodyBuffer(req, {
+      ...(maxBodyBytes === undefined ? {} : { maxBytes: maxBodyBytes }),
+      returnNullOnError: true,
+      returnNullOnTooLarge: true,
+      destroyOnTooLarge: true,
+    });
+    if (buffer === null) {
+      await writeJsonError(res, "Failed to read request body", 400);
+      return false;
     }
+    const rawBody = buffer.toString("utf8");
+    const augmented = req as IncomingMessage & {
+      body?: unknown;
+      rawBody?: string;
+    };
+    augmented.rawBody = rawBody;
+    const trimmed = rawBody.trim();
+    if (!trimmed) {
+      return true;
+    }
+    let parsed: unknown;
     try {
-        const buffer = await readRequestBodyBuffer(req, {
-            ...(maxBodyBytes === undefined ? {} : { maxBytes: maxBodyBytes }),
-            returnNullOnError: true,
-            returnNullOnTooLarge: true,
-            destroyOnTooLarge: true,
-        });
-        if (buffer === null) {
-            await writeJsonError(res, "Failed to read request body", 400);
-            return false;
-        }
-        const rawBody = buffer.toString("utf8");
-        const augmented = req as IncomingMessage & {
-            body?: unknown;
-            rawBody?: string;
-        };
-        augmented.rawBody = rawBody;
-        const trimmed = rawBody.trim();
-        if (!trimmed) {
-            return true;
-        }
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(trimmed);
-        }
-        catch {
-            await writeJsonError(res, "Invalid JSON body", 400);
-            return false;
-        }
-        if (!isJsonObjectBody(parsed)) {
-            await writeJsonError(res, "JSON body must be an object", 400);
-            return false;
-        }
-        augmented.body = parsed;
-        return true;
+      parsed = JSON.parse(trimmed);
+    } catch {
+      await writeJsonError(res, "Invalid JSON body", 400);
+      return false;
     }
-    catch (error) {
-        await writeJsonError(res, error instanceof Error ? error.message : "Failed to read request body", 400);
-        return false;
+    if (!isJsonObjectBody(parsed)) {
+      await writeJsonError(res, "JSON body must be an object", 400);
+      return false;
     }
+    augmented.body = parsed;
+    return true;
+  } catch (error) {
+    await writeJsonError(
+      res,
+      error instanceof Error ? error.message : "Failed to read request body",
+      400,
+    );
+    return false;
+  }
 }
 /**
  * Runs the first matching runtime plugin route. Returns true if matched (even on handler error).
  */
 export async function tryHandleRuntimePluginRoute(options: {
-    req: IncomingMessage;
-    res: ServerResponse;
-    method: string;
-    pathname: string;
-    url: URL;
-    runtime: AgentRuntime | null | undefined;
-    isAuthorized: () => boolean;
-    hostContext?: RuntimeRouteHostContext;
+  req: IncomingMessage;
+  res: ServerResponse;
+  method: string;
+  pathname: string;
+  url: URL;
+  runtime: AgentRuntime | null | undefined;
+  isAuthorized: () => boolean;
+  hostContext?: RuntimeRouteHostContext;
 }): Promise<boolean> {
-    const { req, res, method, pathname, url, runtime, isAuthorized, hostContext, } = options;
-    if (!runtime || !getHttpRuntime(runtime).routes.length)
-        return false;
-    for (const route of getHttpRuntime(runtime).routes as Route[]) {
-        assertPublicRouteIntent(route, "runtime.routes");
-        if (route.type === "STATIC")
-            continue;
-        if (route.type !== method)
-            continue;
-        const handler = route.handler;
-        if (!handler)
-            continue;
-        const params = matchPluginRoutePath(route.path, pathname);
-        if (params === null)
-            continue;
-        if (route.public !== true && !isAuthorized()) {
-            if (!res.headersSent) {
-                res.statusCode = 401;
-                res.setHeader("Content-Type", "application/json; charset=utf-8");
-                res.end(JSON.stringify({ error: "Unauthorized" }));
-            }
-            return true;
-        }
-        attachExpressResponseHelpers(res);
-        augmentRequest(req, url, params);
-        if (!(await attachJsonBodyIfPresent(req, res, method, route.maxBodyBytes))) {
-            return true;
-        }
-        let effectiveHandler: RuntimePluginRouteHandler = handler as RuntimePluginRouteHandler;
-        if (route.x402 != null) {
-            const { createPaymentAwareHandler, isRoutePaymentWrapped } = await getX402RoutesModule();
-            if (!isRoutePaymentWrapped(route)) {
-                const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
-                if (wrapped) {
-                    effectiveHandler = wrapped;
-                }
-            }
-        }
-        const restoreHostContext = hostContext
-            ? setRuntimeRouteHostContext(runtime, hostContext)
-            : undefined;
-        try {
-            await effectiveHandler(req as never, res as never, runtime);
-        }
-        catch (err) {
-            if (!res.headersSent) {
-                res.statusCode = 500;
-                res.setHeader("Content-Type", "application/json; charset=utf-8");
-                res.end(JSON.stringify({
-                    error: err instanceof Error ? err.message : "Internal server error",
-                }));
-            }
-            return true;
-        }
-        finally {
-            restoreHostContext?.();
-        }
-        // Do not auto-end: handlers may return after attaching long-lived streams
-        // (e.g. music-player) before headers or first bytes are flushed.
-        return true;
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    url,
+    runtime,
+    isAuthorized,
+    hostContext,
+  } = options;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
+  for (const route of getHttpRuntime(runtime).routes as Route[]) {
+    assertPublicRouteIntent(route, "runtime.routes");
+    if (route.type === "STATIC") continue;
+    if (route.type !== method) continue;
+    const handler = route.handler;
+    if (!handler) continue;
+    const params = matchPluginRoutePath(route.path, pathname);
+    if (params === null) continue;
+    if (route.public !== true && !isAuthorized()) {
+      if (!res.headersSent) {
+        res.statusCode = 401;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+      }
+      return true;
     }
-    return false;
+    attachExpressResponseHelpers(res);
+    augmentRequest(req, url, params);
+    if (
+      !(await attachJsonBodyIfPresent(req, res, method, route.maxBodyBytes))
+    ) {
+      return true;
+    }
+    let effectiveHandler: RuntimePluginRouteHandler =
+      handler as RuntimePluginRouteHandler;
+    if (route.x402 != null) {
+      const { createPaymentAwareHandler, isRoutePaymentWrapped } =
+        await getX402RoutesModule();
+      if (!isRoutePaymentWrapped(route)) {
+        const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
+        if (wrapped) {
+          effectiveHandler = wrapped;
+        }
+      }
+    }
+    const restoreHostContext = hostContext
+      ? setRuntimeRouteHostContext(runtime, hostContext)
+      : undefined;
+    try {
+      await effectiveHandler(req as never, res as never, runtime);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            error: err instanceof Error ? err.message : "Internal server error",
+          }),
+        );
+      }
+      return true;
+    } finally {
+      restoreHostContext?.();
+    }
+    // Do not auto-end: handlers may return after attaching long-lived streams
+    // (e.g. music-player) before headers or first bytes are flushed.
+    return true;
+  }
+  return false;
 }

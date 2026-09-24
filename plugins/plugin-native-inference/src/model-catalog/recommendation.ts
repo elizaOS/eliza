@@ -4,19 +4,19 @@
  * classification, slot ladders, eligibility, fit, and ranking live here.
  */
 
-import {
-  DEFAULT_ELIGIBLE_MODEL_IDS,
-  type Eliza1TierId,
-  eliza1TierPublishStatus,
-  FIRST_RUN_DEFAULT_MODEL_ID,
-  MODEL_CATALOG,
-} from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import type {
   CatalogModel,
   HardwareFitLevel,
   HardwareProbe,
   TextGenerationSlot,
 } from "@elizaos/core/contracts/local-inference";
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
+  eliza1TierPublishStatus,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog.js";
 
 export type RecommendationPlatformClass =
   | "mobile"

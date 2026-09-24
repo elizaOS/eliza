@@ -13,8 +13,11 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { createSelfApiRequestHeaders, resolveServerOnlyPort } from "@elizaos/core/runtime-env";
 import { requestRestart } from "@elizaos/core/restart";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/core/runtime-env";
 import {
   isPluginManagerLike,
   type PluginManagerLike,

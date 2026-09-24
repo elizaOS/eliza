@@ -2,40 +2,69 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/ui": [
-        "../../packages/ui/src/index.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../../packages/ui/src/*"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../packages/core/src/*"
-      ],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],
       "@elizaos/capacitor-secure-store": [
         "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/recommendation": [
+        "../plugin-native-inference/src/model-catalog/recommendation.ts"
+      ],
+      "@elizaos/plugin-sql/database-utils/sql-compat": [
+        "../plugin-sql/src/database-utils/sql-compat.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/catalog": [
+        "../plugin-native-inference/src/model-catalog/catalog.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../plugin-native-inference/src/model-catalog/routing-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../plugin-native-inference/src/model-catalog/voice-models.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/verify": [
+        "../plugin-native-inference/src/model-catalog/verify.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/cloud-sdk/app-billing": [
+        "../../packages/cloud/sdk/src/app-billing.ts"
+      ],
+      "@elizaos/agent/api/loopback-trust": [
+        "../../packages/agent/src/api/loopback-trust.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/base-url": [
+        "../plugin-elizacloud/src/cloud-config/base-url.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets": [
+        "../plugin-elizacloud/src/cloud-config/cloud-secrets.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning": [
+        "../plugin-elizacloud/src/cloud-config/cloud-provisioning.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
       ]
     }
   },
-  "include": [
-    "auto-enable.ts",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
+  "include": ["auto-enable.ts", "src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [
     "dist",
     "node_modules",

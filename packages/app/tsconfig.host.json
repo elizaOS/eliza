@@ -1,69 +1,38 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/app": [
-        "./src/index.ts"
-      ],
-      "@elizaos/app/*": [
-        "./src/*"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/app/*": ["./src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-wallet": [
-        "../../plugins/plugin-wallet/src/index.ts"
-      ],
-      "@elizaos/ui": [
-        "../ui/src/index.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../ui/src/*"
-      ],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/ui/navigation": [
-        "../ui/src/navigation/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../agent/src/index.ts"
-      ],
-      "@elizaos/agent/*": [
-        "../agent/src/*"
-      ],
-      "@elizaos/cloud-sdk": [
-        "../cloud/sdk/src/index.ts"
-      ],
-      "@elizaos/cloud-sdk/*": [
-        "../cloud/sdk/src/*"
-      ],
+      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/src/*"
-      ],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
@@ -76,15 +45,9 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/plugin-mcp": [
-        "../../plugins/plugin-mcp/src/index.ts"
-      ],
-      "@elizaos/plugin-discord": [
-        "../../plugins/plugin-discord/index.ts"
-      ],
-      "@elizaos/plugin-discord/*": [
-        "../../plugins/plugin-discord/*"
-      ],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
@@ -97,42 +60,20 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/plugin-workflow/*": [
-        "../../plugins/plugin-workflow/src/*"
-      ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/index.ts"
-      ],
+      "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/__tests__/test-helpers": [
         "../../plugins/plugin-sql/src/__tests__/test-helpers.ts"
       ],
-      "@elizaos/plugin-sql/*": [
-        "../../plugins/plugin-sql/src/*"
-      ],
-      "@elizaos/auth/auth": [
-        "../auth/src/auth/index.ts"
-      ],
-      "@elizaos/auth/auth/*": [
-        "../auth/src/auth/*"
-      ],
-      "@elizaos/auth/vault": [
-        "../auth/src/vault/index.ts"
-      ],
-      "@elizaos/core": [
-        "../core/src/index.ts"
-      ],
-      "@elizaos/core/atomic-json": [
-        "../core/src/utils/atomic-json.ts"
-      ],
-      "@elizaos/core/*": [
-        "../core/src/*"
-      ],
-      "drizzle-orm": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
+      "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
+      "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
@@ -189,11 +130,7 @@
       ]
     }
   },
-  "exclude": [
-    "src/cli/**",
-    "src/**/*.stories.ts",
-    "src/**/*.stories.tsx"
-  ],
+  "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],
   "include": [
     "src/connectors",
     "src/ui-compat.ts",

@@ -14,16 +14,16 @@
  */
 
 import { ElizaError } from "./errors.js";
+import type { SpeakerNameAttribution } from "./speaker-name-inference.js";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
-import type { SpeakerNameAttribution } from "@elizaos/core/speaker-name-inference";
 
 /** A single transcribed word with playback-synced timing (ms from audio start). */
 export interface TranscriptWord {
-  text: string;
-  startMs: number;
-  endMs: number;
-  /** ASR confidence 0..1, when the backend reports it. */
-  confidence?: number;
+	text: string;
+	startMs: number;
+	endMs: number;
+	/** ASR confidence 0..1, when the backend reports it. */
+	confidence?: number;
 }
 
 /**
@@ -32,44 +32,44 @@ export interface TranscriptWord {
  * player then falls back to segment-level highlighting).
  */
 export interface TranscriptSegment {
-  id: string;
-  /** Stable speaker label within this transcript (e.g. "Speaker 1" or a name). */
-  speakerLabel?: string;
-  /** Resolved elizaOS entity id when the voice was recognized (evidence-linked). */
-  speakerEntityId?: string;
-  /**
-   * Inspectable name decision for this span. Confirmed decisions may drive
-   * `speakerLabel`; review/withheld decisions retain candidates and provenance
-   * while the label stays anonymous.
-   */
-  speakerNameAttribution?: SpeakerNameAttribution;
-  startMs: number;
-  endMs: number;
-  /** Segment text (the join of `words`, or raw ASR text when words are absent). */
-  text: string;
-  words: TranscriptWord[];
-  confidence?: number;
+	id: string;
+	/** Stable speaker label within this transcript (e.g. "Speaker 1" or a name). */
+	speakerLabel?: string;
+	/** Resolved elizaOS entity id when the voice was recognized (evidence-linked). */
+	speakerEntityId?: string;
+	/**
+	 * Inspectable name decision for this span. Confirmed decisions may drive
+	 * `speakerLabel`; review/withheld decisions retain candidates and provenance
+	 * while the label stays anonymous.
+	 */
+	speakerNameAttribution?: SpeakerNameAttribution;
+	startMs: number;
+	endMs: number;
+	/** Segment text (the join of `words`, or raw ASR text when words are absent). */
+	text: string;
+	words: TranscriptWord[];
+	confidence?: number;
 }
 
 export type TranscriptSource =
-  | "voice-session"
-  | "import"
-  | "call"
-  | "meeting"
-  | "unknown";
+	| "voice-session"
+	| "import"
+	| "call"
+	| "meeting"
+	| "unknown";
 
 /** Visibility scope — mirrors the documents store's `DocumentVisibilityScope`. */
 export type TranscriptScope =
-  | "owner-private"
-  | "user-private"
-  | "global"
-  | "agent-private";
+	| "owner-private"
+	| "user-private"
+	| "global"
+	| "agent-private";
 
 const TRANSCRIPT_SCOPES: ReadonlySet<string> = new Set<TranscriptScope>([
-  "owner-private",
-  "user-private",
-  "global",
-  "agent-private",
+	"owner-private",
+	"user-private",
+	"global",
+	"agent-private",
 ]);
 
 /**
@@ -78,45 +78,45 @@ const TRANSCRIPT_SCOPES: ReadonlySet<string> = new Set<TranscriptScope>([
  * that predates scope stamping must never widen visibility.
  */
 export function normalizeTranscriptScope(scope: unknown): TranscriptScope {
-  return typeof scope === "string" && TRANSCRIPT_SCOPES.has(scope)
-    ? (scope as TranscriptScope)
-    : "owner-private";
+	return typeof scope === "string" && TRANSCRIPT_SCOPES.has(scope)
+		? (scope as TranscriptScope)
+		: "owner-private";
 }
 
 export type TranscriptStatus = "recording" | "processing" | "ready" | "failed";
 
 /** A recorded + transcribed session: audio + word-timed diarized segments. */
 export interface Transcript {
-  id: string;
-  title: string;
-  /** Epoch ms when recording started. */
-  createdAt: number;
-  /** Epoch ms when the session ended; absent while still recording. */
-  endedAt?: number;
-  /** Epoch ms of the most recent user edit to the transcript text. */
-  editedAt?: number;
-  durationMs: number;
-  /** Served audio URL (content-addressed media store); absent if not retained. */
-  audioUrl?: string;
-  audioContentType?: string;
-  segments: TranscriptSegment[];
-  source: TranscriptSource;
-  scope: TranscriptScope;
-  status: TranscriptStatus;
-  /** The mirrored documents/knowledge item id (the searchable text copy). */
-  knowledgeDocumentId?: string;
-  /** Distinct speaker count across segments. */
-  speakerCount: number;
-  metadata?: Record<string, unknown>;
-  /**
-   * Present (true) only on a served DTO whose content is the PII-scrubbed
-   * variant of the artifact, selected for a redacted-grant viewer (#14781).
-   * A redacted serve may include only the verified redacted variant's
-   * `audioUrl`; it never inherits the original capability URL. Never stored —
-   * stored records link variants via
-   * `metadata.redactionOf` / row `metadata.redactedVariantId` instead.
-   */
-  redacted?: true;
+	id: string;
+	title: string;
+	/** Epoch ms when recording started. */
+	createdAt: number;
+	/** Epoch ms when the session ended; absent while still recording. */
+	endedAt?: number;
+	/** Epoch ms of the most recent user edit to the transcript text. */
+	editedAt?: number;
+	durationMs: number;
+	/** Served audio URL (content-addressed media store); absent if not retained. */
+	audioUrl?: string;
+	audioContentType?: string;
+	segments: TranscriptSegment[];
+	source: TranscriptSource;
+	scope: TranscriptScope;
+	status: TranscriptStatus;
+	/** The mirrored documents/knowledge item id (the searchable text copy). */
+	knowledgeDocumentId?: string;
+	/** Distinct speaker count across segments. */
+	speakerCount: number;
+	metadata?: Record<string, unknown>;
+	/**
+	 * Present (true) only on a served DTO whose content is the PII-scrubbed
+	 * variant of the artifact, selected for a redacted-grant viewer (#14781).
+	 * A redacted serve may include only the verified redacted variant's
+	 * `audioUrl`; it never inherits the original capability URL. Never stored —
+	 * stored records link variants via
+	 * `metadata.redactionOf` / row `metadata.redactedVariantId` instead.
+	 */
+	redacted?: true;
 }
 
 /**
@@ -125,116 +125,116 @@ export interface Transcript {
  * `source: "meeting"` summaries.
  */
 export interface TranscriptSummaryMeetingMeta {
-  /** Meeting platform (a {@link MeetingPlatform} value) for the row badge. */
-  platform?: string;
-  /** Roster size at finalize — the "N participants" the list row shows. */
-  participantCount: number;
+	/** Meeting platform (a {@link MeetingPlatform} value) for the row badge. */
+	platform?: string;
+	/** Roster size at finalize — the "N participants" the list row shows. */
+	participantCount: number;
 }
 
 export const TRANSCRIPT_CAPTURE_MODES = [
-  "bot",
-  "platform_import",
-  "bot_free_tab_system",
-  "local_mic",
-  "mobile_room_mic",
-  "benchmark_import",
-  "imported_artifact",
-  "unknown",
+	"bot",
+	"platform_import",
+	"bot_free_tab_system",
+	"local_mic",
+	"mobile_room_mic",
+	"benchmark_import",
+	"imported_artifact",
+	"unknown",
 ] as const;
 
 export type TranscriptCaptureMode = (typeof TRANSCRIPT_CAPTURE_MODES)[number];
 
 export const TRANSCRIPT_CONSENT_STATES = [
-  "not_required",
-  "pending",
-  "granted",
-  "denied",
-  "revoked",
-  "unknown",
+	"not_required",
+	"pending",
+	"granted",
+	"denied",
+	"revoked",
+	"unknown",
 ] as const;
 
 export type TranscriptConsentState = (typeof TRANSCRIPT_CONSENT_STATES)[number];
 
 export const TRANSCRIPT_POLICY_STATES = [
-  "allowed",
-  "org_blocked",
-  "user_blocked",
-  "unknown",
+	"allowed",
+	"org_blocked",
+	"user_blocked",
+	"unknown",
 ] as const;
 
 export type TranscriptPolicyState = (typeof TRANSCRIPT_POLICY_STATES)[number];
 
 export const TRANSCRIPT_PERMISSION_STATES = [
-  "prompt",
-  "granted",
-  "denied",
-  "stopped",
-  "revoked",
-  "not_required",
-  "unknown",
+	"prompt",
+	"granted",
+	"denied",
+	"stopped",
+	"revoked",
+	"not_required",
+	"unknown",
 ] as const;
 
 export type TranscriptPermissionState =
-  (typeof TRANSCRIPT_PERMISSION_STATES)[number];
+	(typeof TRANSCRIPT_PERMISSION_STATES)[number];
 
 export const TRANSCRIPT_RETENTION_STATES = [
-  "audio_retained",
-  "audio_deleted_transcript_retained",
-  "transcript_only",
-  "delete_pending",
-  "unknown",
+	"audio_retained",
+	"audio_deleted_transcript_retained",
+	"transcript_only",
+	"delete_pending",
+	"unknown",
 ] as const;
 
 export type TranscriptRetentionState =
-  (typeof TRANSCRIPT_RETENTION_STATES)[number];
+	(typeof TRANSCRIPT_RETENTION_STATES)[number];
 
 export const TRANSCRIPT_SHARING_STATES = [
-  "owner_private",
-  "restricted",
-  "shared",
-  "public",
-  "disabled",
-  "unknown",
+	"owner_private",
+	"restricted",
+	"shared",
+	"public",
+	"disabled",
+	"unknown",
 ] as const;
 
 export type TranscriptSharingState = (typeof TRANSCRIPT_SHARING_STATES)[number];
 
 export interface TranscriptCaptureSharingState {
-  transcript?: TranscriptSharingState;
-  notes?: TranscriptSharingState;
-  sourceAudio?: TranscriptSharingState;
-  artifacts?: TranscriptSharingState;
+	transcript?: TranscriptSharingState;
+	notes?: TranscriptSharingState;
+	sourceAudio?: TranscriptSharingState;
+	artifacts?: TranscriptSharingState;
 }
 
 export interface TranscriptCapturePrivacyState {
-  captureMode?: TranscriptCaptureMode;
-  consentState?: TranscriptConsentState;
-  policyState?: TranscriptPolicyState;
-  permissionState?: TranscriptPermissionState;
-  retentionState?: TranscriptRetentionState;
-  sharing: TranscriptCaptureSharingState;
-  sourceAudioDeleted: boolean;
-  /** True only when metadata explicitly carried policy/privacy fields. */
-  hasExplicitState: boolean;
+	captureMode?: TranscriptCaptureMode;
+	consentState?: TranscriptConsentState;
+	policyState?: TranscriptPolicyState;
+	permissionState?: TranscriptPermissionState;
+	retentionState?: TranscriptRetentionState;
+	sharing: TranscriptCaptureSharingState;
+	sourceAudioDeleted: boolean;
+	/** True only when metadata explicitly carried policy/privacy fields. */
+	hasExplicitState: boolean;
 }
 
 /** Compact list-row projection for the transcripts index. */
 export interface TranscriptSummary {
-  id: string;
-  title: string;
-  createdAt: number;
-  durationMs: number;
-  speakerCount: number;
-  status: TranscriptStatus;
-  /** How the transcript was captured — drives meeting-aware row rendering. */
-  source: TranscriptSource;
-  /** First slice of the transcript text, for the list row. */
-  preview: string;
-  hasAudio: boolean;
-  /** Server-computed meeting fields; present only for `source: "meeting"`. */
-  meeting?: TranscriptSummaryMeetingMeta;
-  /** Present (true) when this row's preview is served from the redacted variant (#14781). */
-  redacted?: true;
+	id: string;
+	title: string;
+	createdAt: number;
+	durationMs: number;
+	speakerCount: number;
+	status: TranscriptStatus;
+	/** How the transcript was captured — drives meeting-aware row rendering. */
+	source: TranscriptSource;
+	/** First slice of the transcript text, for the list row. */
+	preview: string;
+	hasAudio: boolean;
+	/** Server-computed meeting fields; present only for `source: "meeting"`. */
+	meeting?: TranscriptSummaryMeetingMeta;
+	/** Present (true) when this row's preview is served from the redacted variant (#14781). */
+	redacted?: true;
 }
 
 /** Default characters of transcript text kept for a list-row preview. */
@@ -242,20 +242,20 @@ export const TRANSCRIPT_PREVIEW_CHARS = 160;
 
 /** Distinct speaker labels across the segments (unlabeled segments ignored). */
 export function transcriptSpeakerCount(
-  segments: ReadonlyArray<TranscriptSegment>,
+	segments: ReadonlyArray<TranscriptSegment>,
 ): number {
-  const labels = new Set<string>();
-  for (const s of segments) if (s.speakerLabel) labels.add(s.speakerLabel);
-  return labels.size;
+	const labels = new Set<string>();
+	for (const s of segments) if (s.speakerLabel) labels.add(s.speakerLabel);
+	return labels.size;
 }
 
 /** Recording length in ms — the largest segment end (0 when empty). */
 export function transcriptDurationMs(
-  segments: ReadonlyArray<TranscriptSegment>,
+	segments: ReadonlyArray<TranscriptSegment>,
 ): number {
-  let max = 0;
-  for (const s of segments) if (s.endMs > max) max = s.endMs;
-  return max;
+	let max = 0;
+	for (const s of segments) if (s.endMs > max) max = s.endMs;
+	return max;
 }
 
 /**
@@ -265,27 +265,27 @@ export function transcriptDurationMs(
  * `Speaker: text` (label omitted when unknown).
  */
 export function transcriptPlainText(
-  segments: ReadonlyArray<TranscriptSegment>,
+	segments: ReadonlyArray<TranscriptSegment>,
 ): string {
-  return segments
-    .map((s) => {
-      const text = s.text.trim();
-      if (!text) return "";
-      return s.speakerLabel ? `${s.speakerLabel}: ${text}` : text;
-    })
-    .filter((line) => line.length > 0)
-    .join("\n");
+	return segments
+		.map((s) => {
+			const text = s.text.trim();
+			if (!text) return "";
+			return s.speakerLabel ? `${s.speakerLabel}: ${text}` : text;
+		})
+		.filter((line) => line.length > 0)
+		.join("\n");
 }
 
 /** A verbatim, segment-aligned document fragment with audio seek anchors. */
 export interface TranscriptKnowledgeFragment {
-  text: string;
-  metadata: {
-    segmentIds: string[];
-    startMs: number;
-    endMs: number;
-    speakerLabels?: string[];
-  };
+	text: string;
+	metadata: {
+		segmentIds: string[];
+		startMs: number;
+		endMs: number;
+		speakerLabels?: string[];
+	};
 }
 
 /** Match the documents pipeline's approximate 500-token chunk target. */
@@ -298,106 +298,106 @@ export const TRANSCRIPT_FRAGMENT_MAX_CHARS = 2000;
  * search-to-playback and text-to-audio projections.
  */
 export function transcriptKnowledgeFragments(
-  segments: ReadonlyArray<TranscriptSegment>,
-  maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
+	segments: ReadonlyArray<TranscriptSegment>,
+	maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
 ): TranscriptKnowledgeFragment[] {
-  if (!Number.isFinite(maxChars) || maxChars <= 0) {
-    throw new Error(
-      `transcriptKnowledgeFragments: maxChars must be a positive finite number, got ${String(maxChars)}`,
-    );
-  }
+	if (!Number.isFinite(maxChars) || maxChars <= 0) {
+		throw new Error(
+			`transcriptKnowledgeFragments: maxChars must be a positive finite number, got ${String(maxChars)}`,
+		);
+	}
 
-  const fragments: TranscriptKnowledgeFragment[] = [];
-  let group: TranscriptSegment[] = [];
-  let lines: string[] = [];
-  let charCount = 0;
+	const fragments: TranscriptKnowledgeFragment[] = [];
+	let group: TranscriptSegment[] = [];
+	let lines: string[] = [];
+	let charCount = 0;
 
-  const flush = (): void => {
-    if (group.length === 0) return;
-    const speakerLabels = [
-      ...new Set(
-        group
-          .map((segment) => segment.speakerLabel)
-          .filter((label): label is string => Boolean(label)),
-      ),
-    ];
-    fragments.push({
-      text: lines.join("\n"),
-      metadata: {
-        segmentIds: group.map((segment) => segment.id),
-        startMs: Math.min(...group.map((segment) => segment.startMs)),
-        endMs: Math.max(...group.map((segment) => segment.endMs)),
-        ...(speakerLabels.length > 0 ? { speakerLabels } : {}),
-      },
-    });
-    group = [];
-    lines = [];
-    charCount = 0;
-  };
+	const flush = (): void => {
+		if (group.length === 0) return;
+		const speakerLabels = [
+			...new Set(
+				group
+					.map((segment) => segment.speakerLabel)
+					.filter((label): label is string => Boolean(label)),
+			),
+		];
+		fragments.push({
+			text: lines.join("\n"),
+			metadata: {
+				segmentIds: group.map((segment) => segment.id),
+				startMs: Math.min(...group.map((segment) => segment.startMs)),
+				endMs: Math.max(...group.map((segment) => segment.endMs)),
+				...(speakerLabels.length > 0 ? { speakerLabels } : {}),
+			},
+		});
+		group = [];
+		lines = [];
+		charCount = 0;
+	};
 
-  for (const segment of segments) {
-    const text = segment.text.trim();
-    if (!text) continue;
-    if (!segment.id) {
-      throw new Error(
-        "transcriptKnowledgeFragments: a non-empty segment is missing a stable id",
-      );
-    }
-    if (
-      !Number.isFinite(segment.startMs) ||
-      !Number.isFinite(segment.endMs) ||
-      segment.startMs < 0 ||
-      segment.endMs < segment.startMs
-    ) {
-      throw new Error(
-        `transcriptKnowledgeFragments: segment ${segment.id} has invalid timing`,
-      );
-    }
+	for (const segment of segments) {
+		const text = segment.text.trim();
+		if (!text) continue;
+		if (!segment.id) {
+			throw new Error(
+				"transcriptKnowledgeFragments: a non-empty segment is missing a stable id",
+			);
+		}
+		if (
+			!Number.isFinite(segment.startMs) ||
+			!Number.isFinite(segment.endMs) ||
+			segment.startMs < 0 ||
+			segment.endMs < segment.startMs
+		) {
+			throw new Error(
+				`transcriptKnowledgeFragments: segment ${segment.id} has invalid timing`,
+			);
+		}
 
-    const line = segment.speakerLabel
-      ? `${segment.speakerLabel}: ${text}`
-      : text;
-    const addedChars = line.length + (lines.length > 0 ? 1 : 0);
-    if (group.length > 0 && charCount + addedChars > maxChars) flush();
-    group.push(segment);
-    lines.push(line);
-    charCount += line.length + (lines.length > 1 ? 1 : 0);
-  }
-  flush();
+		const line = segment.speakerLabel
+			? `${segment.speakerLabel}: ${text}`
+			: text;
+		const addedChars = line.length + (lines.length > 0 ? 1 : 0);
+		if (group.length > 0 && charCount + addedChars > maxChars) flush();
+		group.push(segment);
+		lines.push(line);
+		charCount += line.length + (lines.length > 1 ? 1 : 0);
+	}
+	flush();
 
-  return fragments;
+	return fragments;
 }
 
 /** A one-line preview of the transcript text, capped to `max` chars. */
 export function transcriptPreview(
-  segments: ReadonlyArray<TranscriptSegment>,
-  max = TRANSCRIPT_PREVIEW_CHARS,
+	segments: ReadonlyArray<TranscriptSegment>,
+	max = TRANSCRIPT_PREVIEW_CHARS,
 ): string {
-  if (!Number.isInteger(max) || max < 0) {
-    throw new ElizaError(
-      `transcriptPreview: max must be a non-negative integer, got ${max}`,
-      {
-        code: "TRANSCRIPT_PREVIEW_LIMIT_INVALID",
-        context: { max },
-      },
-    );
-  }
-  if (max === 0) {
-    return "";
-  }
+	if (!Number.isInteger(max) || max < 0) {
+		throw new ElizaError(
+			`transcriptPreview: max must be a non-negative integer, got ${max}`,
+			{
+				code: "TRANSCRIPT_PREVIEW_LIMIT_INVALID",
+				context: { max },
+			},
+		);
+	}
+	if (max === 0) {
+		return "";
+	}
 
-  const flat = segments
-    .map((s) => s.text.trim())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const wellFormed = toWellFormedUnicode(flat);
-  if (wellFormed.length <= max) {
-    return wellFormed;
-  }
-  const budget = Math.max(0, max - 1);
-  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+	const flat = segments
+		.map((s) => s.text.trim())
+		.filter(Boolean)
+		.join(" ")
+		.replace(/\s+/g, " ")
+		.trim();
+	const wellFormed = toWellFormedUnicode(flat);
+	if (wellFormed.length <= max) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, max - 1);
+	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 /**
@@ -408,64 +408,64 @@ export function transcriptPreview(
  * the client.
  */
 function summarizeMeetingMeta(
-  metadata: Record<string, unknown> | undefined,
+	metadata: Record<string, unknown> | undefined,
 ): TranscriptSummaryMeetingMeta {
-  const platform =
-    typeof metadata?.platform === "string" ? metadata.platform : undefined;
-  const participants = metadata?.participants;
-  const participantCount = Array.isArray(participants)
-    ? participants.length
-    : 0;
-  return platform === undefined
-    ? { participantCount }
-    : { platform, participantCount };
+	const platform =
+		typeof metadata?.platform === "string" ? metadata.platform : undefined;
+	const participants = metadata?.participants;
+	const participantCount = Array.isArray(participants)
+		? participants.length
+		: 0;
+	return platform === undefined
+		? { participantCount }
+		: { platform, participantCount };
 }
 
 function recordProp(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
+	metadata: Record<string, unknown> | undefined,
+	key: string,
 ): Record<string, unknown> | undefined {
-  const value = metadata?.[key];
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
+	const value = metadata?.[key];
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as Record<string, unknown>;
 }
 
 function stringProp(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
+	metadata: Record<string, unknown> | undefined,
+	key: string,
 ): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" ? value : undefined;
+	const value = metadata?.[key];
+	return typeof value === "string" ? value : undefined;
 }
 
 function booleanProp(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
+	metadata: Record<string, unknown> | undefined,
+	key: string,
 ): boolean | undefined {
-  const value = metadata?.[key];
-  return typeof value === "boolean" ? value : undefined;
+	const value = metadata?.[key];
+	return typeof value === "boolean" ? value : undefined;
 }
 
 function enumProp<const Values extends readonly string[]>(
-  value: string | undefined,
-  values: Values,
+	value: string | undefined,
+	values: Values,
 ): Values[number] | undefined {
-  return value !== undefined && values.includes(value) ? value : undefined;
+	return value !== undefined && values.includes(value) ? value : undefined;
 }
 
 function sharingState(
-  metadata: Record<string, unknown> | undefined,
-  sharing: Record<string, unknown> | undefined,
-  key: keyof TranscriptCaptureSharingState,
+	metadata: Record<string, unknown> | undefined,
+	sharing: Record<string, unknown> | undefined,
+	key: keyof TranscriptCaptureSharingState,
 ): TranscriptSharingState | undefined {
-  const flatKey =
-    key === "sourceAudio" ? "sourceAudioSharingState" : `${key}SharingState`;
-  return enumProp(
-    stringProp(metadata, flatKey) ?? stringProp(sharing, key),
-    TRANSCRIPT_SHARING_STATES,
-  );
+	const flatKey =
+		key === "sourceAudio" ? "sourceAudioSharingState" : `${key}SharingState`;
+	return enumProp(
+		stringProp(metadata, flatKey) ?? stringProp(sharing, key),
+		TRANSCRIPT_SHARING_STATES,
+	);
 }
 
 /**
@@ -477,118 +477,118 @@ function sharingState(
  * policy or privacy from raw metadata on its own.
  */
 export function transcriptCapturePrivacyState(
-  transcript: Transcript,
+	transcript: Transcript,
 ): TranscriptCapturePrivacyState {
-  const metadata = transcript.metadata;
-  const capture = recordProp(metadata, "capture");
-  const consent = recordProp(metadata, "consent");
-  const policy = recordProp(metadata, "policy");
-  const permission = recordProp(metadata, "permission");
-  const retention = recordProp(metadata, "retention");
-  const sharing = recordProp(metadata, "sharing");
+	const metadata = transcript.metadata;
+	const capture = recordProp(metadata, "capture");
+	const consent = recordProp(metadata, "consent");
+	const policy = recordProp(metadata, "policy");
+	const permission = recordProp(metadata, "permission");
+	const retention = recordProp(metadata, "retention");
+	const sharing = recordProp(metadata, "sharing");
 
-  const captureMode = enumProp(
-    stringProp(metadata, "captureMode") ?? stringProp(capture, "mode"),
-    TRANSCRIPT_CAPTURE_MODES,
-  );
-  const consentState = enumProp(
-    stringProp(metadata, "consentState") ?? stringProp(consent, "state"),
-    TRANSCRIPT_CONSENT_STATES,
-  );
-  const policyState = enumProp(
-    stringProp(metadata, "policyState") ?? stringProp(policy, "state"),
-    TRANSCRIPT_POLICY_STATES,
-  );
-  const permissionState = enumProp(
-    stringProp(metadata, "permissionState") ?? stringProp(permission, "state"),
-    TRANSCRIPT_PERMISSION_STATES,
-  );
-  const sourceAudioDeleted =
-    booleanProp(metadata, "sourceAudioDeleted") ??
-    booleanProp(retention, "sourceAudioDeleted") ??
-    false;
-  const explicitRetentionState = enumProp(
-    stringProp(metadata, "retentionState") ?? stringProp(retention, "state"),
-    TRANSCRIPT_RETENTION_STATES,
-  );
-  const retentionState =
-    explicitRetentionState ??
-    (sourceAudioDeleted
-      ? "audio_deleted_transcript_retained"
-      : transcript.audioUrl
-        ? "audio_retained"
-        : undefined);
+	const captureMode = enumProp(
+		stringProp(metadata, "captureMode") ?? stringProp(capture, "mode"),
+		TRANSCRIPT_CAPTURE_MODES,
+	);
+	const consentState = enumProp(
+		stringProp(metadata, "consentState") ?? stringProp(consent, "state"),
+		TRANSCRIPT_CONSENT_STATES,
+	);
+	const policyState = enumProp(
+		stringProp(metadata, "policyState") ?? stringProp(policy, "state"),
+		TRANSCRIPT_POLICY_STATES,
+	);
+	const permissionState = enumProp(
+		stringProp(metadata, "permissionState") ?? stringProp(permission, "state"),
+		TRANSCRIPT_PERMISSION_STATES,
+	);
+	const sourceAudioDeleted =
+		booleanProp(metadata, "sourceAudioDeleted") ??
+		booleanProp(retention, "sourceAudioDeleted") ??
+		false;
+	const explicitRetentionState = enumProp(
+		stringProp(metadata, "retentionState") ?? stringProp(retention, "state"),
+		TRANSCRIPT_RETENTION_STATES,
+	);
+	const retentionState =
+		explicitRetentionState ??
+		(sourceAudioDeleted
+			? "audio_deleted_transcript_retained"
+			: transcript.audioUrl
+				? "audio_retained"
+				: undefined);
 
-  const normalizedSharing: TranscriptCaptureSharingState = {
-    ...(sharingState(metadata, sharing, "transcript")
-      ? { transcript: sharingState(metadata, sharing, "transcript") }
-      : {}),
-    ...(sharingState(metadata, sharing, "notes")
-      ? { notes: sharingState(metadata, sharing, "notes") }
-      : {}),
-    ...(sharingState(metadata, sharing, "sourceAudio")
-      ? { sourceAudio: sharingState(metadata, sharing, "sourceAudio") }
-      : {}),
-    ...(sharingState(metadata, sharing, "artifacts")
-      ? { artifacts: sharingState(metadata, sharing, "artifacts") }
-      : {}),
-  };
+	const normalizedSharing: TranscriptCaptureSharingState = {
+		...(sharingState(metadata, sharing, "transcript")
+			? { transcript: sharingState(metadata, sharing, "transcript") }
+			: {}),
+		...(sharingState(metadata, sharing, "notes")
+			? { notes: sharingState(metadata, sharing, "notes") }
+			: {}),
+		...(sharingState(metadata, sharing, "sourceAudio")
+			? { sourceAudio: sharingState(metadata, sharing, "sourceAudio") }
+			: {}),
+		...(sharingState(metadata, sharing, "artifacts")
+			? { artifacts: sharingState(metadata, sharing, "artifacts") }
+			: {}),
+	};
 
-  return {
-    ...(captureMode ? { captureMode } : {}),
-    ...(consentState ? { consentState } : {}),
-    ...(policyState ? { policyState } : {}),
-    ...(permissionState ? { permissionState } : {}),
-    ...(retentionState ? { retentionState } : {}),
-    sharing: normalizedSharing,
-    sourceAudioDeleted,
-    hasExplicitState: Boolean(
-      captureMode ||
-        consentState ||
-        policyState ||
-        permissionState ||
-        explicitRetentionState ||
-        sourceAudioDeleted ||
-        Object.keys(normalizedSharing).length > 0,
-    ),
-  };
+	return {
+		...(captureMode ? { captureMode } : {}),
+		...(consentState ? { consentState } : {}),
+		...(policyState ? { policyState } : {}),
+		...(permissionState ? { permissionState } : {}),
+		...(retentionState ? { retentionState } : {}),
+		sharing: normalizedSharing,
+		sourceAudioDeleted,
+		hasExplicitState: Boolean(
+			captureMode ||
+				consentState ||
+				policyState ||
+				permissionState ||
+				explicitRetentionState ||
+				sourceAudioDeleted ||
+				Object.keys(normalizedSharing).length > 0,
+		),
+	};
 }
 
 /** Project a full transcript to its list-row summary. */
 export function summarizeTranscript(transcript: Transcript): TranscriptSummary {
-  return {
-    id: transcript.id,
-    title: transcript.title,
-    createdAt: transcript.createdAt,
-    durationMs: transcript.durationMs,
-    speakerCount: transcript.speakerCount,
-    status: transcript.status,
-    source: transcript.source,
-    preview: transcriptPreview(transcript.segments),
-    hasAudio: Boolean(transcript.audioUrl),
-    ...(transcript.source === "meeting"
-      ? { meeting: summarizeMeetingMeta(transcript.metadata) }
-      : {}),
-  };
+	return {
+		id: transcript.id,
+		title: transcript.title,
+		createdAt: transcript.createdAt,
+		durationMs: transcript.durationMs,
+		speakerCount: transcript.speakerCount,
+		status: transcript.status,
+		source: transcript.source,
+		preview: transcriptPreview(transcript.segments),
+		hasAudio: Boolean(transcript.audioUrl),
+		...(transcript.source === "meeting"
+			? { meeting: summarizeMeetingMeta(transcript.metadata) }
+			: {}),
+	};
 }
 
 /** A word flattened across segments, carrying its origin indices for the UI. */
 export interface FlatTranscriptWord extends TranscriptWord {
-  segmentIndex: number;
-  wordIndex: number;
+	segmentIndex: number;
+	wordIndex: number;
 }
 
 /** Flatten all segments' words into one time-ordered array (for player sync). */
 export function flattenTranscriptWords(
-  segments: ReadonlyArray<TranscriptSegment>,
+	segments: ReadonlyArray<TranscriptSegment>,
 ): FlatTranscriptWord[] {
-  const out: FlatTranscriptWord[] = [];
-  segments.forEach((segment, segmentIndex) => {
-    segment.words.forEach((word, wordIndex) => {
-      out.push({ ...word, segmentIndex, wordIndex });
-    });
-  });
-  return out;
+	const out: FlatTranscriptWord[] = [];
+	segments.forEach((segment, segmentIndex) => {
+		segment.words.forEach((word, wordIndex) => {
+			out.push({ ...word, segmentIndex, wordIndex });
+		});
+	});
+	return out;
 }
 
 /**
@@ -599,35 +599,35 @@ export function flattenTranscriptWords(
  * the previous word lit rather than flickering off.
  */
 export function activeWordIndex(
-  words: ReadonlyArray<FlatTranscriptWord>,
-  ms: number,
+	words: ReadonlyArray<FlatTranscriptWord>,
+	ms: number,
 ): number {
-  let lo = 0;
-  let hi = words.length - 1;
-  let found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (words[mid].startMs <= ms) {
-      found = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return found;
+	let lo = 0;
+	let hi = words.length - 1;
+	let found = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		if (words[mid].startMs <= ms) {
+			found = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return found;
 }
 
 /** A single invariant violation found by {@link validateAsrWordTimings}. */
 export interface WordTimingViolation {
-  index: number;
-  word: string;
-  reason: string;
+	index: number;
+	word: string;
+	reason: string;
 }
 
 /** Result of validating a word-timed sequence against the player contract. */
 export interface WordTimingValidation {
-  ok: boolean;
-  violations: WordTimingViolation[];
+	ok: boolean;
+	violations: WordTimingViolation[];
 }
 
 /**
@@ -647,57 +647,57 @@ export interface WordTimingValidation {
  * and the real-audio FFI test so all three agree on what "well-formed" means.
  */
 export function validateAsrWordTimings(
-  words: ReadonlyArray<TranscriptWord>,
-  audioDurationMs = 0,
-  toleranceMs = 1,
+	words: ReadonlyArray<TranscriptWord>,
+	audioDurationMs = 0,
+	toleranceMs = 1,
 ): WordTimingValidation {
-  if (!Number.isFinite(audioDurationMs) || audioDurationMs < 0) {
-    throw new RangeError(
-      `validateAsrWordTimings: audioDurationMs must be a non-negative finite number, got ${String(audioDurationMs)}`,
-    );
-  }
-  if (!Number.isFinite(toleranceMs) || toleranceMs < 0) {
-    throw new RangeError(
-      `validateAsrWordTimings: toleranceMs must be a non-negative finite number, got ${String(toleranceMs)}`,
-    );
-  }
+	if (!Number.isFinite(audioDurationMs) || audioDurationMs < 0) {
+		throw new RangeError(
+			`validateAsrWordTimings: audioDurationMs must be a non-negative finite number, got ${String(audioDurationMs)}`,
+		);
+	}
+	if (!Number.isFinite(toleranceMs) || toleranceMs < 0) {
+		throw new RangeError(
+			`validateAsrWordTimings: toleranceMs must be a non-negative finite number, got ${String(toleranceMs)}`,
+		);
+	}
 
-  const violations: WordTimingViolation[] = [];
-  let prevEndMs = 0;
-  words.forEach((w, index) => {
-    const word = w.text;
-    if (typeof word !== "string" || word.trim().length === 0) {
-      violations.push({ index, word: String(word), reason: "empty word text" });
-    }
-    if (!Number.isFinite(w.startMs) || !Number.isFinite(w.endMs)) {
-      violations.push({ index, word, reason: "non-finite timing" });
-      return;
-    }
-    if (w.startMs < -toleranceMs) {
-      violations.push({ index, word, reason: `startMs ${w.startMs} < 0` });
-    }
-    if (w.endMs < w.startMs - toleranceMs) {
-      violations.push({
-        index,
-        word,
-        reason: `endMs ${w.endMs} precedes startMs ${w.startMs}`,
-      });
-    }
-    if (w.startMs < prevEndMs - toleranceMs) {
-      violations.push({
-        index,
-        word,
-        reason: `startMs ${w.startMs} overlaps previous end ${prevEndMs}`,
-      });
-    }
-    if (audioDurationMs > 0 && w.endMs > audioDurationMs + toleranceMs) {
-      violations.push({
-        index,
-        word,
-        reason: `endMs ${w.endMs} exceeds audio duration ${audioDurationMs}`,
-      });
-    }
-    prevEndMs = Math.max(prevEndMs, w.endMs);
-  });
-  return { ok: violations.length === 0, violations };
+	const violations: WordTimingViolation[] = [];
+	let prevEndMs = 0;
+	words.forEach((w, index) => {
+		const word = w.text;
+		if (typeof word !== "string" || word.trim().length === 0) {
+			violations.push({ index, word: String(word), reason: "empty word text" });
+		}
+		if (!Number.isFinite(w.startMs) || !Number.isFinite(w.endMs)) {
+			violations.push({ index, word, reason: "non-finite timing" });
+			return;
+		}
+		if (w.startMs < -toleranceMs) {
+			violations.push({ index, word, reason: `startMs ${w.startMs} < 0` });
+		}
+		if (w.endMs < w.startMs - toleranceMs) {
+			violations.push({
+				index,
+				word,
+				reason: `endMs ${w.endMs} precedes startMs ${w.startMs}`,
+			});
+		}
+		if (w.startMs < prevEndMs - toleranceMs) {
+			violations.push({
+				index,
+				word,
+				reason: `startMs ${w.startMs} overlaps previous end ${prevEndMs}`,
+			});
+		}
+		if (audioDurationMs > 0 && w.endMs > audioDurationMs + toleranceMs) {
+			violations.push({
+				index,
+				word,
+				reason: `endMs ${w.endMs} exceeds audio duration ${audioDurationMs}`,
+			});
+		}
+		prevEndMs = Math.max(prevEndMs, w.endMs);
+	});
+	return { ok: violations.length === 0, violations };
 }

@@ -26,10 +26,16 @@ import type {
 } from "@elizaos/core";
 import { logger, toWellFormedUnicode } from "@elizaos/core";
 import { type AwarenessRegistry } from "@elizaos/core/awareness/registry";
-import { createSelfApiRequestHeaders, resolveServerOnlyPort } from "@elizaos/core/runtime-env";
-import { getValidationKeywordTerms, textIncludesKeywordTerm } from "@elizaos/core/i18n/keyword-matching";
-import { isSelfEditEnabled } from "@elizaos/core/self-edit";
+import {
+  getValidationKeywordTerms,
+  textIncludesKeywordTerm,
+} from "@elizaos/core/i18n/keyword-matching";
 import { requestRestart } from "@elizaos/core/restart";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/core/runtime-env";
+import { isSelfEditEnabled } from "@elizaos/core/self-edit";
 
 const RUNTIME_OPS = [
   "status",

@@ -33,7 +33,15 @@
  * Spec: `.swarm/research/R5-versioning.md` §4.
  */
 
-import { applyNetworkPolicy, classifyNetwork, DEFAULT_NETWORK_POLICY_PREFERENCES, type NetworkClass, type NetworkPolicyDecision, type NetworkPolicyPreferences, type RawNetworkState } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import {
+	applyNetworkPolicy,
+	classifyNetwork,
+	DEFAULT_NETWORK_POLICY_PREFERENCES,
+	type NetworkClass,
+	type NetworkPolicyDecision,
+	type NetworkPolicyPreferences,
+	type RawNetworkState,
+} from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 
 /**
  * Platform probe — produces a `RawNetworkState` from whatever OS API is

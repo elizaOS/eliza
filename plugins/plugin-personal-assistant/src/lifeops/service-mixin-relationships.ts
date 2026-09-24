@@ -4,7 +4,11 @@
  * is declared here and declaration-merged onto `LifeOpsService` because the
  * mixin composition exceeds TypeScript's inference depth.
  */
-import { type LifeOpsMessageChannel, type LifeOpsRelationship, type LifeOpsRelationshipInteraction } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsMessageChannel,
+  type LifeOpsRelationship,
+  type LifeOpsRelationshipInteraction,
+} from "@elizaos/core/contracts/personal-assistant";
 export interface LifeOpsRelationshipService {
   upsertRelationship(
     input: Omit<

@@ -33,19 +33,19 @@ export const MAX_PATTERN_LENGTH = 256;
  */
 export const RECOGNISED_PERMISSION_NAMESPACES = ["fs", "net"] as const;
 export type RecognisedPermissionNamespace =
-  (typeof RECOGNISED_PERMISSION_NAMESPACES)[number];
+	(typeof RECOGNISED_PERMISSION_NAMESPACES)[number];
 
 /**
  * Returns the recognised namespaces actually declared by a parsed
  * manifest. This is what a consent UI should render as toggleable rows.
  */
 export function recognisedNamespacesFor(
-  manifest: AppPermissionsManifest,
+	manifest: AppPermissionsManifest,
 ): RecognisedPermissionNamespace[] {
-  const out: RecognisedPermissionNamespace[] = [];
-  if (manifest.fs !== undefined) out.push("fs");
-  if (manifest.net !== undefined) out.push("net");
-  return out;
+	const out: RecognisedPermissionNamespace[] = [];
+	if (manifest.fs !== undefined) out.push("fs");
+	if (manifest.net !== undefined) out.push("net");
+	return out;
 }
 
 /**
@@ -56,21 +56,21 @@ export function recognisedNamespacesFor(
  * persisted state (returns `[]` rather than throwing).
  */
 export function recognisedNamespacesForRaw(
-  raw: Record<string, unknown> | null | undefined,
+	raw: Record<string, unknown> | null | undefined,
 ): RecognisedPermissionNamespace[] {
-  if (!raw) return [];
-  const result = parseAppPermissions(raw);
-  if (result.ok === false) return [];
-  return recognisedNamespacesFor(result.manifest);
+	if (!raw) return [];
+	const result = parseAppPermissions(raw);
+	if (result.ok === false) return [];
+	return recognisedNamespacesFor(result.manifest);
 }
 
 export interface FsPermissions {
-  read?: string[];
-  write?: string[];
+	read?: string[];
+	write?: string[];
 }
 
 export interface NetPermissions {
-  outbound?: string[];
+	outbound?: string[];
 }
 
 /**
@@ -103,8 +103,8 @@ export type AppIsolation = "none" | "worker";
  * coerced to `"none"` to keep the parser forward-compatible.
  */
 export function parseAppIsolation(value: unknown): AppIsolation {
-  if (value === "worker") return "worker";
-  return "none";
+	if (value === "worker") return "worker";
+	return "none";
 }
 
 /**
@@ -113,157 +113,157 @@ export function parseAppIsolation(value: unknown): AppIsolation {
  * `GET/PUT /api/apps/permissions/:slug` HTTP routes.
  */
 export interface AppPermissionsView {
-  slug: string;
-  trust: AppTrust;
-  /** Effective execution isolation mode after loader policy is applied. */
-  isolation: AppIsolation;
-  /** Raw `elizaos.app.permissions` block from the app's package.json. */
-  requestedPermissions: Record<string, unknown> | null;
-  /** Intersection of declared namespaces with what this Eliza recognises. */
-  recognisedNamespaces: RecognisedPermissionNamespace[];
-  /** Subset of `recognisedNamespaces` the user / loader has granted. */
-  grantedNamespaces: RecognisedPermissionNamespace[];
-  /** ISO timestamp of the first grant, or null if never granted. */
-  grantedAt: string | null;
+	slug: string;
+	trust: AppTrust;
+	/** Effective execution isolation mode after loader policy is applied. */
+	isolation: AppIsolation;
+	/** Raw `elizaos.app.permissions` block from the app's package.json. */
+	requestedPermissions: Record<string, unknown> | null;
+	/** Intersection of declared namespaces with what this Eliza recognises. */
+	recognisedNamespaces: RecognisedPermissionNamespace[];
+	/** Subset of `recognisedNamespaces` the user / loader has granted. */
+	grantedNamespaces: RecognisedPermissionNamespace[];
+	/** ISO timestamp of the first grant, or null if never granted. */
+	grantedAt: string | null;
 }
 
 export interface AppPermissionsManifest {
-  /**
-   * Raw declared object as it appears under `elizaos.app.permissions`,
-   * or `null` when no `permissions` block was declared. This is what
-   * persists into `app-registry.json` and the audit log so later
-   * Eliza versions can read namespaces this version did not validate.
-   */
-  raw: Record<string, unknown> | null;
-  fs?: FsPermissions;
-  net?: NetPermissions;
+	/**
+	 * Raw declared object as it appears under `elizaos.app.permissions`,
+	 * or `null` when no `permissions` block was declared. This is what
+	 * persists into `app-registry.json` and the audit log so later
+	 * Eliza versions can read namespaces this version did not validate.
+	 */
+	raw: Record<string, unknown> | null;
+	fs?: FsPermissions;
+	net?: NetPermissions;
 }
 
 export interface ParseAppPermissionsError {
-  ok: false;
-  reason: string;
-  path: string;
+	ok: false;
+	reason: string;
+	path: string;
 }
 
 export type ParseAppPermissionsResult =
-  | { ok: true; manifest: AppPermissionsManifest }
-  | ParseAppPermissionsError;
+	| { ok: true; manifest: AppPermissionsManifest }
+	| ParseAppPermissionsError;
 
 type StringArraySuccess = { ok: true; value: string[] | null };
 type FsSuccess = { ok: true; value: FsPermissions | null };
 type NetSuccess = { ok: true; value: NetPermissions | null };
 
 export function parseAppPermissions(value: unknown): ParseAppPermissionsResult {
-  if (value === undefined || value === null) {
-    return { ok: true, manifest: { raw: null } };
-  }
-  if (typeof value !== "object" || Array.isArray(value)) {
-    return {
-      ok: false,
-      reason: "permissions must be an object",
-      path: "permissions",
-    };
-  }
-  const raw = value as Record<string, unknown>;
-  const manifest: AppPermissionsManifest = { raw };
+	if (value === undefined || value === null) {
+		return { ok: true, manifest: { raw: null } };
+	}
+	if (typeof value !== "object" || Array.isArray(value)) {
+		return {
+			ok: false,
+			reason: "permissions must be an object",
+			path: "permissions",
+		};
+	}
+	const raw = value as Record<string, unknown>;
+	const manifest: AppPermissionsManifest = { raw };
 
-  if ("fs" in raw) {
-    const fsResult = parseFs(raw.fs, "permissions.fs");
-    if (fsResult.ok === false) return fsResult;
-    if (fsResult.value !== null) manifest.fs = fsResult.value;
-  }
+	if ("fs" in raw) {
+		const fsResult = parseFs(raw.fs, "permissions.fs");
+		if (fsResult.ok === false) return fsResult;
+		if (fsResult.value !== null) manifest.fs = fsResult.value;
+	}
 
-  if ("net" in raw) {
-    const netResult = parseNet(raw.net, "permissions.net");
-    if (netResult.ok === false) return netResult;
-    if (netResult.value !== null) manifest.net = netResult.value;
-  }
+	if ("net" in raw) {
+		const netResult = parseNet(raw.net, "permissions.net");
+		if (netResult.ok === false) return netResult;
+		if (netResult.value !== null) manifest.net = netResult.value;
+	}
 
-  return { ok: true, manifest };
+	return { ok: true, manifest };
 }
 
 function parseFs(
-  value: unknown,
-  basePath: string,
+	value: unknown,
+	basePath: string,
 ): FsSuccess | ParseAppPermissionsError {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return { ok: false, reason: "fs must be an object", path: basePath };
-  }
-  const obj = value as Record<string, unknown>;
-  const out: FsPermissions = {};
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return { ok: false, reason: "fs must be an object", path: basePath };
+	}
+	const obj = value as Record<string, unknown>;
+	const out: FsPermissions = {};
 
-  if ("read" in obj) {
-    const readResult = parseStringArray(
-      obj.read,
-      `${basePath}.read`,
-      "fs.read must be an array of glob strings",
-    );
-    if (readResult.ok === false) return readResult;
-    if (readResult.value !== null) out.read = readResult.value;
-  }
+	if ("read" in obj) {
+		const readResult = parseStringArray(
+			obj.read,
+			`${basePath}.read`,
+			"fs.read must be an array of glob strings",
+		);
+		if (readResult.ok === false) return readResult;
+		if (readResult.value !== null) out.read = readResult.value;
+	}
 
-  if ("write" in obj) {
-    const writeResult = parseStringArray(
-      obj.write,
-      `${basePath}.write`,
-      "fs.write must be an array of glob strings",
-    );
-    if (writeResult.ok === false) return writeResult;
-    if (writeResult.value !== null) out.write = writeResult.value;
-  }
+	if ("write" in obj) {
+		const writeResult = parseStringArray(
+			obj.write,
+			`${basePath}.write`,
+			"fs.write must be an array of glob strings",
+		);
+		if (writeResult.ok === false) return writeResult;
+		if (writeResult.value !== null) out.write = writeResult.value;
+	}
 
-  return { ok: true, value: hasOwnKeys(out) ? out : null };
+	return { ok: true, value: hasOwnKeys(out) ? out : null };
 }
 
 function parseNet(
-  value: unknown,
-  basePath: string,
+	value: unknown,
+	basePath: string,
 ): NetSuccess | ParseAppPermissionsError {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return { ok: false, reason: "net must be an object", path: basePath };
-  }
-  const obj = value as Record<string, unknown>;
-  const out: NetPermissions = {};
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return { ok: false, reason: "net must be an object", path: basePath };
+	}
+	const obj = value as Record<string, unknown>;
+	const out: NetPermissions = {};
 
-  if ("outbound" in obj) {
-    const outboundResult = parseStringArray(
-      obj.outbound,
-      `${basePath}.outbound`,
-      "net.outbound must be an array of host pattern strings",
-    );
-    if (outboundResult.ok === false) return outboundResult;
-    if (outboundResult.value !== null) out.outbound = outboundResult.value;
-  }
+	if ("outbound" in obj) {
+		const outboundResult = parseStringArray(
+			obj.outbound,
+			`${basePath}.outbound`,
+			"net.outbound must be an array of host pattern strings",
+		);
+		if (outboundResult.ok === false) return outboundResult;
+		if (outboundResult.value !== null) out.outbound = outboundResult.value;
+	}
 
-  return { ok: true, value: hasOwnKeys(out) ? out : null };
+	return { ok: true, value: hasOwnKeys(out) ? out : null };
 }
 
 function parseStringArray(
-  value: unknown,
-  basePath: string,
-  shapeError: string,
+	value: unknown,
+	basePath: string,
+	shapeError: string,
 ): StringArraySuccess | ParseAppPermissionsError {
-  if (value === undefined) return { ok: true, value: null };
-  if (!Array.isArray(value)) {
-    return { ok: false, reason: shapeError, path: basePath };
-  }
-  for (let i = 0; i < value.length; i++) {
-    const item = value[i];
-    if (typeof item !== "string") {
-      return { ok: false, reason: shapeError, path: `${basePath}[${i}]` };
-    }
-    if (item.length > MAX_PATTERN_LENGTH) {
-      return {
-        ok: false,
-        reason: `${basePath}[${i}] exceeds ${MAX_PATTERN_LENGTH} characters`,
-        path: `${basePath}[${i}]`,
-      };
-    }
-  }
-  return { ok: true, value: value as string[] };
+	if (value === undefined) return { ok: true, value: null };
+	if (!Array.isArray(value)) {
+		return { ok: false, reason: shapeError, path: basePath };
+	}
+	for (let i = 0; i < value.length; i++) {
+		const item = value[i];
+		if (typeof item !== "string") {
+			return { ok: false, reason: shapeError, path: `${basePath}[${i}]` };
+		}
+		if (item.length > MAX_PATTERN_LENGTH) {
+			return {
+				ok: false,
+				reason: `${basePath}[${i}] exceeds ${MAX_PATTERN_LENGTH} characters`,
+				path: `${basePath}[${i}]`,
+			};
+		}
+	}
+	return { ok: true, value: value as string[] };
 }
 
 function hasOwnKeys(obj: object): boolean {
-  for (const _ in obj) return true;
-  return false;
+	for (const _ in obj) return true;
+	return false;
 }

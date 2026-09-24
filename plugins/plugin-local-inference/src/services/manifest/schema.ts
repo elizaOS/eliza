@@ -5,7 +5,7 @@
  * contract independently of native kernel requirements.
  */
 
-import { type LocalRuntimeKernel } from "@elizaos/core/contracts/local-inference";
+import type { LocalRuntimeKernel } from "@elizaos/core/contracts/local-inference";
 import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;

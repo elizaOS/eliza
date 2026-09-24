@@ -2,10 +2,10 @@
  * Barrel re-exporting the `ElizaConfig` sub-type modules (agent-defaults,
  * agents, eliza, gateway, hooks, messages, tools) as one flat surface.
  */
-export * from "@elizaos/core/config/types.agent-defaults";
-export * from "@elizaos/core/config/types.agents";
-export * from "@elizaos/core/config/types.eliza";
-export * from "@elizaos/core/config/types.gateway";
-export * from "@elizaos/core/config/types.hooks";
-export * from "@elizaos/core/config/types.messages";
-export * from "@elizaos/core/config/types.tools";
+export * from "./types.agent-defaults.js";
+export * from "./types.agents.js";
+export * from "./types.eliza.js";
+export * from "./types.gateway.js";
+export * from "./types.hooks.js";
+export * from "./types.messages.js";
+export * from "./types.tools.js";

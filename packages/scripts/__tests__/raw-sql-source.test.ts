@@ -18,7 +18,10 @@ test("migration SQL executes from a clean source-only SQL plugin", async () => {
     const shared = join(root, "node_modules/@elizaos/plugin-sql");
     mkdirSync(join(shared, "src/database-utils"), { recursive: true });
     for (const file of ["package.json", "src/database-utils/raw-sql.ts"]) {
-      copyFileSync(join(repoRoot, "plugins/plugin-sql", file), join(shared, file));
+      copyFileSync(
+        join(repoRoot, "plugins/plugin-sql", file),
+        join(shared, file),
+      );
     }
     for (const name of ["drizzle-orm", "@electric-sql/pglite"]) {
       const target = join(root, "node_modules", name);

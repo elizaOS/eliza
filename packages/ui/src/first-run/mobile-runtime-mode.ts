@@ -4,11 +4,10 @@
  * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
  */
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/core/runtime-env";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
-import { dispatchAppEvent } from "../events";
 import { logger } from "@elizaos/ui/logger";
+import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
-import { type FirstRunRuntimeTarget } from "./runtime-target";
+import type { FirstRunRuntimeTarget } from "./runtime-target";
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 /**
  * Constants describing the bundled mobile on-device agent endpoint.
@@ -32,144 +31,160 @@ export const ANDROID_LOCAL_AGENT_LABEL = MOBILE_LOCAL_AGENT_LABEL;
 const MOBILE_LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const MOBILE_LOCAL_AGENT_IPC_PROTOCOL = "eliza-local-agent:";
 const MOBILE_LOCAL_AGENT_IPC_HOST = "ipc";
-export function isMobileLocalAgentIpcUrl(value: string | URL | null | undefined): boolean {
-    if (!value)
-        return false;
-    const trimmed = value.toString().trim();
-    if (!trimmed)
-        return false;
-    const lower = trimmed.toLowerCase();
-    if (lower === MOBILE_LOCAL_AGENT_IPC_BASE ||
-        lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
-        lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)) {
-        return true;
-    }
-    try {
-        const parsed = value instanceof URL ? value : new URL(trimmed);
-        if (parsed.protocol !== MOBILE_LOCAL_AGENT_IPC_PROTOCOL)
-            return false;
-        if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST)
-            return true;
-        // Chromium WebView treats non-special URL authorities as path data:
-        // eliza-local-agent://ipc/api/status -> pathname "//ipc/api/status".
-        const pathname = parsed.pathname || "";
-        return (pathname === `//${MOBILE_LOCAL_AGENT_IPC_HOST}` ||
-            pathname.startsWith(`//${MOBILE_LOCAL_AGENT_IPC_HOST}/`));
-    }
-    catch {
-        // error-policy:J3 unparseable value — fail closed as "not the IPC URL"
-        return false;
-    }
+export function isMobileLocalAgentIpcUrl(
+  value: string | URL | null | undefined,
+): boolean {
+  if (!value) return false;
+  const trimmed = value.toString().trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === MOBILE_LOCAL_AGENT_IPC_BASE ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)
+  ) {
+    return true;
+  }
+  try {
+    const parsed = value instanceof URL ? value : new URL(trimmed);
+    if (parsed.protocol !== MOBILE_LOCAL_AGENT_IPC_PROTOCOL) return false;
+    if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST) return true;
+    // Chromium WebView treats non-special URL authorities as path data:
+    // eliza-local-agent://ipc/api/status -> pathname "//ipc/api/status".
+    const pathname = parsed.pathname || "";
+    return (
+      pathname === `//${MOBILE_LOCAL_AGENT_IPC_HOST}` ||
+      pathname.startsWith(`//${MOBILE_LOCAL_AGENT_IPC_HOST}/`)
+    );
+  } catch {
+    // error-policy:J3 unparseable value — fail closed as "not the IPC URL"
+    return false;
+  }
 }
-export function isMobileLocalAgentIpcBase(baseUrl: string | null | undefined): boolean {
-    if (!baseUrl)
-        return false;
-    const normalized = baseUrl.replace(/\/+$/, "");
-    return (isMobileLocalAgentIpcUrl(normalized) ||
-        isMobileLocalAgentIpcUrl(`${normalized}/api/health`));
+export function isMobileLocalAgentIpcBase(
+  baseUrl: string | null | undefined,
+): boolean {
+  if (!baseUrl) return false;
+  const normalized = baseUrl.replace(/\/+$/, "");
+  return (
+    isMobileLocalAgentIpcUrl(normalized) ||
+    isMobileLocalAgentIpcUrl(`${normalized}/api/health`)
+  );
 }
-export function mobileLocalAgentPathFromUrl(value: string | URL | null | undefined): string | null {
-    if (!value)
-        return null;
-    const trimmed = value.toString().trim();
-    if (!trimmed)
-        return null;
-    const lower = trimmed.toLowerCase();
-    if (lower === MOBILE_LOCAL_AGENT_IPC_BASE)
-        return "/";
-    if (lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
-        lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)) {
-        const suffix = trimmed.slice(MOBILE_LOCAL_AGENT_IPC_BASE.length);
-        return suffix.startsWith("?") ? `/${suffix}` : suffix || "/";
+export function mobileLocalAgentPathFromUrl(
+  value: string | URL | null | undefined,
+): string | null {
+  if (!value) return null;
+  const trimmed = value.toString().trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === MOBILE_LOCAL_AGENT_IPC_BASE) return "/";
+  if (
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)
+  ) {
+    const suffix = trimmed.slice(MOBILE_LOCAL_AGENT_IPC_BASE.length);
+    return suffix.startsWith("?") ? `/${suffix}` : suffix || "/";
+  }
+  let parsed: URL;
+  try {
+    parsed = value instanceof URL ? value : new URL(trimmed);
+  } catch {
+    // error-policy:J3 unparseable value — no IPC path can be derived
+    return null;
+  }
+  if (parsed.protocol === MOBILE_LOCAL_AGENT_IPC_PROTOCOL) {
+    if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST) {
+      return `${parsed.pathname || "/"}${parsed.search}`;
     }
-    let parsed: URL;
-    try {
-        parsed = value instanceof URL ? value : new URL(trimmed);
+    const pathname = parsed.pathname || "";
+    const ipcPathPrefix = `//${MOBILE_LOCAL_AGENT_IPC_HOST}`;
+    if (pathname === ipcPathPrefix) {
+      return parsed.search ? `/${parsed.search}` : "/";
     }
-    catch {
-        // error-policy:J3 unparseable value — no IPC path can be derived
-        return null;
-    }
-    if (parsed.protocol === MOBILE_LOCAL_AGENT_IPC_PROTOCOL) {
-        if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST) {
-            return `${parsed.pathname || "/"}${parsed.search}`;
-        }
-        const pathname = parsed.pathname || "";
-        const ipcPathPrefix = `//${MOBILE_LOCAL_AGENT_IPC_HOST}`;
-        if (pathname === ipcPathPrefix) {
-            return parsed.search ? `/${parsed.search}` : "/";
-        }
-        if (pathname.startsWith(`${ipcPathPrefix}/`)) {
-            return `${pathname.slice(ipcPathPrefix.length)}${parsed.search}`;
-        }
-        return null;
-    }
-    if (parsed.protocol === "http:" &&
-        parsed.port === MOBILE_LOCAL_AGENT_PORT &&
-        MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname)) {
-        return `${parsed.pathname || "/"}${parsed.search}`;
+    if (pathname.startsWith(`${ipcPathPrefix}/`)) {
+      return `${pathname.slice(ipcPathPrefix.length)}${parsed.search}`;
     }
     return null;
+  }
+  if (
+    parsed.protocol === "http:" &&
+    parsed.port === MOBILE_LOCAL_AGENT_PORT &&
+    MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  ) {
+    return `${parsed.pathname || "/"}${parsed.search}`;
+  }
+  return null;
 }
-export function isMobileLocalAgentUrl(value: string | URL | null | undefined): boolean {
-    if (!value)
-        return false;
-    if (isMobileLocalAgentIpcUrl(value))
-        return true;
-    let parsed: URL;
-    try {
-        parsed = value instanceof URL ? value : new URL(value.toString());
-    }
-    catch {
-        // error-policy:J3 unparseable value — fail closed as "not the local agent"
-        return false;
-    }
-    return (parsed.protocol === "http:" &&
-        parsed.port === MOBILE_LOCAL_AGENT_PORT &&
-        MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname));
+export function isMobileLocalAgentUrl(
+  value: string | URL | null | undefined,
+): boolean {
+  if (!value) return false;
+  if (isMobileLocalAgentIpcUrl(value)) return true;
+  let parsed: URL;
+  try {
+    parsed = value instanceof URL ? value : new URL(value.toString());
+  } catch {
+    // error-policy:J3 unparseable value — fail closed as "not the local agent"
+    return false;
+  }
+  return (
+    parsed.protocol === "http:" &&
+    parsed.port === MOBILE_LOCAL_AGENT_PORT &&
+    MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  );
 }
-export type MobileRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid" | "local" | "tunnel-to-mobile";
-export function normalizeMobileRuntimeMode(value: string | null | undefined): MobileRuntimeMode | null {
-    const normalized = value?.trim();
-    switch (normalized) {
-        case "remote-mac":
-        case "cloud":
-        case "cloud-hybrid":
-        case "local":
-        case "tunnel-to-mobile":
-            return normalized;
-        default:
-            return null;
-    }
+export type MobileRuntimeMode =
+  | "remote-mac"
+  | "cloud"
+  | "cloud-hybrid"
+  | "local"
+  | "tunnel-to-mobile";
+export function normalizeMobileRuntimeMode(
+  value: string | null | undefined,
+): MobileRuntimeMode | null {
+  const normalized = value?.trim();
+  switch (normalized) {
+    case "remote-mac":
+    case "cloud":
+    case "cloud-hybrid":
+    case "local":
+    case "tunnel-to-mobile":
+      return normalized;
+    default:
+      return null;
+  }
 }
-export function mobileRuntimeModeForServerTarget(target: FirstRunRuntimeTarget): MobileRuntimeMode | null {
-    switch (target) {
-        case "remote":
-            return "remote-mac";
-        case "elizacloud":
-            return "cloud";
-        case "elizacloud-hybrid":
-            return "cloud-hybrid";
-        case "local":
-            return "local";
-        default:
-            return null;
-    }
+export function mobileRuntimeModeForServerTarget(
+  target: FirstRunRuntimeTarget,
+): MobileRuntimeMode | null {
+  switch (target) {
+    case "remote":
+      return "remote-mac";
+    case "elizacloud":
+      return "cloud";
+    case "elizacloud-hybrid":
+      return "cloud-hybrid";
+    case "local":
+      return "local";
+    default:
+      return null;
+  }
 }
 export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
-    if (typeof window === "undefined")
-        return null;
-    try {
-        return normalizeMobileRuntimeMode(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY));
-    }
-    catch {
-        // error-policy:J3 storage blocked — treat as "no persisted mode"
-        return null;
-    }
+  if (typeof window === "undefined") return null;
+  try {
+    return normalizeMobileRuntimeMode(
+      window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
+    );
+  } catch {
+    // error-policy:J3 storage blocked — treat as "no persisted mode"
+    return null;
+  }
 }
 export function isElizaCloudRuntimeLocked(): boolean {
-    const mode = readPersistedMobileRuntimeMode();
-    return mode === "cloud" || mode === "cloud-hybrid";
+  const mode = readPersistedMobileRuntimeMode();
+  return mode === "cloud" || mode === "cloud-hybrid";
 }
 /**
  * The mobile runtime modes that commit to the bundled on-device agent process:
@@ -182,33 +197,37 @@ export function isElizaCloudRuntimeLocked(): boolean {
  * bundled agent. Single source of that truth for
  * `reconcileMobileRestoredActiveServer` and the existing-install probe gate.
  */
-export function isCommittedOnDeviceMobileRuntimeMode(mode: MobileRuntimeMode | null): boolean {
-    return mode === "local" || mode === "cloud-hybrid";
+export function isCommittedOnDeviceMobileRuntimeMode(
+  mode: MobileRuntimeMode | null,
+): boolean {
+  return mode === "local" || mode === "cloud-hybrid";
 }
-async function persistNativeMobileRuntimeMode(mode: MobileRuntimeMode | null): Promise<void> {
-    try {
-        const [{ Capacitor }, { Preferences }] = await Promise.all([
-            import("@capacitor/core"),
-            import("@capacitor/preferences"),
-        ]);
-        if (!Capacitor.isNativePlatform())
-            return;
-        if (mode) {
-            await Preferences.set({
-                key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
-                value: mode,
-            });
-        }
-        else {
-            await Preferences.remove({ key: MOBILE_RUNTIME_MODE_STORAGE_KEY });
-        }
+async function persistNativeMobileRuntimeMode(
+  mode: MobileRuntimeMode | null,
+): Promise<void> {
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    if (mode) {
+      await Preferences.set({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: mode,
+      });
+    } else {
+      await Preferences.remove({ key: MOBILE_RUNTIME_MODE_STORAGE_KEY });
     }
-    catch (err) {
-        // error-policy:J4 Capacitor Preferences is absent in web/unit-test shells
-        // (expected). On native, a lost write means the runtime mode silently
-        // diverges across restarts (#11030 boot-hang class) — log it.
-        logger.warn({ err, mode }, "[mobile-runtime-mode] native runtime-mode persist failed");
-    }
+  } catch (err) {
+    // error-policy:J4 Capacitor Preferences is absent in web/unit-test shells
+    // (expected). On native, a lost write means the runtime mode silently
+    // diverges across restarts (#11030 boot-hang class) — log it.
+    logger.warn(
+      { err, mode },
+      "[mobile-runtime-mode] native runtime-mode persist failed",
+    );
+  }
 }
 /**
  * Persist a mobile runtime mode directly (or clear it with `null`) to BOTH
@@ -218,27 +237,30 @@ async function persistNativeMobileRuntimeMode(mode: MobileRuntimeMode | null): P
  * a first-run server target to its mode.
  */
 export function persistMobileRuntimeMode(mode: MobileRuntimeMode | null): void {
-    if (typeof window !== "undefined") {
-        try {
-            if (mode) {
-                shellLocalStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
-            }
-            else {
-                shellLocalStorage.removeItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
-            }
-        }
-        catch (err) {
-            // error-policy:J4 localStorage can be blocked in embedded shells; the
-            // native Preferences write below is the durable copy there. Logged so a
-            // lost mode write is not silent.
-            logger.warn({ err, mode }, "[mobile-runtime-mode] localStorage runtime-mode persist failed");
-        }
+  if (typeof window !== "undefined") {
+    try {
+      if (mode) {
+        shellLocalStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
+      } else {
+        shellLocalStorage.removeItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+      }
+    } catch (err) {
+      // error-policy:J4 localStorage can be blocked in embedded shells; the
+      // native Preferences write below is the durable copy there. Logged so a
+      // lost mode write is not silent.
+      logger.warn(
+        { err, mode },
+        "[mobile-runtime-mode] localStorage runtime-mode persist failed",
+      );
     }
-    void persistNativeMobileRuntimeMode(mode);
-    if (typeof document !== "undefined") {
-        dispatchAppEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, { mode });
-    }
+  }
+  void persistNativeMobileRuntimeMode(mode);
+  if (typeof document !== "undefined") {
+    dispatchAppEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, { mode });
+  }
 }
-export function persistMobileRuntimeModeForServerTarget(target: FirstRunRuntimeTarget): void {
-    persistMobileRuntimeMode(mobileRuntimeModeForServerTarget(target));
+export function persistMobileRuntimeModeForServerTarget(
+  target: FirstRunRuntimeTarget,
+): void {
+  persistMobileRuntimeMode(mobileRuntimeModeForServerTarget(target));
 }

@@ -5,7 +5,6 @@ import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
-const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 
 export default defineConfig({

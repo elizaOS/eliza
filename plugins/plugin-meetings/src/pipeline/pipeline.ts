@@ -16,8 +16,13 @@
 
 import type { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
-import { inferSpeakerName, type SpeakerNameAttribution, type SpeakerNameEvidence, toSpeakerNameAttribution } from "@elizaos/core/speaker-name-inference";
 import { type MeetingParticipant } from "@elizaos/core/meetings";
+import {
+  inferSpeakerName,
+  type SpeakerNameAttribution,
+  type SpeakerNameEvidence,
+  toSpeakerNameAttribution,
+} from "@elizaos/core/speaker-name-inference";
 import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import {
   isMeetingInsufficientCreditsError,

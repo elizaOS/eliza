@@ -7,6 +7,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,
@@ -16,7 +17,6 @@ import {
   getScheduledTaskRunner,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";

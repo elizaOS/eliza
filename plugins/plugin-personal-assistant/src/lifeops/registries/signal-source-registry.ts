@@ -6,7 +6,7 @@
  * a `telemetryMapper` (persisted signal → canonical `LifeOpsTelemetryPayload`)
  * and a `reliability` weight resolver. Before this registry those two halves
  * lived in three coordinated places — the closed source union in
- * `@elizaos/shared`, the closed mapper switch in PA's `telemetry-mapping.ts`,
+ * `@elizaos/core`, the closed mapper switch in PA's `telemetry-mapping.ts`,
  * and the closed reliability table in `@elizaos/plugin-health` — so adding one
  * source (browser activity, view usage, reaction activity, …) meant edits
  * across three packages. A registration collapses that to one call.
@@ -22,10 +22,12 @@
  * Per-runtime, `WeakMap`-keyed like `FamilyRegistry` so lifetime tracks the
  * runtime and nothing leaks across tests.
  */
-
-import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsActivitySignal, type LifeOpsActivitySignalSourceName, type LifeOpsTelemetryPayload } from "@elizaos/core/contracts/personal-assistant";
-
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type LifeOpsActivitySignal,
+  type LifeOpsActivitySignalSourceName,
+  type LifeOpsTelemetryPayload,
+} from "@elizaos/core/contracts/personal-assistant";
 export interface SignalSourceContribution {
   /** Open-string source identifier (built-in or contributed). */
   source: LifeOpsActivitySignalSourceName;
@@ -46,7 +48,6 @@ export interface SignalSourceContribution {
   /** Confidence weight in [0, 1] for a signal instance from this source. */
   reliability: (signal: LifeOpsActivitySignal) => number;
 }
-
 export interface SignalSourceRegistry {
   register(contribution: SignalSourceContribution): void;
   get(source: LifeOpsActivitySignalSourceName): SignalSourceContribution | null;
@@ -55,13 +56,11 @@ export interface SignalSourceRegistry {
   /** Every registered source name — the ingestion allow-list. */
   sources(): LifeOpsActivitySignalSourceName[];
 }
-
 class InMemorySignalSourceRegistry implements SignalSourceRegistry {
   private readonly bySource = new Map<
     LifeOpsActivitySignalSourceName,
     SignalSourceContribution
   >();
-
   register(contribution: SignalSourceContribution): void {
     if (!contribution.source) {
       throw new Error("SignalSourceRegistry.register: source is required");
@@ -73,51 +72,41 @@ class InMemorySignalSourceRegistry implements SignalSourceRegistry {
     }
     this.bySource.set(contribution.source, contribution);
   }
-
   get(
     source: LifeOpsActivitySignalSourceName,
   ): SignalSourceContribution | null {
     return this.bySource.get(source) ?? null;
   }
-
   has(source: LifeOpsActivitySignalSourceName): boolean {
     return this.bySource.has(source);
   }
-
   list(filter?: { contributor?: string }): SignalSourceContribution[] {
     const all = Array.from(this.bySource.values());
     if (!filter?.contributor) return all;
     return all.filter((c) => c.contributor === filter.contributor);
   }
-
   sources(): LifeOpsActivitySignalSourceName[] {
     return Array.from(this.bySource.keys());
   }
 }
-
 export function createSignalSourceRegistry(): SignalSourceRegistry {
   return new InMemorySignalSourceRegistry();
 }
-
 const registries = new WeakMap<IAgentRuntime, SignalSourceRegistry>();
-
 export function registerSignalSourceRegistry(
   runtime: IAgentRuntime,
   registry: SignalSourceRegistry,
 ): void {
   registries.set(runtime, registry);
 }
-
 export function getSignalSourceRegistry(
   runtime: IAgentRuntime,
 ): SignalSourceRegistry | null {
   return registries.get(runtime) ?? null;
 }
-
 export function unregisterSignalSourceRegistry(runtime: IAgentRuntime): void {
   registries.delete(runtime);
 }
-
 export function __resetSignalSourceRegistryForTests(
   runtime: IAgentRuntime,
 ): void {

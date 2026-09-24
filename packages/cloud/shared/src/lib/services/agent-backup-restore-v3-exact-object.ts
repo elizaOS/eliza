@@ -13,9 +13,23 @@
 import { Buffer } from "node:buffer";
 import { createDecipheriv, createHash, createHmac, type DecipherGCM } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { AGENT_BACKUP_CHUNK_ENVELOPE_V1, AGENT_BACKUP_MANIFEST_V2_LIMITS, canonicalizeAgentBackupChunkAad } from "@elizaos/core/contracts/agent-backup-manifest";
-import { AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION, type AgentBackupRestoreV3ExactReadReceiptProof, type AgentBackupRestoreV3OperationControl, type AgentBackupRestoreV3SourceAuthorityObject, AgentBackupRestoreV3SourceAuthorityObjectSchema, type AgentBackupRestoreV3SourceObjectReceipt, AgentBackupRestoreV3SourceObjectReceiptSchema, computeAgentBackupRestoreV3ExactReadReceiptSha256, parseAgentBackupRestoreV3ExactReadReceiptProof } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+import {
+  AGENT_BACKUP_CHUNK_ENVELOPE_V1,
+  AGENT_BACKUP_MANIFEST_V2_LIMITS,
+  canonicalizeAgentBackupChunkAad,
+} from "@elizaos/core/contracts/agent-backup-manifest";
 import { type AgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
+import {
+  AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
+  type AgentBackupRestoreV3ExactReadReceiptProof,
+  type AgentBackupRestoreV3OperationControl,
+  type AgentBackupRestoreV3SourceAuthorityObject,
+  AgentBackupRestoreV3SourceAuthorityObjectSchema,
+  type AgentBackupRestoreV3SourceObjectReceipt,
+  AgentBackupRestoreV3SourceObjectReceiptSchema,
+  computeAgentBackupRestoreV3ExactReadReceiptSha256,
+  parseAgentBackupRestoreV3ExactReadReceiptProof,
+} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import type {
   ExactObjectRead,
   ExactObjectReadReceipt,

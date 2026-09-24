@@ -8,5 +8,5 @@
  * a thin re-export shim for backwards compatibility.
  */
 
-export * from "@elizaos/plugin-personal-assistant/email-classification/email-classifier";
 export * from "@elizaos/core/text/untrusted-email-content";
+export * from "./email-classifier.js";

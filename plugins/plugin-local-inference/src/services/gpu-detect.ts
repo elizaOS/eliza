@@ -15,7 +15,12 @@
  */
 
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
-import { GPU_PROFILES, type GpuProfile, type GpuProfileId, matchGpuProfile } from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
+import {
+	GPU_PROFILES,
+	type GpuProfile,
+	type GpuProfileId,
+	matchGpuProfile,
+} from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
 
 export interface DetectedGpu {
 	/** Raw GPU name from `nvidia-smi --query-gpu=name`. */

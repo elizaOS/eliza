@@ -87,8 +87,7 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/app": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "optionalDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

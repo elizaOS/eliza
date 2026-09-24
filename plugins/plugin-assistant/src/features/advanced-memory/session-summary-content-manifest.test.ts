@@ -4,9 +4,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { createHash, stringToUuid } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 /** Exercises immutable session-summary rollover, CAS, and fail-closed traversal. */
 import { describe, expect, it } from "vitest";
-import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import {
   loadSessionSummaryContentLedger,
   mergeSessionSummaryMetadata,

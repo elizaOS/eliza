@@ -4,7 +4,14 @@
  * fields, failing with a `CalendarServiceError` (carrying an HTTP status) on
  * invalid input.
  */
-import { LIFEOPS_CONNECTOR_MODES, LIFEOPS_CONNECTOR_SIDES, LIFEOPS_GOOGLE_CAPABILITIES, type LifeOpsConnectorMode, type LifeOpsConnectorSide, type LifeOpsGoogleCapability } from "@elizaos/core/contracts/personal-assistant";
+import {
+  LIFEOPS_CONNECTOR_MODES,
+  LIFEOPS_CONNECTOR_SIDES,
+  LIFEOPS_GOOGLE_CAPABILITIES,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleCapability,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
   isValidTimeZone,

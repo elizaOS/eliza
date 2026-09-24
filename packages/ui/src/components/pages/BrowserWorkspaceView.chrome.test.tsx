@@ -16,38 +16,44 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
+import { ApiError } from "../../api/client-types-core";
+import { shellHistory } from "../../surface-realm-channel";
+import {
+  BrowserWorkspaceView,
+  normalizeBrowserWorkspaceInputUrl,
+} from "./BrowserWorkspaceView";
+import {
+  BROWSER_WALLET_READY_TYPE,
+  BROWSER_WALLET_REQUEST_TYPE,
+} from "./browser-workspace-wallet";
 
 const walletStateHarness = vi.hoisted(() => ({
   connected: false,
   pendingApprovals: 0,
-  plugins: [] as Array<{ name: string }>,
+  plugins: [] as Array<{
+    name: string;
+  }>,
 }));
-
 const apiBaseHarness = vi.hoisted(() => ({
   base: "https://remote-agent.example/api-root",
 }));
-
 const authorityState = vi.hoisted(() => ({
   value: "profile-a\u0000https://same-agent.test",
 }));
-
 const openExternalUrlMock = vi.hoisted(() => vi.fn());
-
 // This standalone page fixture has no connected runtime view installation.
 // Catalog binding and reporting are exercised by the shell/catalog integration tests.
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
-
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));
-
-vi.mock("@elizaos/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/shared")>()),
+vi.mock("@elizaos/ui/utils/asset-url", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
-
 vi.mock("../../utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../utils")>();
   return {
@@ -55,7 +61,6 @@ vi.mock("../../utils", async (importOriginal) => {
     openExternalUrl: openExternalUrlMock,
   };
 });
-
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
   const state = {
@@ -73,7 +78,11 @@ vi.mock("../../state", async (importOriginal) => {
     setActionNotice: vi.fn(),
     t: (
       _key: string,
-      options?: { defaultValue?: string } | Record<string, unknown>,
+      options?:
+        | {
+            defaultValue?: string;
+          }
+        | Record<string, unknown>,
     ) =>
       typeof options === "object" &&
       options !== null &&
@@ -93,7 +102,6 @@ vi.mock("../../state", async (importOriginal) => {
       selector(state),
   };
 });
-
 vi.mock("../../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api")>();
   return {
@@ -118,19 +126,6 @@ vi.mock("../../api", async (importOriginal) => {
     },
   };
 });
-
-import { client } from "../../api";
-import { ApiError } from "../../api/client-types-core";
-import { shellHistory } from "../../surface-realm-channel";
-import {
-  BrowserWorkspaceView,
-  normalizeBrowserWorkspaceInputUrl,
-} from "./BrowserWorkspaceView";
-import {
-  BROWSER_WALLET_READY_TYPE,
-  BROWSER_WALLET_REQUEST_TYPE,
-} from "./browser-workspace-wallet";
-
 const GOOGLE_WORKSPACE = {
   mode: "web" as const,
   tabs: [
@@ -146,7 +141,6 @@ const GOOGLE_WORKSPACE = {
     },
   ],
 };
-
 const APPLE_WORKSPACE = {
   mode: "web" as const,
   tabs: [
@@ -158,7 +152,6 @@ const APPLE_WORKSPACE = {
     },
   ],
 };
-
 const EXAMPLE_WORKSPACE = {
   mode: "web" as const,
   tabs: [
@@ -169,7 +162,6 @@ const EXAMPLE_WORKSPACE = {
     },
   ],
 };
-
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -183,7 +175,6 @@ function deferred<T>(): {
   });
   return { promise, resolve, reject };
 }
-
 beforeEach(() => {
   authorityState.value = "profile-a\u0000https://same-agent.test";
   walletStateHarness.connected = false;
@@ -208,22 +199,18 @@ beforeEach(() => {
   openExternalUrlMock.mockReset();
   openExternalUrlMock.mockResolvedValue(undefined);
 });
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
-
 describe("Browser workspace URL normalization", () => {
   const translate = (key: string, vars?: Record<string, unknown>): string =>
     String(vars?.defaultValue ?? key);
-
   it("resolves local app paths against the active remote agent API base", () => {
     expect(
       normalizeBrowserWorkspaceInputUrl("/api/apps/local/demo/", translate),
     ).toBe("https://remote-agent.example/api-root/api/apps/local/demo/");
   });
-
   it("preserves external http(s) and adds https to a schemeless host", () => {
     expect(
       normalizeBrowserWorkspaceInputUrl("https://example.com/a", translate),
@@ -232,7 +219,6 @@ describe("Browser workspace URL normalization", () => {
       "https://example.com/a",
     );
   });
-
   it.each([
     "javascript:alert(1)",
     "data:text/html,no",
@@ -243,7 +229,6 @@ describe("Browser workspace URL normalization", () => {
     expect(() => normalizeBrowserWorkspaceInputUrl(url, translate)).toThrow();
   });
 });
-
 describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () => {
   it("renders a main landmark with the view testid and NO shared ViewHeader row", async () => {
     render(<BrowserWorkspaceView />);
@@ -257,11 +242,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     // must not render (the shell no longer stacks a host top bar either).
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
-
   it("keeps bridge recovery reachable without adding idle administration UI", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
-
     expect(await screen.findByText("No page open")).not.toBeNull();
     expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
@@ -269,19 +252,16 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
   });
-
   it("keeps bridge recovery reachable while a browser tab is open", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     render(<BrowserWorkspaceView />);
-
     expect(await screen.findByTitle("Google")).not.toBeNull();
     expect(
       await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
     expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
   });
-
   it("keeps one flat navigation rail above the web surface", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
@@ -297,7 +277,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(toolbar.contains(back)).toBe(true);
     expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
-
   it("uses browser history without navigating the shell home", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     vi.mocked(client.fetch).mockResolvedValue({
@@ -325,11 +304,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       pushState.mockRestore();
     }
   });
-
   it("reserves the resting chat footprint without reapplying bottom insets", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
-
     const root = screen.getByTestId("browser-workspace-view");
     const surface = screen.getByTestId("browser-workspace-surface-panel");
     expect(root.getAttribute("data-chat-clearance-aware")).toBe("true");
@@ -339,7 +316,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(root.className).not.toContain("--android-gesture-inset-bottom");
     expect(root.contains(surface)).toBe(true);
   });
-
   it("exposes the folded mobile actions through a named menu and opens a new tab", async () => {
     const user = userEvent.setup({ delay: null });
     vi.mocked(client.getBrowserWorkspace)
@@ -349,18 +325,14 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
       tab: GOOGLE_WORKSPACE.tabs[0],
     });
-
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
-
     const trigger = screen.getByRole("button", {
       name: "More browser actions",
     });
     expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-
     await user.click(trigger);
-
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const newTab = await screen.findByRole("menuitem", { name: "New tab" });
     expect(newTab.getAttribute("aria-disabled")).not.toBe("true");
@@ -375,9 +347,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
           .getAttribute("aria-disabled"),
       ).toBe("true");
     }
-
     await user.click(newTab);
-
     await waitFor(() =>
       expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -390,7 +360,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       expect(trigger.getAttribute("aria-expanded")).toBe("false"),
     );
   });
-
   it("dispatches refresh, external-open, and close-all from the mobile action menu", async () => {
     const user = userEvent.setup({ delay: null });
     const cloudWorkspace = { ...APPLE_WORKSPACE, mode: "cloud" as const };
@@ -404,12 +373,10 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
       closed: true,
     });
-
     render(<BrowserWorkspaceView />);
     await waitFor(() =>
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1),
     );
-
     const trigger = screen.getByRole("button", {
       name: "More browser actions",
     });
@@ -422,7 +389,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         expect(trigger.getAttribute("aria-expanded")).toBe("false"),
       );
     };
-
     await selectAction("Refresh");
     await waitFor(() =>
       expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
@@ -430,60 +396,49 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         "https://www.apple.com/",
       ),
     );
-
     await selectAction("Open external");
     await waitFor(() =>
       expect(openExternalUrlMock).toHaveBeenCalledWith(
         "https://www.apple.com/",
       ),
     );
-
     await selectAction("Close all tabs");
     await waitFor(() =>
       expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
     );
     expect(await screen.findByText("No page open")).not.toBeNull();
   });
-
   it("returns focus to the folded tab control after the switcher closes", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
-
     const trigger = screen.getByTestId("browser-workspace-tab-fold-control");
     expect(trigger.className).toContain("min-w-11");
     trigger.focus();
     fireEvent.click(trigger);
-
     const dialog = await screen.findByTestId("browser-workspace-tab-switcher");
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
-
   it("returns autofocus that arrives after iframe load to the control that opened Browser", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     const composer = document.createElement("textarea");
     document.body.append(composer);
     composer.focus();
-
     try {
       render(<BrowserWorkspaceView />);
       const iframe = await screen.findByTitle("Google");
       fireEvent.load(iframe);
       iframe.focus();
       await waitFor(() => expect(document.activeElement).toBe(composer));
-
       // Hover is common while the user types in chat; it must not turn later
       // page autofocus into an apparent intentional frame interaction.
       fireEvent.pointerEnter(iframe);
       iframe.focus();
       await waitFor(() => expect(document.activeElement).toBe(composer));
-
       // A real pointer-down does transfer intent to the embedded page.
       fireEvent.pointerDown(iframe);
       iframe.focus();
       expect(document.activeElement).toBe(iframe);
-
       // A click inside an already-loaded cross-origin child does not bubble to
       // React. The parent observes the synchronous :active state at blur.
       composer.focus();
@@ -503,23 +458,19 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       composer.remove();
     }
   });
-
   it("uses the Browser surface as a neutral focus target when no prior control exists", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     (document.activeElement as HTMLElement | null)?.blur();
-
     render(<BrowserWorkspaceView />);
     const iframe = await screen.findByTitle("Google");
     fireEvent.load(iframe);
     iframe.focus();
-
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByTestId("browser-workspace-view"),
       ),
     );
   });
-
   it("captures a focused address control before busy state disables it", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
     vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
@@ -528,7 +479,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         url: "https://example.com/",
       },
     });
-
     render(<BrowserWorkspaceView />);
     const iframe = await screen.findByTitle("Apple");
     fireEvent.pointerDown(iframe);
@@ -547,7 +497,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       expect((address as HTMLInputElement).value).toBe("https://example.com/"),
     );
     fireEvent.keyDown(address, { key: "Enter" });
-
     await waitFor(() =>
       expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
         "tab-apple",
@@ -558,26 +507,22 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     // focus-restore effect past waitFor's 1s default; the contract is the
     // transition itself, so give it a bounded but generous budget.
     await waitFor(() => expect(address.hasAttribute("disabled")).toBe(false), {
-      timeout: 10_000,
+      timeout: 10000,
     });
     fireEvent.load(iframe);
     iframe.focus();
-
     await waitFor(() => expect(document.activeElement).toBe(address), {
-      timeout: 10_000,
+      timeout: 10000,
     });
   });
-
   it("opens a fresh Google home tab instead of cloning the active address", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
     vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
       tab: GOOGLE_WORKSPACE.tabs[0],
     });
-
     render(<BrowserWorkspaceView />);
     expect(await screen.findByTitle("Apple")).not.toBeNull();
     fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
-
     await waitFor(() =>
       expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -587,7 +532,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       ),
     );
   });
-
   it("keeps transient background refresh timeouts off a healthy page and retries single-flight", async () => {
     vi.useFakeTimers();
     const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
@@ -596,7 +540,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       .mockResolvedValueOnce(GOOGLE_WORKSPACE)
       .mockImplementationOnce(() => pendingRefresh.promise)
       .mockResolvedValueOnce(APPLE_WORKSPACE);
-
     try {
       render(<BrowserWorkspaceView />);
       await act(async () => {
@@ -604,26 +547,22 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         await Promise.resolve();
       });
       expect(screen.getByTitle("Google")).not.toBeNull();
-
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
+        await vi.advanceTimersByTimeAsync(2500);
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
-
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(7_500);
+        await vi.advanceTimersByTimeAsync(7500);
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
-
       await act(async () => {
         pendingRefresh.reject(new Error("Request timed out after 10000ms"));
         await Promise.resolve();
       });
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByTitle("Google")).not.toBeNull();
-
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
+        await vi.advanceTimersByTimeAsync(2500);
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
       expect(screen.getByTitle("Apple")).not.toBeNull();
@@ -631,7 +570,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       vi.useRealTimers();
     }
   });
-
   it("keeps an explicit action refresh failure observable without leaking backend copy", async () => {
     vi.mocked(client.getBrowserWorkspace)
       .mockResolvedValueOnce(APPLE_WORKSPACE)
@@ -639,24 +577,20 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
       tab: GOOGLE_WORKSPACE.tabs[0],
     });
-
     render(<BrowserWorkspaceView />);
     expect(await screen.findByTitle("Apple")).not.toBeNull();
     fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
-
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(
       "Browser couldn’t connect. Try again in a moment.",
     );
     expect(alert.textContent).not.toContain("Explicit refresh failed");
   });
-
   it("keeps initial unavailability distinct from empty and exposes one recovery path", async () => {
     vi.mocked(client.getBrowserWorkspace)
       .mockReset()
       .mockRejectedValueOnce(new Error("Initial workspace load failed"))
       .mockResolvedValueOnce({ mode: "web", tabs: [] });
-
     render(<BrowserWorkspaceView />);
     const unavailable = await screen.findByText("Browser view unavailable");
     expect(screen.getByRole("alert").contains(unavailable)).toBe(true);
@@ -667,14 +601,11 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       "Initial workspace load failed",
     );
     expect(screen.queryByText("No page open")).toBeNull();
-
     expect(screen.queryByTestId("browser-workspace-nav-new-tab")).toBeNull();
     expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
     expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
-
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-
     expect(await screen.findByText("No page open")).not.toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
@@ -687,11 +618,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const go = screen.getByRole("button", { name: "Go" }) as HTMLButtonElement;
     expect(newTab.disabled).toBe(false);
     expect(address.disabled).toBe(false);
-
     fireEvent.change(address, { target: { value: "example.com" } });
     expect(go.disabled).toBe(false);
   });
-
   it("does not offer Retry for the typed non-retryable Shared capability boundary", async () => {
     vi.mocked(client.getBrowserWorkspace).mockRejectedValue(
       new ApiError({
@@ -708,9 +637,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         },
       }),
     );
-
     render(<BrowserWorkspaceView />);
-
     expect(await screen.findByText("Browser view unavailable")).not.toBeNull();
     expect(
       screen.getByText("In-app browsing isn’t available with this connection."),
@@ -721,13 +648,11 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("browser-workspace-nav-new-tab")).toBeNull();
     expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
   });
-
   it("keeps the StrictMode initial load single-flight and loading until it settles", async () => {
     const pendingInitialLoad = deferred<typeof APPLE_WORKSPACE>();
     vi.mocked(client.getBrowserWorkspace)
       .mockReset()
       .mockImplementation(() => pendingInitialLoad.promise);
-
     render(<BrowserWorkspaceView />, { reactStrictMode: true });
     await act(async () => {
       await Promise.resolve();
@@ -737,7 +662,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.getByText("Opening Browser")).not.toBeNull();
     expect(screen.queryByText("No page open")).toBeNull();
     expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
-
     await act(async () => {
       pendingInitialLoad.resolve(APPLE_WORKSPACE);
       await Promise.resolve();
@@ -748,7 +672,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       screen.getByTestId("browser-workspace-address-input"),
     ).not.toBeNull();
   });
-
   it("clears tabs immediately and ignores agent-A polling after a same-base profile switch", async () => {
     vi.useFakeTimers();
     const staleProfileRefresh = deferred<typeof APPLE_WORKSPACE>();
@@ -758,7 +681,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       .mockResolvedValueOnce(APPLE_WORKSPACE)
       .mockReturnValueOnce(staleProfileRefresh.promise)
       .mockReturnValueOnce(activeProfileLoad.promise);
-
     try {
       const view = render(<BrowserWorkspaceView />);
       await act(async () => {
@@ -766,21 +688,18 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         await Promise.resolve();
       });
       expect(screen.getByTitle("Apple")).not.toBeNull();
-
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
+        await vi.advanceTimersByTimeAsync(2500);
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
       const staleSignal = vi.mocked(client.getBrowserWorkspace).mock
         .calls[1]?.[0]?.signal as AbortSignal;
       expect(staleSignal.aborted).toBe(false);
-
       authorityState.value = "profile-b\u0000https://same-agent.test";
       view.rerender(<BrowserWorkspaceView />);
       await act(async () => {
         await Promise.resolve();
       });
-
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
       expect(staleSignal.aborted).toBe(true);
       const activeSignal = vi.mocked(client.getBrowserWorkspace).mock
@@ -788,14 +707,12 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       expect(activeSignal.aborted).toBe(false);
       expect(screen.queryByTitle("Apple")).toBeNull();
       expect(screen.getByText("Opening Browser")).not.toBeNull();
-
       await act(async () => {
         staleProfileRefresh.resolve(APPLE_WORKSPACE);
         await staleProfileRefresh.promise;
       });
       expect(screen.queryByTitle("Apple")).toBeNull();
       expect(screen.getByText("Opening Browser")).not.toBeNull();
-
       await act(async () => {
         activeProfileLoad.resolve(GOOGLE_WORKSPACE);
         await activeProfileLoad.promise;
@@ -806,7 +723,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       vi.useRealTimers();
     }
   });
-
   it("aborts cloud-tab snapshot polling when the Browser lifecycle unmounts", async () => {
     const cloudWorkspace = {
       ...APPLE_WORKSPACE,
@@ -814,9 +730,11 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     };
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(cloudWorkspace);
     vi.mocked(client.snapshotBrowserWorkspaceTab).mockImplementation(
-      () => new Promise<{ data: string }>(() => undefined),
+      () =>
+        new Promise<{
+          data: string;
+        }>(() => undefined),
     );
-
     const view = render(<BrowserWorkspaceView />);
     await waitFor(() =>
       expect(client.snapshotBrowserWorkspaceTab).toHaveBeenCalledTimes(1),
@@ -824,14 +742,12 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const signal = vi.mocked(client.snapshotBrowserWorkspaceTab).mock
       .calls[0]?.[1]?.signal as AbortSignal;
     expect(signal.aborted).toBe(false);
-
     view.unmount();
     await act(async () => {
       await Promise.resolve();
     });
     expect(signal.aborted).toBe(true);
   });
-
   it("does not let a stale background response overwrite a newer navigation", async () => {
     vi.useFakeTimers();
     const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
@@ -843,7 +759,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
       tab: EXAMPLE_WORKSPACE.tabs[0],
     });
-
     try {
       render(<BrowserWorkspaceView />);
       await act(async () => {
@@ -851,12 +766,10 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         await Promise.resolve();
       });
       expect(screen.getByTitle("Apple")).not.toBeNull();
-
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
+        await vi.advanceTimersByTimeAsync(2500);
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
-
       const address = screen.getByTestId("browser-workspace-address-input");
       await act(async () => {
         fireEvent.change(address, {
@@ -868,7 +781,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       });
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
       expect(screen.getByTitle("Example")).not.toBeNull();
-
       await act(async () => {
         pendingRefresh.resolve(GOOGLE_WORKSPACE);
         await Promise.resolve();
@@ -879,10 +791,12 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       vi.useRealTimers();
     }
   });
-
   it("updates wallet authority before iframe navigation and revokes it before closed-frame removal", async () => {
     const navigationSnapshot = deferred<typeof EXAMPLE_WORKSPACE>();
-    const closedSnapshot = deferred<{ mode: "web"; tabs: [] }>();
+    const closedSnapshot = deferred<{
+      mode: "web";
+      tabs: [];
+    }>();
     let workspaceRead = 0;
     vi.mocked(client.getBrowserWorkspace).mockImplementation(() => {
       workspaceRead += 1;
@@ -896,7 +810,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
       closed: true,
     });
-
     render(<BrowserWorkspaceView />);
     const iframe = (await screen.findByTitle("Apple")) as HTMLIFrameElement;
     const postMessageCalls: Array<[unknown, string]> = [];
@@ -916,7 +829,11 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const readyCalls = () =>
       postMessageCalls.filter(
         ([message]) =>
-          (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+          (
+            message as {
+              type?: unknown;
+            }
+          ).type === BROWSER_WALLET_READY_TYPE,
       );
     const requestState = async (origin: string, requestId: string) => {
       await act(async () => {
@@ -934,10 +851,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         await Promise.resolve();
       });
     };
-
     await requestState("https://www.apple.com", "ready-a");
     expect(readyCalls()).toHaveLength(1);
-
     const address = screen.getByTestId("browser-workspace-address-input");
     fireEvent.change(address, {
       target: { value: EXAMPLE_WORKSPACE.tabs[0].url },
@@ -952,7 +867,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     await waitFor(() => expect(iframe.src).toBe(EXAMPLE_WORKSPACE.tabs[0].url));
     expect(screen.getByTitle("Apple")).toBe(iframe);
     spyFrameWindow();
-
     await requestState("https://example.com", "ready-b");
     expect(readyCalls()).toHaveLength(2);
     expect(readyCalls().at(-1)?.[1]).toBe("https://example.com");
@@ -960,11 +874,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(readyCalls()).toHaveLength(2);
     await requestState("https://example.com", "duplicate-b");
     expect(readyCalls()).toHaveLength(2);
-
     navigationSnapshot.resolve(EXAMPLE_WORKSPACE);
     expect(await screen.findByTitle("Example")).toBe(iframe);
     expect(readyCalls()).toHaveLength(2);
-
     fireEvent.click(screen.getByTestId("browser-workspace-close-all-tabs"));
     await waitFor(() =>
       expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
@@ -975,11 +887,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const callsBeforeClosedRequest = postMessageCalls.length;
     await requestState("https://example.com", "closed-b");
     expect(postMessageCalls).toHaveLength(callsBeforeClosedRequest);
-
     closedSnapshot.resolve({ mode: "web", tabs: [] });
     expect(await screen.findByText("No page open")).not.toBeNull();
   });
-
   it("preserves wallet readiness when Go resolves to the already-loaded URL", async () => {
     vi.useFakeTimers();
     walletStateHarness.connected = true;
@@ -988,7 +898,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
       tab: APPLE_WORKSPACE.tabs[0],
     });
-
     try {
       render(<BrowserWorkspaceView />);
       await act(async () => {
@@ -1002,9 +911,12 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       const readyCalls = () =>
         postMessage.mock.calls.filter(
           ([message]) =>
-            (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+            (
+              message as {
+                type?: unknown;
+              }
+            ).type === BROWSER_WALLET_READY_TYPE,
         );
-
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
@@ -1027,7 +939,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         },
         "https://www.apple.com",
       ]);
-
       const address = screen.getByTestId("browser-workspace-address-input");
       await act(async () => {
         fireEvent.keyDown(address, { key: "Enter" });
@@ -1039,10 +950,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         APPLE_WORKSPACE.tabs[0].url,
       );
       expect(iframe.src).toBe(APPLE_WORKSPACE.tabs[0].url);
-
       walletStateHarness.pendingApprovals = 2;
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(5_000);
+        await vi.advanceTimersByTimeAsync(5000);
         await Promise.resolve();
       });
       expect(readyCalls()).toHaveLength(2);

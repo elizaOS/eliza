@@ -6,7 +6,10 @@
  * service).
  */
 
-import { type LifeOpsCalendarEvent, type ListLifeOpsCalendarsResponse } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type ListLifeOpsCalendarsResponse,
+} from "@elizaos/core/contracts/calendar";
 import {
   cleanup,
   fireEvent,

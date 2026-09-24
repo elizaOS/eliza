@@ -52,7 +52,13 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { resolveStateDir } from "@elizaos/core";
-import { FIRST_SENTENCE_MAX_WORDS, FIRST_SENTENCE_SNIP_VERSION, type FirstSentenceSnipResult, firstSentenceSnip, wordCount } from "@elizaos/core/voice/first-sentence-snip";
+import {
+	FIRST_SENTENCE_MAX_WORDS,
+	FIRST_SENTENCE_SNIP_VERSION,
+	type FirstSentenceSnipResult,
+	firstSentenceSnip,
+	wordCount,
+} from "@elizaos/core/voice/first-sentence-snip";
 
 // ---------------------------------------------------------------------------
 // Types

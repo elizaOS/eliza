@@ -3,60 +3,34 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/app": [
-        "./src/index.ts"
-      ],
-      "@elizaos/app/*": [
-        "./src/*"
-      ],
-      "@elizaos/app-*": [
-        "./src/types/app-plugin-modules.d.ts"
-      ],
-      "@elizaos/app-*/register": [
-        "./src/types/app-plugin-modules.d.ts"
-      ],
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/app/*": ["./src/*"],
+      "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "./src/types/app-plugin-modules.d.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
         "./src/types/app-plugin-modules.d.ts"
       ],
-      "@elizaos/plugin-blocker": [
-        "./src/types/app-plugin-modules.d.ts"
-      ],
+      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-native-phone": [
-        "./src/types/app-plugin-modules.d.ts"
-      ],
+      "@elizaos/plugin-native-phone": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
-      "@elizaos/plugin-wallet": [
-        "../../plugins/plugin-wallet/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/index.ts"
-      ],
-      "@elizaos/plugin-sql/*": [
-        "../../plugins/plugin-sql/src/*"
-      ],
-      "@elizaos/agent": [
-        "../agent/src/index.ts"
-      ],
-      "@elizaos/plugin-video": [
-        "../../plugins/plugin-video/dist/index.d.ts"
-      ],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/dist/index.d.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-browser/*": [
-        "../../plugins/plugin-browser/src/*"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
@@ -66,18 +40,10 @@
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/dist/index.d.ts"
       ],
-      "@elizaos/plugin-telegram": [
-        "../../plugins/plugin-telegram/dist/index"
-      ],
-      "@elizaos/core": [
-        "../core/src/index.ts"
-      ],
-      "@elizaos/cloud-shared": [
-        "../cloud/shared/src/index.ts"
-      ],
-      "@elizaos/cloud-shared/*": [
-        "../cloud/shared/src/*"
-      ],
+      "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/dist/index"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "csstype": [
         "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
       ],
@@ -149,7 +115,8 @@
       ],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
-      ]
+      ],
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "include": [

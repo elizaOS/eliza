@@ -1,11 +1,11 @@
 /** Browser-safe loader registration; the Node host owns route draining and validation. */
-import type { HttpPlugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin } from "./http-plugin.js";
 
 export type AppRoutePluginLoader = () => HttpPlugin | Promise<HttpPlugin>;
 
 export interface AppRoutePluginRegistryEntry {
-  id: string;
-  load: AppRoutePluginLoader;
+	id: string;
+	load: AppRoutePluginLoader;
 }
 
 /**
@@ -20,7 +20,7 @@ export interface AppRoutePluginRegistryEntry {
  * does not.
  */
 export const OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME =
-  "OptionalAppRoutePluginUnavailableError";
+	"OptionalAppRoutePluginUnavailableError";
 
 /**
  * Error an app-route plugin loader throws when its optional plugin is not
@@ -28,13 +28,13 @@ export const OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME =
  * treats it as a graceful skip. Owned by the host registry so the contract has one definition.
  */
 export class OptionalAppRoutePluginUnavailableError extends Error {
-  readonly specifier: string;
+	readonly specifier: string;
 
-  constructor(specifier: string, cause?: unknown) {
-    super(`Optional app route plugin ${specifier} is unavailable`, { cause });
-    this.name = OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME;
-    this.specifier = specifier;
-  }
+	constructor(specifier: string, cause?: unknown) {
+		super(`Optional app route plugin ${specifier} is unavailable`, { cause });
+		this.name = OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME;
+		this.specifier = specifier;
+	}
 }
 
 /**
@@ -43,37 +43,37 @@ export class OptionalAppRoutePluginUnavailableError extends Error {
  * bundles in a combined deployment.
  */
 export function isOptionalAppRoutePluginUnavailableError(
-  err: unknown,
+	err: unknown,
 ): boolean {
-  return (
-    err instanceof Error &&
-    err.name === OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME
-  );
+	return (
+		err instanceof Error &&
+		err.name === OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME
+	);
 }
 
 interface AppRoutePluginRegistryStore {
-  entries: Map<string, AppRoutePluginRegistryEntry>;
+	entries: Map<string, AppRoutePluginRegistryEntry>;
 }
 
 const APP_ROUTE_PLUGIN_REGISTRY_KEY = Symbol.for(
-  "elizaos.app.route-plugin-registry",
+	"elizaos.app.route-plugin-registry",
 );
 
 function getRegistryStore(): AppRoutePluginRegistryStore {
-  const slot = globalThis as Record<PropertyKey, unknown>;
-  slot[APP_ROUTE_PLUGIN_REGISTRY_KEY] ??= {
-    entries: new Map<string, AppRoutePluginRegistryEntry>(),
-  };
-  return slot[APP_ROUTE_PLUGIN_REGISTRY_KEY] as AppRoutePluginRegistryStore;
+	const slot = globalThis as Record<PropertyKey, unknown>;
+	slot[APP_ROUTE_PLUGIN_REGISTRY_KEY] ??= {
+		entries: new Map<string, AppRoutePluginRegistryEntry>(),
+	};
+	return slot[APP_ROUTE_PLUGIN_REGISTRY_KEY] as AppRoutePluginRegistryStore;
 }
 
 export function registerAppRoutePluginLoader(
-  id: string,
-  load: AppRoutePluginLoader,
+	id: string,
+	load: AppRoutePluginLoader,
 ): void {
-  getRegistryStore().entries.set(id, { id, load });
+	getRegistryStore().entries.set(id, { id, load });
 }
 
 export function listAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
-  return [...getRegistryStore().entries.values()];
+	return [...getRegistryStore().entries.values()];
 }

@@ -19,62 +19,62 @@ import z from "zod";
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 
 export const PostAgentAutonomyRequestSchema = z
-  .object({
-    enabled: z.boolean(),
-  })
-  .strict();
+	.object({
+		enabled: z.boolean(),
+	})
+	.strict();
 
 export const PostAgentExportRequestSchema = z
-  .object({
-    password: z
-      .string()
-      .min(
-        AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-        `A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
-      ),
-    includeLogs: z.boolean().optional(),
-  })
-  .strict();
+	.object({
+		password: z
+			.string()
+			.min(
+				AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+				`A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
+			),
+		includeLogs: z.boolean().optional(),
+	})
+	.strict();
 
 export const PostRegistryRegisterRequestSchema = z
-  .object({
-    name: z.string().optional(),
-    endpoint: z.string().optional(),
-    tokenURI: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const name = value.name?.trim();
-    const endpoint = value.endpoint?.trim();
-    const tokenURI = value.tokenURI?.trim();
-    return {
-      ...(name ? { name } : {}),
-      ...(endpoint ? { endpoint } : {}),
-      ...(tokenURI ? { tokenURI } : {}),
-    };
-  });
+	.object({
+		name: z.string().optional(),
+		endpoint: z.string().optional(),
+		tokenURI: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const name = value.name?.trim();
+		const endpoint = value.endpoint?.trim();
+		const tokenURI = value.tokenURI?.trim();
+		return {
+			...(name ? { name } : {}),
+			...(endpoint ? { endpoint } : {}),
+			...(tokenURI ? { tokenURI } : {}),
+		};
+	});
 
 export const PostRegistryUpdateUriRequestSchema = z
-  .object({
-    tokenURI: z.string().regex(/\S/, "tokenURI is required"),
-  })
-  .strict()
-  .transform((value) => ({ tokenURI: value.tokenURI.trim() }));
+	.object({
+		tokenURI: z.string().regex(/\S/, "tokenURI is required"),
+	})
+	.strict()
+	.transform((value) => ({ tokenURI: value.tokenURI.trim() }));
 
 export const PostRegistrySyncRequestSchema = PostRegistryRegisterRequestSchema;
 
 export type PostAgentAutonomyRequest = z.infer<
-  typeof PostAgentAutonomyRequestSchema
+	typeof PostAgentAutonomyRequestSchema
 >;
 export type PostAgentExportRequest = z.infer<
-  typeof PostAgentExportRequestSchema
+	typeof PostAgentExportRequestSchema
 >;
 export type PostRegistryRegisterRequest = z.infer<
-  typeof PostRegistryRegisterRequestSchema
+	typeof PostRegistryRegisterRequestSchema
 >;
 export type PostRegistryUpdateUriRequest = z.infer<
-  typeof PostRegistryUpdateUriRequestSchema
+	typeof PostRegistryUpdateUriRequestSchema
 >;
 export type PostRegistrySyncRequest = z.infer<
-  typeof PostRegistrySyncRequestSchema
+	typeof PostRegistrySyncRequestSchema
 >;

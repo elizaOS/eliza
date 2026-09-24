@@ -3,8 +3,12 @@
  * OAuth scopes from `@elizaos/plugin-google-workspace` into the assistant's connector
  * status/grant DTOs. Drive API calls live in the google plugin.
  */
+
+import {
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
-import { type LifeOpsConnectorMode, type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGoogleConnectorStatus,

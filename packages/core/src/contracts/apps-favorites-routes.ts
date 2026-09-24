@@ -22,38 +22,38 @@
 import z from "zod";
 
 export const PutFavoriteAppRequestSchema = z
-  .object({
-    appName: z.string().min(1, "appName is required"),
-    isFavorite: z.boolean(),
-  })
-  .strict()
-  .transform((value) => ({
-    appName: value.appName.trim(),
-    isFavorite: value.isFavorite,
-  }))
-  .pipe(
-    z
-      .object({
-        appName: z.string().min(1, "appName is required"),
-        isFavorite: z.boolean(),
-      })
-      .strict(),
-  );
+	.object({
+		appName: z.string().min(1, "appName is required"),
+		isFavorite: z.boolean(),
+	})
+	.strict()
+	.transform((value) => ({
+		appName: value.appName.trim(),
+		isFavorite: value.isFavorite,
+	}))
+	.pipe(
+		z
+			.object({
+				appName: z.string().min(1, "appName is required"),
+				isFavorite: z.boolean(),
+			})
+			.strict(),
+	);
 
 export const PostReplaceFavoritesRequestSchema = z
-  .object({
-    favoriteAppNames: z.array(z.string()),
-  })
-  .strict();
+	.object({
+		favoriteAppNames: z.array(z.string()),
+	})
+	.strict();
 
 export const FavoritesResponseSchema = z
-  .object({
-    favoriteApps: z.array(z.string()),
-  })
-  .strict();
+	.object({
+		favoriteApps: z.array(z.string()),
+	})
+	.strict();
 
 export type PutFavoriteAppRequest = z.infer<typeof PutFavoriteAppRequestSchema>;
 export type PostReplaceFavoritesRequest = z.infer<
-  typeof PostReplaceFavoritesRequestSchema
+	typeof PostReplaceFavoritesRequestSchema
 >;
 export type FavoritesResponse = z.infer<typeof FavoritesResponseSchema>;

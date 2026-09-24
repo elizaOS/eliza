@@ -16,7 +16,11 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { type LifeOpsGoalDefinition, type LifeOpsGoalReviewState, type LifeOpsGoalSuggestionKind } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsGoalDefinition,
+  type LifeOpsGoalReviewState,
+  type LifeOpsGoalSuggestionKind,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   buildGoalSemanticReviewMetadata,
   type GoalSemanticReviewMetadata,

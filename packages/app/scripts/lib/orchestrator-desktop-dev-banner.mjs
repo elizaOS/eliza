@@ -3,9 +3,12 @@
  * Plain string (figlet heading + framed table + footer); TTY color applied by dev-platform.
  */
 
-import { formatDevSettingsTable } from "@elizaos/app/dev-settings-table";
-import { resolveDesktopApiPortPreference, resolveDesktopUiPortPreference } from "@elizaos/core/runtime-env";
 import { prependDevSubsystemFigletHeading } from "@elizaos/app/dev-settings-figlet-heading";
+import { formatDevSettingsTable } from "@elizaos/app/dev-settings-table";
+import {
+  resolveDesktopApiPortPreference,
+  resolveDesktopUiPortPreference,
+} from "@elizaos/core/runtime-env";
 
 /**
  * @param {object} p

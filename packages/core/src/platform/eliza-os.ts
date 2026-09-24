@@ -8,11 +8,11 @@
  */
 
 export {
-  isAospElizaUserAgent,
-  userAgentHasElizaOSMarker,
-} from "@elizaos/core/platform/aosp-user-agent";
+	isAospElizaUserAgent,
+	userAgentHasElizaOSMarker,
+} from "./aosp-user-agent.js";
 
-import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+import { userAgentHasElizaOSMarker } from "./aosp-user-agent.js";
 
 /**
  * True when the current runtime is an ElizaOS AOSP system image, detected via
@@ -20,7 +20,7 @@ import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agen
  * process) there is no `navigator`, so this is `false`.
  */
 export function isElizaOS(): boolean {
-  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
-  if (!nav) return false;
-  return userAgentHasElizaOSMarker(nav.userAgent ?? "");
+	const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
+	if (!nav) return false;
+	return userAgentHasElizaOSMarker(nav.userAgent ?? "");
 }

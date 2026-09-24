@@ -12,6 +12,51 @@ export {
   LifeOpsWorkflowRunFailedUncompensatedError,
 } from "./service-types.js";
 
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSummary,
+  type LifeOpsNextCalendarEventContext,
+  type ListLifeOpsCalendarsRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type SetLifeOpsCalendarIncludedResponse,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type GetLifeOpsInboxRequest,
+  type LifeOpsCapabilitiesStatus,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsIMessageConnectorStatus,
+  type LifeOpsInbox,
+  type LifeOpsInboxMessage,
+  type LifeOpsMessageChannel,
+  type LifeOpsOwnerBrowserAccessSource,
+  type LifeOpsPersonalBaselineResponse,
+  type LifeOpsRelationship,
+  type LifeOpsRelationshipInteraction,
+  type LifeOpsSchedulingNegotiation,
+  type LifeOpsSchedulingProposal,
+  type LifeOpsScreenTimeDaily,
+  type LifeOpsScreenTimeHistoryResponse,
+  type LifeOpsScreenTimeRangeKey,
+  type LifeOpsScreenTimeSession,
+  type LifeOpsScreenTimeSource,
+  type LifeOpsScreenTimeSummary,
+  type LifeOpsSleepHistoryResponse,
+  type LifeOpsSleepRegularityResponse,
+  type LifeOpsTelegramConnectorStatus,
+  type LifeOpsWhatsAppConnectorStatus,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  type LifeOpsSocialHabitSummary as SocialHabitSummary,
+  type VerifyLifeOpsTelegramConnectorRequest,
+  type VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -43,8 +88,6 @@ import type {
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
 } from "@elizaos/plugin-inbox/inbox/email-unsubscribe-types";
-import { type CreateLifeOpsCalendarEventAttendee, type CreateLifeOpsCalendarEventRequest, type CreateLifeOpsCalendarEventResponse, type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsCalendarRecurrenceScope, type LifeOpsCalendarSummary, type LifeOpsNextCalendarEventContext, type ListLifeOpsCalendarsRequest, type SetLifeOpsCalendarIncludedRequest, type SetLifeOpsCalendarIncludedResponse } from "@elizaos/core/contracts/calendar";
-import { type GetLifeOpsInboxRequest, type LifeOpsCapabilitiesStatus, type LifeOpsDiscordConnectorStatus, type LifeOpsIMessageConnectorStatus, type LifeOpsInbox, type LifeOpsInboxMessage, type LifeOpsMessageChannel, type LifeOpsOwnerBrowserAccessSource, type LifeOpsPersonalBaselineResponse, type LifeOpsRelationship, type LifeOpsRelationshipInteraction, type LifeOpsSchedulingNegotiation, type LifeOpsSchedulingProposal, type LifeOpsScreenTimeDaily, type LifeOpsScreenTimeHistoryResponse, type LifeOpsScreenTimeRangeKey, type LifeOpsScreenTimeSession, type LifeOpsScreenTimeSource, type LifeOpsScreenTimeSummary, type LifeOpsSleepHistoryResponse, type LifeOpsSleepRegularityResponse, type LifeOpsTelegramConnectorStatus, type LifeOpsWhatsAppConnectorStatus, type LifeOpsXFeedItem, type LifeOpsXFeedType, type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown, type LifeOpsSocialHabitSummary as SocialHabitSummary, type VerifyLifeOpsTelegramConnectorRequest, type VerifyLifeOpsTelegramConnectorResponse } from "@elizaos/core/contracts/personal-assistant";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,

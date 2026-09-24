@@ -19,7 +19,8 @@
       "@elizaos/plugin-workflow": [
         "../../../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/cloud-sdk": ["../../sdk/src/index.ts"]
+      "@elizaos/cloud-sdk": ["../../sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/app-billing": ["../../sdk/src/app-billing.ts"]
     }
   },
   "include": ["src"]

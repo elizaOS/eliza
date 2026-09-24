@@ -577,12 +577,6 @@
       "import": "./dist/view-hero-art.js",
       "default": "./dist/view-hero-art.js"
     },
-    "./wallet/market-overview": {
-      "types": "./dist/wallet/market-overview.d.ts",
-      "eliza-source": "./src/wallet/market-overview.ts",
-      "import": "./dist/wallet/market-overview.js",
-      "default": "./dist/wallet/market-overview.js"
-    },
     "./brand-classic/brand.css": "./src/brand-classic/brand.css",
     "./brand-classic": {
       "types": "./dist/brand-classic/index.d.ts",
@@ -717,18 +711,12 @@
     "@solana/wallet-adapter-coinbase": "^0.1.23",
     "@solana/wallet-adapter-trust": "^0.1.17",
     "@solana/wallet-adapter-coin98": "^0.5.24",
-    "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*",
-    "@elizaos/cloud-shared": "workspace:*",
-    "esbuild": "^0.28.0",
-    "@elizaos/app": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/preferences": "^8.0.1",
-    "@elizaos/cloud-shared": "workspace:*",
     "@storybook/addon-a11y": "^10.6.0",
     "@storybook/addon-docs": "^10.6.0",
     "@storybook/addon-themes": "^10.6.0",

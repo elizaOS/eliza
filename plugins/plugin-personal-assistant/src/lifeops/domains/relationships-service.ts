@@ -11,7 +11,11 @@
  * that audit log rather than replicating it (see `EntityStore.recordInteraction`).
  */
 import crypto from "node:crypto";
-import { type LifeOpsMessageChannel, type LifeOpsRelationship, type LifeOpsRelationshipInteraction } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsMessageChannel,
+  type LifeOpsRelationship,
+  type LifeOpsRelationshipInteraction,
+} from "@elizaos/core/contracts/personal-assistant";
 import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {

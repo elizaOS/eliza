@@ -31,7 +31,7 @@ import {
   bundleIdsInProfileMatchCatalog,
   type GpuYamlId,
   GpuYamlProfile,
-} from "@elizaos/plugin-native-inference/model-gpu/gpu-profile-schema";
+} from "./gpu-profile-schema.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROFILE_DIR = join(HERE, "profiles");

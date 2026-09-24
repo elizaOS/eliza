@@ -1,12 +1,23 @@
-/** Rejects emitted runtime dependencies while allowing unused exports in shared package barrels. */
+/** Rejects backend runtime dependencies; explicit core protocol leaves remain ordinary browser modules. */
+import { builtinModules } from "node:module";
 import type { Plugin } from "vite";
 
+const nodeModules = new Set(builtinModules.flatMap((id) => [id, `node:${id}`]));
+
 function isCoreRuntime(id: string): boolean {
-  return id === "@elizaos/core" || id.startsWith("@elizaos/core/");
+  return (
+    nodeModules.has(id) ||
+    id.startsWith("node:") ||
+    id === "@elizaos/core" ||
+    id === "@elizaos/core/index" ||
+    id === "@elizaos/agent" ||
+    id.startsWith("@elizaos/agent/")
+  );
 }
 
 export function rejectRuntimeInRendererPlugin(): Plugin {
   let serving = false;
+  const importers = new Map<string, Set<string>>();
   return {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
@@ -15,6 +26,11 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
     },
     resolveId(id, importer) {
       if (!isCoreRuntime(id)) return null;
+      if (importer) {
+        const origins = importers.get(id) ?? new Set<string>();
+        origins.add(importer);
+        importers.set(id, origins);
+      }
       if (serving) {
         this.error(
           `Node runtime import ${id} reached renderer from ${importer ?? "entry"}.`,
@@ -32,7 +48,7 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
         );
         if (runtime)
           this.error(
-            `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}.`,
+            `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}. Imported by: ${[...(importers.get(runtime) ?? [])].join(", ")}.`,
           );
       }
     },

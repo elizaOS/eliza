@@ -10,43 +10,38 @@
 // agent ↔ shared cycle that broke node ESM resolution at the bench
 // server boot. Consumers should import these directly from
 // `@elizaos/agent` instead. Type-only forwarder kept so existing
-// `import type { ElizaConfig } from "@elizaos/shared"` still resolves.
-export type { ElizaConfig } from "@elizaos/core/config/types.eliza";
-
+// `import type { ElizaConfig } from "@elizaos/core"` still resolves.
+export type { ElizaConfig } from "./types.eliza.js";
 export interface LegacyCloudConfig {
-  cloud?: { enabled?: boolean } | null;
-  providers?: string[];
-  [key: string]: unknown;
+	cloud?: {
+		enabled?: boolean;
+	} | null;
+	providers?: string[];
+	[key: string]: unknown;
 }
-
 export function isCloudActiveFromProviders(
-  providers: string[] | undefined | null,
+	providers: string[] | undefined | null,
 ): boolean {
-  if (!Array.isArray(providers) || providers.length === 0) {
-    return false;
-  }
-
-  return providers.includes("elizacloud");
+	if (!Array.isArray(providers) || providers.length === 0) {
+		return false;
+	}
+	return providers.includes("elizacloud");
 }
-
 export function migrateCloudEnabledToProviders(
-  config: LegacyCloudConfig,
+	config: LegacyCloudConfig,
 ): LegacyCloudConfig {
-  const cloudEnabled = config.cloud?.enabled === true;
-  if (!cloudEnabled) {
-    return config;
-  }
-
-  const existingProviders = Array.isArray(config.providers)
-    ? config.providers
-    : [];
-
-  if (existingProviders.includes("elizacloud")) {
-    return config;
-  }
-
-  return {
-    ...config,
-    providers: [...existingProviders, "elizacloud"],
-  };
+	const cloudEnabled = config.cloud?.enabled === true;
+	if (!cloudEnabled) {
+		return config;
+	}
+	const existingProviders = Array.isArray(config.providers)
+		? config.providers
+		: [];
+	if (existingProviders.includes("elizacloud")) {
+		return config;
+	}
+	return {
+		...config,
+		providers: [...existingProviders, "elizacloud"],
+	};
 }

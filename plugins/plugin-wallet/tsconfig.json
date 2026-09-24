@@ -3,11 +3,7 @@
     "target": "ES2022",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": false,
@@ -18,21 +14,21 @@
     "esModuleInterop": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-elizacloud": [
-        "../plugin-elizacloud/src/index.ts"
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
       ],
-      "@elizaos/cloud-sdk": [
-        "../../packages/cloud/sdk/src/index.ts"
+      "@elizaos/plugin-assistant/text/template-rendering": [
+        "../plugin-assistant/src/text/template-rendering.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/base-url": [
+        "../plugin-elizacloud/src/cloud-config/base-url.ts"
       ]
     },
-    "types": [
-      "node",
-      "bun"
-    ]
+    "types": ["node", "bun"]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "src/ui/**",
     "src/ui.ts",

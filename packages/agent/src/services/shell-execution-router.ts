@@ -22,12 +22,15 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { sanitizeSpawnEnv } from "@elizaos/core";
-import { isIosMobile } from "@elizaos/core/runtime-env";
-import { type RuntimeExecutionMode, resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
+import {
+  type RuntimeExecutionMode,
+  resolveRuntimeExecutionMode,
+} from "@elizaos/core/config/runtime-mode";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
 } from "@elizaos/core/host-execution-env";
+import { isIosMobile } from "@elizaos/core/runtime-env";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 import {

@@ -19,7 +19,11 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKEND_PREFLIGHTS, CODING_AGENT_BACKENDS, type CodingAgentBackend } from "@elizaos/core/contracts/coding-agent-capabilities";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  type CodingAgentBackend,
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import {

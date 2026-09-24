@@ -1,16 +1,23 @@
 /** Resolves host view presentation policy without loading the Node runtime. */
-import { type AppShellBackgroundPolicy, type PageLayoutManifest, type ResolvedSurfaceManifest, type SurfaceCapability, type SurfaceManifest, type SurfaceManifestBearer } from "../types/surface-manifest.js";
+import type {
+	AppShellBackgroundPolicy,
+	PageLayoutManifest,
+	ResolvedSurfaceManifest,
+	SurfaceCapability,
+	SurfaceManifest,
+	SurfaceManifestBearer,
+} from "../types/surface-manifest.js";
 
 export type {
-  AppShellBackgroundPolicy,
-  PageLayoutManifest,
-  ResolvedSurfaceManifest,
-  SurfaceCapability,
-  SurfaceIsolationLevel,
-  SurfaceLifecyclePolicy,
-  SurfaceManifest,
-  SurfaceManifestBearer,
-  ViewHeaderPolicy,
+	AppShellBackgroundPolicy,
+	PageLayoutManifest,
+	ResolvedSurfaceManifest,
+	SurfaceCapability,
+	SurfaceIsolationLevel,
+	SurfaceLifecyclePolicy,
+	SurfaceManifest,
+	SurfaceManifestBearer,
+	ViewHeaderPolicy,
 } from "@elizaos/core";
 
 /**
@@ -38,10 +45,10 @@ export type {
  *                        wallpaper, and only when it also grants `wallpaper`.
  */
 export const SURFACE_ISOLATION_LEVELS = [
-  "in-process",
-  "sandboxed-iframe",
-  "native-webview",
-  "immersive",
+	"in-process",
+	"sandboxed-iframe",
+	"native-webview",
+	"immersive",
 ] as const;
 
 /**
@@ -64,27 +71,27 @@ export const SURFACE_ISOLATION_LEVELS = [
  *                          grant is for a view opting INTO richer agent control.
  */
 export const SURFACE_CAPABILITIES = [
-  "wallpaper",
-  "background:apply",
-  "navigate",
-  "storage",
-  "agent-surface",
+	"wallpaper",
+	"background:apply",
+	"navigate",
+	"storage",
+	"agent-surface",
 ] as const;
 
 function dedupeCapabilities(
-  caps: readonly SurfaceCapability[] | undefined,
+	caps: readonly SurfaceCapability[] | undefined,
 ): ReadonlySet<SurfaceCapability> {
-  // `Set`'s constructor treats a missing iterable as empty, so an absent
-  // capability list yields an empty set without a `?? []` empty-fallback.
-  return new Set(caps);
+	// `Set`'s constructor treats a missing iterable as empty, so an absent
+	// capability list yields an empty set without a `?? []` empty-fallback.
+	return new Set(caps);
 }
 
 const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
-  kind: "content",
-  topology: "framed",
-  width: "standard",
-  scroll: "view",
-  gutter: "standard",
+	kind: "content",
+	topology: "framed",
+	width: "standard",
+	scroll: "view",
+	gutter: "standard",
 });
 
 /**
@@ -102,29 +109,29 @@ const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
  * both `background: "shared"` and the `wallpaper` grant.
  */
 export function resolveSurfaceManifest(
-  decl: SurfaceManifestBearer | null | undefined,
+	decl: SurfaceManifestBearer | null | undefined,
 ): ResolvedSurfaceManifest {
-  const surface = decl?.surface;
-  const capabilities = dedupeCapabilities(surface?.capabilities);
+	const surface = decl?.surface;
+	const capabilities = dedupeCapabilities(surface?.capabilities);
 
-  const declaredBackground =
-    surface?.background ?? decl?.backgroundPolicy ?? "opaque";
-  // Wallpaper gate: "shared" is only honoured with the explicit grant.
-  const background: AppShellBackgroundPolicy =
-    declaredBackground === "shared" && capabilities.has("wallpaper")
-      ? "shared"
-      : "opaque";
+	const declaredBackground =
+		surface?.background ?? decl?.backgroundPolicy ?? "opaque";
+	// Wallpaper gate: "shared" is only honoured with the explicit grant.
+	const background: AppShellBackgroundPolicy =
+		declaredBackground === "shared" && capabilities.has("wallpaper")
+			? "shared"
+			: "opaque";
 
-  return {
-    background,
-    header: surface?.header ?? decl?.headerPolicy ?? "normal",
-    isolation: surface?.isolation ?? "in-process",
-    lifecycle: surface?.lifecycle ?? "ephemeral",
-    layout: surface?.layout
-      ? { topology: "framed", ...surface.layout }
-      : DEFAULT_PAGE_LAYOUT_MANIFEST,
-    capabilities,
-  };
+	return {
+		background,
+		header: surface?.header ?? decl?.headerPolicy ?? "normal",
+		isolation: surface?.isolation ?? "in-process",
+		lifecycle: surface?.lifecycle ?? "ephemeral",
+		layout: surface?.layout
+			? { topology: "framed", ...surface.layout }
+			: DEFAULT_PAGE_LAYOUT_MANIFEST,
+		capabilities,
+	};
 }
 
 /**
@@ -133,9 +140,9 @@ export function resolveSurfaceManifest(
  * so callers that only need the background do not pull the whole manifest.
  */
 export function resolveSurfaceBackgroundPolicy(
-  decl: SurfaceManifestBearer | null | undefined,
+	decl: SurfaceManifestBearer | null | undefined,
 ): AppShellBackgroundPolicy {
-  return resolveSurfaceManifest(decl).background;
+	return resolveSurfaceManifest(decl).background;
 }
 
 /**
@@ -143,10 +150,10 @@ export function resolveSurfaceBackgroundPolicy(
  * a capability not in the manifest is denied.
  */
 export function surfaceGrants(
-  manifest: ResolvedSurfaceManifest,
-  capability: SurfaceCapability,
+	manifest: ResolvedSurfaceManifest,
+	capability: SurfaceCapability,
 ): boolean {
-  return manifest.capabilities.has(capability);
+	return manifest.capabilities.has(capability);
 }
 
 /**
@@ -158,15 +165,15 @@ export function surfaceGrants(
  * place per surface family.
  */
 export const IMMERSIVE_WALLPAPER_SURFACE: SurfaceManifest = {
-  background: "shared",
-  header: "immersive",
-  isolation: "immersive",
-  layout: {
-    kind: "immersive",
-    topology: "ambient",
-    width: "full",
-    scroll: "view",
-    gutter: "none",
-  },
-  capabilities: ["wallpaper", "background:apply"],
+	background: "shared",
+	header: "immersive",
+	isolation: "immersive",
+	layout: {
+		kind: "immersive",
+		topology: "ambient",
+		width: "full",
+		scroll: "view",
+		gutter: "none",
+	},
+	capabilities: ["wallpaper", "background:apply"],
 };

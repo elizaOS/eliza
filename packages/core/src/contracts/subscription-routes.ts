@@ -14,21 +14,21 @@
 import z from "zod";
 
 export const PostSubscriptionAnthropicExchangeRequestSchema = z
-  .object({
-    code: z.string().regex(/\S/, "Missing code"),
-  })
-  .strict()
-  .transform((value) => ({ code: value.code.trim() }));
+	.object({
+		code: z.string().regex(/\S/, "Missing code"),
+	})
+	.strict()
+	.transform((value) => ({ code: value.code.trim() }));
 
 export const PostSubscriptionAnthropicSetupTokenRequestSchema = z
-  .object({
-    token: z.string().regex(/\S/, "token is required"),
-  })
-  .strict()
-  .transform((value) => ({ token: value.token.trim() }))
-  .refine((value) => value.token.startsWith("sk-ant-"), {
-    message: "Invalid token format — expected sk-ant-oat01-...",
-  });
+	.object({
+		token: z.string().regex(/\S/, "token is required"),
+	})
+	.strict()
+	.transform((value) => ({ token: value.token.trim() }))
+	.refine((value) => value.token.startsWith("sk-ant-"), {
+		message: "Invalid token format — expected sk-ant-oat01-...",
+	});
 
 /**
  * OpenAI Codex exchange — caller must provide `code` OR set
@@ -37,27 +37,27 @@ export const PostSubscriptionAnthropicSetupTokenRequestSchema = z
  * schema only enforces type correctness on each field.
  */
 export const PostSubscriptionOpenAIExchangeRequestSchema = z
-  .object({
-    code: z.string().optional(),
-    waitForCallback: z.boolean().optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const code = value.code?.trim();
-    return {
-      ...(code ? { code } : {}),
-      ...(value.waitForCallback !== undefined
-        ? { waitForCallback: value.waitForCallback }
-        : {}),
-    };
-  });
+	.object({
+		code: z.string().optional(),
+		waitForCallback: z.boolean().optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const code = value.code?.trim();
+		return {
+			...(code ? { code } : {}),
+			...(value.waitForCallback !== undefined
+				? { waitForCallback: value.waitForCallback }
+				: {}),
+		};
+	});
 
 export type PostSubscriptionAnthropicExchangeRequest = z.infer<
-  typeof PostSubscriptionAnthropicExchangeRequestSchema
+	typeof PostSubscriptionAnthropicExchangeRequestSchema
 >;
 export type PostSubscriptionAnthropicSetupTokenRequest = z.infer<
-  typeof PostSubscriptionAnthropicSetupTokenRequestSchema
+	typeof PostSubscriptionAnthropicSetupTokenRequestSchema
 >;
 export type PostSubscriptionOpenAIExchangeRequest = z.infer<
-  typeof PostSubscriptionOpenAIExchangeRequestSchema
+	typeof PostSubscriptionOpenAIExchangeRequestSchema
 >;

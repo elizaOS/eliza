@@ -6,12 +6,12 @@ import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+} from "./dev-cloud-env-authority.js";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   type ElizaCloudEnvironment,
-} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+} from "./domain-contract.js";
 
 const PRODUCTION_CLOUD_SITE_URL =
   ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;

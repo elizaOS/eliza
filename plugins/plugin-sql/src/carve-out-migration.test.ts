@@ -4,8 +4,13 @@
  * deletion-after-completion startup without replacing the orchestrator itself.
  */
 
-import { type CarveOutDatabase, type CarveOutSqlExecutor, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { describe, expect, it } from "vitest";
+import {
+  type CarveOutDatabase,
+  type CarveOutSqlExecutor,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "./database-utils/carve-out-migration.js";
 
 function transactionDatabase(exec: CarveOutSqlExecutor): CarveOutDatabase {
   return { execute: exec, transaction: (operation) => operation(exec) };

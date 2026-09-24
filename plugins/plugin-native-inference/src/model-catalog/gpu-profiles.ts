@@ -22,7 +22,7 @@
  * that leaves memory headroom.
  */
 
-import type { Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import type { Eliza1TierId } from "./catalog.js";
 
 export type GpuProfileId = "rtx-3090" | "rtx-4090" | "rtx-5090" | "h200";
 

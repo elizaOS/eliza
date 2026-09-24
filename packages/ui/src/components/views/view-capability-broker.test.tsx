@@ -302,6 +302,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
           read,
           undefined,
           `${viewId}-semantic-read`,
+          "fixture-installation",
         );
       });
       expect(sendWsMessage).toHaveBeenLastCalledWith(
@@ -326,6 +327,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
             capability,
             { name: "field", value: "changed", id: "field" },
             `${viewId}-denied-${capability}`,
+            "fixture-installation",
           );
         });
         expect(sendWsMessage).toHaveBeenLastCalledWith(

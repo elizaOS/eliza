@@ -5,7 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { resolveTokenEncryptionKey } from "@elizaos/plugin-health/crypto/token-encryption";
+import { resolveTokenEncryptionKey } from "../token-encryption.js";
 
 const [credentialsDir, participant, mode = "race"] = process.argv.slice(2);
 if (!credentialsDir || !participant) {

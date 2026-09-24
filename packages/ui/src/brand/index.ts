@@ -15,7 +15,10 @@
  * Canonical external URLs for every Eliza surface. Import from here instead
  * of hardcoding strings so a domain change is a one-line edit.
  */
-export { EXTERNAL_URLS, type ExternalUrlKey } from "@elizaos/core/config/public-endpoints";
+export {
+  EXTERNAL_URLS,
+  type ExternalUrlKey,
+} from "@elizaos/core/config/public-endpoints";
 
 export const BRAND_COLORS = {
   blue: "#0B35F1",
@@ -78,7 +81,6 @@ export const BRAND_FAVICONS = {
   androidChrome192: "/brand/favicons/android-chrome-192x192.png",
   androidChrome512: "/brand/favicons/android-chrome-512x512.png",
 } as const;
-
 
 // Only the poster frame is source-owned (assets/background/); the loop videos
 // shipped exclusively in the retired eliza-archive overlay (#16290), so their

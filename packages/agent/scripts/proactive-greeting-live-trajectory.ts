@@ -11,12 +11,14 @@
  * Run: OPENAI_API_KEY=$CEREBRAS_API_KEY OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
  *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
  */
+
+import { type IAgentRuntime, type ViewSwitchedPayload } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
-import { buildProactiveJudgePrompt } from "../src/services/proactive-interaction-decider.ts";
-import { parseProactiveJudgeDecisionOutput } from "../src/services/proactive-interaction-decider.ts";
 import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type ViewSwitchedPayload } from "@elizaos/core";
+import {
+  buildProactiveJudgePrompt,
+  parseProactiveJudgeDecisionOutput,
+} from "../src/services/proactive-interaction-decider.ts";
 
 const BASE_URL =
   process.env.OPENAI_BASE_URL ||

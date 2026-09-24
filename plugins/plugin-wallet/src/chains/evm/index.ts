@@ -4,29 +4,42 @@
  * `EVMService`, the EVM wallet/balance providers, the sign HTTP routes, and
  * the `WALLET` subactions promoted from `walletRouterAction`.
  */
-import { EVMService } from "./service";
-import { evmSignRoutes } from "./routes/sign";
-import { evmWalletProvider } from "./providers/wallet";
-import { promoteSubactionsToActions } from "@elizaos/core";
-import { tokenBalanceProvider } from "./providers/get-balance";
-import { type Action } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/shared";
-import { type IAgentRuntime } from "@elizaos/core";
-import { type ServiceClass } from "@elizaos/core";
+
+import {
+  type Action,
+  type IAgentRuntime,
+  promoteSubactionsToActions,
+  type ServiceClass,
+} from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { walletRouterAction } from "../wallet-action";
-export { createEvmWalletChainHandler, type EvmExecutedTransaction, type EvmPreparedResult, type EvmRouterResult, EvmWalletChainHandler, type EvmWalletChainHandlerOptions, type EvmWalletMode, type EvmWalletSubaction, } from "./chain-handler";
+import { tokenBalanceProvider } from "./providers/get-balance";
+import { evmWalletProvider } from "./providers/wallet";
+import { evmSignRoutes } from "./routes/sign";
+import { EVMService } from "./service";
+
+export {
+  createEvmWalletChainHandler,
+  type EvmExecutedTransaction,
+  type EvmPreparedResult,
+  type EvmRouterResult,
+  EvmWalletChainHandler,
+  type EvmWalletChainHandlerOptions,
+  type EvmWalletMode,
+  type EvmWalletSubaction,
+} from "./chain-handler";
 export { initWalletProvider, WalletProvider } from "./providers/wallet";
 export type { SupportedChain } from "./types";
 export const evmPlugin: Plugin = {
-    name: "evm",
-    description: "EVM blockchain integration plugin",
-    providers: [evmWalletProvider, tokenBalanceProvider],
-    services: [EVMService] as ServiceClass[],
-    actions: promoteSubactionsToActions(walletRouterAction as Action) as Action[],
-    routes: evmSignRoutes,
-    async dispose(runtime: IAgentRuntime) {
-        const svc = runtime.getService<EVMService>(EVMService.serviceType);
-        await svc?.stop();
-    },
+  name: "evm",
+  description: "EVM blockchain integration plugin",
+  providers: [evmWalletProvider, tokenBalanceProvider],
+  services: [EVMService] as ServiceClass[],
+  actions: promoteSubactionsToActions(walletRouterAction as Action) as Action[],
+  routes: evmSignRoutes,
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<EVMService>(EVMService.serviceType);
+    await svc?.stop();
+  },
 };
 export default evmPlugin;

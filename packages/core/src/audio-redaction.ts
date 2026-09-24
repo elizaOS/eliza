@@ -35,22 +35,22 @@
  */
 
 import { ElizaError } from "./errors.js";
-import type { TranscriptWord } from "@elizaos/core/transcripts";
+import type { TranscriptWord } from "./transcripts.js";
 
 /** One redaction window, ms from audio start (same clock as word timings). */
 export interface AudioRedactionSpan {
-  startMs: number;
-  endMs: number;
-  /** Pseudonym/cluster labels of the PII that produced this window (audit). */
-  labels?: readonly string[];
+	startMs: number;
+	endMs: number;
+	/** Pseudonym/cluster labels of the PII that produced this window (audit). */
+	labels?: readonly string[];
 }
 
 /** One text-PII verdict to locate in the word stream. */
 export interface PiiTextSpan {
-  /** The matched PII surface text (`Tier0Span.span` / `PiiScrubVerdict.span`). */
-  text: string;
-  /** Pseudonym/cluster label from the corpus map (#14805) — plain input. */
-  label?: string;
+	/** The matched PII surface text (`Tier0Span.span` / `PiiScrubVerdict.span`). */
+	text: string;
+	/** Pseudonym/cluster label from the corpus map (#14805) — plain input. */
+	label?: string;
 }
 
 /**
@@ -65,11 +65,11 @@ export const DEFAULT_REDACTION_PAD_MS = 250;
 
 /** Thrown for structurally invalid span input (fail-closed, never dropped). */
 export class RedactionSpanError extends ElizaError {
-  constructor(message: string) {
-    super(`audio redaction span invalid: ${message}`, {
-      code: "AUDIO_REDACTION_SPAN_INVALID",
-    });
-  }
+	constructor(message: string) {
+		super(`audio redaction span invalid: ${message}`, {
+			code: "AUDIO_REDACTION_SPAN_INVALID",
+		});
+	}
 }
 
 /**
@@ -78,16 +78,16 @@ export class RedactionSpanError extends ElizaError {
  * `" 5550123"` both normalize to `"5550123"`.
  */
 export function normalizeSpokenText(raw: string): string {
-  return raw.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+	return raw.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 interface NormalizedWordStream {
-  /** Time-ordered words with non-empty normalized text. */
-  words: TranscriptWord[];
-  /** Concatenated normalized word text (no separators). */
-  concat: string;
-  /** `concat[i]` came from `words[charToWord[i]]`. */
-  charToWord: number[];
+	/** Time-ordered words with non-empty normalized text. */
+	words: TranscriptWord[];
+	/** Concatenated normalized word text (no separators). */
+	concat: string;
+	/** `concat[i]` came from `words[charToWord[i]]`. */
+	charToWord: number[];
 }
 
 /**
@@ -96,44 +96,44 @@ interface NormalizedWordStream {
  * Words whose text normalizes to empty (pure punctuation) contribute nothing.
  */
 function buildWordStream(
-  words: readonly TranscriptWord[],
+	words: readonly TranscriptWord[],
 ): NormalizedWordStream {
-  const ordered = [...words].sort(
-    (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
-  );
-  const kept: TranscriptWord[] = [];
-  const charToWord: number[] = [];
-  let concat = "";
-  for (const word of ordered) {
-    if (!Number.isFinite(word.startMs) || !Number.isFinite(word.endMs)) {
-      throw new RedactionSpanError(
-        `word "${word.text}" has non-finite timing (${word.startMs}..${word.endMs})`,
-      );
-    }
-    if (word.endMs <= word.startMs) {
-      throw new RedactionSpanError(
-        `word "${word.text}" ends (${word.endMs}) before it starts (${word.startMs})`,
-      );
-    }
-    const normalized = normalizeSpokenText(word.text);
-    if (normalized.length === 0) continue;
-    const wordIndex = kept.length;
-    kept.push(word);
-    for (let i = 0; i < normalized.length; i += 1) charToWord.push(wordIndex);
-    concat += normalized;
-  }
-  return { words: kept, concat, charToWord };
+	const ordered = [...words].sort(
+		(a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
+	);
+	const kept: TranscriptWord[] = [];
+	const charToWord: number[] = [];
+	let concat = "";
+	for (const word of ordered) {
+		if (!Number.isFinite(word.startMs) || !Number.isFinite(word.endMs)) {
+			throw new RedactionSpanError(
+				`word "${word.text}" has non-finite timing (${word.startMs}..${word.endMs})`,
+			);
+		}
+		if (word.endMs <= word.startMs) {
+			throw new RedactionSpanError(
+				`word "${word.text}" ends (${word.endMs}) before it starts (${word.startMs})`,
+			);
+		}
+		const normalized = normalizeSpokenText(word.text);
+		if (normalized.length === 0) continue;
+		const wordIndex = kept.length;
+		kept.push(word);
+		for (let i = 0; i < normalized.length; i += 1) charToWord.push(wordIndex);
+		concat += normalized;
+	}
+	return { words: kept, concat, charToWord };
 }
 
 /** Result of locating text-PII verdicts inside the word stream. */
 export interface PiiSpanMatchResult {
-  /** One raw (unpadded, unmerged) window per located occurrence. */
-  matches: AudioRedactionSpan[];
-  /**
-   * PII spans that could NOT be located in the word stream. Non-empty means
-   * the redaction job MUST fail typed/observable — audible PII would survive.
-   */
-  unmatched: PiiTextSpan[];
+	/** One raw (unpadded, unmerged) window per located occurrence. */
+	matches: AudioRedactionSpan[];
+	/**
+	 * PII spans that could NOT be located in the word stream. Non-empty means
+	 * the redaction job MUST fail typed/observable — audible PII would survive.
+	 */
+	unmatched: PiiTextSpan[];
 }
 
 /**
@@ -145,52 +145,52 @@ export interface PiiSpanMatchResult {
  * are windowed — a name spoken three times is muted three times.
  */
 export function matchPiiSpansToWords(
-  words: readonly TranscriptWord[],
-  piiSpans: readonly PiiTextSpan[],
+	words: readonly TranscriptWord[],
+	piiSpans: readonly PiiTextSpan[],
 ): PiiSpanMatchResult {
-  const stream = buildWordStream(words);
-  const matches: AudioRedactionSpan[] = [];
-  const unmatched: PiiTextSpan[] = [];
-  for (const pii of piiSpans) {
-    const needle = normalizeSpokenText(pii.text);
-    if (needle.length === 0) {
-      unmatched.push(pii);
-      continue;
-    }
-    let found = false;
-    let from = 0;
-    while (from <= stream.concat.length - needle.length) {
-      const at = stream.concat.indexOf(needle, from);
-      if (at === -1) break;
-      found = true;
-      const firstWord = stream.words[stream.charToWord[at]];
-      const lastWord = stream.words[stream.charToWord[at + needle.length - 1]];
-      matches.push({
-        startMs: firstWord.startMs,
-        endMs: lastWord.endMs,
-        ...(pii.label !== undefined ? { labels: [pii.label] } : {}),
-      });
-      from = at + 1;
-    }
-    if (!found) unmatched.push(pii);
-  }
-  return { matches, unmatched };
+	const stream = buildWordStream(words);
+	const matches: AudioRedactionSpan[] = [];
+	const unmatched: PiiTextSpan[] = [];
+	for (const pii of piiSpans) {
+		const needle = normalizeSpokenText(pii.text);
+		if (needle.length === 0) {
+			unmatched.push(pii);
+			continue;
+		}
+		let found = false;
+		let from = 0;
+		while (from <= stream.concat.length - needle.length) {
+			const at = stream.concat.indexOf(needle, from);
+			if (at === -1) break;
+			found = true;
+			const firstWord = stream.words[stream.charToWord[at]];
+			const lastWord = stream.words[stream.charToWord[at + needle.length - 1]];
+			matches.push({
+				startMs: firstWord.startMs,
+				endMs: lastWord.endMs,
+				...(pii.label !== undefined ? { labels: [pii.label] } : {}),
+			});
+			from = at + 1;
+		}
+		if (!found) unmatched.push(pii);
+	}
+	return { matches, unmatched };
 }
 
 /** Options for {@link mergeRedactionSpans}. */
 export interface MergeRedactionSpanOptions {
-  /**
-   * Audio duration in ms — windows are clamped to `[0, durationMs]`. Pass `0`
-   * to skip the upper clamp (mirrors `validateAsrWordTimings`).
-   */
-  durationMs: number;
-  /** Padding added to each side of every window before merging. */
-  padMs?: number;
-  /**
-   * Two windows closer than this merge into one (avoids leaving unmutable
-   * slivers between adjacent PII words). `0` still merges touching windows.
-   */
-  mergeGapMs?: number;
+	/**
+	 * Audio duration in ms — windows are clamped to `[0, durationMs]`. Pass `0`
+	 * to skip the upper clamp (mirrors `validateAsrWordTimings`).
+	 */
+	durationMs: number;
+	/** Padding added to each side of every window before merging. */
+	padMs?: number;
+	/**
+	 * Two windows closer than this merge into one (avoids leaving unmutable
+	 * slivers between adjacent PII words). `0` still merges touching windows.
+	 */
+	mergeGapMs?: number;
 }
 
 /**
@@ -202,98 +202,98 @@ export interface MergeRedactionSpanOptions {
  * timing-domain mismatch must never become a byte-identical success.
  */
 export function mergeRedactionSpans(
-  spans: readonly AudioRedactionSpan[],
-  options: MergeRedactionSpanOptions,
+	spans: readonly AudioRedactionSpan[],
+	options: MergeRedactionSpanOptions,
 ): AudioRedactionSpan[] {
-  const padMs = options.padMs ?? DEFAULT_REDACTION_PAD_MS;
-  const mergeGapMs = options.mergeGapMs ?? 0;
-  const durationMs = options.durationMs;
-  if (!Number.isFinite(durationMs) || durationMs < 0) {
-    throw new RedactionSpanError(`durationMs ${durationMs} is not valid`);
-  }
-  if (!Number.isFinite(padMs) || padMs < 0) {
-    throw new RedactionSpanError(`padMs ${padMs} is not valid`);
-  }
-  if (!Number.isFinite(mergeGapMs) || mergeGapMs < 0) {
-    throw new RedactionSpanError(`mergeGapMs ${mergeGapMs} is not valid`);
-  }
+	const padMs = options.padMs ?? DEFAULT_REDACTION_PAD_MS;
+	const mergeGapMs = options.mergeGapMs ?? 0;
+	const durationMs = options.durationMs;
+	if (!Number.isFinite(durationMs) || durationMs < 0) {
+		throw new RedactionSpanError(`durationMs ${durationMs} is not valid`);
+	}
+	if (!Number.isFinite(padMs) || padMs < 0) {
+		throw new RedactionSpanError(`padMs ${padMs} is not valid`);
+	}
+	if (!Number.isFinite(mergeGapMs) || mergeGapMs < 0) {
+		throw new RedactionSpanError(`mergeGapMs ${mergeGapMs} is not valid`);
+	}
 
-  const padded: AudioRedactionSpan[] = [];
-  for (const span of spans) {
-    if (!Number.isFinite(span.startMs) || !Number.isFinite(span.endMs)) {
-      throw new RedactionSpanError(
-        `span has non-finite bounds (${span.startMs}..${span.endMs})`,
-      );
-    }
-    if (span.endMs <= span.startMs) {
-      throw new RedactionSpanError(
-        `span ends (${span.endMs}) before it starts (${span.startMs})`,
-      );
-    }
-    let start = Math.floor(span.startMs - padMs);
-    let end = Math.ceil(span.endMs + padMs);
-    // Clamp to the audio: padding at the file edges must not produce negative
-    // or past-the-end coordinates the executor would reject.
-    if (start < 0) start = 0;
-    if (durationMs > 0 && end > durationMs) end = Math.ceil(durationMs);
-    if (durationMs > 0 && (span.startMs >= durationMs || span.endMs <= 0)) {
-      throw new RedactionSpanError(
-        `span ${span.startMs}..${span.endMs} does not overlap audio duration ${durationMs}`,
-      );
-    }
-    if (end <= start) {
-      throw new RedactionSpanError(
-        `span ${span.startMs}..${span.endMs} became empty after clamping`,
-      );
-    }
-    padded.push({
-      startMs: start,
-      endMs: end,
-      ...(span.labels && span.labels.length > 0
-        ? { labels: [...span.labels] }
-        : {}),
-    });
-  }
+	const padded: AudioRedactionSpan[] = [];
+	for (const span of spans) {
+		if (!Number.isFinite(span.startMs) || !Number.isFinite(span.endMs)) {
+			throw new RedactionSpanError(
+				`span has non-finite bounds (${span.startMs}..${span.endMs})`,
+			);
+		}
+		if (span.endMs <= span.startMs) {
+			throw new RedactionSpanError(
+				`span ends (${span.endMs}) before it starts (${span.startMs})`,
+			);
+		}
+		let start = Math.floor(span.startMs - padMs);
+		let end = Math.ceil(span.endMs + padMs);
+		// Clamp to the audio: padding at the file edges must not produce negative
+		// or past-the-end coordinates the executor would reject.
+		if (start < 0) start = 0;
+		if (durationMs > 0 && end > durationMs) end = Math.ceil(durationMs);
+		if (durationMs > 0 && (span.startMs >= durationMs || span.endMs <= 0)) {
+			throw new RedactionSpanError(
+				`span ${span.startMs}..${span.endMs} does not overlap audio duration ${durationMs}`,
+			);
+		}
+		if (end <= start) {
+			throw new RedactionSpanError(
+				`span ${span.startMs}..${span.endMs} became empty after clamping`,
+			);
+		}
+		padded.push({
+			startMs: start,
+			endMs: end,
+			...(span.labels && span.labels.length > 0
+				? { labels: [...span.labels] }
+				: {}),
+		});
+	}
 
-  padded.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+	padded.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
 
-  const merged: Array<{ startMs: number; endMs: number; labels: Set<string> }> =
-    [];
-  for (const span of padded) {
-    const last = merged[merged.length - 1];
-    if (last && span.startMs <= last.endMs + mergeGapMs) {
-      last.endMs = Math.max(last.endMs, span.endMs);
-      for (const label of span.labels ?? []) last.labels.add(label);
-      continue;
-    }
-    merged.push({
-      startMs: span.startMs,
-      endMs: span.endMs,
-      labels: new Set(span.labels ?? []),
-    });
-  }
+	const merged: Array<{ startMs: number; endMs: number; labels: Set<string> }> =
+		[];
+	for (const span of padded) {
+		const last = merged[merged.length - 1];
+		if (last && span.startMs <= last.endMs + mergeGapMs) {
+			last.endMs = Math.max(last.endMs, span.endMs);
+			for (const label of span.labels ?? []) last.labels.add(label);
+			continue;
+		}
+		merged.push({
+			startMs: span.startMs,
+			endMs: span.endMs,
+			labels: new Set(span.labels ?? []),
+		});
+	}
 
-  return merged.map((span) => ({
-    startMs: span.startMs,
-    endMs: span.endMs,
-    ...(span.labels.size > 0 ? { labels: [...span.labels].sort() } : {}),
-  }));
+	return merged.map((span) => ({
+		startMs: span.startMs,
+		endMs: span.endMs,
+		...(span.labels.size > 0 ? { labels: [...span.labels].sort() } : {}),
+	}));
 }
 
 /** Options for {@link buildAudioRedactionSpans}. */
 export interface BuildRedactionSpanOptions
-  extends Omit<MergeRedactionSpanOptions, "durationMs"> {
-  durationMs: number;
+	extends Omit<MergeRedactionSpanOptions, "durationMs"> {
+	durationMs: number;
 }
 
 /** Result of the full text-PII → timestamp-window derivation. */
 export interface AudioRedactionSpanPlan {
-  /** Padded, merged, non-overlapping windows ready for the executor. */
-  spans: AudioRedactionSpan[];
-  /** Raw per-occurrence matches before pad/merge (audit trail). */
-  matches: AudioRedactionSpan[];
-  /** PII spans not locatable in the word stream — MUST fail the job if set. */
-  unmatched: PiiTextSpan[];
+	/** Padded, merged, non-overlapping windows ready for the executor. */
+	spans: AudioRedactionSpan[];
+	/** Raw per-occurrence matches before pad/merge (audit trail). */
+	matches: AudioRedactionSpan[];
+	/** PII spans not locatable in the word stream — MUST fail the job if set. */
+	unmatched: PiiTextSpan[];
 }
 
 /**
@@ -303,27 +303,27 @@ export interface AudioRedactionSpanPlan {
  * only guarantees it is never silently empty when PII could not be located.
  */
 export function buildAudioRedactionSpans(
-  words: readonly TranscriptWord[],
-  piiSpans: readonly PiiTextSpan[],
-  options: BuildRedactionSpanOptions,
+	words: readonly TranscriptWord[],
+	piiSpans: readonly PiiTextSpan[],
+	options: BuildRedactionSpanOptions,
 ): AudioRedactionSpanPlan {
-  const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans);
-  const spans = mergeRedactionSpans(matches, options);
-  return { spans, matches, unmatched };
+	const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans);
+	const spans = mergeRedactionSpans(matches, options);
+	return { spans, matches, unmatched };
 }
 
 /** Fail-closed workflow gate before an executor receives a span plan. */
 export function assertCompleteAudioRedactionPlan(
-  plan: AudioRedactionSpanPlan,
+	plan: AudioRedactionSpanPlan,
 ): void {
-  if (plan.unmatched.length > 0) {
-    throw new RedactionSpanError(
-      `PII text could not be located in timed words: ${plan.unmatched
-        .map((span) => JSON.stringify(span.text))
-        .join(", ")}`,
-    );
-  }
-  if (plan.spans.length === 0) {
-    throw new RedactionSpanError("complete plan has no executable spans");
-  }
+	if (plan.unmatched.length > 0) {
+		throw new RedactionSpanError(
+			`PII text could not be located in timed words: ${plan.unmatched
+				.map((span) => JSON.stringify(span.text))
+				.join(", ")}`,
+		);
+	}
+	if (plan.spans.length === 0) {
+		throw new RedactionSpanError("complete plan has no executable spans");
+	}
 }

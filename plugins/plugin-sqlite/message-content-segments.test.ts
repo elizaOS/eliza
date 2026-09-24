@@ -41,7 +41,7 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
         mode: "create",
         parent: { ...original, content: firstProjection.content },
         segments: firstProjection.segments,
-      })
+      }),
     ).resolves.toMatchObject({ status: "created" });
 
     const first = await adapter.readMessageContentRange({
@@ -69,8 +69,11 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
         expectedContent: firstProjection.content,
         replacementContent: secondProjection.content,
         segments: secondProjection.segments,
-        removeSegmentIds: collectMessageContentSegmentIds(MESSAGE_ID, firstProjection.content),
-      })
+        removeSegmentIds: collectMessageContentSegmentIds(
+          MESSAGE_ID,
+          firstProjection.content,
+        ),
+      }),
     ).resolves.toMatchObject({ status: "updated" });
 
     await expect(
@@ -83,7 +86,7 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
         offset: first.page.end,
         limit: 32 * 1024,
         expectedRevision: first.page.revision,
-      })
+      }),
     ).rejects.toMatchObject({ code: "MESSAGE_CONTENT_STALE_REVISION" });
   });
 
@@ -99,7 +102,9 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
       segments: projection.segments,
     });
 
-    await adapter.deleteParticipants([{ entityId: ENTITY_ID, roomId: ROOM_ID }]);
+    await adapter.deleteParticipants([
+      { entityId: ENTITY_ID, roomId: ROOM_ID },
+    ]);
     await expect(
       adapter.readMessageContentRange({
         agentId: AGENT_ID,
@@ -109,7 +114,7 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
         source: { kind: "message-text" },
         offset: 0,
         limit: 1024,
-      })
+      }),
     ).resolves.toEqual({ status: "forbidden" });
   });
 });

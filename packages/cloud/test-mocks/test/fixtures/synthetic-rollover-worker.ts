@@ -1,30 +1,34 @@
 /** Races a generation rollover from an independent OS process. */
-import { SqliteSyntheticEnvironmentLeaseStore } from "../../src/synthetic-environment/sqlite-lease-store";
-import { existsSync } from "node:fs";
-import { readFileSync } from "node:fs";
+
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
-import { writeFileSync } from "node:fs";
+import { SqliteSyntheticEnvironmentLeaseStore } from "../../src/synthetic-environment/sqlite-lease-store";
+
 const [databasePath, authorityPath, readyPath, goPath] = process.argv.slice(2);
 if (!databasePath || !authorityPath || !readyPath || !goPath) {
-    throw new Error("missing rollover worker arguments");
+  throw new Error("missing rollover worker arguments");
 }
-const authority = JSON.parse(readFileSync(authorityPath, "utf8")) as SyntheticEnvironmentLeaseAuthority;
+const authority = JSON.parse(
+  readFileSync(authorityPath, "utf8"),
+) as SyntheticEnvironmentLeaseAuthority;
 const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
 writeFileSync(readyPath, `${process.pid}\n`, { mode: 0o600 });
-while (!existsSync(goPath))
-    await Bun.sleep(5);
+while (!existsSync(goPath)) await Bun.sleep(5);
 try {
-    const receipt = await store.rollover({ authority, leaseDurationMs: 5000 });
-    process.stdout.write(`${JSON.stringify({ ok: true, operation: receipt.operation, authority: receipt.authority })}\n`);
-}
-catch (error) {
-    process.stdout.write(`${JSON.stringify({
-        ok: false,
-        code: typeof error === "object" && error !== null && "code" in error
-            ? error.code
-            : "UNKNOWN",
-    })}\n`);
-}
-finally {
-    store.close();
+  const receipt = await store.rollover({ authority, leaseDurationMs: 5000 });
+  process.stdout.write(
+    `${JSON.stringify({ ok: true, operation: receipt.operation, authority: receipt.authority })}\n`,
+  );
+} catch (error) {
+  process.stdout.write(
+    `${JSON.stringify({
+      ok: false,
+      code:
+        typeof error === "object" && error !== null && "code" in error
+          ? error.code
+          : "UNKNOWN",
+    })}\n`,
+  );
+} finally {
+  store.close();
 }

@@ -11,9 +11,12 @@
  * distinct from "the server reported an empty grant set". Consumers must not
  * collapse the unreported state into a healthy-looking empty list.
  */
-import { type ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
-import { type ConnectorAccountStatus } from "../../api/client-agent-connector-accounts";
-import { type ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
+
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
+import type {
+  ConnectorAccountRecord,
+  ConnectorAccountStatus,
+} from "../../api/client-agent-connector-accounts";
 /**
  * The one badge/chip tone vocabulary shared by connection cards and the
  * Permissions settings badges (`PERMISSION_BADGE_LABELS`). Matches the
@@ -22,27 +25,29 @@ import { type ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connecto
 export type CapabilityTone = "success" | "warning" | "danger" | "muted";
 /** Granted-capability read result. `reported: false` means the server sent no
  * grant information at all — render it as a visibly distinct state. */
-export type ConnectorCapabilityAccess = {
-    reported: true;
-    granted: ReadonlySet<string>;
-} | {
-    reported: false;
-};
+export type ConnectorCapabilityAccess =
+  | {
+      reported: true;
+      granted: ReadonlySet<string>;
+    }
+  | {
+      reported: false;
+    };
 /** One capability chip: a declared least-privilege choice and whether this
  * account currently holds it. `action: "grant"` marks the incremental-scope
  * affordance for a missing capability. */
 export interface CapabilityChipModel {
-    id: string;
-    label: string;
-    description: string;
-    state: "granted" | "missing";
-    action: "grant" | null;
+  id: string;
+  label: string;
+  description: string;
+  state: "granted" | "missing";
+  action: "grant" | null;
 }
 /** Unified account status presentation: tone plus whether the account needs a
  * reconnect (reauth) affordance rather than a plain retry. */
 export interface ConnectorAccountStatusPresentation {
-    tone: CapabilityTone;
-    needsReconnect: boolean;
+  tone: CapabilityTone;
+  needsReconnect: boolean;
 }
 /** Metadata keys that historically carry granted capability/scope ids. The
  * first key present wins so a provider that reports both granted and requested
@@ -51,23 +56,21 @@ export interface ConnectorAccountStatusPresentation {
  * client before the OAuth round trip, so a denied or partially granted consent
  * must read as unreported, never as granted. */
 const GRANTED_CAPABILITY_METADATA_KEYS = [
-    "grantedCapabilities",
-    "grantedScopes",
-    "capabilities",
-    "scopes",
+  "grantedCapabilities",
+  "grantedScopes",
+  "capabilities",
+  "scopes",
 ] as const;
 function sanitizeCapabilityIds(value: unknown): ReadonlySet<string> | null {
-    if (!Array.isArray(value))
-        return null;
-    const ids = new Set<string>();
-    for (const item of value) {
-        if (typeof item === "string") {
-            const trimmed = item.trim();
-            if (trimmed && trimmed.length <= 120)
-                ids.add(trimmed);
-        }
+  if (!Array.isArray(value)) return null;
+  const ids = new Set<string>();
+  for (const item of value) {
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (trimmed && trimmed.length <= 120) ids.add(trimmed);
     }
-    return ids;
+  }
+  return ids;
 }
 /**
  * Reads the granted capability ids from an account record's wire metadata.
@@ -75,18 +78,20 @@ function sanitizeCapabilityIds(value: unknown): ReadonlySet<string> | null {
  * sanitization; a record whose metadata carries none of the known keys is
  * explicitly `reported: false`, never an empty granted set.
  */
-export function readConnectorAccountCapabilityAccess(account: Pick<ConnectorAccountRecord, "metadata">): ConnectorCapabilityAccess {
-    const metadata = account.metadata;
-    if (!metadata || typeof metadata !== "object")
-        return { reported: false };
-    for (const key of GRANTED_CAPABILITY_METADATA_KEYS) {
-        // error-policy:J3 wire metadata is untrusted — malformed entries drop to
-        // an explicit unreported state instead of a fake-valid empty grant.
-        const granted = sanitizeCapabilityIds((metadata as Record<string, unknown>)[key]);
-        if (granted !== null)
-            return { reported: true, granted };
-    }
-    return { reported: false };
+export function readConnectorAccountCapabilityAccess(
+  account: Pick<ConnectorAccountRecord, "metadata">,
+): ConnectorCapabilityAccess {
+  const metadata = account.metadata;
+  if (!metadata || typeof metadata !== "object") return { reported: false };
+  for (const key of GRANTED_CAPABILITY_METADATA_KEYS) {
+    // error-policy:J3 wire metadata is untrusted — malformed entries drop to
+    // an explicit unreported state instead of a fake-valid empty grant.
+    const granted = sanitizeCapabilityIds(
+      (metadata as Record<string, unknown>)[key],
+    );
+    if (granted !== null) return { reported: true, granted };
+  }
+  return { reported: false };
 }
 /**
  * Builds the chip list for one account from the provider's declared
@@ -96,50 +101,54 @@ export function readConnectorAccountCapabilityAccess(account: Pick<ConnectorAcco
  * Returns `null` when access was never reported — the caller must render the
  * distinct "access not reported" state instead of chips.
  */
-export function presentConnectorCapabilityChips(access: ConnectorCapabilityAccess, declared: readonly ConnectorOAuthCapabilityDeclaration[]): CapabilityChipModel[] | null {
-    if (!access.reported)
-        return null;
-    const chips: CapabilityChipModel[] = declared.map((capability) => {
-        const granted = access.granted.has(capability.id);
-        return {
-            id: capability.id,
-            label: capability.label,
-            description: `${capability.group}: ${capability.description}`,
-            state: granted ? "granted" : "missing",
-            action: granted ? null : "grant",
-        };
-    });
-    const declaredIds = new Set(declared.map((capability) => capability.id));
-    for (const id of access.granted) {
-        if (!declaredIds.has(id)) {
-            chips.push({
-                id,
-                label: id,
-                description: id,
-                state: "granted",
-                action: null,
-            });
-        }
+export function presentConnectorCapabilityChips(
+  access: ConnectorCapabilityAccess,
+  declared: readonly ConnectorOAuthCapabilityDeclaration[],
+): CapabilityChipModel[] | null {
+  if (!access.reported) return null;
+  const chips: CapabilityChipModel[] = declared.map((capability) => {
+    const granted = access.granted.has(capability.id);
+    return {
+      id: capability.id,
+      label: capability.label,
+      description: `${capability.group}: ${capability.description}`,
+      state: granted ? "granted" : "missing",
+      action: granted ? null : "grant",
+    };
+  });
+  const declaredIds = new Set(declared.map((capability) => capability.id));
+  for (const id of access.granted) {
+    if (!declaredIds.has(id)) {
+      chips.push({
+        id,
+        label: id,
+        description: id,
+        state: "granted",
+        action: null,
+      });
     }
-    return chips;
+  }
+  return chips;
 }
 /** Maps the connector account status union onto the shared tone vocabulary. */
-export function presentConnectorAccountStatus(status: ConnectorAccountStatus | undefined): ConnectorAccountStatusPresentation {
-    switch (status) {
-        case "connected":
-            return { tone: "success", needsReconnect: false };
-        case "pending":
-            return { tone: "warning", needsReconnect: false };
-        case "needs-reauth":
-            return { tone: "danger", needsReconnect: true };
-        case "error":
-            return { tone: "danger", needsReconnect: true };
-        case "disconnected":
-            return { tone: "muted", needsReconnect: true };
-        case "unknown":
-        case undefined:
-            return { tone: "muted", needsReconnect: false };
-    }
+export function presentConnectorAccountStatus(
+  status: ConnectorAccountStatus | undefined,
+): ConnectorAccountStatusPresentation {
+  switch (status) {
+    case "connected":
+      return { tone: "success", needsReconnect: false };
+    case "pending":
+      return { tone: "warning", needsReconnect: false };
+    case "needs-reauth":
+      return { tone: "danger", needsReconnect: true };
+    case "error":
+      return { tone: "danger", needsReconnect: true };
+    case "disconnected":
+      return { tone: "muted", needsReconnect: true };
+    case "unknown":
+    case undefined:
+      return { tone: "muted", needsReconnect: false };
+  }
 }
 /**
  * Computes the scope list for an incremental-scope OAuth restart: the union of
@@ -151,12 +160,14 @@ export function presentConnectorAccountStatus(status: ConnectorAccountStatus | u
  * affordance is only rendered for reported access; this fallback guards
  * direct callers.)
  */
-export function incrementalScopeRequest(access: ConnectorCapabilityAccess, requestedCapabilityId: string): string[] {
-    const scopes = new Set<string>();
-    if (access.reported) {
-        for (const id of access.granted)
-            scopes.add(id);
-    }
-    scopes.add(requestedCapabilityId);
-    return [...scopes].sort();
+export function incrementalScopeRequest(
+  access: ConnectorCapabilityAccess,
+  requestedCapabilityId: string,
+): string[] {
+  const scopes = new Set<string>();
+  if (access.reported) {
+    for (const id of access.granted) scopes.add(id);
+  }
+  scopes.add(requestedCapabilityId);
+  return [...scopes].sort();
 }

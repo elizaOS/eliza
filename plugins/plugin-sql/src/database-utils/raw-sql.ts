@@ -14,18 +14,12 @@ export type TransactionalDb = RuntimeDb;
 export class RawSqlError extends Error {
   override readonly name = "RawSqlError";
   constructor(
-    readonly code:
-      | "SQL_RESULT_INVALID"
-      | "SQL_JSON_INVALID"
-      | "SQL_VALUE_INVALID",
+    readonly code: "SQL_RESULT_INVALID" | "SQL_JSON_INVALID" | "SQL_VALUE_INVALID",
     message: string,
-    options: ErrorOptions & { rowIndex?: number } = {},
+    options: ErrorOptions & { rowIndex?: number } = {}
   ) {
     super(message, options);
-    this.context =
-      options.rowIndex === undefined
-        ? undefined
-        : { rowIndex: options.rowIndex };
+    this.context = options.rowIndex === undefined ? undefined : { rowIndex: options.rowIndex };
   }
   readonly context: { rowIndex: number } | undefined;
 }
@@ -71,7 +65,7 @@ export function parseJsonValue<T>(value: unknown, fallback: T): T {
     if (typeof value === "object") return value as T;
     throw new RawSqlError(
       "SQL_JSON_INVALID",
-      `Expected JSON string or object, received ${typeof value}`,
+      `Expected JSON string or object, received ${typeof value}`
     );
   }
   try {
@@ -102,19 +96,14 @@ export function parseJsonArray<T>(value: unknown): T[] {
 export function extractRows(result: unknown): Array<Record<string, unknown>> {
   const rows = Array.isArray(result) ? result : asObject(result)?.rows;
   if (!Array.isArray(rows)) {
-    throw new RawSqlError(
-      "SQL_RESULT_INVALID",
-      "Database execution did not return a row array",
-    );
+    throw new RawSqlError("SQL_RESULT_INVALID", "Database execution did not return a row array");
   }
   return Array.from(rows, (row, rowIndex) => {
     const object = asObject(row);
     if (!object) {
-      throw new RawSqlError(
-        "SQL_RESULT_INVALID",
-        "Database execution returned an invalid row",
-        { rowIndex },
-      );
+      throw new RawSqlError("SQL_RESULT_INVALID", "Database execution returned an invalid row", {
+        rowIndex,
+      });
     }
     return object;
   });
@@ -122,7 +111,7 @@ export function extractRows(result: unknown): Array<Record<string, unknown>> {
 
 export async function executeSql(
   db: RuntimeDb,
-  statement: string,
+  statement: string
 ): Promise<Array<Record<string, unknown>>> {
   const { sql } = await import("drizzle-orm");
   return extractRows(await db.execute(sql.raw(statement)));
@@ -135,7 +124,7 @@ export class OptimisticLockError extends Error {
   readonly expectedVersion: number;
   constructor(args: { table: string; id: string; expectedVersion: number }) {
     super(
-      `Optimistic lock conflict on ${args.table} id=${args.id} expectedVersion=${args.expectedVersion}`,
+      `Optimistic lock conflict on ${args.table} id=${args.id} expectedVersion=${args.expectedVersion}`
     );
     this.table = args.table;
     this.id = args.id;
@@ -149,7 +138,7 @@ export class OptimisticLockError extends Error {
  */
 export async function withOptimisticRetry<T>(
   fn: () => Promise<T>,
-  options?: { maxAttempts?: number; baseDelayMs?: number },
+  options?: { maxAttempts?: number; baseDelayMs?: number }
 ): Promise<T> {
   const maxAttempts = Math.max(1, options?.maxAttempts ?? 3);
   const baseDelay = Math.max(1, options?.baseDelayMs ?? 20);
@@ -164,8 +153,7 @@ export async function withOptimisticRetry<T>(
       }
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        const delay =
-          baseDelay * 2 ** attempt + Math.floor(Math.random() * baseDelay);
+        const delay = baseDelay * 2 ** attempt + Math.floor(Math.random() * baseDelay);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

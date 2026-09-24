@@ -23,20 +23,20 @@
  * - `speaking`   — the reply is being spoken aloud (voice output); client-derived.
  */
 export interface ChatTurnStatus {
-  kind:
-    | "thinking"
-    | "streaming"
-    | "running_action"
-    | "running_tool"
-    | "evaluating"
-    | "waking"
-    | "speaking";
-  /** Optional short human-readable label override for the phase. */
-  label?: string;
-  /** Canonical action name when `kind === "running_action"`. */
-  actionName?: string;
-  /** Tool/MCP name when `kind === "running_tool"`. */
-  toolName?: string;
+	kind:
+		| "thinking"
+		| "streaming"
+		| "running_action"
+		| "running_tool"
+		| "evaluating"
+		| "waking"
+		| "speaking";
+	/** Optional short human-readable label override for the phase. */
+	label?: string;
+	/** Canonical action name when `kind === "running_action"`. */
+	actionName?: string;
+	/** Tool/MCP name when `kind === "running_tool"`. */
+	toolName?: string;
 }
 
 /**
@@ -56,17 +56,17 @@ export interface ChatTurnStatus {
  * flip one row from running to settled rather than appending a second row.
  */
 export interface ChatToolCallEvent {
-  phase: "call" | "result" | "error";
-  /** Stable id correlating a `call` with its `result`/`error`. */
-  callId: string;
-  /** Tool/action name being invoked (e.g. "WEB_SEARCH"). */
-  toolName: string;
-  /** Arguments the model passed to the tool; present on `call`. */
-  args?: Record<string, unknown>;
-  /** Tool output; present on `result`. */
-  result?: unknown;
-  /** Failure message; present on `error`. */
-  error?: string;
+	phase: "call" | "result" | "error";
+	/** Stable id correlating a `call` with its `result`/`error`. */
+	callId: string;
+	/** Tool/action name being invoked (e.g. "WEB_SEARCH"). */
+	toolName: string;
+	/** Arguments the model passed to the tool; present on `call`. */
+	args?: Record<string, unknown>;
+	/** Tool output; present on `result`. */
+	result?: unknown;
+	/** Failure message; present on `error`. */
+	error?: string;
 }
 
 /**
@@ -91,21 +91,21 @@ export interface ChatToolCallEvent {
  * - `coding_tool_failure` — a coding tool failed without narrower provenance.
  */
 export const CHAT_FAILURE_KINDS = [
-  "insufficient_credits",
-  "missing_capability",
-  "no_provider",
-  "planner_exhaustion",
-  "context_overflow",
-  "provider_issue",
-  "generation_timeout",
-  "rate_limited",
-  "reply_generation_error",
-  "handler_error",
-  "persistence_error",
-  "local_inference",
-  "coding_mutation_unverified",
-  "coding_verification_failed",
-  "coding_tool_failure",
+	"insufficient_credits",
+	"missing_capability",
+	"no_provider",
+	"planner_exhaustion",
+	"context_overflow",
+	"provider_issue",
+	"generation_timeout",
+	"rate_limited",
+	"reply_generation_error",
+	"handler_error",
+	"persistence_error",
+	"local_inference",
+	"coding_mutation_unverified",
+	"coding_verification_failed",
+	"coding_tool_failure",
 ] as const;
 
 /**
@@ -118,10 +118,10 @@ export type ChatFailureKind = (typeof CHAT_FAILURE_KINDS)[number];
 
 /** Authoritative terminal failure carried independently of assistant prose. */
 export interface ChatTerminalFailure {
-  kind: ChatFailureKind;
-  message: string;
-  transient: boolean;
-  code?: string;
+	kind: ChatFailureKind;
+	message: string;
+	transient: boolean;
+	code?: string;
 }
 
 /**
@@ -131,57 +131,57 @@ export interface ChatTerminalFailure {
  * not invite a loop that cannot succeed.
  */
 export const RETRYABLE_CHAT_FAILURE_KINDS = [
-  "provider_issue",
-  "rate_limited",
-  "local_inference",
-  "planner_exhaustion",
-  "generation_timeout",
+	"provider_issue",
+	"rate_limited",
+	"local_inference",
+	"planner_exhaustion",
+	"generation_timeout",
 ] as const satisfies readonly ChatFailureKind[];
 
 const CHAT_FAILURE_KIND_SET: ReadonlySet<string> = new Set(CHAT_FAILURE_KINDS);
 const RETRYABLE_CHAT_FAILURE_KIND_SET: ReadonlySet<string> = new Set(
-  RETRYABLE_CHAT_FAILURE_KINDS,
+	RETRYABLE_CHAT_FAILURE_KINDS,
 );
 
 /** Exhaustive runtime validator for wire/transport failure discriminators. */
 export function isChatFailureKind(value: unknown): value is ChatFailureKind {
-  return typeof value === "string" && CHAT_FAILURE_KIND_SET.has(value);
+	return typeof value === "string" && CHAT_FAILURE_KIND_SET.has(value);
 }
 
 /** Narrow unknown transport payloads to a public `ChatFailureKind` or drop. */
 export function parseChatFailureKind(
-  value: unknown,
+	value: unknown,
 ): ChatFailureKind | undefined {
-  return isChatFailureKind(value) ? value : undefined;
+	return isChatFailureKind(value) ? value : undefined;
 }
 
 /** Strictly validates a terminal failure received across a chat transport. */
 export function parseChatTerminalFailure(
-  value: unknown,
+	value: unknown,
 ): ChatTerminalFailure | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const kind = parseChatFailureKind(record.kind);
-  if (
-    !kind ||
-    typeof record.message !== "string" ||
-    record.message.trim().length === 0 ||
-    typeof record.transient !== "boolean" ||
-    (record.code !== undefined && typeof record.code !== "string")
-  ) {
-    return undefined;
-  }
-  return {
-    kind,
-    message: record.message,
-    transient: record.transient,
-    ...(record.code ? { code: record.code } : {}),
-  };
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return undefined;
+	}
+	const record = value as Record<string, unknown>;
+	const kind = parseChatFailureKind(record.kind);
+	if (
+		!kind ||
+		typeof record.message !== "string" ||
+		record.message.trim().length === 0 ||
+		typeof record.transient !== "boolean" ||
+		(record.code !== undefined && typeof record.code !== "string")
+	) {
+		return undefined;
+	}
+	return {
+		kind,
+		message: record.message,
+		transient: record.transient,
+		...(record.code ? { code: record.code } : {}),
+	};
 }
 
 /** Whether UI surfaces should offer Retry for this structured failure. */
 export function isRetryableChatFailureKind(kind: ChatFailureKind): boolean {
-  return RETRYABLE_CHAT_FAILURE_KIND_SET.has(kind);
+	return RETRYABLE_CHAT_FAILURE_KIND_SET.has(kind);
 }

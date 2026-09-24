@@ -7,14 +7,14 @@
  */
 
 export const UI_LANGUAGES = [
-  "en",
-  "zh-CN",
-  "ko",
-  "es",
-  "pt",
-  "vi",
-  "tl",
-  "ja",
+	"en",
+	"zh-CN",
+	"ko",
+	"es",
+	"pt",
+	"vi",
+	"tl",
+	"ja",
 ] as const;
 
 export type UiLanguage = (typeof UI_LANGUAGES)[number];
@@ -28,23 +28,23 @@ const UI_LANGUAGE_SET = new Set<string>(UI_LANGUAGES);
  * supported {@link UI_LANGUAGES}, falling back to {@link DEFAULT_UI_LANGUAGE}.
  */
 export function normalizeLanguage(input: unknown): UiLanguage {
-  if (typeof input !== "string") return DEFAULT_UI_LANGUAGE;
-  const trimmed = input.trim();
-  if (!trimmed) return DEFAULT_UI_LANGUAGE;
-  if (UI_LANGUAGE_SET.has(trimmed)) return trimmed as UiLanguage;
+	if (typeof input !== "string") return DEFAULT_UI_LANGUAGE;
+	const trimmed = input.trim();
+	if (!trimmed) return DEFAULT_UI_LANGUAGE;
+	if (UI_LANGUAGE_SET.has(trimmed)) return trimmed as UiLanguage;
 
-  const lower = trimmed.toLowerCase();
-  if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
-    return "zh-CN";
-  }
-  if (lower === "en" || lower.startsWith("en-")) {
-    return "en";
-  }
-  if (lower.startsWith("ko")) return "ko";
-  if (lower.startsWith("es")) return "es";
-  if (lower.startsWith("pt")) return "pt";
-  if (lower.startsWith("vi")) return "vi";
-  if (lower.startsWith("tl") || lower.startsWith("fil")) return "tl";
-  if (lower.startsWith("ja")) return "ja";
-  return DEFAULT_UI_LANGUAGE;
+	const lower = trimmed.toLowerCase();
+	if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
+		return "zh-CN";
+	}
+	if (lower === "en" || lower.startsWith("en-")) {
+		return "en";
+	}
+	if (lower.startsWith("ko")) return "ko";
+	if (lower.startsWith("es")) return "es";
+	if (lower.startsWith("pt")) return "pt";
+	if (lower.startsWith("vi")) return "vi";
+	if (lower.startsWith("tl") || lower.startsWith("fil")) return "tl";
+	if (lower.startsWith("ja")) return "ja";
+	return DEFAULT_UI_LANGUAGE;
 }

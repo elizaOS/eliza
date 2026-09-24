@@ -9,7 +9,34 @@
  * are stable contract surface and intentionally unchanged by the extraction.
  */
 
-import { type CreateLifeOpsCalendarEventRequest, type CreateLifeOpsCalendarEventResponse, type CreateLifeOpsIcsCalendarSourceRequest, type GetLifeOpsCalendarFeedRequest, type LifeOpsCalendarEventCancellationResult, type LifeOpsCalendarEventMutationResult, type LifeOpsCalendarEventUpdate, type LifeOpsCalendarFeed, type LifeOpsCalendarImportedDataPurgeReceipt, type LifeOpsCalendarSeedReceipt, type LifeOpsCalendarSummary, type LifeOpsIcsCalendarSourceMutationResponse, type LifeOpsIcsCalendarSyncResponse, type LifeOpsLinkedCalendarControl, type LifeOpsLinkedCalendarControlMutationResult, type LifeOpsNextCalendarEventContext, type ListLifeOpsCalendarsRequest, type ListLifeOpsIcsCalendarSourcesResponse, type PurgeLifeOpsCalendarImportedDataRequest, type RebindLifeOpsLinkedCalendarRequest, type RebindLifeOpsLinkedCalendarResponse, type SeedLifeOpsCalendarRequest, type SetLifeOpsCalendarIncludedRequest, type SetLifeOpsCalendarIncludedResponse, type UpdateLifeOpsIcsCalendarSourceRequest, type UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/core/contracts/calendar";
+import {
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type CreateLifeOpsIcsCalendarSourceRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEventCancellationResult,
+  type LifeOpsCalendarEventMutationResult,
+  type LifeOpsCalendarEventUpdate,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarImportedDataPurgeReceipt,
+  type LifeOpsCalendarSeedReceipt,
+  type LifeOpsCalendarSummary,
+  type LifeOpsIcsCalendarSourceMutationResponse,
+  type LifeOpsIcsCalendarSyncResponse,
+  type LifeOpsLinkedCalendarControl,
+  type LifeOpsLinkedCalendarControlMutationResult,
+  type LifeOpsNextCalendarEventContext,
+  type ListLifeOpsCalendarsRequest,
+  type ListLifeOpsIcsCalendarSourcesResponse,
+  type PurgeLifeOpsCalendarImportedDataRequest,
+  type RebindLifeOpsLinkedCalendarRequest,
+  type RebindLifeOpsLinkedCalendarResponse,
+  type SeedLifeOpsCalendarRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type SetLifeOpsCalendarIncludedResponse,
+  type UpdateLifeOpsIcsCalendarSourceRequest,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
 import { ElizaClient } from "@elizaos/ui/api";
 import type {
   MeetingAutoJoinPolicy,

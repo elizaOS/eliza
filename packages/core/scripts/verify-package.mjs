@@ -33,12 +33,19 @@ try {
 	);
 	assert.ok(manifest.exports["."], "The Node runtime entrypoint is required");
 	for (const [subpath, target] of Object.entries(manifest.exports)) {
-		const distribution = typeof target === "string" ? target : target.import ?? target.default;
+		const distribution =
+			typeof target === "string" ? target : (target.import ?? target.default);
 		if (typeof distribution === "string" && !distribution.includes("*")) {
-			assert.ok(existsSync(path.join(core, distribution)), `Missing published export ${subpath}: ${distribution}`);
+			assert.ok(
+				existsSync(path.join(core, distribution)),
+				`Missing published export ${subpath}: ${distribution}`,
+			);
 		}
 		if (typeof target === "object" && target.types) {
-			assert.ok(existsSync(path.join(core, target.types)), `Missing declarations for ${subpath}`);
+			assert.ok(
+				existsSync(path.join(core, target.types)),
+				`Missing declarations for ${subpath}`,
+			);
 		}
 	}
 	const packed = new Map();

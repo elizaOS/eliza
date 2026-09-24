@@ -19,15 +19,19 @@
  * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import { boolean } from "drizzle-orm/pg-core";
-import { index } from "drizzle-orm/pg-core";
-import { integer } from "drizzle-orm/pg-core";
-import { pgSchema } from "drizzle-orm/pg-core";
-import { real } from "drizzle-orm/pg-core";
-import { text } from "drizzle-orm/pg-core";
-import { unique } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgSchema,
+  real,
+  text,
+  unique,
+} from "drizzle-orm/pg-core";
 export const appLifeopsPgSchema = pgSchema("app_lifeops");
-export const lifeEntities = appLifeopsPgSchema.table("life_entities", {
+export const lifeEntities = appLifeopsPgSchema.table(
+  "life_entities",
+  {
     entityId: text("entity_id").notNull(),
     agentId: text("agent_id").notNull(),
     type: text("type").notNull(),
@@ -42,31 +46,50 @@ export const lifeEntities = appLifeopsPgSchema.table("life_entities", {
     legacyRelationshipId: text("legacy_relationship_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
-}, (t) => [
+  },
+  (t) => [
     unique().on(t.agentId, t.entityId),
     index("life_entities_agent_type_idx").on(t.agentId, t.type),
     index("life_entities_agent_name_idx").on(t.agentId, t.preferredName),
-]);
-export const lifeEntityIdentities = appLifeopsPgSchema.table("life_entity_identities", {
+  ],
+);
+export const lifeEntityIdentities = appLifeopsPgSchema.table(
+  "life_entity_identities",
+  {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     entityId: text("entity_id").notNull(),
     platform: text("platform").notNull(),
     handle: text("handle").notNull(),
     connectorAccountId: text("connector_account_id")
-        .notNull()
-        .default(DEFAULT_CONNECTOR_ACCOUNT_ID),
+      .notNull()
+      .default(DEFAULT_CONNECTOR_ACCOUNT_ID),
     displayName: text("display_name"),
     verified: boolean("verified").notNull().default(false),
     confidence: real("confidence").notNull().default(0),
     addedAt: text("added_at").notNull(),
     addedVia: text("added_via").notNull(),
     evidenceJson: text("evidence_json").notNull().default("[]"),
-}, (t) => [
-    unique("life_entity_identities_entity_route_unique").on(t.agentId, t.entityId, t.platform, t.connectorAccountId, t.handle),
-    index("life_entity_identities_lookup_idx").on(t.agentId, t.platform, t.connectorAccountId, t.handle),
-]);
-export const lifeEntityAttributes = appLifeopsPgSchema.table("life_entity_attributes", {
+  },
+  (t) => [
+    unique("life_entity_identities_entity_route_unique").on(
+      t.agentId,
+      t.entityId,
+      t.platform,
+      t.connectorAccountId,
+      t.handle,
+    ),
+    index("life_entity_identities_lookup_idx").on(
+      t.agentId,
+      t.platform,
+      t.connectorAccountId,
+      t.handle,
+    ),
+  ],
+);
+export const lifeEntityAttributes = appLifeopsPgSchema.table(
+  "life_entity_attributes",
+  {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     entityId: text("entity_id").notNull(),
@@ -75,11 +98,15 @@ export const lifeEntityAttributes = appLifeopsPgSchema.table("life_entity_attrib
     confidence: real("confidence").notNull().default(0),
     evidenceJson: text("evidence_json").notNull().default("[]"),
     updatedAt: text("updated_at").notNull(),
-}, (t) => [
+  },
+  (t) => [
     unique().on(t.agentId, t.entityId, t.key),
     index("life_entity_attributes_lookup_idx").on(t.agentId, t.entityId),
-]);
-export const lifeRelationshipsV2 = appLifeopsPgSchema.table("life_relationships_v2", {
+  ],
+);
+export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
+  "life_relationships_v2",
+  {
     relationshipId: text("relationship_id").primaryKey(),
     agentId: text("agent_id").notNull(),
     fromEntityId: text("from_entity_id").notNull(),
@@ -90,8 +117,8 @@ export const lifeRelationshipsV2 = appLifeopsPgSchema.table("life_relationships_
     stateLastObservedAt: text("state_last_observed_at"),
     stateLastInteractionAt: text("state_last_interaction_at"),
     stateInteractionCount: integer("state_interaction_count")
-        .notNull()
-        .default(0),
+      .notNull()
+      .default(0),
     stateSentimentTrend: text("state_sentiment_trend"),
     evidenceJson: text("evidence_json").notNull().default("[]"),
     confidence: real("confidence").notNull().default(0),
@@ -101,39 +128,61 @@ export const lifeRelationshipsV2 = appLifeopsPgSchema.table("life_relationships_
     retiredReason: text("retired_reason"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
-}, (t) => [
-    index("life_relationships_v2_edge_idx").on(t.agentId, t.fromEntityId, t.toEntityId, t.type),
+  },
+  (t) => [
+    index("life_relationships_v2_edge_idx").on(
+      t.agentId,
+      t.fromEntityId,
+      t.toEntityId,
+      t.type,
+    ),
     index("life_relationships_v2_to_idx").on(t.agentId, t.toEntityId),
-    index("life_relationships_v2_cadence_idx").on(t.agentId, t.cadenceDays, t.stateLastInteractionAt),
-]);
-export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table("life_relationship_audit_events", {
+    index("life_relationships_v2_cadence_idx").on(
+      t.agentId,
+      t.cadenceDays,
+      t.stateLastInteractionAt,
+    ),
+  ],
+);
+export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
+  "life_relationship_audit_events",
+  {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     relationshipId: text("relationship_id").notNull(),
     kind: text("kind").notNull(),
     detailsJson: text("details_json").notNull().default("{}"),
     createdAt: text("created_at").notNull(),
-}, (t) => [
-    index("life_relationship_audit_events_lookup_idx").on(t.agentId, t.relationshipId),
-]);
+  },
+  (t) => [
+    index("life_relationship_audit_events_lookup_idx").on(
+      t.agentId,
+      t.relationshipId,
+    ),
+  ],
+);
 /** Complete current-source snapshots; repeated archival replaces one agent's rows. */
-export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table("core_relationships_source_records", {
+export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
+  "core_relationships_source_records",
+  {
     agentId: text("agent_id").notNull(),
     sourceKind: text("source_kind").notNull(),
     sourceId: text("source_id").notNull(),
     sourceHash: text("source_hash").notNull(),
     payloadJson: text("payload_json").notNull(),
     archivedAt: text("archived_at").notNull(),
-}, (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)]);
+  },
+  (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)],
+);
 /**
  * Aggregate schema registered by the runtime "eliza" plugin so the SQL
  * plugin migrates these tables whenever the runtime runs.
  */
 export const knowledgeGraphSchema = {
-    lifeEntities,
-    lifeEntityIdentities,
-    lifeEntityAttributes,
-    lifeRelationshipsV2,
-    lifeRelationshipAuditEvents,
-    coreRelationshipsSourceRecords,
+  lifeEntities,
+  lifeEntityIdentities,
+  lifeEntityAttributes,
+  lifeRelationshipsV2,
+  lifeRelationshipAuditEvents,
+  coreRelationshipsSourceRecords,
 } as const;

@@ -32,7 +32,7 @@ vi.mock("@elizaos/core", async (importActual) => ({
   recordLlmCall: mocks.recordLlmCall,
 }));
 vi.mock("@elizaos/core/media", async (importActual) => {
-  const actual = await importActual<typeof import("../../../packages/core/src/media/index.ts")>();
+  const actual = await importActual<typeof import("@elizaos/core/media")>();
 
   return { ...actual, fetchRemoteMedia: (...args: unknown[]) => mocks.fetchRemoteMedia(...args) };
 });

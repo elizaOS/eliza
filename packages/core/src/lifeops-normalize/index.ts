@@ -3,12 +3,11 @@
  *
  * Pure input-normalization helpers, the time-zone helpers they build on, and
  * the status-carrying `LifeOpsServiceError`. Depends only on `@elizaos/core`
- * and the LifeOps contract types/constants (all in `@elizaos/shared`). No DB,
+ * and the LifeOps contract types/constants (all in `@elizaos/core`). No DB,
  * no plugin imports.
  */
-
-export * from "@elizaos/core/lifeops-normalize/calendar-time-zone";
-export * from "@elizaos/core/lifeops-normalize/service-error";
-export * from "@elizaos/core/lifeops-normalize/service-normalize";
-export * from "@elizaos/core/lifeops-normalize/time-util";
-export * from "@elizaos/core/lifeops-normalize/time-zone";
+export * from "./calendar-time-zone.js";
+export * from "./service-error.js";
+export * from "./service-normalize.js";
+export * from "./time-util.js";
+export * from "./time-zone.js";

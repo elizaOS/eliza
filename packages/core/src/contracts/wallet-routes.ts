@@ -28,38 +28,38 @@ const WalletGenerateSourceSchema = z.enum(["local", "steward"]);
 const WalletPrimarySourceSchema = z.enum(["local", "cloud"]);
 
 export const PostWalletImportRequestSchema = z
-  .object({
-    chain: WalletChainSchema.optional(),
-    privateKey: z.string().regex(/\S/, "privateKey is required"),
-  })
-  .strict()
-  .transform((value) => ({
-    ...(value.chain ? { chain: value.chain } : {}),
-    privateKey: value.privateKey.trim(),
-  }));
+	.object({
+		chain: WalletChainSchema.optional(),
+		privateKey: z.string().regex(/\S/, "privateKey is required"),
+	})
+	.strict()
+	.transform((value) => ({
+		...(value.chain ? { chain: value.chain } : {}),
+		privateKey: value.privateKey.trim(),
+	}));
 
 export const PostWalletGenerateRequestSchema = z
-  .object({
-    chain: WalletGenerateChainSchema.optional(),
-    source: WalletGenerateSourceSchema.optional(),
-  })
-  .strict();
+	.object({
+		chain: WalletGenerateChainSchema.optional(),
+		source: WalletGenerateSourceSchema.optional(),
+	})
+	.strict();
 
 export const PostWalletPrimaryRequestSchema = z
-  .object({
-    chain: WalletChainSchema,
-    source: WalletPrimarySourceSchema,
-  })
-  .strict();
+	.object({
+		chain: WalletChainSchema,
+		source: WalletPrimarySourceSchema,
+	})
+	.strict();
 
 export type PostWalletImportRequest = z.infer<
-  typeof PostWalletImportRequestSchema
+	typeof PostWalletImportRequestSchema
 >;
 export type PostWalletGenerateRequest = z.infer<
-  typeof PostWalletGenerateRequestSchema
+	typeof PostWalletGenerateRequestSchema
 >;
 export type PostWalletPrimaryRequest = z.infer<
-  typeof PostWalletPrimaryRequestSchema
+	typeof PostWalletPrimaryRequestSchema
 >;
 export type WalletChainInput = z.infer<typeof WalletChainSchema>;
 export type WalletGenerateChain = z.infer<typeof WalletGenerateChainSchema>;

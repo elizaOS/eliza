@@ -1,9 +1,12 @@
 /**
  * Shared helpers for safely reading values from untyped config objects.
  */
-import { asNonEmptyString } from "@elizaos/core/type-guards";
-import { asRecord } from "@elizaos/core/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
+
 export { asRecord };
-export function readString(source: Record<string, unknown> | null | undefined, key: string): string | null {
-    return asNonEmptyString(source?.[key]) ?? null;
+export function readString(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  return asNonEmptyString(source?.[key]) ?? null;
 }

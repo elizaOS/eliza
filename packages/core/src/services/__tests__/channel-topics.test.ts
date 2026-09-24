@@ -5,14 +5,14 @@
  * uses AgentRuntime and the real in-memory database adapter.
  */
 
-import { ElizaError } from "../../errors.js";
-import { stringToUuid as sqliteTestAgentId } from "../../utils.js";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
+import { ElizaError } from "../../errors.js";
 import { AgentRuntime } from "../../runtime.ts";
 import type { Room, UUID } from "../../types/index";
 import type { IAgentRuntime } from "../../types/runtime";
+import { stringToUuid as sqliteTestAgentId } from "../../utils.js";
 import {
 	CHANNEL_TOPICS_LRU_CAPACITY,
 	CHANNEL_TOPICS_METADATA_KEY,

@@ -18,10 +18,7 @@ export function toActionName(serverName: string, toolName: string): string {
   return `${server}_${tool}`;
 }
 
-export function generateSimiles(
-  serverName: string,
-  toolName: string,
-): string[] {
+export function generateSimiles(serverName: string, toolName: string): string[] {
   const tool = normalize(toolName);
   const fullName = toActionName(serverName, toolName);
 
@@ -42,7 +39,7 @@ export function generateSimiles(
 }
 
 export function parseActionName(
-  actionName: string,
+  actionName: string
 ): { serverName: string; toolName: string } | null {
   const normalized = normalize(actionName);
   const idx = normalized.indexOf("_");
@@ -61,7 +58,7 @@ export function actionNamesCollide(name1: string, name2: string): boolean {
 export function makeUniqueActionName(
   serverName: string,
   toolName: string,
-  existing: Set<string>,
+  existing: Set<string>
 ): string {
   const name = toActionName(serverName, toolName);
   if (!existing.has(name)) return name;

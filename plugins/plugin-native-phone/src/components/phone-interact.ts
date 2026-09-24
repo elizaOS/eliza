@@ -4,8 +4,8 @@
  * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
-import { ElizaError } from "@elizaos/core";
 import type { PhoneViewCapabilityId } from "../view-capabilities.ts";
 import {
   COMPLETE_CALL_LOG_READ_LIMIT,

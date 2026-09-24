@@ -5,7 +5,12 @@
  * across day/week/month modes in jsdom against a stubbed calendar client.
  */
 
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeed, type LifeOpsCalendarFeedState, type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarFeedState,
+  type LifeOpsCalendarSourceHealth,
+} from "@elizaos/core/contracts/calendar";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

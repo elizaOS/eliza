@@ -7,7 +7,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { type LifeOpsCalendarEvent, type LifeOpsCalendarFeed } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+} from "@elizaos/core/contracts/calendar";
 import type {
   RouteMatrixOraclePayload,
   RouteMatrixOracleQuery,

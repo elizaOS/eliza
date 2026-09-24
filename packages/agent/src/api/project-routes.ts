@@ -15,45 +15,47 @@
  * behind the user's back. Absent registry ⇒ empty list + `null` active, which
  * the switcher renders as its no-projects empty state.
  */
-import { getActiveProject } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { readProjectRegistry } from "@elizaos/core";
-import { setActiveProject } from "@elizaos/core";
+import {
+  getActiveProject,
+  logger,
+  readProjectRegistry,
+  setActiveProject,
+} from "@elizaos/core";
 import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
  * bookkeeping (bookmark, createdAt) is intentionally not surfaced. */
 export interface ProjectSummaryDTO {
-    id: string;
-    name: string;
-    localPath: string;
-    repoUrl?: string;
-    defaultBranch?: string;
-    lastOpenedAt: string;
+  id: string;
+  name: string;
+  localPath: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  lastOpenedAt: string;
 }
 export interface ProjectListDTO {
-    projects: ProjectSummaryDTO[];
-    activeProjectId: string | null;
+  projects: ProjectSummaryDTO[];
+  activeProjectId: string | null;
 }
 /** Project id path segment: a uuid-ish token; reject anything with a slash or
  * whitespace so the route can't be tricked into matching a nested path. */
 const PROJECT_ID_PATTERN = /^[\w.-]+$/;
 const ACTIVATE_SUFFIX = "/activate";
 function toSummary(project: {
-    id: string;
-    name: string;
-    localPath: string;
-    repoUrl?: string;
-    defaultBranch?: string;
-    lastOpenedAt: string;
+  id: string;
+  name: string;
+  localPath: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  lastOpenedAt: string;
 }): ProjectSummaryDTO {
-    return {
-        id: project.id,
-        name: project.name,
-        localPath: project.localPath,
-        repoUrl: project.repoUrl,
-        defaultBranch: project.defaultBranch,
-        lastOpenedAt: project.lastOpenedAt,
-    };
+  return {
+    id: project.id,
+    name: project.name,
+    localPath: project.localPath,
+    repoUrl: project.repoUrl,
+    defaultBranch: project.defaultBranch,
+    lastOpenedAt: project.lastOpenedAt,
+  };
 }
 /**
  * Serve the project registry read + switch endpoints. Returns `true` when the
@@ -62,70 +64,76 @@ function toSummary(project: {
  * `readRegistry` / `activate` are injectable so tests drive the handler without
  * touching a real state dir; production wiring binds the core registry.
  */
-export async function handleProjectRoutes(ctx: RouteRequestContext, deps: {
+export async function handleProjectRoutes(
+  ctx: RouteRequestContext,
+  deps: {
     readRegistry?: () => ProjectListDTO;
     activate?: (id: string) => ProjectSummaryDTO | null;
-} = {}): Promise<boolean> {
-    const { method, pathname, res, json, error } = ctx;
-    if (!pathname.startsWith("/api/projects"))
-        return false;
-    const readRegistry = deps.readRegistry ??
-        (() => {
-            const registry = readProjectRegistry();
-            const active = getActiveProject();
-            return {
-                projects: (registry?.projects ?? []).map(toSummary),
-                activeProjectId: active?.id ?? registry?.activeProjectId ?? null,
-            } satisfies ProjectListDTO;
-        });
-    const activate = deps.activate ??
-        ((id: string) => {
-            const record = setActiveProject(id);
-            return record ? toSummary(record) : null;
-        });
-    // GET /api/projects — list + active pointer for the switcher.
-    if (method === "GET" && pathname === "/api/projects") {
-        try {
-            json(res, readRegistry());
-        }
-        catch (err) {
-            logger.error({ error: err }, "[projects] Failed to read registry");
-            error(res, "Failed to read project registry", 500);
-        }
-        return true;
+  } = {},
+): Promise<boolean> {
+  const { method, pathname, res, json, error } = ctx;
+  if (!pathname.startsWith("/api/projects")) return false;
+  const readRegistry =
+    deps.readRegistry ??
+    (() => {
+      const registry = readProjectRegistry();
+      const active = getActiveProject();
+      return {
+        projects: (registry?.projects ?? []).map(toSummary),
+        activeProjectId: active?.id ?? registry?.activeProjectId ?? null,
+      } satisfies ProjectListDTO;
+    });
+  const activate =
+    deps.activate ??
+    ((id: string) => {
+      const record = setActiveProject(id);
+      return record ? toSummary(record) : null;
+    });
+  // GET /api/projects — list + active pointer for the switcher.
+  if (method === "GET" && pathname === "/api/projects") {
+    try {
+      json(res, readRegistry());
+    } catch (err) {
+      logger.error({ error: err }, "[projects] Failed to read registry");
+      error(res, "Failed to read project registry", 500);
     }
-    // POST /api/projects/:id/activate — switch the active project.
-    if (method === "POST" &&
-        pathname.startsWith("/api/projects/") &&
-        pathname.endsWith(ACTIVATE_SUFFIX)) {
-        const rawId = pathname.slice("/api/projects/".length, pathname.length - ACTIVATE_SUFFIX.length);
-        let id: string;
-        try {
-            id = decodeURIComponent(rawId);
-        }
-        catch {
-            // error-policy:J3 untrusted path segment — malformed percent-encoding is
-            // an invalid project id, not a route/server failure.
-            error(res, "Invalid project id", 400);
-            return true;
-        }
-        if (!id || !PROJECT_ID_PATTERN.test(id)) {
-            error(res, "Invalid project id", 400);
-            return true;
-        }
-        try {
-            const activated = activate(id);
-            if (!activated) {
-                error(res, "Project not found", 404);
-                return true;
-            }
-            json(res, activated);
-        }
-        catch (err) {
-            logger.error({ error: err }, "[projects] Failed to activate project");
-            error(res, "Failed to activate project", 500);
-        }
-        return true;
+    return true;
+  }
+  // POST /api/projects/:id/activate — switch the active project.
+  if (
+    method === "POST" &&
+    pathname.startsWith("/api/projects/") &&
+    pathname.endsWith(ACTIVATE_SUFFIX)
+  ) {
+    const rawId = pathname.slice(
+      "/api/projects/".length,
+      pathname.length - ACTIVATE_SUFFIX.length,
+    );
+    let id: string;
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {
+      // error-policy:J3 untrusted path segment — malformed percent-encoding is
+      // an invalid project id, not a route/server failure.
+      error(res, "Invalid project id", 400);
+      return true;
     }
-    return false;
+    if (!id || !PROJECT_ID_PATTERN.test(id)) {
+      error(res, "Invalid project id", 400);
+      return true;
+    }
+    try {
+      const activated = activate(id);
+      if (!activated) {
+        error(res, "Project not found", 404);
+        return true;
+      }
+      json(res, activated);
+    } catch (err) {
+      logger.error({ error: err }, "[projects] Failed to activate project");
+      error(res, "Failed to activate project", 500);
+    }
+    return true;
+  }
+  return false;
 }

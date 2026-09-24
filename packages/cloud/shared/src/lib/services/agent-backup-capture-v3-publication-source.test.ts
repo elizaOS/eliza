@@ -4,7 +4,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/auth/kms";
-import { AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT, AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT, AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION, type AgentBackupCaptureV2ComponentDescriptor, type AgentBackupCaptureV2Frame, type AgentBackupCaptureV2Request } from "@elizaos/core/contracts/agent-backup-capture-v2";
+import {
+  AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
+  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+  AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
+  type AgentBackupCaptureV2ComponentDescriptor,
+  type AgentBackupCaptureV2Frame,
+  type AgentBackupCaptureV2Request,
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { canonicalizeAgentBackupOperationKeyBundleContext } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
 import {

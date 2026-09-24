@@ -17,12 +17,7 @@
     "./types/*.ts": "./src/types/*.ts",
     "./types/*": "./src/types/*.ts",
     "./package.json": "./package.json",
-    "./hardware-catalog": {
-      "types": "./dist/hardware-catalog/index.d.ts",
-      "eliza-source": "./src/hardware-catalog/index.ts",
-      "import": "./dist/hardware-catalog/index.js",
-      "default": "./dist/hardware-catalog/index.js"
-    }
+    "./hardware-catalog": "./src/hardware-catalog/index.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",
@@ -113,9 +108,8 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-native-inference": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/plugin-wallet": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

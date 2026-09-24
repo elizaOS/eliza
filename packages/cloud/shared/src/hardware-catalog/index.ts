@@ -21,7 +21,6 @@ const CONCEPT_PRODUCT_IMAGES = {
   usbDrive: "/brand/concepts/concept_usbdrive_900.jpg",
 } as const;
 
-
 export type ProductKind = "phone" | "box" | "usb" | "chibi" | "mini";
 
 export type ProductColor = {
@@ -87,8 +86,7 @@ export const HARDWARE_PRODUCTS = [
     kind: "usb",
     colors: COLOR_SET_FULL("usb"),
     stripeName: "ElizaOS USB key preorder",
-    stripeDescription:
-      "First-party ElizaOS USB installer key. Ships October 2026.",
+    stripeDescription: "First-party ElizaOS USB installer key. Ships October 2026.",
   },
   {
     slug: "usb-plastic",
@@ -105,8 +103,7 @@ export const HARDWARE_PRODUCTS = [
     kind: "usb",
     colors: COLOR_SET_FULL("usb-plastic"),
     stripeName: "Branded USB key preorder",
-    stripeDescription:
-      "Simple plastic ElizaOS USB installer key. Ships October 2026.",
+    stripeDescription: "Simple plastic ElizaOS USB installer key. Ships October 2026.",
   },
   {
     slug: "chibi-usb",
@@ -123,8 +120,7 @@ export const HARDWARE_PRODUCTS = [
     kind: "chibi",
     colors: [{ id: "chibi-orange", name: "Orange" }],
     stripeName: "Chibi USB key preorder",
-    stripeDescription:
-      "Character ElizaOS USB installer key. Ships October 2026.",
+    stripeDescription: "Character ElizaOS USB installer key. Ships October 2026.",
   },
   {
     slug: "case",
@@ -220,10 +216,7 @@ export const HARDWARE_PRODUCTS = [
 
 export type HardwareSku = (typeof HARDWARE_PRODUCTS)[number]["sku"];
 
-export const HARDWARE_SKUS = HARDWARE_PRODUCTS.map((p) => p.sku) as [
-  HardwareSku,
-  ...HardwareSku[],
-];
+export const HARDWARE_SKUS = HARDWARE_PRODUCTS.map((p) => p.sku) as [HardwareSku, ...HardwareSku[]];
 
 export function findBySku(sku: string): Product | undefined {
   return HARDWARE_PRODUCTS.find((product) => product.sku === sku);

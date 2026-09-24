@@ -23,34 +23,34 @@ const DIRECT_DOWNLOAD_URL = "https://eliza.so/download";
 let resolvedVariant: BuildVariant | null = null;
 
 function readVariantFromEnv(): BuildVariant {
-  const raw = process.env.ELIZA_BUILD_VARIANT ?? "";
-  const normalized = raw.trim().toLowerCase();
-  if (VARIANT_VALUES.has(normalized as BuildVariant)) {
-    return normalized as BuildVariant;
-  }
-  return "direct";
+	const raw = process.env.ELIZA_BUILD_VARIANT ?? "";
+	const normalized = raw.trim().toLowerCase();
+	if (VARIANT_VALUES.has(normalized as BuildVariant)) {
+		return normalized as BuildVariant;
+	}
+	return "direct";
 }
 
 export function getBuildVariant(): BuildVariant {
-  if (resolvedVariant === null) {
-    resolvedVariant = readVariantFromEnv();
-  }
-  return resolvedVariant;
+	if (resolvedVariant === null) {
+		resolvedVariant = readVariantFromEnv();
+	}
+	return resolvedVariant;
 }
 
 export function getDirectDownloadUrl(): string {
-  return DIRECT_DOWNLOAD_URL;
+	return DIRECT_DOWNLOAD_URL;
 }
 
 export function isStoreBuild(): boolean {
-  return getBuildVariant() === "store";
+	return getBuildVariant() === "store";
 }
 
 export function isDirectBuild(): boolean {
-  return getBuildVariant() === "direct";
+	return getBuildVariant() === "direct";
 }
 
 /** Test hook only. Resets cached variant so tests can swap env vars. */
 export function _resetBuildVariantForTests(): void {
-  resolvedVariant = null;
+	resolvedVariant = null;
 }

@@ -125,7 +125,7 @@ jobs:
 
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
-      # @elizaos/core and @elizaos/shared subpaths.
+      # @elizaos/core and @elizaos/core subpaths.
       - name: Build runtime contracts and provider exports
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 

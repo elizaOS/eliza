@@ -6,9 +6,50 @@
  * `../services/local-inference/types` for server-side code.
  */
 
-export { type ActiveModelState, AGENT_MODEL_SLOTS, type AgentModelSlot, type CatalogModel, type CatalogQuantizationId, type CatalogQuantizationMatrix, type CatalogQuantizationVariant, type CpuFeatureProbe, type DownloadEvent, type DownloadJob, type DownloadState, type HardwareFitLevel, type HardwareProbe, type InstalledModel, type LocalInferenceDownloadStatus, type LocalInferenceReadiness, type LocalInferenceSlotReadiness, type LocalRuntimeAcceleration, type LocalRuntimeBackend, type LocalRuntimeKernel, type LocalRuntimeOptimizations, type MobileHardwareProbe, type ModelAssignments, type ModelBucket, type ModelCategory, type ModelHubSnapshot, type OpenVinoDeviceKind, type OpenVinoHardwareProbe, TEXT_GENERATION_SLOTS, type TextGenerationSlot, type TokenizerFamily } from "@elizaos/core/contracts/local-inference";
-export { classifyCatalogModelRuntimeClass, classifyInstalledModelRuntimeClass, type RuntimeClass, withRuntimeClass } from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
-export { type GpuProfile, type GpuProfileId, type KvCacheType } from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
+export {
+	type ActiveModelState,
+	AGENT_MODEL_SLOTS,
+	type AgentModelSlot,
+	type CatalogModel,
+	type CatalogQuantizationId,
+	type CatalogQuantizationMatrix,
+	type CatalogQuantizationVariant,
+	type CpuFeatureProbe,
+	type DownloadEvent,
+	type DownloadJob,
+	type DownloadState,
+	type HardwareFitLevel,
+	type HardwareProbe,
+	type InstalledModel,
+	type LocalInferenceDownloadStatus,
+	type LocalInferenceReadiness,
+	type LocalInferenceSlotReadiness,
+	type LocalRuntimeAcceleration,
+	type LocalRuntimeBackend,
+	type LocalRuntimeKernel,
+	type LocalRuntimeOptimizations,
+	type MobileHardwareProbe,
+	type ModelAssignments,
+	type ModelBucket,
+	type ModelCategory,
+	type ModelHubSnapshot,
+	type OpenVinoDeviceKind,
+	type OpenVinoHardwareProbe,
+	TEXT_GENERATION_SLOTS,
+	type TextGenerationSlot,
+	type TokenizerFamily,
+} from "@elizaos/core/contracts/local-inference";
+export type {
+	GpuProfile,
+	GpuProfileId,
+	KvCacheType,
+} from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
+export {
+	classifyCatalogModelRuntimeClass,
+	classifyInstalledModelRuntimeClass,
+	type RuntimeClass,
+	withRuntimeClass,
+} from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
 
 /** RAM requirements for a model bundle. */
 export interface RamBudget {

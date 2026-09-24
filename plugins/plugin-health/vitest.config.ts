@@ -1,12 +1,13 @@
 /**
  * Runs health tests against real workspace sources with explicit browser-safe UI entries.
  */
+
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 // Array form with an exact barrel entry AND a separate subpath entry: a bare
-// string / exact-only `@elizaos/shared` alias prefix-matches subpaths and
+// string / exact-only `@elizaos/core` alias prefix-matches subpaths and
 // rewrites `@elizaos/core/runtime-env` into `.../src/index.ts/runtime-env`
 // (ENOTDIR). Each subpath must resolve to its own source module instead.
 const aliases = [
@@ -39,7 +40,6 @@ const aliases = [
   },
   ...buildWorkspaceSourceAliases(),
 ];
-
 export default defineConfig({
   resolve: {
     alias: aliases,

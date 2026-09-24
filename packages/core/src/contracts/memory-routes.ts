@@ -11,24 +11,24 @@
 import z from "zod";
 
 export const PostMemoryRememberRequestSchema = z
-  .object({
-    text: z.string().regex(/\S/, "text is required"),
-    idempotencyKey: z.string().trim().min(1).max(256).optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    text: value.text.trim(),
-    ...(value.idempotencyKey ? { idempotencyKey: value.idempotencyKey } : {}),
-  }));
+	.object({
+		text: z.string().regex(/\S/, "text is required"),
+		idempotencyKey: z.string().trim().min(1).max(256).optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		text: value.text.trim(),
+		...(value.idempotencyKey ? { idempotencyKey: value.idempotencyKey } : {}),
+	}));
 
 export const PatchMemoryRequestSchema = z
-  .object({
-    text: z.string().regex(/\S/, "text is required"),
-  })
-  .strict()
-  .transform((value) => ({ text: value.text.trim() }));
+	.object({
+		text: z.string().regex(/\S/, "text is required"),
+	})
+	.strict()
+	.transform((value) => ({ text: value.text.trim() }));
 
 export type PostMemoryRememberRequest = z.infer<
-  typeof PostMemoryRememberRequestSchema
+	typeof PostMemoryRememberRequestSchema
 >;
 export type PatchMemoryRequest = z.infer<typeof PatchMemoryRequestSchema>;

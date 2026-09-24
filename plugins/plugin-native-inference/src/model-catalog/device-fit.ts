@@ -31,9 +31,9 @@
  * caller reads as "this modality should route to Cloud" (the AUTO policy).
  */
 
-import type { Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import type { CatalogModel } from "@elizaos/core/contracts/local-inference";
+import type { Eliza1TierId } from "./catalog.js";
+import { MODEL_CATALOG } from "./catalog.js";
 
 /** The KV-cache quantization eliza-1 always uses on-device. Gemma 4's KV is
  * already minimal (MQA + windowed-SWA + shared-KV), so stock q8_0 is sufficient;

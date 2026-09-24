@@ -12,10 +12,10 @@
  */
 
 import {
-  type Entity,
-  type EntityIdentity,
-  normalizeEntityConnectorAccountId,
-} from "@elizaos/core/knowledge-graph/entity-types";
+	type Entity,
+	type EntityIdentity,
+	normalizeEntityConnectorAccountId,
+} from "./entity-types.js";
 
 /**
  * Threshold at which `observeIdentity` will auto-merge a new observation
@@ -30,13 +30,13 @@ export const AUTO_MERGE_CONFIDENCE_THRESHOLD = 0.85;
 export const OVERRIDE_CONFIDENCE_DELTA = 0.15;
 
 export interface IdentityMatchInput {
-  platform: string;
-  handle: string;
-  /** Omission intentionally targets only the legacy/default account. */
-  connectorAccountId?: string;
-  confidence: number;
-  /** Operator-confirmed (true) overrides auto-observed (false) on ties. */
-  verified?: boolean;
+	platform: string;
+	handle: string;
+	/** Omission intentionally targets only the legacy/default account. */
+	connectorAccountId?: string;
+	confidence: number;
+	/** Operator-confirmed (true) overrides auto-observed (false) on ties. */
+	verified?: boolean;
 }
 
 /**
@@ -45,23 +45,23 @@ export interface IdentityMatchInput {
  * approval rather than guessing across entity records.
  */
 export function findIdentityMatches(
-  entities: Entity[],
-  match: IdentityMatchInput,
+	entities: Entity[],
+	match: IdentityMatchInput,
 ): Entity[] {
-  const platformKey = match.platform.toLowerCase();
-  const handleKey = match.handle.toLowerCase();
-  const accountKey = normalizeEntityConnectorAccountId(
-    match.connectorAccountId,
-  );
-  return entities.filter((entity) =>
-    entity.identities.some(
-      (identity) =>
-        identity.platform.toLowerCase() === platformKey &&
-        normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
-          accountKey &&
-        identity.handle.toLowerCase() === handleKey,
-    ),
-  );
+	const platformKey = match.platform.toLowerCase();
+	const handleKey = match.handle.toLowerCase();
+	const accountKey = normalizeEntityConnectorAccountId(
+		match.connectorAccountId,
+	);
+	return entities.filter((entity) =>
+		entity.identities.some(
+			(identity) =>
+				identity.platform.toLowerCase() === platformKey &&
+				normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+					accountKey &&
+				identity.handle.toLowerCase() === handleKey,
+		),
+	);
 }
 
 /**
@@ -72,39 +72,39 @@ export function findIdentityMatches(
  *    threshold; surface for user approval.
  */
 export type IdentityObserveOutcome =
-  | { kind: "create" }
-  | { kind: "merge"; targetEntityId: string }
-  | { kind: "conflict"; candidateEntityIds: string[]; reason: string };
+	| { kind: "create" }
+	| { kind: "merge"; targetEntityId: string }
+	| { kind: "conflict"; candidateEntityIds: string[]; reason: string };
 
 export function decideIdentityOutcome(args: {
-  candidates: Entity[];
-  newConfidence: number;
+	candidates: Entity[];
+	newConfidence: number;
 }): IdentityObserveOutcome {
-  if (args.candidates.length === 0) {
-    return { kind: "create" };
-  }
+	if (args.candidates.length === 0) {
+		return { kind: "create" };
+	}
 
-  if (args.candidates.length === 1) {
-    const target = args.candidates[0];
-    if (!target) {
-      return { kind: "create" };
-    }
-    if (args.newConfidence >= AUTO_MERGE_CONFIDENCE_THRESHOLD) {
-      return { kind: "merge", targetEntityId: target.entityId };
-    }
-    // Below threshold — store the observation but flag for approval.
-    return {
-      kind: "conflict",
-      candidateEntityIds: [target.entityId],
-      reason: "low_confidence_observation",
-    };
-  }
+	if (args.candidates.length === 1) {
+		const target = args.candidates[0];
+		if (!target) {
+			return { kind: "create" };
+		}
+		if (args.newConfidence >= AUTO_MERGE_CONFIDENCE_THRESHOLD) {
+			return { kind: "merge", targetEntityId: target.entityId };
+		}
+		// Below threshold — store the observation but flag for approval.
+		return {
+			kind: "conflict",
+			candidateEntityIds: [target.entityId],
+			reason: "low_confidence_observation",
+		};
+	}
 
-  return {
-    kind: "conflict",
-    candidateEntityIds: args.candidates.map((entity) => entity.entityId),
-    reason: "multiple_candidate_entities",
-  };
+	return {
+		kind: "conflict",
+		candidateEntityIds: args.candidates.map((entity) => entity.entityId),
+		reason: "multiple_candidate_entities",
+	};
 }
 
 /**
@@ -114,65 +114,65 @@ export function decideIdentityOutcome(args: {
  * new identity is appended.
  */
 export function foldIdentity(
-  existing: EntityIdentity[],
-  next: EntityIdentity,
+	existing: EntityIdentity[],
+	next: EntityIdentity,
 ): EntityIdentity[] {
-  const platformKey = next.platform.toLowerCase();
-  const handleKey = next.handle.toLowerCase();
-  const accountKey = normalizeEntityConnectorAccountId(next.connectorAccountId);
-  const matchIndex = existing.findIndex(
-    (identity) =>
-      identity.platform.toLowerCase() === platformKey &&
-      normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
-        accountKey &&
-      identity.handle.toLowerCase() === handleKey,
-  );
+	const platformKey = next.platform.toLowerCase();
+	const handleKey = next.handle.toLowerCase();
+	const accountKey = normalizeEntityConnectorAccountId(next.connectorAccountId);
+	const matchIndex = existing.findIndex(
+		(identity) =>
+			identity.platform.toLowerCase() === platformKey &&
+			normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+				accountKey &&
+			identity.handle.toLowerCase() === handleKey,
+	);
 
-  if (matchIndex < 0) {
-    return [...existing, next];
-  }
+	if (matchIndex < 0) {
+		return [...existing, next];
+	}
 
-  const match = existing[matchIndex];
-  if (!match) {
-    return [...existing, next];
-  }
-  const mergedEvidence = Array.from(
-    new Set([...match.evidence, ...next.evidence]),
-  );
-  // Conflict resolution per W1-E spec:
-  //   - highest-confidence claim wins
-  //   - on confidence ties, verified: true wins over verified: false
-  //   - if still ambiguous, keep the existing (older) claim's metadata
-  //     and merely strengthen evidence + bump confidence to the higher of
-  //     the two; the merger surfaces the ambiguity through the conflict
-  //     path before reaching this point.
-  let chosen = match;
-  if (next.confidence > match.confidence) {
-    chosen = next;
-  } else if (
-    next.confidence === match.confidence &&
-    next.verified &&
-    !match.verified
-  ) {
-    chosen = next;
-  }
+	const match = existing[matchIndex];
+	if (!match) {
+		return [...existing, next];
+	}
+	const mergedEvidence = Array.from(
+		new Set([...match.evidence, ...next.evidence]),
+	);
+	// Conflict resolution per W1-E spec:
+	//   - highest-confidence claim wins
+	//   - on confidence ties, verified: true wins over verified: false
+	//   - if still ambiguous, keep the existing (older) claim's metadata
+	//     and merely strengthen evidence + bump confidence to the higher of
+	//     the two; the merger surfaces the ambiguity through the conflict
+	//     path before reaching this point.
+	let chosen = match;
+	if (next.confidence > match.confidence) {
+		chosen = next;
+	} else if (
+		next.confidence === match.confidence &&
+		next.verified &&
+		!match.verified
+	) {
+		chosen = next;
+	}
 
-  const merged: EntityIdentity = {
-    ...chosen,
-    connectorAccountId: normalizeEntityConnectorAccountId(
-      chosen.connectorAccountId,
-    ),
-    confidence: Math.max(match.confidence, next.confidence),
-    verified: match.verified || next.verified,
-    evidence: mergedEvidence,
-    addedAt: match.addedAt,
-    addedVia: chosen.addedVia,
-    ...(chosen.displayName ? { displayName: chosen.displayName } : {}),
-  };
+	const merged: EntityIdentity = {
+		...chosen,
+		connectorAccountId: normalizeEntityConnectorAccountId(
+			chosen.connectorAccountId,
+		),
+		confidence: Math.max(match.confidence, next.confidence),
+		verified: match.verified || next.verified,
+		evidence: mergedEvidence,
+		addedAt: match.addedAt,
+		addedVia: chosen.addedVia,
+		...(chosen.displayName ? { displayName: chosen.displayName } : {}),
+	};
 
-  const result = [...existing];
-  result[matchIndex] = merged;
-  return result;
+	const result = [...existing];
+	result[matchIndex] = merged;
+	return result;
 }
 
 /**
@@ -183,73 +183,73 @@ export function foldIdentity(
  * identity tuple.
  */
 export function mergeEntities(args: {
-  target: Entity;
-  sources: Entity[];
-  now: string;
+	target: Entity;
+	sources: Entity[];
+	now: string;
 }): Entity {
-  let identities = [...args.target.identities];
-  const tags = new Set(args.target.tags);
-  const attributes = { ...(args.target.attributes ?? {}) };
-  const seenLastObserved: string[] = [args.target.state.lastObservedAt ?? ""];
-  const seenLastInbound: string[] = [args.target.state.lastInboundAt ?? ""];
-  const seenLastOutbound: string[] = [args.target.state.lastOutboundAt ?? ""];
+	let identities = [...args.target.identities];
+	const tags = new Set(args.target.tags);
+	const attributes = { ...(args.target.attributes ?? {}) };
+	const seenLastObserved: string[] = [args.target.state.lastObservedAt ?? ""];
+	const seenLastInbound: string[] = [args.target.state.lastInboundAt ?? ""];
+	const seenLastOutbound: string[] = [args.target.state.lastOutboundAt ?? ""];
 
-  for (const source of args.sources) {
-    for (const identity of source.identities) {
-      identities = foldIdentity(identities, identity);
-    }
-    for (const tag of source.tags) {
-      tags.add(tag);
-    }
-    for (const [key, attr] of Object.entries(source.attributes ?? {})) {
-      const existing = attributes[key];
-      if (!existing) {
-        attributes[key] = attr;
-      } else {
-        const chosen = attr.confidence > existing.confidence ? attr : existing;
-        attributes[key] = {
-          ...chosen,
-          evidence: Array.from(
-            new Set([...existing.evidence, ...attr.evidence]),
-          ),
-        };
-      }
-    }
-    if (source.state.lastObservedAt) {
-      seenLastObserved.push(source.state.lastObservedAt);
-    }
-    if (source.state.lastInboundAt) {
-      seenLastInbound.push(source.state.lastInboundAt);
-    }
-    if (source.state.lastOutboundAt) {
-      seenLastOutbound.push(source.state.lastOutboundAt);
-    }
-  }
+	for (const source of args.sources) {
+		for (const identity of source.identities) {
+			identities = foldIdentity(identities, identity);
+		}
+		for (const tag of source.tags) {
+			tags.add(tag);
+		}
+		for (const [key, attr] of Object.entries(source.attributes ?? {})) {
+			const existing = attributes[key];
+			if (!existing) {
+				attributes[key] = attr;
+			} else {
+				const chosen = attr.confidence > existing.confidence ? attr : existing;
+				attributes[key] = {
+					...chosen,
+					evidence: Array.from(
+						new Set([...existing.evidence, ...attr.evidence]),
+					),
+				};
+			}
+		}
+		if (source.state.lastObservedAt) {
+			seenLastObserved.push(source.state.lastObservedAt);
+		}
+		if (source.state.lastInboundAt) {
+			seenLastInbound.push(source.state.lastInboundAt);
+		}
+		if (source.state.lastOutboundAt) {
+			seenLastOutbound.push(source.state.lastOutboundAt);
+		}
+	}
 
-  const pickLatest = (values: string[]): string | undefined => {
-    const filtered = values.filter((v) => v.length > 0);
-    if (filtered.length === 0) return undefined;
-    return filtered.reduce((acc, cur) => (cur > acc ? cur : acc));
-  };
+	const pickLatest = (values: string[]): string | undefined => {
+		const filtered = values.filter((v) => v.length > 0);
+		if (filtered.length === 0) return undefined;
+		return filtered.reduce((acc, cur) => (cur > acc ? cur : acc));
+	};
 
-  return {
-    ...args.target,
-    identities,
-    tags: Array.from(tags).sort(),
-    attributes:
-      Object.keys(attributes).length > 0 ? attributes : args.target.attributes,
-    state: {
-      ...args.target.state,
-      ...(pickLatest(seenLastObserved)
-        ? { lastObservedAt: pickLatest(seenLastObserved) }
-        : {}),
-      ...(pickLatest(seenLastInbound)
-        ? { lastInboundAt: pickLatest(seenLastInbound) }
-        : {}),
-      ...(pickLatest(seenLastOutbound)
-        ? { lastOutboundAt: pickLatest(seenLastOutbound) }
-        : {}),
-    },
-    updatedAt: args.now,
-  };
+	return {
+		...args.target,
+		identities,
+		tags: Array.from(tags).sort(),
+		attributes:
+			Object.keys(attributes).length > 0 ? attributes : args.target.attributes,
+		state: {
+			...args.target.state,
+			...(pickLatest(seenLastObserved)
+				? { lastObservedAt: pickLatest(seenLastObserved) }
+				: {}),
+			...(pickLatest(seenLastInbound)
+				? { lastInboundAt: pickLatest(seenLastInbound) }
+				: {}),
+			...(pickLatest(seenLastOutbound)
+				? { lastOutboundAt: pickLatest(seenLastOutbound) }
+				: {}),
+		},
+		updatedAt: args.now,
+	};
 }

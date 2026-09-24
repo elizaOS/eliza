@@ -1,6 +1,11 @@
 /** Owns social cache persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsXDm, type LifeOpsXFeedItem, type LifeOpsXFeedType, type LifeOpsXSyncState } from "@elizaos/core/contracts/personal-assistant";
+import {
+  type LifeOpsXDm,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+  type LifeOpsXSyncState,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   sqlBoolean,

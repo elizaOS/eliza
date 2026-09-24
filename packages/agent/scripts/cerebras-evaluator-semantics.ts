@@ -684,7 +684,7 @@ async function main() {
       "packages/agent/src",
       "packages/core/src",
       "plugins/plugin-assistant/src/prompts",
-      "packages/shared/src",
+      "packages/core/src",
       "packages/auth/src/vault",
       "packages/core/src/catalog",
       "packages/cloud/routing/src",

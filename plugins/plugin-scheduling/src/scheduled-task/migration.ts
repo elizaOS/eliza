@@ -11,7 +11,12 @@
  * and verifies the resulting projection before recording completion.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { assertCarveOutProjectionComplete, type CarveOutDatabase, createDrizzleCarveOutDatabase, runCarveOutMigration } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { getRuntimeDb } from "./sql.js";
 
 export const SCHEDULING_MIGRATION_SERVICE_TYPE = "scheduling_migration";

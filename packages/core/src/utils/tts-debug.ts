@@ -30,30 +30,30 @@ import { logger } from "../logger.js";
 import { toWellFormedUnicode, truncateWellFormed } from "./unicode.js";
 
 function ttsDebugEnabled(): boolean {
-  const truthy = (raw: string | undefined | null): boolean => {
-    if (raw == null) return false;
-    const v = String(raw).trim().toLowerCase();
-    return v === "1" || v === "true" || v === "yes" || v === "on";
-  };
+	const truthy = (raw: string | undefined | null): boolean => {
+		if (raw == null) return false;
+		const v = String(raw).trim().toLowerCase();
+		return v === "1" || v === "true" || v === "yes" || v === "on";
+	};
 
-  if (typeof process !== "undefined" && process.env) {
-    if (truthy(process.env.ELIZA_TTS_DEBUG)) return true;
-  }
+	if (typeof process !== "undefined" && process.env) {
+		if (truthy(process.env.ELIZA_TTS_DEBUG)) return true;
+	}
 
-  try {
-    // Use static `import.meta.env.*` so Vite `define` can replace ELIZA_TTS_DEBUG at build time.
-    if (truthy(String(import.meta.env.ELIZA_TTS_DEBUG ?? ""))) return true;
-    if (truthy(String(import.meta.env.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
-  } catch {
-    /* no import.meta */
-  }
+	try {
+		// Use static `import.meta.env.*` so Vite `define` can replace ELIZA_TTS_DEBUG at build time.
+		if (truthy(String(import.meta.env.ELIZA_TTS_DEBUG ?? ""))) return true;
+		if (truthy(String(import.meta.env.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
+	} catch {
+		/* no import.meta */
+	}
 
-  return false;
+	return false;
 }
 
 /** Same predicate as `ttsDebug` — use to attach optional debug headers / task metadata. */
 export function isTtsDebugEnabled(): boolean {
-  return ttsDebugEnabled();
+	return ttsDebugEnabled();
 }
 
 const DEFAULT_PREVIEW_MAX = 160;
@@ -63,13 +63,13 @@ const DEFAULT_PREVIEW_MAX = 160;
  * Enable `ELIZA_TTS_DEBUG` only when you accept that spoken lines may appear in logs.
  */
 export function ttsDebugTextPreview(
-  text: string,
-  maxChars: number = DEFAULT_PREVIEW_MAX,
+	text: string,
+	maxChars: number = DEFAULT_PREVIEW_MAX,
 ): string {
-  const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(singleLine);
-  if (wellFormed.length <= maxChars) return wellFormed;
-  return `${truncateWellFormed(wellFormed, maxChars)}…`;
+	const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
+	const wellFormed = toWellFormedUnicode(singleLine);
+	if (wellFormed.length <= maxChars) return wellFormed;
+	return `${truncateWellFormed(wellFormed, maxChars)}…`;
 }
 
 // The logger drops entries below its LOG_LEVEL threshold, so an opted-in
@@ -77,21 +77,21 @@ export function ttsDebugTextPreview(
 // Emit at the lowest level the active threshold still lets through: info by
 // default, escalating only as far as the configuration forces (#16958).
 function ttsEmit(): (typeof logger)["info"] {
-  const configuredLevel =
-    (typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined) ??
-    logger.level ??
-    "info";
-  if (typeof configuredLevel === "number") {
-    if (configuredLevel >= 60) return logger.fatal.bind(logger);
-    if (configuredLevel >= 50) return logger.error.bind(logger);
-    if (configuredLevel >= 40) return logger.warn.bind(logger);
-    return logger.info.bind(logger);
-  }
-  const level = String(configuredLevel).trim().toLowerCase();
-  if (level === "fatal" || level === "alert") return logger.fatal.bind(logger);
-  if (level === "error") return logger.error.bind(logger);
-  if (level === "warn") return logger.warn.bind(logger);
-  return logger.info.bind(logger);
+	const configuredLevel =
+		(typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined) ??
+		logger.level ??
+		"info";
+	if (typeof configuredLevel === "number") {
+		if (configuredLevel >= 60) return logger.fatal.bind(logger);
+		if (configuredLevel >= 50) return logger.error.bind(logger);
+		if (configuredLevel >= 40) return logger.warn.bind(logger);
+		return logger.info.bind(logger);
+	}
+	const level = String(configuredLevel).trim().toLowerCase();
+	if (level === "fatal" || level === "alert") return logger.fatal.bind(logger);
+	if (level === "error") return logger.error.bind(logger);
+	if (level === "warn") return logger.warn.bind(logger);
+	return logger.info.bind(logger);
 }
 
 /**
@@ -101,14 +101,14 @@ function ttsEmit(): (typeof logger)["info"] {
  * threshold when the logger is configured stricter.
  */
 export function ttsDebug(
-  phase: string,
-  detail?: Record<string, unknown>,
+	phase: string,
+	detail?: Record<string, unknown>,
 ): void {
-  if (!ttsDebugEnabled()) return;
-  const emit = ttsEmit();
-  if (detail && Object.keys(detail).length > 0) {
-    emit(detail, `[eliza][tts] ${phase}`);
-  } else {
-    emit(`[eliza][tts] ${phase}`);
-  }
+	if (!ttsDebugEnabled()) return;
+	const emit = ttsEmit();
+	if (detail && Object.keys(detail).length > 0) {
+		emit(detail, `[eliza][tts] ${phase}`);
+	} else {
+		emit(`[eliza][tts] ${phase}`);
+	}
 }

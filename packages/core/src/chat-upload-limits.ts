@@ -37,17 +37,17 @@ export const MAX_CHAT_ATTACHMENT_NAME_LENGTH = 255;
  * `raw <= floor(cap / 4) * 3` guarantees `base64Length <= cap`.
  */
 export function maxRawBytesForBase64(base64Cap: number): number {
-  return Math.floor(base64Cap / 4) * 3;
+	return Math.floor(base64Cap / 4) * 3;
 }
 
 /** Largest raw image file whose base64 payload fits the image cap (~3.75 MiB). */
 export const MAX_CHAT_IMAGE_RAW_BYTES = maxRawBytesForBase64(
-  MAX_CHAT_IMAGE_BASE64_BYTES,
+	MAX_CHAT_IMAGE_BASE64_BYTES,
 );
 
 /** Largest raw non-image file whose base64 payload fits the media cap (~11.25 MiB). */
 export const MAX_CHAT_MEDIA_RAW_BYTES = maxRawBytesForBase64(
-  MAX_CHAT_MEDIA_BASE64_BYTES,
+	MAX_CHAT_MEDIA_BASE64_BYTES,
 );
 
 /**
@@ -56,44 +56,44 @@ export const MAX_CHAT_MEDIA_RAW_BYTES = maxRawBytesForBase64(
  * server rejects the whole message.
  */
 export const CHAT_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
+	"image/jpeg",
+	"image/png",
+	"image/gif",
+	"image/webp",
 ] as const;
 
 /** Every MIME type the chat upload endpoint accepts. */
 export const CHAT_UPLOAD_MIME_TYPES = [
-  ...CHAT_IMAGE_MIME_TYPES,
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/wave",
-  "audio/ogg",
-  "audio/webm",
-  "audio/mp4",
-  "audio/aac",
-  "audio/flac",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/ogg",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "text/markdown",
-  "application/json",
+	...CHAT_IMAGE_MIME_TYPES,
+	"audio/mpeg",
+	"audio/mp3",
+	"audio/wav",
+	"audio/x-wav",
+	"audio/wave",
+	"audio/ogg",
+	"audio/webm",
+	"audio/mp4",
+	"audio/aac",
+	"audio/flac",
+	"video/mp4",
+	"video/webm",
+	"video/quicktime",
+	"video/ogg",
+	"application/pdf",
+	"text/plain",
+	"text/csv",
+	"text/markdown",
+	"application/json",
 ] as const;
 
 export type ChatUploadMimeType = (typeof CHAT_UPLOAD_MIME_TYPES)[number];
 
 /** Set view of {@link CHAT_IMAGE_MIME_TYPES} for O(1) membership checks (lowercase). */
 export const CHAT_IMAGE_MIME_TYPE_SET: ReadonlySet<string> = new Set(
-  CHAT_IMAGE_MIME_TYPES,
+	CHAT_IMAGE_MIME_TYPES,
 );
 
 /** Set view of {@link CHAT_UPLOAD_MIME_TYPES} for O(1) membership checks (lowercase). */
 export const CHAT_UPLOAD_MIME_TYPE_SET: ReadonlySet<string> = new Set(
-  CHAT_UPLOAD_MIME_TYPES,
+	CHAT_UPLOAD_MIME_TYPES,
 );

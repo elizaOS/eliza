@@ -4,362 +4,468 @@
  * and the voice sub-model updater. Streams live download/active deltas over SSE
  * and falls back to authenticated API snapshots when streaming is unavailable.
  */
-import { ActiveModelBar } from "./ActiveModelBar";
+
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import type { VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { client } from "../../api";
+import type {
+  ActiveModelState,
+  CatalogModel,
+  DownloadJob,
+  HardwareProbe,
+  InstalledModel,
+  ModelHubSnapshot,
+} from "../../api/client-local-inference";
+import { isApiError } from "../../api/client-types-core";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useRole } from "../../hooks/useRole";
+import {
+  filterSettingsDefaultLocalModels,
+  isSettingsDefaultLocalModel,
+} from "../../services/local-inference/catalog-policy";
+import { useAppSelectorShallow } from "../../state";
+import { resolveApiUrl } from "../../utils/asset-url.js";
+import { openEventSource } from "../../utils/event-source";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
-import { Alert } from "../ui/alert";
-import { AlertDescription } from "../ui/alert";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
-import { ModelHubView } from "./ModelHubView";
-import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
-import { client } from "../../api";
-import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { findInstalled } from "./hub-utils";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import { isApiError } from "../../api/client-types-core";
-import { isSettingsDefaultLocalModel } from "../../services/local-inference/catalog-policy";
-import { openEventSource } from "../../utils/event-source";
-import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import { resolveApiUrl } from "@elizaos/ui/utils/asset-url";
-import { type ActiveModelState } from "../../api/client-local-inference";
-import { type CatalogModel } from "../../api/client-local-inference";
-import { type DownloadJob } from "../../api/client-local-inference";
-import { type HardwareProbe } from "../../api/client-local-inference";
-import { type InstalledModel } from "../../api/client-local-inference";
-import { type ModelHubSnapshot } from "../../api/client-local-inference";
-import { type VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { type VoiceModelInstallationView } from "./ModelUpdatesPanel";
-import { type VoiceUpdatePreferencesView } from "./ModelUpdatesPanel";
-import { useAppSelectorShallow } from "../../state";
-import { useCallback } from "react";
+import { ModelHubView } from "./ModelHubView";
+import {
+  ModelUpdatesPanel,
+  type VoiceModelInstallationView,
+  type VoiceUpdatePreferencesView,
+} from "./ModelUpdatesPanel";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
-import { useEffect } from "react";
-import { useRef } from "react";
-import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useRole } from "../../hooks/useRole";
-import { useState } from "react";
+
 type HubTab = "curated" | "downloads";
 export function LocalInferencePanel() {
-    useRenderGuard("LocalInferencePanel");
-    const { setActionNotice, t } = useAppSelectorShallow((s) => ({
-        setActionNotice: s.setActionNotice,
-        t: s.t,
-    }));
-    const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [tab, setTab] = useState<HubTab>("curated");
-    const [pollSnapshots, setPollSnapshots] = useState(true);
-    const [authenticationBlocked, setAuthenticationBlocked] = useState(false);
-    const refreshGeneration = useRef(0);
-    const hasHubSnapshot = useRef(false);
-    const deviceBridgeStatus = useDeviceBridgeStatus();
-    const refresh = useCallback(async () => {
-        const generation = ++refreshGeneration.current;
-        try {
-            const snapshot = await client.getLocalInferenceHub();
-            if (generation !== refreshGeneration.current)
-                return;
-            hasHubSnapshot.current = true;
-            setHub(snapshot);
-            setError(null);
-            setAuthenticationBlocked(false);
-        }
-        catch (err) {
-            // error-policy:J4 Snapshot failure remains visible until a successful refresh.
-            if (generation !== refreshGeneration.current)
-                return;
-            if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-                // Repeated authentication failures consume the server's login budget.
-                // Keep the visible error until the owner retries with a valid session.
-                setAuthenticationBlocked(true);
+  useRenderGuard("LocalInferencePanel");
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
+  const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<HubTab>("curated");
+  const [pollSnapshots, setPollSnapshots] = useState(true);
+  const [authenticationBlocked, setAuthenticationBlocked] = useState(false);
+  const refreshGeneration = useRef(0);
+  const hasHubSnapshot = useRef(false);
+  const deviceBridgeStatus = useDeviceBridgeStatus();
+  const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    try {
+      const snapshot = await client.getLocalInferenceHub();
+      if (generation !== refreshGeneration.current) return;
+      hasHubSnapshot.current = true;
+      setHub(snapshot);
+      setError(null);
+      setAuthenticationBlocked(false);
+    } catch (err) {
+      // error-policy:J4 Snapshot failure remains visible until a successful refresh.
+      if (generation !== refreshGeneration.current) return;
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
+        // Repeated authentication failures consume the server's login budget.
+        // Keep the visible error until the owner retries with a valid session.
+        setAuthenticationBlocked(true);
+      }
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("localinference.loadError", {
+              defaultValue: "Failed to load models",
+            }),
+      );
+    }
+  }, [t]);
+  useEffect(() => {
+    void refresh();
+    return () => {
+      refreshGeneration.current += 1;
+    };
+  }, [refresh]);
+  useEffect(() => {
+    if (!pollSnapshots || authenticationBlocked) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await refresh();
+      if (!stopped) timer = setTimeout(poll, 2000);
+    };
+    timer = setTimeout(poll, 2000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [pollSnapshots, authenticationBlocked, refresh]);
+  useEffect(() => {
+    if (authenticationBlocked) return;
+    // Subscribe to server-side progress updates. EventSource doesn't allow
+    // custom headers, so we pass the auth token as a query param — the
+    // route's `isStreamAuthorized` accepts either source.
+    const url = resolveApiUrl("/api/local-inference/downloads/stream");
+    const withToken = appendTokenParam(url);
+    // Native IPC and header-only authentication cannot use EventSource.
+    // Keep fetching through the authenticated client until the stream opens.
+    const es = openEventSource(withToken, { withCredentials: false });
+    setPollSnapshots(true);
+    if (!es) return;
+    es.onopen = () => {
+      setPollSnapshots(false);
+      void refresh();
+    };
+    es.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as
+          | {
+              type: "snapshot";
+              downloads: DownloadJob[];
+              active?: ActiveModelState;
             }
-            setError(err instanceof Error
-                ? err.message
-                : t("localinference.loadError", {
-                    defaultValue: "Failed to load models",
-                }));
-        }
-    }, [t]);
-    useEffect(() => {
-        void refresh();
-        return () => {
-            refreshGeneration.current += 1;
-        };
-    }, [refresh]);
-    useEffect(() => {
-        if (!pollSnapshots || authenticationBlocked)
-            return;
-        let stopped = false;
-        let timer: ReturnType<typeof setTimeout>;
-        const poll = async () => {
-            await refresh();
-            if (!stopped)
-                timer = setTimeout(poll, 2000);
-        };
-        timer = setTimeout(poll, 2000);
-        return () => {
-            stopped = true;
-            clearTimeout(timer);
-        };
-    }, [pollSnapshots, authenticationBlocked, refresh]);
-    useEffect(() => {
-        if (authenticationBlocked)
-            return;
-        // Subscribe to server-side progress updates. EventSource doesn't allow
-        // custom headers, so we pass the auth token as a query param — the
-        // route's `isStreamAuthorized` accepts either source.
-        const url = resolveApiUrl("/api/local-inference/downloads/stream");
-        const withToken = appendTokenParam(url);
-        // Native IPC and header-only authentication cannot use EventSource.
-        // Keep fetching through the authenticated client until the stream opens.
-        const es = openEventSource(withToken, { withCredentials: false });
-        setPollSnapshots(true);
-        if (!es)
-            return;
-        es.onopen = () => {
-            setPollSnapshots(false);
+          | {
+              type: "progress" | "completed" | "failed" | "cancelled";
+              job: DownloadJob;
+            }
+          | {
+              type: "active";
+              active: ActiveModelState;
+            };
+        // Stream deltas supersede pending snapshots once the hub is initialized.
+        // Before that first snapshot, a delta cannot populate the full hub.
+        if (hasHubSnapshot.current) refreshGeneration.current += 1;
+        if (payload.type === "snapshot") {
+          setHub((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  downloads: payload.downloads,
+                  ...(payload.active === undefined
+                    ? {}
+                    : { active: payload.active }),
+                }
+              : prev,
+          );
+        } else if (payload.type === "active") {
+          setHub((prev) => (prev ? { ...prev, active: payload.active } : prev));
+        } else {
+          // Single-job event: merge into the downloads list.
+          setHub((prev) => {
+            if (!prev) return prev;
+            const others = prev.downloads.filter(
+              (d) => d.modelId !== payload.job.modelId,
+            );
+            const downloads =
+              payload.type === "completed" || payload.type === "cancelled"
+                ? others
+                : [...others, payload.job];
+            return { ...prev, downloads };
+          });
+          if (payload.type === "completed") {
+            // A completed download adds to `installed`; refetch to pick it up.
             void refresh();
-        };
-        es.onmessage = (event) => {
-            try {
-                const payload = JSON.parse(event.data) as {
-                    type: "snapshot";
-                    downloads: DownloadJob[];
-                    active?: ActiveModelState;
-                } | {
-                    type: "progress" | "completed" | "failed" | "cancelled";
-                    job: DownloadJob;
-                } | {
-                    type: "active";
-                    active: ActiveModelState;
-                };
-                // Stream deltas supersede pending snapshots once the hub is initialized.
-                // Before that first snapshot, a delta cannot populate the full hub.
-                if (hasHubSnapshot.current)
-                    refreshGeneration.current += 1;
-                if (payload.type === "snapshot") {
-                    setHub((prev) => prev
-                        ? {
-                            ...prev,
-                            downloads: payload.downloads,
-                            ...(payload.active === undefined
-                                ? {}
-                                : { active: payload.active }),
-                        }
-                        : prev);
-                }
-                else if (payload.type === "active") {
-                    setHub((prev) => (prev ? { ...prev, active: payload.active } : prev));
-                }
-                else {
-                    // Single-job event: merge into the downloads list.
-                    setHub((prev) => {
-                        if (!prev)
-                            return prev;
-                        const others = prev.downloads.filter((d) => d.modelId !== payload.job.modelId);
-                        const downloads = payload.type === "completed" || payload.type === "cancelled"
-                            ? others
-                            : [...others, payload.job];
-                        return { ...prev, downloads };
-                    });
-                    if (payload.type === "completed") {
-                        // A completed download adds to `installed`; refetch to pick it up.
-                        void refresh();
-                    }
-                }
-            }
-            catch (error) {
-                // error-policy:J3 Reject malformed stream data and recover from an API snapshot.
-                reportRendererDiagnostic({ scope: "local-inference.stream", error });
-                setPollSnapshots(true);
-            }
-        };
-        es.onerror = () => {
-            // A reconnecting stream may be unauthorized indefinitely. API snapshots
-            // preserve progress without exposing native credentials to EventSource.
-            setPollSnapshots(true);
-        };
-        return () => {
-            es.onopen = null;
-            es.onmessage = null;
-            es.onerror = null;
-            es.close();
-        };
-    }, [refresh, authenticationBlocked]);
-    const withBusy = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
-        setBusy(true);
-        try {
-            return await fn();
+          }
         }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            setActionNotice(message, "error", 4000);
-            return undefined;
+      } catch (error) {
+        // error-policy:J3 Reject malformed stream data and recover from an API snapshot.
+        reportRendererDiagnostic({ scope: "local-inference.stream", error });
+        setPollSnapshots(true);
+      }
+    };
+    es.onerror = () => {
+      // A reconnecting stream may be unauthorized indefinitely. API snapshots
+      // preserve progress without exposing native credentials to EventSource.
+      setPollSnapshots(true);
+    };
+    return () => {
+      es.onopen = null;
+      es.onmessage = null;
+      es.onerror = null;
+      es.close();
+    };
+  }, [refresh, authenticationBlocked]);
+  const withBusy = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
+      setBusy(true);
+      try {
+        return await fn();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(message, "error", 4000);
+        return undefined;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setActionNotice],
+  );
+  const handleDownload = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        await client.startLocalInferenceDownload(modelId);
+        await refresh();
+        setActionNotice(
+          t("localinference.downloadStarted", {
+            defaultValue: "Download started",
+          }),
+          "success",
+          2000,
+        );
+      });
+    },
+    [refresh, setActionNotice, withBusy, t],
+  );
+  const handleCancel = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        await client.cancelLocalInferenceDownload(modelId);
+        await refresh();
+      });
+    },
+    [refresh, withBusy],
+  );
+  const handleActivate = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        const active = await client.setLocalInferenceActive(modelId);
+        setHub((prev) => (prev ? { ...prev, active } : prev));
+        if (active.status === "error") {
+          setActionNotice(
+            active.error ??
+              t("localinference.activateError", {
+                defaultValue: "Failed to activate",
+              }),
+            "error",
+            4000,
+          );
+        } else if (active.status === "ready") {
+          setActionNotice(
+            t("localinference.modelActivated", {
+              defaultValue: "Model activated",
+            }),
+            "success",
+            2000,
+          );
         }
-        finally {
-            setBusy(false);
-        }
-    }, [setActionNotice]);
-    const handleDownload = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            await client.startLocalInferenceDownload(modelId);
-            await refresh();
-            setActionNotice(t("localinference.downloadStarted", {
-                defaultValue: "Download started",
-            }), "success", 2000);
-        });
-    }, [refresh, setActionNotice, withBusy, t]);
-    const handleCancel = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            await client.cancelLocalInferenceDownload(modelId);
-            await refresh();
-        });
-    }, [refresh, withBusy]);
-    const handleActivate = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            const active = await client.setLocalInferenceActive(modelId);
-            setHub((prev) => (prev ? { ...prev, active } : prev));
-            if (active.status === "error") {
-                setActionNotice(active.error ??
-                    t("localinference.activateError", {
-                        defaultValue: "Failed to activate",
-                    }), "error", 4000);
-            }
-            else if (active.status === "ready") {
-                setActionNotice(t("localinference.modelActivated", {
-                    defaultValue: "Model activated",
-                }), "success", 2000);
-            }
-        });
-    }, [setActionNotice, withBusy, t]);
-    const handleUnload = useCallback(() => {
-        void withBusy(async () => {
-            const active = await client.clearLocalInferenceActive();
-            setHub((prev) => (prev ? { ...prev, active } : prev));
-        });
-    }, [withBusy]);
-    const handleUninstall = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            await client.uninstallLocalInferenceModel(modelId);
-            setActionNotice(t("localinference.modelUninstalled", {
-                defaultValue: "Model uninstalled",
-            }), "success", 2000);
-            await refresh();
-        });
-    }, [refresh, setActionNotice, withBusy, t]);
-    const handleVerify = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            const result = await client.verifyLocalInferenceModel(modelId);
-            const tone = result.state === "ok"
-                ? "success"
-                : result.state === "unknown"
-                    ? "success"
-                    : "error";
-            const message = result.state === "ok"
-                ? t("localinference.verifyOk", { defaultValue: "Model verified" })
-                : result.state === "unknown"
-                    ? t("localinference.verifyUnknown", {
-                        defaultValue: "Baseline hash recorded — future verifies will compare against it",
+      });
+    },
+    [setActionNotice, withBusy, t],
+  );
+  const handleUnload = useCallback(() => {
+    void withBusy(async () => {
+      const active = await client.clearLocalInferenceActive();
+      setHub((prev) => (prev ? { ...prev, active } : prev));
+    });
+  }, [withBusy]);
+  const handleUninstall = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        await client.uninstallLocalInferenceModel(modelId);
+        setActionNotice(
+          t("localinference.modelUninstalled", {
+            defaultValue: "Model uninstalled",
+          }),
+          "success",
+          2000,
+        );
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy, t],
+  );
+  const handleVerify = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        const result = await client.verifyLocalInferenceModel(modelId);
+        const tone =
+          result.state === "ok"
+            ? "success"
+            : result.state === "unknown"
+              ? "success"
+              : "error";
+        const message =
+          result.state === "ok"
+            ? t("localinference.verifyOk", { defaultValue: "Model verified" })
+            : result.state === "unknown"
+              ? t("localinference.verifyUnknown", {
+                  defaultValue:
+                    "Baseline hash recorded — future verifies will compare against it",
+                })
+              : result.state === "missing"
+                ? t("localinference.verifyMissing", {
+                    defaultValue: "Model file is missing from disk",
+                  })
+                : result.state === "truncated"
+                  ? t("localinference.verifyTruncated", {
+                      defaultValue: "Model file is corrupt (not a valid GGUF)",
                     })
-                    : result.state === "missing"
-                        ? t("localinference.verifyMissing", {
-                            defaultValue: "Model file is missing from disk",
-                        })
-                        : result.state === "truncated"
-                            ? t("localinference.verifyTruncated", {
-                                defaultValue: "Model file is corrupt (not a valid GGUF)",
-                            })
-                            : t("localinference.verifyMismatch", {
-                                defaultValue: "Model hash doesn't match the installed copy — re-download recommended",
-                            });
-            setActionNotice(message, tone, 4000);
-            await refresh();
-        });
-    }, [refresh, setActionNotice, withBusy, t]);
-    const handleRedownload = useCallback((modelId: string) => {
-        void withBusy(async () => {
-            // Uninstall + re-queue a fresh download. Safe for curated catalog
-            // ids only; HF-search ad-hoc entries keep their install.
-            await client.uninstallLocalInferenceModel(modelId);
-            await client.startLocalInferenceDownload(modelId);
-            setActionNotice(t("localinference.redownloadStarted", {
-                defaultValue: "Redownload started",
-            }), "success", 2000);
-            await refresh();
-        });
-    }, [refresh, setActionNotice, withBusy, t]);
-    const refreshError = error ? (<Alert role="alert" variant="destructive" className="flex items-center justify-between gap-3">
+                  : t("localinference.verifyMismatch", {
+                      defaultValue:
+                        "Model hash doesn't match the installed copy — re-download recommended",
+                    });
+        setActionNotice(message, tone, 4000);
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy, t],
+  );
+  const handleRedownload = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        // Uninstall + re-queue a fresh download. Safe for curated catalog
+        // ids only; HF-search ad-hoc entries keep their install.
+        await client.uninstallLocalInferenceModel(modelId);
+        await client.startLocalInferenceDownload(modelId);
+        setActionNotice(
+          t("localinference.redownloadStarted", {
+            defaultValue: "Redownload started",
+          }),
+          "success",
+          2000,
+        );
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy, t],
+  );
+  const refreshError = error ? (
+    <Alert
+      role="alert"
+      variant="destructive"
+      className="flex items-center justify-between gap-3"
+    >
       <AlertDescription>{error}</AlertDescription>
       <Button size="dense" variant="dangerOutline" onClick={refresh}>
         {t("localinference.retry", { defaultValue: "Retry" })}
       </Button>
-    </Alert>) : null;
-    if (error && !hub)
-        return refreshError;
-    if (!hub) {
-        return (<p className="text-sm text-muted">
+    </Alert>
+  ) : null;
+  if (error && !hub) return refreshError;
+  if (!hub) {
+    return (
+      <p className="text-sm text-muted">
         {t("localinference.loading", {
-                defaultValue: "Loading local models…",
-            })}
-      </p>);
-    }
-    const catalog = filterSettingsDefaultLocalModels(hub.catalog);
-    // Publication policy governs new offers; installed models retain management controls.
-    const managementCatalog = hub.catalog.filter((model) => isSettingsDefaultLocalModel(model) || findInstalled(model, hub.installed));
-    return (<div className="flex flex-col gap-3">
+          defaultValue: "Loading local models…",
+        })}
+      </p>
+    );
+  }
+  const catalog = filterSettingsDefaultLocalModels(hub.catalog);
+  // Publication policy governs new offers; installed models retain management controls.
+  const managementCatalog = hub.catalog.filter(
+    (model) =>
+      isSettingsDefaultLocalModel(model) || findInstalled(model, hub.installed),
+  );
+  return (
+    <div className="flex flex-col gap-3">
       {refreshError}
-      <HardwareBadge hardware={hub.hardware}/>
-      <DeviceBridgeStatusBar status={deviceBridgeStatus}/>
-      <FirstRunOffer catalog={catalog} installed={hub.installed} downloads={hub.downloads} hardware={hub.hardware} onDownload={handleDownload} busy={busy}/>
-      <ActiveModelBar active={hub.active} installed={hub.installed} onUnload={handleUnload} busy={busy}/>
+      <HardwareBadge hardware={hub.hardware} />
+      <DeviceBridgeStatusBar status={deviceBridgeStatus} />
+      <FirstRunOffer
+        catalog={catalog}
+        installed={hub.installed}
+        downloads={hub.downloads}
+        hardware={hub.hardware}
+        onDownload={handleDownload}
+        busy={busy}
+      />
+      <ActiveModelBar
+        active={hub.active}
+        installed={hub.installed}
+        onUnload={handleUnload}
+        busy={busy}
+      />
       <nav className="inline-flex h-8 w-fit items-center rounded-sm border border-border/60 bg-bg/40 p-0.5">
-        {([
+        {(
+          [
             ["curated", "Eliza-1"],
             [
-                "downloads",
-                t("localinference.tabDownloads", { defaultValue: "Downloads" }),
+              "downloads",
+              t("localinference.tabDownloads", { defaultValue: "Downloads" }),
             ],
-        ] as const).map(([id, label]) => {
-            const active = tab === id;
-            return (<Button key={id} variant="selection" size="tiny" data-state={active ? "on" : "off"} onClick={() => setTab(id)}>
+          ] as const
+        ).map(([id, label]) => {
+          const active = tab === id;
+          return (
+            <Button
+              key={id}
+              variant="selection"
+              size="tiny"
+              data-state={active ? "on" : "off"}
+              onClick={() => setTab(id)}
+            >
               <span className="inline-flex items-center gap-1.5">
                 {label}
-                {id === "downloads" && hub.downloads.length > 0 ? (<span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-2xs leading-none text-muted">
+                {id === "downloads" && hub.downloads.length > 0 ? (
+                  <span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-2xs leading-none text-muted">
                     {hub.downloads.length}
-                  </span>) : null}
+                  </span>
+                ) : null}
               </span>
-            </Button>);
+            </Button>
+          );
         })}
       </nav>
 
-      {tab === "curated" && (<ModelHubView catalog={managementCatalog} installed={hub.installed} downloads={hub.downloads} active={hub.active} hardware={hub.hardware} onDownload={handleDownload} onCancel={handleCancel} onActivate={handleActivate} onUninstall={handleUninstall} onVerify={handleVerify} onRedownload={handleRedownload} busy={busy}/>)}
+      {tab === "curated" && (
+        <ModelHubView
+          catalog={managementCatalog}
+          installed={hub.installed}
+          downloads={hub.downloads}
+          active={hub.active}
+          hardware={hub.hardware}
+          onDownload={handleDownload}
+          onCancel={handleCancel}
+          onActivate={handleActivate}
+          onUninstall={handleUninstall}
+          onVerify={handleVerify}
+          onRedownload={handleRedownload}
+          busy={busy}
+        />
+      )}
 
-      {tab === "downloads" && (<DownloadQueue downloads={hub.downloads} catalog={hub.catalog} onCancel={handleCancel} onRetry={handleDownload}/>)}
+      {tab === "downloads" && (
+        <DownloadQueue
+          downloads={hub.downloads}
+          catalog={hub.catalog}
+          onCancel={handleCancel}
+          onRetry={handleDownload}
+        />
+      )}
 
-      <AdvancedSettingsDisclosure title={t("localinference.voiceModelUpdates", {
-            defaultValue: "Voice model updates",
-        })}>
+      <AdvancedSettingsDisclosure
+        title={t("localinference.voiceModelUpdates", {
+          defaultValue: "Voice model updates",
+        })}
+      >
         <VoiceModelUpdatesSection />
       </AdvancedSettingsDisclosure>
 
-      <AdvancedSettingsDisclosure title={t("localinference.devicesTitle", {
-            defaultValue: "Local runtime devices",
-        })} lazy>
-        <DevicesPanel status={deviceBridgeStatus}/>
+      <AdvancedSettingsDisclosure
+        title={t("localinference.devicesTitle", {
+          defaultValue: "Local runtime devices",
+        })}
+        lazy
+      >
+        <DevicesPanel status={deviceBridgeStatus} />
       </AdvancedSettingsDisclosure>
-    </div>);
+    </div>
+  );
 }
 function appendTokenParam(url: string): string {
-    const token = getElizaApiToken()?.trim();
-    if (!token)
-        return url;
-    const hasQuery = url.includes("?");
-    return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
+  const token = getElizaApiToken()?.trim();
+  if (!token) return url;
+  const hasQuery = url.includes("?");
+  return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 /**
  * Voice sub-model auto-updater UI section (R5-versioning §5).
@@ -373,139 +479,172 @@ function appendTokenParam(url: string): string {
  * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
-    const { setActionNotice, t } = useAppSelectorShallow((s) => ({
-        setActionNotice: s.setActionNotice,
-        t: s.t,
-    }));
-    const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
-        autoUpdateOnWifi: true,
-        autoUpdateOnCellular: false,
-        autoUpdateOnMetered: false,
-    });
-    // #12087 Item 25: owner-tier gating comes from the canonical role context
-    // (useRole), not a per-endpoint `isOwner` flag threaded through fetched state.
-    const { isOwner } = useRole();
-    const [installations, setInstallations] = useState<ReadonlyArray<VoiceModelInstallationView>>([]);
-    const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
-    const [checking, setChecking] = useState(false);
-    // Bootstrap from the live API.
-    useEffect(() => {
-        let cancelled = false;
-        void (async () => {
-            try {
-                const [prefsResp, listResp] = await Promise.all([
-                    client.getVoiceModelPreferences(),
-                    client.listVoiceModels(),
-                ]);
-                if (cancelled)
-                    return;
-                setPreferences({
-                    autoUpdateOnWifi: prefsResp.preferences.autoUpdateOnWifi,
-                    autoUpdateOnCellular: prefsResp.preferences.autoUpdateOnCellular,
-                    autoUpdateOnMetered: prefsResp.preferences.autoUpdateOnMetered,
-                });
-                setInstallations(listResp.installations.map((i) => ({
-                    id: i.id,
-                    installedVersion: i.installedVersion,
-                    pinned: i.pinned,
-                    lastError: i.lastError,
-                })));
-            }
-            catch (err) {
-                reportRendererDiagnostic({
-                    scope: "voice-models.bootstrap",
-                    error: err,
-                    severity: "warning",
-                });
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-    const onCheckNow = useCallback(async () => {
-        setChecking(true);
-        try {
-            const res = await client.checkVoiceModelUpdates({ force: true });
-            setLastCheckedAt(res.lastCheckedAt);
-            const list = await client.listVoiceModels();
-            setInstallations(list.installations);
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            setActionNotice(t("localinference.updateCheckFailed", {
-                message,
-                defaultValue: "Update check failed: {{message}}",
-            }), "error", 4000);
-        }
-        finally {
-            setChecking(false);
-        }
-    }, [setActionNotice, t]);
-    const onUpdateNow = useCallback(async (id: VoiceModelId) => {
-        try {
-            await client.triggerVoiceModelUpdate(id);
-            const list = await client.listVoiceModels();
-            setInstallations(list.installations);
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            setActionNotice(t("localinference.updateFailed", {
-                message,
-                defaultValue: "Update failed: {{message}}",
-            }), "error", 4000);
-        }
-    }, [setActionNotice, t]);
-    const onTogglePin = useCallback(async (id: VoiceModelId, pinned: boolean) => {
-        try {
-            await client.pinVoiceModel(id, pinned);
-            const list = await client.listVoiceModels();
-            setInstallations(list.installations);
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            setActionNotice(pinned
-                ? t("localinference.pinFailed", {
-                    message,
-                    defaultValue: "Pin failed: {{message}}",
-                })
-                : t("localinference.unpinFailed", {
-                    message,
-                    defaultValue: "Unpin failed: {{message}}",
-                }), "error", 4000);
-        }
-    }, [setActionNotice, t]);
-    const onSetPreferences = useCallback(async (next: VoiceUpdatePreferencesView) => {
-        // Optimistic update — revert to the prior value on failure so the
-        // OWNER gate's 403 is visible (the flipped toggle snaps back).
-        let previous: VoiceUpdatePreferencesView | null = null;
-        setPreferences((prev) => {
-            previous = prev;
-            return next;
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
+  const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
+    autoUpdateOnWifi: true,
+    autoUpdateOnCellular: false,
+    autoUpdateOnMetered: false,
+  });
+  // #12087 Item 25: owner-tier gating comes from the canonical role context
+  // (useRole), not a per-endpoint `isOwner` flag threaded through fetched state.
+  const { isOwner } = useRole();
+  const [installations, setInstallations] = useState<
+    ReadonlyArray<VoiceModelInstallationView>
+  >([]);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  // Bootstrap from the live API.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [prefsResp, listResp] = await Promise.all([
+          client.getVoiceModelPreferences(),
+          client.listVoiceModels(),
+        ]);
+        if (cancelled) return;
+        setPreferences({
+          autoUpdateOnWifi: prefsResp.preferences.autoUpdateOnWifi,
+          autoUpdateOnCellular: prefsResp.preferences.autoUpdateOnCellular,
+          autoUpdateOnMetered: prefsResp.preferences.autoUpdateOnMetered,
         });
-        try {
-            const res = await client.setVoiceModelPreferences({
-                autoUpdateOnWifi: next.autoUpdateOnWifi,
-                autoUpdateOnCellular: next.autoUpdateOnCellular,
-                autoUpdateOnMetered: next.autoUpdateOnMetered,
-            });
-            setPreferences({
-                autoUpdateOnWifi: res.preferences.autoUpdateOnWifi,
-                autoUpdateOnCellular: res.preferences.autoUpdateOnCellular,
-                autoUpdateOnMetered: res.preferences.autoUpdateOnMetered,
-            });
-        }
-        catch (err) {
-            if (previous)
-                setPreferences(previous);
-            const message = err instanceof Error ? err.message : String(err);
-            setActionNotice(t("localinference.savePrefFailed", {
+        setInstallations(
+          listResp.installations.map((i) => ({
+            id: i.id,
+            installedVersion: i.installedVersion,
+            pinned: i.pinned,
+            lastError: i.lastError,
+          })),
+        );
+      } catch (err) {
+        reportRendererDiagnostic({
+          scope: "voice-models.bootstrap",
+          error: err,
+          severity: "warning",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const onCheckNow = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await client.checkVoiceModelUpdates({ force: true });
+      setLastCheckedAt(res.lastCheckedAt);
+      const list = await client.listVoiceModels();
+      setInstallations(list.installations);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setActionNotice(
+        t("localinference.updateCheckFailed", {
+          message,
+          defaultValue: "Update check failed: {{message}}",
+        }),
+        "error",
+        4000,
+      );
+    } finally {
+      setChecking(false);
+    }
+  }, [setActionNotice, t]);
+  const onUpdateNow = useCallback(
+    async (id: VoiceModelId) => {
+      try {
+        await client.triggerVoiceModelUpdate(id);
+        const list = await client.listVoiceModels();
+        setInstallations(list.installations);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          t("localinference.updateFailed", {
+            message,
+            defaultValue: "Update failed: {{message}}",
+          }),
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice, t],
+  );
+  const onTogglePin = useCallback(
+    async (id: VoiceModelId, pinned: boolean) => {
+      try {
+        await client.pinVoiceModel(id, pinned);
+        const list = await client.listVoiceModels();
+        setInstallations(list.installations);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          pinned
+            ? t("localinference.pinFailed", {
                 message,
-                defaultValue: "Could not save preference: {{message}}",
-            }), "error", 4000);
-        }
-    }, [setActionNotice, t]);
-    return (<ModelUpdatesPanel installations={installations} preferences={preferences} isOwner={isOwner} lastCheckedAt={lastCheckedAt} checking={checking} onCheckNow={onCheckNow} onUpdateNow={onUpdateNow} onTogglePin={onTogglePin} onSetPreferences={onSetPreferences}/>);
+                defaultValue: "Pin failed: {{message}}",
+              })
+            : t("localinference.unpinFailed", {
+                message,
+                defaultValue: "Unpin failed: {{message}}",
+              }),
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice, t],
+  );
+  const onSetPreferences = useCallback(
+    async (next: VoiceUpdatePreferencesView) => {
+      // Optimistic update — revert to the prior value on failure so the
+      // OWNER gate's 403 is visible (the flipped toggle snaps back).
+      let previous: VoiceUpdatePreferencesView | null = null;
+      setPreferences((prev) => {
+        previous = prev;
+        return next;
+      });
+      try {
+        const res = await client.setVoiceModelPreferences({
+          autoUpdateOnWifi: next.autoUpdateOnWifi,
+          autoUpdateOnCellular: next.autoUpdateOnCellular,
+          autoUpdateOnMetered: next.autoUpdateOnMetered,
+        });
+        setPreferences({
+          autoUpdateOnWifi: res.preferences.autoUpdateOnWifi,
+          autoUpdateOnCellular: res.preferences.autoUpdateOnCellular,
+          autoUpdateOnMetered: res.preferences.autoUpdateOnMetered,
+        });
+      } catch (err) {
+        if (previous) setPreferences(previous);
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          t("localinference.savePrefFailed", {
+            message,
+            defaultValue: "Could not save preference: {{message}}",
+          }),
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice, t],
+  );
+  return (
+    <ModelUpdatesPanel
+      installations={installations}
+      preferences={preferences}
+      isOwner={isOwner}
+      lastCheckedAt={lastCheckedAt}
+      checking={checking}
+      onCheckNow={onCheckNow}
+      onUpdateNow={onUpdateNow}
+      onTogglePin={onTogglePin}
+      onSetPreferences={onSetPreferences}
+    />
+  );
 }
 export default LocalInferencePanel;
 // Avoid "unused" lints for re-exports that consumers may want.

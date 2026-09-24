@@ -15,17 +15,17 @@
  */
 
 export interface EchoDelayEstimate {
-  /** Best playback→mic delay in samples (far leads near by this much). */
-  lagSamples: number;
-  /** Peak normalized cross-correlation at that lag, in [0, 1]. */
-  confidence: number;
+	/** Best playback→mic delay in samples (far leads near by this much). */
+	lagSamples: number;
+	/** Peak normalized cross-correlation at that lag, in [0, 1]. */
+	confidence: number;
 }
 
 export interface EchoDelayOptions {
-  /** Largest lag to search, in samples. Default 4800 (300 ms @ 16 kHz). */
-  maxLagSamples?: number;
-  /** Smallest lag to search, in samples. Default 0. */
-  minLagSamples?: number;
+	/** Largest lag to search, in samples. Default 4800 (300 ms @ 16 kHz). */
+	maxLagSamples?: number;
+	/** Smallest lag to search, in samples. Default 0. */
+	minLagSamples?: number;
 }
 
 /**
@@ -40,45 +40,45 @@ export interface EchoDelayOptions {
  * calibration rather than trust a spurious peak.
  */
 export function estimateEchoDelaySamples(
-  near: Float32Array,
-  far: Float32Array,
-  options: EchoDelayOptions = {},
+	near: Float32Array,
+	far: Float32Array,
+	options: EchoDelayOptions = {},
 ): EchoDelayEstimate {
-  const maxLag = Math.max(0, Math.floor(options.maxLagSamples ?? 4800));
-  const minLag = Math.max(0, Math.floor(options.minLagSamples ?? 0));
-  const n = Math.min(near.length, far.length);
-  if (n === 0 || minLag > maxLag) {
-    return { lagSamples: 0, confidence: 0 };
-  }
+	const maxLag = Math.max(0, Math.floor(options.maxLagSamples ?? 4800));
+	const minLag = Math.max(0, Math.floor(options.minLagSamples ?? 0));
+	const n = Math.min(near.length, far.length);
+	if (n === 0 || minLag > maxLag) {
+		return { lagSamples: 0, confidence: 0 };
+	}
 
-  // Per-lag normalized cross-correlation over the overlapping window. O((maxLag
-  // − minLag) · n) — fine for a short calibration burst (a few hundred ms of
-  // audio, run rarely, not per-frame).
-  let bestLag = minLag;
-  let bestCorr = -Infinity;
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let dot = 0;
-    let nearEnergy = 0;
-    let farEnergy = 0;
-    for (let i = lag; i < n; i++) {
-      const a = near[i];
-      const b = far[i - lag];
-      dot += a * b;
-      nearEnergy += a * a;
-      farEnergy += b * b;
-    }
-    const denom = Math.sqrt(nearEnergy * farEnergy);
-    const corr = denom > 0 ? dot / denom : 0;
-    if (corr > bestCorr) {
-      bestCorr = corr;
-      bestLag = lag;
-    }
-  }
+	// Per-lag normalized cross-correlation over the overlapping window. O((maxLag
+	// − minLag) · n) — fine for a short calibration burst (a few hundred ms of
+	// audio, run rarely, not per-frame).
+	let bestLag = minLag;
+	let bestCorr = -Infinity;
+	for (let lag = minLag; lag <= maxLag; lag++) {
+		let dot = 0;
+		let nearEnergy = 0;
+		let farEnergy = 0;
+		for (let i = lag; i < n; i++) {
+			const a = near[i];
+			const b = far[i - lag];
+			dot += a * b;
+			nearEnergy += a * a;
+			farEnergy += b * b;
+		}
+		const denom = Math.sqrt(nearEnergy * farEnergy);
+		const corr = denom > 0 ? dot / denom : 0;
+		if (corr > bestCorr) {
+			bestCorr = corr;
+			bestLag = lag;
+		}
+	}
 
-  return {
-    lagSamples: bestLag,
-    confidence: bestCorr === -Infinity ? 0 : Math.max(0, Math.min(1, bestCorr)),
-  };
+	return {
+		lagSamples: bestLag,
+		confidence: bestCorr === -Infinity ? 0 : Math.max(0, Math.min(1, bestCorr)),
+	};
 }
 
 /**
@@ -95,23 +95,23 @@ export function estimateEchoDelaySamples(
  * the first turn, not to be exact.
  */
 export const PLATFORM_PLAYBACK_DELAY_DEFAULTS: Readonly<
-  Record<string, number>
+	Record<string, number>
 > = {
-  /** macOS CoreAudio — low, stable hardware path. */
-  darwin: 20,
-  /** iOS AVAudioEngine (when its voice-processing IO AEC is not the source). */
-  ios: 25,
-  /** Android AudioTrack/AudioRecord — variable; a mid seed. NOTE: the WebView
-   * pump-path transport measured ~381–408 ms end-to-end on a Pixel 6a and
-   * moved ±20 ms between runs (#11373 device evidence), so no constant can
-   * represent that producer — the session's self-calibration (searching up to
-   * 500 ms) is the mechanism that recovers it; this seed only has to put the
-   * native-path filter in the right ballpark before calibration. */
-  android: 45,
-  /** Windows WASAPI shared-mode. */
-  win32: 30,
-  /** Desktop Linux ALSA/PulseAudio/PipeWire. */
-  linux: 30,
+	/** macOS CoreAudio — low, stable hardware path. */
+	darwin: 20,
+	/** iOS AVAudioEngine (when its voice-processing IO AEC is not the source). */
+	ios: 25,
+	/** Android AudioTrack/AudioRecord — variable; a mid seed. NOTE: the WebView
+	 * pump-path transport measured ~381–408 ms end-to-end on a Pixel 6a and
+	 * moved ±20 ms between runs (#11373 device evidence), so no constant can
+	 * represent that producer — the session's self-calibration (searching up to
+	 * 500 ms) is the mechanism that recovers it; this seed only has to put the
+	 * native-path filter in the right ballpark before calibration. */
+	android: 45,
+	/** Windows WASAPI shared-mode. */
+	win32: 30,
+	/** Desktop Linux ALSA/PulseAudio/PipeWire. */
+	linux: 30,
 };
 
 /** Fallback seed (ms) for an unrecognized platform id. */
@@ -123,9 +123,9 @@ export const DEFAULT_PLAYBACK_DELAY_MS = 25;
  * report). Unknown ids fall back to {@link DEFAULT_PLAYBACK_DELAY_MS}.
  */
 export function platformPlaybackDelayMs(platform: string): number {
-  return (
-    PLATFORM_PLAYBACK_DELAY_DEFAULTS[platform] ?? DEFAULT_PLAYBACK_DELAY_MS
-  );
+	return (
+		PLATFORM_PLAYBACK_DELAY_DEFAULTS[platform] ?? DEFAULT_PLAYBACK_DELAY_MS
+	);
 }
 
 /**
@@ -133,8 +133,8 @@ export function platformPlaybackDelayMs(platform: string): number {
  * the 16 kHz voice-pipeline rate.
  */
 export function platformPlaybackDelaySamples(
-  platform: string,
-  sampleRate = 16_000,
+	platform: string,
+	sampleRate = 16_000,
 ): number {
-  return Math.round((platformPlaybackDelayMs(platform) / 1000) * sampleRate);
+	return Math.round((platformPlaybackDelayMs(platform) / 1000) * sampleRate);
 }

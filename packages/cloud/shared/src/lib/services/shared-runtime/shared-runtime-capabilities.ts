@@ -15,7 +15,14 @@ import type {
   State,
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
-import { type AgentCapabilityDescriptor, type AgentCapabilityId, type AgentCapabilityTransport, type CapabilityHandoffRequest, capabilityHandoffTargetAgentId, findAgentCapability } from "@elizaos/core/capability-catalog";
+import {
+  type AgentCapabilityDescriptor,
+  type AgentCapabilityId,
+  type AgentCapabilityTransport,
+  type CapabilityHandoffRequest,
+  capabilityHandoffTargetAgentId,
+  findAgentCapability,
+} from "@elizaos/core/capability-catalog";
 import {
   buildSharedCapabilityCatalog,
   formatSharedCapabilityCatalogForPrompt,

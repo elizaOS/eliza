@@ -863,7 +863,7 @@ export function compareVoiceModelSemver(
     if (!m) return null;
     return {
       core: [Number(m[1]), Number(m[2]), Number(m[3])],
-      pre: m[4] ? m[4].split("@elizaos/plugin-native-inference/model-catalog") : [],
+      pre: m[4] ? m[4].split(".") : [],
     };
   };
   const pa = parse(a);

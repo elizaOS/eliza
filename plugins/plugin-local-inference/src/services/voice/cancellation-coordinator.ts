@@ -29,7 +29,11 @@
  * appropriate callbacks.
  */
 
-import { type VoiceCancellationReason, VoiceCancellationRegistry, type VoiceCancellationToken } from "@elizaos/core/voice/voice-cancellation-token";
+import {
+	type VoiceCancellationReason,
+	VoiceCancellationRegistry,
+	type VoiceCancellationToken,
+} from "@elizaos/core/voice/voice-cancellation-token";
 
 /**
  * Minimum runtime surface this coordinator needs. Matches a subset of

@@ -1,8 +1,16 @@
 /** Production adapter for LifeOps connection management over canonical local APIs. */
 
+import {
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSummary,
+  type SeedLifeOpsCalendarRequest,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleCapability,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 import type { CalendarClientMethods } from "@elizaos/plugin-calendar/api/client-calendar";
-import { type LifeOpsCalendarProvider, type LifeOpsCalendarSummary, type SeedLifeOpsCalendarRequest } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsConnectorSide, type LifeOpsGoogleCapability, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import { client } from "@elizaos/ui/api";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 import type { LifeOpsElizaClientMethods } from "../../api/client-lifeops.js";

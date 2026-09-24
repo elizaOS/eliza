@@ -16,10 +16,15 @@
  *    condensed in-chat BACKGROUND widget.
  */
 
-import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
 import { Check, ImagePlus, RotateCcw, RotateCw } from "lucide-react";
-import type { ChangeEvent, CSSProperties } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { getShaderPreset } from "../../backgrounds/shader-presets";
@@ -36,6 +41,7 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url.js";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -59,7 +65,6 @@ function resolvePreviewImageUrl(url: string): string {
   }
   return resolveAppAssetUrl(url);
 }
-
 /** A live thumbnail for one catalog entry. Image entries paint the real source. */
 function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
   if (entry.kind === "image") {
@@ -77,7 +82,6 @@ function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
     backgroundImage: `linear-gradient(165deg, ${c0}, ${c1} 55%, ${c2})`,
   };
 }
-
 /**
  * The visual chrome shared by every gallery tile: the aspect frame, the
  * selected ring, and the corner check. The tile's paint (`style`) and label
@@ -137,7 +141,6 @@ function TileFrame({
     </Card>
   );
 }
-
 /**
  * A gallery tile for one curated catalog entry. Agent-addressable so "use the
  * misty-forest background" activates it.
@@ -180,7 +183,6 @@ function CatalogTile({
     </Button>
   );
 }
-
 /**
  * The compact settings treatment keeps the preview and its name separate. The
  * old portrait tile put two lines of copy inside a 96px crop, which clipped the
@@ -203,7 +205,6 @@ function FilmstripCatalogTile({
     description: `${entry.description} (${entry.mood})`,
     onActivate: () => onSelect(entry),
   });
-
   return (
     <Button
       ref={ref}
@@ -250,7 +251,6 @@ function FilmstripCatalogTile({
     </Button>
   );
 }
-
 export interface BackgroundSettingsControlsProps {
   className?: string;
   /**
@@ -260,14 +260,12 @@ export interface BackgroundSettingsControlsProps {
    */
   variant?: "gallery" | "filmstrip";
 }
-
 // The MVP wallpaper set: only the shipped image wallpapers. Shader-color and
 // GLSL entries stay in the catalog data (old persisted configs still render)
 // but are not offered as new choices here.
 const CURATED_IMAGE_CATALOG = BACKGROUND_CATALOG.filter(
   (entry) => entry.kind === "image",
 );
-
 export function BackgroundSettingsControls({
   className,
   variant = "gallery",
@@ -281,10 +279,8 @@ export function BackgroundSettingsControls({
     canRedoBackground,
   } = useBackgroundConfig();
   const isFilmstrip = variant === "filmstrip";
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filmstripRef = useRef<HTMLFieldSetElement>(null);
-
   const [error, setError] = useState<string | null>(null);
   // The user's saved catalog entries (persisted, newest first). Shown in their
   // own "yours" row so an upload is re-selectable (#13538). Loaded lazily so
@@ -292,13 +288,11 @@ export function BackgroundSettingsControls({
   const [userCatalog, setUserCatalog] = useState<BackgroundCatalogEntry[]>(() =>
     loadUserBackgroundCatalog(),
   );
-
   const config: BackgroundConfig =
     backgroundConfig && typeof backgroundConfig === "object"
       ? backgroundConfig
       : { mode: "shader", color: DEFAULT_BACKGROUND_COLOR };
   const activeColor = config.color ?? DEFAULT_BACKGROUND_COLOR;
-
   const selectCatalog = useCallback(
     (entry: BackgroundCatalogEntry) => {
       setError(null);
@@ -310,7 +304,6 @@ export function BackgroundSettingsControls({
     },
     [setBackgroundConfig],
   );
-
   // Which catalog entry (if any) the live config matches — for the tile
   // selected-ring. Image entries match on imageUrl.
   const activeCatalogId =
@@ -319,7 +312,6 @@ export function BackgroundSettingsControls({
           (e) => e.kind === "image" && e.source === config.imageUrl,
         )?.id ?? null)
       : null;
-
   // Reveal the selected wallpaper within its strip. scrollIntoView also moves
   // overflow-hidden ancestors and can scroll the native Settings sidebar offscreen.
   useEffect(() => {
@@ -341,12 +333,10 @@ export function BackgroundSettingsControls({
           : Math.max(0, right - strip.clientWidth);
     strip.scrollLeft += delta;
   }, [activeCatalogId, isFilmstrip]);
-
   const onUploadClick = useCallback(() => {
     setError(null);
     fileInputRef.current?.click();
   }, []);
-
   const onFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -396,7 +386,6 @@ export function BackgroundSettingsControls({
     },
     [activeColor, setBackgroundConfig],
   );
-
   const uploadButton = useAgentElement<HTMLButtonElement>({
     id: "background-upload",
     role: "button",
@@ -421,7 +410,6 @@ export function BackgroundSettingsControls({
     description: "Restore the background change that was undone",
     onActivate: () => redoBackgroundConfig(),
   });
-
   const uploadInput = (
     // aria-hidden: this hidden input is pure upload machinery. The visible
     // Upload action below owns the accessible name and agent wiring.
@@ -435,7 +423,6 @@ export function BackgroundSettingsControls({
       tabIndex={-1}
     />
   );
-
   // The full gallery keeps its existing upload treatment. The condensed
   // settings filmstrip uses a smaller secondary action below the choices.
   const galleryUploadAction = (
@@ -474,7 +461,6 @@ export function BackgroundSettingsControls({
       {uploadInput}
     </>
   );
-
   // Revert affordance: a single subtle "revert" that undoes the last change,
   // with a redo companion only when there is something to restore.
   const revertNode =
@@ -509,7 +495,6 @@ export function BackgroundSettingsControls({
         </Button>
       </div>
     ) : null;
-
   // ── Filmstrip layout: the condensed in-chat BACKGROUND widget ────────────────
   if (isFilmstrip) {
     return (
@@ -557,7 +542,6 @@ export function BackgroundSettingsControls({
       </div>
     );
   }
-
   // ── Gallery layout: the full BackgroundView / Settings subview ────────────
   return (
     <div

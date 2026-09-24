@@ -30,27 +30,27 @@ import z from "zod";
 // schema-vs-type-drift contract test can assert membership equality
 // against the runtime VALID_SCOPES allowlist.
 export const ConversationScopeSchema = z.enum([
-  "general",
-  "automation-coordinator",
-  "automation-workflow",
-  "automation-workflow-draft",
-  "automation-draft",
-  "page-character",
-  "page-apps",
-  "page-connectors",
-  "page-phone",
-  "page-plugins",
-  "page-settings",
-  "page-wallet",
-  "page-browser",
-  "page-automations",
-  "page-knowledge",
-  "page-transcripts",
+	"general",
+	"automation-coordinator",
+	"automation-workflow",
+	"automation-workflow-draft",
+	"automation-draft",
+	"page-character",
+	"page-apps",
+	"page-connectors",
+	"page-phone",
+	"page-plugins",
+	"page-settings",
+	"page-wallet",
+	"page-browser",
+	"page-automations",
+	"page-knowledge",
+	"page-transcripts",
 ]);
 
 export const ConversationAutomationTypeSchema = z.enum([
-  "coordinator_text",
-  "workflow",
+	"coordinator_text",
+	"workflow",
 ]);
 
 /**
@@ -60,59 +60,59 @@ export const ConversationAutomationTypeSchema = z.enum([
  * presence and strict on type.
  */
 export const ConversationMetadataSchema = z
-  .object({
-    scope: ConversationScopeSchema.optional(),
-    automationType: ConversationAutomationTypeSchema.optional(),
-    taskId: z.string().optional(),
-    triggerId: z.string().optional(),
-    workflowId: z.string().optional(),
-    workflowName: z.string().optional(),
-    draftId: z.string().optional(),
-    pageId: z.string().optional(),
-    sourceConversationId: z.string().optional(),
-    terminalBridgeConversationId: z.string().optional(),
-    waifuChatOwnerWallet: z.string().optional(),
-    waifuChatRole: z.enum(["admin", "user", "guest"]).optional(),
-  })
-  .strict();
+	.object({
+		scope: ConversationScopeSchema.optional(),
+		automationType: ConversationAutomationTypeSchema.optional(),
+		taskId: z.string().optional(),
+		triggerId: z.string().optional(),
+		workflowId: z.string().optional(),
+		workflowName: z.string().optional(),
+		draftId: z.string().optional(),
+		pageId: z.string().optional(),
+		sourceConversationId: z.string().optional(),
+		terminalBridgeConversationId: z.string().optional(),
+		waifuChatOwnerWallet: z.string().optional(),
+		waifuChatRole: z.enum(["admin", "user", "guest"]).optional(),
+	})
+	.strict();
 
 export const PostConversationRequestSchema = z
-  .object({
-    title: z.string().optional(),
-    includeGreeting: z.boolean().optional(),
-    lang: z.string().optional(),
-    metadata: ConversationMetadataSchema.optional(),
-  })
-  .strict();
+	.object({
+		title: z.string().optional(),
+		includeGreeting: z.boolean().optional(),
+		lang: z.string().optional(),
+		metadata: ConversationMetadataSchema.optional(),
+	})
+	.strict();
 
 export const PostConversationTruncateRequestSchema = z
-  .object({
-    messageId: z.string().regex(/\S/, "messageId is required"),
-    inclusive: z.boolean().optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    messageId: value.messageId.trim(),
-    ...(value.inclusive !== undefined ? { inclusive: value.inclusive } : {}),
-  }));
+	.object({
+		messageId: z.string().regex(/\S/, "messageId is required"),
+		inclusive: z.boolean().optional(),
+	})
+	.strict()
+	.transform((value) => ({
+		messageId: value.messageId.trim(),
+		...(value.inclusive !== undefined ? { inclusive: value.inclusive } : {}),
+	}));
 
 export const PatchConversationRequestSchema = z
-  .object({
-    title: z.string().optional(),
-    generate: z.boolean().optional(),
-    metadata: z.union([ConversationMetadataSchema, z.null()]).optional(),
-  })
-  .strict();
+	.object({
+		title: z.string().optional(),
+		generate: z.boolean().optional(),
+		metadata: z.union([ConversationMetadataSchema, z.null()]).optional(),
+	})
+	.strict();
 
 export const PostConversationCleanupEmptyRequestSchema = z
-  .object({
-    keepId: z.string().optional(),
-  })
-  .strict()
-  .transform((value) => {
-    const trimmed = value.keepId?.trim();
-    return trimmed ? { keepId: trimmed } : {};
-  });
+	.object({
+		keepId: z.string().optional(),
+	})
+	.strict()
+	.transform((value) => {
+		const trimmed = value.keepId?.trim();
+		return trimmed ? { keepId: trimmed } : {};
+	});
 
 /**
  * POST /api/conversations/dev/seed-messages (dev-only, 404 in production).
@@ -120,17 +120,17 @@ export const PostConversationCleanupEmptyRequestSchema = z
  * from generating an unbounded corpus in one call.
  */
 export const PostSeedMessagesRequestSchema = z
-  .object({
-    conversations: z.number().int().min(1).max(200).optional(),
-    messagesPerConversation: z.number().int().min(1).max(500).optional(),
-    spanMonths: z.number().int().min(1).max(60).optional(),
-    factsPerConversation: z.number().int().min(0).max(10).optional(),
-    seed: z.number().int().optional(),
-  })
-  .strict();
+	.object({
+		conversations: z.number().int().min(1).max(200).optional(),
+		messagesPerConversation: z.number().int().min(1).max(500).optional(),
+		spanMonths: z.number().int().min(1).max(60).optional(),
+		factsPerConversation: z.number().int().min(0).max(10).optional(),
+		seed: z.number().int().optional(),
+	})
+	.strict();
 
 export type ConversationMetadataInput = z.infer<
-  typeof ConversationMetadataSchema
+	typeof ConversationMetadataSchema
 >;
 
 // ── Canonical TS type aliases derived from the Zod schemas above ─────────────
@@ -139,21 +139,21 @@ export type ConversationMetadataInput = z.infer<
 
 export type ConversationScope = z.infer<typeof ConversationScopeSchema>;
 export type ConversationAutomationType = z.infer<
-  typeof ConversationAutomationTypeSchema
+	typeof ConversationAutomationTypeSchema
 >;
 export type ConversationMetadata = z.infer<typeof ConversationMetadataSchema>;
 export type PostConversationRequest = z.infer<
-  typeof PostConversationRequestSchema
+	typeof PostConversationRequestSchema
 >;
 export type PostConversationTruncateRequest = z.infer<
-  typeof PostConversationTruncateRequestSchema
+	typeof PostConversationTruncateRequestSchema
 >;
 export type PatchConversationRequest = z.infer<
-  typeof PatchConversationRequestSchema
+	typeof PatchConversationRequestSchema
 >;
 export type PostConversationCleanupEmptyRequest = z.infer<
-  typeof PostConversationCleanupEmptyRequestSchema
+	typeof PostConversationCleanupEmptyRequestSchema
 >;
 export type PostSeedMessagesRequest = z.infer<
-  typeof PostSeedMessagesRequestSchema
+	typeof PostSeedMessagesRequestSchema
 >;

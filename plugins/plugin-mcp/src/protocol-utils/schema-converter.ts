@@ -51,7 +51,7 @@ interface JsonSchemaProperty {
 }
 
 function mapJsonSchemaType(
-  jsonType: string | string[] | undefined,
+  jsonType: string | string[] | undefined
 ): ActionParameter["schema"]["type"] {
   if (Array.isArray(jsonType)) {
     return mapJsonSchemaType(jsonType.find((t) => t !== "null"));
@@ -96,9 +96,7 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
   }
 
   if (prop.enum?.length) {
-    parts.push(
-      `Allowed: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`,
-    );
+    parts.push(`Allowed: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`);
   }
   if (prop.const !== undefined) {
     parts.push(`Const: ${JSON.stringify(prop.const)}`);
@@ -109,11 +107,9 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
 
   const bounds: string[] = [];
   if (prop.minimum !== undefined) bounds.push(`min: ${prop.minimum}`);
-  if (prop.exclusiveMinimum !== undefined)
-    bounds.push(`exclusiveMin: ${prop.exclusiveMinimum}`);
+  if (prop.exclusiveMinimum !== undefined) bounds.push(`exclusiveMin: ${prop.exclusiveMinimum}`);
   if (prop.maximum !== undefined) bounds.push(`max: ${prop.maximum}`);
-  if (prop.exclusiveMaximum !== undefined)
-    bounds.push(`exclusiveMax: ${prop.exclusiveMaximum}`);
+  if (prop.exclusiveMaximum !== undefined) bounds.push(`exclusiveMax: ${prop.exclusiveMaximum}`);
   if (bounds.length > 0) {
     parts.push(`Range: ${bounds.join(", ")}`);
   }
@@ -164,29 +160,22 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
     const containsDetails = renderSchemaDetails(prop.contains);
     const containsType = formatType(prop.contains.type) || "any";
     parts.push(
-      `Contains: ${containsDetails ? `${containsType} (${containsDetails})` : containsType}`,
+      `Contains: ${containsDetails ? `${containsType} (${containsDetails})` : containsType}`
     );
   }
 
   const propCounts: string[] = [];
-  if (prop.minProperties !== undefined)
-    propCounts.push(`min: ${prop.minProperties}`);
-  if (prop.maxProperties !== undefined)
-    propCounts.push(`max: ${prop.maxProperties}`);
+  if (prop.minProperties !== undefined) propCounts.push(`min: ${prop.minProperties}`);
+  if (prop.maxProperties !== undefined) propCounts.push(`max: ${prop.maxProperties}`);
   if (propCounts.length > 0) {
     parts.push(`Property count: ${propCounts.join(", ")}`);
   }
   if (prop.additionalProperties === false) {
     parts.push("Additional properties: false");
-  } else if (
-    typeof prop.additionalProperties === "object" &&
-    prop.additionalProperties !== null
-  ) {
+  } else if (typeof prop.additionalProperties === "object" && prop.additionalProperties !== null) {
     const addlType = formatType(prop.additionalProperties.type) || "any";
     const addlDetails = renderSchemaDetails(prop.additionalProperties);
-    parts.push(
-      `Additional properties: ${addlDetails ? `${addlType} (${addlDetails})` : addlType}`,
-    );
+    parts.push(`Additional properties: ${addlDetails ? `${addlType} (${addlDetails})` : addlType}`);
   }
   if (prop.properties && Object.keys(prop.properties).length > 0) {
     const reqSet = new Set(prop.required || []);
@@ -246,11 +235,9 @@ function buildDescription(_name: string, prop: JsonSchemaProperty): string {
 }
 
 export function convertJsonSchemaToActionParams(
-  schema?: McpInputSchema,
+  schema?: McpInputSchema
 ): ActionParameter[] | undefined {
-  const properties = schema?.properties as
-    | Record<string, JsonSchemaProperty>
-    | undefined;
+  const properties = schema?.properties as Record<string, JsonSchemaProperty> | undefined;
   if (!properties || Object.keys(properties).length === 0) return undefined;
 
   const required = new Set<string>((schema?.required as string[]) || []);
@@ -275,14 +262,12 @@ export function convertJsonSchemaToActionParams(
 
 export function validateParamsAgainstSchema(
   params: Record<string, unknown>,
-  schema?: McpInputSchema,
+  schema?: McpInputSchema
 ): string[] {
   if (!schema) return [];
 
   const errors: string[] = [];
-  const properties = schema.properties as
-    | Record<string, JsonSchemaProperty>
-    | undefined;
+  const properties = schema.properties as Record<string, JsonSchemaProperty> | undefined;
   const required = new Set<string>((schema.required as string[]) || []);
 
   for (const field of required) {
@@ -311,9 +296,7 @@ export function validateParamsAgainstSchema(
           .filter((t) => t !== "null")
           .map((t) => (t === "integer" ? "number" : t));
         if (!allowedTypes.includes(actual)) {
-          errors.push(
-            `Parameter '${name}' expected ${expected}, got ${actual}`,
-          );
+          errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
         }
       } else if (actual !== expected) {
         errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
@@ -321,7 +304,7 @@ export function validateParamsAgainstSchema(
 
       if (prop.enum && !prop.enum.includes(value)) {
         errors.push(
-          `Parameter '${name}' must be one of: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`,
+          `Parameter '${name}' must be one of: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`
         );
       }
     }

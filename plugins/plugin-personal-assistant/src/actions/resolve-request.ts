@@ -32,6 +32,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
@@ -40,7 +41,6 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
 } from "@elizaos/plugin-native-phone/twilio";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

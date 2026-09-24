@@ -8,18 +8,18 @@
  */
 
 export function resolveDefaultTimeZone(): string {
-  const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return resolved && resolved.trim().length > 0 ? resolved : "UTC";
+	const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	return resolved && resolved.trim().length > 0 ? resolved : "UTC";
 }
 
 export function isValidTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
-    return true;
-  } catch {
-    // error-policy:J3 invalid IANA time zone -> false
-    return false;
-  }
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+		return true;
+	} catch {
+		// error-policy:J3 invalid IANA time zone -> false
+		return false;
+	}
 }
 
 /**
@@ -32,15 +32,15 @@ export function isValidTimeZone(timeZone: string): boolean {
  * preserves the instant the model actually meant.
  */
 const UTC_ALIAS_RE =
-  /^(?:z|zulu|utc|gmt|etc\/utc|etc\/gmt|utc[+-]0{1,2}(?::?00)?|gmt[+-]0{1,2}(?::?00)?|[+-]00:?00)$/i;
+	/^(?:z|zulu|utc|gmt|etc\/utc|etc\/gmt|utc[+-]0{1,2}(?::?00)?|gmt[+-]0{1,2}(?::?00)?|[+-]00:?00)$/i;
 
 export function normalizeTimeZone(timeZone?: string | null): string {
-  const candidate = typeof timeZone === "string" ? timeZone.trim() : "";
-  if (UTC_ALIAS_RE.test(candidate)) {
-    return "UTC";
-  }
-  if (candidate && isValidTimeZone(candidate)) {
-    return candidate;
-  }
-  return resolveDefaultTimeZone();
+	const candidate = typeof timeZone === "string" ? timeZone.trim() : "";
+	if (UTC_ALIAS_RE.test(candidate)) {
+		return "UTC";
+	}
+	if (candidate && isValidTimeZone(candidate)) {
+		return candidate;
+	}
+	return resolveDefaultTimeZone();
 }

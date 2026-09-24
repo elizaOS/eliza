@@ -3,15 +3,19 @@
  * declared tags: actions carrying the agent-orchestration + delegate capability
  * tags surface as `"agent"` nodes, everything else as plain `"action"` nodes.
  */
-import { hasActionTags } from "@elizaos/plugin-assistant";
+
 import { type Action } from "@elizaos/core";
 import { type AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
+import { hasActionTags } from "@elizaos/plugin-assistant";
+
 const AGENT_AUTOMATION_ACTION_TAGS = [
-    "domain:agent-orchestration",
-    "capability:delegate",
+  "domain:agent-orchestration",
+  "capability:delegate",
 ] as const;
-export function classifyRuntimeActionNode(action: Pick<Action, "tags">): AutomationNodeDescriptor["class"] {
-    return hasActionTags(action, AGENT_AUTOMATION_ACTION_TAGS)
-        ? "agent"
-        : "action";
+export function classifyRuntimeActionNode(
+  action: Pick<Action, "tags">,
+): AutomationNodeDescriptor["class"] {
+  return hasActionTags(action, AGENT_AUTOMATION_ACTION_TAGS)
+    ? "agent"
+    : "action";
 }

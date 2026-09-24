@@ -26,8 +26,8 @@ import {
   revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
+import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,

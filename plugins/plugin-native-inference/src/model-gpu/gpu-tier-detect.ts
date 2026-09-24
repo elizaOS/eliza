@@ -18,8 +18,8 @@
  */
 
 import { execSync } from "node:child_process";
-import type { GpuProfile } from "@elizaos/plugin-native-inference/model-gpu/gpu-tier-profiles";
-import { getGpuProfile, selectBestProfile } from "@elizaos/plugin-native-inference/model-gpu/gpu-tier-profiles";
+import type { GpuProfile } from "./gpu-tier-profiles.js";
+import { getGpuProfile, selectBestProfile } from "./gpu-tier-profiles.js";
 
 /** Raw data extracted from nvidia-smi for a single GPU. */
 export interface DetectedGpu {

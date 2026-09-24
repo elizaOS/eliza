@@ -12,17 +12,17 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
-import { localInferenceRoot } from "@elizaos/plugin-native-inference/model-catalog/paths";
-import {
-  isRoutingPolicy,
-  type RoutingPolicy,
-  type RoutingPreferences,
-} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import {
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,
   TEXT_GENERATION_SLOTS,
 } from "@elizaos/core/contracts/local-inference";
+import { localInferenceRoot } from "./paths.js";
+import {
+  isRoutingPolicy,
+  type RoutingPolicy,
+  type RoutingPreferences,
+} from "./routing-policy.js";
 
 export {
   DEFAULT_ROUTING_POLICY,
@@ -30,7 +30,7 @@ export {
   ROUTING_POLICIES,
   type RoutingPolicy,
   type RoutingPreferences,
-} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
+} from "./routing-policy.js";
 
 interface RoutingFile {
   version: 1;

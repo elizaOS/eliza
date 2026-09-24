@@ -1,15 +1,15 @@
 /** Keyword matching uses the authored table in @elizaos/core/i18n/keywords. */
 export {
-  collectKeywordTermMatches,
-  collectPreparedKeywordTermMatches,
-  findKeywordTermMatch,
-  getValidationKeywordLocaleTerms,
-  getValidationKeywordTerms,
-  hasPreparedKeywordTermMatch,
-  normalizeKeywordMatchText,
-  type PreparedKeywordTerm,
-  prepareKeywordTerms,
-  splitKeywordDoc,
-  textIncludesKeywordTerm,
-  VALIDATION_KEYWORD_DOCS,
-} from "@elizaos/core/i18n/keyword-matching";
+	collectKeywordTermMatches,
+	collectPreparedKeywordTermMatches,
+	findKeywordTermMatch,
+	getValidationKeywordLocaleTerms,
+	getValidationKeywordTerms,
+	hasPreparedKeywordTermMatch,
+	normalizeKeywordMatchText,
+	type PreparedKeywordTerm,
+	prepareKeywordTerms,
+	splitKeywordDoc,
+	textIncludesKeywordTerm,
+	VALIDATION_KEYWORD_DOCS,
+} from "./keyword-matching.js";

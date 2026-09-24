@@ -7,6 +7,10 @@ import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
 import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
   createGoogleConnectorAccountProvider,
   GoogleCalendarSyncTokenExpiredError,
   stableGoogleConnectorAccountId,
@@ -15,7 +19,6 @@ import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { type LifeOpsConnectorGrant, type LifeOpsGoogleConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

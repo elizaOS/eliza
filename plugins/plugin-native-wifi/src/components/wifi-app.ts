@@ -5,19 +5,21 @@
  * Android; other platforms intentionally leave registration unchanged so the app does
  * not appear in the catalog where it cannot function.
  */
-import { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
+
 import { type OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
+import { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
 export const wifiApp: OverlayApp = {
-    name: WIFI_APP_NAME,
-    displayName: "WiFi",
-    description: "Scan, inspect, and connect to nearby Wi-Fi networks",
-    category: "system",
-    icon: null,
-    androidOnly: true,
-    loader: () => import("./WifiAppView").then((m) => ({ default: m.WifiAppView })),
+  name: WIFI_APP_NAME,
+  displayName: "WiFi",
+  description: "Scan, inspect, and connect to nearby Wi-Fi networks",
+  category: "system",
+  icon: null,
+  androidOnly: true,
+  loader: () =>
+    import("./WifiAppView").then((m) => ({ default: m.WifiAppView })),
 };
 /** Register the WiFi app with the overlay app registry. */
 export function registerWifiApp(): void {
-    registerOverlayApp(wifiApp);
+  registerOverlayApp(wifiApp);
 }

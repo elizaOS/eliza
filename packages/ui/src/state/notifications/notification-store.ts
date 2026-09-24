@@ -19,7 +19,10 @@ import type {
   NotificationPriority,
   UUID,
 } from "@elizaos/core";
-import { DEFAULT_NOTIFICATION_CATEGORY, DEFAULT_NOTIFICATION_PRIORITY } from "@elizaos/core/types/notification";
+import {
+  DEFAULT_NOTIFICATION_CATEGORY,
+  DEFAULT_NOTIFICATION_PRIORITY,
+} from "@elizaos/core/types/notification";
 import { logger } from "@elizaos/ui/logger";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";

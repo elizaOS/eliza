@@ -13,12 +13,12 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import { getCloudSecret } from "./cloud-secrets.js";
 import { getElizaNamespace } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveCloudApiBaseUrl } from "./base-url.js";
+import { resolveDevCloudAuthorityEnvValue } from "./dev-cloud-env-authority.js";
+import { resolveDevCloudEnvAuthority } from "./dev-cloud-env-authority.js";
 import { resolveStateDir } from "@elizaos/core";
 import { resolveUserPath } from "@elizaos/core";
 type ConfigLike = Record<string, unknown> & {
@@ -203,7 +203,7 @@ function resolveWwwApexBaseSiblings(base: string): string[] {
         // without a parsable host there is no sibling to add.
         return [trimmed];
     }
-    const labels = parsed.hostname.split("@elizaos/plugin-elizacloud/cloud-config");
+    const labels = parsed.hostname.split(".");
     if (!parsed.hostname.startsWith("www.") && labels.length > 2) {
         return [trimmed];
     }

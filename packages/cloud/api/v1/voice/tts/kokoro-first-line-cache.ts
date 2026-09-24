@@ -12,8 +12,10 @@
  * `getCloudFirstLineCacheService` get/put paths.
  */
 import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
-import { fingerprintCloudVoiceSettings } from "@/lib/services/tts-first-line-cache";
-import { type CloudFirstLineCacheKey } from "@/lib/services/tts-first-line-cache";
+import {
+  type CloudFirstLineCacheKey,
+  fingerprintCloudVoiceSettings,
+} from "@/lib/services/tts-first-line-cache";
 /**
  * Kokoro synthesises 16-bit PCM WAV at 24 kHz. Both fields are part of the
  * cache key, so they must match the bytes the service actually returns — a
@@ -39,20 +41,24 @@ const DEFAULT_KOKORO_IMAGE_TAG = "unpinned";
  * on the #14370 TTFB benchmark, which needs the live Railway service to
  * measure, so caching stays disabled until an operator opts a deployment in.
  */
-export function isKokoroFirstLineCacheEnabled(flag: string | undefined | null): boolean {
-    if (!flag)
-        return false;
-    const v = flag.trim().toLowerCase();
-    return v === "1" || v === "true" || v === "yes" || v === "on";
+export function isKokoroFirstLineCacheEnabled(
+  flag: string | undefined | null,
+): boolean {
+  if (!flag) return false;
+  const v = flag.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 /**
  * Stable `voiceRevision` for a Kokoro voice. Includes the sample rate/codec so
  * a future output-format change is a distinct revision, and the deploy tag so a
  * service redeploy that alters audio invalidates only Kokoro entries.
  */
-export function resolveKokoroVoiceRevision(kokoroVoice: string, imageTag: string | undefined | null): string {
-    const tag = imageTag?.trim() || DEFAULT_KOKORO_IMAGE_TAG;
-    return `kokoro:${kokoroVoice}:${KOKORO_SAMPLE_RATE}:${KOKORO_CODEC}:${tag}`;
+export function resolveKokoroVoiceRevision(
+  kokoroVoice: string,
+  imageTag: string | undefined | null,
+): string {
+  const tag = imageTag?.trim() || DEFAULT_KOKORO_IMAGE_TAG;
+  return `kokoro:${kokoroVoice}:${KOKORO_SAMPLE_RATE}:${KOKORO_CODEC}:${tag}`;
 }
 /**
  * Build the shared cache key for a Kokoro opener. `normalizedText` is the
@@ -60,23 +66,23 @@ export function resolveKokoroVoiceRevision(kokoroVoice: string, imageTag: string
  * opener before calling.
  */
 export function buildKokoroCacheKey(args: {
-    kokoroVoice: string;
-    normalizedText: string;
-    imageTag: string | undefined | null;
+  kokoroVoice: string;
+  normalizedText: string;
+  imageTag: string | undefined | null;
 }): CloudFirstLineCacheKey {
-    return {
-        algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-        provider: "kokoro",
-        voiceId: args.kokoroVoice,
-        voiceRevision: resolveKokoroVoiceRevision(args.kokoroVoice, args.imageTag),
-        sampleRate: KOKORO_SAMPLE_RATE,
-        codec: KOKORO_CODEC,
-        voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
-            // speed is pinned to 1 in the route; folding it in keeps the key honest
-            // if that ever becomes a parameter.
-            speed: 1,
-        }),
-        normalizedText: args.normalizedText,
-        scope: KOKORO_CACHE_SCOPE,
-    };
+  return {
+    algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+    provider: "kokoro",
+    voiceId: args.kokoroVoice,
+    voiceRevision: resolveKokoroVoiceRevision(args.kokoroVoice, args.imageTag),
+    sampleRate: KOKORO_SAMPLE_RATE,
+    codec: KOKORO_CODEC,
+    voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
+      // speed is pinned to 1 in the route; folding it in keeps the key honest
+      // if that ever becomes a parameter.
+      speed: 1,
+    }),
+    normalizedText: args.normalizedText,
+    scope: KOKORO_CACHE_SCOPE,
+  };
 }

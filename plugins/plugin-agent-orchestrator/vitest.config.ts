@@ -2,17 +2,20 @@
  * Vitest configuration for the orchestrator package. Workspace source aliases
  * keep clean-checkout tests independent of prebuilt peer-package artifacts.
  */
+
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-
 export default defineConfig({
   resolve: {
     alias: [
       ...Object.entries({
-        "../plugin-sql/src/database-utils/raw-sql.ts": fileURLToPath(
-          new URL("../plugin-sql/src/database-utils/raw-sql.ts", import.meta.url),
+        "@elizaos/plugin-sql/database-utils/raw-sql": fileURLToPath(
+          new URL(
+            "../plugin-sql/src/database-utils/raw-sql.ts",
+            import.meta.url,
+          ),
         ),
-        "../../packages/core/src/host-execution-env.ts": fileURLToPath(
+        "@elizaos/core/host-execution-env": fileURLToPath(
           new URL(
             "../../packages/core/src/host-execution-env.ts",
             import.meta.url,
@@ -37,7 +40,7 @@ export default defineConfig({
           new URL("../plugin-sql/src/index.ts", import.meta.url),
         ),
       }).map(([find, replacement]) => ({
-        find: find === "@elizaos/shared" ? /^@elizaos\/shared$/ : find,
+        find,
         replacement,
       })),
     ],

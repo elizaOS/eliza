@@ -14,7 +14,7 @@
  * and the agent both import `renderViewHeroSvg` from here.
  *
  * Pure string generation only: no Node APIs, so this module stays importable
- * from the runtime-agnostic `@elizaos/shared` barrel (browser + server).
+ * from the runtime-agnostic `@elizaos/ui/view-hero-art` barrel (browser + server).
  */
 
 import { trimBoundaryCharacters } from "@elizaos/core/utils/string-boundaries";
@@ -22,7 +22,6 @@ import { hashString } from "@elizaos/core/utils/string-hash";
 
 const W = 1024;
 const CX = W / 2;
-
 /**
  * Convert an HSL triple to a hex color string. Deterministic, no rounding
  * surprises across runs.
@@ -49,7 +48,6 @@ function hsl(h: number, s: number, l: number): string {
       .padStart(2, "0");
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-
 function escapeXml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -58,7 +56,6 @@ function escapeXml(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 }
-
 /**
  * A palette derived from a single accent hue, kept in a dark, modern register.
  * Background tones are deep neutrals shifted slightly toward the accent so each
@@ -75,7 +72,6 @@ function palette(hue: number) {
     line: hsl(hue, 30, 88),
   };
 }
-
 export interface ViewHeroFrameInput {
   /** Stable slug used to namespace SVG gradient/filter ids. */
   id: string;
@@ -86,7 +82,6 @@ export interface ViewHeroFrameInput {
   /** Display label rendered along the bottom. */
   label: string;
 }
-
 /**
  * Render the full branded hero SVG. Shared chrome (defs, background, depth
  * blobs, faint grid, accent arc, bottom label + vignette) with the icon glyph
@@ -169,7 +164,6 @@ ${iconSvg}
   <rect width="${W}" height="${W}" fill="url(#vig-${id})"/>
 </svg>`;
 }
-
 /**
  * Hand-drawn vector line-icons, centered at (0,0) spanning roughly -150..150.
  * Each inherits stroke styling from the parent <g>; fills are set explicitly
@@ -192,18 +186,15 @@ export const VIEW_HERO_ICONS = {
     <line x1="0" y1="110" x2="0" y2="150"/>
     <line x1="66" y1="110" x2="66" y2="150"/>
     <circle cx="0" cy="0" r="14" stroke-width="0" fill="currentColor"/>`,
-
   // overlapping panels — Views (layout grid)
   views: `    <rect x="-150" y="-150" width="130" height="130" rx="18"/>
     <rect x="20" y="-150" width="130" height="130" rx="18"/>
     <rect x="-150" y="20" width="130" height="130" rx="18"/>
     <rect x="20" y="20" width="130" height="130" rx="18"/>`,
-
   // shield with an eye-off slash — Focus / blocker
   focus: `    <path d="M0 -150 L130 -100 L130 24 C130 110 70 152 0 175 C-70 152 -130 110 -130 24 L-130 -100 Z"/>
     <circle cx="0" cy="-2" r="34"/>
     <line x1="-92" y1="-96" x2="96" y2="120"/>`,
-
   // calendar grid — Calendar
   calendar: `    <rect x="-140" y="-118" width="280" height="248" rx="24"/>
     <line x1="-140" y1="-52" x2="140" y2="-52"/>
@@ -214,51 +205,42 @@ export const VIEW_HERO_ICONS = {
     <circle cx="66" cy="6" r="11" stroke-width="0" fill="currentColor"/>
     <circle cx="-66" cy="72" r="11" stroke-width="0" fill="currentColor"/>
     <circle cx="0" cy="72" r="11" stroke-width="0" fill="currentColor"/>`,
-
   // over-ear headphones
   headphones: `    <path d="M-140 30 V-10 A140 140 0 0 1 140 -10 V30"/>
     <rect x="-160" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
     <rect x="102" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
     <rect x="-160" y="26" width="58" height="110" rx="26"/>
     <rect x="102" y="26" width="58" height="110" rx="26"/>`,
-
   // eyeglasses
   glasses: `    <circle cx="-86" cy="20" r="68"/>
     <circle cx="86" cy="20" r="68"/>
     <path d="M-18 20 Q0 -2 18 20"/>
     <line x1="-154" y1="-12" x2="-180" y2="-44"/>
     <line x1="154" y1="-12" x2="180" y2="-44"/>`,
-
   // line chart rising with axis — Finances
   finances: `    <polyline points="-150,-150 -150,150 150,150"/>
     <polyline points="-118,86 -50,-2 6,52 76,-62 132,-104" fill="none"/>
     <circle cx="-50" cy="-2" r="13" stroke-width="0" fill="currentColor"/>
     <circle cx="76" cy="-62" r="13" stroke-width="0" fill="currentColor"/>
     <circle cx="132" cy="-104" r="13" stroke-width="0" fill="currentColor"/>`,
-
   // target with center dot and a flag — Goals
   goals: `    <circle cx="0" cy="0" r="150"/>
     <circle cx="0" cy="0" r="92"/>
     <circle cx="0" cy="0" r="34"/>
     <circle cx="0" cy="0" r="9" stroke-width="0" fill="currentColor"/>`,
-
   // heart with a pulse line through it — Health
   health: `    <path d="M0 150 C-180 18 -120 -120 0 -52 C120 -120 180 18 0 150 Z"/>
     <polyline points="-150,-10 -64,-10 -28,-58 14,52 48,-10 150,-10" fill="none"/>`,
-
   // inbox tray — Inbox
   inbox: `    <path d="M-150 -40 L-110 -130 H110 L150 -40 V120 A20 20 0 0 1 130 140 H-130 A20 20 0 0 1 -150 120 Z"/>
     <path d="M-150 -40 H-44 L-10 24 H10 L44 -40 H150"/>`,
-
   // chat bubble with lines — Messages
   messages: `    <path d="M-150 -120 H150 A24 24 0 0 1 174 -96 V60 A24 24 0 0 1 150 84 H-30 L-100 150 V84 H-150 A24 24 0 0 1 -174 60 V-96 A24 24 0 0 1 -150 -120 Z"/>
     <line x1="-100" y1="-44" x2="100" y2="-44"/>
     <line x1="-100" y1="16" x2="40" y2="16"/>`,
-
   // checklist square — Todos
   todos: `    <rect x="-150" y="-150" width="300" height="300" rx="36"/>
     <polyline points="-92,-6 -36,52 92,-78" fill="none"/>`,
-
   // network graph nodes — Vector Browser / Relationships
   vectorBrowser: `    <line x1="-110" y1="-96" x2="0" y2="0"/>
     <line x1="120" y1="-110" x2="0" y2="0"/>
@@ -271,9 +253,7 @@ export const VIEW_HERO_ICONS = {
     <circle cx="-130" cy="86" r="22"/>
     <circle cx="110" cy="104" r="22"/>`,
 } as const;
-
 export type ViewHeroIconKind = keyof typeof VIEW_HERO_ICONS;
-
 /**
  * Curated, non-blue accent hues spread across warm/jewel tones. Deliberately
  * excludes the pure-blue band (~200–250) so a generated hero never reads as a
@@ -282,13 +262,11 @@ export type ViewHeroIconKind = keyof typeof VIEW_HERO_ICONS;
 const VIEW_HERO_HUES = [
   12, 25, 38, 52, 96, 130, 150, 168, 190, 270, 286, 300, 332, 348,
 ] as const;
-
 /** Deterministically pick a non-blue accent hue for an arbitrary view key. */
 export function hueForViewKey(key: string): number {
   const trimmed = key.trim() || "view";
   return VIEW_HERO_HUES[hashString(trimmed) % VIEW_HERO_HUES.length];
 }
-
 /**
  * Keyword → icon-glyph rules, checked in order. The first rule whose keyword is
  * present in the view's id/label/tags/Lucide-icon name wins; otherwise the
@@ -336,7 +314,6 @@ const ICON_KEYWORD_RULES: ReadonlyArray<[ViewHeroIconKind, readonly string[]]> =
     ["glasses", ["glass", "xr", "spatial", "vision"]],
     ["modelTester", ["model", "test", "chip", "cpu", "bench", "eval", "train"]],
   ];
-
 export interface ViewHeroSource {
   id?: string;
   label: string;
@@ -344,7 +321,6 @@ export interface ViewHeroSource {
   icon?: string;
   tags?: readonly string[];
 }
-
 /** Pick the best-matching icon glyph for a view, defaulting to the grid. */
 export function pickViewHeroIcon(source: ViewHeroSource): ViewHeroIconKind {
   const haystack = [
@@ -360,7 +336,6 @@ export function pickViewHeroIcon(source: ViewHeroSource): ViewHeroIconKind {
   }
   return "views";
 }
-
 /** Lowercase slug safe to embed in SVG element ids. */
 function slugifyViewId(value: string): string {
   const slug = trimBoundaryCharacters(
@@ -369,7 +344,6 @@ function slugifyViewId(value: string): string {
   );
   return slug || "view";
 }
-
 /**
  * High-level entry point: render a branded hero SVG for a view, choosing the
  * accent hue and icon glyph automatically from the view's metadata. Used by the

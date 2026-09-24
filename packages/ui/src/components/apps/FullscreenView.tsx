@@ -5,47 +5,49 @@
  * a connection-status indicator. Auth-payload delivery is delegated to
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
+
+import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
+import { Pin, PinOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type AppRunSummary,
+  type AppSessionControlAction,
+  type AppSessionState,
+  client,
+  type LogEntry,
+} from "../../api";
+import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { useBranding } from "../../config/branding";
+import { useMediaQuery } from "../../hooks";
+import {
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+} from "../../hooks/useDocumentVisibility";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTimeout } from "../../hooks/useTimeout";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
+import {
+  navigatePreOpenedWindow,
+  openExternalUrl,
+  preOpenWindow,
+} from "../../utils";
+import { safeAttachmentUrl } from "../../utils/attachment-url";
+import { formatTime } from "../../utils/format";
 import { Alert } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
-import { Pin } from "lucide-react";
-import { PinOff } from "lucide-react";
 import { Progress } from "../ui/progress";
-import { StatusBadge } from "../ui/status-badge";
-import { buildViewerSessionKey } from "./viewer-auth";
-import { client } from "../../api";
-import { formatTime } from "../../utils/format";
-import { invokeDesktopBridgeRequest } from "../../bridge";
-import { isElectrobunRuntime } from "../../bridge";
-import { navigatePreOpenedWindow } from "../../utils";
-import { openExternalUrl } from "../../utils";
-import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
-import { preOpenWindow } from "../../utils";
-import { resolveEmbeddedViewerUrl } from "./viewer-auth";
-import { resolvePostMessageTargetOrigin } from "./viewer-auth";
-import { resolveViewerReadyEventType } from "./viewer-auth";
-import { safeAttachmentUrl } from "../../utils/attachment-url";
-import { shouldUseEmbeddedAppViewer } from "./viewer-auth";
-import { type AppRunSummary } from "../../api";
-import { type AppSessionControlAction } from "../../api";
-import { type AppSessionState } from "../../api";
-import { type LogEntry } from "../../api";
-import { type StatusTone } from "../ui/status-badge";
-import { useAppSelector } from "../../state";
-import { useAppSelectorShallow } from "../../state";
-import { useBranding } from "../../config/branding";
-import { useCallback } from "react";
-import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
-import { useEffect } from "react";
-import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useMediaQuery } from "../../hooks";
-import { useMemo } from "react";
-import { useRef } from "react";
-import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useState } from "react";
-import { useTimeout } from "../../hooks/useTimeout";
+import { StatusBadge, type StatusTone } from "../ui/status-badge";
+import {
+  buildViewerSessionKey,
+  resolveEmbeddedViewerUrl,
+  resolvePostMessageTargetOrigin,
+  resolveViewerReadyEventType,
+  shouldUseEmbeddedAppViewer,
+} from "./viewer-auth";
+
 /**
  * Optional self-learning telemetry fields a game loop may push into
  * {@link AppSessionState.telemetry}. Every field is optional: the loop only
@@ -53,1367 +55,1837 @@ import { useTimeout } from "../../hooks/useTimeout";
  * empty state rather than a fabricated default.
  */
 interface GameLearningTelemetry {
-    abilityPriority?: string[];
-    recallThreshold?: number;
-    ticksTracked?: number;
-    abilitiesLearned?: number;
-    survivalRate?: number;
+  abilityPriority?: string[];
+  recallThreshold?: number;
+  ticksTracked?: number;
+  abilitiesLearned?: number;
+  survivalRate?: number;
 }
-function readLearningTelemetry(telemetry: AppSessionState["telemetry"]): GameLearningTelemetry {
-    if (!telemetry)
-        return {};
-    const abilityPriority = Array.isArray(telemetry.abilityPriority)
-        ? telemetry.abilityPriority.filter((ability): ability is string => typeof ability === "string")
-        : undefined;
-    return {
-        abilityPriority,
-        recallThreshold: typeof telemetry.recallThreshold === "number"
-            ? telemetry.recallThreshold
-            : undefined,
-        ticksTracked: typeof telemetry.ticksTracked === "number"
-            ? telemetry.ticksTracked
-            : undefined,
-        abilitiesLearned: typeof telemetry.abilitiesLearned === "number"
-            ? telemetry.abilitiesLearned
-            : undefined,
-        survivalRate: typeof telemetry.survivalRate === "number"
-            ? telemetry.survivalRate
-            : undefined,
-    };
+function readLearningTelemetry(
+  telemetry: AppSessionState["telemetry"],
+): GameLearningTelemetry {
+  if (!telemetry) return {};
+  const abilityPriority = Array.isArray(telemetry.abilityPriority)
+    ? telemetry.abilityPriority.filter(
+        (ability): ability is string => typeof ability === "string",
+      )
+    : undefined;
+  return {
+    abilityPriority,
+    recallThreshold:
+      typeof telemetry.recallThreshold === "number"
+        ? telemetry.recallThreshold
+        : undefined,
+    ticksTracked:
+      typeof telemetry.ticksTracked === "number"
+        ? telemetry.ticksTracked
+        : undefined,
+    abilitiesLearned:
+      typeof telemetry.abilitiesLearned === "number"
+        ? telemetry.abilitiesLearned
+        : undefined,
+    survivalRate:
+      typeof telemetry.survivalRate === "number"
+        ? telemetry.survivalRate
+        : undefined,
+  };
 }
-function buildDisconnectedSessionState(session: AppSessionState | null): AppSessionState | null {
-    if (!session)
-        return null;
-    return {
-        ...session,
-        status: "disconnected",
-        canSendCommands: false,
-        controls: [],
-        goalLabel: null,
-        suggestedPrompts: [],
-        telemetry: null,
-        summary: session.displayName
-            ? `Session unavailable: ${session.displayName}`
-            : "Session unavailable.",
-    };
+function buildDisconnectedSessionState(
+  session: AppSessionState | null,
+): AppSessionState | null {
+  if (!session) return null;
+  return {
+    ...session,
+    status: "disconnected",
+    canSendCommands: false,
+    controls: [],
+    goalLabel: null,
+    suggestedPrompts: [],
+    telemetry: null,
+    summary: session.displayName
+      ? `Session unavailable: ${session.displayName}`
+      : "Session unavailable.",
+  };
 }
-type RunSteeringDisposition = "accepted" | "queued" | "rejected" | "unsupported";
+type RunSteeringDisposition =
+  | "accepted"
+  | "queued"
+  | "rejected"
+  | "unsupported";
 interface RunSteeringResult {
-    success: boolean;
-    message: string;
-    disposition: RunSteeringDisposition;
-    status: number;
-    run?: AppRunSummary | null;
-    session?: AppSessionState | null;
+  success: boolean;
+  message: string;
+  disposition: RunSteeringDisposition;
+  status: number;
+  run?: AppRunSummary | null;
+  session?: AppSessionState | null;
 }
-function getSteeringNotice(disposition: RunSteeringDisposition, message: string): {
-    tone: "info" | "success" | "error";
-    ttlMs: number;
-    text: string;
+function getSteeringNotice(
+  disposition: RunSteeringDisposition,
+  message: string,
+): {
+  tone: "info" | "success" | "error";
+  ttlMs: number;
+  text: string;
 } {
-    if (disposition === "queued") {
-        return {
-            tone: "info",
-            ttlMs: 2600,
-            text: message,
-        };
-    }
-    if (disposition === "accepted") {
-        return {
-            tone: "success",
-            ttlMs: 2400,
-            text: message,
-        };
-    }
+  if (disposition === "queued") {
     return {
-        tone: "error",
-        ttlMs: 3200,
-        text: message,
+      tone: "info",
+      ttlMs: 2600,
+      text: message,
     };
+  }
+  if (disposition === "accepted") {
+    return {
+      tone: "success",
+      ttlMs: 2400,
+      text: message,
+    };
+  }
+  return {
+    tone: "error",
+    ttlMs: 3200,
+    text: message,
+  };
 }
-function getSteeringFallbackMessage(disposition: RunSteeringDisposition, defaultValue: string): string {
-    if (disposition === "queued")
-        return "Command queued.";
-    if (disposition === "accepted")
-        return "Command accepted.";
-    if (disposition === "unsupported") {
-        return "This run does not support that steering channel.";
-    }
-    return defaultValue;
+function getSteeringFallbackMessage(
+  disposition: RunSteeringDisposition,
+  defaultValue: string,
+): string {
+  if (disposition === "queued") return "Command queued.";
+  if (disposition === "accepted") return "Command accepted.";
+  if (disposition === "unsupported") {
+    return "This run does not support that steering channel.";
+  }
+  return defaultValue;
 }
 function getApiStatus(err: unknown): number | null {
-    if (err &&
-        typeof err === "object" &&
-        "status" in err &&
-        typeof (err as {
-            status?: unknown;
-        }).status === "number") {
-        return (err as {
-            status: number;
-        }).status;
-    }
-    return null;
+  if (
+    err &&
+    typeof err === "object" &&
+    "status" in err &&
+    typeof (
+      err as {
+        status?: unknown;
+      }
+    ).status === "number"
+  ) {
+    return (
+      err as {
+        status: number;
+      }
+    ).status;
+  }
+  return null;
 }
 /** Canonical status tones for recognized log tags. */
 const TAG_TONES: Readonly<Partial<Record<string, StatusTone>>> = {
-    agent: "accent",
-    game: "success",
-    autonomy: "warning",
-    websocket: "info",
+  agent: "accent",
+  game: "success",
+  autonomy: "warning",
+  websocket: "info",
 };
-function heroHealthProgress(current: number, maximum: number): {
-    value: number;
-    tone: "success" | "warning" | "danger";
+function heroHealthProgress(
+  current: number,
+  maximum: number,
+): {
+  value: number;
+  tone: "success" | "warning" | "danger";
 } {
-    const value = Math.min(100, Math.max(0, Math.round((current / maximum) * 100)));
-    return {
-        value,
-        tone: value > 50 ? "success" : value > 25 ? "warning" : "danger",
-    };
+  const value = Math.min(
+    100,
+    Math.max(0, Math.round((current / maximum) * 100)),
+  );
+  return {
+    value,
+    tone: value > 50 ? "success" : value > 25 ? "warning" : "danger",
+  };
 }
-export function DesktopGameWindowControls({ gameWindowId, }: {
-    gameWindowId: string | null;
+export function DesktopGameWindowControls({
+  gameWindowId,
+}: {
+  gameWindowId: string | null;
 }) {
-    const t = useAppSelector((s) => s.t);
-    const [busyAction, setBusyAction] = useState<string | null>(null);
-    const [message, setMessage] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-    const [boundsLabel, setBoundsLabel] = useState(t("gameview.BoundsUnavailable", { defaultValue: "Bounds unavailable." }));
-    const [gpuWindowId, setGpuWindowId] = useState<string | null>(null);
-    const branding = useBranding();
-    const refresh = useCallback(async () => {
-        if (!gameWindowId) {
-            setBoundsLabel(t("gameview.WaitingForNativeGameWindow", {
-                defaultValue: "Waiting for native game window.",
-            }));
-            setAlwaysOnTop(false);
-        }
-        else {
-            const bounds = await invokeDesktopBridgeRequest<{
-                x: number;
-                y: number;
-                width: number;
-                height: number;
-            }>({
-                rpcMethod: "canvasGetBounds",
-                ipcChannel: "canvas:getBounds",
-                params: { id: gameWindowId },
-            });
-            if (bounds) {
-                setBoundsLabel(`${bounds.width}x${bounds.height} @ ${bounds.x},${bounds.y}`);
-            }
-            try {
-                const windows = await invokeDesktopBridgeRequest<{
-                    windows: Array<{
-                        id: string;
-                        alwaysOnTop: boolean;
-                    }>;
-                }>({
-                    rpcMethod: "canvasListWindows",
-                    ipcChannel: "canvas:listWindows",
-                });
-                const currentWindow = windows?.windows.find((item) => item.id === gameWindowId);
-                setAlwaysOnTop(currentWindow?.alwaysOnTop ?? false);
-            }
-            catch {
-                // non-fatal: pin state defaults to false on poll failure
-            }
-        }
-        const gpuWindows = await invokeDesktopBridgeRequest<{
-            windows: Array<{
-                id: string;
-            }>;
+  const t = useAppSelector((s) => s.t);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [boundsLabel, setBoundsLabel] = useState(
+    t("gameview.BoundsUnavailable", { defaultValue: "Bounds unavailable." }),
+  );
+  const [gpuWindowId, setGpuWindowId] = useState<string | null>(null);
+  const branding = useBranding();
+  const refresh = useCallback(async () => {
+    if (!gameWindowId) {
+      setBoundsLabel(
+        t("gameview.WaitingForNativeGameWindow", {
+          defaultValue: "Waiting for native game window.",
+        }),
+      );
+      setAlwaysOnTop(false);
+    } else {
+      const bounds = await invokeDesktopBridgeRequest<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>({
+        rpcMethod: "canvasGetBounds",
+        ipcChannel: "canvas:getBounds",
+        params: { id: gameWindowId },
+      });
+      if (bounds) {
+        setBoundsLabel(
+          `${bounds.width}x${bounds.height} @ ${bounds.x},${bounds.y}`,
+        );
+      }
+      try {
+        const windows = await invokeDesktopBridgeRequest<{
+          windows: Array<{
+            id: string;
+            alwaysOnTop: boolean;
+          }>;
         }>({
-            rpcMethod: "gpuWindowList",
-            ipcChannel: "gpuWindow:list",
+          rpcMethod: "canvasListWindows",
+          ipcChannel: "canvas:listWindows",
         });
-        setGpuWindowId(gpuWindows?.windows[0]?.id ?? null);
-    }, [gameWindowId, t]);
-    useEffect(() => {
-        void refresh();
-    }, [refresh]);
-    const runAction = useCallback(async (id: string, action: () => Promise<void>, successMessage?: string, refreshAfter = true) => {
-        setBusyAction(id);
-        setError(null);
-        setMessage(null);
-        try {
-            await action();
-            if (refreshAfter) {
-                await refresh();
-            }
-            if (successMessage) {
-                setMessage(successMessage);
-            }
+        const currentWindow = windows?.windows.find(
+          (item) => item.id === gameWindowId,
+        );
+        setAlwaysOnTop(currentWindow?.alwaysOnTop ?? false);
+      } catch {
+        // non-fatal: pin state defaults to false on poll failure
+      }
+    }
+    const gpuWindows = await invokeDesktopBridgeRequest<{
+      windows: Array<{
+        id: string;
+      }>;
+    }>({
+      rpcMethod: "gpuWindowList",
+      ipcChannel: "gpuWindow:list",
+    });
+    setGpuWindowId(gpuWindows?.windows[0]?.id ?? null);
+  }, [gameWindowId, t]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  const runAction = useCallback(
+    async (
+      id: string,
+      action: () => Promise<void>,
+      successMessage?: string,
+      refreshAfter = true,
+    ) => {
+      setBusyAction(id);
+      setError(null);
+      setMessage(null);
+      try {
+        await action();
+        if (refreshAfter) {
+          await refresh();
         }
-        catch (err) {
-            setError(err instanceof Error
-                ? err.message
-                : t("gameview.NativeGameActionFailed", {
-                    defaultValue: "Native game action failed.",
-                }));
+        if (successMessage) {
+          setMessage(successMessage);
         }
-        finally {
-            setBusyAction(null);
-        }
-    }, [refresh, t]);
-    return (<div className="flex flex-wrap items-center gap-2">
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("gameview.NativeGameActionFailed", {
+                defaultValue: "Native game action failed.",
+              }),
+        );
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [refresh, t],
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-2">
       <Badge asChild variant="metaDefault" size="metaCompact">
         <span>{boundsLabel}</span>
       </Badge>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-native-refresh", async () => { }, t("gameview.NativeGameStateRefreshed", {
-            defaultValue: "Native game state refreshed.",
-        }))} disabled={busyAction === "game-native-refresh"}>
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-refresh",
+            async () => {},
+            t("gameview.NativeGameStateRefreshed", {
+              defaultValue: "Native game state refreshed.",
+            }),
+          )
+        }
+        disabled={busyAction === "game-native-refresh"}
+      >
         {t("gameview.RefreshNativeState", {
-            defaultValue: "Refresh Native State",
+          defaultValue: "Refresh Native State",
         })}
       </Button>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-native-focus", async () => {
-            if (!gameWindowId) {
-                throw new Error(t("gameview.GameWindowNotReadyYet", {
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-focus",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
                     defaultValue: "Game window not ready yet.",
-                }));
-            }
-            await invokeDesktopBridgeRequest<void>({
+                  }),
+                );
+              }
+              await invokeDesktopBridgeRequest<void>({
                 rpcMethod: "canvasFocus",
                 ipcChannel: "canvas:focus",
                 params: { id: gameWindowId },
-            });
-        }, t("gameview.FocusedNativeGameWindow", {
-            defaultValue: "Focused native game window.",
-        }), false)} disabled={!gameWindowId || busyAction === "game-native-focus"}>
+              });
+            },
+            t("gameview.FocusedNativeGameWindow", {
+              defaultValue: "Focused native game window.",
+            }),
+            false,
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-focus"}
+      >
         {t("gameview.FocusWindow", { defaultValue: "Focus Window" })}
       </Button>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-native-show", async () => {
-            if (!gameWindowId) {
-                throw new Error(t("gameview.GameWindowNotReadyYet", {
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-show",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
                     defaultValue: "Game window not ready yet.",
-                }));
-            }
-            await invokeDesktopBridgeRequest<void>({
+                  }),
+                );
+              }
+              await invokeDesktopBridgeRequest<void>({
                 rpcMethod: "canvasShow",
                 ipcChannel: "canvas:show",
                 params: { id: gameWindowId },
-            });
-        }, t("gameview.ShownNativeGameWindow", {
-            defaultValue: "Shown native game window.",
-        }), false)} disabled={!gameWindowId || busyAction === "game-native-show"}>
+              });
+            },
+            t("gameview.ShownNativeGameWindow", {
+              defaultValue: "Shown native game window.",
+            }),
+            false,
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-show"}
+      >
         {t("gameview.ShowWindow", { defaultValue: "Show Window" })}
       </Button>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-native-hide", async () => {
-            if (!gameWindowId) {
-                throw new Error(t("gameview.GameWindowNotReadyYet", {
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-hide",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
                     defaultValue: "Game window not ready yet.",
-                }));
-            }
-            await invokeDesktopBridgeRequest<void>({
+                  }),
+                );
+              }
+              await invokeDesktopBridgeRequest<void>({
                 rpcMethod: "canvasHide",
                 ipcChannel: "canvas:hide",
                 params: { id: gameWindowId },
-            });
-        }, t("gameview.HidNativeGameWindow", {
-            defaultValue: "Hid native game window.",
-        }), false)} disabled={!gameWindowId || busyAction === "game-native-hide"}>
+              });
+            },
+            t("gameview.HidNativeGameWindow", {
+              defaultValue: "Hid native game window.",
+            }),
+            false,
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-hide"}
+      >
         {t("gameview.HideWindow", { defaultValue: "Hide Window" })}
       </Button>
-      <Button variant={alwaysOnTop ? "default" : "outlineAccent"} size="tiny" onClick={() => void runAction("game-native-always-on-top", async () => {
-            if (!gameWindowId) {
-                throw new Error(t("gameview.GameWindowNotReadyYet", {
+      <Button
+        variant={alwaysOnTop ? "default" : "outlineAccent"}
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-always-on-top",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
                     defaultValue: "Game window not ready yet.",
-                }));
-            }
-            const next = !alwaysOnTop;
-            const result = await invokeDesktopBridgeRequest<{
+                  }),
+                );
+              }
+              const next = !alwaysOnTop;
+              const result = await invokeDesktopBridgeRequest<{
                 success: boolean;
-            }>({
+              }>({
                 rpcMethod: "canvasSetAlwaysOnTop",
                 ipcChannel: "canvas:setAlwaysOnTop",
                 params: { id: gameWindowId, flag: next },
-            });
-            if (!result?.success) {
-                throw new Error(t("gameview.GameWindowNoLongerOpen", {
+              });
+              if (!result?.success) {
+                throw new Error(
+                  t("gameview.GameWindowNoLongerOpen", {
                     defaultValue: "Game window is no longer open.",
-                }));
-            }
-            setAlwaysOnTop(next);
-        }, alwaysOnTop
-            ? t("gameview.NativeGameWindowNormal", {
-                defaultValue: "Native game window acts like a normal window.",
-            })
-            : t("gameview.NativeGameWindowPinned", {
-                defaultValue: "Native game window stays on top.",
-            }))} disabled={!gameWindowId || busyAction === "game-native-always-on-top"}>
-        {alwaysOnTop ? (<PinOff className="size-3.5" aria-hidden="true"/>) : (<Pin className="size-3.5" aria-hidden="true"/>)}
+                  }),
+                );
+              }
+              setAlwaysOnTop(next);
+            },
+            alwaysOnTop
+              ? t("gameview.NativeGameWindowNormal", {
+                  defaultValue: "Native game window acts like a normal window.",
+                })
+              : t("gameview.NativeGameWindowPinned", {
+                  defaultValue: "Native game window stays on top.",
+                }),
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-always-on-top"}
+      >
+        {alwaysOnTop ? (
+          <PinOff className="size-3.5" aria-hidden="true" />
+        ) : (
+          <Pin className="size-3.5" aria-hidden="true" />
+        )}
         {alwaysOnTop
-            ? t("gameview.NormalWindow", { defaultValue: "Normal Window" })
-            : t("gameview.KeepOnTop", { defaultValue: "Keep On Top" })}
+          ? t("gameview.NormalWindow", { defaultValue: "Normal Window" })
+          : t("gameview.KeepOnTop", { defaultValue: "Keep On Top" })}
       </Button>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-native-snapshot", async () => {
-            if (!gameWindowId) {
-                throw new Error(t("gameview.GameWindowNotReadyYet", {
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-native-snapshot",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
                     defaultValue: "Game window not ready yet.",
-                }));
-            }
-            const snapshot = await invokeDesktopBridgeRequest<{
+                  }),
+                );
+              }
+              const snapshot = await invokeDesktopBridgeRequest<{
                 data: string;
-            } | null>({
+              } | null>({
                 rpcMethod: "canvasSnapshot",
                 ipcChannel: "canvas:snapshot",
                 params: { id: gameWindowId, format: "png" },
-            });
-            if (!snapshot?.data) {
-                throw new Error(t("gameview.SnapshotUnavailable", {
+              });
+              if (!snapshot?.data) {
+                throw new Error(
+                  t("gameview.SnapshotUnavailable", {
                     defaultValue: "Snapshot unavailable.",
-                }));
-            }
-        }, t("gameview.CapturedNativeGameSnapshot", {
-            defaultValue: "Captured native game snapshot.",
-        }), false)} disabled={!gameWindowId || busyAction === "game-native-snapshot"}>
+                  }),
+                );
+              }
+            },
+            t("gameview.CapturedNativeGameSnapshot", {
+              defaultValue: "Captured native game snapshot.",
+            }),
+            false,
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-snapshot"}
+      >
         {t("gameview.SnapshotWindow", { defaultValue: "Snapshot Window" })}
       </Button>
-      <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-gpu-window", async () => {
-            const created = await invokeDesktopBridgeRequest<{
+      <Button
+        variant="outlineAccent"
+        size="tiny"
+        onClick={() =>
+          void runAction(
+            "game-gpu-window",
+            async () => {
+              const created = await invokeDesktopBridgeRequest<{
                 id: string;
-            }>({
+              }>({
                 rpcMethod: "gpuWindowCreate",
                 ipcChannel: "gpuWindow:create",
                 params: {
-                    id: "gpu-diagnostics",
-                    title: `${branding.appName} GPU Diagnostics`,
-                    width: 640,
-                    height: 360,
+                  id: "gpu-diagnostics",
+                  title: `${branding.appName} GPU Diagnostics`,
+                  width: 640,
+                  height: 360,
                 },
-            });
-            const nextGpuWindowId = created?.id ?? gpuWindowId;
-            if (nextGpuWindowId) {
+              });
+              const nextGpuWindowId = created?.id ?? gpuWindowId;
+              if (nextGpuWindowId) {
                 await invokeDesktopBridgeRequest<void>({
-                    rpcMethod: "gpuWindowShow",
-                    ipcChannel: "gpuWindow:show",
-                    params: { id: nextGpuWindowId },
+                  rpcMethod: "gpuWindowShow",
+                  ipcChannel: "gpuWindow:show",
+                  params: { id: nextGpuWindowId },
                 });
                 await invokeDesktopBridgeRequest<void>({
-                    rpcMethod: "gpuWindowGetInfo",
-                    ipcChannel: "gpuWindow:getInfo",
-                    params: { id: nextGpuWindowId },
+                  rpcMethod: "gpuWindowGetInfo",
+                  ipcChannel: "gpuWindow:getInfo",
+                  params: { id: nextGpuWindowId },
                 });
                 setGpuWindowId(nextGpuWindowId);
-            }
-        }, t("gameview.GpuDiagnosticsWindowReady", {
-            defaultValue: "GPU diagnostics window ready.",
-        }))} disabled={busyAction === "game-gpu-window"}>
+              }
+            },
+            t("gameview.GpuDiagnosticsWindowReady", {
+              defaultValue: "GPU diagnostics window ready.",
+            }),
+          )
+        }
+        disabled={busyAction === "game-gpu-window"}
+      >
         {t("gameview.LaunchGpuDiagnostics", {
-            defaultValue: "Launch GPU Diagnostics",
+          defaultValue: "Launch GPU Diagnostics",
         })}
       </Button>
-      {gpuWindowId && (<>
-          <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-gpu-show", async () => {
-                await invokeDesktopBridgeRequest<void>({
+      {gpuWindowId && (
+        <>
+          <Button
+            variant="outlineAccent"
+            size="tiny"
+            onClick={() =>
+              void runAction(
+                "game-gpu-show",
+                async () => {
+                  await invokeDesktopBridgeRequest<void>({
                     rpcMethod: "gpuWindowShow",
                     ipcChannel: "gpuWindow:show",
                     params: { id: gpuWindowId },
-                });
-            }, t("gameview.GpuDiagnosticsWindowShown", {
-                defaultValue: "GPU diagnostics window shown.",
-            }), false)} disabled={busyAction === "game-gpu-show"}>
+                  });
+                },
+                t("gameview.GpuDiagnosticsWindowShown", {
+                  defaultValue: "GPU diagnostics window shown.",
+                }),
+                false,
+              )
+            }
+            disabled={busyAction === "game-gpu-show"}
+          >
             {t("gameview.ShowGpuWindow", {
-                defaultValue: "Show GPU Window",
+              defaultValue: "Show GPU Window",
             })}
           </Button>
-          <Button variant="outlineAccent" size="tiny" onClick={() => void runAction("game-gpu-hide", async () => {
-                await invokeDesktopBridgeRequest<void>({
+          <Button
+            variant="outlineAccent"
+            size="tiny"
+            onClick={() =>
+              void runAction(
+                "game-gpu-hide",
+                async () => {
+                  await invokeDesktopBridgeRequest<void>({
                     rpcMethod: "gpuWindowHide",
                     ipcChannel: "gpuWindow:hide",
                     params: { id: gpuWindowId },
-                });
-            }, t("gameview.GpuDiagnosticsWindowHidden", {
-                defaultValue: "GPU diagnostics window hidden.",
-            }), false)} disabled={busyAction === "game-gpu-hide"}>
+                  });
+                },
+                t("gameview.GpuDiagnosticsWindowHidden", {
+                  defaultValue: "GPU diagnostics window hidden.",
+                }),
+                false,
+              )
+            }
+            disabled={busyAction === "game-gpu-hide"}
+          >
             {t("gameview.HideGpuWindow", {
-                defaultValue: "Hide GPU Window",
+              defaultValue: "Hide GPU Window",
             })}
           </Button>
-        </>)}
-      {(message || error) && (<span className={`text-2xs ${error ? "text-danger" : "text-ok"}`}>
+        </>
+      )}
+      {(message || error) && (
+        <span className={`text-2xs ${error ? "text-danger" : "text-ok"}`}>
           {error ?? message}
-        </span>)}
-    </div>);
+        </span>
+      )}
+    </div>
+  );
 }
 export function FullscreenView() {
-    useRenderGuard("FullscreenView");
-    const { setTimeout } = useTimeout();
-    const { appRuns, activeGameRunId, activeGameApp, activeGameDisplayName, activeGameViewerUrl, activeGameSandbox, activeGamePostMessageAuth, activeGamePostMessagePayload, activeGameSession, gameOverlayEnabled, logs, logLoadError, loadLogs, setState, setActionNotice, t, } = useAppSelectorShallow((s) => ({
-        appRuns: s.appRuns,
-        activeGameRunId: s.activeGameRunId,
-        activeGameApp: s.activeGameApp,
-        activeGameDisplayName: s.activeGameDisplayName,
-        activeGameViewerUrl: s.activeGameViewerUrl,
-        activeGameSandbox: s.activeGameSandbox,
-        activeGamePostMessageAuth: s.activeGamePostMessageAuth,
-        activeGamePostMessagePayload: s.activeGamePostMessagePayload,
-        activeGameSession: s.activeGameSession,
-        gameOverlayEnabled: s.gameOverlayEnabled,
-        logs: s.logs,
-        logLoadError: s.logLoadError,
-        loadLogs: s.loadLogs,
-        setState: s.setState,
-        setActionNotice: s.setActionNotice,
-        t: s.t,
-    }));
-    const isElectrobun = isElectrobunRuntime();
-    const isCompactLayout = useMediaQuery("(max-width: 1023px)");
-    const [stopping, setStopping] = useState(false);
-    const [attachingViewer, setAttachingViewer] = useState(false);
-    const [detachingViewer, setDetachingViewer] = useState(false);
-    const [showLogsPanel, setShowLogsPanel] = useState(false);
-    const [showDiagnostics, setShowDiagnostics] = useState(false);
-    const [mobileSurface, setMobileSurface] = useState<"game" | "dashboard" | "chat">("game");
-    const docVisible = useDocumentVisibility();
-    const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
-    const [chatInput, setChatInput] = useState("");
-    const [sendingChat, setSendingChat] = useState(false);
-    const [sessionBusyAction, setSessionBusyAction] = useState<AppSessionControlAction | null>(null);
-    const [sessionState, setSessionState] = useState<AppSessionState | null>(activeGameSession);
-    const [gameWindowId, setGameWindowId] = useState<string | null>(null);
-    const gameWindowIdRef = useRef<string | null>(null);
-    const appRunsRef = useRef(appRuns);
-    const activeGameRunIdRef = useRef(activeGameRunId);
-    const activeGameAppRef = useRef(activeGameApp);
-    const activeGameSessionRef = useRef(activeGameSession);
-    const sessionStateRef = useRef(sessionState);
-    const refreshSessionPromiseRef = useRef<{
-        key: string;
-        promise: Promise<AppSessionState | null>;
-    } | null>(null);
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
-    const authSentRef = useRef(false);
-    const viewerSessionRef = useRef<string>("");
-    const activeGameRun = useMemo(() => appRuns.find((run) => run.runId === activeGameRunId) ?? null, [activeGameRunId, appRuns]);
-    const useEmbeddedViewer = useMemo(() => shouldUseEmbeddedAppViewer(activeGameRun), [activeGameRun]);
-    const useNativeGameWindow = Boolean(isElectrobun &&
-        activeGameRun?.viewer?.url &&
-        activeGameRun.viewerAttachment === "attached" &&
-        !useEmbeddedViewer);
-    const resolvedActiveGameViewerUrl = useMemo(() => resolveEmbeddedViewerUrl(activeGameViewerUrl), [activeGameViewerUrl]);
-    const resolvedActiveGameLaunchUrl = useMemo(() => resolveEmbeddedViewerUrl(activeGameRun?.launchUrl ?? ""), [activeGameRun?.launchUrl]);
-    const dashboardPanelEnabled = true;
-    const hasActiveRun = Boolean(activeGameRun);
-    const hasViewer = Boolean(activeGameRun?.viewer?.url);
-    const viewerAttached = activeGameRun?.viewerAttachment === "attached";
-    // Scheme-guard the viewer/launch URL before it reaches a navigation sink
-    // (<a href>, popup.location.href via navigatePreOpenedWindow). viewer.url /
-    // launchUrl come from a plugin/cloud-app run record (attacker-influenceable),
-    // and a javascript:/data: value would otherwise execute in the app origin or
-    // open-redirect the tab. safeAttachmentUrl returns "" for a disallowed scheme,
-    // which disables the open affordance / omits the href.
-    const openableUrl = safeAttachmentUrl(resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "");
-    const canAttachViewer = Boolean(activeGameRun?.viewer?.url) &&
-        activeGameRun?.viewerAttachment === "detached";
-    const canDetachViewer = activeGameRun?.viewerAttachment === "attached" &&
-        (activeGameRun?.supportsViewerDetach ?? true);
-    useEffect(() => {
-        appRunsRef.current = appRuns;
-    }, [appRuns]);
-    useEffect(() => {
-        activeGameRunIdRef.current = activeGameRunId;
-    }, [activeGameRunId]);
-    useEffect(() => {
-        activeGameAppRef.current = activeGameApp;
-    }, [activeGameApp]);
-    useEffect(() => {
-        activeGameSessionRef.current = activeGameSession;
-    }, [activeGameSession]);
-    useEffect(() => {
-        sessionStateRef.current = sessionState;
-    }, [sessionState]);
-    const applySessionState = useCallback((nextSession: AppSessionState | null) => {
-        setSessionState(nextSession);
-        sessionStateRef.current = nextSession;
-        const currentRunId = activeGameRunIdRef.current;
-        if (!currentRunId)
-            return;
-        const currentRuns = appRunsRef.current;
-        const nextUpdatedAt = new Date().toISOString();
-        const nextRuns = currentRuns.map((run) => {
-            if (run.runId !== currentRunId)
-                return run;
-            const nextHealth = nextSession?.status === "disconnected"
-                ? {
-                    state: "degraded" as const,
-                    message: nextSession.summary ?? run.summary ?? "Session unavailable.",
+  useRenderGuard("FullscreenView");
+  const { setTimeout } = useTimeout();
+  const {
+    appRuns,
+    activeGameRunId,
+    activeGameApp,
+    activeGameDisplayName,
+    activeGameViewerUrl,
+    activeGameSandbox,
+    activeGamePostMessageAuth,
+    activeGamePostMessagePayload,
+    activeGameSession,
+    gameOverlayEnabled,
+    logs,
+    logLoadError,
+    loadLogs,
+    setState,
+    setActionNotice,
+    t,
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameApp: s.activeGameApp,
+    activeGameDisplayName: s.activeGameDisplayName,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    activeGameSandbox: s.activeGameSandbox,
+    activeGamePostMessageAuth: s.activeGamePostMessageAuth,
+    activeGamePostMessagePayload: s.activeGamePostMessagePayload,
+    activeGameSession: s.activeGameSession,
+    gameOverlayEnabled: s.gameOverlayEnabled,
+    logs: s.logs,
+    logLoadError: s.logLoadError,
+    loadLogs: s.loadLogs,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
+  const isElectrobun = isElectrobunRuntime();
+  const isCompactLayout = useMediaQuery("(max-width: 1023px)");
+  const [stopping, setStopping] = useState(false);
+  const [attachingViewer, setAttachingViewer] = useState(false);
+  const [detachingViewer, setDetachingViewer] = useState(false);
+  const [showLogsPanel, setShowLogsPanel] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [mobileSurface, setMobileSurface] = useState<
+    "game" | "dashboard" | "chat"
+  >("game");
+  const docVisible = useDocumentVisibility();
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("connecting");
+  const [chatInput, setChatInput] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
+  const [sessionBusyAction, setSessionBusyAction] =
+    useState<AppSessionControlAction | null>(null);
+  const [sessionState, setSessionState] = useState<AppSessionState | null>(
+    activeGameSession,
+  );
+  const [gameWindowId, setGameWindowId] = useState<string | null>(null);
+  const gameWindowIdRef = useRef<string | null>(null);
+  const appRunsRef = useRef(appRuns);
+  const activeGameRunIdRef = useRef(activeGameRunId);
+  const activeGameAppRef = useRef(activeGameApp);
+  const activeGameSessionRef = useRef(activeGameSession);
+  const sessionStateRef = useRef(sessionState);
+  const refreshSessionPromiseRef = useRef<{
+    key: string;
+    promise: Promise<AppSessionState | null>;
+  } | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const authSentRef = useRef(false);
+  const viewerSessionRef = useRef<string>("");
+  const activeGameRun = useMemo(
+    () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
+    [activeGameRunId, appRuns],
+  );
+  const useEmbeddedViewer = useMemo(
+    () => shouldUseEmbeddedAppViewer(activeGameRun),
+    [activeGameRun],
+  );
+  const useNativeGameWindow = Boolean(
+    isElectrobun &&
+      activeGameRun?.viewer?.url &&
+      activeGameRun.viewerAttachment === "attached" &&
+      !useEmbeddedViewer,
+  );
+  const resolvedActiveGameViewerUrl = useMemo(
+    () => resolveEmbeddedViewerUrl(activeGameViewerUrl),
+    [activeGameViewerUrl],
+  );
+  const resolvedActiveGameLaunchUrl = useMemo(
+    () => resolveEmbeddedViewerUrl(activeGameRun?.launchUrl ?? ""),
+    [activeGameRun?.launchUrl],
+  );
+  const dashboardPanelEnabled = true;
+  const hasActiveRun = Boolean(activeGameRun);
+  const hasViewer = Boolean(activeGameRun?.viewer?.url);
+  const viewerAttached = activeGameRun?.viewerAttachment === "attached";
+  // Scheme-guard the viewer/launch URL before it reaches a navigation sink
+  // (<a href>, popup.location.href via navigatePreOpenedWindow). viewer.url /
+  // launchUrl come from a plugin/cloud-app run record (attacker-influenceable),
+  // and a javascript:/data: value would otherwise execute in the app origin or
+  // open-redirect the tab. safeAttachmentUrl returns "" for a disallowed scheme,
+  // which disables the open affordance / omits the href.
+  const openableUrl = safeAttachmentUrl(
+    resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "",
+  );
+  const canAttachViewer =
+    Boolean(activeGameRun?.viewer?.url) &&
+    activeGameRun?.viewerAttachment === "detached";
+  const canDetachViewer =
+    activeGameRun?.viewerAttachment === "attached" &&
+    (activeGameRun?.supportsViewerDetach ?? true);
+  useEffect(() => {
+    appRunsRef.current = appRuns;
+  }, [appRuns]);
+  useEffect(() => {
+    activeGameRunIdRef.current = activeGameRunId;
+  }, [activeGameRunId]);
+  useEffect(() => {
+    activeGameAppRef.current = activeGameApp;
+  }, [activeGameApp]);
+  useEffect(() => {
+    activeGameSessionRef.current = activeGameSession;
+  }, [activeGameSession]);
+  useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
+  const applySessionState = useCallback(
+    (nextSession: AppSessionState | null) => {
+      setSessionState(nextSession);
+      sessionStateRef.current = nextSession;
+      const currentRunId = activeGameRunIdRef.current;
+      if (!currentRunId) return;
+      const currentRuns = appRunsRef.current;
+      const nextUpdatedAt = new Date().toISOString();
+      const nextRuns = currentRuns.map((run) => {
+        if (run.runId !== currentRunId) return run;
+        const nextHealth =
+          nextSession?.status === "disconnected"
+            ? {
+                state: "degraded" as const,
+                message:
+                  nextSession.summary ?? run.summary ?? "Session unavailable.",
+              }
+            : nextSession
+              ? {
+                  state: "healthy" as const,
+                  message: nextSession.summary ?? null,
                 }
-                : nextSession
-                    ? {
-                        state: "healthy" as const,
-                        message: nextSession.summary ?? null,
-                    }
-                    : run.health;
-            return {
-                ...run,
-                session: nextSession,
-                status: nextSession?.status ?? run.status,
-                summary: nextSession?.summary ?? run.summary,
-                updatedAt: nextUpdatedAt,
-                lastHeartbeatAt: nextSession ? nextUpdatedAt : run.lastHeartbeatAt,
-                health: nextHealth,
-            } satisfies AppRunSummary;
-        });
-        appRunsRef.current = nextRuns;
-        setState("appRuns", nextRuns);
-    }, [setState]);
-    const applyRunState = useCallback((nextRun: AppRunSummary | null) => {
-        if (!nextRun)
-            return;
-        if (nextRun.runId !== activeGameRunIdRef.current)
-            return;
-        const nextUpdatedAt = new Date().toISOString();
-        setSessionState(nextRun.session ?? null);
-        sessionStateRef.current = nextRun.session ?? null;
-        const currentRuns = appRunsRef.current;
-        const nextRuns = currentRuns.map((run) => {
-            if (run.runId !== nextRun.runId)
-                return run;
-            const nextHealth = nextRun.health ??
-                (nextRun.session?.status === "disconnected"
-                    ? {
-                        state: "degraded" as const,
-                        message: nextRun.session.summary ??
-                            nextRun.summary ??
-                            "Session unavailable.",
-                    }
-                    : nextRun.session
-                        ? {
-                            state: "healthy" as const,
-                            message: nextRun.session.summary ?? null,
-                        }
-                        : run.health);
-            return {
-                ...run,
-                ...nextRun,
-                updatedAt: nextUpdatedAt,
-                lastHeartbeatAt: nextRun.session
-                    ? nextUpdatedAt
-                    : run.lastHeartbeatAt,
-                health: nextHealth,
-            } satisfies AppRunSummary;
-        });
-        appRunsRef.current = nextRuns;
-        setState("appRuns", nextRuns);
-    }, [setState]);
-    const refreshSessionState = useCallback(async () => {
-        const currentSession = sessionStateRef.current ?? activeGameSessionRef.current;
-        const refreshKey = activeGameRunId
-            ? `run:${activeGameRunId}`
-            : activeGameApp && currentSession?.sessionId
-                ? `session:${activeGameApp}:${currentSession.sessionId}`
-                : "none";
-        if (refreshSessionPromiseRef.current?.key === refreshKey) {
-            return refreshSessionPromiseRef.current.promise;
-        }
-        const isCurrentRefresh = () => activeGameRunIdRef.current === activeGameRunId &&
-            activeGameAppRef.current === activeGameApp &&
-            (activeGameRunId ||
-                activeGameSessionRef.current?.sessionId ===
-                    currentSession?.sessionId) &&
-            refreshSessionPromiseRef.current?.key === refreshKey;
-        const refreshTask = (async () => {
-            if (activeGameRunId) {
-                try {
-                    const nextRun = await client.getAppRun(activeGameRunId);
-                    if (!isCurrentRefresh())
-                        return sessionStateRef.current;
-                    if (nextRun) {
-                        applyRunState(nextRun);
-                        setConnectionStatus(nextRun.health.state === "offline" ||
-                            nextRun.session?.status === "disconnected"
-                            ? "disconnected"
-                            : "connected");
-                        return nextRun.session ?? null;
-                    }
+              : run.health;
+        return {
+          ...run,
+          session: nextSession,
+          status: nextSession?.status ?? run.status,
+          summary: nextSession?.summary ?? run.summary,
+          updatedAt: nextUpdatedAt,
+          lastHeartbeatAt: nextSession ? nextUpdatedAt : run.lastHeartbeatAt,
+          health: nextHealth,
+        } satisfies AppRunSummary;
+      });
+      appRunsRef.current = nextRuns;
+      setState("appRuns", nextRuns);
+    },
+    [setState],
+  );
+  const applyRunState = useCallback(
+    (nextRun: AppRunSummary | null) => {
+      if (!nextRun) return;
+      if (nextRun.runId !== activeGameRunIdRef.current) return;
+      const nextUpdatedAt = new Date().toISOString();
+      setSessionState(nextRun.session ?? null);
+      sessionStateRef.current = nextRun.session ?? null;
+      const currentRuns = appRunsRef.current;
+      const nextRuns = currentRuns.map((run) => {
+        if (run.runId !== nextRun.runId) return run;
+        const nextHealth =
+          nextRun.health ??
+          (nextRun.session?.status === "disconnected"
+            ? {
+                state: "degraded" as const,
+                message:
+                  nextRun.session.summary ??
+                  nextRun.summary ??
+                  "Session unavailable.",
+              }
+            : nextRun.session
+              ? {
+                  state: "healthy" as const,
+                  message: nextRun.session.summary ?? null,
                 }
-                catch {
-                    if (!isCurrentRefresh())
-                        return sessionStateRef.current;
-                    if (!activeGameApp || !currentSession?.sessionId) {
-                        setConnectionStatus("disconnected");
-                        return currentSession ?? null;
-                    }
-                }
-            }
-            if (!activeGameApp || !currentSession?.sessionId)
-                return null;
-            try {
-                const nextSession = await client.getAppSessionState(activeGameApp, currentSession.sessionId);
-                if (!isCurrentRefresh())
-                    return sessionStateRef.current;
-                applySessionState(nextSession);
-                setConnectionStatus("connected");
-                return nextSession;
-            }
-            catch {
-                if (!isCurrentRefresh())
-                    return sessionStateRef.current;
-                if (activeGameRunId) {
-                    setConnectionStatus("disconnected");
-                    return currentSession ?? null;
-                }
-                applySessionState(buildDisconnectedSessionState(currentSession));
-                setConnectionStatus("disconnected");
-                return null;
-            }
-        })();
-        refreshSessionPromiseRef.current = {
-            key: refreshKey,
-            promise: refreshTask,
-        };
+              : run.health);
+        return {
+          ...run,
+          ...nextRun,
+          updatedAt: nextUpdatedAt,
+          lastHeartbeatAt: nextRun.session
+            ? nextUpdatedAt
+            : run.lastHeartbeatAt,
+          health: nextHealth,
+        } satisfies AppRunSummary;
+      });
+      appRunsRef.current = nextRuns;
+      setState("appRuns", nextRuns);
+    },
+    [setState],
+  );
+  const refreshSessionState = useCallback(async () => {
+    const currentSession =
+      sessionStateRef.current ?? activeGameSessionRef.current;
+    const refreshKey = activeGameRunId
+      ? `run:${activeGameRunId}`
+      : activeGameApp && currentSession?.sessionId
+        ? `session:${activeGameApp}:${currentSession.sessionId}`
+        : "none";
+    if (refreshSessionPromiseRef.current?.key === refreshKey) {
+      return refreshSessionPromiseRef.current.promise;
+    }
+    const isCurrentRefresh = () =>
+      activeGameRunIdRef.current === activeGameRunId &&
+      activeGameAppRef.current === activeGameApp &&
+      (activeGameRunId ||
+        activeGameSessionRef.current?.sessionId ===
+          currentSession?.sessionId) &&
+      refreshSessionPromiseRef.current?.key === refreshKey;
+    const refreshTask = (async () => {
+      if (activeGameRunId) {
         try {
-            return await refreshTask;
+          const nextRun = await client.getAppRun(activeGameRunId);
+          if (!isCurrentRefresh()) return sessionStateRef.current;
+          if (nextRun) {
+            applyRunState(nextRun);
+            setConnectionStatus(
+              nextRun.health.state === "offline" ||
+                nextRun.session?.status === "disconnected"
+                ? "disconnected"
+                : "connected",
+            );
+            return nextRun.session ?? null;
+          }
+        } catch {
+          if (!isCurrentRefresh()) return sessionStateRef.current;
+          if (!activeGameApp || !currentSession?.sessionId) {
+            setConnectionStatus("disconnected");
+            return currentSession ?? null;
+          }
         }
-        finally {
-            if (refreshSessionPromiseRef.current?.promise === refreshTask) {
-                refreshSessionPromiseRef.current = null;
-            }
-        }
-    }, [activeGameRunId, activeGameApp, applyRunState, applySessionState]);
-    useEffect(() => {
-        setSessionState(activeGameSession);
-        sessionStateRef.current = activeGameSession;
-    }, [activeGameSession]);
-    useEffect(() => {
-        setShowLogsPanel(dashboardPanelEnabled);
-        setMobileSurface("game");
-    }, []);
-    useEffect(() => {
-        if (!activeGameRunId && !activeGameSession?.sessionId)
-            return;
-        void refreshSessionState();
-    }, [activeGameRunId, activeGameSession?.sessionId, refreshSessionState]);
-    useIntervalWhenDocumentVisible(() => {
-        void refreshSessionState();
-    }, 3000, Boolean(activeGameRunId || activeGameSession?.sessionId));
-    // Cheap liveness ping — separate from the 3s session refresh so it still
-    // fires when the upstream game API is degraded. The server's stale-run
-    // sweeper uses this to decide whether to stop a run whose UI tab has
-    // gone silent. Pauses while the document is hidden; the sweeper's
-    // 90s grace window covers brief tab-switching.
-    useIntervalWhenDocumentVisible(() => {
-        const heartbeatRunId = activeGameRunId;
-        if (!heartbeatRunId)
-            return;
-        void client.heartbeatAppRun(heartbeatRunId).catch((err: unknown) => {
-            // 404 means the run was reaped (sweeper or another window) — drop
-            // local state so the user sees the empty-state UI instead of a
-            // ghost session that no longer exists server-side.
-            const status = getApiStatus(err);
-            if (status === 404) {
-                setState("appRuns", appRunsRef.current.filter((run) => run.runId !== heartbeatRunId));
-                if (activeGameRunIdRef.current === heartbeatRunId) {
-                    setState("activeGameRunId", "");
-                }
-            }
-        });
-    }, 15000, Boolean(activeGameRunId));
-    // Clean up server-side state when the browser tab closes. `sendBeacon`
-    // is the only request method browsers reliably deliver during unload —
-    // a normal `fetch` would be cancelled. Falls through silently if the
-    // browser is too old or the run is already gone.
-    useEffect(() => {
-        if (!activeGameRunId)
-            return;
-        const handleUnload = () => {
-            const beacon = navigator?.sendBeacon;
-            if (typeof beacon !== "function")
-                return;
-            const baseUrl = client.getBaseUrl();
-            const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
-            const stopUrl = baseUrl ? `${baseUrl}${stopPath}` : stopPath;
-            beacon.call(navigator, stopUrl);
-        };
-        window.addEventListener("pagehide", handleUnload);
-        window.addEventListener("beforeunload", handleUnload);
-        return () => {
-            window.removeEventListener("pagehide", handleUnload);
-            window.removeEventListener("beforeunload", handleUnload);
-        };
-    }, [activeGameRunId]);
-    const sendChatCommand = useCallback(async (rawContent: string) => {
-        const content = rawContent.trim();
-        if (!content)
-            return;
-        const currentSession = sessionState ?? activeGameSession;
-        const currentRun = activeGameRun ?? null;
-        setSendingChat(true);
-        try {
-            if (currentRun?.runId) {
-                const response = (await client.sendAppRunMessage(currentRun.runId, content)) as RunSteeringResult;
-                if (response.run) {
-                    applyRunState(response.run);
-                }
-                else if (response.session) {
-                    applySessionState(response.session);
-                }
-                const notice = getSteeringNotice(response.disposition, response.message ||
-                    getSteeringFallbackMessage(response.disposition, t("gameview.CommandSentToAppRun", {
-                        defaultValue: "Command sent to app run.",
-                    })));
-                setActionNotice(notice.text, notice.tone, notice.ttlMs);
-                if (response.disposition === "accepted" ||
-                    response.disposition === "queued") {
-                    if (!response.run && !response.session) {
-                        await refreshSessionState();
-                    }
-                    setChatInput("");
-                    setTimeout(() => void loadLogs(), 1500);
-                }
-            }
-            else if (currentSession?.sessionId &&
-                currentSession.canSendCommands) {
-                const response = await client.sendAppSessionMessage(activeGameApp, currentSession.sessionId, content);
-                if (response.session) {
-                    applySessionState(response.session);
-                }
-                else {
-                    await refreshSessionState();
-                }
-                setActionNotice(response.message ||
-                    t("gameview.CommandSentToAppSession", {
-                        defaultValue: "Command sent to app session.",
-                    }), "success", 2400);
-                setChatInput("");
-                setTimeout(() => void loadLogs(), 1500);
-            }
-            else {
-                setActionNotice(t("gameview.RunSteeringUnsupported", {
-                    defaultValue: "This run does not expose a steering channel yet.",
-                }), "error", 3200);
-            }
-        }
-        catch (err) {
-            const status = getApiStatus(err);
-            setActionNotice(status === 501 || status === 503
-                ? t("gameview.RunSteeringUnsupported", {
-                    defaultValue: "This run does not expose a steering channel yet.",
-                })
-                : t("gameview.FailedToSend", {
-                    defaultValue: "Failed to send: {{message}}",
-                    message: err instanceof Error ? err.message : "error",
-                }), "error", 3000);
-        }
-        finally {
-            setSendingChat(false);
-        }
-    }, [
-        activeGameApp,
-        activeGameSession,
-        applySessionState,
-        loadLogs,
-        refreshSessionState,
-        setActionNotice,
-        setTimeout,
-        sessionState,
-        t,
-        activeGameRun,
-        applyRunState,
-    ]);
-    const handleSendChat = useCallback(() => {
-        void sendChatCommand(chatInput);
-    }, [chatInput, sendChatCommand]);
-    const activeSessionState = sessionState ?? activeGameSession;
-    const sessionControlAction = useMemo<AppSessionControlAction | null>(() => {
-        if (activeSessionState?.controls?.includes("pause"))
-            return "pause";
-        if (activeSessionState?.controls?.includes("resume"))
-            return "resume";
-        return null;
-    }, [activeSessionState]);
-    const handleSessionControl = useCallback(async () => {
-        if (!activeGameRunId ||
-            !activeGameApp ||
-            !activeGameSession?.sessionId ||
-            !sessionControlAction)
-            return;
-        setSessionBusyAction(sessionControlAction);
-        try {
-            const response = (await client.controlAppRun(activeGameRunId, sessionControlAction)) as RunSteeringResult;
-            if (response.run) {
-                applyRunState(response.run);
-            }
-            else if (response.session) {
-                applySessionState(response.session);
-            }
-            const notice = getSteeringNotice(response.disposition, response.message ||
-                getSteeringFallbackMessage(response.disposition, t("gameview.SessionControlSent", {
-                    defaultValue: "Session control updated.",
-                })));
-            setActionNotice(notice.text, notice.tone, notice.ttlMs);
-            if ((response.disposition === "accepted" ||
-                response.disposition === "queued") &&
-                !response.run &&
-                !response.session) {
-                await refreshSessionState();
-            }
-        }
-        catch (err) {
-            const status = getApiStatus(err);
-            setActionNotice(status === 501 || status === 503
-                ? t("gameview.SessionControlUnsupported", {
-                    defaultValue: "This run does not expose session controls.",
-                })
-                : t("gameview.SessionControlFailed", {
-                    defaultValue: "Failed to update session: {{message}}",
-                    message: err instanceof Error ? err.message : "error",
-                }), "error", 3200);
-        }
-        finally {
-            setSessionBusyAction(null);
-        }
-    }, [
-        activeGameApp,
-        activeGameSession?.sessionId,
-        applySessionState,
-        refreshSessionState,
-        sessionControlAction,
-        setActionNotice,
-        t,
-        activeGameRunId,
-        applyRunState,
-    ]);
-    const postMessageTargetOrigin = useMemo(() => resolvePostMessageTargetOrigin(activeGameViewerUrl), [activeGameViewerUrl]);
-    const viewerSessionKey = useMemo(() => buildViewerSessionKey(activeGameViewerUrl, activeGamePostMessagePayload), [activeGamePostMessagePayload, activeGameViewerUrl]);
-    // Filter logs relevant to the current game
-    const gameLogs = useMemo(() => {
-        if (!activeGameApp)
-            return [];
-        const appKeyword = (packageNameToAppRouteSlug(activeGameApp) ?? activeGameApp).toLowerCase();
-        return logs.filter((entry) => {
-            const message = (entry.message ?? "").toLowerCase();
-            const source = (entry.source ?? "").toLowerCase();
-            const tags = (entry.tags ?? []).map((t) => t.toLowerCase());
-            return (message.includes(appKeyword) ||
-                source.includes(appKeyword) ||
-                tags.some((t) => t.includes(appKeyword)) ||
-                tags.includes("game") ||
-                tags.includes("autonomy") ||
-                source.includes("agent"));
-        });
-    }, [activeGameApp, logs]);
-    // Memoized activity-feed derivations for the logs panel. FullscreenView re-renders on
-    // every context change (3s polls, keystrokes, toasts); deriving these inline in
-    // renderLogsPanel re-sorted/re-sliced the feeds on each render.
-    const telemetryActivityFeed = useMemo(() => {
-        const recentActivity = (activeSessionState?.telemetry as Record<string, unknown> | null)?.recentActivity;
-        if (!Array.isArray(recentActivity) || recentActivity.length === 0) {
-            return null;
-        }
-        return (recentActivity as {
-            ts: number;
-            action: string;
-            detail: string;
-        }[])
-            .slice()
-            .reverse()
-            .slice(0, 30);
-    }, [activeSessionState?.telemetry]);
-    const sessionActivityFeed = useMemo(() => {
-        const activity = activeSessionState?.activity;
-        if (!Array.isArray(activity) || activity.length === 0) {
-            return null;
-        }
-        return activity
-            .slice()
-            .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
-            .slice(0, 30);
-    }, [activeSessionState?.activity]);
-    const gameLogsFeed = useMemo(() => gameLogs.slice(0, 50), [gameLogs]);
-    // Auto-refresh logs when panel is open and tab is visible (catch-up on focus).
-    useEffect(() => {
-        if (!showLogsPanel || !docVisible)
-            return;
-        void loadLogs();
-    }, [showLogsPanel, docVisible, loadLogs]);
-    useIntervalWhenDocumentVisible(() => {
-        void loadLogs();
-    }, 3000, showLogsPanel);
-    // Open the game URL in an isolated Electrobun BrowserWindow.
-    // Runs whenever the viewer URL or game title changes and we're inside the desktop app.
-    useEffect(() => {
-        if (!useNativeGameWindow || !resolvedActiveGameViewerUrl)
-            return;
-        let cancelled = false;
-        void invokeDesktopBridgeRequest<{
-            id: string;
-        }>({
-            rpcMethod: "gameOpenWindow",
-            ipcChannel: "game:openWindow",
-            params: {
-                url: resolvedActiveGameViewerUrl,
-                title: activeGameDisplayName ||
-                    activeGameApp ||
-                    t("common.game", { defaultValue: "Game" }),
-            },
-        })
-            .then((result) => {
-            if (cancelled)
-                return;
-            if (result?.id) {
-                gameWindowIdRef.current = result.id;
-                setGameWindowId(result.id);
-                setConnectionStatus("connected");
-            }
-        })
-            .catch(() => {
-            // error-policy:J4 native game window unavailable — the iframe
-            // fallback is already rendered, so the game is still playable.
-        });
-        return () => {
-            cancelled = true;
-            // Close the game window when FullscreenView unmounts or the URL changes
-            if (gameWindowIdRef.current) {
-                // error-policy:J6 best-effort teardown of the native game window.
-                void invokeDesktopBridgeRequest({
-                    rpcMethod: "canvasDestroyWindow",
-                    ipcChannel: "canvas:destroyWindow",
-                    params: { id: gameWindowIdRef.current },
-                }).catch(() => undefined);
-                gameWindowIdRef.current = null;
-                setGameWindowId(null);
-            }
-        };
-    }, [
-        activeGameApp,
-        activeGameDisplayName,
-        resolvedActiveGameViewerUrl,
-        t,
-        useNativeGameWindow,
-    ]);
-    // Reset auth handshake state when the active viewer session changes.
-    useEffect(() => {
-        if (viewerSessionRef.current !== viewerSessionKey) {
-            viewerSessionRef.current = viewerSessionKey;
-            authSentRef.current = false;
-        }
-        if (activeGamePostMessageAuth && useEmbeddedViewer) {
-            setConnectionStatus("connecting");
-            return;
-        }
-        if (useNativeGameWindow) {
-            setConnectionStatus("connecting");
-            return;
-        }
+      }
+      if (!activeGameApp || !currentSession?.sessionId) return null;
+      try {
+        const nextSession = await client.getAppSessionState(
+          activeGameApp,
+          currentSession.sessionId,
+        );
+        if (!isCurrentRefresh()) return sessionStateRef.current;
+        applySessionState(nextSession);
         setConnectionStatus("connected");
-    }, [
-        activeGamePostMessageAuth,
-        useEmbeddedViewer,
-        useNativeGameWindow,
-        viewerSessionKey,
-    ]);
-    const resetActiveGameState = useCallback(() => {
-        setSessionState(null);
-        setState("activeGameRunId", "");
-    }, [setState]);
-    useEffect(() => {
-        if (!useEmbeddedViewer ||
-            !activeGamePostMessageAuth ||
-            !activeGamePostMessagePayload)
-            return;
-        if (authSentRef.current)
-            return;
-        const expectedReadyType = resolveViewerReadyEventType(activeGamePostMessagePayload);
-        if (!expectedReadyType)
-            return;
-        // Fail closed: without a concrete http(s) origin we can neither verify the
-        // sender nor safely target the auth payload, so never send it.
-        if (!postMessageTargetOrigin)
-            return;
-        const onMessage = (event: MessageEvent<{
-            type?: string;
-        }>) => {
-            if (authSentRef.current)
-                return;
-            const iframeWindow = iframeRef.current?.contentWindow;
-            if (!iframeWindow || event.source !== iframeWindow)
-                return;
-            if (event.data?.type !== expectedReadyType)
-                return;
-            if (event.origin !== postMessageTargetOrigin) {
-                return;
+        return nextSession;
+      } catch {
+        if (!isCurrentRefresh()) return sessionStateRef.current;
+        if (activeGameRunId) {
+          setConnectionStatus("disconnected");
+          return currentSession ?? null;
+        }
+        applySessionState(buildDisconnectedSessionState(currentSession));
+        setConnectionStatus("disconnected");
+        return null;
+      }
+    })();
+    refreshSessionPromiseRef.current = {
+      key: refreshKey,
+      promise: refreshTask,
+    };
+    try {
+      return await refreshTask;
+    } finally {
+      if (refreshSessionPromiseRef.current?.promise === refreshTask) {
+        refreshSessionPromiseRef.current = null;
+      }
+    }
+  }, [activeGameRunId, activeGameApp, applyRunState, applySessionState]);
+  useEffect(() => {
+    setSessionState(activeGameSession);
+    sessionStateRef.current = activeGameSession;
+  }, [activeGameSession]);
+  useEffect(() => {
+    setShowLogsPanel(dashboardPanelEnabled);
+    setMobileSurface("game");
+  }, []);
+  useEffect(() => {
+    if (!activeGameRunId && !activeGameSession?.sessionId) return;
+    void refreshSessionState();
+  }, [activeGameRunId, activeGameSession?.sessionId, refreshSessionState]);
+  useIntervalWhenDocumentVisible(
+    () => {
+      void refreshSessionState();
+    },
+    3000,
+    Boolean(activeGameRunId || activeGameSession?.sessionId),
+  );
+  // Cheap liveness ping — separate from the 3s session refresh so it still
+  // fires when the upstream game API is degraded. The server's stale-run
+  // sweeper uses this to decide whether to stop a run whose UI tab has
+  // gone silent. Pauses while the document is hidden; the sweeper's
+  // 90s grace window covers brief tab-switching.
+  useIntervalWhenDocumentVisible(
+    () => {
+      const heartbeatRunId = activeGameRunId;
+      if (!heartbeatRunId) return;
+      void client.heartbeatAppRun(heartbeatRunId).catch((err: unknown) => {
+        // 404 means the run was reaped (sweeper or another window) — drop
+        // local state so the user sees the empty-state UI instead of a
+        // ghost session that no longer exists server-side.
+        const status = getApiStatus(err);
+        if (status === 404) {
+          setState(
+            "appRuns",
+            appRunsRef.current.filter((run) => run.runId !== heartbeatRunId),
+          );
+          if (activeGameRunIdRef.current === heartbeatRunId) {
+            setState("activeGameRunId", "");
+          }
+        }
+      });
+    },
+    15000,
+    Boolean(activeGameRunId),
+  );
+  // Clean up server-side state when the browser tab closes. `sendBeacon`
+  // is the only request method browsers reliably deliver during unload —
+  // a normal `fetch` would be cancelled. Falls through silently if the
+  // browser is too old or the run is already gone.
+  useEffect(() => {
+    if (!activeGameRunId) return;
+    const handleUnload = () => {
+      const beacon = navigator?.sendBeacon;
+      if (typeof beacon !== "function") return;
+      const baseUrl = client.getBaseUrl();
+      const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
+      const stopUrl = baseUrl ? `${baseUrl}${stopPath}` : stopPath;
+      beacon.call(navigator, stopUrl);
+    };
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, [activeGameRunId]);
+  const sendChatCommand = useCallback(
+    async (rawContent: string) => {
+      const content = rawContent.trim();
+      if (!content) return;
+      const currentSession = sessionState ?? activeGameSession;
+      const currentRun = activeGameRun ?? null;
+      setSendingChat(true);
+      try {
+        if (currentRun?.runId) {
+          const response = (await client.sendAppRunMessage(
+            currentRun.runId,
+            content,
+          )) as RunSteeringResult;
+          if (response.run) {
+            applyRunState(response.run);
+          } else if (response.session) {
+            applySessionState(response.session);
+          }
+          const notice = getSteeringNotice(
+            response.disposition,
+            response.message ||
+              getSteeringFallbackMessage(
+                response.disposition,
+                t("gameview.CommandSentToAppRun", {
+                  defaultValue: "Command sent to app run.",
+                }),
+              ),
+          );
+          setActionNotice(notice.text, notice.tone, notice.ttlMs);
+          if (
+            response.disposition === "accepted" ||
+            response.disposition === "queued"
+          ) {
+            if (!response.run && !response.session) {
+              await refreshSessionState();
             }
-            iframeWindow.postMessage(activeGamePostMessagePayload, postMessageTargetOrigin);
-            authSentRef.current = true;
-            setConnectionStatus("connected");
-            setActionNotice(t("gameview.ViewerAuthSent", { defaultValue: "Viewer auth sent." }), "info", 1800);
-        };
-        window.addEventListener("message", onMessage);
-        return () => {
-            window.removeEventListener("message", onMessage);
-        };
-    }, [
-        activeGamePostMessageAuth,
+            setChatInput("");
+            setTimeout(() => void loadLogs(), 1500);
+          }
+        } else if (
+          currentSession?.sessionId &&
+          currentSession.canSendCommands
+        ) {
+          const response = await client.sendAppSessionMessage(
+            activeGameApp,
+            currentSession.sessionId,
+            content,
+          );
+          if (response.session) {
+            applySessionState(response.session);
+          } else {
+            await refreshSessionState();
+          }
+          setActionNotice(
+            response.message ||
+              t("gameview.CommandSentToAppSession", {
+                defaultValue: "Command sent to app session.",
+              }),
+            "success",
+            2400,
+          );
+          setChatInput("");
+          setTimeout(() => void loadLogs(), 1500);
+        } else {
+          setActionNotice(
+            t("gameview.RunSteeringUnsupported", {
+              defaultValue: "This run does not expose a steering channel yet.",
+            }),
+            "error",
+            3200,
+          );
+        }
+      } catch (err) {
+        const status = getApiStatus(err);
+        setActionNotice(
+          status === 501 || status === 503
+            ? t("gameview.RunSteeringUnsupported", {
+                defaultValue:
+                  "This run does not expose a steering channel yet.",
+              })
+            : t("gameview.FailedToSend", {
+                defaultValue: "Failed to send: {{message}}",
+                message: err instanceof Error ? err.message : "error",
+              }),
+          "error",
+          3000,
+        );
+      } finally {
+        setSendingChat(false);
+      }
+    },
+    [
+      activeGameApp,
+      activeGameSession,
+      applySessionState,
+      loadLogs,
+      refreshSessionState,
+      setActionNotice,
+      setTimeout,
+      sessionState,
+      t,
+      activeGameRun,
+      applyRunState,
+    ],
+  );
+  const handleSendChat = useCallback(() => {
+    void sendChatCommand(chatInput);
+  }, [chatInput, sendChatCommand]);
+  const activeSessionState = sessionState ?? activeGameSession;
+  const sessionControlAction = useMemo<AppSessionControlAction | null>(() => {
+    if (activeSessionState?.controls?.includes("pause")) return "pause";
+    if (activeSessionState?.controls?.includes("resume")) return "resume";
+    return null;
+  }, [activeSessionState]);
+  const handleSessionControl = useCallback(async () => {
+    if (
+      !activeGameRunId ||
+      !activeGameApp ||
+      !activeGameSession?.sessionId ||
+      !sessionControlAction
+    )
+      return;
+    setSessionBusyAction(sessionControlAction);
+    try {
+      const response = (await client.controlAppRun(
+        activeGameRunId,
+        sessionControlAction,
+      )) as RunSteeringResult;
+      if (response.run) {
+        applyRunState(response.run);
+      } else if (response.session) {
+        applySessionState(response.session);
+      }
+      const notice = getSteeringNotice(
+        response.disposition,
+        response.message ||
+          getSteeringFallbackMessage(
+            response.disposition,
+            t("gameview.SessionControlSent", {
+              defaultValue: "Session control updated.",
+            }),
+          ),
+      );
+      setActionNotice(notice.text, notice.tone, notice.ttlMs);
+      if (
+        (response.disposition === "accepted" ||
+          response.disposition === "queued") &&
+        !response.run &&
+        !response.session
+      ) {
+        await refreshSessionState();
+      }
+    } catch (err) {
+      const status = getApiStatus(err);
+      setActionNotice(
+        status === 501 || status === 503
+          ? t("gameview.SessionControlUnsupported", {
+              defaultValue: "This run does not expose session controls.",
+            })
+          : t("gameview.SessionControlFailed", {
+              defaultValue: "Failed to update session: {{message}}",
+              message: err instanceof Error ? err.message : "error",
+            }),
+        "error",
+        3200,
+      );
+    } finally {
+      setSessionBusyAction(null);
+    }
+  }, [
+    activeGameApp,
+    activeGameSession?.sessionId,
+    applySessionState,
+    refreshSessionState,
+    sessionControlAction,
+    setActionNotice,
+    t,
+    activeGameRunId,
+    applyRunState,
+  ]);
+  const postMessageTargetOrigin = useMemo(
+    () => resolvePostMessageTargetOrigin(activeGameViewerUrl),
+    [activeGameViewerUrl],
+  );
+  const viewerSessionKey = useMemo(
+    () =>
+      buildViewerSessionKey(activeGameViewerUrl, activeGamePostMessagePayload),
+    [activeGamePostMessagePayload, activeGameViewerUrl],
+  );
+  // Filter logs relevant to the current game
+  const gameLogs = useMemo(() => {
+    if (!activeGameApp) return [];
+    const appKeyword = (
+      packageNameToAppRouteSlug(activeGameApp) ?? activeGameApp
+    ).toLowerCase();
+    return logs.filter((entry) => {
+      const message = (entry.message ?? "").toLowerCase();
+      const source = (entry.source ?? "").toLowerCase();
+      const tags = (entry.tags ?? []).map((t) => t.toLowerCase());
+      return (
+        message.includes(appKeyword) ||
+        source.includes(appKeyword) ||
+        tags.some((t) => t.includes(appKeyword)) ||
+        tags.includes("game") ||
+        tags.includes("autonomy") ||
+        source.includes("agent")
+      );
+    });
+  }, [activeGameApp, logs]);
+  // Memoized activity-feed derivations for the logs panel. FullscreenView re-renders on
+  // every context change (3s polls, keystrokes, toasts); deriving these inline in
+  // renderLogsPanel re-sorted/re-sliced the feeds on each render.
+  const telemetryActivityFeed = useMemo(() => {
+    const recentActivity = (
+      activeSessionState?.telemetry as Record<string, unknown> | null
+    )?.recentActivity;
+    if (!Array.isArray(recentActivity) || recentActivity.length === 0) {
+      return null;
+    }
+    return (
+      recentActivity as {
+        ts: number;
+        action: string;
+        detail: string;
+      }[]
+    )
+      .slice()
+      .reverse()
+      .slice(0, 30);
+  }, [activeSessionState?.telemetry]);
+  const sessionActivityFeed = useMemo(() => {
+    const activity = activeSessionState?.activity;
+    if (!Array.isArray(activity) || activity.length === 0) {
+      return null;
+    }
+    return activity
+      .slice()
+      .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
+      .slice(0, 30);
+  }, [activeSessionState?.activity]);
+  const gameLogsFeed = useMemo(() => gameLogs.slice(0, 50), [gameLogs]);
+  // Auto-refresh logs when panel is open and tab is visible (catch-up on focus).
+  useEffect(() => {
+    if (!showLogsPanel || !docVisible) return;
+    void loadLogs();
+  }, [showLogsPanel, docVisible, loadLogs]);
+  useIntervalWhenDocumentVisible(
+    () => {
+      void loadLogs();
+    },
+    3000,
+    showLogsPanel,
+  );
+  // Open the game URL in an isolated Electrobun BrowserWindow.
+  // Runs whenever the viewer URL or game title changes and we're inside the desktop app.
+  useEffect(() => {
+    if (!useNativeGameWindow || !resolvedActiveGameViewerUrl) return;
+    let cancelled = false;
+    void invokeDesktopBridgeRequest<{
+      id: string;
+    }>({
+      rpcMethod: "gameOpenWindow",
+      ipcChannel: "game:openWindow",
+      params: {
+        url: resolvedActiveGameViewerUrl,
+        title:
+          activeGameDisplayName ||
+          activeGameApp ||
+          t("common.game", { defaultValue: "Game" }),
+      },
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if (result?.id) {
+          gameWindowIdRef.current = result.id;
+          setGameWindowId(result.id);
+          setConnectionStatus("connected");
+        }
+      })
+      .catch(() => {
+        // error-policy:J4 native game window unavailable — the iframe
+        // fallback is already rendered, so the game is still playable.
+      });
+    return () => {
+      cancelled = true;
+      // Close the game window when FullscreenView unmounts or the URL changes
+      if (gameWindowIdRef.current) {
+        // error-policy:J6 best-effort teardown of the native game window.
+        void invokeDesktopBridgeRequest({
+          rpcMethod: "canvasDestroyWindow",
+          ipcChannel: "canvas:destroyWindow",
+          params: { id: gameWindowIdRef.current },
+        }).catch(() => undefined);
+        gameWindowIdRef.current = null;
+        setGameWindowId(null);
+      }
+    };
+  }, [
+    activeGameApp,
+    activeGameDisplayName,
+    resolvedActiveGameViewerUrl,
+    t,
+    useNativeGameWindow,
+  ]);
+  // Reset auth handshake state when the active viewer session changes.
+  useEffect(() => {
+    if (viewerSessionRef.current !== viewerSessionKey) {
+      viewerSessionRef.current = viewerSessionKey;
+      authSentRef.current = false;
+    }
+    if (activeGamePostMessageAuth && useEmbeddedViewer) {
+      setConnectionStatus("connecting");
+      return;
+    }
+    if (useNativeGameWindow) {
+      setConnectionStatus("connecting");
+      return;
+    }
+    setConnectionStatus("connected");
+  }, [
+    activeGamePostMessageAuth,
+    useEmbeddedViewer,
+    useNativeGameWindow,
+    viewerSessionKey,
+  ]);
+  const resetActiveGameState = useCallback(() => {
+    setSessionState(null);
+    setState("activeGameRunId", "");
+  }, [setState]);
+  useEffect(() => {
+    if (
+      !useEmbeddedViewer ||
+      !activeGamePostMessageAuth ||
+      !activeGamePostMessagePayload
+    )
+      return;
+    if (authSentRef.current) return;
+    const expectedReadyType = resolveViewerReadyEventType(
+      activeGamePostMessagePayload,
+    );
+    if (!expectedReadyType) return;
+    // Fail closed: without a concrete http(s) origin we can neither verify the
+    // sender nor safely target the auth payload, so never send it.
+    if (!postMessageTargetOrigin) return;
+    const onMessage = (
+      event: MessageEvent<{
+        type?: string;
+      }>,
+    ) => {
+      if (authSentRef.current) return;
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow || event.source !== iframeWindow) return;
+      if (event.data?.type !== expectedReadyType) return;
+      if (event.origin !== postMessageTargetOrigin) {
+        return;
+      }
+      iframeWindow.postMessage(
         activeGamePostMessagePayload,
         postMessageTargetOrigin,
-        setActionNotice,
-        t,
-        useEmbeddedViewer,
-    ]);
-    const handleOpenInNewTab = useCallback(async () => {
-        if (!openableUrl) {
-            setActionNotice(t("gameview.ViewerUnavailable", {
-                defaultValue: "No viewer or launch URL is available for this run.",
-            }), "error", 3200);
-            return;
-        }
-        const popup = preOpenWindow();
-        try {
-            if (popup) {
-                navigatePreOpenedWindow(popup, openableUrl);
-            }
-            else {
-                await openExternalUrl(openableUrl);
-            }
-        }
-        catch {
-            setActionNotice(t("appsview.PopupBlocked", {
-                defaultValue: "Popup blocked. Allow popups and try again.",
-            }), "error", 3600);
-        }
-    }, [openableUrl, setActionNotice, t]);
-    const handleAttachViewer = useCallback(async () => {
-        if (!activeGameRun)
-            return;
-        setAttachingViewer(true);
-        try {
-            const result = await client.attachAppRun(activeGameRun.runId);
-            if (result.run) {
-                applyRunState(result.run);
-            }
-            setActionNotice(result.message ||
-                t("gameview.ViewerAttached", {
-                    defaultValue: "Viewer attached.",
-                }), "success", 2200);
-        }
-        catch (err) {
-            setActionNotice(t("gameview.ViewerAttachFailed", {
-                defaultValue: "Failed to attach viewer: {{message}}",
-                message: err instanceof Error ? err.message : "error",
-            }), "error", 3600);
-        }
-        finally {
-            setAttachingViewer(false);
-        }
-    }, [activeGameRun, applyRunState, setActionNotice, t]);
-    const handleDetachViewer = useCallback(async () => {
-        if (!activeGameRun)
-            return;
-        setDetachingViewer(true);
-        try {
-            const result = await client.detachAppRun(activeGameRun.runId);
-            if (result.run) {
-                applyRunState(result.run);
-            }
-            setActionNotice(result.message ||
-                t("gameview.ViewerDetached", {
-                    defaultValue: "Viewer detached.",
-                }), "success", 2200);
-        }
-        catch (err) {
-            setActionNotice(t("gameview.ViewerDetachFailed", {
-                defaultValue: "Failed to detach viewer: {{message}}",
-                message: err instanceof Error ? err.message : "error",
-            }), "error", 3600);
-        }
-        finally {
-            setDetachingViewer(false);
-        }
-    }, [activeGameRun, applyRunState, setActionNotice, t]);
-    const handleStop = useCallback(async () => {
-        if (!activeGameRunId)
-            return;
-        setStopping(true);
-        try {
-            const stopResult = await client.stopAppRun(activeGameRunId);
-            const nextRuns = appRuns.filter((run) => run.runId !== activeGameRunId);
-            setState("appRuns", nextRuns);
-            resetActiveGameState();
-            setState("tab", "apps");
-            setState("appsSubTab", nextRuns.length > 0 ? "running" : "browse");
-            setActionNotice(stopResult.message, stopResult.success ? "success" : "info", stopResult.needsRestart ? 5000 : 3200);
-        }
-        catch (err) {
-            setActionNotice(t("gameview.FailedToStop", {
-                defaultValue: "Failed to stop: {{message}}",
-                message: err instanceof Error ? err.message : "error",
-            }), "error");
-        }
-        finally {
-            setStopping(false);
-        }
-    }, [
-        activeGameRunId,
-        appRuns,
-        resetActiveGameState,
-        setActionNotice,
-        setState,
-        t,
-    ]);
-    if (!hasActiveRun) {
-        return (<div className="flex items-center justify-center py-10 text-muted italic">
+      );
+      authSentRef.current = true;
+      setConnectionStatus("connected");
+      setActionNotice(
+        t("gameview.ViewerAuthSent", { defaultValue: "Viewer auth sent." }),
+        "info",
+        1800,
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+    };
+  }, [
+    activeGamePostMessageAuth,
+    activeGamePostMessagePayload,
+    postMessageTargetOrigin,
+    setActionNotice,
+    t,
+    useEmbeddedViewer,
+  ]);
+  const handleOpenInNewTab = useCallback(async () => {
+    if (!openableUrl) {
+      setActionNotice(
+        t("gameview.ViewerUnavailable", {
+          defaultValue: "No viewer or launch URL is available for this run.",
+        }),
+        "error",
+        3200,
+      );
+      return;
+    }
+    const popup = preOpenWindow();
+    try {
+      if (popup) {
+        navigatePreOpenedWindow(popup, openableUrl);
+      } else {
+        await openExternalUrl(openableUrl);
+      }
+    } catch {
+      setActionNotice(
+        t("appsview.PopupBlocked", {
+          defaultValue: "Popup blocked. Allow popups and try again.",
+        }),
+        "error",
+        3600,
+      );
+    }
+  }, [openableUrl, setActionNotice, t]);
+  const handleAttachViewer = useCallback(async () => {
+    if (!activeGameRun) return;
+    setAttachingViewer(true);
+    try {
+      const result = await client.attachAppRun(activeGameRun.runId);
+      if (result.run) {
+        applyRunState(result.run);
+      }
+      setActionNotice(
+        result.message ||
+          t("gameview.ViewerAttached", {
+            defaultValue: "Viewer attached.",
+          }),
+        "success",
+        2200,
+      );
+    } catch (err) {
+      setActionNotice(
+        t("gameview.ViewerAttachFailed", {
+          defaultValue: "Failed to attach viewer: {{message}}",
+          message: err instanceof Error ? err.message : "error",
+        }),
+        "error",
+        3600,
+      );
+    } finally {
+      setAttachingViewer(false);
+    }
+  }, [activeGameRun, applyRunState, setActionNotice, t]);
+  const handleDetachViewer = useCallback(async () => {
+    if (!activeGameRun) return;
+    setDetachingViewer(true);
+    try {
+      const result = await client.detachAppRun(activeGameRun.runId);
+      if (result.run) {
+        applyRunState(result.run);
+      }
+      setActionNotice(
+        result.message ||
+          t("gameview.ViewerDetached", {
+            defaultValue: "Viewer detached.",
+          }),
+        "success",
+        2200,
+      );
+    } catch (err) {
+      setActionNotice(
+        t("gameview.ViewerDetachFailed", {
+          defaultValue: "Failed to detach viewer: {{message}}",
+          message: err instanceof Error ? err.message : "error",
+        }),
+        "error",
+        3600,
+      );
+    } finally {
+      setDetachingViewer(false);
+    }
+  }, [activeGameRun, applyRunState, setActionNotice, t]);
+  const handleStop = useCallback(async () => {
+    if (!activeGameRunId) return;
+    setStopping(true);
+    try {
+      const stopResult = await client.stopAppRun(activeGameRunId);
+      const nextRuns = appRuns.filter((run) => run.runId !== activeGameRunId);
+      setState("appRuns", nextRuns);
+      resetActiveGameState();
+      setState("tab", "apps");
+      setState("appsSubTab", nextRuns.length > 0 ? "running" : "browse");
+      setActionNotice(
+        stopResult.message,
+        stopResult.success ? "success" : "info",
+        stopResult.needsRestart ? 5000 : 3200,
+      );
+    } catch (err) {
+      setActionNotice(
+        t("gameview.FailedToStop", {
+          defaultValue: "Failed to stop: {{message}}",
+          message: err instanceof Error ? err.message : "error",
+        }),
+        "error",
+      );
+    } finally {
+      setStopping(false);
+    }
+  }, [
+    activeGameRunId,
+    appRuns,
+    resetActiveGameState,
+    setActionNotice,
+    setState,
+    t,
+  ]);
+  if (!hasActiveRun) {
+    return (
+      <div className="flex items-center justify-center py-10 text-muted italic">
         {t("game.noActiveSession")}{" "}
-        <Button variant="default" size="sm" onClick={() => {
-                setState("tab", "apps");
-                setState("appsSubTab", "browse");
-            }} className="ml-2 font-bold tracking-wide ">
+        <Button
+          variant="default"
+          size="sm"
+          onClick={() => {
+            setState("tab", "apps");
+            setState("appsSubTab", "browse");
+          }}
+          className="ml-2 font-bold tracking-wide "
+        >
           {t("game.backToApps")}
         </Button>
-      </div>);
-    }
-    const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => {
-        const learningTelemetry = readLearningTelemetry(activeSessionState?.telemetry);
-        const heroHp = activeSessionState?.telemetry?.heroHp;
-        const heroMaxHp = activeSessionState?.telemetry?.heroMaxHp;
-        const heroHealth = typeof heroHp === "number" &&
-            typeof heroMaxHp === "number" &&
-            heroMaxHp > 0
-            ? heroHealthProgress(heroHp, heroMaxHp)
-            : null;
-        return (<Card flow="column" className={`min-h-0 ${layout === "sidebar" ? "w-80" : "h-full"}`}>
+      </div>
+    );
+  }
+  const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => {
+    const learningTelemetry = readLearningTelemetry(
+      activeSessionState?.telemetry,
+    );
+    const heroHp = activeSessionState?.telemetry?.heroHp;
+    const heroMaxHp = activeSessionState?.telemetry?.heroMaxHp;
+    const heroHealth =
+      typeof heroHp === "number" &&
+      typeof heroMaxHp === "number" &&
+      heroMaxHp > 0
+        ? heroHealthProgress(heroHp, heroMaxHp)
+        : null;
+    return (
+      <Card
+        flow="column"
+        className={`min-h-0 ${layout === "sidebar" ? "w-80" : "h-full"}`}
+      >
         <div className="flex items-center gap-2 px-3 py-2">
           <span className="font-bold text-xs">{t("game.agentActivity")}</span>
-          <span className="flex-1"/>
-          <Button variant="outlineAccent" size="micro" onClick={() => void loadLogs()}>
+          <span className="flex-1" />
+          <Button
+            variant="outlineAccent"
+            size="micro"
+            onClick={() => void loadLogs()}
+          >
             {t("common.refresh")}
           </Button>
-          <Button variant="outlineAccent" size="micro" onClick={() => setShowLogsPanel(false)}>
+          <Button
+            variant="outlineAccent"
+            size="micro"
+            onClick={() => setShowLogsPanel(false)}
+          >
             {t("common.hide")}
           </Button>
         </div>
-        {activeSessionState?.goalLabel ? (<div className="px-2 py-1.5 text-2xs text-muted">
+        {activeSessionState?.goalLabel ? (
+          <div className="px-2 py-1.5 text-2xs text-muted">
             {activeSessionState.goalLabel}
-          </div>) : null}
+          </div>
+        ) : null}
         {/* Optional hero telemetry dashboard */}
-        {activeSessionState?.telemetry?.heroClass != null ? (<div className="p-2 text-2xs space-y-1.5">
+        {activeSessionState?.telemetry?.heroClass != null ? (
+          <div className="p-2 text-2xs space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-txt">
                 {String(activeSessionState.telemetry.heroClass)
-                    .charAt(0)
-                    .toUpperCase() +
-                    String(activeSessionState.telemetry.heroClass).slice(1)}{" "}
+                  .charAt(0)
+                  .toUpperCase() +
+                  String(activeSessionState.telemetry.heroClass).slice(1)}{" "}
                 Lv{String(activeSessionState.telemetry.heroLevel ?? "?")}
               </span>
               <span className="text-muted">
                 {String(activeSessionState.telemetry.heroLane ?? "?")} lane
               </span>
-              {activeSessionState.telemetry.heroAlive === false ? (<span className="text-danger font-semibold">DEAD</span>) : null}
-              {activeSessionState.telemetry.autoPlay ? (<StatusBadge label="AUTO" tone="success"/>) : (<StatusBadge label="MANUAL" tone="muted"/>)}
+              {activeSessionState.telemetry.heroAlive === false ? (
+                <span className="text-danger font-semibold">DEAD</span>
+              ) : null}
+              {activeSessionState.telemetry.autoPlay ? (
+                <StatusBadge label="AUTO" tone="success" />
+              ) : (
+                <StatusBadge label="MANUAL" tone="muted" />
+              )}
             </div>
             {/* HP bar */}
-            {heroHealth ? (<div className="flex items-center gap-2">
-                <Progress value={heroHealth.value} variant="usage" tone={heroHealth.tone} aria-label="Hero health"/>
+            {heroHealth ? (
+              <div className="flex items-center gap-2">
+                <Progress
+                  value={heroHealth.value}
+                  variant="usage"
+                  tone={heroHealth.tone}
+                  aria-label="Hero health"
+                />
                 <span className="text-muted whitespace-nowrap">
                   {String(heroHp)}/{String(heroMaxHp)}
                 </span>
-              </div>) : null}
+              </div>
+            ) : null}
             {/* Strategy info */}
-            {activeSessionState.telemetry.strategyVersion != null ? (<div className="space-y-0.5 text-muted">
+            {activeSessionState.telemetry.strategyVersion != null ? (
+              <div className="space-y-0.5 text-muted">
                 <div className="flex items-center gap-2">
                   <span>
                     Strategy v
                     {String(activeSessionState.telemetry.strategyVersion)}
                   </span>
-                  {activeSessionState.telemetry.strategyScore != null ? (<span>
+                  {activeSessionState.telemetry.strategyScore != null ? (
+                    <span>
                       score:{" "}
-                      {Number(activeSessionState.telemetry.strategyScore).toFixed(2)}
-                    </span>) : null}
-                  {activeSessionState.telemetry.bestStrategyVersion != null ? (<span>
+                      {Number(
+                        activeSessionState.telemetry.strategyScore,
+                      ).toFixed(2)}
+                    </span>
+                  ) : null}
+                  {activeSessionState.telemetry.bestStrategyVersion != null ? (
+                    <span>
                       best: v
                       {String(activeSessionState.telemetry.bestStrategyVersion)}{" "}
                       (
-                      {Number(activeSessionState.telemetry.bestStrategyScore ?? 0).toFixed(2)}
+                      {Number(
+                        activeSessionState.telemetry.bestStrategyScore ?? 0,
+                      ).toFixed(2)}
                       )
-                    </span>) : null}
+                    </span>
+                  ) : null}
                 </div>
-                {learningTelemetry.abilityPriority?.length ? (<div className="text-3xs">
+                {learningTelemetry.abilityPriority?.length ? (
+                  <div className="text-3xs">
                     Priority: {learningTelemetry.abilityPriority.join(" > ")}
                     {" · "}
                     Recall @
                     {learningTelemetry.recallThreshold != null
-                            ? `${Math.round(learningTelemetry.recallThreshold * 100)}% HP`
-                            : "—"}
-                  </div>) : null}
-                {learningTelemetry.ticksTracked != null ? (<div className="text-3xs">
+                      ? `${Math.round(learningTelemetry.recallThreshold * 100)}% HP`
+                      : "—"}
+                  </div>
+                ) : null}
+                {learningTelemetry.ticksTracked != null ? (
+                  <div className="text-3xs">
                     {learningTelemetry.ticksTracked} ticks tracked ·{" "}
                     {learningTelemetry.abilitiesLearned != null
-                            ? `${learningTelemetry.abilitiesLearned} abilities learned`
-                            : "— abilities learned"}
+                      ? `${learningTelemetry.abilitiesLearned} abilities learned`
+                      : "— abilities learned"}
                     {learningTelemetry.survivalRate != null
-                            ? ` · ${Math.round(learningTelemetry.survivalRate * 100)}% survival`
-                            : ""}
-                  </div>) : null}
-              </div>) : null}
+                      ? ` · ${Math.round(learningTelemetry.survivalRate * 100)}% survival`
+                      : ""}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {/* Lane pressure */}
-            {activeSessionState.telemetry.laneHumanUnits != null ? (<div className="flex items-center gap-2 text-muted">
+            {activeSessionState.telemetry.laneHumanUnits != null ? (
+              <div className="flex items-center gap-2 text-muted">
                 <span>Lane:</span>
-                <span className={Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
-                        ? "text-ok"
-                        : Number(activeSessionState.telemetry.laneFrontline ?? 0) < 0
-                            ? "text-danger"
-                            : ""}>
+                <span
+                  className={
+                    Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
+                      ? "text-ok"
+                      : Number(
+                            activeSessionState.telemetry.laneFrontline ?? 0,
+                          ) < 0
+                        ? "text-danger"
+                        : ""
+                  }
+                >
                   {String(activeSessionState.telemetry.laneHumanUnits)}v
                   {String(activeSessionState.telemetry.laneOrcUnits)} (
                   {Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
-                        ? "+"
-                        : ""}
+                    ? "+"
+                    : ""}
                   {String(activeSessionState.telemetry.laneFrontline)})
                 </span>
-              </div>) : null}
-          </div>) : null}
-        {activeSessionState?.suggestedPrompts?.length ? (<div className="flex flex-wrap gap-1 p-2">
-            {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (<Button key={prompt} variant="outlineAccent" size="micro" className="max-w-full" onClick={() => void sendChatCommand(prompt)} disabled={sendingChat}>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {activeSessionState?.suggestedPrompts?.length ? (
+          <div className="flex flex-wrap gap-1 p-2">
+            {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
+              <Button
+                key={prompt}
+                variant="outlineAccent"
+                size="micro"
+                className="max-w-full"
+                onClick={() => void sendChatCommand(prompt)}
+                disabled={sendingChat}
+              >
                 <span className="truncate">{prompt}</span>
-              </Button>))}
-          </div>) : null}
-        {activeSessionState?.recommendations?.length ? (<div className="p-2 text-2xs space-y-1.5">
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        {activeSessionState?.recommendations?.length ? (
+          <div className="p-2 text-2xs space-y-1.5">
             <div className="font-semibold text-txt">
               {t("gameview.Recommendations", {
-                    defaultValue: "Recommendations",
-                })}
+                defaultValue: "Recommendations",
+              })}
             </div>
-            {activeSessionState.recommendations.slice(0, 3).map((item) => (<div key={item.id} className="space-y-0.5">
+            {activeSessionState.recommendations.slice(0, 3).map((item) => (
+              <div key={item.id} className="space-y-0.5">
                 <div className="text-txt">
                   {item.label}
-                  {typeof item.priority === "number" ? (<span className="ml-1 text-muted">#{item.priority}</span>) : null}
+                  {typeof item.priority === "number" ? (
+                    <span className="ml-1 text-muted">#{item.priority}</span>
+                  ) : null}
                 </div>
-                {item.reason ? (<div className="text-muted">{item.reason}</div>) : null}
-              </div>))}
-          </div>) : null}
-        {logLoadError ? (<Alert variant="inlineDangerCompact">
+                {item.reason ? (
+                  <div className="text-muted">{item.reason}</div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {logLoadError ? (
+          <Alert variant="inlineDangerCompact">
             {t("logsview.LoadFailed", {
-                    defaultValue: "Failed to load logs: {{message}}",
-                    message: logLoadError,
-                })}
-          </Alert>) : null}
+              defaultValue: "Failed to load logs: {{message}}",
+              message: logLoadError,
+            })}
+          </Alert>
+        ) : null}
         {/* Chat input for sending commands to agent */}
         <div className="flex items-center gap-2 p-2">
-          <Input type="text" data-testid="game-command-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !sendingChat) {
-                    e.preventDefault();
-                    handleSendChat();
-                }
-            }} placeholder={t("game.chatPlaceholder")} variant="form" density="compact" className="flex-1" disabled={sendingChat}/>
-          <Button variant="default" size="dense" data-testid="game-command-send" onClick={handleSendChat} disabled={sendingChat || !chatInput.trim()}>
+          <Input
+            type="text"
+            data-testid="game-command-input"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !sendingChat) {
+                e.preventDefault();
+                handleSendChat();
+              }
+            }}
+            placeholder={t("game.chatPlaceholder")}
+            variant="form"
+            density="compact"
+            className="flex-1"
+            disabled={sendingChat}
+          />
+          <Button
+            variant="default"
+            size="dense"
+            data-testid="game-command-send"
+            onClick={handleSendChat}
+            disabled={sendingChat || !chatInput.trim()}
+          >
             {sendingChat ? "..." : t("common.send")}
           </Button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs-tight font-mono">
           {/* Prefer telemetry activity feed when available (Defense game loop pushes entries here) */}
-          {telemetryActivityFeed ? (telemetryActivityFeed.map((entry: {
-                ts: number;
-                action: string;
-                detail: string;
-            }, idx: number) => (<div 
-            // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
-            key={`${entry.ts}-${idx}`} className="py-1 flex flex-col gap-0.5">
+          {telemetryActivityFeed ? (
+            telemetryActivityFeed.map(
+              (
+                entry: {
+                  ts: number;
+                  action: string;
+                  detail: string;
+                },
+                idx: number,
+              ) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
+                  key={`${entry.ts}-${idx}`}
+                  className="py-1 flex flex-col gap-0.5"
+                >
                   <div className="flex items-center gap-1">
                     <span className="text-muted text-2xs">
                       {formatTime(entry.ts, { fallback: "—" })}
                     </span>
-                    <span className={`font-semibold text-2xs uppercase ${entry.action === "error"
-                    ? "text-danger"
-                    : entry.action.startsWith("ability")
-                        ? "text-ok"
-                        : entry.action.startsWith("move")
-                            ? "text-warn"
-                            : "text-muted"}`}>
+                    <span
+                      className={`font-semibold text-2xs uppercase ${
+                        entry.action === "error"
+                          ? "text-danger"
+                          : entry.action.startsWith("ability")
+                            ? "text-ok"
+                            : entry.action.startsWith("move")
+                              ? "text-warn"
+                              : "text-muted"
+                      }`}
+                    >
                       {entry.action.split(":")[0]}
                     </span>
                   </div>
                   <div className="text-txt break-all">{entry.detail}</div>
-                </div>))) : sessionActivityFeed ? (sessionActivityFeed.map((entry) => (<div key={entry.id} className="py-1 flex flex-col gap-0.5">
+                </div>
+              ),
+            )
+          ) : sessionActivityFeed ? (
+            sessionActivityFeed.map((entry) => (
+              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
                     {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
                   </span>
-                  <span className={`font-semibold text-2xs uppercase ${entry.severity === "error"
-                    ? "text-danger"
-                    : entry.severity === "warning"
-                        ? "text-warn"
-                        : "text-muted"}`}>
+                  <span
+                    className={`font-semibold text-2xs uppercase ${
+                      entry.severity === "error"
+                        ? "text-danger"
+                        : entry.severity === "warning"
+                          ? "text-warn"
+                          : "text-muted"
+                    }`}
+                  >
                     {entry.type}
                   </span>
                 </div>
                 <div className="text-txt break-all">{entry.message}</div>
-              </div>))) : gameLogs.length === 0 ? (<div className="text-center py-4 text-muted italic">
+              </div>
+            ))
+          ) : gameLogs.length === 0 ? (
+            <div className="text-center py-4 text-muted italic">
               {t("game.noAgentActivity")}
-            </div>) : (gameLogsFeed.map((entry: LogEntry, idx) => (<div 
-            // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
-            key={`${entry.timestamp}-${idx}`} className="py-1 flex flex-col gap-0.5">
+            </div>
+          ) : (
+            gameLogsFeed.map((entry: LogEntry, idx) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
+                key={`${entry.timestamp}-${idx}`}
+                className="py-1 flex flex-col gap-0.5"
+              >
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
                     {formatTime(entry.timestamp, { fallback: "—" })}
                   </span>
-                  <span className={`font-semibold text-2xs uppercase ${entry.level === "error"
-                    ? "text-danger"
-                    : entry.level === "warn"
-                        ? "text-warn"
-                        : "text-muted"}`}>
+                  <span
+                    className={`font-semibold text-2xs uppercase ${
+                      entry.level === "error"
+                        ? "text-danger"
+                        : entry.level === "warn"
+                          ? "text-warn"
+                          : "text-muted"
+                    }`}
+                  >
                     {entry.level}
                   </span>
-                  {(entry.tags ?? []).slice(0, 2).map((tag: string) => (<StatusBadge key={tag} label={tag} tone={TAG_TONES[tag] ?? "muted"}/>))}
+                  {(entry.tags ?? []).slice(0, 2).map((tag: string) => (
+                    <StatusBadge
+                      key={tag}
+                      label={tag}
+                      tone={TAG_TONES[tag] ?? "muted"}
+                    />
+                  ))}
                 </div>
                 <div className="text-txt break-all">{entry.message}</div>
-              </div>)))}
+              </div>
+            ))
+          )}
         </div>
-      </Card>);
-    };
-    const activeRunSummary = activeGameRun?.summary ??
-        activeGameRun?.health.message ??
-        activeSessionState?.summary ??
-        null;
-    const gameStatusLabel = connectionStatus !== "connected"
-        ? connectionStatus === "connecting"
-            ? "Starting"
-            : "Offline"
-        : activeGameRun?.health.state === "offline" ||
-            activeGameRun?.health.state === "degraded"
-            ? "Needs attention"
-            : "Live";
-    const gameStatusTone: StatusTone = gameStatusLabel === "Live"
-        ? "success"
-        : gameStatusLabel === "Needs attention"
-            ? "warning"
-            : "muted";
-    const diagnostics = [
-        { label: "Connection", value: connectionStatus },
-        {
-            label: "Viewer",
-            value: activeGameRun?.viewerAttachment ?? "unavailable",
-        },
-        { label: "Health", value: activeGameRun?.health.state ?? "unknown" },
-        {
-            label: "Chat",
-            value: activeGameRun?.chatAvailability ?? "unknown",
-        },
-        {
-            label: "Control",
-            value: activeGameRun?.controlAvailability ?? "unknown",
-        },
-    ];
-    const openInNewTabLabel = hasViewer
-        ? t("game.openInNewTab")
-        : "Open launch URL";
-    const renderOpenInNewTabButton = (variant: "default" | "outline", className?: string) => {
-        if (!openableUrl || isElectrobun) {
-            return (<Button variant={variant} size="sm" className={className} onClick={handleOpenInNewTab} disabled={!openableUrl}>
+      </Card>
+    );
+  };
+  const activeRunSummary =
+    activeGameRun?.summary ??
+    activeGameRun?.health.message ??
+    activeSessionState?.summary ??
+    null;
+  const gameStatusLabel =
+    connectionStatus !== "connected"
+      ? connectionStatus === "connecting"
+        ? "Starting"
+        : "Offline"
+      : activeGameRun?.health.state === "offline" ||
+          activeGameRun?.health.state === "degraded"
+        ? "Needs attention"
+        : "Live";
+  const gameStatusTone: StatusTone =
+    gameStatusLabel === "Live"
+      ? "success"
+      : gameStatusLabel === "Needs attention"
+        ? "warning"
+        : "muted";
+  const diagnostics = [
+    { label: "Connection", value: connectionStatus },
+    {
+      label: "Viewer",
+      value: activeGameRun?.viewerAttachment ?? "unavailable",
+    },
+    { label: "Health", value: activeGameRun?.health.state ?? "unknown" },
+    {
+      label: "Chat",
+      value: activeGameRun?.chatAvailability ?? "unknown",
+    },
+    {
+      label: "Control",
+      value: activeGameRun?.controlAvailability ?? "unknown",
+    },
+  ];
+  const openInNewTabLabel = hasViewer
+    ? t("game.openInNewTab")
+    : "Open launch URL";
+  const renderOpenInNewTabButton = (
+    variant: "default" | "outline",
+    className?: string,
+  ) => {
+    if (!openableUrl || isElectrobun) {
+      return (
+        <Button
+          variant={variant}
+          size="sm"
+          className={className}
+          onClick={handleOpenInNewTab}
+          disabled={!openableUrl}
+        >
           {openInNewTabLabel}
-        </Button>);
-        }
-        return (<Button asChild variant={variant} size="sm" className={className}>
+        </Button>
+      );
+    }
+    return (
+      <Button asChild variant={variant} size="sm" className={className}>
         <a href={openableUrl} target="_blank" rel="noreferrer">
           {openInNewTabLabel}
         </a>
-      </Button>);
-    };
-    const renderViewerPane = () => {
-        if (!hasViewer) {
-            return (<Card variant="transparentSquare" flow="column" gap="default" className="h-full items-center justify-center px-6 text-center">
+      </Button>
+    );
+  };
+  const renderViewerPane = () => {
+    if (!hasViewer) {
+      return (
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          className="h-full items-center justify-center px-6 text-center"
+        >
           <div className="text-sm font-semibold text-txt">
             {activeGameDisplayName || activeGameApp}
           </div>
@@ -1421,10 +1893,17 @@ export function FullscreenView() {
             This run is alive, but it does not currently expose a viewer URL.
             You can keep steering it from the dashboard and running-runs panel.
           </div>
-        </Card>);
-        }
-        if (!viewerAttached) {
-            return (<Card variant="transparentSquare" flow="column" gap="default" className="h-full items-center justify-center px-6 text-center">
+        </Card>
+      );
+    }
+    if (!viewerAttached) {
+      return (
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          className="h-full items-center justify-center px-6 text-center"
+        >
           <div className="text-sm font-semibold text-txt">Viewer detached</div>
           <div className="max-w-md text-xs leading-6 text-muted">
             The autonomous run is still active. Reattach the viewer to resume
@@ -1433,115 +1912,238 @@ export function FullscreenView() {
           <div className="flex flex-wrap justify-center gap-2">
             {renderOpenInNewTabButton("outline")}
           </div>
-        </Card>);
-        }
-        if (useNativeGameWindow) {
-            return (<Card variant="transparentSquare" flow="column" gap="default" tone="mutedStrong" className="h-full w-full items-center justify-center">
-          {gameWindowId ? (<>
+        </Card>
+      );
+    }
+    if (useNativeGameWindow) {
+      return (
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          tone="mutedStrong"
+          className="h-full w-full items-center justify-center"
+        >
+          {gameWindowId ? (
+            <>
               <span className="text-sm font-semibold text-txt">
                 {activeGameDisplayName || activeGameApp}
               </span>
               <span className="text-xs text-muted">
                 {t("game.openInNativeWindow")}
               </span>
-            </>) : (<span className="text-xs italic">{t("common.launching")}</span>)}
-        </Card>);
-        }
-        return (<Card asChild variant="transparentSquare">
-        <iframe ref={iframeRef} src={resolvedActiveGameViewerUrl} sandbox={activeGameSandbox} allow="fullscreen *" allowFullScreen data-testid="game-view-iframe" className="h-full w-full" title={activeGameDisplayName || t("common.game", { defaultValue: "Game" })}/>
-      </Card>);
-    };
-    return (<div className="flex flex-col h-full min-h-0">
+            </>
+          ) : (
+            <span className="text-xs italic">{t("common.launching")}</span>
+          )}
+        </Card>
+      );
+    }
+    return (
+      <Card asChild variant="transparentSquare">
+        <iframe
+          ref={iframeRef}
+          src={resolvedActiveGameViewerUrl}
+          sandbox={activeGameSandbox}
+          allow="fullscreen *"
+          allowFullScreen
+          data-testid="game-view-iframe"
+          className="h-full w-full"
+          title={
+            activeGameDisplayName || t("common.game", { defaultValue: "Game" })
+          }
+        />
+      </Card>
+    );
+  };
+  return (
+    <div className="flex flex-col h-full min-h-0">
       <Card flow="row" gap="default" padding="compact" className="flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-sm">
               {activeGameDisplayName || activeGameApp}
             </span>
-            <StatusBadge label={gameStatusLabel} tone={gameStatusTone} presentation="pill"/>
+            <StatusBadge
+              label={gameStatusLabel}
+              tone={gameStatusTone}
+              presentation="pill"
+            />
           </div>
-          {activeRunSummary ? (<div className="mt-1 max-w-3xl truncate text-xs-tight leading-5 text-muted-strong">
+          {activeRunSummary ? (
+            <div className="mt-1 max-w-3xl truncate text-xs-tight leading-5 text-muted-strong">
               {activeRunSummary}
-            </div>) : null}
+            </div>
+          ) : null}
         </div>
-        {sessionControlAction ? (<Button variant="outlineAccent" size="tiny" data-testid="game-session-control" onClick={() => void handleSessionControl()} disabled={sessionBusyAction === sessionControlAction}>
+        {sessionControlAction ? (
+          <Button
+            variant="outlineAccent"
+            size="tiny"
+            data-testid="game-session-control"
+            onClick={() => void handleSessionControl()}
+            disabled={sessionBusyAction === sessionControlAction}
+          >
             {sessionBusyAction === sessionControlAction
-                ? t("gameview.UpdatingSession", {
-                    defaultValue: "Updating…",
+              ? t("gameview.UpdatingSession", {
+                  defaultValue: "Updating…",
                 })
-                : sessionControlAction === "pause"
-                    ? t("common.pause", { defaultValue: "Pause" })
-                    : t("common.resume", { defaultValue: "Resume" })}
-          </Button>) : null}
-        {dashboardPanelEnabled && !isCompactLayout ? (<Button variant={showLogsPanel ? "default" : "outlineAccent"} size="tiny" data-testid="game-toggle-logs" onClick={() => setShowLogsPanel(!showLogsPanel)}>
+              : sessionControlAction === "pause"
+                ? t("common.pause", { defaultValue: "Pause" })
+                : t("common.resume", { defaultValue: "Resume" })}
+          </Button>
+        ) : null}
+        {dashboardPanelEnabled && !isCompactLayout ? (
+          <Button
+            variant={showLogsPanel ? "default" : "outlineAccent"}
+            size="tiny"
+            data-testid="game-toggle-logs"
+            onClick={() => setShowLogsPanel(!showLogsPanel)}
+          >
             {showLogsPanel ? "Hide game chat" : "Show game chat"}
-          </Button>) : null}
-        <Button variant={showDiagnostics ? "default" : "outlineAccent"} size="tiny" onClick={() => setShowDiagnostics((current) => !current)}>
+          </Button>
+        ) : null}
+        <Button
+          variant={showDiagnostics ? "default" : "outlineAccent"}
+          size="tiny"
+          onClick={() => setShowDiagnostics((current) => !current)}
+        >
           Details
         </Button>
-        {canAttachViewer ? (<Button variant="outlineAccent" size="tiny" onClick={() => void handleAttachViewer()} disabled={attachingViewer}>
+        {canAttachViewer ? (
+          <Button
+            variant="outlineAccent"
+            size="tiny"
+            onClick={() => void handleAttachViewer()}
+            disabled={attachingViewer}
+          >
             {attachingViewer ? "Reattaching…" : "Reattach viewer"}
-          </Button>) : null}
-        {canDetachViewer ? (<Button variant="outlineAccent" size="tiny" onClick={() => void handleDetachViewer()} disabled={detachingViewer}>
+          </Button>
+        ) : null}
+        {canDetachViewer ? (
+          <Button
+            variant="outlineAccent"
+            size="tiny"
+            onClick={() => void handleDetachViewer()}
+            disabled={detachingViewer}
+          >
             {detachingViewer ? "Detaching…" : "Detach viewer"}
-          </Button>) : null}
-        {useNativeGameWindow ? (<DesktopGameWindowControls gameWindowId={gameWindowId}/>) : null}
-        {hasViewer ? (<Button variant={gameOverlayEnabled ? "default" : "outlineAccent"} size="tiny" onClick={() => setState("gameOverlayEnabled", !gameOverlayEnabled)} title={gameOverlayEnabled
+          </Button>
+        ) : null}
+        {useNativeGameWindow ? (
+          <DesktopGameWindowControls gameWindowId={gameWindowId} />
+        ) : null}
+        {hasViewer ? (
+          <Button
+            variant={gameOverlayEnabled ? "default" : "outlineAccent"}
+            size="tiny"
+            onClick={() => setState("gameOverlayEnabled", !gameOverlayEnabled)}
+            title={
+              gameOverlayEnabled
                 ? t("game.disableOverlay")
-                : t("game.keepVisible")}>
+                : t("game.keepVisible")
+            }
+          >
             {gameOverlayEnabled ? t("game.unpinOverlay") : t("game.keepOnTop")}
-          </Button>) : null}
+          </Button>
+        ) : null}
         {renderOpenInNewTabButton("default", "h-7 text-xs ")}
-        <Button variant="default" size="tiny" disabled={stopping} onClick={handleStop}>
+        <Button
+          variant="default"
+          size="tiny"
+          disabled={stopping}
+          onClick={handleStop}
+        >
           {stopping ? t("game.stopping") : t("common.stop")}
         </Button>
-        <Button variant="default" size="tiny" onClick={() => {
+        <Button
+          variant="default"
+          size="tiny"
+          onClick={() => {
             setState("tab", "apps");
             setState("appsSubTab", "browse");
-        }}>
+          }}
+        >
           {t("game.backToApps")}
         </Button>
       </Card>
-      {showDiagnostics ? (<Card variant="topDivider" padding="compact" tone="mutedStrong" className="text-xs-tight leading-5">
+      {showDiagnostics ? (
+        <Card
+          variant="topDivider"
+          padding="compact"
+          tone="mutedStrong"
+          className="text-xs-tight leading-5"
+        >
           <div className="flex flex-wrap gap-2">
-            {diagnostics.map((item) => (<Badge key={item.label} variant="metaDefault" size="metaCompact">
+            {diagnostics.map((item) => (
+              <Badge key={item.label} variant="metaDefault" size="metaCompact">
                 {item.label}: {item.value}
-              </Badge>))}
-            {activeGamePostMessageAuth ? (<Badge variant="metaDefault" size="metaCompact">
+              </Badge>
+            ))}
+            {activeGamePostMessageAuth ? (
+              <Badge variant="metaDefault" size="metaCompact">
                 {t("gameview.postMessageAuth")}
-              </Badge>) : null}
+              </Badge>
+            ) : null}
           </div>
-          {activeGameRun?.health.message ? (<div className="mt-2">{activeGameRun.health.message}</div>) : null}
-        </Card>) : null}
-      {dashboardPanelEnabled && isCompactLayout ? (<Card flow="row" gap="compact" padding="compact">
-          <Button variant={mobileSurface === "game" ? "default" : "outlineAccent"} size="dense" data-testid="game-mobile-surface-game" onClick={() => setMobileSurface("game")}>
+          {activeGameRun?.health.message ? (
+            <div className="mt-2">{activeGameRun.health.message}</div>
+          ) : null}
+        </Card>
+      ) : null}
+      {dashboardPanelEnabled && isCompactLayout ? (
+        <Card flow="row" gap="compact" padding="compact">
+          <Button
+            variant={mobileSurface === "game" ? "default" : "outlineAccent"}
+            size="dense"
+            data-testid="game-mobile-surface-game"
+            onClick={() => setMobileSurface("game")}
+          >
             {t("common.game", {
-                defaultValue: "Game",
+              defaultValue: "Game",
             })}
           </Button>
-          <Button variant={mobileSurface === "dashboard" ? "default" : "outlineAccent"} size="dense" data-testid="game-mobile-surface-dashboard" onClick={() => setMobileSurface("dashboard")}>
+          <Button
+            variant={
+              mobileSurface === "dashboard" ? "default" : "outlineAccent"
+            }
+            size="dense"
+            data-testid="game-mobile-surface-dashboard"
+            onClick={() => setMobileSurface("dashboard")}
+          >
             {t("common.actions", {
-                defaultValue: "Actions",
+              defaultValue: "Actions",
             })}
           </Button>
-          <Button variant={mobileSurface === "chat" ? "default" : "outlineAccent"} size="dense" data-testid="game-mobile-surface-chat" onClick={() => setMobileSurface("chat")}>
+          <Button
+            variant={mobileSurface === "chat" ? "default" : "outlineAccent"}
+            size="dense"
+            data-testid="game-mobile-surface-chat"
+            onClick={() => setMobileSurface("chat")}
+          >
             {t("nav.chat", {
-                defaultValue: "Chat",
+              defaultValue: "Chat",
             })}
           </Button>
-        </Card>) : null}
-      <div className={`flex-1 min-h-0 ${isCompactLayout ? "flex flex-col" : "flex"}`}>
+        </Card>
+      ) : null}
+      <div
+        className={`flex-1 min-h-0 ${isCompactLayout ? "flex flex-col" : "flex"}`}
+      >
         {!dashboardPanelEnabled ||
-            !isCompactLayout ||
-            mobileSurface === "game" ? (<div className="flex-1 min-h-0 relative">{renderViewerPane()}</div>) : null}
+        !isCompactLayout ||
+        mobileSurface === "game" ? (
+          <div className="flex-1 min-h-0 relative">{renderViewerPane()}</div>
+        ) : null}
         {(showLogsPanel && dashboardPanelEnabled) ||
-            (isCompactLayout && dashboardPanelEnabled && mobileSurface !== "game")
-            ? isCompactLayout
-                ? mobileSurface === "dashboard" || mobileSurface === "chat"
-                    ? renderLogsPanel("standalone")
-                    : null
-                : renderLogsPanel()
-            : null}
+        (isCompactLayout && dashboardPanelEnabled && mobileSurface !== "game")
+          ? isCompactLayout
+            ? mobileSurface === "dashboard" || mobileSurface === "chat"
+              ? renderLogsPanel("standalone")
+              : null
+            : renderLogsPanel()
+          : null}
       </div>
-    </div>);
+    </div>
+  );
 }

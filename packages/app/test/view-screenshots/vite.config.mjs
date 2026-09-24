@@ -9,11 +9,9 @@ import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../../..");
-
 const calendarHookStub = path.join(here, "stubs/useCalendarWeek.ts");
 const calendarSourcesHookStub = path.join(here, "stubs/useCalendarSources.ts");
 const calendarDrawerStub = path.join(here, "stubs/EventEditorDrawer.tsx");
-
 /**
  * The calendar components reference their data hook + event drawer with
  * relative `.js` specifiers (`../hooks/useCalendarWeek.js`,
@@ -41,7 +39,6 @@ function calendarSeamStubPlugin() {
     },
   };
 }
-
 export default defineConfig({
   root: here,
   // Self-contained: do not load packages/app/postcss/tailwind/etc.
@@ -145,7 +142,7 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 4000,
   },
-  // @elizaos/shared (calendar type import) is type-only; no runtime resolution
+  // @elizaos/core (calendar type import) is type-only; no runtime resolution
   // needed. Keep optimizeDeps from trying to crawl the workspace.
   optimizeDeps: { entries: [path.join(here, "entry.tsx")] },
 });

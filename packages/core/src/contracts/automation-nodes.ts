@@ -7,31 +7,31 @@
  */
 
 export type AutomationNodeClass =
-  | "trigger"
-  | "action"
-  | "context"
-  | "integration"
-  | "agent"
-  | "flow-control";
+	| "trigger"
+	| "action"
+	| "context"
+	| "integration"
+	| "agent"
+	| "flow-control";
 
 export interface AutomationNodeDescriptor {
-  id: string;
-  label: string;
-  description: string;
-  class: AutomationNodeClass;
-  source: string;
-  backingCapability: string;
-  ownerScoped: boolean;
-  requiresSetup: boolean;
-  availability: "enabled" | "disabled";
-  disabledReason?: string;
+	id: string;
+	label: string;
+	description: string;
+	class: AutomationNodeClass;
+	source: string;
+	backingCapability: string;
+	ownerScoped: boolean;
+	requiresSetup: boolean;
+	availability: "enabled" | "disabled";
+	disabledReason?: string;
 }
 
 export interface AutomationNodeCatalogResponse {
-  nodes: AutomationNodeDescriptor[];
-  summary: {
-    total: number;
-    enabled: number;
-    disabled: number;
-  };
+	nodes: AutomationNodeDescriptor[];
+	summary: {
+		total: number;
+		enabled: number;
+		disabled: number;
+	};
 }

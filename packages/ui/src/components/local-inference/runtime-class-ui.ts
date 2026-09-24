@@ -8,20 +8,25 @@
  * the reduced-optimization generic GGUF path, and which picks can't run on the
  * current platform at all.
  */
-import { classifyCatalogModelRuntimeClass } from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
-import { classifyInstalledModelRuntimeClass } from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
+import {
+  classifyCatalogModelRuntimeClass,
+  classifyInstalledModelRuntimeClass,
+  type RuntimeClass,
+} from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
+import type {
+  CatalogModel,
+  InstalledModel,
+} from "../../api/client-local-inference";
 import { getFrontendPlatform } from "../../platform/platform-guards";
-import { type CatalogModel } from "../../api/client-local-inference";
-import { type InstalledModel } from "../../api/client-local-inference";
-import { type RuntimeClass } from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
+
 export type { RuntimeClass };
 /** Resolve the runtime class for an installed model (reads the field; backfills). */
 export function installedRuntimeClass(model: InstalledModel): RuntimeClass {
-    return classifyInstalledModelRuntimeClass(model);
+  return classifyInstalledModelRuntimeClass(model);
 }
 /** Resolve the runtime class for a catalog/search model (reads the field). */
 export function catalogRuntimeClass(model: CatalogModel): RuntimeClass {
-    return model.runtimeClass ?? classifyCatalogModelRuntimeClass(model);
+  return model.runtimeClass ?? classifyCatalogModelRuntimeClass(model);
 }
 /**
  * Short badge label for a runtime class. Fused Eliza-1 runs the full local
@@ -29,13 +34,13 @@ export function catalogRuntimeClass(model: CatalogModel): RuntimeClass {
  * GGUF with stock optimizations.
  */
 export function runtimeClassBadge(runtimeClass: RuntimeClass): string {
-    return runtimeClass === "fused-eliza1" ? "eliza-1" : "generic";
+  return runtimeClass === "fused-eliza1" ? "eliza-1" : "generic";
 }
 /** Longer descriptor used in tooltips / option suffixes. */
 export function runtimeClassDescription(runtimeClass: RuntimeClass): string {
-    return runtimeClass === "fused-eliza1"
-        ? "eliza-1 — full pipeline"
-        : "generic — reduced optimizations";
+  return runtimeClass === "fused-eliza1"
+    ? "eliza-1 — full pipeline"
+    : "generic — reduced optimizations";
 }
 /**
  * Whether the current platform can serve a model of this runtime class.
@@ -47,11 +52,12 @@ export function runtimeClassDescription(runtimeClass: RuntimeClass): string {
  * server-side `canServeRuntimeClassOnHost` gate so the UI disables exactly the
  * picks the route would reject.
  */
-export function canServeRuntimeClassOnPlatform(runtimeClass: RuntimeClass): boolean {
-    if (runtimeClass === "fused-eliza1")
-        return true;
-    const platform = getFrontendPlatform();
-    return platform === "ios" || platform === "android";
+export function canServeRuntimeClassOnPlatform(
+  runtimeClass: RuntimeClass,
+): boolean {
+  if (runtimeClass === "fused-eliza1") return true;
+  const platform = getFrontendPlatform();
+  return platform === "ios" || platform === "android";
 }
 /**
  * Human-readable reason a runtime class can't run on the current platform, or
@@ -59,8 +65,9 @@ export function canServeRuntimeClassOnPlatform(runtimeClass: RuntimeClass): bool
  * pickers so a generic GGUF pick on desktop/web is visibly flagged instead of
  * silently failing at activation.
  */
-export function runtimeClassUnavailableReason(runtimeClass: RuntimeClass): string | null {
-    if (canServeRuntimeClassOnPlatform(runtimeClass))
-        return null;
-    return "Not runnable on this platform — generic GGUF needs a mobile build";
+export function runtimeClassUnavailableReason(
+  runtimeClass: RuntimeClass,
+): string | null {
+  if (canServeRuntimeClassOnPlatform(runtimeClass)) return null;
+  return "Not runnable on this platform — generic GGUF needs a mobile build";
 }

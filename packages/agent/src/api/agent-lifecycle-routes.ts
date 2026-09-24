@@ -14,12 +14,15 @@
  * runtime would be fake-ready: a host that cannot boot answers 503, and a
  * failed boot answers 500 with the reported state flipped to "error".
  */
-import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
-import { PostAgentAutonomyRequestSchema } from "@elizaos/core/contracts/agent-routes";
-import { detectRuntimeModel } from "./agent-model.ts";
+
 import { type AgentRuntime } from "@elizaos/core";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
-import { type RouteRequestMeta } from "@elizaos/core/api/route-helpers";
+import {
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core/api/route-helpers";
+import { PostAgentAutonomyRequestSchema } from "@elizaos/core/contracts/agent-routes";
+import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
+import { detectRuntimeModel } from "./agent-model.ts";
 
 type AgentStateStatus =
   | "not_started"

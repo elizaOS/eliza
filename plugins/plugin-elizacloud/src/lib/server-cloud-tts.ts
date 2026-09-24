@@ -13,16 +13,16 @@
  * `for (;;)` warming loop forever.
  */
 import type http from "node:http";
-import { ELIZA_CLOUD_TTS_MAX_TEXT_CHARS } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
-import { _internalResolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+import { ELIZA_CLOUD_TTS_MAX_TEXT_CHARS } from "../cloud-config/server-cloud-tts.js";
+import { _internalResolveCloudApiKey } from "../cloud-config/server-cloud-tts.js";
 import { logger } from "@elizaos/core";
-import { resolveCloudProxyTtsModel } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
-import { resolveCloudSttCandidateUrls } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+import { resolveCloudProxyTtsModel } from "../cloud-config/server-cloud-tts.js";
+import { resolveCloudSttCandidateUrls } from "../cloud-config/server-cloud-tts.js";
 import { resolveCloudTimeoutMs } from "../utils/config";
-import { resolveCloudTtsCandidateUrls } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
-import { resolveElizaCloudTtsVoiceId } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+import { resolveCloudTtsCandidateUrls } from "../cloud-config/server-cloud-tts.js";
+import { resolveElizaCloudTtsVoiceId } from "../cloud-config/server-cloud-tts.js";
 import { sanitizeSpeechText } from "@elizaos/core/spoken-text";
-import { shouldRetryCloudTtsUpstream } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+import { shouldRetryCloudTtsUpstream } from "../cloud-config/server-cloud-tts.js";
 import { ttsDebug } from "@elizaos/core/utils/tts-debug";
 import { ttsDebugTextPreview } from "@elizaos/core/utils/tts-debug";
 import { warmingRetryWaitSeconds } from "../utils/warming";
@@ -31,7 +31,7 @@ function cloudProxyAbortSignal(envKey: string): AbortSignal | undefined {
     const timeoutMs = resolveCloudTimeoutMs(envKey, 60000);
     return timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
 }
-export { __resetCloudBaseUrlCache, ELIZA_CLOUD_TTS_MAX_TEXT_CHARS, ensureCloudTtsApiKeyAlias, mirrorCompatHeaders, normalizeElizaCloudTtsModelId, resolveCloudProxyTtsModel, resolveCloudTtsBaseUrl, resolveCloudTtsCandidateUrls, resolveElevenLabsApiKeyForCloudMode, resolveElizaCloudTtsVoiceId, shouldRetryCloudTtsUpstream } from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+export { __resetCloudBaseUrlCache, ELIZA_CLOUD_TTS_MAX_TEXT_CHARS, ensureCloudTtsApiKeyAlias, mirrorCompatHeaders, normalizeElizaCloudTtsModelId, resolveCloudProxyTtsModel, resolveCloudTtsBaseUrl, resolveCloudTtsCandidateUrls, resolveElevenLabsApiKeyForCloudMode, resolveElizaCloudTtsVoiceId, shouldRetryCloudTtsUpstream } from "../cloud-config/server-cloud-tts.js";
 /** Browser → API correlation (never forwarded to Eliza Cloud). */
 export function readTtsDebugClientHeaders(req: Pick<http.IncomingMessage, "headers">): {
     messageId?: string;

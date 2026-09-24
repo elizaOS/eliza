@@ -5,14 +5,14 @@
  */
 
 export type PathComponentDecodeResult =
-  | { ok: true; value: string }
-  | { ok: false; reason: "malformed-encoding" };
+	| { ok: true; value: string }
+	| { ok: false; reason: "malformed-encoding" };
 
 export function decodeUrlPathComponent(raw: string): PathComponentDecodeResult {
-  try {
-    return { ok: true, value: decodeURIComponent(raw) };
-  } catch {
-    // error-policy:J3 malformed percent escapes are explicit invalid input.
-    return { ok: false, reason: "malformed-encoding" };
-  }
+	try {
+		return { ok: true, value: decodeURIComponent(raw) };
+	} catch {
+		// error-policy:J3 malformed percent escapes are explicit invalid input.
+		return { ok: false, reason: "malformed-encoding" };
+	}
 }

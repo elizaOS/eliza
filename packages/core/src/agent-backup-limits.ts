@@ -32,24 +32,24 @@ export const MAX_RESTORABLE_AGENT_BACKUP_BYTES = 128 * 1024 * 1024;
  * `"128abc"` both yield 128), which is exactly the silent-misread this guards.
  */
 export function resolveRetainableAgentBackupBytes(
-  rawOverride: string | undefined,
+	rawOverride: string | undefined,
 ): number {
-  if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
-  const trimmed = rawOverride.trim();
-  if (trimmed === "") return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+	if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+	const trimmed = rawOverride.trim();
+	if (trimmed === "") return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(
-      `Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
-    );
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      `Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
-    );
-  }
-  return Math.min(parsed, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
+	if (!/^\d+$/.test(trimmed)) {
+		throw new Error(
+			`Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+		);
+	}
+	const parsed = Number(trimmed);
+	if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+		throw new Error(
+			`Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+		);
+	}
+	return Math.min(parsed, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
 }
 
 /**
@@ -67,13 +67,13 @@ export function resolveRetainableAgentBackupBytes(
  * lost and must never prune the chain.
  */
 export class SnapshotPayloadTooLargeError extends Error {
-  readonly name = "SnapshotPayloadTooLargeError";
-  constructor(
-    readonly payloadBytes: number,
-    readonly limitBytes: number,
-  ) {
-    super(
-      `State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`,
-    );
-  }
+	readonly name = "SnapshotPayloadTooLargeError";
+	constructor(
+		readonly payloadBytes: number,
+		readonly limitBytes: number,
+	) {
+		super(
+			`State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`,
+		);
+	}
 }

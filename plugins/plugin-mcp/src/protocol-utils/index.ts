@@ -1,12 +1,12 @@
 /** Exposes the edge-safe MCP kernel shared by local and Cloud runtime hosts. */
 
-export * from "@elizaos/plugin-mcp/protocol-utils/action-naming";
-export * from "@elizaos/plugin-mcp/protocol-utils/json";
-export * from "@elizaos/plugin-mcp/protocol-utils/model-provider";
-export * from "@elizaos/plugin-mcp/protocol-utils/prompts";
-export * from "@elizaos/plugin-mcp/protocol-utils/protocol";
-export * from "@elizaos/plugin-mcp/protocol-utils/provider-projection";
-export * from "@elizaos/plugin-mcp/protocol-utils/resource-selection";
-export * from "@elizaos/plugin-mcp/protocol-utils/schema-budget";
-export * from "@elizaos/plugin-mcp/protocol-utils/schema-converter";
-export * from "@elizaos/plugin-mcp/protocol-utils/tool-schema-compatibility";
+export * from "./action-naming.js";
+export * from "./json.js";
+export * from "./model-provider.js";
+export * from "./prompts.js";
+export * from "./protocol.js";
+export * from "./provider-projection.js";
+export * from "./resource-selection.js";
+export * from "./schema-budget.js";
+export * from "./schema-converter.js";
+export * from "./tool-schema-compatibility.js";

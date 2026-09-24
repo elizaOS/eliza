@@ -3,11 +3,21 @@
  * and the mixin that composes the screentime domain's summary/breakdown methods
  * onto the LifeOpsService base.
  */
+
+import {
+  type LifeOpsScreenTimeDaily,
+  type LifeOpsScreenTimeHistoryResponse,
+  type LifeOpsScreenTimeRangeKey,
+  type LifeOpsScreenTimeSession,
+  type LifeOpsScreenTimeSource,
+  type LifeOpsScreenTimeSummary,
+  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  type LifeOpsSocialHabitSummary as SocialHabitSummary,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   ScreenTimeAggregateRow,
   ScreenTimeWeeklyAverageItem,
 } from "@elizaos/plugin-health";
-import { type LifeOpsScreenTimeDaily, type LifeOpsScreenTimeHistoryResponse, type LifeOpsScreenTimeRangeKey, type LifeOpsScreenTimeSession, type LifeOpsScreenTimeSource, type LifeOpsScreenTimeSummary, type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown, type LifeOpsSocialHabitSummary as SocialHabitSummary } from "@elizaos/core/contracts/personal-assistant";
 
 type ScreenTimeEventInput = {
   source: "app" | "website";

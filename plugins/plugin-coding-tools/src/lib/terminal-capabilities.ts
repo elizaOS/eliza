@@ -6,8 +6,8 @@
  * missing-tool messages.
  */
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { resolveHostExecutable } from "@elizaos/core/host-execution-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 export const CODING_TOOL_NAMES = [
   "sh",

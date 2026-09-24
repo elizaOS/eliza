@@ -37,8 +37,8 @@
  *     responses) and a preserved `cause`.
  */
 
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "./agent-backup-limits.js";
 import { ElizaError } from "./errors.js";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/core/agent-backup-limits";
 
 /** Classification for a canonical walk that refused to keep going. */
 export const CANONICAL_JSON_UNBOUNDED = "CANONICAL_JSON_UNBOUNDED";
@@ -49,47 +49,47 @@ export const CANONICAL_JSON_UNBOUNDED = "CANONICAL_JSON_UNBOUNDED";
  * they always caught; everything else uses {@link failCanonicalJsonUnbounded}.
  */
 export type CanonicalJsonUnbounded = (
-  context: Record<string, unknown>,
-  cause?: unknown,
+	context: Record<string, unknown>,
+	cause?: unknown,
 ) => never;
 
 export type CanonicalJsonOptions = {
-  /** Rejected strictly above this. Honest documents are a handful deep. */
-  maxDepth: number;
-  /** Node ceiling across the whole walk, including sparse array slots. */
-  maxNodes: number;
-  /**
-   * Optional ceiling on the number of characters the canonical form may emit.
-   * A cycle guard that is path-local (as it must be, to keep honest DAGs
-   * hashing unchanged) still lets a shared-reference graph expand
-   * exponentially when it is flattened to a tree; this is the budget that
-   * bounds that expansion in output terms rather than input terms. Omit it at
-   * a call site whose payload size is already capped upstream.
-   */
-  maxOutputChars?: number;
-  /**
-   * How a sparse array hole is rendered. `"omit"` reproduces
-   * `array.map(fn).join(",")` (an empty slot); `"null"` reproduces
-   * `JSON.stringify`, which renders a hole as `null`. Both are historical
-   * behaviours in this repo and both are load-bearing for already-stored
-   * digests, so the caller must say which one it is preserving.
-   */
-  sparseArrayHoles: "omit" | "null";
-  /** Typed rejection for this call site. */
-  onUnbounded: CanonicalJsonUnbounded;
+	/** Rejected strictly above this. Honest documents are a handful deep. */
+	maxDepth: number;
+	/** Node ceiling across the whole walk, including sparse array slots. */
+	maxNodes: number;
+	/**
+	 * Optional ceiling on the number of characters the canonical form may emit.
+	 * A cycle guard that is path-local (as it must be, to keep honest DAGs
+	 * hashing unchanged) still lets a shared-reference graph expand
+	 * exponentially when it is flattened to a tree; this is the budget that
+	 * bounds that expansion in output terms rather than input terms. Omit it at
+	 * a call site whose payload size is already capped upstream.
+	 */
+	maxOutputChars?: number;
+	/**
+	 * How a sparse array hole is rendered. `"omit"` reproduces
+	 * `array.map(fn).join(",")` (an empty slot); `"null"` reproduces
+	 * `JSON.stringify`, which renders a hole as `null`. Both are historical
+	 * behaviours in this repo and both are load-bearing for already-stored
+	 * digests, so the caller must say which one it is preserving.
+	 */
+	sparseArrayHoles: "omit" | "null";
+	/** Typed rejection for this call site. */
+	onUnbounded: CanonicalJsonUnbounded;
 };
 
 /** Default typed rejection: an {@link ElizaError} with a fatal severity. */
 export const failCanonicalJsonUnbounded: CanonicalJsonUnbounded = (
-  context,
-  cause,
+	context,
+	cause,
 ) => {
-  throw new ElizaError("Payload exceeds the canonical JSON walk budget", {
-    code: CANONICAL_JSON_UNBOUNDED,
-    cause,
-    context,
-    severity: "fatal",
-  });
+	throw new ElizaError("Payload exceeds the canonical JSON walk budget", {
+		code: CANONICAL_JSON_UNBOUNDED,
+		cause,
+		context,
+		severity: "fatal",
+	});
 };
 
 /**
@@ -110,71 +110,71 @@ export const failCanonicalJsonUnbounded: CanonicalJsonUnbounded = (
  * shared-reference expansion that has no wire-size bound at all.
  */
 export const AGENT_BACKUP_CANONICAL_JSON: CanonicalJsonOptions = {
-  maxDepth: 64,
-  maxNodes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
-  maxOutputChars: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
-  sparseArrayHoles: "null",
-  onUnbounded: failCanonicalJsonUnbounded,
+	maxDepth: 64,
+	maxNodes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+	maxOutputChars: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+	sparseArrayHoles: "null",
+	onUnbounded: failCanonicalJsonUnbounded,
 };
 
 type CanonicalWalkContext = {
-  visits: number;
-  emitted: number;
-  visiting: WeakSet<object>;
-  options: CanonicalJsonOptions;
+	visits: number;
+	emitted: number;
+	visiting: WeakSet<object>;
+	options: CanonicalJsonOptions;
 };
 
 function newWalkContext(options: CanonicalJsonOptions): CanonicalWalkContext {
-  return { visits: 0, emitted: 0, visiting: new WeakSet<object>(), options };
+	return { visits: 0, emitted: 0, visiting: new WeakSet<object>(), options };
 }
 
 function reserveVisits(ctx: CanonicalWalkContext, count: number): void {
-  if (count > ctx.options.maxNodes - ctx.visits) {
-    ctx.options.onUnbounded({
-      visits: ctx.visits + count,
-      maxNodes: ctx.options.maxNodes,
-    });
-  }
-  ctx.visits += count;
+	if (count > ctx.options.maxNodes - ctx.visits) {
+		ctx.options.onUnbounded({
+			visits: ctx.visits + count,
+			maxNodes: ctx.options.maxNodes,
+		});
+	}
+	ctx.visits += count;
 }
 
 function reserveOutput(ctx: CanonicalWalkContext, count: number): void {
-  const max = ctx.options.maxOutputChars;
-  if (max === undefined) return;
-  if (count > max - ctx.emitted) {
-    ctx.options.onUnbounded({
-      emitted: ctx.emitted + count,
-      maxOutputChars: max,
-    });
-  }
-  ctx.emitted += count;
+	const max = ctx.options.maxOutputChars;
+	if (max === undefined) return;
+	if (count > max - ctx.emitted) {
+		ctx.options.onUnbounded({
+			emitted: ctx.emitted + count,
+			maxOutputChars: max,
+		});
+	}
+	ctx.emitted += count;
 }
 
 function emit(ctx: CanonicalWalkContext, text: string): string {
-  reserveOutput(ctx, text.length);
-  return text;
+	reserveOutput(ctx, text.length);
+	return text;
 }
 
 function enterContainer(value: object, ctx: CanonicalWalkContext): void {
-  if (ctx.visiting.has(value)) ctx.options.onUnbounded({ cycle: true });
-  ctx.visiting.add(value);
+	if (ctx.visiting.has(value)) ctx.options.onUnbounded({ cycle: true });
+	ctx.visiting.add(value);
 }
 
 function inspect<T>(
-  ctx: CanonicalWalkContext,
-  operation: string,
-  read: () => T,
+	ctx: CanonicalWalkContext,
+	operation: string,
+	read: () => T,
 ): T {
-  try {
-    return read();
-  } catch (cause) {
-    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
-    ctx.options.onUnbounded({ inspection: operation }, cause);
-  }
+	try {
+		return read();
+	} catch (cause) {
+		// error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+		ctx.options.onUnbounded({ inspection: operation }, cause);
+	}
 }
 
 function isCanonicalArray(value: object, ctx: CanonicalWalkContext): boolean {
-  return inspect(ctx, "isArray", () => Array.isArray(value));
+	return inspect(ctx, "isArray", () => Array.isArray(value));
 }
 
 /**
@@ -184,21 +184,21 @@ function isCanonicalArray(value: object, ctx: CanonicalWalkContext): boolean {
  * rather than calling this again.
  */
 function ownArrayLengthWith(value: object, ctx: CanonicalWalkContext): number {
-  const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
-    Object.getOwnPropertyDescriptor(value, "length"),
-  );
-  if (descriptor && !("value" in descriptor)) {
-    ctx.options.onUnbounded({ accessor: true, property: "length" });
-  }
-  if (
-    !descriptor ||
-    typeof descriptor.value !== "number" ||
-    !Number.isSafeInteger(descriptor.value) ||
-    descriptor.value < 0
-  ) {
-    ctx.options.onUnbounded({ invalidArrayLength: true });
-  }
-  return descriptor.value as number;
+	const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, "length"),
+	);
+	if (descriptor && !("value" in descriptor)) {
+		ctx.options.onUnbounded({ accessor: true, property: "length" });
+	}
+	if (
+		!descriptor ||
+		typeof descriptor.value !== "number" ||
+		!Number.isSafeInteger(descriptor.value) ||
+		descriptor.value < 0
+	) {
+		ctx.options.onUnbounded({ invalidArrayLength: true });
+	}
+	return descriptor.value as number;
 }
 
 /**
@@ -207,18 +207,18 @@ function ownArrayLengthWith(value: object, ctx: CanonicalWalkContext): number {
  * `knownArrayLength`.
  */
 export function readCanonicalArrayLength(
-  value: object,
-  options: CanonicalJsonOptions,
+	value: object,
+	options: CanonicalJsonOptions,
 ): number {
-  return ownArrayLengthWith(value, newWalkContext(options));
+	return ownArrayLengthWith(value, newWalkContext(options));
 }
 
 /** @see readCanonicalArrayLength */
 export function isCanonicalJsonArray(
-  value: object,
-  options: CanonicalJsonOptions,
+	value: object,
+	options: CanonicalJsonOptions,
 ): boolean {
-  return isCanonicalArray(value, newWalkContext(options));
+	return isCanonicalArray(value, newWalkContext(options));
 }
 
 /**
@@ -228,11 +228,11 @@ export function isCanonicalJsonArray(
  * canonical bytes unchanged.
  */
 function isJsonInvisible(value: unknown): boolean {
-  return (
-    value === undefined ||
-    typeof value === "function" ||
-    typeof value === "symbol"
-  );
+	return (
+		value === undefined ||
+		typeof value === "function" ||
+		typeof value === "symbol"
+	);
 }
 
 type DataSnapshot = { key: string; value: unknown };
@@ -246,96 +246,96 @@ type DataSnapshot = { key: string; value: unknown };
  * `visitAlreadyReserved`.
  */
 function ownEnumerableDataSnapshot(
-  value: object,
-  ctx: CanonicalWalkContext,
+	value: object,
+	ctx: CanonicalWalkContext,
 ): DataSnapshot[] {
-  const keys = inspect(ctx, "ownKeys", () => Reflect.ownKeys(value));
-  reserveVisits(ctx, keys.length);
-  const snapshot: DataSnapshot[] = [];
-  for (const key of keys) {
-    if (typeof key !== "string") continue;
-    const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
-      Object.getOwnPropertyDescriptor(value, key),
-    );
-    if (!descriptor?.enumerable) continue;
-    if (!("value" in descriptor)) {
-      ctx.options.onUnbounded({ accessor: true, container: "object" });
-    }
-    if (isJsonInvisible(descriptor.value)) continue;
-    snapshot.push({ key, value: descriptor.value });
-  }
-  snapshot.sort((left, right) =>
-    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-  );
-  return snapshot;
+	const keys = inspect(ctx, "ownKeys", () => Reflect.ownKeys(value));
+	reserveVisits(ctx, keys.length);
+	const snapshot: DataSnapshot[] = [];
+	for (const key of keys) {
+		if (typeof key !== "string") continue;
+		const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
+			Object.getOwnPropertyDescriptor(value, key),
+		);
+		if (!descriptor?.enumerable) continue;
+		if (!("value" in descriptor)) {
+			ctx.options.onUnbounded({ accessor: true, container: "object" });
+		}
+		if (isJsonInvisible(descriptor.value)) continue;
+		snapshot.push({ key, value: descriptor.value });
+	}
+	snapshot.sort((left, right) =>
+		left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+	);
+	return snapshot;
 }
 
 function canonicalWalk(
-  value: unknown,
-  depth: number,
-  ctx: CanonicalWalkContext,
-  visitAlreadyReserved = false,
-  /**
-   * Array length already read by the caller (root only). Reusing it keeps the
-   * digest and any published `count` on one immutable snapshot.
-   */
-  knownArrayLength?: number,
+	value: unknown,
+	depth: number,
+	ctx: CanonicalWalkContext,
+	visitAlreadyReserved = false,
+	/**
+	 * Array length already read by the caller (root only). Reusing it keeps the
+	 * digest and any published `count` on one immutable snapshot.
+	 */
+	knownArrayLength?: number,
 ): string {
-  if (depth > ctx.options.maxDepth) {
-    ctx.options.onUnbounded({ depth, max: ctx.options.maxDepth });
-  }
-  if (!visitAlreadyReserved) reserveVisits(ctx, 1);
-  if (value === null || typeof value !== "object") {
-    // Object keys carrying these were already dropped by the snapshot; reaching
-    // one here means an array slot, which `JSON.stringify` renders as `null`.
-    if (isJsonInvisible(value)) return emit(ctx, "null");
-    return emit(ctx, JSON.stringify(value));
-  }
+	if (depth > ctx.options.maxDepth) {
+		ctx.options.onUnbounded({ depth, max: ctx.options.maxDepth });
+	}
+	if (!visitAlreadyReserved) reserveVisits(ctx, 1);
+	if (value === null || typeof value !== "object") {
+		// Object keys carrying these were already dropped by the snapshot; reaching
+		// one here means an array slot, which `JSON.stringify` renders as `null`.
+		if (isJsonInvisible(value)) return emit(ctx, "null");
+		return emit(ctx, JSON.stringify(value));
+	}
 
-  enterContainer(value, ctx);
-  try {
-    if (isCanonicalArray(value, ctx)) {
-      const length = knownArrayLength ?? ownArrayLengthWith(value, ctx);
-      reserveVisits(ctx, length);
-      // String-build so inherited Array.prototype index accessors cannot
-      // trap assignment into a preallocated parts array.
-      let body = "";
-      for (let index = 0; index < length; index += 1) {
-        if (index > 0) body += emit(ctx, ",");
-        const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
-          Object.getOwnPropertyDescriptor(value, String(index)),
-        );
-        if (!descriptor) {
-          // Sparse hole: whichever empty-slot rendering this call site has
-          // already published digests for.
-          if (ctx.options.sparseArrayHoles === "null")
-            body += emit(ctx, "null");
-          continue;
-        }
-        if (!("value" in descriptor)) {
-          ctx.options.onUnbounded({
-            accessor: true,
-            container: "array",
-            index,
-          });
-        }
-        body += canonicalWalk(descriptor.value, depth + 1, ctx, true);
-      }
-      return `${emit(ctx, "[")}${body}${emit(ctx, "]")}`;
-    }
+	enterContainer(value, ctx);
+	try {
+		if (isCanonicalArray(value, ctx)) {
+			const length = knownArrayLength ?? ownArrayLengthWith(value, ctx);
+			reserveVisits(ctx, length);
+			// String-build so inherited Array.prototype index accessors cannot
+			// trap assignment into a preallocated parts array.
+			let body = "";
+			for (let index = 0; index < length; index += 1) {
+				if (index > 0) body += emit(ctx, ",");
+				const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () =>
+					Object.getOwnPropertyDescriptor(value, String(index)),
+				);
+				if (!descriptor) {
+					// Sparse hole: whichever empty-slot rendering this call site has
+					// already published digests for.
+					if (ctx.options.sparseArrayHoles === "null")
+						body += emit(ctx, "null");
+					continue;
+				}
+				if (!("value" in descriptor)) {
+					ctx.options.onUnbounded({
+						accessor: true,
+						container: "array",
+						index,
+					});
+				}
+				body += canonicalWalk(descriptor.value, depth + 1, ctx, true);
+			}
+			return `${emit(ctx, "[")}${body}${emit(ctx, "]")}`;
+		}
 
-    const snapshot = ownEnumerableDataSnapshot(value, ctx);
-    let body = "";
-    for (let index = 0; index < snapshot.length; index += 1) {
-      if (index > 0) body += emit(ctx, ",");
-      const entry = snapshot[index] as DataSnapshot;
-      body += emit(ctx, `${JSON.stringify(entry.key)}:`);
-      body += canonicalWalk(entry.value, depth + 1, ctx, true);
-    }
-    return `${emit(ctx, "{")}${body}${emit(ctx, "}")}`;
-  } finally {
-    ctx.visiting.delete(value);
-  }
+		const snapshot = ownEnumerableDataSnapshot(value, ctx);
+		let body = "";
+		for (let index = 0; index < snapshot.length; index += 1) {
+			if (index > 0) body += emit(ctx, ",");
+			const entry = snapshot[index] as DataSnapshot;
+			body += emit(ctx, `${JSON.stringify(entry.key)}:`);
+			body += canonicalWalk(entry.value, depth + 1, ctx, true);
+		}
+		return `${emit(ctx, "{")}${body}${emit(ctx, "}")}`;
+	} finally {
+		ctx.visiting.delete(value);
+	}
 }
 
 /**
@@ -348,17 +348,17 @@ function canonicalWalk(
  * they replace already did.
  */
 export function canonicalJsonString(
-  value: unknown,
-  options: CanonicalJsonOptions,
-  knownArrayLength?: number,
+	value: unknown,
+	options: CanonicalJsonOptions,
+	knownArrayLength?: number,
 ): string {
-  return canonicalWalk(
-    value,
-    0,
-    newWalkContext(options),
-    false,
-    knownArrayLength,
-  );
+	return canonicalWalk(
+		value,
+		0,
+		newWalkContext(options),
+		false,
+		knownArrayLength,
+	);
 }
 
 /**
@@ -372,9 +372,9 @@ export function canonicalJsonString(
  * defined value, and widening it would ripple through unrelated signatures.
  */
 export function stableJsonString(
-  value: unknown,
-  options: CanonicalJsonOptions,
+	value: unknown,
+	options: CanonicalJsonOptions,
 ): string {
-  if (isJsonInvisible(value)) return undefined as unknown as string;
-  return canonicalJsonString(value, options);
+	if (isJsonInvisible(value)) return undefined as unknown as string;
+	return canonicalJsonString(value, options);
 }

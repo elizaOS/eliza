@@ -12,9 +12,7 @@ export function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-export function sanitizeIdentifier(
-  value: string | null | undefined,
-): string | null {
+export function sanitizeIdentifier(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -29,7 +27,7 @@ export function sqlLiteral(value: string): string {
 
 export async function executeRawSql(
   runtime: AgentRuntime,
-  sqlText: string,
+  sqlText: string
 ): Promise<{
   rows: Record<string, unknown>[];
   columns: string[];
@@ -60,7 +58,7 @@ export async function executeRawSql(
 async function getTableColumnNames(
   runtime: AgentRuntime,
   tableName: string,
-  schemaName = "public",
+  schemaName = "public"
 ): Promise<Set<string>> {
   const columns = new Set<string>();
 
@@ -71,7 +69,7 @@ async function getTableColumnNames(
          FROM information_schema.columns
         WHERE table_schema = ${sqlLiteral(schemaName)}
           AND table_name = ${sqlLiteral(tableName)}
-        ORDER BY ordinal_position`,
+        ORDER BY ordinal_position`
     );
 
     for (const row of rows) {
@@ -94,10 +92,7 @@ async function getTableColumnNames(
       return columns;
     }
 
-    const { rows } = await executeRawSql(
-      runtime,
-      `PRAGMA table_info(${safeTableName})`,
-    );
+    const { rows } = await executeRawSql(runtime, `PRAGMA table_info(${safeTableName})`);
 
     for (const row of rows) {
       const value = row.name;
@@ -116,7 +111,7 @@ async function addColumnIfMissing(
   runtime: AgentRuntime,
   tableName: string,
   columnName: string,
-  definition: string,
+  definition: string
 ): Promise<void> {
   const columns = await getTableColumnNames(runtime, tableName);
   if (columns.has(columnName)) {
@@ -124,12 +119,12 @@ async function addColumnIfMissing(
   }
 
   throw new Error(
-    `[sql-compat] Missing required column ${quoteIdent(tableName)}.${quoteIdent(columnName)} (${definition}). Run the appropriate database migrations before starting the app.`,
+    `[sql-compat] Missing required column ${quoteIdent(tableName)}.${quoteIdent(columnName)} (${definition}). Run the appropriate database migrations before starting the app.`
   );
 }
 
 export async function ensureRuntimeSqlCompatibility(
-  runtime: AgentRuntime | null | undefined,
+  runtime: AgentRuntime | null | undefined
 ): Promise<void> {
   if (!runtime?.adapter?.db) {
     return;
@@ -150,7 +145,7 @@ export async function ensureRuntimeSqlCompatibility(
       runtime,
       "participants",
       "agent_id",
-      'uuid REFERENCES "agents"("id") ON DELETE CASCADE',
+      'uuid REFERENCES "agents"("id") ON DELETE CASCADE'
     );
     await addColumnIfMissing(runtime, "participants", "room_state", "text");
 

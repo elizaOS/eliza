@@ -17,9 +17,8 @@
  * @module process-guards
  */
 
-import { shouldIgnoreUnhandledRejection } from "@elizaos/core/error-classification";
-import { RESTART_EXIT_CODE } from "@elizaos/core/restart";
-
+import { shouldIgnoreUnhandledRejection } from "./error-classification.js";
+import { RESTART_EXIT_CODE } from "./restart.js";
 /**
  * What to do when a truly uncaught synchronous exception escapes all handlers.
  *
@@ -34,90 +33,81 @@ import { RESTART_EXIT_CODE } from "@elizaos/core/restart";
  *   a degraded-but-alive agent beats killing the whole app.
  */
 export type UncaughtExceptionPolicy = "restart" | "exit" | "keep-alive";
-
 export interface ProcessCrashGuardOptions {
-  /** Prefix for log lines, e.g. `"[eliza]"`. Defaults to `"[eliza]"`. */
-  logPrefix?: string;
-  /**
-   * Classifies a rejection as benign-and-ignorable (warned, not surfaced as an
-   * error). Defaults to {@link shouldIgnoreUnhandledRejection} (provider
-   * credit-exhaustion noise).
-   */
-  isIgnorable?: (reason: unknown) => boolean;
-  /** Policy for an uncaught synchronous exception. Defaults to `"restart"`. */
-  onUncaughtException?: UncaughtExceptionPolicy;
-  /** Error-level logger. Defaults to `console.error` with the prefix. */
-  log?: (message: string) => void;
-  /** Warn-level logger. Defaults to `console.warn` with the prefix. */
-  warn?: (message: string) => void;
-  /** Test seam for the process exit call. Defaults to `process.exit`. */
-  exit?: (code: number) => void;
+	/** Prefix for log lines, e.g. `"[eliza]"`. Defaults to `"[eliza]"`. */
+	logPrefix?: string;
+	/**
+	 * Classifies a rejection as benign-and-ignorable (warned, not surfaced as an
+	 * error). Defaults to {@link shouldIgnoreUnhandledRejection} (provider
+	 * credit-exhaustion noise).
+	 */
+	isIgnorable?: (reason: unknown) => boolean;
+	/** Policy for an uncaught synchronous exception. Defaults to `"restart"`. */
+	onUncaughtException?: UncaughtExceptionPolicy;
+	/** Error-level logger. Defaults to `console.error` with the prefix. */
+	log?: (message: string) => void;
+	/** Warn-level logger. Defaults to `console.warn` with the prefix. */
+	warn?: (message: string) => void;
+	/** Test seam for the process exit call. Defaults to `process.exit`. */
+	exit?: (code: number) => void;
 }
-
 function formatReason(reason: unknown): string {
-  if (reason instanceof Error) {
-    return reason.stack ?? reason.message;
-  }
-  return String(reason);
+	if (reason instanceof Error) {
+		return reason.stack ?? reason.message;
+	}
+	return String(reason);
 }
-
 let guardsInstalled = false;
-
 /** Test-only: clear the idempotency latch so guards can be re-installed. */
 export function resetProcessCrashGuardsForTest(): void {
-  guardsInstalled = false;
+	guardsInstalled = false;
 }
-
 /**
  * Install process-level `unhandledRejection` + `uncaughtException` guards.
  *
  * Idempotent across the whole process: the first call wins and subsequent calls
- * (from a deeper entry layer that imports the same `@elizaos/shared`) are no-ops.
+ * (from a deeper entry layer that imports the same `@elizaos/core`) are no-ops.
  * Returns `true` when the guards were installed, `false` when skipped (already
  * installed, or no `process` object — e.g. a browser bundle).
  */
 export function installProcessCrashGuards(
-  options: ProcessCrashGuardOptions = {},
+	options: ProcessCrashGuardOptions = {},
 ): boolean {
-  if (guardsInstalled) return false;
-  if (typeof process === "undefined" || typeof process.on !== "function") {
-    return false;
-  }
-  guardsInstalled = true;
-
-  const prefix = options.logPrefix ?? "[eliza]";
-  const log = options.log ?? ((m: string) => console.error(`${prefix} ${m}`));
-  const warn = options.warn ?? ((m: string) => console.warn(`${prefix} ${m}`));
-  const isIgnorable = options.isIgnorable ?? shouldIgnoreUnhandledRejection;
-  const policy = options.onUncaughtException ?? "restart";
-  const exit = options.exit ?? ((code: number) => process.exit(code));
-
-  process.on("unhandledRejection", (reason: unknown) => {
-    if (isIgnorable(reason)) {
-      warn(
-        "Background request failed without output (provider credits exhausted?) — continuing.",
-      );
-      return;
-    }
-    // A rejected background promise must never take down a serving agent.
-    log(`Unhandled promise rejection (non-fatal): ${formatReason(reason)}`);
-  });
-
-  process.on("uncaughtException", (error: unknown) => {
-    log(`Uncaught exception: ${formatReason(error)}`);
-    if (policy === "keep-alive") {
-      log(
-        "Agent left running after uncaught exception (state may be degraded).",
-      );
-      return;
-    }
-    if (policy === "restart") {
-      log(`Requesting supervised restart (exit ${RESTART_EXIT_CODE}).`);
-      exit(RESTART_EXIT_CODE);
-      return;
-    }
-    exit(1);
-  });
-
-  return true;
+	if (guardsInstalled) return false;
+	if (typeof process === "undefined" || typeof process.on !== "function") {
+		return false;
+	}
+	guardsInstalled = true;
+	const prefix = options.logPrefix ?? "[eliza]";
+	const log = options.log ?? ((m: string) => console.error(`${prefix} ${m}`));
+	const warn = options.warn ?? ((m: string) => console.warn(`${prefix} ${m}`));
+	const isIgnorable = options.isIgnorable ?? shouldIgnoreUnhandledRejection;
+	const policy = options.onUncaughtException ?? "restart";
+	const exit = options.exit ?? ((code: number) => process.exit(code));
+	process.on("unhandledRejection", (reason: unknown) => {
+		if (isIgnorable(reason)) {
+			warn(
+				"Background request failed without output (provider credits exhausted?) — continuing.",
+			);
+			return;
+		}
+		// A rejected background promise must never take down a serving agent.
+		log(`Unhandled promise rejection (non-fatal): ${formatReason(reason)}`);
+	});
+	process.on("uncaughtException", (error: unknown) => {
+		log(`Uncaught exception: ${formatReason(error)}`);
+		if (policy === "keep-alive") {
+			log(
+				"Agent left running after uncaught exception (state may be degraded).",
+			);
+			return;
+		}
+		if (policy === "restart") {
+			log(`Requesting supervised restart (exit ${RESTART_EXIT_CODE}).`);
+			exit(RESTART_EXIT_CODE);
+			return;
+		}
+		exit(1);
+	});
+	return true;
 }

@@ -21,8 +21,8 @@
  * verification, so we drive `fetch` through an injected test function.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setAcmeClientTestEnv } from "@elizaos/core/test-env-config";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ConnectorContribution,
   type ConnectorRegistry,
