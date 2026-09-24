@@ -9,7 +9,11 @@
  * `validate-tool-args.ts`.
  */
 import { ElizaError } from "../errors";
-import type { Action, ActionParameter, ActionParameterSchema } from "../types";
+import type {
+	Action,
+	ActionParameter,
+	ActionParameterSchema,
+} from "../types/components.js";
 import type { JSONSchema } from "../types/model";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 

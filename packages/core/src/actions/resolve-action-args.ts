@@ -13,7 +13,10 @@
  * confirmation flows, and side-effect dispatch stay in the umbrella action.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, State } from "../types";
+import type { HandlerOptions } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import { runExtractorPipeline } from "./extractor-pipeline";
 import { parseJsonModelRecord } from "./json-model-output";
 import { recentConversationTextsFromState } from "./recent-context";

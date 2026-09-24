@@ -2,7 +2,7 @@
  * Playwright global teardown: stops the test HTTP server and the AgentRuntime.
  */
 import type http from "node:http";
-import type { IAgentRuntime } from "../../src/types";
+import type { IAgentRuntime } from "@elizaos/core";
 
 export default async function globalTeardown(): Promise<void> {
 	const server = (globalThis as Record<string, unknown>).__e2eServer as

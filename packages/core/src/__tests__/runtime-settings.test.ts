@@ -9,7 +9,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
-import type { Character } from "../types";
+import type { Character } from "../types/agent.js";
 import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 
 describe("AgentRuntime.getSetting", () => {

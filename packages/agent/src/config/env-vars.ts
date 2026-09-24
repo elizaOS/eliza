@@ -9,8 +9,9 @@
  * Both drop any key rejected by isBlockedEnvKey (the secret denylist plus the
  * dangerous prefix families).
  */
+
+import type { ElizaConfig } from "@elizaos/core";
 import { isBlockedEnvKey } from "./blocked-env-keys.ts";
-import type { ElizaConfig } from "./types.ts";
 
 /**
  * Maps connector config fields to the environment variables expected by

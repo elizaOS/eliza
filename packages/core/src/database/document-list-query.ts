@@ -5,19 +5,18 @@
  * APIs cannot prove complete, duplicate-free, snapshot-coherent results.
  */
 import { ElizaError } from "../errors";
-import {
-	type DocumentFragmentQueryParams,
-	type DocumentListCursor,
-	type DocumentListQueryParams,
-	type DocumentListQueryResult,
-	type DocumentMutationSnapshot,
-	type DocumentRequesterContext,
-	type DocumentRevisionReplaceParams,
-	type IDatabaseAdapter,
-	type Memory,
-	MemoryType,
-	type UUID,
-} from "../types";
+import type {
+	DocumentFragmentQueryParams,
+	DocumentListCursor,
+	DocumentListQueryParams,
+	DocumentListQueryResult,
+	DocumentMutationSnapshot,
+	DocumentRequesterContext,
+	DocumentRevisionReplaceParams,
+	IDatabaseAdapter,
+} from "../types/database.js";
+import { type Memory, MemoryType } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 
 export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;

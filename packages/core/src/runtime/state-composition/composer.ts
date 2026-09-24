@@ -8,7 +8,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceCacheKey,
-} from "../../security/index.js";
+} from "../../security/trusted-delivery-audience.js";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
@@ -19,16 +19,12 @@ import {
 	type TrajectoryProviderAccessLogger,
 	withProviderStep,
 } from "../../trajectory-utils";
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	Service,
-	ServiceTypeName,
-	State,
-	StateValue,
-} from "../../types";
+import type { Provider } from "../../types/components.js";
+import type { Memory } from "../../types/memory.js";
 import { composeStateProvidersPipelineHookContext } from "../../types/pipeline-hooks";
+import type { IAgentRuntime } from "../../types/runtime.js";
+import type { Service, ServiceTypeName } from "../../types/service.js";
+import type { State, StateValue } from "../../types/state.js";
 import { resolveProviderContexts } from "../../utils/context-catalog";
 import {
 	getActiveRoutingContextsForTurn,

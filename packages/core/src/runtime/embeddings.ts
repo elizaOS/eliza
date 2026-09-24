@@ -4,14 +4,11 @@ import {
 	getEmbeddingVectorSpace,
 } from "../embedding-vector-space";
 import { ElizaError } from "../errors";
-import {
-	EventType,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	type ModelTypeName,
-	type UUID,
-} from "../types";
+import { EventType } from "../types/events.js";
+import type { Memory } from "../types/memory.js";
+import { ModelType, type ModelTypeName } from "../types/model.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,

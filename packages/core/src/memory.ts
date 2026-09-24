@@ -10,9 +10,7 @@
  */
 
 import { ElizaError } from "./errors";
-
 import {
-	type Content,
 	type CustomMetadata,
 	type DescriptionMetadata,
 	type DocumentMetadata,
@@ -23,8 +21,8 @@ import {
 	MemoryType,
 	type MessageMemory,
 	type MessageMetadata,
-	type UUID,
-} from "./types";
+} from "./types/memory.js";
+import type { Content, UUID } from "./types/primitives.js";
 
 /**
  * Build a MESSAGE-metadata memory. When `scope` is omitted the historical

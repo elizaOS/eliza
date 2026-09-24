@@ -19,10 +19,12 @@
  */
 
 import { performance } from "node:perf_hooks";
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ModelType,
+  stringToUuid as sqliteTestAgentId,
+} from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
-import { AgentRuntime } from "../../core/src/runtime";
-import { ModelType } from "../../core/src/types";
 
 // ---------------------------------------------------------------------------
 // Knobs (override via env)

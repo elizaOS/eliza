@@ -28,11 +28,13 @@ import type {
   Memory,
   RegisteredEvaluator,
 } from "@elizaos/core";
-import { logger, MemoryType, resolveStateDir } from "@elizaos/core";
 import {
   DEFAULT_FRONTMATTER_MAX_DEPTH,
+  logger,
+  MemoryType,
   parseFrontmatterDocument,
-} from "@elizaos/core/markdown";
+  resolveStateDir,
+} from "@elizaos/core";
 import { stringify as stringifyYaml } from "yaml";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import {
