@@ -1,5 +1,5 @@
 /**
- * WEB_SEARCH coverage for planned admission, Parallel/Exa results, complete
+ * WEB_SEARCH coverage for planned admission, Parallel results, complete
  * model-facing output, and disabled-action denial. The shared transport fetch is stubbed for every provider.
  */
 import {
@@ -28,21 +28,12 @@ const mcpSse = (text: string): string =>
     result: { content: [{ type: "text", text }] },
   })}\n\n`;
 
-function mockSearchProviders(byHost: {
-  parallel?: string;
-  exa?: string;
-}): void {
+function mockSearchProviders(byHost: { parallel?: string }): void {
   vi.stubGlobal("fetch", async (input: string | URL | Request) => {
     const host = new URL(String(input)).hostname;
     if (host.includes("parallel")) {
       return new Response(byHost.parallel ?? "", {
         status: byHost.parallel === undefined ? 500 : 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    if (host.includes("exa")) {
-      return new Response(byHost.exa ?? "", {
-        status: byHost.exa === undefined ? 500 : 200,
         headers: { "content-type": "application/json" },
       });
     }
@@ -116,17 +107,12 @@ describe("coding-tools WEB_SEARCH", () => {
     },
   );
 
-  it("falls back to Exa when Parallel has no usable result", async () => {
-    mockSearchProviders({
-      parallel: mcpJson(""),
-      exa: mcpSse("Exa fallback result"),
-    });
-
-    const result = await runSearch({ query: "fallback query" });
-
+  it("accepts Parallel SSE results", async () => {
+    mockSearchProviders({ parallel: mcpSse("Parallel search result") });
+    const result = await runSearch({ query: "search query" });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("Exa fallback result");
-    expect(result.data).toMatchObject({ provider: "exa" });
+    expect(result.text).toBe("Parallel search result");
+    expect(result.data).toMatchObject({ provider: "parallel" });
   });
 
   it("returns complete provider output to the model", async () => {
@@ -142,7 +128,7 @@ describe("coding-tools WEB_SEARCH", () => {
     });
   });
 
-  it("returns a clear failure when both providers fail", async () => {
+  it("returns a clear failure when Parallel fails", async () => {
     mockSearchProviders({});
 
     const result = await runSearch({ query: "no providers" });

@@ -40,12 +40,12 @@ records the same identifiers, clears the stale queue and replans. This removes
 one duplicated decision and 11 net implementation lines. The terminal-only and
 post-tool paths retain their distinct completion checks before selection.
 
-The concrete keyless Parallel/Exa web-search client and its tests now belong to
+The concrete keyless Parallel web-search client and its tests now belong to
 `plugin-web-search/keyless-web-search`. Host actions, coding tools and the cloud
 fixture consume that owner; core no longer exports the client or embeds its
 provider endpoints. This is a 320-line implementation/test relocation, not a
 whole-repository deletion. Fixed endpoints, redirect refusal, timeout and byte
-limits, complete response handling and provider fallback remain unchanged.
+limits, and complete response handling are preserved. Search failures surface as unavailable.
 
 Capability-router protocol fixture data and its version marker now live in the
 private testing package. Their only consumers are conformance tests and a local

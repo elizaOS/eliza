@@ -1,6 +1,6 @@
 /**
  * Worker-safe public web search for stateless Eliza runtimes. This entrypoint
- * owns the genuine WEB_SEARCH action without importing Tavily, Node services,
+ * owns the genuine WEB_SEARCH action without importing Node services,
  * credentials, private data, or browser control.
  */
 
@@ -38,12 +38,6 @@ function readQuery(parameters: Record<string, unknown>): string | undefined {
         if (typeof value === "string" && value.trim()) return value.trim();
     }
     return undefined;
-}
-
-function readResultCount(parameters: Record<string, unknown>): number | undefined {
-    const value = parameters.numResults ?? parameters.num_results;
-    const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
-    return Number.isFinite(parsed) && parsed > 0 ? Math.min(10, Math.floor(parsed)) : undefined;
 }
 
 export interface WebSearchSourceEvidence {
@@ -189,10 +183,7 @@ async function fail(
 }
 
 /** Runs the same public-read implementation used by the registered action. */
-export async function runWebSearchEdge(
-    query: string,
-    options: { numResults?: number } = {}
-): Promise<ActionResult> {
+export async function runWebSearchEdge(query: string): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
     if ([...normalizedQuery].length > MAX_WEB_SEARCH_QUERY_CODE_POINTS) {
@@ -203,9 +194,7 @@ export async function runWebSearchEdge(
         );
     }
     const observedAt = Date.now();
-    const result = await searchKeylessWeb(normalizedQuery, {
-        resultCount: options.numResults,
-    });
+    const result = await searchKeylessWeb(normalizedQuery);
     if (!result) {
         return await fail("Web search is temporarily unavailable.", undefined, normalizedQuery);
     }
@@ -227,10 +216,7 @@ export async function runWebSearchEdge(
     };
 }
 
-export type WebSearchEdgeRunner = (
-    query: string,
-    options?: { numResults?: number }
-) => Promise<ActionResult>;
+export type WebSearchEdgeRunner = (query: string) => Promise<ActionResult>;
 
 function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
     return {
@@ -248,12 +234,6 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
                 required: true,
                 schema: { type: "string" },
             },
-            {
-                name: "numResults",
-                description: "Optional result count, from 1 through 10.",
-                required: false,
-                schema: { type: "number" },
-            },
         ],
         validate: async () => true,
         handler: async (
@@ -267,9 +247,7 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
-            const result = await runner(query, {
-                numResults: readResultCount(parameters),
-            });
+            const result = await runner(query);
             if (result.success !== true && result.text) {
                 await callback?.({ text: result.text });
             }

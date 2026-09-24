@@ -1,6 +1,6 @@
 /**
  * WEB_SEARCH exposes the same keyless MCP search path to coding-only agents that
- * the full agent runtime uses: Parallel is primary, Exa is fallback. Complete
+ * the full agent runtime uses: Parallel provides keyless search. Complete
  * provider results enter the planner loop and no query text is logged.
  */
 import type {
@@ -14,13 +14,10 @@ import type {
 import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
 import {
   failureToActionResult,
-  readNumberParam,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-
-const DEFAULT_NUM_RESULTS = 6;
 
 function readBooleanEnv(name: string): boolean | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -64,19 +61,13 @@ export const webSearchAction: Action = {
   routingHint:
     "open-ended external info (news, public facts, 'latest on...', recommendations, pages to discover) -> WEB_SEARCH; a live NOW-value with a constructable endpoint (spot crypto/stock price, exchange rate, current weather) -> WEB_FETCH to that live API (api.coingecko.com/api/v3/simple/price, wttr.in/<city>?format=j1) — search-index snippets lag live values by minutes-to-hours, the endpoint is exact and fresh",
   description:
-    "Search the open web for current or external information using keyless MCP search. Uses Parallel first and Exa fallback, returning complete ranked result text. For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values.",
+    "Search the open web for current or external information using keyless MCP search. Uses Parallel, returning complete ranked result text. For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values.",
   parameters: [
     {
       name: "query",
       description: "Search query in natural language.",
       required: true,
       schema: { type: "string" },
-    },
-    {
-      name: "numResults",
-      description: "Optional number of results to request, default 6, max 10.",
-      required: false,
-      schema: { type: "number" },
     },
   ],
   validate: async () => isCodingWebSearchEnabled(),
@@ -104,14 +95,8 @@ export const webSearchAction: Action = {
         message: "query is required",
       });
     }
-    const requested = readNumberParam(options, "numResults");
-    const numResults =
-      requested && requested > 0
-        ? Math.min(10, Math.floor(requested))
-        : DEFAULT_NUM_RESULTS;
-
     try {
-      const result = await searchKeylessWeb(query, { resultCount: numResults });
+      const result = await searchKeylessWeb(query);
       if (!result) {
         const result = failureToActionResult(
           { reason: "no_match", message: "search returned no usable results" },

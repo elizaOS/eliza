@@ -1,6 +1,6 @@
 /**
  * Behavioral and routing-contract tests for the WEB_SEARCH action:
- * inline-vs-server capability gating, provider fallback (parallel → exa),
+ * inline-vs-server capability gating, Parallel provider results,
  * response parsing, complete result preservation, and fresh-data handoff to
  * WEB_FETCH.
  * The shared transport fetch is stubbed, so no real network leaves the suite.
@@ -40,7 +40,7 @@ const mcpToolError = (text: string): string =>
  * Route each provider's mocked body by hostname. A missing key returns HTTP
  * 500 so the action treats that provider as failed.
  */
-function mockProviders(byHost: { parallel?: string; exa?: string }): void {
+function mockProviders(byHost: { parallel?: string }): void {
   vi.stubGlobal("fetch", async (input: string | URL | Request) => {
     const host = new URL(String(input)).hostname;
     if (host.includes("parallel")) {
@@ -49,12 +49,7 @@ function mockProviders(byHost: { parallel?: string; exa?: string }): void {
         headers: { "content-type": "application/json" },
       });
     }
-    if (host.includes("exa")) {
-      return new Response(byHost.exa ?? "", {
-        status: byHost.exa === undefined ? 500 : 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
+
     return new Response("", { status: 404 });
   });
 }
@@ -101,21 +96,6 @@ describe("WEB_SEARCH action", () => {
     expect(webSearch.routingHint).toContain("api.coingecko.com");
     expect(webSearch.description).toContain("prefer WEB_FETCH");
     expect(webSearch.description).toContain("search snippets lag live values");
-  });
-
-  it("declares and accepts the planner's snake_case result-count alias", async () => {
-    expect(webSearch.parameters).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "num_results" }),
-      ]),
-    );
-    mockProviders({ parallel: mcpJson("RESULT: current elizaOS update") });
-    const { result } = await runHandler({
-      query: "latest elizaOS",
-      num_results: 4,
-    });
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("current elizaOS update");
   });
 
   it("is available by default through the inline action surface", async () => {
@@ -175,18 +155,17 @@ describe("WEB_SEARCH action", () => {
     });
   });
 
-  it("parses an SSE 'data:' framed response (exa)", async () => {
-    mockProviders({ parallel: mcpJson(""), exa: mcpSse("EXA: top result") });
+  it("parses an SSE 'data:' framed response (Parallel)", async () => {
+    mockProviders({ parallel: mcpSse("Parallel: top result") });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("EXA: top result");
-    expect(result.data).toMatchObject({ provider: "exa" });
+    expect(result.text).toContain("Parallel: top result");
+    expect(result.data).toMatchObject({ provider: "parallel" });
   });
 
   it("treats a JSON-RPC error envelope as failure, never a result", async () => {
     mockProviders({
       parallel: mcpErrorEnvelope("invalid params"),
-      exa: mcpErrorEnvelope("invalid params"),
     });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(false);
@@ -198,19 +177,16 @@ describe("WEB_SEARCH action", () => {
   it("treats result.isError as failure, never a result", async () => {
     mockProviders({
       parallel: mcpToolError("rate limited, try later"),
-      exa: mcpToolError("rate limited, try later"),
     });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(false);
     expect(result.text).not.toContain("rate limited");
   });
 
-  it("falls back to exa when parallel returns no usable content", async () => {
-    mockProviders({ parallel: mcpJson(""), exa: mcpJson("EXA-ANSWER") });
+  it("reports failure when Parallel returns no usable content", async () => {
+    mockProviders({ parallel: mcpJson("") });
     const { result } = await runHandler({ query: "x" });
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("EXA-ANSWER");
-    expect(result.data).toMatchObject({ provider: "exa" });
+    expect(result.success).toBe(false);
   });
 
   it("preserves the complete result text handed back to the model", async () => {
