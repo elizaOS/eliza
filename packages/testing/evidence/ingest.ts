@@ -362,14 +362,14 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "android-native-agent",
     source: "android-native-agent",
-    producedBy: "packages/app/scripts/android-native-agent.mjs",
+    producedBy: "packages/app/scripts/android-native-agent.ts",
     lane: "native",
     roots: [{ label: "runs", dir: "test-results/android-native-agent/runs" }],
   },
   {
     silo: "android-native-plugins",
     source: "android-native-plugins",
-    producedBy: "packages/app/scripts/android-native-plugins.mjs",
+    producedBy: "packages/app/scripts/android-native-plugins.ts",
     lane: "native",
     roots: [{ label: "plugins", dir: "test-results/android-native-plugins" }],
   },
@@ -384,7 +384,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "e2e-recordings",
     source: "e2e-recordings",
-    producedBy: "packages/scripts/e2e-recordings/run-all.mjs",
+    producedBy: "packages/scripts/e2e-recordings/run-all.ts",
     lane: "e2e",
     roots: [{ label: "repo", dir: "e2e-recordings" }],
   },
@@ -413,7 +413,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "device-e2e",
     source: "device-e2e",
-    producedBy: "packages/app/scripts/lib/device-e2e-bundle.mjs",
+    producedBy: "packages/app/scripts/lib/device-e2e-bundle.ts",
     lane: "native",
     roots: [{ label: "app", dir: "test-results/device-e2e" }],
   },
@@ -457,7 +457,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "live-test-runs",
     source: "live-test-runs",
-    producedBy: "packages/scripts/run-live-test-with-artifacts.mjs",
+    producedBy: "packages/scripts/run-live-test-with-artifacts.ts",
     roots: [{ label: "repo", dir: "reports/live-test-runs" }],
   },
   {

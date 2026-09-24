@@ -35,7 +35,7 @@
     },
     "regression-matrix-release": {
       "tier": "required",
-      "command": "node packages/app/scripts/validate-regression-matrix.mjs --workflow release"
+      "command": "node packages/app/scripts/validate-regression-matrix.ts --workflow release"
     }
   },
   "surfaces": [
@@ -71,7 +71,7 @@
         "scripts/release-check.test.ts",
         "scripts/electrobun-release-workflow-drift.test.ts",
         "scripts/electrobun-test-workflow-drift.test.ts",
-        "scripts/validate-regression-matrix.mjs",
+        "scripts/validate-regression-matrix.ts",
         "scripts/coverage-policy.ts",
         "scripts/coverage-policy-drift.test.ts",
         "package.json",

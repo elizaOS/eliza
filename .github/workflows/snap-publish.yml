@@ -83,7 +83,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          node packages/scripts/store-release-plan.mjs \
+          node packages/scripts/store-release-plan.ts \
             --version "$VERSION" \
             --channel "${{ inputs.channel == 'stable' && 'latest' || 'beta' }}" \
             --source-sha "${{ inputs.source_sha }}" >/dev/null

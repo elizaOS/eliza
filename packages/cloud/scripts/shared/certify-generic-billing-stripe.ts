@@ -44,15 +44,26 @@ export function requireBillingSandboxConfiguration(env: SandboxEnvironment): {
     });
   const account = env.GENERIC_BILLING_STRIPE_TEST_ACCOUNT;
   if (!account || !/^acct_[A-Za-z0-9]+$/.test(account))
-    throw new ElizaError("An explicitly selected test merchant account is required", {
-      code: "BILLING_SANDBOX_ACCOUNT_REQUIRED",
-    });
+    throw new ElizaError(
+      "An explicitly selected test merchant account is required",
+      {
+        code: "BILLING_SANDBOX_ACCOUNT_REQUIRED",
+      },
+    );
   const kind = env.GENERIC_BILLING_STRIPE_TEST_ACCOUNT_KIND;
   if (kind !== "platform" && kind !== "connected")
-    throw new ElizaError("Select platform or connected for the sandbox merchant", {
-      code: "BILLING_SANDBOX_ACCOUNT_KIND_REQUIRED",
-    });
-  return { key, account, kind, receiptPath: env.GENERIC_BILLING_STRIPE_RECEIPT_PATH };
+    throw new ElizaError(
+      "Select platform or connected for the sandbox merchant",
+      {
+        code: "BILLING_SANDBOX_ACCOUNT_KIND_REQUIRED",
+      },
+    );
+  return {
+    key,
+    account,
+    kind,
+    receiptPath: env.GENERIC_BILLING_STRIPE_RECEIPT_PATH,
+  };
 }
 
 export async function certifyBillingSandbox(env: SandboxEnvironment) {
@@ -66,7 +77,11 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
     .object({ livemode: z.literal(false) })
     .parse(await stripe.balance.retrieve({}, options));
   const runId = randomUUID();
-  const scope = { scopeId: randomUUID(), appId: randomUUID(), billingAccountId: randomUUID() };
+  const scope = {
+    scopeId: randomUUID(),
+    appId: randomUUID(),
+    billingAccountId: randomUUID(),
+  };
   const merchant = {
     merchantId: randomUUID(),
     stripeAccountId: config.account,
@@ -84,7 +99,9 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
       .update(JSON.stringify({ runId, operation, scope, merchant }))
       .digest("hex"),
   });
-  const receiptPath = config.receiptPath ?? join(tmpdir(), "eliza-billing-stripe", `${runId}.json`);
+  const receiptPath =
+    config.receiptPath ??
+    join(tmpdir(), "eliza-billing-stripe", `${runId}.json`);
   await mkdir(dirname(receiptPath), { recursive: true, mode: 0o700 });
   const progress: {
     runId: string;
@@ -111,7 +128,9 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
     progress.pendingOperation = objectId ? null : operation;
     if (objectId) progress.objects[operation] = objectId;
     else progress.intents[operation] = makeIntent(operation);
-    await writeFile(receiptPath, `${JSON.stringify(progress, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(receiptPath, `${JSON.stringify(progress, null, 2)}\n`, {
+      mode: 0o600,
+    });
   };
   process.stdout.write(
     `${JSON.stringify({ status: "sandbox_intent_journal_created", receiptPath })}\n`,
@@ -125,7 +144,10 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
   await record("clock", clock.id);
   await record("product");
   const product = await stripe.products.create(
-    { name: `Generic billing sandbox ${runId}`, metadata: { eliza_billing_sandbox_run: runId } },
+    {
+      name: `Generic billing sandbox ${runId}`,
+      metadata: { eliza_billing_sandbox_run: runId },
+    },
     { ...options, idempotencyKey: makeIntent("product").idempotencyKey },
   );
   await record("product", product.id);
@@ -199,7 +221,11 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
   );
   let clockReady = false;
   for (let attempt = 0; attempt < 90; attempt++) {
-    const observed = await stripe.testHelpers.testClocks.retrieve(clock.id, {}, options);
+    const observed = await stripe.testHelpers.testClocks.retrieve(
+      clock.id,
+      {},
+      options,
+    );
     if (observed.status === "ready") {
       clockReady = true;
       break;
@@ -217,10 +243,16 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
     customerId: customer.id,
     plan,
   });
-  if (expired.value.status !== "paused" || expired.value.trialEnd !== trial.value.trialEnd)
-    throw new ElizaError("No-card trial did not pause without extending its interval", {
-      code: "BILLING_SANDBOX_TRIAL_EXPIRY",
-    });
+  if (
+    expired.value.status !== "paused" ||
+    expired.value.trialEnd !== trial.value.trialEnd
+  )
+    throw new ElizaError(
+      "No-card trial did not pause without extending its interval",
+      {
+        code: "BILLING_SANDBOX_TRIAL_EXPIRY",
+      },
+    );
   const receipt = {
     ...progress,
     status: "provider_trial_smoke_passed",
@@ -241,13 +273,17 @@ export async function certifyBillingSandbox(env: SandboxEnvironment) {
       "Test objects retained for manual inspection; reruns create a distinct run",
     ],
   };
-  await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+    mode: 0o600,
+  });
   return receipt;
 }
 
 if (import.meta.main) {
   certifyBillingSandbox(process.env)
-    .then((receipt) => process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`))
+    .then((receipt) =>
+      process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`),
+    )
     .catch((error: unknown) => {
       // error-policy:J1 CLI failures expose a stable code without provider credentials or raw payment data.
       process.stderr.write(

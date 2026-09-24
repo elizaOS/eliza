@@ -5,7 +5,6 @@
 
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/core/chat-upload-limits";
 import { transcriptPlainText } from "@elizaos/core/transcripts";
-import { logger } from "@elizaos/ui/logger";
 import {
   AudioLines,
   FileText,
@@ -74,6 +73,7 @@ import {
   Z_SHELL_OVERLAY,
 } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { logger } from "../../logger.ts";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,

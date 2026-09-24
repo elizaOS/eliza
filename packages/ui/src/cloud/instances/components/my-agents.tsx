@@ -1,11 +1,6 @@
 "use client";
 
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
-/**
- * The My Agents surface: lists the user's cloud agent instances with sort/view
- * controls and the create entry point.
- */
-import { logger } from "@elizaos/ui/logger";
 import {
   ArrowRight,
   BookOpen,
@@ -20,6 +15,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
+/**
+ * The My Agents surface: lists the user's cloud agent instances with sort/view
+ * controls and the create entry point.
+ */
+import { logger } from "../../../logger.ts";
 import { useT } from "../lib/i18n";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";

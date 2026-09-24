@@ -36,7 +36,7 @@ jobs:
 
       - name: Resolve pinned Eliza source
         id: eliza-source
-        run: node scripts/read-eliza-source-lock.mjs --github-output >> "$GITHUB_OUTPUT"
+        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
 
       - name: Checkout application source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -70,7 +70,7 @@ jobs:
       - name: Verify application and OS repository ownership boundary
         env:
           ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
-        run: node scripts/verify-eliza-source-boundary.mjs
+        run: node scripts/verify-eliza-source-boundary.ts
 
       - name: Validate OS release manifest
         run: |
@@ -81,13 +81,13 @@ jobs:
             node --check "$script"
           done
           node --test \
-            scripts/__tests__/os-release-scripts.test.mjs \
-            scripts/__tests__/release-asset-inventory.test.mjs
-          node scripts/validate-release-manifest.mjs \
+            scripts/__tests__/os-release-scripts.test.ts \
+            scripts/__tests__/release-asset-inventory.test.ts
+          node scripts/validate-release-manifest.ts \
             --manifest "$manifest"
-          node scripts/assert-canonical-linux-release.mjs \
+          node scripts/assert-canonical-linux-release.ts \
             --manifest "$manifest"
-          node scripts/collect-release-evidence.mjs \
+          node scripts/collect-release-evidence.ts \
             --manifest "$manifest" \
             --output "$evidence"
 
@@ -110,7 +110,7 @@ jobs:
       - name: Validate Android installer
         run: |
           android/installer/tests/run-tests.sh
-          node android/installer/scripts/validate-release-manifest.mjs \
+          node android/installer/scripts/validate-release-manifest.ts \
             android/installer/manifests/android-release-manifest.example.json
 
       - name: Validate elizaos-setup (formerly aosp-flasher)

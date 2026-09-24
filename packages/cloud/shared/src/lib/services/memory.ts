@@ -2,13 +2,13 @@
 
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
 import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
+import { memoryTable, participantTable } from "@elizaos/plugin-sql";
 import { streamText } from "ai";
 import { createHash } from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { dbRead } from "../../db/client";
 import type { ConversationMessage } from "../../db/repositories";
-import { memoryTable, participantTable } from "../../db/schemas/eliza";
 import { users } from "../../db/schemas/users";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { type MemoryRoomContext, memoryCache, type SearchResult } from "../cache/memory-cache";

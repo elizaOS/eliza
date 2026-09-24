@@ -6,7 +6,7 @@
  * from the narrow subpath so the inbox React view / plugin definition is not
  * pulled into PA's service layer.
  */
-export type { SyncedGoogleGmailMessageSummary } from "@elizaos/plugin-inbox/inbox/gmail-normalize";
+export type { SyncedGoogleGmailMessageSummary } from "@elizaos/plugin-inbox";
 export {
   buildFallbackGmailReplyDraftBody,
   buildGmailRecommendations,
@@ -48,4 +48,4 @@ export {
   summarizeGmailTriage,
   summarizeGmailUnresponded,
   wrapUntrustedEmailContent,
-} from "@elizaos/plugin-inbox/inbox/gmail-normalize";
+} from "@elizaos/plugin-inbox";

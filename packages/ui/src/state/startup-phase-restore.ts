@@ -18,7 +18,6 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
 import { client, type FirstRunOptions } from "../api";
 import {
   cloudTokenSecsRemaining,
@@ -47,6 +46,7 @@ import {
 } from "../first-run/mobile-runtime-mode";
 import { primeAuthStatusProbe } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
+import { logger } from "../logger.ts";
 import {
   clearForceFreshFirstRun,
   isAndroid,

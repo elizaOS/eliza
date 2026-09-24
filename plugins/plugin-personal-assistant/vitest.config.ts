@@ -57,7 +57,6 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-native-filesystem",
   "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-inbox/plugin",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -65,6 +64,8 @@ const agentSourceJsToTsPlugin = {
   name: "lifeops-agent-source-js-to-ts",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    // Native built-ins remain lazy runtime imports in the UI test graph.
+    if (source.startsWith("bun:")) return { id: source, external: true };
     if (optionalCorePluginStubPackages.has(source)) {
       return `${optionalCorePluginStubPrefix}${source}`;
     }
@@ -881,7 +882,7 @@ export default defineConfig({
             repoRoot,
             path.join(
               elizaRoot,
-              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
             ),
           )
           .replaceAll(path.sep, "/"),

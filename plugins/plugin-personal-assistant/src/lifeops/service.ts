@@ -87,7 +87,7 @@ import type {
   EmailUnsubscribeRequest,
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
-} from "@elizaos/plugin-inbox/inbox/email-unsubscribe-types";
+} from "@elizaos/plugin-inbox";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,

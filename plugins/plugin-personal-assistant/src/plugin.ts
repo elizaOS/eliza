@@ -58,7 +58,7 @@ import {
   registerHealthConnectors,
   registerHealthDefaultPacks,
 } from "@elizaos/plugin-health";
-import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
+import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { pdfPlugin } from "@elizaos/plugin-pdf";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import {
@@ -1355,6 +1355,7 @@ export {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
+export { inboxTriageProvider } from "@elizaos/plugin-inbox";
 export { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
@@ -1576,7 +1577,6 @@ export { firstRunProvider } from "./providers/first-run.js";
 export type { FtuGoalAffordance } from "./providers/ftu-goal.js";
 export { ftuGoalProvider } from "./providers/ftu-goal.js";
 export { healthProvider } from "./providers/health.js";
-export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 export {
   pendingApprovalsProvider,

@@ -11,7 +11,6 @@
  * the routing unit tests (`useVoiceChat.forced-cloud-tts`, `shared-runtime-voice`).
  */
 
-import { logger } from "@elizaos/ui/logger";
 import {
   act,
   cleanup,
@@ -20,6 +19,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../logger.ts";
 
 const fetchWithCsrf = vi.fn();
 const requestViaAgentTransport = vi.fn();

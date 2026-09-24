@@ -58,7 +58,6 @@
       "@elizaos/plugin-pty": ["../plugin-pty/index.ts"],
       "@elizaos/plugin-scheduling": ["../plugin-scheduling/src/index.ts"],
       "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../plugin-agent-orchestrator/src/ui/index.ts"
       ],

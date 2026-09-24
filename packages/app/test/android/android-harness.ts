@@ -25,7 +25,7 @@ import {
   forwardWebViewCdp,
   resolveAdb,
   resolveSerial,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 
 export const ORIGIN = "https://localhost";
 

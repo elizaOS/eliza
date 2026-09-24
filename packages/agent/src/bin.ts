@@ -26,7 +26,7 @@ captureHostExecutionBaseline();
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
 // source. Anchored to <stateDir>/cache/node-compile — the SAME dir the dev
-// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.mjs) — so the packaged CLI
+// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.ts) — so the packaged CLI
 // path and the dev path share one warm cache instead of two.
 //
 // When NODE_COMPILE_CACHE is already set (dev path), Node enables the cache

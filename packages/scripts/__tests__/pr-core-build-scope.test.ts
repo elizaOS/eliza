@@ -12,11 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { planPrCoreBuild } from "../pr-core-build-scope.mjs";
+import { planPrCoreBuild } from "../pr-core-build-scope.ts";
 
 const roots: string[] = [];
 const cli = fileURLToPath(
-  new URL("../pr-core-build-scope.mjs", import.meta.url),
+  new URL("../pr-core-build-scope.ts", import.meta.url),
 );
 afterEach(() => {
   for (const root of roots.splice(0))

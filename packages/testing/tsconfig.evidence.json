@@ -18,11 +18,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node"],
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../../node_modules/.bun/node_modules/@types"
-    ]
+    "types": ["node"]
   },
   "include": ["evidence"]
 }

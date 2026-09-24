@@ -596,14 +596,10 @@ describe("Shared Eliza runtime in Workerd", () => {
                       id: `workerd-image-${probe}-refusal`,
                       type: "function",
                       function: {
-                        name: "HANDLE_RESPONSE",
+                        name: "REPLY",
                         arguments: JSON.stringify({
-                          contexts: ["media"],
-                          intents: [],
-                          candidateActionNames: [],
-                          replyEffectStatus: "none",
-                          replyText:
-                            "Image generation requires an authenticated Personal Shared user.",
+                          text: "Image generation requires an authenticated Personal Shared user.",
+                          eliza_turn_scope: "final",
                         }),
                       },
                     },
@@ -1156,7 +1152,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       actionResults?: Array<Record<string, unknown>>;
     };
     expect(done.text).toBe(
-      "I can't do that here right now - it needs a capability that isn't available in this setup.",
+      "Image generation requires an authenticated Personal Shared user.",
     );
     // Admission rejects the unavailable tool before dispatch; the refusal
     // must not acquire an execution receipt for an action that never ran.
@@ -1268,6 +1264,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
+    // This first lifecycle turn has no authorized context references to read.
     expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 

@@ -6,12 +6,6 @@
 		"rootDir": "../../",
 		"sourceMap": false,
 		"inlineSourceMap": false,
-		"typeRoots": [
-			"../../node_modules/@types",
-			"../../node_modules",
-			"../../../node_modules/@types",
-			"../../../node_modules"
-		],
 		"types": ["node"],
 		"composite": false,
 		"declaration": false,

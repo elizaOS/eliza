@@ -14,7 +14,7 @@ import {
   hostExternalSpecifiersFromSources,
   validateViewBundles,
   viewOutputEntryKind,
-} from "../view-bundle-import-guard.mjs";
+} from "../view-bundle-import-guard.ts";
 
 const tempDirs: string[] = [];
 

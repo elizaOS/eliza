@@ -34,7 +34,7 @@ do_install() {
         ${D}${sysconfdir}/elizaos/tee/confidential-policy.json
 
     # 2. Golden image manifest (the "image is the policy" record). The signed
-    #    tee-measurements.json itself is produced by generate-tee-measurements.mjs
+    #    tee-measurements.json itself is produced by generate-tee-measurements.ts
     #    at release time and installed by the release recipe; this manifest lets a
     #    verifier recompute the golden digests offline.
     install -m 0444 ${WORKDIR}/image-manifest.example.json \

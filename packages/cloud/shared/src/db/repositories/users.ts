@@ -1,7 +1,7 @@
 /** Persists user records and identity transitions through the shared database boundary. */
 
 import { ElizaError } from "@elizaos/core";
-import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
+import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {

@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import {
   copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,13 +19,19 @@ test("migration SQL executes from a clean source-only SQL plugin", async () => {
   try {
     const shared = join(root, "node_modules/@elizaos/plugin-sql");
     mkdirSync(join(shared, "src/database-utils"), { recursive: true });
-    for (const file of ["package.json", "src/database-utils/raw-sql.ts"]) {
+    cpSync(join(repoRoot, "plugins/plugin-sql/src"), join(shared, "src"), {
+      recursive: true,
+    });
+    for (const file of ["package.json"]) {
       copyFileSync(
         join(repoRoot, "plugins/plugin-sql", file),
         join(shared, file),
       );
     }
-    for (const name of ["drizzle-orm", "@electric-sql/pglite"]) {
+    const manifest = JSON.parse(
+      readFileSync(join(shared, "package.json"), "utf8"),
+    );
+    for (const name of Object.keys(manifest.dependencies)) {
       const target = join(root, "node_modules", name);
       mkdirSync(dirname(target), { recursive: true });
       symlinkSync(
@@ -42,7 +50,7 @@ test("migration SQL executes from a clean source-only SQL plugin", async () => {
       `
       import { PGlite } from "@electric-sql/pglite";
       import { drizzle } from "drizzle-orm/pglite";
-      import { executeSql, sqlQuote } from "@elizaos/plugin-sql/database-utils/raw-sql";
+      import { executeSql, sqlQuote } from "@elizaos/plugin-sql";
       const postgres = new PGlite();
       try {
         const db = drizzle(postgres);

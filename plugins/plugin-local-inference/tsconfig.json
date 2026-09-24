@@ -65,9 +65,6 @@
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
-			"csstype": [
-				"../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
-			],
 			"@elizaos/plugin-native-inference": [
 				"../plugin-native-inference/src/index.ts"
 			],

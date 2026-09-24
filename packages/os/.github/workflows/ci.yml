@@ -80,7 +80,7 @@ jobs:
 
       - name: Resolve pinned Eliza source
         id: eliza-source
-        run: node scripts/read-eliza-source-lock.mjs --github-output >> "$GITHUB_OUTPUT"
+        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
 
       - name: Checkout application source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

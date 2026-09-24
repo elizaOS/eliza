@@ -19,7 +19,7 @@
  * current regression (#15790).
  *
  * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>]`.
- * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.mjs`, which prefers the
+ * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.ts`, which prefers the
  * installed `tesseract.js` package so CI and local verification do not depend on
  * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
@@ -55,7 +55,7 @@ import {
   ocrImage,
   ocrImageRegion,
   resolveOcrEngine,
-} from "./mvp-visual-verify/ocr.mjs";
+} from "./mvp-visual-verify/ocr.ts";
 
 /**
  * Slugs whose healthy render legitimately OCRs to little or no text: wallpaper

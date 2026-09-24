@@ -1,5 +1,5 @@
 /**
- * Audio routing for the two-agents-talking-endlessly harness (`voice-duet.mjs`).
+ * Audio routing for the two-agents-talking-endlessly harness (`voice-duet.ts`).
  *
  * Both agents are local processes, so the duet NEVER goes through speakers /
  * mic — agent A's TTS PCM is resampled and pushed straight into agent B's

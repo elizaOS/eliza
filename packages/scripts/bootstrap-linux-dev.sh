@@ -142,4 +142,4 @@ if (( doctor_only == 0 && skip_install == 0 )); then
 fi
 
 cd -- "${REPO_ROOT}"
-exec bun packages/scripts/linux-dev-doctor.mjs --strict
+exec bun packages/scripts/linux-dev-doctor.ts --strict

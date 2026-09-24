@@ -38,13 +38,13 @@ import {
   removeEmittedBuildStamp,
   removePublicBuildStamp,
   shouldSkipBuildStamp,
-} from "./scripts/build-stamp.mjs";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
-import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
+} from "./scripts/build-stamp.ts";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.ts";
+import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
-} from "./scripts/lib/android-cloud-routing-markers.mjs";
+} from "./scripts/lib/android-cloud-routing-markers.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
@@ -874,20 +874,7 @@ function createWorkspacePackageExportAliases(packageDirs: string[]) {
   }
   return aliases;
 }
-function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
-  const preferred = [
-    "src/ui.ts",
-    "src/ui/index.ts",
-    "src/register.ts",
-    "src/index.ts",
-  ];
-  for (const relativePath of preferred) {
-    const candidate = path.join(pkgDir, relativePath);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-function createAppPluginBrowserAliases() {
+function createAppPluginSourceAliases() {
   const pluginsRoot = path.resolve(elizaRoot, "plugins");
   const aliases = [];
   if (!fs.existsSync(pluginsRoot)) return aliases;
@@ -903,32 +890,18 @@ function createAppPluginBrowserAliases() {
     if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
-    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
-    if (browserEntry) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
-        replacement: browserEntry,
-      });
+    const sourceEntry = ["src/index.ts", "src/index.tsx", "index.ts"]
+      .map((relativePath) => path.join(pkgDir, relativePath))
+      .find((candidate) => fs.existsSync(candidate));
+    if (!sourceEntry) {
+      throw new Error(
+        `App plugin ${pkgName} has no root source entry in ${pkgDir}`,
+      );
     }
-    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
-      const candidate = path.join(pkgDir, uiEntry);
-      if (!fs.existsSync(candidate)) continue;
-      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form, which the
-      // package.json `./*` export maps to src/ui/index.ts. Dev builds must stay
-      // on source because dist/ui/index.js is not guaranteed to exist.
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
-        replacement: candidate,
-      });
-      break;
-    }
-    const registerEntry = path.join(pkgDir, "src/register.ts");
-    if (fs.existsSync(registerEntry)) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/register$`),
-        replacement: registerEntry,
-      });
-    }
+    aliases.push({
+      find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+      replacement: sourceEntry,
+    });
   }
   return aliases;
 }
@@ -1382,7 +1355,7 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
   APP_ENV_PREFIX,
 );
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
-/** Set by eliza/packages/app/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
+/** Set by eliza/packages/app/scripts/dev-platform.ts for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 function resolveOptionalLocalVoiceGatewayPort(
   raw: string | undefined,
@@ -1522,7 +1495,7 @@ function resolveManualChunk(id: string): string | undefined {
   // needs one — e.g. @elizaos/core's browser bundle importing the buffer shim,
   // or any dynamic-importing entry module needing the preload helper — then
   // statically imports the whole multi-MB wallet chunk at boot. The eagerness
-  // guard in scripts/verify-chunk-safety.mjs fails the build on that regression.
+  // guard in scripts/verify-chunk-safety.ts fails the build on that regression.
   if (
     normalizedId.includes("vite/preload-helper") ||
     normalizedId.includes("native-stub:") ||
@@ -2035,7 +2008,7 @@ export default defineConfig(({ command, mode }) => ({
       localVoiceGatewayPort,
       here,
     ),
-    // Build variant — set at signing time by desktop-build.mjs and embedded
+    // Build variant — set at signing time by desktop-build.ts and embedded
     // here so the renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
@@ -2576,16 +2549,6 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-blocker/native",
           "plugins/plugin-blocker/src/native.ts",
         ],
-        // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
-        // bundle. Resolve from source so the app build does not require
-        // plugin-calendar to be built first (its dist is absent during the
-        // renderer build in CI). client-calendar is a side-effect import that
-        // augments ElizaClient.prototype with the calendar feed methods.
-        [
-          "@elizaos/plugin-calendar/api/client-calendar",
-          "plugins/plugin-calendar/src/api/client-calendar.ts",
-        ],
-        ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
@@ -2681,7 +2644,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Browser-safe aliases for local app plugin package roots. Keep these
       // before workspace aliases; Vite/Rollup uses the first matching alias, and
       // the renderer must prefer UI facades over package root exports.
-      ...createAppPluginBrowserAliases(),
+      ...createAppPluginSourceAliases(),
       // Dynamic aliases for local app plugin package roots that do not have a
       // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
@@ -3079,7 +3042,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic
         // Rollup, whose chunking API is `output.manualChunks`. Keeping this
         // under `rollupOptions.output` prevents the bn.js/crypto graph from
-        // folding into eager locale chunks; `scripts/verify-chunk-safety.mjs`
+        // folding into eager locale chunks; `scripts/verify-chunk-safety.ts`
         // gates the startup-order invariant (#9150).
         manualChunks: resolveManualChunk,
       },

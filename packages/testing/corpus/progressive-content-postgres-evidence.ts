@@ -525,7 +525,7 @@ export function validateProgressiveContentPostgresEvidence(
   if (
     command.executable !== "bun" ||
     command.cwd !== "." ||
-    argv[0] !== "packages/scripts/produce-content-context-postgres.mjs" ||
+    argv[0] !== "packages/scripts/produce-content-context-postgres.ts" ||
     argv.filter((entry) => entry === `--commit=${expected.commit}`).length !==
       1 ||
     argv.some(

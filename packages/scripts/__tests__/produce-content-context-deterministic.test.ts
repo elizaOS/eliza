@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createDeterministicTargetAdapter,
   traverseTarget,
-} from "../lib/progressive-content-deterministic-helpers.mjs";
+} from "../lib/progressive-content-deterministic-helpers.ts";
 
 function digest(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");

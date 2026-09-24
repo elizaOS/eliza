@@ -7,7 +7,7 @@ import {
   executeSql,
   type RuntimeDb,
   type TransactionalDb,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 export {
   parseJsonRecord,
@@ -17,7 +17,7 @@ export {
   sqlText,
   type TransactionalDb,
   toText,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.adapter.db as RuntimeDb | undefined;

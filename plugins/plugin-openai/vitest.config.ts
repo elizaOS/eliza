@@ -54,7 +54,7 @@ export default defineConfig({
 			// #9310 §E: the guarded live suites (trajectory + cerebras-refusal +
 			// cerebras-config self-skip without their required credentials / the
 			// opt-in gate) are invocable only in the post-merge lane, where
-			// run-all-tests.mjs prints a named skip accounting. The unguarded
+			// run-all-tests.ts prints a named skip accounting. The unguarded
 			// live files stay excluded in every lane.
 			...(process.env.VITEST_LANE === "post-merge"
 				? [

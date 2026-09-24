@@ -3,8 +3,8 @@
  * desktop app, so a compiled app serves local inference with no env wiring and
  * no separate download.
  *
- * The desktop packaging (`packages/app/scripts/desktop-build.mjs` →
- * `stage-desktop-fused-lib.mjs`) stages the fused set into
+ * The desktop packaging (`packages/app/scripts/desktop-build.ts` →
+ * `stage-desktop-fused-lib.ts`) stages the fused set into
  * `<eliza-dist>/local-inference/lib/`, and the Electrobun build copies the
  * whole `dist` tree to `Resources/app/eliza-dist/`. At runtime this module
  * lives at `<eliza-dist>/node_modules/@elizaos/app/dist/runtime/…`, so we

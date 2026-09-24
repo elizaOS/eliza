@@ -61,13 +61,13 @@ except ImportError:  # pragma: no cover - script execution path
 _RUNNER_BY_BACKEND: Final[Mapping[str, str]] = {
     "metal": (
         "on a real Apple-silicon device: build the fork "
-        "(node packages/app/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal), "
+        "(node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal), "
         "then `make -C packages/inference/verify metal_verify metal-dispatch-smoke`, "
         "then run packages/app/src/services/local-inference verify-on-device "
         "against the staged bundle bytes and copy the JSON here."
     ),
     "vulkan": (
-        "build the fork (node packages/app/scripts/build-llama-cpp-mtp.mjs "
+        "build the fork (node packages/app/scripts/build-llama-cpp-mtp.ts "
         "--target <linux|windows>-x64-vulkan) and `make -C packages/inference/verify "
         "vulkan_verify vulkan-dispatch-smoke`, then run verify-on-device against the "
         "staged bundle bytes on a real GPU and copy the JSON here. (On the dev "
@@ -78,7 +78,7 @@ _RUNNER_BY_BACKEND: Final[Mapping[str, str]] = {
     ),
     "cuda": (
         "on an NVIDIA host: build the fork "
-        "(node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda), "
+        "(node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda), "
         "run packages/inference/verify/cuda_runner.sh (cuda_verify.cu), then verify-on-device "
         "against the staged bundle bytes. See packages/inference/reports/porting/2026-05-11/"
         "cuda-bringup-operator-steps.md."
@@ -469,7 +469,7 @@ _DEV_WORKSTATION_PARTIAL: Final[Mapping[str, Mapping[str, Any]]] = {
             "vulkanVerifyMultiblock": "vulkan-verify-multiblock 8/8 PASS, max_diff <= 7.6e-6",
             "vulkanVerifyFused": "vulkan-verify-fused 1920/1920 PASS across 4 cases, max_diff <= 6.3e-7",
             "vulkanDispatchSmoke": "make -C packages/inference/verify vulkan-dispatch-smoke — 7/7 PASS (GGML_OP_ATTN_SCORE_QJL, _TBQ/turbo3, _TBQ/turbo4, _TBQ/turbo3_tcq, _POLAR x2, GGML_OP_FUSED_ATTN_QJL_TBQ)",
-            "forkBuild": "node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan — OK (15 standalone .comp staged incl 4 *_multi + 2 fused_attn_*; CPU-SIMD QJL avxvnni TUs; runtime graph dispatch)",
+            "forkBuild": "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-vulkan — OK (15 standalone .comp staged incl 4 *_multi + 2 fused_attn_*; CPU-SIMD QJL avxvnni TUs; runtime graph dispatch)",
             "evidenceFiles": [
                 "packages/inference/verify/hardware-results/linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json",
             ],

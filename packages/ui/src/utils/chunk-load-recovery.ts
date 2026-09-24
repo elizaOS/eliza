@@ -14,7 +14,7 @@
  * lapses).
  */
 
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "../logger.ts";
 
 const CHUNK_RELOAD_AT_KEY = "eliza:chunk-reload-attempted-at";
 const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;

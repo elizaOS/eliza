@@ -54,7 +54,7 @@ export function appModeOriginForApexHostname(hostname: string): string | null {
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the
  * entry routing is otherwise untestable in `vite dev`. Vite inlines the env
  * read on literal access, and production-mode packages/app builds REFUSE to
- * bake the flag (`packages/app/scripts/forced-host-mode-guard.mjs` throws at
+ * bake the flag (`packages/app/scripts/forced-host-mode-guard.ts` throws at
  * build time), so it can never reach a deployed bundle. Mirrors
  * `VITE_FORCE_APEX_CONSOLE` in `../shell/apex-host.ts`. */
 function readAppModeDevFlag(): boolean {

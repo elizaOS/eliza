@@ -75,10 +75,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
-        run: node packages/scripts/develop-impact-evidence.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json --github-output "$GITHUB_OUTPUT"
+        run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json --github-output "$GITHUB_OUTPUT"
       - name: Select current-run validation
         id: resolve
-        run: node packages/scripts/develop-impact-evidence.mjs resolve --expected .develop-evidence/expected.json --evidence .develop-evidence/current --github-output "$GITHUB_OUTPUT"
+        run: node packages/scripts/develop-impact-evidence.ts resolve --expected .develop-evidence/expected.json --evidence .develop-evidence/current --github-output "$GITHUB_OUTPUT"
   canonical:
     needs: plan
     if: needs.plan.outputs.run_canonical == 'true'
@@ -141,9 +141,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
-        run: node packages/scripts/develop-impact-evidence.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json
+        run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json
       - name: Require one current green row per surface
-        run: node packages/scripts/develop-impact-evidence.mjs record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
+        run: node packages/scripts/develop-impact-evidence.ts record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
       - name: Upload exact manifest evidence
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

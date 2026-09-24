@@ -4,7 +4,7 @@
  * own atomic claims and persistence across concurrent callers and reconstruction.
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createCompletionCheckRegistry,

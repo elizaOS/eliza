@@ -49,9 +49,8 @@ vi.mock("@elizaos/ui", () => {
   >((props, ref) => <textarea ref={ref} {...props} />);
   Textarea.displayName = "Textarea";
 
-  // The drawer imports `../api/client-calendar.js` for its side effect, which
-  // augments `ElizaClient.prototype`. Provide a throwaway class so that import
-  // resolves; we exercise the spied `client` object, not the prototype.
+  // Give the explicit Calendar client installer a prototype target while
+  // this component test exercises the spied transport client.
   class ElizaClient {
     fetch = vi.fn(async () => ({}) as never);
   }

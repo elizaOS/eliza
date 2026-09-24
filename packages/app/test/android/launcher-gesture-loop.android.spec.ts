@@ -20,8 +20,8 @@ import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
-import { adbDevice, resolveAdb } from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-capture.ts";
+import { adbDevice, resolveAdb } from "../../scripts/lib/android-device.ts";
 import { expect, gotoRoute, test, waitForShellReady } from "./android-harness";
 import {
   generateLauncherLoop,

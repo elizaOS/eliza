@@ -183,7 +183,7 @@ const rmPathRecursiveScript = path.join(
 	elizaWorkspaceRoot,
 	"packages",
 	"scripts",
-	"rm-path-recursive.mjs",
+	"rm-path-recursive.ts",
 );
 const coreNodeEntry = fs.existsSync(
 	path.join(workspacePackagesRoot, "core", "dist", "index.js"),
@@ -712,8 +712,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				//
 				// Child-process entitlements (mas-child.entitlements with
 				// com.apple.security.inherit) are applied after this packaging
-				// step by codesign-mas.mjs, which walks the bundle bottom-up.
-				// See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
+				// step by codesign-mas.ts, which walks the bundle bottom-up.
+				// See scripts/codesign-mas.ts. Set ELIZA_MAS_SIGNING_IDENTITY
 				// in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
 				// for productbuild).
 				entitlements:

@@ -58,9 +58,9 @@
     }
   },
   "scripts": {
-    "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs",
+    "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "verify": "bun run lint:default-packs && bun run build:types && bun run test",
-    "pretest": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs",
+    "pretest": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "vitest run --config vitest.src-integration.config.ts && cd \"$(git rev-parse --show-toplevel)\" && vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts",
@@ -71,7 +71,7 @@
     "bench:work-threads": "cd ../.. && bun packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ../../packages/scripts/plugins/plugin-personal-assistant/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

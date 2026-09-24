@@ -117,7 +117,7 @@ export interface AppAndroidConfig {
 	 * system property is non-empty (i.e. the AOSP brand image is
 	 * actually running).
 	 *
-	 * Consumed by `run-mobile-build.mjs:overlayAndroid()`, which
+	 * Consumed by `run-mobile-build.ts:overlayAndroid()`, which
 	 * generates additional Java methods + call sites in the templated
 	 * `MainActivity.java`. Stock Android APK installs see neither the
 	 * `ElizaOS/` marker nor any brand-specific marker.
@@ -208,7 +208,7 @@ export interface AospVariantConfig {
 	 * Optional path to bootanimation source assets (`desc.txt` +
 	 * `partN/` PNG dirs), relative to the host repo root, e.g.
 	 * `"os/android/vendor/acme/bootanimation"`. When unset the
-	 * `build-bootanimation.mjs` script must be passed `--frames`.
+	 * `build-bootanimation.ts` script must be passed `--frames`.
 	 */
 	bootanimationAssetDir?: string;
 	/**

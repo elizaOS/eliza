@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverPluginViewInventory } from "../lib/plugin-view-inventory.mjs";
+import { discoverPluginViewInventory } from "../lib/plugin-view-inventory.ts";
 
 test("inventories scoped operations and rejects ambiguous operation identities", async () => {
   const root = await mkdtemp(join(tmpdir(), "view-operations-"));

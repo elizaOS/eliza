@@ -3,7 +3,7 @@
  *
  * A device-independent, deterministic bundle-size guardrail. It builds every
  * plugin's view bundle via the existing view-bundle vite build
- * (`packages/scripts/build-views.mjs` — the same build the view-bundle import
+ * (`packages/scripts/build-views.ts` — the same build the view-bundle import
  * guard already relies on), measures the gzipped (and raw) size of the emitted
  * `dist/views/*.js|css`, compares each bundle plus the total against the
  * committed ceilings in `budgets.json`, prints a table, and exits:
@@ -49,7 +49,7 @@ const NO_BUILD = process.argv.includes("--no-build");
 
 /** Build every plugin view bundle via the existing build-views orchestrator. */
 function buildViewBundles() {
-  const script = join(REPO_ROOT, "packages", "scripts", "build-views.mjs");
+  const script = join(REPO_ROOT, "packages", "scripts", "build-views.ts");
   const res = spawnSync(process.execPath, [script], {
     stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
     cwd: REPO_ROOT,

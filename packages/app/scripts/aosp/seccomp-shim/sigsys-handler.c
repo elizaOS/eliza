@@ -54,7 +54,7 @@
 // The handler uses `ucontext_t.uc_mcontext.gregs[REG_RAX]` and inline
 // `syscall` asm with x86_64-specific register clobbers; compiling for
 // arm64 would either fail or silently produce a non-functional handler.
-// scripts/aosp/compile-shim.mjs only builds this for x86_64.
+// scripts/aosp/compile-shim.ts only builds this for x86_64.
 //
 // ── Production-landing checklist ──────────────────────────────────────
 //

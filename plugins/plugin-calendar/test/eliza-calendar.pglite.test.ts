@@ -7,9 +7,9 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,

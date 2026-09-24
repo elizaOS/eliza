@@ -24,7 +24,7 @@ BUILD_LOCK_DIR="$BUILD_ROOT/.build-ios.lock"
 VERSION_FILE="$ROOT_DIR/VERSION"
 SQLITE_VEC_REPO="${SQLITE_VEC_REPO:-https://github.com/asg017/sqlite-vec}"
 IOS_DEPLOYMENT_TARGET="${ELIZA_IOS_MIN_VERSION:-16.0}"
-RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.mjs")
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.ts")
 
 cmd="${1:-all}"
 

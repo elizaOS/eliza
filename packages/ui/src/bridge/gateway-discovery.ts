@@ -3,7 +3,7 @@
  * connect/handoff surfaces.
  */
 import { ElizaError } from "@elizaos/core/errors";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "../logger.ts";
 import { invokeDesktopBridgeRequestWithTimeout } from "./electrobun-rpc";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 import { getPlugins, isFeatureAvailable } from "./plugin-bridge";

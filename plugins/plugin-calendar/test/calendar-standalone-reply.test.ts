@@ -70,6 +70,8 @@ describe("standalone calendar reply provenance", () => {
       data: {
         events: [],
         state: "complete",
+        timeMin: "2026-07-27T00:00:00.000Z",
+        timeMax: "2026-08-03T00:00:00.000Z",
         syncedAt: "2026-07-27T12:00:00.000Z",
         replyContext: {
           domain: "calendar",

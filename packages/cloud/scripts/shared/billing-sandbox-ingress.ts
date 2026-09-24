@@ -11,7 +11,10 @@ export function createRuntimeSandboxIngress(config: {
   onProcessed(eventId: string): Promise<void>;
 }) {
   return async (request: Request): Promise<Response> => {
-    if (request.method !== "POST" || new URL(request.url).pathname !== "/stripe/webhook")
+    if (
+      request.method !== "POST" ||
+      new URL(request.url).pathname !== "/stripe/webhook"
+    )
       return new Response(null, { status: 404 });
     const body = await request.text();
     let event: Stripe.Event;
@@ -39,11 +42,16 @@ export function createRuntimeSandboxIngress(config: {
         event_timestamp: new Date(event.created * 1000),
       });
       if (!inserted.created) {
-        const previous = await webhookEventsRepository.findByEventIdPrimary(intake.receiptKey);
+        const previous = await webhookEventsRepository.findByEventIdPrimary(
+          intake.receiptKey,
+        );
         if (previous?.payload_hash !== intake.trigger.event.payloadDigest)
           return new Response("Replay conflict", { status: 409 });
       }
-      await config.reconciler.processPersisted(intake.receiptKey, intake.trigger);
+      await config.reconciler.processPersisted(
+        intake.receiptKey,
+        intake.trigger,
+      );
       await config.onProcessed(event.id);
       return new Response(null, { status: 204 });
     } catch {

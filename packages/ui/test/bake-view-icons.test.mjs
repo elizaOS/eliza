@@ -1,5 +1,5 @@
 /**
- * Contract tests for scripts/bake-view-icons.mjs: the bake must refuse to run
+ * Contract tests for scripts/bake-view-icons.ts: the bake must refuse to run
  * when its source icon directory is missing or empty, because it deletes the
  * committed icon assets before writing the new set. Real harness: each case
  * copies the actual script into a temp package mirror and executes it as a
@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const realScript = join(here, "..", "scripts", "bake-view-icons.mjs");
+const realScript = join(here, "..", "scripts", "bake-view-icons.ts");
 
 const cleanups = [];
 afterEach(() => {
@@ -43,7 +43,7 @@ function makeMirror() {
   const assetDir = join(viewsDir, "view-icons");
   mkdirSync(scriptsDir, { recursive: true });
   mkdirSync(assetDir, { recursive: true });
-  cpSync(realScript, join(scriptsDir, "bake-view-icons.mjs"));
+  cpSync(realScript, join(scriptsDir, "bake-view-icons.ts"));
   // Committed-state stand-ins the script must not destroy on refusal.
   writeFileSync(join(assetDir, "chat.png"), "png-bytes-chat");
   writeFileSync(join(assetDir, "default.png"), "png-bytes-default");
@@ -52,7 +52,7 @@ function makeMirror() {
     "export const VIEW_ICONS = { committed: true };\n",
   );
   return {
-    script: join(scriptsDir, "bake-view-icons.mjs"),
+    script: join(scriptsDir, "bake-view-icons.ts"),
     assetDir,
     generated: join(viewsDir, "view-icons.generated.ts"),
   };
@@ -92,7 +92,7 @@ describe("bake-view-icons fail-closed contract", () => {
     const result = runBake(mirror.script, [missing]);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("does not exist");
-    expect(result.stderr).toContain("gen-view-icons.mjs");
+    expect(result.stderr).toContain("gen-view-icons.ts");
     expect(readdirSync(mirror.assetDir).sort()).toEqual([
       "chat.png",
       "default.png",

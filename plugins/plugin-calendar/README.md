@@ -21,3 +21,9 @@ draft review. This is freshness validation, not an atomic cross-domain transacti
 `metadata.sourceNote` records creation provenance and survives provider metadata
 refreshes. It does not claim later event edits match the note. Deletion, provider
 purge or cache eviction removes it with the event; there is no second store.
+
+Import Calendar APIs from `@elizaos/plugin-calendar`. Hosts call
+`registerCalendarApp()` to expose the signed Calendar page and
+`installCalendarClient()` before using Calendar methods on the shared HTTP
+client. Both operations are idempotent; importing the root performs neither.
+Calendar components install the client methods when used.

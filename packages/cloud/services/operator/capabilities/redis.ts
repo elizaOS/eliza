@@ -9,7 +9,7 @@ let client: Redis | null = null;
 
 function createMockRedis(): Redis {
   // Resolve ioredis-mock from THIS module's location, not the process cwd:
-  // the cloud test lane (packages/scripts/test-cloud-run.mjs) runs bun test
+  // the cloud test lane (packages/scripts/test-cloud-run.ts) runs bun test
   // from a staging directory where a cwd-based require can't see the
   // operator's node_modules. The mock branch is test-only (MOCK_REDIS=1), so
   // the pepr/esbuild CJS bundle never executes it in production.

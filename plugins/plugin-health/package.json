@@ -76,7 +76,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:scenarios": "cd ../.. && bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run plugins/plugin-health/test/scenarios --lane live-only --report-dir reports/scenarios/live-health --run-dir reports/scenarios/live-health --export-native reports/scenarios/live-health/native.jsonl",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

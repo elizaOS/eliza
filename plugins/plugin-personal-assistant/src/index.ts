@@ -23,6 +23,19 @@ export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
 } from "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes";
+export type {
+  DeferredInboxDraft,
+  InboundMessage,
+  InboxAutoReplyConfig,
+  InboxTriageConfig,
+  InboxTriageRules,
+  OwnerAction,
+  TriageClassification,
+  TriageEntry,
+  TriageExample,
+  TriageResult,
+  TriageUrgency,
+} from "@elizaos/plugin-inbox";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
 export {
@@ -50,7 +63,6 @@ export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export * from "./api/client-lifeops.js";
 export * from "./client.js";
-export * from "./inbox/types.js";
 export {
   type ApprovalQueueOptions,
   createApprovalQueue,

@@ -14,8 +14,8 @@ import { client, isApiError } from "@elizaos/ui/api";
 import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
+import { installCalendarClient } from "../api/client-calendar.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;
 
@@ -193,6 +193,7 @@ function startOfMonthGrid(date: Date): Date {
 export function useCalendarWeek(
   opts: UseCalendarWeekOptions = {},
 ): UseCalendarWeekResult {
+  installCalendarClient();
   const authority = useActiveAgentAuthority();
   const authorityRef = useRef(authority);
   authorityRef.current = authority;

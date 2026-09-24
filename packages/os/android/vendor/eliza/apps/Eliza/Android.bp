@@ -17,7 +17,7 @@
 //      the build system to also declare. Disabling dexpreopt skips
 //      that check.
 //
-// Update validate.mjs's APK marker list together with any change to
+// Update validate.ts's APK marker list together with any change to
 // the optional_uses_libs / dex_preopt fields here.
 android_app_import {
     name: "Eliza",

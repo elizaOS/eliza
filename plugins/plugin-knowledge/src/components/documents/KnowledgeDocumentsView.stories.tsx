@@ -5,7 +5,7 @@
 
 import { withMockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
 import type { Meta, StoryObj } from "@storybook/react";
-import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
+import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 /**
  * `KnowledgeDocumentsView` is the Knowledge multimedia hub: a media-format facet control

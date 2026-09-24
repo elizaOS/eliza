@@ -8,6 +8,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { bridge, store } = vi.hoisted(() => ({
@@ -71,7 +72,7 @@ afterEach(() => {
 
 describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
   it("routes the tray item to the managed workspace shell, not the settings window", async () => {
-    render(<DesktopTrayRuntime />);
+    render(createElement(DesktopTrayRuntime));
 
     clickTray("tray-open-desktop-workspace");
 
@@ -86,7 +87,7 @@ describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
     bridge.openDesktopWorkspaceWindow.mockRejectedValueOnce(
       new Error("Desktop workspace bridge returned no managed window"),
     );
-    render(<DesktopTrayRuntime />);
+    render(createElement(DesktopTrayRuntime));
 
     clickTray("tray-open-desktop-workspace");
 
@@ -103,7 +104,7 @@ describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
     bridge.invokeDesktopBridgeRequest.mockRejectedValueOnce(
       new Error("bridge detached"),
     );
-    render(<DesktopTrayRuntime />);
+    render(createElement(DesktopTrayRuntime));
 
     clickTray("tray-hide-window");
 
@@ -117,7 +118,7 @@ describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
   });
 
   it("raises no notice for a successful tray dispatch", async () => {
-    render(<DesktopTrayRuntime />);
+    render(createElement(DesktopTrayRuntime));
 
     clickTray("tray-hide-window");
 

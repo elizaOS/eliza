@@ -62,7 +62,7 @@ jobs:
             echo '{"failure":"untrusted_ref"}'
             exit 1
           fi
-          node packages/cloud/scripts/cloudflare-token-identity-preflight.mjs
+          node packages/cloud/scripts/cloudflare-token-identity-preflight.ts
 
   certify-staging:
     if: ${{ !inputs.token_identity_preflight }}
@@ -157,7 +157,7 @@ jobs:
           if [[ "$RUN_SUSPENDED" == "true" ]]; then
             args+=(--suspended)
           fi
-          node packages/cloud/scripts/cloud-latency-certification.mjs "${args[@]}"
+          node packages/cloud/scripts/cloud-latency-certification.ts "${args[@]}"
 
       - name: Remove private Worker telemetry material
         if: ${{ always() }}

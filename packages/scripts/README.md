@@ -5,12 +5,17 @@ security, evidence, and development tools. It has no package manifest; root
 `package.json` commands invoke its entrypoints. Package-specific scripts remain
 in `packages/*/scripts/`; GitHub helpers live in `packages/scripts/github/`.
 
+JavaScript tooling sources use `.ts` and explicit `.ts` imports. Keep required
+platform shell and Python tools in these same directories. Published app
+artifacts emit runnable `.mjs` files through `emit-script-artifacts.ts`; do not
+check generated JavaScript or declaration siblings into script directories.
+
 Run commands from the repository root:
 
 ```bash
 bun run test:scripts
-node packages/scripts/run-script-tests.mjs --inventory
-node packages/scripts/audit-scripts.mjs
+node packages/scripts/run-script-tests.ts --inventory
+node packages/scripts/audit-scripts.ts
 bun run verify
 ```
 

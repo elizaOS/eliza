@@ -5,10 +5,10 @@
  */
 
 import { ElizaError } from "@elizaos/core/errors";
-import { logger } from "@elizaos/ui/logger";
 import * as React from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   useDocumentVisibility,

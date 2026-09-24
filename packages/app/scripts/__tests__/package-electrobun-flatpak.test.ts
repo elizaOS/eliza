@@ -32,7 +32,7 @@ import {
   resolveFlatpakRefs,
   withFlatpakStagingCleanup,
   writeMetadata,
-} from "../package-electrobun-flatpak.mjs";
+} from "../package-electrobun-flatpak.ts";
 
 const tempDirs: string[] = [];
 

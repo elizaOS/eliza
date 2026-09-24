@@ -26,7 +26,7 @@ vi.mock("../../state", () => ({
     selector(appState),
 }));
 vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
-vi.mock("@elizaos/ui/logger", () => ({
+vi.mock("../../logger.ts", () => ({
   logger: { error: mocks.loggerError, warn: vi.fn() },
 }));
 vi.mock("../../bridge/native-notifications", () => ({

@@ -514,7 +514,7 @@ private final class CachedVoiceContext {
 /// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
 /// types so the caller can leave the params struct at default. Fork-specific
 /// TBQ / QJL / Q4_POLAR codes mirror the patched ggml_type enum values
-/// introduced by `packages/app/scripts/build-llama-cpp-mtp.mjs`;
+/// introduced by `packages/app/scripts/build-llama-cpp-mtp.ts`;
 /// when the linked slice doesn't have those kernels compiled in, llama.cpp
 /// reports the error at context-init time and we surface it through
 /// `loadModel`'s failure path.
@@ -535,7 +535,7 @@ private func ggmlTypeFromString(_ raw: String?) -> Int32? {
     case "q5_k": return 13
     case "q6_k": return 14
     case "q8_k": return 15
-    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-mtp.mjs.
+    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-mtp.ts.
     case "tbq3", "q4_tq3": return 64
     case "tbq4", "q4_tq4": return 65
     case "qjl4": return 66

@@ -74,6 +74,14 @@ describe("workspace package resolution", () => {
       "plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts",
     ],
     [
+      "@elizaos/plugin-native-phone",
+      "plugins/plugin-native-phone/src/index.ts",
+    ],
+    [
+      "@elizaos/plugin-native-phone/register",
+      "plugins/plugin-native-phone/src/register.ts",
+    ],
+    [
       "@elizaos/plugin-assistant/text/template-rendering",
       "plugins/plugin-assistant/src/text/template-rendering.ts",
     ],

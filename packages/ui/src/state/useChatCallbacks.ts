@@ -6,7 +6,6 @@
  */
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
-import { logger } from "@elizaos/ui/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,
@@ -20,6 +19,7 @@ import {
   client,
   type ImageAttachment,
 } from "../api";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
 import { isTtsDebugEnabled } from "../utils/tts-debug";

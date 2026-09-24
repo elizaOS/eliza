@@ -16,13 +16,13 @@ import {
   resolveRequestedAuditProjects,
   UI_SMOKE_AUDIT_PROJECTS_ENV,
   writeAuditProjectPropagation,
-} from "./scripts/lib/playwright-audit-projects.mjs";
-import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
-import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
+} from "./scripts/lib/playwright-audit-projects.ts";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.ts";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.ts";
 import {
   parseUiSmokeShard,
   UI_SMOKE_SHARD_ENV,
-} from "./scripts/lib/playwright-shard.mjs";
+} from "./scripts/lib/playwright-shard.ts";
 import {
   ASSERTION_GRADE_DASHBOARD_SPECS,
   DASHBOARD_E2E_DEVICE_MATRIX,
@@ -382,7 +382,7 @@ export default defineConfig({
       : []),
   ],
   webServer: {
-    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.mjs"))} --exit-with-parent ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.ts"))} --exit-with-parent ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
     gracefulShutdown: { signal: "SIGTERM", timeout: 15_000 },
     url: `http://127.0.0.1:${uiSmokePort}`,

@@ -22,7 +22,7 @@ import XCTest
 /// as a covered surface here.
 ///
 /// Runs in the AppUITests target / lane as the boot + gesture-semantics suites:
-///   node scripts/ios-device-capture.mjs --platform sim   (packages/app)
+///   node scripts/ios-device-capture.ts --platform sim   (packages/app)
 final class LauncherGestureLoopUITests: XCTestCase {
 
     private static let pagePrefix = "home-launcher-page:"

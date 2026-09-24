@@ -6,8 +6,8 @@
  * from mutating surfaces adopted by a newer renderer.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { getNativePlugin } from "../bridge/native-plugins";
+import { logger } from "../logger.ts";
 import type {
   NativePageRead,
   NativeSurfaceCreateRequest,

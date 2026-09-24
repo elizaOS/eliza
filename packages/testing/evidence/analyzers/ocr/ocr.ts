@@ -58,7 +58,7 @@ export function makeOcrAnalyzer(
   };
 }
 
-/** CPU-tier tesseract OCR (ported from visual-qa.mjs). */
+/** CPU-tier tesseract OCR (ported from visual-qa.ts). */
 export const ocrTesseractAnalyzer: Analyzer = makeOcrAnalyzer(
   new TesseractOcrEngine(),
   "cpu",

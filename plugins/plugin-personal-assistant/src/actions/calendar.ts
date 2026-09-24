@@ -34,13 +34,18 @@ import {
   stableStringify,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarProvider,
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarProvider,
 } from "@elizaos/core/contracts/calendar";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   type CalendarMutationApprovalResult,
   type CalendarMutationGatewayDep,
@@ -51,13 +56,6 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import {
-  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
-} from "@elizaos/plugin-calendar/calendar-action-schema";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

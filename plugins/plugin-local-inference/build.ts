@@ -11,7 +11,7 @@ import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
-	new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url),
+	new URL("../../packages/scripts/rm-path-recursive.ts", import.meta.url),
 );
 
 export function rmRecursive(target: string) {

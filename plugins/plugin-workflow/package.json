@@ -45,10 +45,10 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 --noCheck -p tsconfig.json",
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "node ../../packages/scripts/run-with-flake-retry.mjs 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.mjs 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.mjs",
+    "test": "node ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.ts 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
     "test:unit": "bun test --isolate __tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

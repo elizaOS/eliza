@@ -42,8 +42,8 @@ export default {
       "../android/hardware-targets.json": "android/hardware-targets.json",
       "../android/installer/install-elizaos-android.sh":
         "android-installer/install-elizaos-android.sh",
-      "../scripts/android-installer/validate-release-manifest.mjs":
-        "android-installer/scripts/validate-release-manifest.mjs",
+      "../scripts/android-installer/validate-release-manifest.ts":
+        "android-installer/scripts/validate-release-manifest.ts",
       "../scripts/android-installer/validate-post-flash.sh":
         "android-installer/scripts/validate-post-flash.sh",
     },

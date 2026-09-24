@@ -101,8 +101,8 @@ jobs:
             exit 1
           fi
           git ls-files --error-unmatch "$MANIFEST_PATH" >/dev/null
-          node scripts/validate-release-manifest.mjs --manifest "$MANIFEST_PATH"
-          node scripts/assert-canonical-linux-release.mjs --manifest "$MANIFEST_PATH"
+          node scripts/validate-release-manifest.ts --manifest "$MANIFEST_PATH"
+          node scripts/assert-canonical-linux-release.ts --manifest "$MANIFEST_PATH"
           if [ "$PUBLISH" = "true" ] && [ "$SIGN" != "true" ]; then
             echo "::error::publish=true requires sign=true"
             exit 1
@@ -277,7 +277,7 @@ jobs:
           if [ "$SIGN" = true ]; then
             signature_args+=(--require-distribution-signatures)
           fi
-          node scripts/assemble-release-bundle.mjs \
+          node scripts/assemble-release-bundle.ts \
             --manifest "$MANIFEST_PATH" \
             --artifact-root _downloads \
             --output _release \
@@ -288,15 +288,15 @@ jobs:
             --source-sha "${{ needs.prepare.outputs.source-sha }}" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT"
-          node scripts/validate-release-manifest.mjs \
+          node scripts/validate-release-manifest.ts \
             --manifest "$assembled_manifest" \
             --require-publishable-checksums \
             "${signature_args[@]}"
-          node scripts/generate-release-checksums.mjs \
+          node scripts/generate-release-checksums.ts \
             --manifest "$assembled_manifest" \
             --artifact-root _release \
             --output _release/SHA256SUMS
-          node scripts/verify-release-checksums.mjs \
+          node scripts/verify-release-checksums.ts \
             --manifest "$assembled_manifest" \
             --artifact-root _release \
             --checksums _release/SHA256SUMS
@@ -369,11 +369,11 @@ jobs:
           metadata_manifest="_release-files/elizaos-os-${RELEASE_TAG}-manifest.json"
           test -s "$metadata_manifest"
           test -s _release-files/SHA256SUMS
-          node scripts/verify-release-checksums.mjs \
+          node scripts/verify-release-checksums.ts \
             --manifest "$metadata_manifest" \
             --artifact-root _release-files \
             --checksums _release-files/SHA256SUMS
-          node scripts/validate-release-manifest.mjs \
+          node scripts/validate-release-manifest.ts \
             --manifest "$metadata_manifest" \
             --require-publishable-checksums \
             --require-distribution-signatures

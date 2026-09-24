@@ -28,10 +28,10 @@
 
 import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/core/contracts/personal-assistant";
 import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
+import type { InboundMessage } from "@elizaos/plugin-inbox";
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { InboundMessage } from "../src/inbox/types.js";
 import {
   errorToDispatchResult,
   isConnectorSendPayload,

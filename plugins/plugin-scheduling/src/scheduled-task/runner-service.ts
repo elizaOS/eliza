@@ -30,12 +30,12 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/core/runtime-env";
-import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql";
 import {
   createCodingAgentScheduleDispatcher,
   PR_SHEPHERD_DISPATCH_CHANNEL,
 } from "../coding-agent-schedules.js";
-import { type DispatchResult } from "../dispatch-types.js";
+import type { DispatchResult } from "../dispatch-types.js";
 import {
   getScheduledTaskChannelDispatcher,
   listScheduledTaskChannelDispatcherKeys,

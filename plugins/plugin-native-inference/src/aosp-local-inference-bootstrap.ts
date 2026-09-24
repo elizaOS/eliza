@@ -1072,13 +1072,13 @@ export async function registerAospLlamaLoader(
 /**
  * Resolve the bundled chat / embedding GGUF paths shipped under
  * `$ELIZA_STATE_DIR/local-inference/models/`. Both files are staged by
- * the AOSP build (`scripts/elizaos/stage-default-models.mjs`) and
+ * the AOSP build (`scripts/elizaos/stage-default-models.ts`) and
  * extracted by `ElizaAgentService.extractAssetsIfNeeded` before bun
  * starts. We pick the role from the sibling `manifest.json` so model bundle
  * swaps do not need code changes.
  */
 interface BundledModelManifestEntry {
-  // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
+  // The build-time staging script (`scripts/elizaos/stage-default-models.ts`)
   // writes `ggufFile` (the on-disk filename relative to the models dir).
   // Older manifests used `filename`; we read both for forward-compat.
   ggufFile?: string;
@@ -1283,7 +1283,7 @@ function readBundledModelManifest(modelsDir: string): {
 // the helper in plugin-native-inference/mobile-device-bridge-bootstrap.ts:
 // when no GGUF is staged on the device, fetch a known-good default from
 // HuggingFace into the agent state dir so first-chat-works without
-// requiring a manual `stage-default-models.mjs + APK rebuild` round.
+// requiring a manual `stage-default-models.ts + APK rebuild` round.
 //
 // `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1` opts out for offline / kiosk
 // builds — callers see the original "stage one via stage-default-models"

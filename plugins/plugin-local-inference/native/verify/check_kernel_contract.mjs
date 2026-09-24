@@ -16,7 +16,7 @@ const repoRoot = path.resolve(inferenceRoot, "../../..");
 const contractPath = path.join(here, "kernel-contract.json");
 const buildScriptPath = path.join(
   repoRoot,
-  "packages/app/scripts/build-llama-cpp-mtp.mjs",
+  "packages/app/scripts/build-llama-cpp-mtp.ts",
 );
 const manifestSchemaPath = path.join(
   repoRoot,

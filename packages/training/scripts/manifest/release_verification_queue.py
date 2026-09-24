@@ -165,28 +165,28 @@ def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str,
     if backend == "metal":
         return _guarded(
             eval_python,
-            "node packages/app/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}",
         )
     if backend == "vulkan":
         return _guarded(
             eval_python,
-            "node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}",
         )
     if backend == "cuda":
         return _guarded(
             eval_python,
-            "node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}",
         )
     if backend == "rocm":
         return _guarded(
             eval_python,
-            "node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-rocm && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}",
         )
@@ -197,7 +197,7 @@ def _imagegen_command(accelerator: str, eval_python: str) -> str:
     return _guarded(
         eval_python,
         f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
-        "node packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.mjs --json "
+        "node packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts --json "
         f"| python3 -c \"import json,sys; p=json.load(sys.stdin); "
         f"assert p.get('available') is True, p; "
         f"assert p.get('requiredAccelerator') == '{accelerator}', p; "

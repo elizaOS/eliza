@@ -194,7 +194,7 @@ export function createProgressiveContentPostgresEvidenceFixture(input: {
     command: {
       executable: "bun",
       argv: [
-        "packages/scripts/produce-content-context-postgres.mjs",
+        "packages/scripts/produce-content-context-postgres.ts",
         `--commit=${input.commit}`,
       ],
       cwd: ".",

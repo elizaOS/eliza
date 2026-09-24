@@ -3,7 +3,7 @@ import {
   getElizaApiBase,
   getElizaApiToken,
 } from "@elizaos/core/utils/eliza-globals";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "../logger.ts";
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 /** Shortcut report POST — independent hop, own 15s deadline. */
 const SHORTCUT_FETCH_TIMEOUT_MS = 15000;

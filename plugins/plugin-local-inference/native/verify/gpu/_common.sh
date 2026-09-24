@@ -158,7 +158,7 @@ if [[ "${ELIZA_GPU_BENCH:-0}" == "1" ]]; then
     [[ -n "$SMOKE_MODEL" && -f "$SMOKE_MODEL" ]] || abort 5 "ELIZA_GPU_BENCH=1 set but ELIZA_MTP_SMOKE_MODEL is missing/not a file"
     LLAMA_DIR="${ELIZA_MTP_LLAMA_DIR:-$HOME/.cache/eliza-mtp/eliza-llama-cpp}"
     LLAMA_BENCH="$LLAMA_DIR/build-cuda/bin/llama-bench"
-    [[ -x "$LLAMA_BENCH" ]] || abort 5 "llama-bench missing at $LLAMA_BENCH (build with: bun run packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda)"
+    [[ -x "$LLAMA_BENCH" ]] || abort 5 "llama-bench missing at $LLAMA_BENCH (build with: bun run packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda)"
     echo "[verify-${PROFILE_ID}] llama-bench: $SMOKE_MODEL"
     BENCH_OUT="$("$LLAMA_BENCH" -m "$SMOKE_MODEL" -ngl 999 -fa 1 -p 512 -n 128 2>&1 || true)"
     echo "$BENCH_OUT"

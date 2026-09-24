@@ -1,8 +1,9 @@
 // Persists dashboard records for cloud services through the shared DB boundary.
+
+import { memoryTable } from "@elizaos/plugin-sql";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../helpers";
 import { containers } from "../schemas/containers";
-import { memoryTable } from "../schemas/eliza";
 import { elizaRoomCharactersTable } from "../schemas/eliza-room-characters";
 import { type UserCharacter, userCharacters } from "../schemas/user-characters";
 import { users } from "../schemas/users";

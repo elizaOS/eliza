@@ -7,16 +7,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "../lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.ts";
 import { listPackages } from "../lib/workspaces.ts";
 import {
   assertPublishableWorkspaceGraph,
   findUnpublishableWorkspaceDependencies,
   formatPublishGraphViolation,
-} from "../verify-publish-graph.mjs";
+} from "../verify-publish-graph.ts";
 
 const CHECK = fileURLToPath(
-  new URL("../verify-publish-graph.mjs", import.meta.url),
+  new URL("../verify-publish-graph.ts", import.meta.url),
 );
 
 function pkg(

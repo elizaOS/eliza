@@ -53,7 +53,7 @@ import {
   THEME_FONT_CSS_VARS,
 } from "@elizaos/core/contracts/theme";
 import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "./logger.ts";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 
 // Re-export the shell-privileged channel so existing importers of the broker

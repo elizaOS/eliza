@@ -23,7 +23,7 @@ import { EMAIL_TEMPLATES } from "./email-templates.generated";
 function loadTemplate(filename: string): string {
   // Templates are bundled as strings (email-templates.generated.ts) — the
   // Workers runtime has no filesystem and no import.meta.url, so reading them
-  // from disk threw. Regenerate via scripts/generate-email-templates.mjs.
+  // from disk threw. Regenerate via scripts/generate-email-templates.ts.
   const template = EMAIL_TEMPLATES[filename];
   if (template === undefined) {
     throw new Error(`Unknown email template: ${filename}`);

@@ -37,7 +37,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  * dependencies — it searches the host EXE's dir, the system dirs, and PATH. So
  * `dlopen` fails with "error code 126" (a dependent DLL could not be found)
  * even though the siblings are right there. Linux/macOS don't need this:
- * `stage-desktop-fused-lib.mjs` bakes a relative rpath (`$ORIGIN` /
+ * `stage-desktop-fused-lib.ts` bakes a relative rpath (`$ORIGIN` /
  * `@loader_path`) at link time so the loader resolves siblings from the lib's
  * own dir. Idempotent; a no-op off win32 and when `dir` is already on PATH.
  */

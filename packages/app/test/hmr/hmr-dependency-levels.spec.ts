@@ -104,7 +104,7 @@ const LEVELS = [
   },
   {
     name: "plugin view notes",
-    file: "plugins/plugin-notes/src/views/NotesView.tsx",
+    file: "plugins/plugin-notes/src/components/NotesView.tsx",
   },
   {
     name: "plugin view task coordinator",

@@ -74,7 +74,7 @@ if ! has_electrobun_workspace_root "$REPO_ROOT"; then
   echo "ERROR: ELIZA_ELECTROBUN_REPO_ROOT is not an Electrobun workspace root: $REPO_ROOT" >&2
   exit 1
 fi
-RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.ts"
 
 remove_path_recursive() {
   node "$RM_PATH_RECURSIVE" "$@"

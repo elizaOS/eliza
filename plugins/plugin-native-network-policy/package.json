@@ -25,8 +25,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-network-policy -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-network-policy -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",

@@ -71,7 +71,7 @@
     "musl": {
       "version": "1.2.5",
       "alpine_branch": "v3.21",
-      "alpine_branch_source": "stage-android-agent.mjs:ALPINE_BRANCH",
+      "alpine_branch_source": "stage-android-agent.ts:ALPINE_BRANCH",
       "rationale": "Alpine v3.21 ships musl 1.2.5 across all arches including riscv64. Matching musl versions between the Bun binary and the Android runtime sysroot is mandatory \u2014 the ld-musl-riscv64.so.1 we pack with the APK comes from this same Alpine branch."
     }
   },
@@ -115,7 +115,7 @@
     "filename": "bun-linux-riscv64-musl.zip",
     "internal_layout": "bun-linux-riscv64-musl/bun",
     "matches_oven_release_naming": true,
-    "matches_rationale": "stage-android-agent.mjs:ensureBunBinary unzips and expects the inner directory to be `bun-linux-${bunArch}-musl`. Keeping the layout identical to upstream's other release zips lets the existing fetch path work unmodified once ELIZA_BUN_RISCV64_URL is set."
+    "matches_rationale": "stage-android-agent.ts:ensureBunBinary unzips and expects the inner directory to be `bun-linux-${bunArch}-musl`. Keeping the layout identical to upstream's other release zips lets the existing fetch path work unmodified once ELIZA_BUN_RISCV64_URL is set."
   },
   "patch_series": {
     "_rationale": "SHA256 of every patch + recipe under bun-patches/ and webkit-patches/. validate.sh checks these match before invoking the build. Bump alongside the patch content.",

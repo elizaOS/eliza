@@ -1,4 +1,4 @@
-/** Generated public route contracts. Regenerate with scripts/generate-public-routes.mjs. */
+/** Generated public route contracts. Regenerate with scripts/generate-public-routes.ts. */
 import type { CloudResponse } from "../types.js";
 import { PublicRouteTransport } from "./transport.js";
 import type { PublicRouteCallOptions } from "./types.generated.js";

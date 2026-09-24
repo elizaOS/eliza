@@ -15,7 +15,7 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "@elizaos/plugin-sql/database-utils/sql-compat";
+} from "@elizaos/plugin-sql";
 import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,

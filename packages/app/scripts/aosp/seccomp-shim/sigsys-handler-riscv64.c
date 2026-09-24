@@ -72,7 +72,7 @@
 // ── Production-landing checklist ─────────────────────────────────────
 //
 //   1. zig cross-compile produces non-empty libsigsys-handler.so for
-//      riscv64 (see compile-shim.mjs).
+//      riscv64 (see compile-shim.ts).
 //   2. After APK build: `unzip -l <apk> | grep libsigsys-handler` lists
 //      the .so under jniLibs/riscv64/ (legacy-packaging on).
 //   3. On a riscv64 cuttlefish or device boot: `adb logcat -s ElizaAgent`

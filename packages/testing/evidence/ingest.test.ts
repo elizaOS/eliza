@@ -1,7 +1,7 @@
 /**
  * Silo-ingestor tests against fixture trees replicating each silo's real
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
- * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
+ * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.ts, Playwright
  * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
  * scenario-runner reports). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
@@ -53,7 +53,7 @@ function buildFixtureRepo(): string {
     "test-results/android-native-plugins/run/emulator/report.json",
     "{}",
   );
-  // packages/scripts/e2e-recordings/run-all.mjs output: per-package Playwright results.
+  // packages/scripts/e2e-recordings/run-all.ts output: per-package Playwright results.
   write(
     repo,
     "e2e-recordings/app-ui/test-results/chat-flow/video.webm",

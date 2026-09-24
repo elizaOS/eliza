@@ -16,6 +16,7 @@
  * hub. Upload compresses large images before sending.
  */
 
+import { getCached, setCached } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   client,
@@ -35,7 +36,6 @@ import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
 import { ConfirmDeleteControl } from "@elizaos/ui/components/shared/confirm-delete-control";
 import { SectionTabStrip } from "@elizaos/ui/components/shared/SectionNav";
 import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import { getCached, setCached } from "@elizaos/ui/hooks/resource-cache";
 import {
   isCapabilityWarmupAbort,
   useAbortableCapabilityWarmup,
@@ -72,8 +72,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { DocumentViewer } from "./documents-detail";
-import { getDocumentSummary } from "./documents-detail.helpers";
+import { getDocumentSummary } from "./documents-detail.helpers.js";
+import { DocumentViewer } from "./documents-detail.js";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   DEFAULT_DOCUMENT_UPLOAD_SCOPE,
@@ -86,7 +86,7 @@ import {
   MAX_BULK_REQUEST_DOCUMENTS,
   MAX_UPLOAD_REQUEST_BYTES,
   shouldReadDocumentFileAsText,
-} from "./documents-upload.helpers";
+} from "./documents-upload.helpers.js";
 import {
   documentMatchesFacet,
   documentMediaFormat,
@@ -95,9 +95,9 @@ import {
   knowledgeFacetCounts,
   knowledgeFacetIcon,
   knowledgeFacetLabel,
-} from "./knowledge-media-format";
+} from "./knowledge-media-format.js";
 
-export type { DocumentUploadFile } from "./documents-upload.helpers";
+export type { DocumentUploadFile } from "./documents-upload.helpers.js";
 
 type DocumentScopeFilter = "all" | DocumentScope;
 

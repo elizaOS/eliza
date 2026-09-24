@@ -87,7 +87,7 @@ jobs:
           test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
           test "$EXPECTED_TAG" = "v${{ inputs.version }}"
           test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
-          node packages/scripts/store-release-plan.mjs \
+          node packages/scripts/store-release-plan.ts \
             --version "${{ inputs.version }}" \
             --channel "${{ inputs.channel }}" \
             --source-sha "$EXPECTED_SHA" \
@@ -214,7 +214,7 @@ jobs:
           test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
           test "$EXPECTED_TAG" = "v${{ inputs.version }}"
           test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
-          node packages/scripts/store-release-plan.mjs \
+          node packages/scripts/store-release-plan.ts \
             --version "${{ inputs.version }}" \
             --channel "${{ inputs.channel }}" \
             --source-sha "$EXPECTED_SHA" \
@@ -253,7 +253,7 @@ jobs:
           bash packages/app/scripts/prepare-ios-cocoapods.sh
           bun run --cwd packages/app cap:sync:ios
           bun run --cwd packages/agent build:ios-bun
-          node packages/app/scripts/run-mobile-build.mjs ios-overlay
+          node packages/app/scripts/run-mobile-build.ts ios-overlay
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
           ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}

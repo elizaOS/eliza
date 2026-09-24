@@ -32,18 +32,25 @@ import {
   AgentRuntime,
   type AgentRuntime as AgentRuntimeType,
   ChannelType,
+  createCharacter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { createTestDatabase } from "@elizaos/plugin-sql/__tests__/test-helpers";
+import {
+  DatabaseMigrationService,
+  type DrizzleDatabase,
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+  plugin as sqlPlugin,
+} from "@elizaos/plugin-sql";
+import { createTestPgliteDataDir } from "@elizaos/testing";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mockCharacter } from "../../../../plugins/plugin-sql/src/__tests__/schema-data/index.ts";
-import { DatabaseMigrationService } from "../../../../plugins/plugin-sql/src/migration-service.ts";
-import { PgliteDatabaseAdapter } from "../../../../plugins/plugin-sql/src/pglite/adapter.ts";
-import { PGliteClientManager } from "../../../../plugins/plugin-sql/src/pglite/manager.ts";
-import type { DrizzleDatabase } from "../../../../plugins/plugin-sql/src/types.ts";
+
+const mockCharacter = createCharacter({
+  name: "Conversation Restore Test Agent",
+  bio: [],
+});
 
 const AGENT_ID = "00000000-0000-0000-0000-000000136890" as UUID;
 
@@ -209,9 +216,14 @@ async function seedConversation(
 }
 
 beforeAll(async () => {
-  const db = await createTestDatabase(AGENT_ID, [sqlPlugin]);
+  const db = await openPersistentRuntime(
+    AGENT_ID,
+    createTestPgliteDataDir("conversation-restore-"),
+    [],
+    true,
+  );
   runtime = db.runtime;
-  cleanup = db.cleanup;
+  cleanup = db.close;
   worldId = stringToUuid(`${runtime.character.name ?? "Eliza"}-web-chat-world`);
   await runtime.createWorld({
     id: worldId,
@@ -410,9 +422,11 @@ describe("web-chat conversation relaunch persistence — real DB (#13689)", () =
 
   it("restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)", async () => {
     // A pristine runtime/world with no rooms at all.
-    const empty = await createTestDatabase(
+    const empty = await openPersistentRuntime(
       "00000000-0000-0000-0000-000000136891" as UUID,
-      [sqlPlugin],
+      createTestPgliteDataDir("conversation-restore-empty-"),
+      [],
+      true,
     );
     try {
       const conversations = new Map();
@@ -423,7 +437,7 @@ describe("web-chat conversation relaunch persistence — real DB (#13689)", () =
       expect(restored).toBe(0);
       expect(conversations.size).toBe(0);
     } finally {
-      await empty.cleanup();
+      await empty.close();
     }
   });
 

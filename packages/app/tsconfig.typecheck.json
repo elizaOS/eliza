@@ -31,7 +31,6 @@
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
@@ -52,9 +51,6 @@
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
-      "csstype": [
-        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
-      ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/dist/index.d.ts"
       ],

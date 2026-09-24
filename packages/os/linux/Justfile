@@ -26,9 +26,9 @@ elizaos-app:
             echo "ELIZAOS_BUILD_APP=1 requires Linux x86_64." >&2
             exit 66
         }
-        test -f "${eliza_root}/packages/app-core/scripts/desktop-build.mjs"
+        test -f "${eliza_root}/packages/app-core/scripts/desktop-build.ts"
         (cd "${eliza_root}" && bun install --frozen-lockfile)
-        (cd "${eliza_root}" && BUILD_ENV=dev bun packages/app-core/scripts/desktop-build.mjs build --env dev)
+        (cd "${eliza_root}" && BUILD_ENV=dev bun packages/app-core/scripts/desktop-build.ts build --env dev)
     fi
     test -x "${app_out}/bin/launcher"
     test -d "${app_out}/Resources/app/eliza-dist/node_modules"
@@ -66,4 +66,4 @@ test:
     make -C elizaos lint
 
 clean:
-    node ../../scripts/rm-path-recursive.mjs elizaos/out elizaos/cache elizaos/chroot elizaos/binary
+    node ../../scripts/rm-path-recursive.ts elizaos/out elizaos/cache elizaos/chroot elizaos/binary

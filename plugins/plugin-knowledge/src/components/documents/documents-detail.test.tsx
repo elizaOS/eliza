@@ -50,7 +50,7 @@ vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
   confirmDesktopAction: (...args: unknown[]) => confirmDesktopAction(...args),
 }));
 
-import { DocumentViewer } from "./documents-detail";
+import { DocumentViewer } from "./documents-detail.js";
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;

@@ -32,12 +32,8 @@
         "../../plugins/plugin-workflow/src/index.ts"
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
-      ],
-      "@capacitor/app": [
-        "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
@@ -60,7 +56,6 @@
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
       "@elizaos/ui/*": ["./src/*"],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
