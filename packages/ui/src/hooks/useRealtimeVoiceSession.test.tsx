@@ -305,8 +305,9 @@ describe("useRealtimeVoiceSession", () => {
       sock.emitControl({ t: "llm_first_text", traceId: "T1" });
       await flushAsync();
     });
+    // The acknowledgment remains visible while the answer is generated.
     expect(result.current.status).toBe("thinking");
-    expect(result.current.progressText).toBeUndefined();
+    expect(result.current.progressText).toBe("Checking your note.");
 
     await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });
@@ -331,6 +332,7 @@ describe("useRealtimeVoiceSession", () => {
     });
     await waitFor(() => expect(result.current.status).toBe("listening"));
     expect(result.current.agentSpeaking).toBe(false);
+    expect(result.current.progressText).toBeUndefined();
 
     // Clean stop → bye + teardown.
     await act(async () => {

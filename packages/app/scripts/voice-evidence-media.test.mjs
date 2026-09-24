@@ -1042,6 +1042,8 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     expect(new Set(durationProjectionHashes).size).toBe(1);
     expectManifestIntegrity(fixture.outDir, result);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
+    // Rejection cases need a fresh destination to reach provenance validation.
+    fixture.outDir = path.join(root, "desktop-invalid-report");
     const validReport = fs.readFileSync(report, "utf8");
     const abbreviatedRevision = JSON.parse(validReport);
     abbreviatedRevision.packagedRevision = currentHead().slice(0, 10);
@@ -1066,6 +1068,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     writeJson(report, punctuationEquivalentDevice);
     fixture.outDir = path.join(root, "desktop-final-punctuation");
     expect(() => finalizeDesktopVoiceEvidence(fixture)).not.toThrow();
+    fixture.outDir = path.join(root, "desktop-invalid-device");
     fs.writeFileSync(report, validReport);
     const genericCollisionDevice = JSON.parse(validReport);
     genericCollisionDevice.report.stages.find(

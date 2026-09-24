@@ -72,5 +72,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }
