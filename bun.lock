@@ -1058,7 +1058,6 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
-        "@elizaos/testing": "workspace:*",
         "@playwright/test": "^1.63.0",
         "@types/bun": "1.3.14",
         "@types/markdown-it": "^14.1.2",

@@ -230,6 +230,13 @@ console.log('Packed kernel host JSON loading, parseCharacter, persisted settings
 		path.join(consumer, "consumer.ts"),
 		`
 import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID } from '@elizaos/core';
+import type { CatalogModel, RuntimeClass } from '@elizaos/core/contracts/local-inference';
+const runtimeClass: RuntimeClass = 'fused-eliza1';
+const catalogRuntimeClass: CatalogModel['runtimeClass'] = runtimeClass;
+// @ts-expect-error The wire discriminator must remain typed without a native plugin installation.
+const invalidRuntimeClass: CatalogModel['runtimeClass'] = 'missing-runtime';
+void catalogRuntimeClass;
+void invalidRuntimeClass;
 // @ts-expect-error HTTP contracts are owned by the optional host package.
 import type { Route } from '@elizaos/core';
 // @ts-expect-error Host composition facade types are retired in v2.

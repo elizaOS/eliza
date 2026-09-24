@@ -1584,8 +1584,7 @@
 		"vitest": "^5.0.1",
 		"tsup": "^8.5.1",
 		"dotenv": "^17.2.3",
-		"@types/markdown-it": "^14.1.2",
-		"@elizaos/testing": "workspace:*"
+		"@types/markdown-it": "^14.1.2"
 	},
 	"dependencies": {
 		"zod": "^4.6.5",
