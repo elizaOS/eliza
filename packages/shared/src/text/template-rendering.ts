@@ -4,7 +4,7 @@ import {
   buildDeterministicSeed,
   getDeterministicNames,
   replaceIndexedNameTokens,
-} from "@elizaos/core";
+} from "@elizaos/shared/browser-contracts";
 import type Handlebars from "handlebars";
 import { compileTemplate } from "./template-engine.js";
 
