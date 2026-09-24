@@ -7,7 +7,7 @@
  * mmapped from the GGUF file.
  *
  * The forward passes hardcode tensor names against the conversion
- * script's contract (see packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py). Any
+ * script's contract (see scripts/voice_diarizer_to_gguf.py). Any
  * mismatch is a refusal-to-load at session open: the C side does not
  * fabricate weights.
  *

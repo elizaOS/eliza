@@ -50,7 +50,7 @@ extern "C" {
 
 /*
  * The model variant this header is dimensioned around. The GGUF
- * conversion script (`packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py`) emits a file
+ * conversion script (`scripts/silero_vad_to_gguf.py`) emits a file
  * whose `silero_vad.variant` metadata key matches this string; the
  * runtime refuses to load any other variant.
  */
@@ -87,7 +87,7 @@ typedef struct silero_vad_session *silero_vad_handle;
 
 /*
  * Open a Silero VAD session against a GGUF file produced by
- * `packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py`. Writes the new handle into `*out`.
+ * `scripts/silero_vad_to_gguf.py`. Writes the new handle into `*out`.
  *
  * Returns 0 on success.
  * Returns `-ENOENT` if `gguf_path` does not name a readable file.

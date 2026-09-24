@@ -1,21 +1,7 @@
-/** Exercises voice-profile identifier decoding with a mocked core boundary. */
+/** Exercises voice-profile identifier decoding through the real core and shared HTTP boundary. */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", () => ({
-	logger: { warn() {}, debug() {}, info() {}, error() {} },
-	readJsonBody: async () => null,
-	resolveStateDir: () => "/tmp",
-	sendJson: (res: http.ServerResponse, body: unknown, status = 200) => {
-		res.statusCode = status;
-		res.end(JSON.stringify(body));
-	},
-	sendJsonError: (res: http.ServerResponse, message: string, status = 400) => {
-		res.statusCode = status;
-		res.end(JSON.stringify({ error: message }));
-	},
-}));
 
 import type { VoiceProfileStore } from "../services/voice/profile-store";
 

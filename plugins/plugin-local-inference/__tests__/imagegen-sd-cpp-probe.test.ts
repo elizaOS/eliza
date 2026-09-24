@@ -38,7 +38,10 @@ import {
 } from "../src/services/imagegen/sd-cpp";
 
 const PROBE_SCRIPT = fileURLToPath(
-	new URL("../scripts/probe-sd-cpp.mjs", import.meta.url),
+	new URL(
+		"../../../packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.mjs",
+		import.meta.url,
+	),
 );
 
 interface ProbeResult {

@@ -5,7 +5,7 @@
  * uses a Philox-based generator and a specific Box-Muller pipeline that
  * we don't reproduce here. Hosts that need bit-parity with the Python
  * reference should ship the projection matrix in the fixture/sidecar
- * (see packages/scripts/plugins/plugin-local-inference/native/qjl-cpu/gen_fixtures.py and qjl_apply.py's `rand_prj` field).
+ * (see scripts/gen_fixtures.py and qjl_apply.py's `rand_prj` field).
  *
  * For standalone hosts that just need a "good enough" Π without a
  * companion sidecar, this builds one from a 64-bit splitmix-seeded

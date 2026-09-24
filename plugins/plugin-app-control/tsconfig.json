@@ -12,49 +12,27 @@
     "declarationMap": true,
     "outDir": "./dist",
     "rootDir": "../..",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
-    "types": [
-      "node",
-      "vite/client"
-    ],
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "vite/client"],
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@elizaos/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
-      "@elizaos/shared/*": [
-        "../../packages/shared/src/*"
-      ],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],
       "@elizaos/capacitor-secure-store": [
         "../plugin-native-secure-store/src/index.ts"
       ],
-      "@elizaos/ui": [
-        "../../packages/ui/src/index.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../../packages/ui/src/*"
-      ],
-      "@elizaos/cloud-sdk/*": [
-        "../../packages/cloud/sdk/src/*"
-      ],
-      "@elizaos/plugin-assistant": [
-        "../plugin-assistant/src/index.ts"
-      ]
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
+      "@elizaos/plugin-assistant": ["../plugin-assistant/src/index.ts"]
     }
   },
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "dist",

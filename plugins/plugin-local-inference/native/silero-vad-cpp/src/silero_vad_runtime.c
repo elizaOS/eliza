@@ -1,14 +1,14 @@
 /*
  * silero-vad-cpp — native CPU model runtime.
  *
- * Loads a GGUF produced by `packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py` and runs
+ * Loads a GGUF produced by `scripts/silero_vad_to_gguf.py` and runs
  * the Silero v5 (16 kHz) graph end-to-end in pure C — no SIMD, no
  * third-party math library, no ggml link. Per-window cost is small
  * enough on a laptop CPU that real-time stays comfortably below 1%
  * of the 32 ms hop.
  *
  * Architecture (matches the converter; see
- * `packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py` for the rationale and tensor names):
+ * `scripts/silero_vad_to_gguf.py` for the rationale and tensor names):
  *
  *   1. Reflection-pad the 512-sample input by `STFT_PAD=32` on each
  *      side → 576 samples.
