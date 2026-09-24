@@ -13,3 +13,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-websiteblocker build  # build
 bun run --cwd plugins/plugin-native-websiteblocker test   # tests
 ```
+
+## Android device verification
+
+Run `node packages/app/scripts/android-native-plugins.mjs --plugin plugin-native-websiteblocker --serial <emulator>` from the repository root. Tests grant Android VPN consent and send real DNS traffic: blocked and allowed hostnames, live policy replacement, system resolver behavior, explicit stop, one-minute expiry, and restart. The emulator needs working upstream DNS. Packet transcripts are exported with the runner report. This verifies the DNS VPN path; encrypted/custom DNS and reboot restoration require separate coverage.
