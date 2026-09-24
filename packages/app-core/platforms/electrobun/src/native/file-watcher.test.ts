@@ -82,6 +82,27 @@ describe("getFileWatcher", () => {
   });
 });
 
+describe("WorkspaceFileWatcher root boundaries", () => {
+  it("delivers source changes beneath hidden and build-named ancestors", async () => {
+    const root = path.join(makeTempDir(), ".workspace", "build", "project");
+    fs.mkdirSync(root, { recursive: true });
+    const send = vi.fn();
+    const { listener } = captureStart(root, send);
+    fs.writeFileSync(path.join(root, "source.ts"), "export const value = 1;");
+    listener("change", "source.ts");
+    listener("change", path.join(".git", "index"));
+    listener("change", path.join("build", "output.js"));
+    await flushDebounce();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePath: "source.ts",
+        type: "modified",
+      }),
+    );
+  });
+});
+
 describe("WorkspaceFileWatcher lifecycle", () => {
   it("lists an empty queue when no watches are active", () => {
     expect(getFileWatcher().listWatches()).toEqual([]);

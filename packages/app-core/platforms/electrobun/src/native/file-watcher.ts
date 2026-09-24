@@ -140,7 +140,8 @@ class WorkspaceFileWatcher {
       (eventName, filename) => {
         if (!filename) return;
         const fullPath = path.resolve(watchPath, filename);
-        if (shouldIgnorePath(fullPath)) return;
+        // Ignore only descendants: the user may choose a workspace beneath a hidden directory.
+        if (shouldIgnorePath(path.relative(watchPath, fullPath))) return;
 
         let type: FileChangeEventType;
         try {
