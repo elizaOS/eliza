@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import {
   type CapturedAction,
@@ -411,7 +411,9 @@ const githubPreviewEvaluator: DeterministicModelFixture = {
       (message) =>
         message.role === "user" &&
         typeof message.content === "string" &&
-        message.content.includes("message:user:\n"),
+        /(?:^|\n\n)(?:message:user:\n|# Current message\n)/.test(
+          message.content,
+        ),
     );
     if (
       inputs.length !== 1 ||
