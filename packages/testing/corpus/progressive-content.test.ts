@@ -100,6 +100,11 @@ describe("progressive content corpus", () => {
     expect(first.objects).toHaveLength(20);
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
+    // Frozen before the native-fill optimization: generator bytes and identities
+    // must remain compatible with existing published corpus manifests.
+    expect(first.manifestSha256).toBe(
+      "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
+    );
     expect(new Set(first.objects.map((object) => object.family))).toEqual(
       new Set([
         "file",
