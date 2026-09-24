@@ -5631,6 +5631,76 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 	});
 
+	it.each([false, true])(
+		"records completed model calls before invalid discovery rejects (retry=%s)",
+		async (retry) => {
+			const { mkdtemp, readdir, readFile, rm } = await import(
+				"node:fs/promises"
+			);
+			const { tmpdir } = await import("node:os");
+			const { join } = await import("node:path");
+			const dir = await mkdtemp(join(tmpdir(), "stage1-discovery-trajectory-"));
+			vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
+			vi.stubEnv("ELIZA_TRAJECTORY_DIR", dir);
+			vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
+			try {
+				const rejected = {
+					...stage1Response({
+						contexts: ["simple"],
+						contextRequests: ["UNAVAILABLE_REFERENCE"],
+					}),
+					usage: { promptTokens: 101, completionTokens: 7, totalTokens: 108 },
+				};
+				const empty = {
+					text: "",
+					usage: { promptTokens: 89, completionTokens: 2, totalTokens: 91 },
+				};
+				const runtime = makeRuntime(retry ? [empty, rejected] : [rejected]);
+				await expect(
+					runStage1({
+						runtime,
+						message: makeMessage({ channelType: ChannelType.DM }),
+					}),
+				).rejects.toThrow(
+					"Request only context providers listed as available for this turn.",
+				);
+				const files = (await readdir(dir, { recursive: true })).filter((name) =>
+					name.endsWith(".json"),
+				);
+				expect(files).toHaveLength(1);
+				const trajectory = JSON.parse(
+					await readFile(join(dir, files[0]), "utf8"),
+				);
+				expect(trajectory.status).toBe("errored");
+				expect(trajectory.stages).toHaveLength(retry ? 2 : 1);
+				const last = trajectory.stages.at(-1);
+				expect(last.kind).toBe("messageHandler");
+				expect(last.model.toolCalls[0].args.contextRequests).toEqual([
+					"UNAVAILABLE_REFERENCE",
+				]);
+				expect(last.model.usage.promptTokens).toBe(101);
+				expect(last.model.messages).toEqual(
+					useModelCalls(runtime).at(-1)?.[1].messages,
+				);
+				expect(last.model.tools).toEqual(
+					useModelCalls(runtime).at(-1)?.[1].tools,
+				);
+				expect(trajectory.metrics.totalPromptTokens).toBe(retry ? 190 : 101);
+				expect(
+					new Set(
+						trajectory.stages.map(
+							(stage: { stageId: string }) => stage.stageId,
+						),
+					).size,
+				).toBe(trajectory.stages.length);
+				expect(useModelCalls(runtime)).toHaveLength(retry ? 2 : 1);
+			} finally {
+				vi.unstubAllEnvs();
+				await rm(dir, { recursive: true, force: true });
+			}
+		},
+	);
+
 	it("does not let a plugin-owned catalog provider enter Stage 1", async () => {
 		const description = "Complete registered routing description. ".repeat(40);
 		const providerText =

@@ -308,9 +308,7 @@ export async function generateStage1Decision(
   let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
   let sourceReplyRendering: SourceReplyRendering | undefined;
   let effectiveReplySchema: JSONSchema | undefined;
-  let providerMessageHandler: string | GenerateTextResult | undefined;
   const interpretNativeReply = (raw: string | GenerateTextResult) => {
-    providerMessageHandler = raw;
     sourceReplyRendering = undefined;
     const bound = sourceSelectionBinding?.resolve(raw) ?? raw;
     const snapshot = sourceReplySnapshot;
@@ -626,6 +624,43 @@ export async function generateStage1Decision(
     // Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
     providerOptions: stage1ProviderOptions,
   };
+  let recordedCallCount = 0;
+  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    const startedAt = Date.now();
+    const raw = (await args.runtime.useModel(
+      ModelType.RESPONSE_HANDLER,
+      params,
+    )) as string | GenerateTextResult;
+    // Record every completed provider call before parsing, discovery validation,
+    // or field effects can reject it. Keep the exact request for each retry.
+    if (recorder && trajectoryId) {
+      recordedCallCount += 1;
+      registerStageTask(
+        recordMessageHandlerStage({
+          recorder,
+          trajectoryId,
+          stageId: `stage-msghandler-${messageHandlerStartedAt}-${recordedCallCount}`,
+          messages: params.messages,
+          tools: params.tools,
+          toolChoice: params.toolChoice,
+          providerOptions: params.providerOptions,
+          raw,
+          startedAt,
+          endedAt: Date.now(),
+          segmentHashes: computePrefixHashes(params.promptSegments).map(
+            (entry) => entry.segmentHash,
+          ),
+          prefixHash: stage1PrefixHash,
+          provider: args.runtime.getLastResolvedModelProvider?.(
+            ModelType.RESPONSE_HANDLER,
+          ),
+          state: args.state,
+          runtime: args.runtime,
+        }),
+      );
+    }
+    return raw;
+  };
   // Provider-shape retry: cloud reasoning models reached over
   // OpenAI-compatible providers can intermittently return either no
   // content at all or a required native tool call with no arguments. Both
@@ -646,10 +681,7 @@ export async function generateStage1Decision(
   }
   let rawMessageHandler: string | GenerateTextResult = args.codingMode
     ? directCodingResponseHandlerResult()
-    : ((await args.runtime.useModel(
-        ModelType.RESPONSE_HANDLER,
-        stage1ModelParams,
-      )) as string | GenerateTextResult);
+    : await generateRecordedStage1(stage1ModelParams);
   rawMessageHandler = interpretNativeReply(rawMessageHandler);
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
@@ -678,10 +710,7 @@ export async function generateStage1Decision(
       },
       `[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
     );
-    rawMessageHandler = (await args.runtime.useModel(
-      ModelType.RESPONSE_HANDLER,
-      stage1ModelParams,
-    )) as string | GenerateTextResult;
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
     rawMessageHandler = interpretNativeReply(rawMessageHandler);
     stage1RetryReason = extractContextRead(
       rawMessageHandler,
@@ -736,29 +765,26 @@ export async function generateStage1Decision(
         conversationId: stage1ConversationId,
       });
       stage1TurnSignal.throwIfAborted();
-      const repaired = (await args.runtime.useModel(
-        ModelType.RESPONSE_HANDLER,
-        {
-          ...stage1ModelParams,
-          messages: repairedInput.messages,
-          promptSegments: repairedInput.promptSegments,
-          providerOptions: withModelInputBudgetProviderOptions(
-            {
-              ...stage1ProviderOptions,
-              ...repairedCacheOptions,
-              eliza: {
-                ...(stage1ProviderOptions.eliza as object),
-                ...(repairedCacheOptions.eliza as object),
-              },
+      const repaired = await generateRecordedStage1({
+        ...stage1ModelParams,
+        messages: repairedInput.messages,
+        promptSegments: repairedInput.promptSegments,
+        providerOptions: withModelInputBudgetProviderOptions(
+          {
+            ...stage1ProviderOptions,
+            ...repairedCacheOptions,
+            eliza: {
+              ...(stage1ProviderOptions.eliza as object),
+              ...(repairedCacheOptions.eliza as object),
             },
-            buildModelInputBudget({
-              messages: repairedInput.messages,
-              promptSegments: repairedInput.promptSegments,
-              tools: messageHandlerTools,
-            }),
-          ),
-        },
-      )) as string | GenerateTextResult;
+          },
+          buildModelInputBudget({
+            messages: repairedInput.messages,
+            promptSegments: repairedInput.promptSegments,
+            tools: messageHandlerTools,
+          }),
+        ),
+      });
       if (extractMessageHandlerRawParsed(repaired)) {
         rawMessageHandler = interpretNativeReply(repaired);
       }
@@ -1155,10 +1181,7 @@ export async function generateStage1Decision(
       "[message] Resolving context or routing before final response decision",
     );
     stage1TurnSignal.throwIfAborted();
-    rawMessageHandler = (await args.runtime.useModel(
-      ModelType.RESPONSE_HANDLER,
-      stage1ModelParams,
-    )) as string | GenerateTextResult;
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
     rawMessageHandler = interpretNativeReply(rawMessageHandler);
   }
   const messageHandlerEndedAt = Date.now();
@@ -1381,28 +1404,6 @@ export async function generateStage1Decision(
     // boundary value observed here instead of exposing a mutable alias.
     parsed: structuredClone(messageHandler),
   });
-
-  if (!args.codingMode && recorder && trajectoryId) {
-    registerStageTask(
-      recordMessageHandlerStage({
-        recorder,
-        trajectoryId,
-        messages: messageHandlerInput.messages,
-        tools: messageHandlerTools,
-        toolChoice: "required",
-        providerOptions: stage1ModelParams.providerOptions,
-        raw: providerMessageHandler ?? rawMessageHandler,
-        parsed: messageHandler,
-        startedAt: messageHandlerStartedAt,
-        endedAt: messageHandlerEndedAt,
-        segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-        prefixHash: stage1PrefixHash,
-        provider: messageHandlerProvider,
-        state: args.state,
-        runtime: args.runtime,
-      }),
-    );
-  }
 
   return {
     messageHandler,
