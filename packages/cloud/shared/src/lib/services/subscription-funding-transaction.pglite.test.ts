@@ -1021,6 +1021,7 @@ test("a paid-window stop is scheduled once and an explicit user stop makes it im
     )) {
       if (statement.includes('"agent_compute_stop_intents"')) await fixture.exec(statement);
     }
+    await fixture.exec(await migration("0399_prepared_stop_backup.sql"));
     const { enqueueAgentUnfundedStopForRun } = await import("./agent-unfunded-stop");
     const before = await renewalState(org);
     expect(await enqueueAgentUnfundedStopForRun(input)).toMatchObject({

@@ -102,8 +102,10 @@ describe("ElizaSandboxService wake", () => {
       const provider: SandboxProvider = {
         create: mock(async () => ({
           sandboxId: "agent-e06bb509",
-          bridgeUrl: "https://runtime.example",
-          healthUrl: "https://runtime.example/health",
+          // A public literal keeps the real SSRF guard enabled without DNS.
+          // The fetch collaborator below intercepts every request.
+          bridgeUrl: "https://93.184.216.34",
+          healthUrl: "https://93.184.216.34/health",
           metadata: {
             nodeId: "node-1",
             containerName: "agent-e06bb509",
@@ -118,13 +120,17 @@ describe("ElizaSandboxService wake", () => {
       globalThis.fetch = mock(async (input: RequestInfo | URL) => {
         const url = fetchUrl(input);
         requests.push(url);
-        if (url === "https://runtime.example/api/agents") {
+        if (url === "https://93.184.216.34/api/agents") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        if (url === "https://runtime.example/api/restore") {
+        if (url === "https://93.184.216.34/api/restore") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
         return Response.json({ ok: true });
+      });
+      const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+        ...sleepingSandbox,
+        status: "running",
       });
       const originalFindByIdAndOrg = agentSandboxesRepository.findByIdAndOrg;
       const originalFindByIdAndOrgForWrite = agentSandboxesRepository.findByIdAndOrgForWrite;
@@ -207,7 +213,7 @@ describe("ElizaSandboxService wake", () => {
           reprovisioned: true,
           restoredBackupId: backup.id,
         });
-        expect(requests).toContain("https://runtime.example/api/restore");
+        expect(requests).toContain("https://93.184.216.34/api/restore");
         expect(updateSpy).toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
@@ -222,6 +228,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.listBackupMetadata = originalListBackupMetadata;
         agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
+        findByIdSpy.mockRestore();
         createForAgentSpy.mockRestore();
         updateSpy.mockRestore();
         gateAuthority.mockRestore();
@@ -1022,22 +1029,45 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   }
 
   function suspendTx(updates: Array<Record<string, unknown>>) {
-    const chain = {
-      from: () => chain,
-      where: () => chain,
-      for: () => chain,
-      limit: async () => [stopIntentRow()],
-    };
-    return {
-      select: () => chain,
+    const tx = {
+      transaction: async <T>(fn: (nested: unknown) => Promise<T>): Promise<T> => fn(tx),
+      select: (selection?: Record<string, unknown>) => {
+        const rows =
+          selection && "allocatedCount" in selection
+            ? [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010", allocatedCount: 1 }]
+            : selection && "relation" in selection
+              ? [{ relation: "agent_sandbox_replacement_attempts" }]
+              : selection && "containerCount" in selection
+                ? [
+                    {
+                      containerCount: 0,
+                      agentCount: 0,
+                      replacementCleanupCount: 0,
+                      exactRestoreReplacementCount: 0,
+                    },
+                  ]
+                : [stopIntentRow()];
+        const chain = Object.assign(Promise.resolve(rows), {
+          from: () => chain,
+          where: () => chain,
+          for: () => chain,
+          limit: async () => rows,
+        });
+        return chain;
+      },
       update: () => ({
         set: (values: Record<string, unknown>) => {
           updates.push(values);
-          return { where: async () => undefined };
+          return {
+            where: () => ({
+              returning: async () => [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010" }],
+            }),
+          };
         },
       }),
       execute: async () => ({ rows: [] }),
     };
+    return tx;
   }
 
   // Funding rows are given in deliberately adversarial TABLE order (an older
@@ -1059,6 +1089,20 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   }) {
     const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
     const rec = suspendRecord(opts.status);
+    const runtimeIdentity = {
+      organizationId: rec.organization_id,
+      agentId: rec.id,
+      nodeId: rec.node_id!,
+      nodeRecordId: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010",
+      nodeIncarnation: "aaaaaaaa-aaaa-4aaa-8aaa-000000000011",
+      nodeHistoryId: "aaaaaaaa-aaaa-4aaa-8aaa-000000000012",
+      hostname: "test-node.invalid",
+      sshPort: 22,
+      sshUser: "root",
+      hostKeyFingerprint: "SHA256:fixture",
+      containerName: rec.container_name!,
+      containerId: "a".repeat(64),
+    };
     const provider: SandboxProvider = {
       create: mock(async () => ({
         sandboxId: rec.sandbox_id as string,
@@ -1069,6 +1113,16 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
       computeFundingCapability: "host-lease-v1",
+      observeRuntime: mock(async (request) => {
+        expect(request).toMatchObject({
+          organizationId: rec.organization_id,
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          containerName: rec.container_name,
+        });
+        if (request.expected) expect(request.expected).toEqual(runtimeIdentity);
+        return { kind: "present" as const, identity: runtimeIdentity, running: true };
+      }),
     };
     const svc = new ElizaSandboxService(provider);
     const updates: Array<Record<string, unknown>> = [];
@@ -1155,6 +1209,7 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
     return {
       svc,
       rec,
+      runtimeIdentity,
       updates,
       sleepSpy,
       stopForReplacement,
@@ -1234,7 +1289,11 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
         backupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
       });
       expect(h.sleepSpy).not.toHaveBeenCalled();
-      expect(h.stopForReplacement).toHaveBeenCalledWith(h.rec.sandbox_id);
+      expect(h.updates).toContainEqual(expect.objectContaining({ allocated_count: 0 }));
+      expect(h.stopForReplacement).toHaveBeenCalledWith(h.rec.sandbox_id, {
+        expectedRuntime: h.runtimeIdentity,
+        releaseCapacity: false,
+      });
       expect(billing.settleLifecycleBillingInTransactionSpy).toHaveBeenCalled();
       expect(h.updates).toContainEqual(expect.objectContaining({ status: "provider_confirmed" }));
     } finally {
