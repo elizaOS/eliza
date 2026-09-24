@@ -117,11 +117,13 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
         <Button
           variant="default"
           size="sm"
-          className="gap-2"
+          className="gap-2 max-sm:size-11 max-sm:p-0"
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="size-4" />
-          {t("cloud.apiKeys.createApiKey", { defaultValue: "Generate key" })}
+          <span className="max-sm:sr-only">
+            {t("cloud.apiKeys.createApiKey", { defaultValue: "Generate key" })}
+          </span>
         </Button>
       ) : undefined,
     },

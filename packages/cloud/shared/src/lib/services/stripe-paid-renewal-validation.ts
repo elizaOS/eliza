@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -169,6 +170,7 @@ export function validatePaidRenewal(
   const line = invoice.lines.data[0];
   if (!line) renewalUnavailable("missing_recurring_line");
   const source = input.source;
+  assertOrganizationSubscription(source);
   if (
     !source.current_period_start ||
     !source.current_period_end ||

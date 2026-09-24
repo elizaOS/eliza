@@ -33,6 +33,10 @@ import {
 } from "@/lib/auth/workers-hono-auth";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
+import {
+  AppDelegationError,
+  appDelegationBindingSchema,
+} from "@/lib/services/app-delegation";
 import { appsService } from "@/lib/services/apps";
 import {
   issueMobileAppAuthCode,
@@ -55,6 +59,16 @@ const ConnectSchema = z.object({
 const MobileConnectSchema = mobileAppAuthPkceBindingSchema.extend({
   flow: z.literal("mobile_pkce"),
 });
+
+const DelegationConnectSchema = z
+  .object({
+    appId: z.string().uuid(),
+    flow: z.literal("app_delegation"),
+    clientId: z.string().uuid(),
+    redirectUri: z.string().url(),
+    scopes: z.array(z.string()),
+  })
+  .strict();
 
 function isMobileFlowBody(body: unknown): boolean {
   return (
@@ -152,6 +166,54 @@ app.post("/", async (c) => {
       return await handleMobileConnect(c, mobileParsed.data);
     }
 
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "flow" in body &&
+      body.flow === "app_delegation"
+    ) {
+      const { appDelegationService } = await import(
+        "@/lib/services/app-delegation-adapter"
+      );
+      const { requireUser } = await import("@/lib/auth/workers-hono-auth");
+      const input = DelegationConnectSchema.parse(body);
+      const binding = appDelegationBindingSchema.parse({
+        clientId: input.clientId,
+        redirectUri: input.redirectUri,
+        scopes: input.scopes,
+      });
+      const user = await requireUser(c);
+      if (
+        c.get("authMethod") !== "session" ||
+        user.is_anonymous ||
+        c.req.header("X-API-Key")
+      )
+        throw new AppDelegationError(
+          401,
+          "APP_SESSION_REQUIRED",
+          "Sign in to explicitly authorize this application",
+        );
+      await appDelegationService.validateConsent(input.appId, binding);
+      await connectUserToApp(c, { appId: input.appId, userId: user.id });
+      const delegation = await appDelegationService.consentBinding(
+        input.appId,
+        user.id,
+        binding,
+      );
+      const authCode = await issueAppAuthCode({
+        appId: input.appId,
+        userId: user.id,
+        delegation,
+      });
+      return c.json({
+        success: true,
+        code: authCode.code,
+        codeType: "app_delegation_code",
+        expiresAt: authCode.expiresAt,
+        expiresIn: authCode.expiresIn,
+      });
+    }
+
     const user = await requireUserOrApiKey(c);
     const parsed = ConnectSchema.safeParse(body);
 
@@ -208,6 +270,16 @@ app.post("/", async (c) => {
       if (error instanceof ApiError) return failureResponse(c, error);
       return mobileAppAuthErrorResponse(c, error, "connect");
     }
+    if (error instanceof AppDelegationError)
+      return c.json(
+        { success: false, error: error.message, code: error.code },
+        error.status,
+      );
+    if (error instanceof z.ZodError)
+      return c.json(
+        { success: false, error: "Invalid application consent request" },
+        400,
+      );
     logger.error("App auth connect error:", error);
     return failureResponse(c, error);
   }

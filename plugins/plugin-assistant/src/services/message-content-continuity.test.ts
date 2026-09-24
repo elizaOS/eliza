@@ -5,7 +5,7 @@
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { buildReadSlice, buildReadView, stringToUuid } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import {
   loadSessionSummaryContentLedger,
@@ -48,7 +48,7 @@ function trajectory() {
 }
 
 async function harness() {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   const message: Memory = {
     id: messageId,
     agentId,
