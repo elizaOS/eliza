@@ -1522,6 +1522,25 @@ export async function runV5MessageRuntimeStage1(
           ? runtimeWithOptionalServices.getService(service)
           : null,
       useModel: (modelType, modelParams, provider) => {
+        if (
+          modelType === ModelType.ACTION_PLANNER &&
+          directMessageChannel &&
+          args.codingMode !== true
+        ) {
+          // The provider owns capability checks. Unsupported lanes retain the
+          // planner's existing thinking policy; no model names belong here.
+          const eliza = modelParams.providerOptions?.eliza;
+          modelParams = {
+            ...modelParams,
+            providerOptions: {
+              ...modelParams.providerOptions,
+              eliza: {
+                ...(isRecord(eliza) ? eliza : {}),
+                preferToolReasoning: true,
+              },
+            },
+          };
+        }
         return args.runtime.useModel(
           modelType,
           modelParams as GenerateTextParams,
