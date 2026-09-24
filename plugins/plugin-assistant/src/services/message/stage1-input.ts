@@ -44,8 +44,6 @@ import {
   ambientTurnProviderExclusions,
   composeResponseState,
 } from "./provider-state.js";
-export const CODE_SNIPPET_VALIDITY_INSTRUCTION =
-  "For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
 export {
   CONTEXT_CATALOG_REFERENCE,
   formatAvailableContextsForPrompt,
