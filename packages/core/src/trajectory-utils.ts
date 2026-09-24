@@ -1263,7 +1263,36 @@ export async function recordLlmCall<T>(
 		typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()
 			: Date.now();
-	const result = await runInsideRecordedLlmCall(fn);
+	let result: T;
+	try {
+		result = await runInsideRecordedLlmCall(fn);
+	} catch (error) {
+		// Preserve the provider-prepared request even when no result/usage arrives.
+		// Logging must not replace the original transport or cancellation error.
+		try {
+			const message = error instanceof Error ? error.message : String(error);
+			logActiveTrajectoryLlmCall(runtime, {
+				...details,
+				response:
+					details.response ||
+					`[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
+				finishReason: "error",
+				latencyMs: Math.max(
+					0,
+					Math.round(
+						(typeof performance !== "undefined" &&
+						typeof performance.now === "function"
+							? performance.now()
+							: Date.now()) - startedAt,
+					),
+				),
+			});
+		} catch (recordingError) {
+			// error-policy:J7 Failed-call diagnostics cannot change provider failure semantics.
+			runtime?.reportError?.("TrajectoryFailedProviderCall", recordingError);
+		}
+		throw error;
+	}
 	const elapsed =
 		(typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()

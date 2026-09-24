@@ -33,7 +33,6 @@ import {
 import { getTrajectoryContext } from "../../trajectory-context";
 import {
 	runInModelCallRecordingScope,
-	runWithModelCallRecordingScope,
 	type TrajectoryRuntimeLlmCallLogger,
 } from "../../trajectory-utils";
 import type { ModelHandler } from "../../types";
@@ -1023,17 +1022,15 @@ export class RuntimeModelDispatch {
 			// assigned inside (#17532).
 			let modelParamsRef: unknown = params;
 			let promptContentRef: string | null | undefined;
-			// recordingStateRef tracks whether the provider already logged this call.
+			// recordingState tracks whether the provider already logged this call.
 			// The catch block must not add a second failure entry for a call the
 			// provider recorded before throwing (e.g. OpenAI streaming logs in its
 			// generator finalizer then rethrows the stream error) — that would
 			// reintroduce the double-counting this fix removes (#17532).
 			//
-			// Initial value `{ recorded: false }` is only read when the handler
-			// throws BEFORE runWithModelCallRecordingScope assigns the real store
-			// (line ~6578). Once assigned, all later reads reference the scope's
-			// live mutable object, not this placeholder.
-			let recordingStateRef: { recorded: boolean } = { recorded: false };
+			// Own the live store before dispatch so a handler that records then
+			// rejects still suppresses the generic failure record.
+			const recordingState = { recorded: false };
 			let attemptPreparationFailed = false;
 			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
@@ -1631,8 +1628,9 @@ export class RuntimeModelDispatch {
 					handler,
 				};
 				providerAttempts.push(providerAttempt);
-				const { result: handlerResult, recordingState } =
-					await runWithModelCallRecordingScope(() =>
+				const handlerResult = await runInModelCallRecordingScope(
+					recordingState,
+					() =>
 						runWithConfidentialInference(
 							this.host.confidentialInference(),
 							{
@@ -1647,11 +1645,8 @@ export class RuntimeModelDispatch {
 									modelParams as Record<string, JsonValue | object>,
 								),
 						),
-					);
-				// Expose the mutable recording state to the catch block so it can
-				// suppress a failure entry when the provider already logged this
-				// call before throwing (#17532).
-				recordingStateRef = recordingState;
+				);
+
 				throwIfAborted();
 				assertModelResultPresent(handlerResult, String(modelType));
 				const rawResponse = handlerResult;
@@ -1690,7 +1685,7 @@ export class RuntimeModelDispatch {
 					// Consume the provider stream inside the recording scope, mirroring
 					// the pass-through TextStreamResult wrapper below. Async generators
 					// do not inherit AsyncLocalStorage context from their creation, and
-					// runWithModelCallRecordingScope above has already exited by the
+					// runInModelCallRecordingScope above has already exited by the
 					// time we iterate, so markProviderRecordedCall (fired from the
 					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
 					// plugin-openai live-stream finally block) would find no store and
@@ -2131,7 +2126,7 @@ export class RuntimeModelDispatch {
 				) {
 					throw streamCallbackResult.error;
 				}
-				throwIfAborted();
+				if (handlerStartedAt === null) throwIfAborted();
 				const unavailableLocalText =
 					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
 					isUnavailableLocalModel(error);
@@ -2207,7 +2202,7 @@ export class RuntimeModelDispatch {
 				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
 				// second failure entry would reintroduce the double-counting this
 				// fix removes (#17532).
-				if (!recordingStateRef.recorded) {
+				if (!recordingState.recorded) {
 					this.trackDiagnostic(
 						this.recordFailedModelTrajectory({
 							modelType: String(modelType),
@@ -2223,6 +2218,7 @@ export class RuntimeModelDispatch {
 						}),
 					);
 				}
+				throwIfAborted();
 				// A model can unload between admission and dispatch. Record that
 				// real attempt, but retain the previous provider failure if absence
 				// is the only fallback outcome. Output/request errors stay decisive.
