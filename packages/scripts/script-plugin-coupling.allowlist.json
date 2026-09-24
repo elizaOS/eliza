@@ -98,8 +98,7 @@
       "plugins/plugin-pty",
       "plugins/plugin-sql",
       "plugins/plugin-vision",
-      "plugins/plugin-wallet",
-      "plugins/plugin-web-search"
+      "plugins/plugin-wallet"
     ],
     "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
@@ -534,18 +533,6 @@
     "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
   },
   {
-    "file": "packages/scripts/vitest/default.config.ts",
-    "tokens": [
-      "@elizaos/plugin-telegram",
-      "plugins/plugin-browser",
-      "plugins/plugin-finances",
-      "plugins/plugin-health",
-      "plugins/plugin-inbox",
-      "plugins/plugin-sql"
-    ],
-    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
-  },
-  {
     "file": "packages/scripts/lib/progressive-content-production-targets.mjs",
     "tokens": [
       "plugins/plugin-coding-tools",
@@ -567,5 +554,26 @@
       "plugins/plugin-sql"
     ],
     "reason": "systemic coupling: the canonical PostgreSQL evidence producer binds fixed coding-tools and SQL implementations for its audited production boundary"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/file-reference-read-child.ts",
+    "tokens": [
+      "plugins/plugin-coding-tools"
+    ],
+    "reason": "fresh-process continuation regression executes the coding plugin read handler with its real sandbox fixture; selecting another plugin would not test persisted FILE ownership"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/shell-capture-memory-child.ts",
+    "tokens": [
+      "plugins/plugin-coding-tools"
+    ],
+    "reason": "fresh-process memory measurement exercises the coding plugin encrypted shell capture and authenticated artifact reader as one pipeline"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-sql/progressive-content-scale-child.mjs",
+    "tokens": [
+      "plugins/plugin-sql"
+    ],
+    "reason": "fresh-process SQL content scale measurement uses the SQL plugin production-backed target fixture to test its document, memory, and email storage contract"
   }
 ]
