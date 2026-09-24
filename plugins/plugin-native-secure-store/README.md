@@ -11,3 +11,9 @@ bun run --cwd plugins/plugin-native-secure-store build
 ```
 
 Native storage behavior requires testing on the target Apple or Android device.
+
+Android bridge verification:
+
+```bash
+node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-secure-store
+```
