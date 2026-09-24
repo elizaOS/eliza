@@ -1,6 +1,6 @@
 # @elizaos/auth
 
-One owner for product login, account authentication and encrypted storage. The root export is the browser-safe SDK; Node APIs use explicit subpaths. Account and storage modules live in `src/auth`, `src/vault` and `src/kms`; the browser SDK lives in `src/sdk` and the identity service in `src/server`. Vitest owns account/storage tests and Bun owns SDK/service tests. Never import application hosts. Preserve stored ciphertext, AAD, account migration and refresh coordination.
+One owner for product login, account authentication and encrypted storage. The root export is the browser-safe SDK; Node APIs use explicit subpaths. Account and storage modules live in `src/auth`, `src/vault` and `src/kms`; the browser SDK lives in `src/sdk` and the identity service in `src/server`. Bun runs the retained complete login flows. Never import application hosts. Preserve stored ciphertext, AAD, account migration and refresh coordination.
 
 # `@elizaos/auth/auth`
 
@@ -116,7 +116,7 @@ src/
   store.ts           — readStore(): reads legacy vault.json for one-shot migration
   internal-utils.ts  — assertKey(), optsCaller()
   password-managers.ts — resolveReference(): resolves 1Password/Proton Pass references via CLI
-test/               — vitest test files matching each src module
+test/login/         — browser passkey registration and login flow
 ```
 
 ## Key exports / surface
@@ -172,8 +172,7 @@ bun run --cwd packages/auth lint        # Biome check --write --unsafe
 bun run --cwd packages/auth lint:check  # Biome check (read-only)
 bun run --cwd packages/auth format      # Biome format --write
 bun run --cwd packages/auth format:check # Biome format (read-only)
-bun run --cwd packages/auth test        # vitest run (all test files)
-bun run --cwd packages/auth test:watch  # vitest watch mode
+bun run --cwd packages/auth test        # browser and persisted HTTP login flows
 bun run --cwd packages/auth typecheck   # tsc --noEmit
 bun run --cwd packages/auth clean       # rm -rf dist
 ```
