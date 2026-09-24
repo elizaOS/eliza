@@ -81,8 +81,8 @@
         "playwright": "^1.63.0",
         "pure-rand": "^8.4.0",
         "react": "19.3.0",
-        "react-dom": "19.2.7",
-        "react-test-renderer": "19.2.7",
+        "react-dom": "19.3.0",
+        "react-test-renderer": "19.3.0",
         "saxes": "6.0.0",
         "secp256k1": "^5.0.1",
         "semver": "7.8.5",
@@ -397,7 +397,7 @@
         "playwright": "^1.63.0",
         "playwright-core": "^1.58.2",
         "puppeteer-core": "^24.43.1",
-        "react-test-renderer": "19.2.7",
+        "react-test-renderer": "19.3.0",
         "sharp": "^0.35.3",
         "tailwindcss": "^4.3.1",
         "tsx": "^4.21.0",
@@ -947,7 +947,7 @@
         "libphonenumber-js": "^1.12.35",
         "lucide-react": "^1.0.0",
         "react": "19.3.0",
-        "react-dom": "19.2.7",
+        "react-dom": "19.3.0",
         "react-router-dom": "^7.10.0",
         "tailwind-merge": "^3.7.0",
         "three": "^0.184.0",
@@ -1283,7 +1283,7 @@
         "pngjs": "^7.0.0",
         "postcss": "^8.5.16",
         "react": "19.3.0",
-        "react-dom": "19.2.7",
+        "react-dom": "19.3.0",
         "sharp": "^0.35.3",
         "storybook": "^10.6.0",
         "typescript": "^6.0.3",
@@ -1302,7 +1302,7 @@
         "@elizaos/capacitor-llama": "workspace:*",
         "llama-cpp-capacitor": "^0.1.5",
         "react": "19.3.0",
-        "react-dom": "19.2.7",
+        "react-dom": "19.3.0",
       },
       "optionalPeers": [
         "@capacitor-community/bluetooth-le",
@@ -3055,7 +3055,7 @@
         "bun-types": "1.3.14",
         "jsdom": "^29.0.0",
         "react": "19.3.0",
-        "react-dom": "19.2.7",
+        "react-dom": "19.3.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
@@ -3768,7 +3768,7 @@
     "posthog-js": "1.386.8",
     "protobufjs": "7.6.5",
     "react": "19.3.0",
-    "react-dom": "19.2.7",
+    "react-dom": "19.3.0",
     "rimraf": "^6.0.1",
     "rollup": "npm:@rollup/wasm-node@4.63.4",
     "serialize-javascript": "7.0.5",
@@ -9308,7 +9308,7 @@
 
     "react-docgen-typescript": ["react-docgen-typescript@2.4.0", "", { "peerDependencies": { "typescript": ">= 4.3.x" } }, "sha512-ZtAp5XTO5HRzQctjPU0ybY0RRCQO19X/8fxn3w7y2VVTUbGHDKULPTL4ky3vB05euSgG5NpALhEhDPvQ56wvXg=="],
 
-    "react-dom": ["react-dom@19.2.7", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.7" } }, "sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ=="],
+    "react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
 
     "react-hook-form": ["react-hook-form@7.85.0", "", { "peerDependencies": { "react": "^16.8.0 || ^17 || ^18 || ^19" } }, "sha512-U2MTriFXnclmV4rOE20p2DcRFv5WEg3FIcBFOKcOLFHDVvGIMPvLTkTWefUsonmlaVy23khVDxDWym6uJVGOzw=="],
 
@@ -9336,7 +9336,7 @@
 
     "react-syntax-highlighter": ["react-syntax-highlighter@16.1.1", "", { "dependencies": { "@babel/runtime": "^7.28.4", "highlight.js": "^10.4.1", "highlightjs-vue": "^1.0.0", "lowlight": "^1.17.0", "prismjs": "^1.30.0", "refractor": "^5.0.0" }, "peerDependencies": { "react": ">= 0.14.0" } }, "sha512-PjVawBGy80C6YbC5DDZJeUjBmC7skaoEUdvfFQediQHgCL7aKyVHe57SaJGfQsloGDac+gCpTfRdtxzWWKmCXA=="],
 
-    "react-test-renderer": ["react-test-renderer@19.2.7", "", { "dependencies": { "react-is": "^19.2.7", "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.7" } }, "sha512-U4TyPDJ9MsC8rFimXuJum8w40aPc9kbOZYO8Pc2/4A884i8hwJsMNA/JNyuOc/f2/37wHvk7HjpVl1V4re7Dig=="],
+    "react-test-renderer": ["react-test-renderer@19.3.0", "", { "dependencies": { "react-is": "^19.3.0", "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-AUxgv+hRbqjRgx4xVwiWL6cvDDKPAva1VWLXQIMoevqQn9us//C5TX9LEnBGH47D0zvJpjwjxb1umzgOMvE8Wg=="],
 
     "react-use-measure": ["react-use-measure@2.1.7", "", { "peerDependencies": { "react": ">=16.13", "react-dom": ">=16.13" }, "optionalPeers": ["react-dom"] }, "sha512-KrvcAo13I/60HpwGO5jpW7E9DfusKyLPLvuHlUyP5zqnmAPhNc6qTRjUQrdTADl0lpPpDVU2/Gg51UlOGHXbdg=="],
 
@@ -9492,7 +9492,7 @@
 
     "saxes": ["saxes@6.0.0", "", { "dependencies": { "xmlchars": "^2.2.0" } }, "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA=="],
 
-    "scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
+    "scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
 
     "sdp-transform": ["sdp-transform@3.0.0", "", { "bin": { "sdp-verify": "checker.js" } }, "sha512-gfYVRGxjHkGF2NPeUWHw5u6T/KGFtS5/drPms73gaSuMaVHKCY3lpLnGDfswVQO0kddeePoti09AwhYP4zA8dQ=="],
 
@@ -10780,6 +10780,8 @@
 
     "@react-three/fiber/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
+    "@react-three/fiber/scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
+
     "@redis/client/cluster-key-slot": ["cluster-key-slot@1.1.2", "", {}, "sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA=="],
 
     "@reown/appkit/@walletconnect/types": ["@walletconnect/types@2.21.0", "", { "dependencies": { "@walletconnect/events": "1.0.1", "@walletconnect/heartbeat": "1.2.2", "@walletconnect/jsonrpc-types": "1.0.4", "@walletconnect/keyvaluestorage": "1.1.1", "@walletconnect/logger": "2.1.2", "events": "3.3.0" } }, "sha512-ll+9upzqt95ZBWcfkOszXZkfnpbJJ2CmxMfGgE5GmhdxxxCcO5bGhXkI+x8OpiS555RJ/v/sXJYMSOLkmu4fFw=="],
@@ -11770,9 +11772,13 @@
 
     "react-native/pretty-format": ["pretty-format@29.7.0", "", { "dependencies": { "@jest/schemas": "^29.6.3", "ansi-styles": "^5.0.0", "react-is": "^18.0.0" } }, "sha512-Pdlw/oPxN+aXdmM9R00JVC9WVFoCLTKJvDVLgmJ+qAffBMxsV85l/Lu7sNx4zSzPyoL2euImuEwHhOXdEgNFZQ=="],
 
+    "react-native/scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
+
     "react-native/ws": ["ws@7.5.13", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA=="],
 
     "react-native/yargs": ["yargs@17.7.3", "", { "dependencies": { "cliui": "^8.0.1", "escalade": "^3.1.1", "get-caller-file": "^2.0.5", "require-directory": "^2.1.1", "string-width": "^4.2.3", "y18n": "^5.0.5", "yargs-parser": "^21.1.1" } }, "sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g=="],
+
+    "react-reconciler/scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
 
     "react-router/cookie": ["cookie@1.1.1", "", {}, "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="],
 

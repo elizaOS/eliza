@@ -329,7 +329,7 @@
     "playwright": "^1.63.0",
     "playwright-core": "^1.58.2",
     "puppeteer-core": "^24.43.1",
-    "react-test-renderer": "19.2.7",
+    "react-test-renderer": "19.3.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.1",
     "tsx": "^4.21.0",
