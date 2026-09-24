@@ -67,7 +67,6 @@
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
