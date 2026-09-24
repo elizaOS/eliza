@@ -6,13 +6,8 @@
  * persistence with its single aggregated confirmation callback.
  */
 
+import { ChannelType, Role, stringToUuid, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  ChannelType,
-  Role,
-  type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../../packages/core/src/utils.ts";
 import { updateRoleHandler } from "./roles.ts";
 
 // Real UUIDs: the #23100 CAS path fails closed on non-UUID target ids, and

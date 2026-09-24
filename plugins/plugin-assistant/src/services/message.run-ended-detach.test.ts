@@ -4,18 +4,15 @@
  * self/mute/off exits; it now rides the post-delivery tracker so the caller
  * returns immediately and shutdown can still drain the work.
  */
-import { describe, expect, it, vi } from "vitest";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   drainPostDeliveryTasks,
+  EventType,
   pendingPostDeliveryTaskCount,
-} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import { EventType } from "../../../../packages/core/src/types/events.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
+  TurnControllerRegistry,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;

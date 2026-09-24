@@ -3,8 +3,8 @@
  * management, drafting, and immediate delivery using real in-memory state.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
 import { MessageRefStore } from "../message-ref-store.ts";
 import {
   __resetDefaultTriageServiceForTests,

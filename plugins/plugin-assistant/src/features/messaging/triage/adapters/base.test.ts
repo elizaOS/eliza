@@ -3,9 +3,9 @@
  * search dispatch, and lossless in-memory filtering with concrete adapters.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../../../../../../../packages/core/src/logger.ts";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
 import type {
   DraftRequest,
   ListOptions,

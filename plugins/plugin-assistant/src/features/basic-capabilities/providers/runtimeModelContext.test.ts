@@ -6,10 +6,9 @@
  * toggling `process.env.CODEX_MODEL` to exercise the env fallback; no live model.
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
-import { ModelType } from "../../../../../../packages/core/src/types/model.ts";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
 import { runtimeModelContextProvider } from "./runtimeModelContext.ts";
 
 function makeRuntime(

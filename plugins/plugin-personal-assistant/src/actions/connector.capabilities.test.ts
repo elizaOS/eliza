@@ -9,9 +9,9 @@ import {
   createCharacter,
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
+  validateToolArgs,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { createGoogleConnectorAccountProvider } from "../../../plugin-google-workspace/src/connector-account-provider.js";
 import { connectorAction } from "./connector.js";
 

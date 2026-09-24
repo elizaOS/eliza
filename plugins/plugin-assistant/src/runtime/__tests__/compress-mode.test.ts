@@ -6,8 +6,8 @@
  */
 
 import type { ContextObject } from "@elizaos/core";
+import { resolveOptimizedPrompt } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveOptimizedPrompt } from "../../../../../packages/core/src/services/optimized-prompt-resolver";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
 import { __renderRoutingHintsBlockForTests } from "../planner-loop.ts";
 

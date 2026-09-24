@@ -2,8 +2,8 @@
  * Regression for lossless, surrogate-safe document content IDs.
  */
 
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { toWellFormedUnicode } from "../../../../../packages/core/src/utils/well-formed.ts";
 import { generateContentBasedId } from "./utils.ts";
 
 function isWellFormed(value: string): boolean {

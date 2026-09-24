@@ -2,14 +2,15 @@
  * Unit tests for the legacy PROVIDERS catalog renderer, exercising the real
  * ordering, context filtering, description fallbacks, and empty-state output.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   State,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { providersProvider } from "./providers.ts";
 
 const message: Memory = {

@@ -4,16 +4,7 @@ import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/sourc
 export default defineConfig({
   resolve: {
     conditions: ["eliza-source", "node"],
-    alias: [
-      {
-        find: /^@elizaos\/core\/media$/,
-        replacement: new URL(
-          "../../packages/core/src/media/index.ts",
-          import.meta.url,
-        ).pathname,
-      },
-      ...buildWorkspaceSourceAliases(),
-    ],
+    alias: buildWorkspaceSourceAliases(),
   },
   test: {
     environment: "node",

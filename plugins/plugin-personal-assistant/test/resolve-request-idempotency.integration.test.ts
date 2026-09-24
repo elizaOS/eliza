@@ -706,11 +706,8 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
   it.each(["delivered", "partial", "persistence", "unknown"] as const)(
     "persists actual Telegram service outcomes (%s) without replay",
     async (mode) => {
-      const { MessageManager } = await import(
-        "../../plugin-telegram/src/messageManager.js"
-      );
-      const { TelegramService } = await import(
-        "../../plugin-telegram/src/service.js"
+      const { MessageManager, TelegramService } = await import(
+        "@elizaos/plugin-telegram"
       );
       let calls = 0;
       const send = vi.fn(async (chatId: string, text: string) => {

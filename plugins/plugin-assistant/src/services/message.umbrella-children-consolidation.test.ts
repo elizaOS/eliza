@@ -10,24 +10,23 @@
  * children of ~10.5K each) exists only in trajectories that predate
  * collectCanonicalPlannerActions.
  */
-import { describe, expect, it } from "vitest";
-import {
-  actionToJsonSchema,
-  type JsonSchema,
-} from "../../../../packages/core/src/actions/action-schema.ts";
-import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
-import {
-  dispatchSubaction,
-  readSubaction,
-  type SubactionHandlerMap,
-} from "../../../../packages/core/src/actions/subaction-dispatch.ts";
-import { createContextObject } from "../../../../packages/core/src/runtime/context-object.ts";
+
 import type {
   Action,
   ActionParameter,
   IAgentRuntime,
   Memory,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import {
+  actionToJsonSchema,
+  createContextObject,
+  dispatchSubaction,
+  type JsonSchema,
+  promoteSubactionsToActions,
+  readSubaction,
+  type SubactionHandlerMap,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   collectActionsFromContext,
   collectCanonicalPlannerActions,

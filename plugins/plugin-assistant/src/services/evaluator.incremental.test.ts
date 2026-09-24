@@ -4,15 +4,10 @@
  * durable output replay and processor-failure reporting use production code.
  */
 
+import type { AgentRuntime, Evaluator, Memory, State } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import type {
-  Evaluator,
-  Memory,
-  State,
-} from "../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../packages/core/src/utils.ts";
 import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";

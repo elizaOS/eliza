@@ -75,7 +75,27 @@ class CameraRecordingInstrumentedTest {
         }
     }
 
+    private fun awaitBridgeReady(scenario: ActivityScenario<CameraTestActivity>) {
+        // Initial navigation resets Capacitor listeners and saved permission calls.
+        // Exercise the plugin only after the real harness document has loaded.
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val evaluated = CountDownLatch(1)
+            var ready = false
+            scenario.onActivity { activity ->
+                activity.bridge.webView.evaluateJavascript(
+                    "document.readyState === 'complete' && document.title === 'Camera integration harness' && !!window.Capacitor"
+                ) { result -> ready = result == "true"; evaluated.countDown() }
+            }
+            assertTrue("Camera harness WebView evaluation timed out", evaluated.await(5, TimeUnit.SECONDS))
+            if (ready) return
+            SystemClock.sleep(25)
+        }
+        throw AssertionError("Camera harness bridge did not finish loading")
+    }
+
     private fun call(scenario: ActivityScenario<CameraTestActivity>, method: String, data: JSObject = JSObject()): Reply {
+        awaitBridgeReady(scenario)
         val reply = Reply(method, data)
         scenario.onActivity { activity ->
             val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
@@ -289,6 +309,7 @@ class CameraRecordingInstrumentedTest {
 
     @Test fun frameEventsFollowActualCameraActivity_andStopWithPreview() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            awaitBridgeReady(scenario)
             val frames = LinkedBlockingQueue<JSObject>()
             val listener = object : PluginCall(null, "ElizaCamera", "frame-test", "addListener", JSObject().put("eventName", "frame")) {
                 override fun resolve(data: JSObject) { frames.add(data) }

@@ -4,8 +4,9 @@
  * bodies of any length pass through whole, and the only transformation is
  * lone-surrogate sanitization via toWellFormedUnicode.
  */
+
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { toWellFormedUnicode } from "../../../../packages/core/src/utils/well-formed.ts";
 import { subAgentCompletionRelayBody } from "./message.ts";
 
 function makeInput(body: string): string {

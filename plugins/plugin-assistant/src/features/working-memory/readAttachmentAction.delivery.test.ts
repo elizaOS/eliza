@@ -2,16 +2,16 @@ import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { v4 as uuidv4 } from "uuid";
-import { describe, expect, it } from "vitest";
 import type {
   HandlerCallback,
   IAgentRuntime,
   Media,
   Memory,
   UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ContentType } from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { ContentType } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { describe, expect, it } from "vitest";
 import { readAttachmentAction } from "./readAttachmentAction.ts";
 
 /**

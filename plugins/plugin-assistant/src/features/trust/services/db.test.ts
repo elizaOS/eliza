@@ -4,8 +4,8 @@
  * no database adapter, network, clock, or mocked module is involved.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import { getDb } from "./db.ts";
 
 function runtimeWithDb(db: unknown): IAgentRuntime {

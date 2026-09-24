@@ -10,14 +10,10 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import { processFragmentsSynchronously } from "./document-processor.ts";
 
 const DOCUMENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;

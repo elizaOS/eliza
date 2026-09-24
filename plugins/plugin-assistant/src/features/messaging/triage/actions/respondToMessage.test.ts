@@ -5,12 +5,8 @@
  * live connector, database, or model.
  */
 
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import type {
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import {
   __resetDefaultMessageRefStoreForTests,

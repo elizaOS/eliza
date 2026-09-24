@@ -5,8 +5,8 @@
  * whose `SECRETS` service returns canned metadata — no live model or database.
  */
 
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { ChannelType } from "../../../../../../packages/core/src/types/primitives.ts";
 import { listSecretsHandler } from "./list-secrets.ts";
 
 function createRuntime(metadata: Record<string, unknown>) {

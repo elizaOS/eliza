@@ -8,8 +8,8 @@
  * runtime — no live model, DB, or real payment provider.
  */
 
+import type { SensitiveRequestDispatchRegistry } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
-import type { SensitiveRequestDispatchRegistry } from "../../../../../../packages/core/src/sensitive-requests/dispatch-registry.ts";
 import {
   PAYMENT_BUS_CLIENT_SERVICE,
   PAYMENT_REQUESTS_CLIENT_SERVICE,

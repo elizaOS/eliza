@@ -4,9 +4,9 @@
  * runs its interval and secret-change entrypoints under fake timers.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import type { SecretChangeCallback, SecretContext } from "../types.ts";
 import {
   PluginActivatorService,

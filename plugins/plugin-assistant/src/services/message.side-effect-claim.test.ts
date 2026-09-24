@@ -7,27 +7,25 @@
  * production architecture; only model transport is absent.
  */
 
-import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stringToUuid } from "../../../../packages/core/src/index.ts";
-import { registerCandidateActionBackstopRule } from "../../../../packages/core/src/runtime/candidate-action-backstop.ts";
-import {
-  __resetDirectActionRoutingRulesForTests,
-  getDirectActionRoutingRules,
-  registerDirectActionRoutingRule,
-} from "../../../../packages/core/src/runtime/direct-action-routing.ts";
-import type {
-  ResponseHandlerEvaluatorContext,
-  ResponseHandlerPatch,
-} from "../../../../packages/core/src/runtime/response-handler-evaluators.ts";
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
+  Memory,
   MessageHandlerResult,
-} from "../../../../packages/core/src/types/components.ts";
-import type { EffectReceipt } from "../../../../packages/core/src/types/effects.ts";
-import type { Memory } from "../../../../packages/core/src/types/memory.ts";
-import type { State } from "../../../../packages/core/src/types/state.ts";
+  ResponseHandlerEvaluatorContext,
+  ResponseHandlerPatch,
+  State,
+} from "@elizaos/core";
+import {
+  __resetDirectActionRoutingRulesForTests,
+  getDirectActionRoutingRules,
+  registerCandidateActionBackstopRule,
+  registerDirectActionRoutingRule,
+  stringToUuid,
+} from "@elizaos/core";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,

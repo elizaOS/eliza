@@ -8,13 +8,9 @@
  * argument identity, result identity, or error propagation.
  */
 
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import type { Mock } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  type IAgentRuntime,
-  Service,
-  type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type {
   AccessRequest,
   Permission,

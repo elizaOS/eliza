@@ -1,11 +1,7 @@
 /** Proves structured renderer metadata gives Stage 1 enough context for model-owned view follow-ups. */
 
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { uiContextProvider } from "./uiContext.ts";
 
 describe("UI_CONTEXT", () => {

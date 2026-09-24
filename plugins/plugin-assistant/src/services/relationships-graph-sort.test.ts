@@ -3,12 +3,8 @@
  * when facts, messages, and memories contain invalid or unparseable date strings.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import { createNativeRelationshipsGraphService } from "./relationships-graph-builder";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111" as UUID;

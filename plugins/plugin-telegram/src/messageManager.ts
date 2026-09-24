@@ -30,6 +30,8 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  type ResolvedAttachmentBytes,
+  resolveAttachmentBytes,
   type SendHandlerOutcome,
   type SendHandlerReceipt,
   ServiceType,
@@ -37,10 +39,6 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
-import {
-  type ResolvedAttachmentBytes,
-  resolveAttachmentBytes,
-} from "@elizaos/core/media";
 import type {
   Chat,
   Document,

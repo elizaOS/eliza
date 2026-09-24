@@ -3,13 +3,8 @@
  * validation gates, and dispatch into each real trust subaction handler.
  */
 
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import type {
-  ActionResult,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
 import * as trustModule from "./trust.ts";
 
 const { trustAction } = trustModule;

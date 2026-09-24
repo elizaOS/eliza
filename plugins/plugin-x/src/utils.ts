@@ -10,15 +10,13 @@ import type { Media } from "@elizaos/core";
 import {
   type Content,
   createUniqueUuid,
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   ElizaError,
+  fetchRemoteMedia,
   logger,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import {
-  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
-  fetchRemoteMedia,
-} from "@elizaos/core/media";
 import twitterText from "twitter-text";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";

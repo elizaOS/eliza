@@ -1,6 +1,7 @@
 /** Surrogate safety for complete character identity strings: must never emit lone surrogates. */
+
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { toWellFormedUnicode } from "../../../../../../../packages/core/src/utils/well-formed.ts";
 import { trimToString } from "./character.ts";
 
 function isWellFormed(value: string): boolean {

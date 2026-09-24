@@ -3,8 +3,9 @@
  * validateModelConfig boundary with deterministic environment and runtime-
  * setting inputs.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { validateModelConfig } from "./config.ts";
 import { ModelConfigSchema } from "./types.ts";
 

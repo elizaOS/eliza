@@ -1,9 +1,7 @@
 /** Proves exact history reassembly, occurrence order and identity isolation using the real wire encoder. */
+
+import type { ContextObject, ContextObjectPromptSegment } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  ContextObject,
-  ContextObjectPromptSegment,
-} from "../../../../../packages/core/src/types/context-object.ts";
 import {
   labelHistorySources,
   referenceRepeatedHistory,
