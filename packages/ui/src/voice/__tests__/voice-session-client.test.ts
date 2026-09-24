@@ -1553,6 +1553,8 @@ describe("transport-loss recovery (stop-class hardening)", () => {
     first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
     await flush();
     first.emitControl({ t: "speaking_start", traceId: "T1" });
+    first.emitControl({ t: "llm_first_text", traceId: "T1" });
+    first.emitControl({ t: "usage", traceId: "T1", sttMs: 100, ttsChars: 20 });
     expect(client.state.phase).toBe("speaking");
 
     // Rotation comes due while SPEAKING: it must defer, not cut the audio.

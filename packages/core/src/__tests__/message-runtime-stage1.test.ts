@@ -445,6 +445,28 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"answers a completed domain-labeled reaction without planning on %s",
+		async (channelType) => {
+			const reply = "Sorry. What's off about the 9:30?";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["calendar"],
+					replyText: reply,
+					extra: { replyEffectStatus: "none" },
+				}),
+			]);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({ text: "What the fuck?", channelType }),
+			});
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		},
+	);
 	it("rejects competing source decisions with identical text but different origins", async () => {
 		const original = {
 			...makeMessage({ text: "The repeated original." }),
@@ -14624,7 +14646,7 @@ describe("explicit discovery survives planner surface construction", () => {
 			expect(result.result.responseContent?.text).toBe(answer);
 	});
 
-	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
+	it("answers a completed general-context greeting without planning", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -14633,12 +14655,6 @@ describe("explicit discovery survives planner surface construction", () => {
 				replyText: "Hey.",
 				extra: { replyEffectStatus: "none" },
 			}),
-			{
-				text: "",
-				toolCalls: [
-					{ id: "reply-only", name: "REPLY", arguments: { text: "Hey." } },
-				],
-			},
 		]);
 		const handler = vi.fn(async () => ({
 			success: true,
@@ -14662,15 +14678,9 @@ describe("explicit discovery survives planner surface construction", () => {
 		});
 		expect(handler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls.map(([type]) => type)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
-		]);
-		const planner = calls[1][1] as { tools: Array<{ name: string }> };
-		expect(planner.tools.map((tool) => tool.name)).toContain("DISCOVER_TOOLS");
-		expect(planner.tools.map((tool) => tool.name)).not.toContain("CALENDAR");
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply")
+		expect(calls.map(([type]) => type)).toEqual([ModelType.RESPONSE_HANDLER]);
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
 			expect(result.result.responseContent?.text).toBe("Hey.");
 	});
 
