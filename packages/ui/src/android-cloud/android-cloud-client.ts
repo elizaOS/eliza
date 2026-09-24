@@ -12,13 +12,13 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const MANAGED_RUNTIME_HOST_PATTERN =

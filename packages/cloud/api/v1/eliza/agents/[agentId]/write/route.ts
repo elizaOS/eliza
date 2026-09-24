@@ -9,10 +9,6 @@
  * Auth: X-Service-Key header.
  */
 
-import { and, eq, type SQL } from "drizzle-orm";
-import { Hono } from "hono";
-import { z } from "zod";
-import { writeTransaction } from "@/db/helpers";
 import {
   agentTable,
   entityTable,
@@ -22,7 +18,11 @@ import {
   roomTable,
   taskTable,
   worldTable,
-} from "@/db/schemas/eliza";
+} from "@elizaos/plugin-sql";
+import { and, eq, type SQL } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
+import { writeTransaction } from "@/db/helpers";
 import {
   failureResponse,
   ValidationError,

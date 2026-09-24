@@ -4,7 +4,7 @@
  * connection-pool reuse) or a `PgliteDatabaseAdapter` (per-agent PGlite
  * singleton), both drawn from the process-global singleton cache under
  * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Also re-exports the
- * Drizzle query-helper subpath, RLS management functions, and the PGlite
+ * Drizzle query helpers, RLS management functions, and the PGlite
  * live-query and close accessors used by hosts.
  */
 import type { IDatabaseAdapter, Plugin, UUID } from "@elizaos/core";
@@ -239,7 +239,6 @@ export const plugin: Plugin = {
 
 export default plugin;
 
-export * from "./drizzle";
 export { DatabaseMigrationService } from "./migration-service";
 export {
   applyRLSToNewTables,
@@ -320,4 +319,32 @@ export function getPgliteSingletonCache(): PgliteSingletonCache {
   return globalSingletons;
 }
 
+export * from "./database-utils/carve-out-migration";
+export * from "./database-utils/raw-sql";
+export * from "./database-utils/sql-compat";
+export { PgDatabaseAdapter } from "./pg/adapter";
+export { PostgresConnectionManager } from "./pg/manager";
+export { PgliteDatabaseAdapter } from "./pglite/adapter";
+export { PGliteClientManager } from "./pglite/manager";
+export {
+  calculateDiff,
+  hasDiffChanges,
+  type SchemaDiff,
+} from "./runtime-migrator/drizzle-adapters/diff-calculator";
+export {
+  createEmptySnapshot,
+  generateSnapshot,
+  hasChanges,
+  hashSnapshot,
+} from "./runtime-migrator/drizzle-adapters/snapshot-generator";
+export {
+  generateMigrationSQL,
+  generateRenameColumnSQL,
+  generateRenameTableSQL,
+} from "./runtime-migrator/drizzle-adapters/sql-generator";
+export { RuntimeMigrator } from "./runtime-migrator/runtime-migrator";
+export { JournalStorage } from "./runtime-migrator/storage/journal-storage";
+export { MigrationTracker } from "./runtime-migrator/storage/migration-tracker";
+export { SnapshotStorage } from "./runtime-migrator/storage/snapshot-storage";
+export * from "./runtime-migrator/types";
 export { computeIdentityPersonLinkRequestDigest } from "./services/sql-principal";

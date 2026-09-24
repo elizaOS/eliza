@@ -87,7 +87,6 @@
 				"../../../../plugins/plugin-wallet/src/index.ts"
 			],
 			"@elizaos/plugin-sql": ["../../../../plugins/plugin-sql/src/index.ts"],
-			"@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
 			"@elizaos/plugin-native-inference/host-bridge": [
 				"../../../../plugins/plugin-native-inference/src/bridge.ts"
 			],

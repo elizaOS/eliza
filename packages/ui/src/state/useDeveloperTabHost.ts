@@ -1,8 +1,9 @@
 /** Connects local developer chat to the normal app's canonical sender and live transcript, scoped to the same API authority. */
-import { logger } from "@elizaos/ui/logger";
+
 import { useEffect, useRef } from "react";
 import { client } from "../api";
 import { useActiveAgentAuthority } from "../hooks/useActiveAgentAuthority";
+import { logger } from "../logger.ts";
 import { isDeveloperWorkspaceRoute, pathForTab } from "../navigation";
 import { dispatchConversationResync } from "./AppContext.hooks";
 import { useAppSelectorShallow } from "./app-store";

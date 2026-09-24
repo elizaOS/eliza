@@ -11,7 +11,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core/utils/unicode";
-import { logger } from "@elizaos/ui/logger";
 import { client, type FirstRunOptions } from "../api";
 import {
   getAndroidLocalAgentBootStateForUrl,
@@ -45,6 +44,7 @@ import {
 import { readMobileRuntimeBuildTruth } from "../first-run/reconcile-mobile-runtime-mode";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
+import { logger } from "../logger.ts";
 import { isAndroid, isIOS } from "../platform";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {

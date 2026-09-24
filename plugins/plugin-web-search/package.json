@@ -18,33 +18,7 @@
                 "default": "./dist/index.js"
             }
         },
-        "./keyless-web-search": {
-            "types": "./dist/keyless-web-search.d.ts",
-            "eliza-source": "./src/keyless-web-search.ts",
-            "import": "./dist/keyless-web-search.js",
-            "default": "./dist/keyless-web-search.js"
-        },
-        "./edge": {
-            "types": "./dist/edge.d.ts",
-            "eliza-source": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "import": "./dist/edge.js",
-            "default": "./dist/edge.js"
-        },
-        "./*.css": "./dist/*.css",
-        "./*": {
-            "types": "./dist/*.d.ts",
-            "eliza-source": {
-                "types": "./src/*.ts",
-                "import": "./src/*.ts",
-                "default": "./src/*.ts"
-            },
-            "import": "./dist/*.js",
-            "default": "./dist/*.js"
-        }
+        "./*.css": "./dist/*.css"
     },
     "files": [
         "dist"

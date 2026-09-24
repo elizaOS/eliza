@@ -4,7 +4,7 @@
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
       "@elizaos/plugin-sqlite": ["../../plugin-sqlite/index.ts"],
-      "@elizaos/plugin-sql/database-utils/*": ["./database-utils/*"]
+      "@elizaos/plugin-sql": ["./index.ts"]
     }
   }
 }

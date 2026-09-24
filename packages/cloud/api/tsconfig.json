@@ -37,8 +37,8 @@
         "../../../plugins/plugin-elizacloud/src/*"
       ],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-web-search/edge": [
-        "../../../plugins/plugin-web-search/src/edge.ts"
+      "@elizaos/plugin-web-search": [
+        "../../../plugins/plugin-web-search/src/index.ts"
       ],
       "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": [
@@ -81,6 +81,21 @@
       ],
       "@elizaos/plugin-wallet/lib/market-overview": [
         "../../../plugins/plugin-wallet/src/lib/market-overview.ts"
+      ],
+      "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
+      "@elizaos/ui": ["../../ui/src/index.ts"],
+      "@elizaos/auth": ["../../auth/src/sdk/index.ts"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/routing-policy.ts"
       ]
     }
   },

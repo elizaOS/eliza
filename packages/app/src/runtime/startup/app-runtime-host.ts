@@ -20,7 +20,7 @@ import {
 } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";

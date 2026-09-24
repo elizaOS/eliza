@@ -16,7 +16,7 @@ interface MigrationRow {
 
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import * as coreSchema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { testPolymarketSchema } from "../schema-data/test-plugin-schema";

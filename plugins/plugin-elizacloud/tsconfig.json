@@ -34,9 +34,6 @@
       "@elizaos/plugin-native-inference/model-catalog/recommendation": [
         "../plugin-native-inference/src/model-catalog/recommendation.ts"
       ],
-      "@elizaos/plugin-sql/database-utils/sql-compat": [
-        "../plugin-sql/src/database-utils/sql-compat.ts"
-      ],
       "@elizaos/plugin-native-inference/model-catalog/catalog": [
         "../plugin-native-inference/src/model-catalog/catalog.ts"
       ],
@@ -68,7 +65,8 @@
       ],
       "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
         "./src/cloud-config/dev-cloud-env-authority.ts"
-      ]
+      ],
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

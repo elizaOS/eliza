@@ -874,20 +874,7 @@ function createWorkspacePackageExportAliases(packageDirs: string[]) {
   }
   return aliases;
 }
-function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
-  const preferred = [
-    "src/ui.ts",
-    "src/ui/index.ts",
-    "src/register.ts",
-    "src/index.ts",
-  ];
-  for (const relativePath of preferred) {
-    const candidate = path.join(pkgDir, relativePath);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-function createAppPluginBrowserAliases() {
+function createAppPluginSourceAliases() {
   const pluginsRoot = path.resolve(elizaRoot, "plugins");
   const aliases = [];
   if (!fs.existsSync(pluginsRoot)) return aliases;
@@ -903,32 +890,18 @@ function createAppPluginBrowserAliases() {
     if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
-    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
-    if (browserEntry) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
-        replacement: browserEntry,
-      });
+    const sourceEntry = ["src/index.ts", "src/index.tsx", "index.ts"]
+      .map((relativePath) => path.join(pkgDir, relativePath))
+      .find((candidate) => fs.existsSync(candidate));
+    if (!sourceEntry) {
+      throw new Error(
+        `App plugin ${pkgName} has no root source entry in ${pkgDir}`,
+      );
     }
-    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
-      const candidate = path.join(pkgDir, uiEntry);
-      if (!fs.existsSync(candidate)) continue;
-      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form, which the
-      // package.json `./*` export maps to src/ui/index.ts. Dev builds must stay
-      // on source because dist/ui/index.js is not guaranteed to exist.
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
-        replacement: candidate,
-      });
-      break;
-    }
-    const registerEntry = path.join(pkgDir, "src/register.ts");
-    if (fs.existsSync(registerEntry)) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/register$`),
-        replacement: registerEntry,
-      });
-    }
+    aliases.push({
+      find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+      replacement: sourceEntry,
+    });
   }
   return aliases;
 }
@@ -2671,7 +2644,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Browser-safe aliases for local app plugin package roots. Keep these
       // before workspace aliases; Vite/Rollup uses the first matching alias, and
       // the renderer must prefer UI facades over package root exports.
-      ...createAppPluginBrowserAliases(),
+      ...createAppPluginSourceAliases(),
       // Dynamic aliases for local app plugin package roots that do not have a
       // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),

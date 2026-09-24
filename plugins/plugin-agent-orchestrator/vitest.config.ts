@@ -9,18 +9,6 @@ export default defineConfig({
   resolve: {
     alias: [
       ...Object.entries({
-        "@elizaos/plugin-sql/database-utils/pglite-storage": fileURLToPath(
-          new URL(
-            "../plugin-sql/src/database-utils/pglite-storage.ts",
-            import.meta.url,
-          ),
-        ),
-        "@elizaos/plugin-sql/database-utils/raw-sql": fileURLToPath(
-          new URL(
-            "../plugin-sql/src/database-utils/raw-sql.ts",
-            import.meta.url,
-          ),
-        ),
         "@elizaos/core/host-execution-env": fileURLToPath(
           new URL(
             "../../packages/core/src/host-execution-env.ts",

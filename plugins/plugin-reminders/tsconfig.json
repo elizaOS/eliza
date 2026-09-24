@@ -15,9 +15,7 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/plugin-sql/database-utils/carve-out-migration": [
-        "../plugin-sql/src/database-utils/carve-out-migration.ts"
-      ]
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],

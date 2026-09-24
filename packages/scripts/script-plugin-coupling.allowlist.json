@@ -1,5 +1,10 @@
 [
   {
+    "file": "packages/cloud/scripts/shared/seed-local-dev.ts",
+    "tokens": ["@elizaos/plugin-sql"],
+    "reason": "Local Cloud seeding writes the canonical agent and entity tables owned by SQL; these fixed schema identities must come from the package root rather than plugin discovery or a duplicate schema."
+  },
+  {
     "file": "packages/scripts/lib/cost-table.ts",
     "tokens": ["plugins/plugin-assistant"],
     "reason": "offline trajectory validation imports the recorder's canonical versioned pricing implementation; discovering arbitrary plugin metadata would lose the shared price-table contract"

@@ -14,7 +14,6 @@
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core/errors";
 import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import { logger } from "@elizaos/ui/logger";
 import {
   useCallback,
   useEffect,
@@ -38,6 +37,7 @@ import {
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import { resolveApiUrl } from "../utils";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {

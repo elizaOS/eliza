@@ -34,7 +34,6 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
 import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
@@ -45,6 +44,7 @@ import {
 } from "../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { logger } from "../../logger.ts";
 import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";

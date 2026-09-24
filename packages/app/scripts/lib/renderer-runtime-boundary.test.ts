@@ -67,6 +67,16 @@ async function bundle(entry: string) {
 }
 
 describe("renderer runtime boundary", () => {
+  it("rejects retained SQL runtime imports instead of substituting a schema", async () => {
+    await expect(
+      bundle(
+        'export { executeSql } from "@elizaos/plugin-sql/database-utils/raw-sql";',
+      ),
+    ).rejects.toThrow(
+      "Node runtime import @elizaos/plugin-sql/database-utils/raw-sql survived",
+    );
+  });
+
   it("discards unused runtime exports from a shared barrel", async () => {
     const result = await bundle('export { label } from "@fixture/shared";');
     const outputs = Array.isArray(result) ? result : [result];

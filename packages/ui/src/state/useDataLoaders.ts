@@ -10,7 +10,6 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
 } from "@elizaos/core/character-presets";
-import { logger } from "@elizaos/ui/logger";
 import {
   type RefObject,
   useCallback,
@@ -45,6 +44,7 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
+import { logger } from "../logger.ts";
 import { normalizeOwnerName } from "../utils/owner-name.js";
 import {
   type AutonomyRunHealthMap,

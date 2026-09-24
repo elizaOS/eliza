@@ -29,13 +29,12 @@
       "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
       "@elizaos/core": ["../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
       "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
-      "@elizaos/plugin-web-search/edge": ["../../../plugins/plugin-web-search/src/edge.ts"],
+      "@elizaos/plugin-web-search": ["../../../plugins/plugin-web-search/src/index.ts"],
       "@elizaos/plugin-scheduling": ["../../../plugins/plugin-scheduling/src/index.ts"],
       "@elizaos/plugin-native-inference/model-catalog/bge-input": [
         "../../../plugins/plugin-native-inference/src/model-catalog/bge-input.ts"

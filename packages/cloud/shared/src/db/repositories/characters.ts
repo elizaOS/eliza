@@ -1,10 +1,11 @@
 // Persists characters records for cloud services through the shared DB boundary.
+
+import { agentTable } from "@elizaos/plugin-sql";
 import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
-import { agentTable } from "../schemas/eliza";
 import { elizaRoomCharactersTable } from "../schemas/eliza-room-characters";
 import {
   type NewUserCharacter,

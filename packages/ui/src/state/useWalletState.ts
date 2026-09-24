@@ -27,7 +27,6 @@ import type {
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/core/contracts/wallet-types";
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -43,6 +42,7 @@ import {
   getActiveAgentAuthority,
   useActiveAgentAuthority,
 } from "../hooks/useActiveAgentAuthority";
+import { logger } from "../logger.ts";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import {
   loadBrowserEnabled,
