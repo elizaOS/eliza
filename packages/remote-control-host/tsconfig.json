@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "bun-types"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "customConditions": ["eliza-source"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

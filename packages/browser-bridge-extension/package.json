@@ -1,0 +1,16 @@
+{
+  "name": "@elizaos/browser-bridge-extension",
+  "version": "2.0.4",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test src/*.test.mjs scripts/native-host.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && node --check src/background.mjs && node --check src/commands.mjs",
+    "lint": "bunx @biomejs/biome check ."
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/node": "^25.2.3"
+  }
+}
