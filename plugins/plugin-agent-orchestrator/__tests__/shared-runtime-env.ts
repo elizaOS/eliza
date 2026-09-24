@@ -2,6 +2,10 @@
 export * from "../../../packages/shared/src/contracts/coding-agent-capabilities.js";
 export * from "../../../packages/shared/src/elizacloud/dev-cloud-env-authority.js";
 export {
+  collectPreparedKeywordTermMatches,
+  prepareKeywordTerms,
+} from "../../../packages/shared/src/i18n/keyword-matching-core.js";
+export {
   isAndroidMobile,
   resolvePlatform,
 } from "../../../packages/shared/src/runtime-env.js";
