@@ -885,6 +885,7 @@ describe("local inference downloader status", () => {
 		// Downloader reading the on-disk status still exposes the coded failure.
 		const rehydrated = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		})
 			.snapshot()
 			.find((j) => j.modelId === base.id);
@@ -1049,6 +1050,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model.id);
@@ -1085,6 +1087,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model.id);
@@ -1128,6 +1131,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model.id);
@@ -1159,6 +1163,7 @@ describe("local inference downloader stale-content robustness", () => {
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
@@ -1207,6 +1212,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model.id);
@@ -1234,6 +1240,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const failed = waitForTerminal(downloader, model.id, "failed");
 		await downloader.start(model.id);
@@ -1313,6 +1320,7 @@ describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", (
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
@@ -1343,6 +1351,7 @@ describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", (
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
@@ -1368,6 +1377,7 @@ describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", (
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
@@ -1508,6 +1518,7 @@ describe("local inference downloader native background URLSession path (#11841)"
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
@@ -1542,6 +1553,7 @@ describe("local inference downloader native background URLSession path (#11841)"
 		try {
 			const downloader = new Downloader({
 				probeDeviceCaps: async () => cpuOnlyCaps,
+				probeHardware: async () => fakeProbe(100),
 			});
 			const completed = waitForTerminal(downloader, model.id);
 			await downloader.start(model.id);
