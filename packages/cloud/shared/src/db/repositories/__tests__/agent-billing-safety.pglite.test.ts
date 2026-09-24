@@ -51,7 +51,7 @@ async function seedSandbox(
   organizationId: string,
   userId: string,
   values: {
-    status?: "running" | "stopped" | "error";
+    status?: "running" | "stopped" | "error" | "deletion_pending" | "deletion_failed";
     billingStatus?: AgentBillingStatus;
     deletedAt?: Date | null;
     lastBackupAt?: Date | null;
@@ -397,8 +397,8 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
 });
 
 describe("AgentBillingRepository deletion-in-flight discovery", () => {
-  test.each(["running", "stopped"] as const)(
-    "excludes a deleting %s sandbox while retaining its live control",
+  test.each(["running", "stopped", "deletion_pending", "deletion_failed"] as const)(
+    "keeps provider-unconfirmed %s deletion billable until terminal row removal",
     async (status) => {
       const { organizationId, userId } = await seedOrganizationAndUser();
       const values = {
@@ -410,16 +410,29 @@ describe("AgentBillingRepository deletion-in-flight discovery", () => {
         ...values,
         deletionAttemptId: crypto.randomUUID(),
       });
-      const liveId = await seedSandbox(organizationId, userId, values);
+      const liveId = await seedSandbox(organizationId, userId, {
+        ...values,
+        status: status === "stopped" ? "stopped" : "running",
+      });
       const due = await agentBillingRepository.listBillableSandboxes(
         BILLING_NOW,
         new Date("2026-08-20T11:00:00.000Z"),
       );
-      const ids = (status === "running" ? due.runningSandboxes : due.stoppedWithBackups).map(
+      const ids = (status === "stopped" ? due.stoppedWithBackups : due.runningSandboxes).map(
         (sandbox) => sandbox.id,
       );
       expect(ids).toContain(liveId);
-      expect(ids).not.toContain(deletingId);
+      expect(ids).toContain(deletingId);
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, deletingId));
+      const afterRemoval = await agentBillingRepository.listBillableSandboxes(
+        BILLING_NOW,
+        new Date("2026-08-20T11:00:00.000Z"),
+      );
+      expect(
+        [...afterRemoval.runningSandboxes, ...afterRemoval.stoppedWithBackups].map(
+          (sandbox) => sandbox.id,
+        ),
+      ).not.toContain(deletingId);
     },
   );
 });

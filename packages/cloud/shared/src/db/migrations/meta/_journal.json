@@ -2668,6 +2668,20 @@
       "when": 1796083200024,
       "tag": "0397_subscription_checkout_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1796083200025,
+      "tag": "0398_provider_unconfirmed_deletion_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 382,
+      "version": "7",
+      "when": 1796083200026,
+      "tag": "0399_prepared_stop_backup",
+      "breakpoints": true
     }
   ]
 }
