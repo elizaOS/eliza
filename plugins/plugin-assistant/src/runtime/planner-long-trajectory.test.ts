@@ -362,3 +362,89 @@ describe("long progressive planner trajectories", () => {
     },
   );
 });
+
+describe("coding verification recovery scope", () => {
+  it.each([
+    {
+      label: "same suite",
+      retry: "go test ./...",
+      cwd: "/workspace",
+      recovered: true,
+    },
+    {
+      label: "corrective prefix and same suite",
+      retry: "go generate ./... && go test ./...",
+      cwd: "/workspace",
+      recovered: true,
+    },
+    {
+      label: "narrower suite",
+      retry: "go test ./internal/config -run TestLoad",
+      cwd: "/workspace",
+      recovered: false,
+    },
+    {
+      label: "same suite in different workspace",
+      retry: "go test ./...",
+      cwd: "/other",
+      recovered: false,
+    },
+  ])("preserves evidence for $label", async ({ retry, cwd, recovered }) => {
+    let round = 0;
+    let calls = 0;
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "verification-recovery" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 4) throw new Error("Unexpected planner retry");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `recovery-${round}`,
+                name: round < 3 ? "SHELL" : "REPLY",
+                arguments:
+                  round < 3
+                    ? {
+                        command: round === 1 ? "go test ./..." : retry,
+                        cwd: round === 1 ? "/workspace" : cwd,
+                        eliza_turn_scope: "more_work_pending",
+                      }
+                    : {
+                        text: "Verification completed.",
+                        eliza_turn_scope: "final",
+                      },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async () => {
+        calls++;
+        const success = calls !== 1;
+        return {
+          success,
+          text: success ? "Tests passed" : "Tests failed",
+          verification: {
+            kind: "test",
+            family: "go",
+            status: success ? "passed" : "failed",
+            exitCode: success ? 0 : 1,
+          },
+        };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.evaluator?.success).toBe(recovered);
+    expect(result.terminalFailure?.kind).toBe(
+      recovered ? undefined : "coding_tool_failure",
+    );
+    expect(
+      result.trajectory.steps
+        .filter((step) => step.result)
+        .map((step) => step.result?.success),
+    ).toEqual([false, true]);
+  });
+});

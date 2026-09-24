@@ -6396,23 +6396,10 @@ function resolveShellFailuresSubsumedBy(
     if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
     if (containsCommandVerbatim(command, failedCommand)) {
       unresolvedByOperation.delete(key);
-      continue;
     }
-    // A narrower successful verifier is a valid recovery for a broader failed
-    // verifier when both commands belong to the same tool family (for example,
-    // `go test ./...` followed by `go test ./internal/config -run TestLoad`).
-    // This is restricted to coding verification commands and an identical
-    // executable prefix so an unrelated deploy/build failure cannot be laundered
-    // by a later test.
-    if (
-      step.result?.verification?.status === "passed" &&
-      failed.result?.verification?.status === "failed" &&
-      step.result.verification.kind === failed.result.verification.kind &&
-      step.result.verification.family !== undefined &&
-      step.result.verification.family === failed.result.verification.family
-    ) {
-      unresolvedByOperation.delete(key);
-    }
+    // A shared verifier family cannot prove coverage: a passing subset may
+    // exclude the case that failed in the broader command. Preserve that
+    // failure until the same operation is successfully re-executed.
   }
 }
 
