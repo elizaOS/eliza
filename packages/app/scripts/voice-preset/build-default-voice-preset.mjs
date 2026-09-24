@@ -314,7 +314,7 @@ async function main() {
   }
 
   const { writeVoicePresetFile } = await import(
-    "@elizaos/plugin-local-inference/services/voice/voice-preset-format"
+    "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts"
   );
   const blob = writeVoicePresetFile({ embedding, phrases });
   const outPath = defaultOutPath(args);
