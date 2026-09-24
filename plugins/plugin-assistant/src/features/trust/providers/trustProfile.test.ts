@@ -4,14 +4,9 @@
  * The real provider runs against typed trust-service fakes without a model or database.
  */
 
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import {
   TrustEvidenceType,

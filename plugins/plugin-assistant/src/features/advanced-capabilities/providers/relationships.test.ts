@@ -3,14 +3,15 @@
  * runtime boundary while exercising the real clustering, ordering, counterpart
  * resolution, batching, and rendering implementation.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   Entity,
   IAgentRuntime,
   Memory,
   Relationship,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { relationshipsProvider } from "./relationships.ts";
 
 const agentId = "20000000-0000-0000-0000-000000000001" as UUID;

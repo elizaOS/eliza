@@ -3,8 +3,9 @@
  * document renderer. Covers the pinned-only filter, deterministic sort order,
  * complete authored content, and the no-pinned-documents empty case.
  */
+
+import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../../../../packages/core/src/types/index.ts";
 import { renderPinnedDocuments } from "./provider.ts";
 
 function pinnedMemory(

@@ -2,12 +2,9 @@
  * Deterministic unit tests for the NONE action's routing validation and no-op
  * result. The real action runs without model, database, or transport mocks.
  */
+
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { noneAction } from "./none.ts";
 
 const runtime = {} as IAgentRuntime;

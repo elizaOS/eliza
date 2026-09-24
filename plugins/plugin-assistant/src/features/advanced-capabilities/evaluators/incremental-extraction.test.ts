@@ -1,17 +1,17 @@
 import { PGlite } from "@electric-sql/pglite";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { drizzle } from "drizzle-orm/pglite";
-import { describe, expect, it, vi } from "vitest";
 import {
   ChannelType,
   type Character,
   type EvaluatorRunOptions,
   type IAgentRuntime,
+  isActiveMemoryEvidence,
   type Memory,
   type RegisteredEvaluator,
   type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { isActiveMemoryEvidence } from "../../../../../../packages/core/src/utils/extraction-evidence.ts";
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { drizzle } from "drizzle-orm/pglite";
+import { describe, expect, it, vi } from "vitest";
 import { makeFakeRuntime } from "../personality/__tests__/test-helpers.ts";
 import { PersonalityStore } from "../personality/services/personality-store.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";

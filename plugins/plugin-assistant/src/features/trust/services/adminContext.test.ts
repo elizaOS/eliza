@@ -4,18 +4,18 @@
  * resolver and server-derived world ID logic execute unchanged.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, test, vi } from "vitest";
-import { createUniqueUuid } from "../../../../../../packages/core/src/entities.ts";
 import {
   ChannelType,
+  createUniqueUuid,
   type Memory,
   Role,
   type Room,
   type State,
   type UUID,
   type World,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, test, vi } from "vitest";
 import { resolveAdminContext } from "./adminContext.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;

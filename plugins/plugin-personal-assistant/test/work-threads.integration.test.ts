@@ -12,10 +12,14 @@ import type {
   ResponseHandlerResult,
   State,
 } from "@elizaos/core";
-import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
+import {
+  AgentEventService,
+  ChannelType,
+  runWithActionRoutingContext,
+  setEntityRole,
+  stringToUuid,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runWithActionRoutingContext } from "../../../packages/core/src/runtime/action-routing-context.js";
-import { AgentEventService } from "../../../packages/core/src/services/agentEvent.js";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import { registerLifeOpsScheduledTaskRunnerDeps } from "../src/lifeops/scheduled-task/runtime-wiring.js";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";

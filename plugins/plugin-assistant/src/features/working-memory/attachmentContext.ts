@@ -2,6 +2,7 @@ import {
   type AccessContext,
   buildAccessContext,
   ContentType,
+  hashAttachmentIdForLocator,
   type IAgentRuntime,
   type Media,
   type Memory,
@@ -20,7 +21,6 @@ import {
   VISION_IMAGE_FETCH_TIMEOUT_MS,
   VISION_IMAGE_MAX_BYTES,
 } from "@elizaos/core/media";
-import { hashAttachmentIdForLocator } from "../../../../../packages/core/src/runtime/message-content-segments.ts";
 
 /**
  * Attachment-reading helpers behind the ATTACHMENT action of the working-memory

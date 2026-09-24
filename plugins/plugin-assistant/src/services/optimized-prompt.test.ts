@@ -22,9 +22,8 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveOptimizedPrompt } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveOptimizedPrompt } from "../../../../packages/core/src/services/optimized-prompt-resolver";
 import {
   _computeOptimizedPromptMacForTest,
   OPTIMIZED_PROMPT_CURRENT_LINK,

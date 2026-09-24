@@ -407,7 +407,9 @@ export {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptRuntimeLike,
 	type RuntimePromptResolver,
+	resolveOptimizedPrompt,
 	resolveOptimizedPromptForRuntime,
+	trimDemonstrationInput,
 } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";

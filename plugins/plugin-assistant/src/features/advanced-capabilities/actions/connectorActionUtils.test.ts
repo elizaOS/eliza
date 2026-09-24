@@ -3,8 +3,9 @@
  * an explicit caller page size without injecting a default or maximum,
  * scalar readers reject non-coercible values rather than passing them through.
  */
+
+import type { HandlerOptions } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { HandlerOptions } from "../../../../../../packages/core/src/types/components.ts";
 import {
   boolParam,
   isUuidLike,

@@ -6,14 +6,12 @@
  * suite that owns the ScheduledTask bridge.
  */
 
+import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  effectDeliveryBindingProvesApplication,
+  settleActionHandler,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { settleActionHandler } from "../../../../../../../packages/core/src/runtime/action-handler-settlement.ts";
-import { effectDeliveryBindingProvesApplication } from "../../../../../../../packages/core/src/runtime/effect-delivery.ts";
-import type {
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import {
   formatSendAtIso,
   scheduleDraftSendAction,

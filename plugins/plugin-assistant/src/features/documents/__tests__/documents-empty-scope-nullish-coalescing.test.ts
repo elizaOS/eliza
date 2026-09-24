@@ -10,14 +10,10 @@
  * against a real `addDocument` call.
  */
 
+import type { Character, Memory, UUID } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { addDocumentFromFilePath } from "../docs-loader.ts";
 import { DocumentService } from "../service.ts";
 import type { AddDocumentOptions } from "../types.ts";

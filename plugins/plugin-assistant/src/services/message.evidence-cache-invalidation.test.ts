@@ -8,14 +8,15 @@
  * would have BM25-matched a stored fact — but compose #2 logged
  * `provider-cache:FACTS cacheHit:true` and reused the pre-attachment output.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   ActionResult,
   IAgentRuntime,
   Memory,
   State,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { __invalidateEvidenceSensitiveProviderCacheForTests } from "./message.ts";
 
 const messageId = "00000000-0000-0000-0000-0000000000e1" as UUID;

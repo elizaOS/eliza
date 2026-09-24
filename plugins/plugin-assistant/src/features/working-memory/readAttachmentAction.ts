@@ -54,13 +54,11 @@ import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
  */
 
 import {
+  attachmentTextSourceDescriptor,
   buildAccessContext,
+  hashAttachmentIdForLocator,
   type MessageContentRangePage,
 } from "@elizaos/core";
-import {
-  attachmentTextSourceDescriptor,
-  hashAttachmentIdForLocator,
-} from "../../../../../packages/core/src/runtime/message-content-segments.ts";
 import { readCompleteMessageContent } from "../messaging/complete-content-read.ts";
 
 const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;

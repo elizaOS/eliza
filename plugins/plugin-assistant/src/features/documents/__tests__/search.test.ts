@@ -1,12 +1,6 @@
+import type { Memory, UUID } from "@elizaos/core";
+import { MemoryType, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import {
-  MemoryType,
-  ModelType,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { bm25Scores, normalizeBm25Scores, tokenize } from "../bm25.ts";
 import { embedRecallQuery } from "../recall-embed.ts";
 import { DocumentService } from "../service.ts";

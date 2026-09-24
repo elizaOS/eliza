@@ -3,19 +3,21 @@
  * callback buffering and effect-receipt settlement. Deterministic stub actions
  * and runtime keep the tests independent of model and persistence providers.
  */
-import { describe, expect, it, vi } from "vitest";
 
-import { ElizaError } from "../../../../../../packages/core/src/errors.ts";
-import { effectDeliveryBindingProvesApplication } from "../../../../../../packages/core/src/runtime/effect-delivery.ts";
-import type { EffectReceipt } from "../../../../../../packages/core/src/types/effects.ts";
 import type {
   Action,
   Content,
+  EffectReceipt,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import {
+  ElizaError,
+  effectDeliveryBindingProvesApplication,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { PlanningService } from "./planning-service.ts";
 
 /**

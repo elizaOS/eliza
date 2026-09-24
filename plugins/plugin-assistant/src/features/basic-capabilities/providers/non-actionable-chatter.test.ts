@@ -3,17 +3,15 @@
  * the provider/action catalog before model judgment could see an actual request.
  * The remaining helper is only the relationship follow-up narrowing path.
  */
-import { describe, expect, it, vi } from "vitest";
+
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import {
   type Action,
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   type Handler,
   type Provider,
-} from "../../../../../../packages/core/src/types/components.ts";
-import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../../../packages/core/src/types/state.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { actionsProvider } from "./actions";
 import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
 import { providersProvider } from "./providers.ts";

@@ -7,8 +7,8 @@
  * are hand-rolled fakes — deterministic, no HTTP server or database.
  */
 import type { ServerResponse } from "node:http";
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes.ts";
 
 // Minimal ServerResponse capture — records statusCode + parsed JSON body.

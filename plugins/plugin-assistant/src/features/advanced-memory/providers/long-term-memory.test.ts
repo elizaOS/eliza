@@ -4,18 +4,10 @@
  * Uses the real provider and formatter with an in-memory service boundary.
  */
 
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { type LongTermMemory, LongTermMemoryCategory } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import {
-  type LongTermMemory,
-  LongTermMemoryCategory,
-} from "../../../../../../packages/core/src/types/long-term-memory.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { longTermMemoryProvider } from "./long-term-memory.ts";
 

@@ -13,12 +13,10 @@
  * statusText is dynamic prose a hostile response controls — and oversize
  * bodies are cancelled at the streaming cap, not materialized then measured.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { ContentType, type Media } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  ContentType,
-  type Media,
-} from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
 
 // Network-free: the SSRF-guarded remote fetcher is mocked so the lane performs
 // ZERO real outbound requests. importActual preserves the module's other exports

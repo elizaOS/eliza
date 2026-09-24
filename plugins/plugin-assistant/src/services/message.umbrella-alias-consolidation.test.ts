@@ -6,11 +6,14 @@
  * CALENDAR_UPDATE_EVENT 13,232 on each of three planner rounds, the same
  * `details` schema rendered three times per round.
  */
+
+import type { Action } from "@elizaos/core";
+import {
+  buildPlannerToolsFromTieredActions,
+  createContextObject,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
-import { buildPlannerToolsFromTieredActions } from "../../../../packages/core/src/actions/to-tool.ts";
-import { createContextObject } from "../../../../packages/core/src/runtime/context-object.ts";
-import type { Action } from "../../../../packages/core/src/types/components.ts";
 import {
   collectCanonicalPlannerActions,
   collectPlannerTools,

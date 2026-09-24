@@ -1,17 +1,19 @@
 /** Exercises real discovery, execution and planner settlement with deterministic model responses. */
 
 import { randomUUID } from "node:crypto";
+import type {
+  Action,
+  ContextObject,
+  Memory,
+  PlannerRuntime,
+} from "@elizaos/core";
 import {
   buildPlannerToolsFromActions,
   CORE_PLANNER_TERMINALS,
+  ModelType,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type { PlannerRuntime } from "../../../../../packages/core/src/runtime/planner-types.ts";
-import type { Action } from "../../../../../packages/core/src/types/components.ts";
-import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import { ModelType } from "../../../../../packages/core/src/types/model.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import { executeV5PlannedToolCall } from "./planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "./tool-discovery.ts";

@@ -1,3 +1,10 @@
+import type {
+  ControlTransportMessage,
+  IAgentRuntime,
+  IControlTransportService,
+  UUID,
+} from "@elizaos/core";
+import { AgentRuntime, Service, ServiceType } from "@elizaos/core";
 import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Integration tests for basic-capabilities control-message delivery. Each test
@@ -7,17 +14,6 @@ import { initializeTestRuntime } from "@elizaos/testing";
  * NOT fall back to a substring-name-matched socket service.
  */
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type { UUID } from "../../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
-import {
-  Service,
-  ServiceType,
-} from "../../../../../packages/core/src/types/service.ts";
-import type {
-  ControlTransportMessage,
-  IControlTransportService,
-} from "../../../../../packages/core/src/types/service-interfaces.ts";
 import { createAssistantBehavior } from "./index.ts";
 
 describe("basic capabilities control transport", () => {

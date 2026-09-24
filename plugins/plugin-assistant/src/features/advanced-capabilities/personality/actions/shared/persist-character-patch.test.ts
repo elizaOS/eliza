@@ -2,11 +2,9 @@
  * Exercises the shared personality character-patch write path with deterministic
  * persistence-service fakes, including mutation ordering and failure handling.
  */
+
+import type { Character, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Character,
-  IAgentRuntime,
-} from "../../../../../../../../packages/core/src/types/index.ts";
 import type { CharacterPersistenceServiceLike } from "../../character-persistence.ts";
 import { persistCharacterPatch } from "./persist-character-patch.ts";
 

@@ -17,16 +17,14 @@
  *      `TurnControllerRegistry` and returns the room ids it aborted.
  */
 
-import { describe, expect, it } from "vitest";
 import {
   abortInflightInference,
-  TurnControllerRegistry,
-} from "../../../../packages/core/src/runtime/turn-controller.ts";
-import {
   getStreamingContext,
   runWithStreamingContext,
   type StreamingContext,
-} from "../../../../packages/core/src/streaming-context.ts";
+  TurnControllerRegistry,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("AbortSignal propagation through streaming context", () => {
   it("makes the caller-supplied signal observable to a model handler", async () => {

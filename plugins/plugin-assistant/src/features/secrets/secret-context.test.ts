@@ -1,8 +1,9 @@
 /**
  * Pins world-scoped secret context to Memory.worldId, not Memory.roomId.
  */
+
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { ChannelType } from "../../../../../packages/core/src/types/primitives.ts";
 import { getSecretHandler } from "./actions/get-secret";
 import { secretContextFromMessage } from "./secret-context.ts";
 

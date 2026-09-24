@@ -4,23 +4,23 @@
  * voice gate, and connector send handler with only model responses stubbed.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
+  AgentRuntime,
   Content,
   HandlerCallback,
   Memory,
   State,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
 import {
   ChannelType,
   ContentType,
-} from "../../../../packages/core/src/types/primitives.ts";
+  createCharacter,
+  ModelType,
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";
 

@@ -2,8 +2,9 @@
  * Exercises RelationshipsService.analyzeRelationship interaction history sorting
  * with non-finite/NaN and equal timestamps.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import { RelationshipsService } from "./relationships.ts";
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
