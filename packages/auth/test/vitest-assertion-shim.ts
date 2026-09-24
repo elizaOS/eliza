@@ -2,16 +2,8 @@
  * Runtime-cast helpers for asserting invalid calls against typed vault APIs.
  */
 
-import "vitest";
 import type { MasterKeyResolver } from "../src/vault/master-key.js";
 import type { Vault } from "../src/vault/vault-types.js";
-
-declare module "vitest" {
-  // biome-ignore lint/suspicious/noExplicitAny: must match Vitest's Assertion generic.
-  interface Assertion<T = any> {
-    readonly not: Assertion<T>;
-  }
-}
 
 export interface RuntimeVaultCaller {
   set(key: unknown, value: unknown, opts?: unknown): Promise<void>;

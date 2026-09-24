@@ -69,7 +69,7 @@
     "@vscode/ripgrep": "^1.15.9",
     "cross-spawn": "^7.0.6",
     "minimatch": "^10.2.6",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.1.0"
@@ -78,7 +78,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {

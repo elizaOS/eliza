@@ -730,7 +730,7 @@ type DiscordAccountSettingsConfig = ResolvedDiscordAccount["config"] &
 
 export class DiscordService extends Service implements IDiscordService {
 	// Override runtime type for messageServerId cross-core compatibility (see compat.ts)
-	protected declare runtime: ICompatRuntime;
+	declare protected runtime: ICompatRuntime;
 
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =

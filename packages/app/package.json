@@ -317,12 +317,12 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
     "ai": "^6.0.23",
-    "bun-types": "^1.3.12",
+    "bun-types": "1.3.14",
     "discord.js": "^14.26.4",
     "electrobun": "^1.18.1",
     "fflate": "^0.8.3",
@@ -337,7 +337,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "yaml": "^2.9.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
