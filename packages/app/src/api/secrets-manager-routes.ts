@@ -38,6 +38,7 @@ import {
 } from "../services/secrets-manager-installer";
 import { sharedVault } from "../services/vault-mirror";
 import { type CompatStateLike, ensureRouteMinRole } from "./auth.ts";
+import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
 type LoginListResult = Awaited<
@@ -198,19 +199,10 @@ export async function handleSecretsManagerRoute(
   }
 
   if (method === "PUT" && pathname === "/api/secrets/manager/preferences") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body || "{}");
-    } catch {
-      // error-policy:J3 request JSON is untrusted input; malformed data is an
-      // explicit 400 response rather than a fabricated preferences object.
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const parsed = await readCompatJsonBody(req, res);
+    if (parsed === null) return true;
     const prefs = (parsed as { preferences?: ManagerPreferences }).preferences;
-    if (!prefs || typeof prefs !== "object") {
+    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
       sendJsonError(res, 400, "missing `preferences` field");
       return true;
     }
@@ -236,17 +228,8 @@ export async function handleSecretsManagerRoute(
 
   // ── Start install job ─────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/secrets/manager/install") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body || "{}");
-    } catch {
-      // error-policy:J3 request JSON is untrusted input; malformed data is an
-      // explicit 400 response and no install job is created.
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const parsed = await readCompatJsonBody(req, res);
+    if (parsed === null) return true;
     const { backendId, method: rawMethod } = parsed as {
       backendId: unknown;
       method: unknown;
@@ -343,17 +326,8 @@ export async function handleSecretsManagerRoute(
 
   // ── Signin (non-streaming; runs to completion in one POST) ────────
   if (method === "POST" && pathname === "/api/secrets/manager/signin") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body || "{}");
-    } catch {
-      // error-policy:J3 request JSON is untrusted input; malformed data is an
-      // explicit 400 response and no credential operation runs.
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const parsed = await readCompatJsonBody(req, res);
+    if (parsed === null) return true;
     const request = parsed as Partial<SigninRequest> & { backendId: unknown };
     if (!isInstallableBackend(request.backendId)) {
       sendJsonError(res, 400, "invalid `backendId`");
@@ -362,6 +336,18 @@ export async function handleSecretsManagerRoute(
     if (typeof request.masterPassword !== "string" || !request.masterPassword) {
       sendJsonError(res, 400, "missing `masterPassword`");
       return true;
+    }
+    for (const key of [
+      "email",
+      "secretKey",
+      "signInAddress",
+      "bitwardenClientId",
+      "bitwardenClientSecret",
+    ] as const) {
+      if (parsed[key] !== undefined && typeof parsed[key] !== "string") {
+        sendJsonError(res, 400, `\`${key}\` must be a string when provided`);
+        return true;
+      }
     }
     const installer = getInstaller();
     try {
@@ -391,17 +377,8 @@ export async function handleSecretsManagerRoute(
   }
 
   if (method === "POST" && pathname === "/api/secrets/manager/signout") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body || "{}");
-    } catch {
-      // error-policy:J3 request JSON is untrusted input; malformed data is an
-      // explicit 400 response and does not select a backend.
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const parsed = await readCompatJsonBody(req, res);
+    if (parsed === null) return true;
     const id = (parsed as { backendId: unknown }).backendId;
     if (!isInstallableBackend(id)) {
       sendJsonError(res, 400, "invalid `backendId`");
@@ -502,17 +479,8 @@ async function handleSavedLoginsRoute(
   }
 
   if (method === "POST" && pathname === "/api/secrets/logins") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body || "{}");
-    } catch {
-      // error-policy:J3 request JSON is untrusted input; malformed data is an
-      // explicit 400 response and no login is persisted.
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const parsed = await readCompatJsonBody(req, res);
+    if (parsed === null) return true;
     const p = parsed as {
       domain: unknown;
       username: unknown;
@@ -566,17 +534,8 @@ async function handleSavedLoginsRoute(
       return true;
     }
     if (method === "PUT") {
-      let body = "";
-      for await (const chunk of req) body += chunk;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body || "{}");
-      } catch {
-        // error-policy:J3 request JSON is untrusted input; malformed data is an
-        // explicit 400 response and does not alter autofill policy.
-        sendJsonError(res, 400, "invalid JSON body");
-        return true;
-      }
+      const parsed = await readCompatJsonBody(req, res);
+      if (parsed === null) return true;
       const allowed = (parsed as { allowed: unknown }).allowed;
       if (typeof allowed !== "boolean") {
         sendJsonError(res, 400, "`allowed` must be boolean");

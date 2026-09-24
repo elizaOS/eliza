@@ -32,17 +32,23 @@ export function registerDbCommand(program: Command) {
           return;
         }
         if (!opts.yes) {
+          if (!process.stdin.isTTY) {
+            throw new Error(
+              "Database reset requires an interactive terminal or --yes",
+            );
+          }
           const { createInterface } = await import("node:readline");
           const rl = createInterface({
             input: process.stdin,
             output: process.stdout,
           });
           const confirmed = await new Promise<boolean>((resolve) => {
+            rl.once("close", () => resolve(false));
             rl.question(
               `${theme.warn("⚠")}  This will delete ${theme.command(dbDir)}.\n   All agent memory and conversation history will be lost.\n   Continue? ${theme.muted("(y/N) ")}`,
               (answer) => {
-                rl.close();
                 resolve(answer.trim().toLowerCase() === "y");
+                rl.close();
               },
             );
           });

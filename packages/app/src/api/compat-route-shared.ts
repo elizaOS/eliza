@@ -15,8 +15,8 @@ import {
   isTrustedLocalRequest as isTrustedLocalRequestShared,
 } from "@elizaos/agent/api/loopback-trust";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { type AgentRuntime } from "@elizaos/core";
-import { type ElizaConfig } from "@elizaos/core/config/types";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/core/config/types";
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
@@ -134,23 +134,30 @@ export async function readCompatJsonBody(
   // attached the parsed JSON body as `req.body`. Streaming the IncomingMessage
   // again would yield zero bytes and we'd return `{}`, even though the caller
   // sent a real payload. Honour the pre-parsed body when present.
-  const preParsed = (
-    req as {
-      body?: unknown;
+  const preParsed = (req as { body?: unknown }).body;
+  if (preParsed !== undefined) {
+    if (
+      preParsed &&
+      typeof preParsed === "object" &&
+      !Array.isArray(preParsed)
+    ) {
+      return preParsed as Record<string, unknown>;
     }
-  ).body;
-  if (preParsed && typeof preParsed === "object" && !Array.isArray(preParsed)) {
-    return preParsed as Record<string, unknown>;
+    sendJsonErrorResponse(res, 400, "Invalid JSON body");
+    return null;
   }
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   try {
-    for await (const chunk of req) {
+    for await (const chunk of req.iterator({ destroyOnReturn: false })) {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       totalBytes += buf.length;
       if (totalBytes > MAX_BODY_BYTES) {
-        req.destroy();
+        // Finish the rejection before closing the connection. Destroying the
+        // request here also destroys its socket and hides the 413 from clients.
+        res.setHeader("connection", "close");
         sendJsonErrorResponse(res, 413, "Request body too large");
+        req.resume();
         return null;
       }
       chunks.push(buf);

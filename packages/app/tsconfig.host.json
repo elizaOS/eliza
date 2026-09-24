@@ -12,6 +12,8 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
+      "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
+      "@elizaos/plugin-github/*": ["../../plugins/plugin-github/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/app/*": ["./src/*"],

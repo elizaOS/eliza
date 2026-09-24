@@ -2,7 +2,7 @@
  * `runCli()` — the CLI process entrypoint. Installs the restart handler, loads
  * `.env`, normalizes provider key aliases (Z_AI_API_KEY→ZAI_API_KEY,
  * KIMI_API_KEY→MOONSHOT_API_KEY), builds the Commander program, eagerly loads
- * the primary sub-CLI when one is named, then parses argv. Also owns the global
+ * command actions only when invoked, then parses argv. Also owns the global
  * error handlers: long-running server commands (`start`/`serve`) install crash
  * guards that keep the process alive on background rejections and hand uncaught
  * exceptions to the supervisor for restart, while one-shot commands fail fast;
@@ -16,8 +16,7 @@ import {
 import { installProcessCrashGuards } from "@elizaos/core/process-guards";
 import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/core/restart";
 import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
-import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
-import { registerSubCliByName } from "./program/register.subclis";
+import { getPrimaryCommand } from "./argv";
 
 /** Commands that boot a long-running server we must keep alive across faults. */
 const LONG_RUNNING_COMMANDS = new Set(["run", "serve", "start"]);
@@ -100,10 +99,7 @@ export async function runCli(argv: string[] = process.argv) {
   // has a chance to flush cleanly before the process spins down.
   program.exitOverride();
   installGlobalErrorHandlers(argv);
-  const primary = getPrimaryCommand(argv);
-  if (primary && !hasHelpOrVersion(argv)) {
-    await registerSubCliByName(program, primary);
-  }
+
   try {
     await program.parseAsync(argv);
   } catch (err) {

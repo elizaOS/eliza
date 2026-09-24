@@ -39,11 +39,7 @@ export function logVerbose(message: string) {
   if (!shouldLogVerbose()) {
     return;
   }
-  try {
-    logger.debug({ message }, "verbose");
-  } catch {
-    // ignore logger failures to avoid breaking verbose printing
-  }
+  logger.debug({ message }, "verbose");
   if (!globalVerbose) {
     return;
   }

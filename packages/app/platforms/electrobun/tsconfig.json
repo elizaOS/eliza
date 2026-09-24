@@ -17,6 +17,10 @@
 		"rootDir": "../../../..",
 		"types": ["bun-types"],
 		"paths": {
+			"@elizaos/plugin-assistant/*": [
+				"../../../../plugins/plugin-assistant/src/*"
+			],
+			"@elizaos/plugin-github/*": ["../../../../plugins/plugin-github/src/*"],
 			"drizzle-orm": [
 				"../../../../plugins/plugin-sql/node_modules/drizzle-orm"
 			],

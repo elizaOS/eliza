@@ -27,8 +27,9 @@ export function DesktopSurfaceNavigationRuntime() {
       rpcMessage: "desktopTrayMenuClick",
       ipcChannel: "desktop:trayMenuClick",
       listener: (payload) => {
-        const itemId =
-          (payload as { itemId?: string } | null | undefined)?.itemId ?? "";
+        const itemId = (payload as { itemId?: unknown } | null | undefined)
+          ?.itemId;
+        if (typeof itemId !== "string") return;
         // The desktop-native "Notifications" menu/tray item (#10706): open the
         // notification center in place instead of navigating a tab — the
         // visible native way in where the floating bell is hidden.

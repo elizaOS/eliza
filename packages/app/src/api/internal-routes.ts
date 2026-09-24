@@ -19,7 +19,12 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { resolveStateDir, type Service, ServiceType } from "@elizaos/core";
+import {
+  ElizaError,
+  resolveStateDir,
+  type Service,
+  ServiceType,
+} from "@elizaos/core";
 import { handleAccountPoolBrokerRoute } from "./account-pool-broker-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
@@ -88,26 +93,57 @@ function getDeviceSecretPath(): string {
 function readPersistedDeviceSecret(filePath: string): string | null {
   try {
     const secret = fs.readFileSync(filePath, "utf8").trim();
-    return secret.length >= MIN_DEVICE_SECRET_LENGTH ? secret : null;
+    if (secret.length < MIN_DEVICE_SECRET_LENGTH) {
+      throw new ElizaError("Persisted device secret is invalid", {
+        code: "DEVICE_SECRET_INVALID",
+      });
+    }
+    return secret;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    return null;
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "ENOENT"
+    )
+      return null;
+    throw err;
   }
 }
 
-function writePersistedDeviceSecret(filePath: string, secret: string): void {
+function writePersistedDeviceSecret(filePath: string, secret: string): string {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const tmp = path.join(
     dir,
-    `.device-secret-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.tmp`,
+    `.device-secret-${process.pid}-${randomBytes(16).toString("hex")}.tmp`,
   );
-  fs.writeFileSync(tmp, `${secret}\n`, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(tmp, filePath);
   try {
-    fs.chmodSync(filePath, 0o600);
-  } catch {
-    // Best-effort on platforms/filesystems that do not support POSIX modes.
+    fs.writeFileSync(tmp, `${secret}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    try {
+      // Another process may have won first creation. Never rotate its secret.
+      fs.linkSync(tmp, filePath);
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      )
+        throw error;
+    }
+    const persisted = readPersistedDeviceSecret(filePath);
+    if (persisted === null)
+      throw new ElizaError("Device secret disappeared during publication", {
+        code: "DEVICE_SECRET_PUBLISH_FAILED",
+      });
+    return persisted;
+  } finally {
+    fs.rmSync(tmp, { force: true });
   }
 }
 
@@ -118,17 +154,22 @@ function writePersistedDeviceSecret(filePath: string, secret: string): void {
 export function getDeviceSecret(): string {
   if (cachedDeviceSecret === null) {
     const fromEnv = process.env.ELIZA_DEVICE_SECRET;
-    if (
-      typeof fromEnv === "string" &&
-      fromEnv.length >= MIN_DEVICE_SECRET_LENGTH
-    ) {
+    if (fromEnv !== undefined) {
+      if (fromEnv.length < MIN_DEVICE_SECRET_LENGTH) {
+        throw new ElizaError(
+          "ELIZA_DEVICE_SECRET must contain at least 32 characters",
+          { code: "DEVICE_SECRET_INVALID" },
+        );
+      }
       cachedDeviceSecret = fromEnv;
     } else {
       const secretPath = getDeviceSecretPath();
       cachedDeviceSecret = readPersistedDeviceSecret(secretPath);
       if (cachedDeviceSecret === null) {
-        cachedDeviceSecret = randomBytes(32).toString("hex");
-        writePersistedDeviceSecret(secretPath, cachedDeviceSecret);
+        cachedDeviceSecret = writePersistedDeviceSecret(
+          secretPath,
+          randomBytes(32).toString("hex"),
+        );
       }
     }
   }

@@ -87,10 +87,7 @@ import {
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import type {
-  BrandingConfig,
-  CodingAgentTasksPanelProps,
-} from "@elizaos/ui/config";
+import type { BrandingConfig } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
   getBootConfig,
@@ -322,21 +319,14 @@ registerAppHostExternalImporters();
 function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
-    () => import("@elizaos/plugin-personal-assistant"),
+    () => import("@elizaos/plugin-personal-assistant/ui"),
   );
 }
 
 function importAppPhone() {
   return cachedDynamicImport(
     "@elizaos/plugin-native-phone",
-    () => import("@elizaos/plugin-native-phone"),
-  );
-}
-
-function importAppTaskCoordinator() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-agent-orchestrator",
-    () => import("@elizaos/plugin-agent-orchestrator/ui"),
+    () => import("@elizaos/plugin-native-phone/ui"),
   );
 }
 
@@ -424,15 +414,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
-);
-const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentSettingsSection,
-);
-const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
-  async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
-);
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
@@ -907,9 +888,6 @@ function buildAppBootConfig(): AppBootConfig {
     autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
-    codingAgentTasksPanel: CodingAgentTasksPanel,
-    codingAgentSettingsSection: CodingAgentSettingsSection,
-    codingAgentControlChip: CodingAgentControlChip,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
@@ -936,10 +914,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-personal-assistant",
       load: importPersonalAssistant,
-    },
-    {
-      key: "@elizaos/plugin-agent-orchestrator",
-      load: importAppTaskCoordinator,
     },
     {
       key: "@elizaos/plugin-agent-orchestrator/ui/register",

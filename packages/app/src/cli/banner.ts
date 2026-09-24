@@ -22,9 +22,8 @@ export function formatCliBannerLine(
   const commit = options.commit ?? resolveCommitHash({ env: options.env });
   const commitLabel = commit ?? "unknown";
   const rich = options.richTty ?? isRich();
-  const title =
-    (options.env?.APP_CLI_NAME ?? "eliza").charAt(0).toUpperCase() +
-    (options.env?.APP_CLI_NAME ?? "eliza").slice(1);
+  const name = (options.env ?? process.env).APP_CLI_NAME ?? "eliza";
+  const title = name.charAt(0).toUpperCase() + name.slice(1);
   if (rich) {
     return `${theme.heading(title)} ${theme.info(version)} ${theme.muted(`(${commitLabel})`)}`;
   }

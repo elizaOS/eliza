@@ -2,7 +2,7 @@
  * Browser-safe surface of `@elizaos/app`, aliased in by browser bundlers in
  * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
  * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
- * `@elizaos/core`, and provides inert stubs for the server-only helpers
+ * `@elizaos/core`, and provides explicit failures for the server-only helpers
  * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
  * against the same names without pulling in Node server modules.
  */
@@ -16,10 +16,10 @@ export {
   client,
 } from "@elizaos/ui/api";
 export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
-export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
-export {
-  type OverlayApp,
-  type OverlayAppContext,
+export type { AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export type {
+  OverlayApp,
+  OverlayAppContext,
 } from "@elizaos/ui/apps/overlay-app-api";
 export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export * from "@elizaos/ui/browser";
@@ -67,6 +67,18 @@ export {
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
+
+import { ElizaError } from "@elizaos/core/errors";
+
+function unsupportedServerOperation(): never {
+  throw new ElizaError(
+    "Server-only operation is unavailable in the browser renderer",
+    {
+      code: "BROWSER_SERVER_OPERATION_UNAVAILABLE",
+    },
+  );
+}
+
 export type CompatRuntimeState = {
   current: unknown;
   pendingAgentName?: string | null;
@@ -76,12 +88,18 @@ export function sendJson(
   _res: unknown,
   _status: number,
   _body: unknown,
-): void {}
+): never {
+  return unsupportedServerOperation();
+}
+
 export function sendJsonError(
   _res: unknown,
   _status: number,
   _message: string,
-): void {}
+): never {
+  return unsupportedServerOperation();
+}
+
 export async function ensureRouteAuthorized(): Promise<boolean> {
   return false;
 }
@@ -89,8 +107,8 @@ export async function ensureCompatApiAuthorized(): Promise<boolean> {
   return false;
 }
 export async function readCompatJsonBody(): Promise<unknown> {
-  return null;
+  return unsupportedServerOperation();
 }
 export function sharedVault(): never {
-  throw new Error("sharedVault is server-only");
+  return unsupportedServerOperation();
 }

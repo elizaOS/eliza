@@ -4,6 +4,7 @@
  * desktop, harness, and agent-app route retains the established main entry.
  */
 
+import { renderBootFailure } from "./boot-failure";
 import { shouldUsePublicWebEntry } from "./web-entry-policy";
 
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
@@ -42,15 +43,10 @@ const usePublicEntry =
 
 // error-policy:J1 renderer-entry boundary — import failures render the same
 // actionable reload card as failures inside the established main boot.
-async function handleRendererFailure(error: unknown): Promise<void> {
-  const { renderBootFailure } = await import("./boot-failure");
-  renderBootFailure(error);
-}
-
 // Separate import callbacks let Vite attach each renderer's CSS dependencies.
 // A conditional import callback can collapse those lists to shared CSS only.
 if (usePublicEntry) {
-  void import("./public-web-entry").catch(handleRendererFailure);
+  void import("./public-web-entry").catch(renderBootFailure);
 } else {
-  void import("./main").catch(handleRendererFailure);
+  void import("./main").catch(renderBootFailure);
 }
