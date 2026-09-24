@@ -8,7 +8,7 @@ import {
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Frames,
 } from "@elizaos/shared";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {

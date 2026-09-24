@@ -1,16 +1,11 @@
 /**
- * Exercises browser-companion claims and checkpoints against the real PGlite
+ * Exercises retained stored-session claims and checkpoints against the real PGlite
  * repository so concurrent workers cannot share or rewind durable sessions.
  */
 import type { AgentRuntime } from "@elizaos/core";
 import type { BrowserBridgeCompanionStatus } from "@elizaos/plugin-browser";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { LifeOpsBrowserSession } from "../src/contracts/index.js";
-import {
-  BrowserDomain,
-  type BrowserDomainDeps,
-} from "../src/lifeops/domains/browser-service.js";
-import type { LifeOpsContext } from "../src/lifeops/lifeops-context.js";
 import {
   createLifeOpsBrowserSession,
   LifeOpsRepository,
@@ -23,18 +18,6 @@ import {
 let runtimeResult: RealTestRuntimeResult | null = null;
 let runtime: AgentRuntime;
 let repository: LifeOpsRepository;
-
-function browserDomain(): BrowserDomain {
-  const context = {
-    runtime,
-    repository,
-    agentId: () => runtime.agentId,
-  } as unknown as LifeOpsContext;
-  const deps = {
-    recordBrowserAudit: async () => {},
-  } as unknown as BrowserDomainDeps;
-  return new BrowserDomain(context, deps);
-}
 
 function companion(
   id: string,
@@ -107,35 +90,18 @@ beforeAll(async () => {
   repository = new LifeOpsRepository(runtime);
 }, 180_000);
 
+afterEach(async () => {
+  for (const session of await repository.listBrowserSessions(runtime.agentId)) {
+    await repository.deleteBrowserSession(runtime.agentId, session.id);
+  }
+});
+
 afterAll(async () => {
   await runtimeResult?.cleanup();
   runtimeResult = null;
 });
 
-describe("browser companion atomic persistence", () => {
-  it("allows exactly one competing companion to claim queued work", async () => {
-    const session = queuedSession();
-    await repository.createBrowserSession(session);
-    const first = companion("companion-claim-a", "profile-a");
-    const second = companion("companion-claim-b", "profile-b");
-    const firstDomain = browserDomain();
-    const secondDomain = browserDomain();
-
-    const claims = await Promise.all([
-      firstDomain.claimQueuedBrowserSession(first),
-      secondDomain.claimQueuedBrowserSession(second),
-    ]);
-
-    expect(claims.filter(Boolean)).toHaveLength(1);
-    const persisted = await repository.getBrowserSession(
-      runtime.agentId,
-      session.id,
-    );
-    expect(persisted?.status).toBe("running");
-    expect(persisted?.companionId).toBe(claims.find(Boolean)?.companionId);
-    expect(persisted?.profileId).toBe(claims.find(Boolean)?.profileId);
-  });
-
+describe("stored browser session atomic persistence", () => {
   it("accepts the terminal checkpoint idempotently and rejects rewinds or foreign updates", async () => {
     const session = queuedSession();
     await repository.createBrowserSession(session);

@@ -233,11 +233,13 @@ export function analyzeBuildTypecheck(options = {}) {
   const turbo =
     options.turbo ??
     JSON.parse(readFileSync(path.join(root, "turbo.json"), "utf8"));
-  for (const taskName of ["typecheck", "lint", "lint:check"]) {
+  // Typechecks consume published workspace declarations and wait for builds.
+  // Lint reads source directly and must not rebuild dependencies.
+  for (const taskName of ["lint", "lint:check"]) {
     const deps = turbo.tasks?.[taskName]?.dependsOn ?? [];
     if (deps.includes("^build")) {
       violations.push(
-        `turbo ${taskName}: generic task depends on ^build; keep typecheck/lint source-first and add explicit package overrides only where dist is required`,
+        `turbo ${taskName}: lint reads source directly and must not depend on ^build`,
       );
     }
   }
