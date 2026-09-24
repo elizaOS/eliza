@@ -1547,6 +1547,12 @@
 			"eliza-source": "./src/embedding-vector-space.ts",
 			"import": "./dist/embedding-vector-space.js",
 			"default": "./dist/embedding-vector-space.js"
+		},
+		"./utils/deterministic": {
+			"types": "./dist/utils/deterministic.d.ts",
+			"eliza-source": "./src/utils/deterministic.ts",
+			"import": "./dist/utils/deterministic.js",
+			"default": "./dist/utils/deterministic.js"
 		}
 	},
 	"files": [
