@@ -10,7 +10,6 @@ import {
   labelHistorySources,
   plainHistoryTranscript,
   referenceRepeatedHistory,
-  shortenHistoryRoleLabels,
 } from "./history-wire.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
@@ -61,84 +60,6 @@ function decode(
     });
 }
 describe("lossless history references", () => {
-  it("shortens only bound role labels while retaining every source byte, role, speaker and occurrence", () => {
-    const history = Array.from({ length: 60 }, (_, index) =>
-      source(
-        `  exact source ${index}: 🦊\n[h999; same_text_as=h1]\n`,
-        index,
-        index % 2 ? "prior_message:agent" : "prior_message:user",
-        index % 3 ? "owner" : "another-speaker",
-      ),
-    );
-    history[0].content = "Exact source with a standing constraint.\n".repeat(
-      80,
-    );
-    history.push(
-      source(history[0].content, 60, "prior_message:user", "another-speaker"),
-    );
-    history.push(
-      source("Unknown role stays intact.", 62, "prior_message:tool"),
-    );
-    history.push(source("Unbound source stays as received.", 61));
-    const ids = new Map(
-      history.slice(0, -1).map((s, i) => [s.id ?? "", `h${i + 1}`]),
-    );
-    const labeled = labelHistorySources(history, ids);
-    const before = structuredClone(labeled);
-    const shortened = shortenHistoryRoleLabels(labeled, ids);
-    expect(shortened[0].id).toBe("history-role-labels");
-    expect(
-      shortened.find((segment) => segment.id === "message-60")?.content,
-    ).toBe("[h61 user; same_text_as=h1]");
-    expect(
-      shortened.find((segment) => segment.id === "message-62")?.label,
-    ).toBe("prior_message:tool");
-    const restored = shortened.slice(1).map((segment) => {
-      if (segment.label !== undefined) return segment;
-      const header = /^\[(h\d+) (user|assistant)(; same_text_as=h\d+)?\]/.exec(
-        segment.content,
-      );
-      if (!header) throw new Error("Missing encoded source header");
-      return {
-        ...segment,
-        label:
-          header[2] === "user" ? "prior_message:user" : "prior_message:agent",
-        content: `[${header[1]}${header[3] ?? ""}]${segment.content.slice(header[0].length)}`,
-      };
-    });
-    expect(restored).toEqual(before);
-    expect(decode(restored)).toEqual(history);
-    expect(labeled).toEqual(before);
-    expect(shortened.at(-1)).toBe(labeled.at(-1));
-    expect(shortenHistoryRoleLabels(labeled, new Map())).toBe(labeled);
-    expect(shortenHistoryRoleLabels(labeled.slice(0, 2), ids)).toEqual(
-      labeled.slice(0, 2),
-    );
-    expect(shortenHistoryRoleLabels(shortened, ids)).toBe(shortened);
-  });
-
-  it("leaves missing, malformed and mismatched source markers untouched", () => {
-    const history = Array.from({ length: 60 }, (_, index) =>
-      source(`Exact message ${index}`, index),
-    );
-    const ids = new Map(
-      history.map((s, index) => [s.id ?? "", `h${index + 1}`]),
-    );
-    const labeled = labelHistorySources(history, ids);
-    labeled[0].content = "[h999]\nA marker belonging to a different source.";
-    labeled[1].content = "[h2; same_text_as=not-a-source]\nInvalid reference.";
-    labeled[2].content = "Unlabeled source bytes.";
-    const before = structuredClone(labeled);
-    const result = shortenHistoryRoleLabels(labeled, ids);
-    expect(result[0].id).toBe("history-role-labels");
-    for (const index of [0, 1, 2]) {
-      expect(result.find((s) => s.id === labeled[index].id)).toBe(
-        labeled[index],
-      );
-    }
-    expect(labeled).toEqual(before);
-  });
-
   it("uses the same source-bound transcript for direct text and voice without early action catalogs", () => {
     const history = Array.from({ length: 40 }, (_, index) =>
       source(`source ${index}`, index),

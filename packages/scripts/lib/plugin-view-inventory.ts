@@ -598,7 +598,7 @@ function declaredOperationIds(object, context, field, identity) {
     const item = resolveStaticExpression(element, resolved.context);
     if (!ts.isObjectLiteralExpression(item.value)) {
       throw new Error(
-        `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} capability must resolve to an object literal`,
+        `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} ${field} entry must resolve to an object literal`,
       );
     }
     ids.push(
@@ -608,7 +608,7 @@ function declaredOperationIds(object, context, field, identity) {
   return ids;
 }
 
-function capabilityIds(object, context) {
+function viewOperationIds(object, context) {
   const ids = [
     ...declaredOperationIds(object, context, "capabilities", "id"),
     ...declaredOperationIds(object, context, "scopedActions", "name"),
@@ -945,7 +945,7 @@ function parseView(object, context, owner, builtin) {
     bundlePath,
     framePath,
     relatedActions: literalStringArray(object, "relatedActions", context) ?? [],
-    operationIds: capabilityIds(object, context),
+    operationIds: viewOperationIds(object, context),
     minRole: roleGate
       ? literalString(roleGate.object, "minRole", roleGate.context)
       : null,
