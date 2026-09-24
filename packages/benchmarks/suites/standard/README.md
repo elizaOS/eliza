@@ -1,7 +1,9 @@
 # Standard academic benchmarks
 
-MMLU, HumanEval, GSM8K, and MT-Bench adapters. These measure raw model quality;
-they do not exercise the Eliza agent loop. No build step is needed.
+MMLU, HumanEval, GSM8K, and MT-Bench adapters. The default direct endpoint
+measures model quality. Set `BENCHMARK_HARNESS` to `eliza`, `hermes`, or
+`openclaw` to measure that runtime through its adapter instead. Keep direct
+model results separate from runtime comparisons. No build step is needed.
 
 With Python 3.11+ and the benchmark dependencies installed, run from the repository root:
 

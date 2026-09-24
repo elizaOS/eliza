@@ -52,6 +52,12 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
         repo_root = Path(__file__).resolve().parents[4]
         entrypoint = repo_root / "packages/agent/src/bin.ts"
         env = dict(os.environ)
+        # Parent test runners must not disable the production CLI lifecycle.
+        for key in tuple(env):
+            if key.startswith("VITEST") or key in {"ELIZA_TEST_FAST", "ELIZA_TEST_HOME"}:
+                del env[key]
+        if env.get("NODE_ENV") == "test":
+            env["NODE_ENV"] = "development"
         env.update({
             "ELIZA_STATE_DIR": str(receipt_dir / "state"),
             "ELIZA_CONFIG_PATH": str(receipt_dir / "state" / "eliza.json"),
@@ -63,6 +69,9 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
         if provider == "cerebras":
             if not env.get("CEREBRAS_API_KEY"):
                 raise ValueError("Cerebras provider requires CEREBRAS_API_KEY")
+            # The selected benchmark model overrides inherited provider defaults.
+            for key in ("CEREBRAS_MODEL", "CEREBRAS_SMALL_MODEL", "CEREBRAS_LARGE_MODEL"):
+                env[key] = config.model_name
             env["OPENAI_API_KEY"] = env["CEREBRAS_API_KEY"]
             env["OPENAI_BASE_URL"] = env.get("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
         elif provider not in {None, "openai", "openai-compatible"}:

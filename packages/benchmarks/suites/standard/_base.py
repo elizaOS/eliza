@@ -16,10 +16,11 @@ import json
 import logging
 import os
 import time
-from hashlib import sha256
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from hashlib import sha256
 from pathlib import Path
-from typing import Mapping, Protocol, Sequence
+from typing import Protocol
 
 log = logging.getLogger("benchmarks.standard")
 
@@ -141,7 +142,7 @@ class HTTPOpenAICompatibleClient:
             if config.tool_choice in {"auto", "required"}:
                 kwargs["tool_choice"] = config.tool_choice
         # Mypy can't see SDK types — narrow via getattr.
-        completions = getattr(getattr(client, "chat"), "completions")
+        completions = client.chat.completions
         resp = completions.create(**kwargs)
         text = resp.choices[0].message.content or ""
         usage = getattr(resp, "usage", None)
@@ -287,30 +288,20 @@ class HarnessClient:
                 or os.environ.get("CEREBRAS_REASONING_EFFORT")
                 or None,
             )
-        elif harness == "smithers":
-            from smithers_adapter.client import SmithersClient  # noqa: WPS433
 
-            self._client = SmithersClient(
-                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
-                base_url=os.environ.get("BENCHMARK_BASE_URL")
-                or os.environ.get("OPENAI_BASE_URL")
-                or os.environ.get("CEREBRAS_BASE_URL")
-                or None,
-                timeout_s=float(os.environ.get("SMITHERS_TIMEOUT_S", "120")),
-                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
-                or os.environ.get("CEREBRAS_REASONING_EFFORT")
-                or None,
-            )
-        else:
+        elif harness == "eliza":
             from eliza_adapter.client import ElizaClient  # noqa: WPS433
 
             if not os.environ.get("ELIZA_BENCH_URL"):
-                from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+                from eliza_adapter.server_manager import (
+                    ElizaServerManager,  # noqa: WPS433
+                )
 
                 self._server_manager = ElizaServerManager()
                 self._server_manager.start()  # type: ignore[attr-defined]
             self._client = ElizaClient()
+        else:
+            raise ValueError(f"Unsupported benchmark harness: {harness}")
         self._client.wait_until_ready(timeout=120)
 
     def __del__(self) -> None:
@@ -319,7 +310,7 @@ class HarnessClient:
             try:
                 manager.stop()
             except Exception:
-                pass
+                log.exception("Failed to stop benchmark server")
 
     def generate(
         self,
@@ -338,7 +329,9 @@ class HarnessClient:
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()[:16]
-        user_text = next((m.content for m in reversed(messages) if m.role == "user"), "")
+        user_text = next(
+            (m.content for m in reversed(messages) if m.role == "user"), ""
+        )
         system_prompt = next((m.content for m in messages if m.role == "system"), "")
         context: dict[str, object] = {
             "messages": serialized,
@@ -358,14 +351,10 @@ class HarnessClient:
         usage = response.params.get("usage")
         usage_obj = usage if isinstance(usage, dict) else {}
         prompt_tokens = int(
-            usage_obj.get("prompt_tokens")
-            or usage_obj.get("promptTokens")
-            or 0
+            usage_obj.get("prompt_tokens") or usage_obj.get("promptTokens") or 0
         )
         completion_tokens = int(
-            usage_obj.get("completion_tokens")
-            or usage_obj.get("completionTokens")
-            or 0
+            usage_obj.get("completion_tokens") or usage_obj.get("completionTokens") or 0
         )
         return GenerationResult(
             text=response.text,
@@ -457,12 +446,18 @@ def make_client(
     if mock_responses is not None:
         return MockClient(mock_responses)
     harness = (
-        os.environ.get("ELIZA_BENCH_HARNESS")
-        or os.environ.get("BENCHMARK_HARNESS")
-        or ""
-    ).strip().lower()
-    if harness in {"eliza", "hermes", "openclaw", "smithers"}:
+        (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
+    if harness in {"eliza", "hermes", "openclaw"}:
         return HarnessClient(harness=harness, endpoint=endpoint, api_key=api_key)
+    if harness:
+        raise ValueError(f"Unsupported benchmark harness: {harness}")
     return HTTPOpenAICompatibleClient(endpoint=endpoint, api_key=api_key)
 
 

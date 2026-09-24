@@ -183,6 +183,7 @@ export {
 	DISCOVER_TOOLS_NAME,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
+export { validateToolArgs } from "./actions/validate-tool-args.ts";
 export * from "./connectors/connector-config.js";
 export * from "./connectors.js";
 export * from "./database/document-source-segments";
