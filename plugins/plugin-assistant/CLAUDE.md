@@ -20,8 +20,7 @@ separate registered plugins; deterministic tests use strict private fixtures.
 
 Run `bun run --cwd plugins/plugin-assistant typecheck`, `test`, `lint:check`
 and `build`. Keep source-only tests distinct from packed native Node import
-checks. See [runtime flows](../../docs/design/runtime-consolidation/FLOWS.md)
-and [implementation status](../../docs/design/runtime-consolidation/STATUS.md).
+checks. See [the package README](README.md).
 
 ## Verification receipts
 

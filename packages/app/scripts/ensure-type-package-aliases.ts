@@ -25,8 +25,6 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const CLEANUP_HELPER_SCRIPT = resolveCleanupHelperScript();
-const ROOT_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
-const ELIZA_NODE_MODULES = path.join(REPO_ROOT, "eliza", "node_modules");
 const GLOBAL_TYPES_CACHE_DIR = path.join(
   process.env.HOME || "",
   ".bun",
@@ -40,15 +38,19 @@ const GLOBAL_PACKAGE_CACHE_DIR = path.join(
   "install",
   "cache",
 );
-const NODE_MODULE_ROOTS = [ROOT_NODE_MODULES, ELIZA_NODE_MODULES];
-const TYPE_ROOTS = [
-  path.join(ROOT_NODE_MODULES, "@types"),
-  path.join(ELIZA_NODE_MODULES, "@types"),
-];
-const BUN_TYPES_LINK_ROOTS = [
-  path.join(ROOT_NODE_MODULES, ".bun", "node_modules", "@types"),
-  path.join(ELIZA_NODE_MODULES, ".bun", "node_modules", "@types"),
-];
+// Consumer projects may install a nested eliza checkout; the flat monorepo
+// must never create that retired layout merely to repair its own types.
+export function existingTypeInstallRoots(repoRoot) {
+  return [
+    path.join(repoRoot, "node_modules"),
+    path.join(repoRoot, "eliza", "node_modules"),
+  ].filter((root) => existsSync(root));
+}
+const NODE_MODULE_ROOTS = existingTypeInstallRoots(REPO_ROOT);
+const TYPE_ROOTS = NODE_MODULE_ROOTS.map((root) => path.join(root, "@types"));
+const BUN_TYPES_LINK_ROOTS = NODE_MODULE_ROOTS.map((root) =>
+  path.join(root, ".bun", "node_modules", "@types"),
+);
 const MATERIALIZED_TYPE_PACKAGES = [
   "chai",
   "cross-spawn",

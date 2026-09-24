@@ -124,33 +124,37 @@ async function saveRecord(
 	}
 }
 
-async function mutateRecord<T>(
+async function enqueueMutation<T>(
+	runtimeId: string,
+	operation: () => Promise<T>,
+): Promise<T> {
+	const predecessor = mutationTails.get(runtimeId) ?? Promise.resolve();
+	const result = predecessor.then(operation);
+	// error-policy:J5 the caller receives the operation rejection; the queue
+	// remains available for later writes and credential deletion.
+	const tail = result.then(
+		() => undefined,
+		() => undefined,
+	);
+	mutationTails.set(runtimeId, tail);
+	try {
+		return await result;
+	} finally {
+		if (mutationTails.get(runtimeId) === tail) mutationTails.delete(runtimeId);
+	}
+}
+
+function mutateRecord<T>(
 	store: PlatformSecureStore,
 	runtimeId: string,
 	mutation: (record: RuntimeCredentialRecord) => T | Promise<T>,
 ): Promise<T> {
-	const predecessor = mutationTails.get(runtimeId) ?? Promise.resolve();
-	let release!: () => void;
-	const current = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	// error-policy:J5 the failed credential mutation's caller observes its
-	// rejection; this queue tail only preserves later mutation progress.
-	const queued = predecessor.catch(() => undefined).then(() => current);
-	mutationTails.set(runtimeId, queued);
-	// error-policy:J5 the originating mutation caller observes the same
-	// predecessor rejection; this waiter only preserves queue ordering.
-	await predecessor.catch(() => undefined);
-	try {
+	return enqueueMutation(runtimeId, async () => {
 		const record = await loadRecord(store, runtimeId);
 		const result = await mutation(record);
 		await saveRecord(store, runtimeId, record);
 		return result;
-	} finally {
-		release();
-		if (mutationTails.get(runtimeId) === queued)
-			mutationTails.delete(runtimeId);
-	}
+	});
 }
 
 export async function readRuntimeCredentialSnapshot(
@@ -239,13 +243,15 @@ export async function deleteRuntimeCredentialRecord(
 	store: PlatformSecureStore = nativeStore,
 ): Promise<void> {
 	const runtimeId = requireRuntimeId(runtimeIdValue);
-	const result = await store.delete(
-		credentialVaultId(runtimeId),
-		"runtime.access_token",
-	);
-	if (!result.ok && result.reason !== "not_found") {
-		throw new Error("Secure credential deletion failed.");
-	}
+	await enqueueMutation(runtimeId, async () => {
+		const result = await store.delete(
+			credentialVaultId(runtimeId),
+			"runtime.access_token",
+		);
+		if (!result.ok && result.reason !== "not_found") {
+			throw new Error("Secure credential deletion failed.");
+		}
+	});
 }
 
 export const runtimeCredentialInternals = {

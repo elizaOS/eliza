@@ -67,3 +67,40 @@ describe("run-node-tsx lifecycle", () => {
     expect(timer.unref).toHaveBeenCalledOnce();
   });
 });
+
+it("does not signal the wrapper process group for an invalid child PID", () => {
+  const killProcess = vi.fn();
+  const child = {
+    pid: 0,
+    exitCode: null,
+    signalCode: null,
+    kill: vi.fn(() => false),
+  };
+  expect(
+    signalChildProcessTree({
+      child,
+      killProcess,
+      platform: "linux",
+      signal: "SIGTERM",
+    }),
+  ).toBe(false);
+  expect(killProcess).not.toHaveBeenCalled();
+});
+
+it("detects reparenting to a subreaper instead of PID1", () => {
+  let parentPid = 100;
+  const onOrphan = vi.fn();
+  const watchdog = startParentOrphanWatchdog({
+    onOrphan,
+    readParentPid: () => parentPid,
+  });
+  try {
+    expect(watchdog.check()).toBe(false);
+    parentPid = 200;
+    expect(watchdog.check()).toBe(true);
+    expect(watchdog.check()).toBe(false);
+    expect(onOrphan).toHaveBeenCalledOnce();
+  } finally {
+    watchdog.stop();
+  }
+});

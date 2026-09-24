@@ -19,7 +19,7 @@
  * current regression (#15790).
  *
  * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>]`.
- * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.ts`, which prefers the
+ * With no `--ocr`, it uses `@elizaos/testing/evidence/visual-primitives`, which prefers the
  * installed `tesseract.js` package so CI and local verification do not depend on
  * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
@@ -27,6 +27,13 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  analyzeImageFile,
+  closeOcrEngines,
+  ocrImage,
+  ocrImageRegion,
+  resolveOcrEngine,
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
@@ -49,13 +56,6 @@ import {
   parseAuditReport,
   validateOcrRecordPaths,
 } from "./lib/audit-capture-manifest";
-import {
-  analyzeImageFile,
-  closeOcrEngines,
-  ocrImage,
-  ocrImageRegion,
-  resolveOcrEngine,
-} from "./mvp-visual-verify/ocr.ts";
 
 /**
  * Slugs whose healthy render legitimately OCRs to little or no text: wallpaper

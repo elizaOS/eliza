@@ -319,6 +319,11 @@ export class ScheduledTaskRepository {
   async resetSchedulingStateForScenario(agentId: string): Promise<void> {
     const quotedAgent = sqlQuote(agentId);
     for (const statement of [
+      `DELETE FROM app_reminders.life_reminder_attempts WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_reminders.life_reminder_plans WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_reminders.life_escalation_states WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_lifeops.life_task_occurrences WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_lifeops.life_task_definitions WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_scheduling.life_scheduled_tasks WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_scheduling.life_scheduled_task_log WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_merged_states WHERE agent_id = ${quotedAgent}`,

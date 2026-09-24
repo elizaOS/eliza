@@ -36,10 +36,10 @@ function optionalStringField(
 function optionalBoolean(
 	body: Record<string, unknown>,
 	key: string,
-): boolean | undefined | false {
+): boolean | undefined | null {
 	if (!(key in body)) return undefined;
 	const value = body[key];
-	return typeof value === "boolean" ? value : false;
+	return typeof value === "boolean" ? value : null;
 }
 function parseExpiresAt(value: unknown): number | null | false {
 	if (value === null) return null;
@@ -106,7 +106,7 @@ function parseSubscriptionProviderOptionals(
 		optionalStringField(value, "billingMode"),
 	);
 	if (
-		available === false ||
+		available === null ||
 		availabilityReason === false ||
 		allowedClient === false ||
 		loginHint === false ||

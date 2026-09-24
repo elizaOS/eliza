@@ -29,19 +29,17 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { testOutputPath } from "../../scripts/lib/test-output.ts";
-import { diffAgainstBaseline } from "./mvp-visual-verify/diff.ts";
-import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.ts";
-import {
-  evaluateExpectations,
-  resolveSpec,
-} from "./mvp-visual-verify/expectation-eval.ts";
-import { renderContactSheet } from "./mvp-visual-verify/html-report.ts";
 import {
   closeOcrEngines,
+  diffAgainstBaseline,
+  dominantColorsFromPng,
+  evaluateExpectations,
   ocrImage,
   resolveOcrEngine,
-} from "./mvp-visual-verify/ocr.ts";
+  resolveSpec,
+} from "@elizaos/testing/evidence/visual-primitives";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { renderContactSheet } from "./mvp-visual-verify/html-report.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 

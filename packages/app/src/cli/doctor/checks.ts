@@ -12,7 +12,7 @@ import {
   realpathSync,
   statfsSync,
 } from "node:fs";
-import { createConnection } from "node:net";
+import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -25,6 +25,7 @@ import {
   resolveServerOnlyPort,
 } from "@elizaos/core/runtime-env";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import JSON5 from "json5";
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckCategory = "system" | "config" | "network" | "storage";
 export interface CheckResult {
@@ -172,7 +173,14 @@ export function checkConfigFile(
     };
   }
   try {
-    JSON.parse(readFileSync(resolved, "utf-8"));
+    const parsed: unknown = JSON5.parse(readFileSync(resolved, "utf-8"));
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error("Configuration must be an object");
+    }
     return {
       label: "Config file",
       category: "config",
@@ -184,7 +192,7 @@ export function checkConfigFile(
       label: "Config file",
       category: "config",
       status: "fail",
-      detail: `Invalid JSON: ${resolved}`,
+      detail: `Unreadable or invalid JSON5 configuration object: ${resolved}`,
       fix: `Edit and fix: ${resolved}`,
     };
   }
@@ -317,20 +325,15 @@ export function checkDiskSpace(
 // ---------------------------------------------------------------------------
 // Config checks (continued)
 // ---------------------------------------------------------------------------
-/** Wildcard bind addresses — same regex as server.ts. */
-const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/;
-const LOOPBACK_BIND_RE =
-  /^(localhost|127\.0\.0\.1|::1|\[::1\]|0:0:0:0:0:0:0:1)$/;
 export function checkHostConfig(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const config = resolveApiSecurityConfig(env);
   const rawBind = config.bindHost;
-  const bindHost = rawBind.replace(/:\d+$/, "").toLowerCase();
   const token = config.token ?? "";
   const allowedHosts = config.allowedHosts.join(",");
-  const isWildcard = WILDCARD_BIND_RE.test(bindHost);
-  const isLoopback = LOOPBACK_BIND_RE.test(bindHost);
+  const isWildcard = config.isWildcardBind;
+  const isLoopback = config.isLoopbackBind;
   // Wildcard bind: API is reachable from all interfaces — token auto-generated
   // each restart if not explicitly set, which breaks persistent clients.
   if (isWildcard && !token) {
@@ -387,20 +390,19 @@ export async function getPortOwner(port: number): Promise<string | null> {
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
     // Get the PID(s) listening on the port
-    const { stdout: pidOut } = await execFileAsync("lsof", [
-      "-ti",
-      `:${port}`,
-      "-sTCP:LISTEN",
-    ]);
+    const { stdout: pidOut } = await execFileAsync(
+      "lsof",
+      ["-ti", `:${port}`, "-sTCP:LISTEN"],
+      { timeout: 2_000 },
+    );
     const pid = pidOut.trim().split("\n")[0];
     if (!pid) return null;
     // Get the process name for that PID
-    const { stdout: nameOut } = await execFileAsync("ps", [
-      "-o",
-      "comm=",
-      "-p",
-      pid,
-    ]);
+    const { stdout: nameOut } = await execFileAsync(
+      "ps",
+      ["-o", "comm=", "-p", pid],
+      { timeout: 2_000 },
+    );
     const name = nameOut.trim();
     return name ? `${name} (pid ${pid})` : null;
   } catch {
@@ -408,23 +410,44 @@ export async function getPortOwner(port: number): Promise<string | null> {
   }
 }
 export async function checkPort(port: number): Promise<CheckResult> {
-  const inUse = await new Promise<boolean>((resolve) => {
-    const socket = createConnection({ port, host: "127.0.0.1" });
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once("error", () => {
-      socket.destroy();
-      resolve(false);
+  const result = { label: `Port ${port}`, category: "network" as const };
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    return {
+      ...result,
+      status: "fail",
+      detail: "Port must be an integer from 1 to 65535",
+    };
+  }
+  // Binding tests whether the app can listen; connection errors do not prove
+  // availability (for example, a local permission failure or a dropped packet).
+  const error = await new Promise<NodeJS.ErrnoException | null>((resolve) => {
+    const server = createServer((socket) => socket.destroy());
+    let settled = false;
+    const finish = (error: NodeJS.ErrnoException | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(error);
+    };
+    const timer = setTimeout(() => {
+      server.close();
+      finish(
+        Object.assign(new Error("Port availability check timed out"), {
+          code: "ETIMEDOUT",
+        }),
+      );
+    }, 2_000);
+    server.once("error", finish);
+    server.listen({ port, host: "127.0.0.1", exclusive: true }, () => {
+      server.close((error) => finish(error ?? null));
     });
   });
-  if (!inUse) {
+  if (!error) return { ...result, status: "pass", detail: "Available" };
+  if (error.code !== "EADDRINUSE") {
     return {
-      label: `Port ${port}`,
-      category: "network",
-      status: "pass",
-      detail: "Available",
+      ...result,
+      status: "fail",
+      detail: `Could not bind port: ${error.message}`,
     };
   }
   const owner = await getPortOwner(port);

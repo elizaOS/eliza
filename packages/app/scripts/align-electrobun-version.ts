@@ -1,37 +1,38 @@
 #!/usr/bin/env node
-/**
- * Align package.json versions and electrobun.config.ts with the release tag.
- *
- * Expects the target version in the RELEASE_VERSION environment variable.
- */
+/** Aligns release manifests; Electrobun reads its version from its own manifest. */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.ts";
 
-const version = process.env.RELEASE_VERSION;
-if (!version) {
-  console.error("RELEASE_VERSION environment variable is required");
-  process.exit(1);
+const version = process.env.RELEASE_VERSION?.trim();
+if (!version)
+  throw new Error("RELEASE_VERSION environment variable is required");
+const root = process.cwd();
+const appDir = resolveMainAppDir(root, "app");
+const electrobunDir = resolveElectrobunDir(root);
+const relativePlatform = path.relative(root, electrobunDir);
+if (
+  relativePlatform === ".." ||
+  relativePlatform.startsWith(`..${path.sep}`) ||
+  path.isAbsolute(relativePlatform)
+) {
+  throw new Error(
+    `Refusing to change a release manifest outside ${root}: ${electrobunDir}`,
+  );
 }
-
-const appDir = resolveMainAppDir(process.cwd(), "app");
-const electrobunDir = resolveElectrobunDir(process.cwd());
-
-for (const file of [
-  "package.json",
+// Parse every input before writing anything. A missing or malformed manifest
+// must fail the release step instead of silently stamping only some packages.
+const updates = [
+  path.join(root, "package.json"),
   path.join(appDir, "package.json"),
   path.join(electrobunDir, "package.json"),
-]) {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
-    pkg.version = version;
-    fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
-  } catch (e) {
-    console.warn(`Could not update ${file}: ${e.message}`);
-  }
-}
-
-const cfgPath = path.join(electrobunDir, "electrobun.config.ts");
-let cfg = fs.readFileSync(cfgPath, "utf8");
-cfg = cfg.replace(/version:\s*"[^"]+"/, `version: "${version}"`);
-fs.writeFileSync(cfgPath, cfg);
+].map((file) => {
+  const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg))
+    throw new Error(`Invalid package manifest: ${file}`);
+  return {
+    file,
+    contents: `${JSON.stringify({ ...pkg, version }, null, 2)}\n`,
+  };
+});
+for (const { file, contents } of updates) fs.writeFileSync(file, contents);
