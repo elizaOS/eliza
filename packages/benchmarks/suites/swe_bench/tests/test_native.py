@@ -87,7 +87,8 @@ def test_native_trace_does_not_accept_previous_attempt(tmp_path):
 
 
 @pytest.mark.parametrize("complete", [False, True])
-def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, monkeypatch, complete):
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, monkeypatch, complete, exit_code):
     """Controlled process/evaluator boundaries verify the runner, not agent quality."""
     import asyncio
     from pathlib import Path
@@ -116,10 +117,10 @@ def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, mon
             self.cleaned = True
 
     class Process:
-        returncode = 0
+        returncode = exit_code
 
         async def wait(self):
-            return 0
+            return exit_code
 
     async def create_process(*args, **kwargs):
         task = json.loads(Path(args[-1]).read_text())
@@ -145,11 +146,12 @@ def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, mon
     assert len(set(traces)) == 2
     assert all(manager.cleaned for manager in managers)
     assert all(result.generated_patch == patch for result in results)
-    assert all(result.success is complete for result in results)
-    if complete:
+    assert all(result.success is (complete and exit_code == 0) for result in results)
+    if complete and exit_code == 0:
         assert evaluated == [patch, patch]
         assert len(list((tmp_path / "output").rglob("trace-evidence.json"))) == 2
     else:
         assert evaluated == []
         assert all(result.patch_status == PatchStatus.GENERATED for result in results)
-        assert all("trajectory is incomplete" in result.error for result in results)
+        expected_error = "Native CLI exited 1" if exit_code else "trajectory is incomplete"
+        assert all(expected_error in result.error for result in results)

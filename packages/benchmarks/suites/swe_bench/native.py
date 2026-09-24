@@ -140,11 +140,13 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
                 start_new_session=os.name == "posix",
             )
             await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+        # Preserve the attempted edit even when the completed CLI reports failure.
+        # Failed turns remain ineligible for grading.
+        patch = await manager.get_diff()
         if process.returncode != 0:
             raise RuntimeError(f"Native CLI exited {process.returncode}; see {receipt_dir}")
         row = parse_native_result((receipt_dir / "stdout.log").read_text(), instance.instance_id)
         (receipt_dir / "result.json").write_text(json.dumps(row, indent=2))
-        patch = await manager.get_diff()
         if not patch.strip():
             raise RuntimeError("Native coding turn completed without a working-tree diff")
         evidence = validate_native_trajectory(receipt_dir / "state" / "trajectories", trace_id, task)
