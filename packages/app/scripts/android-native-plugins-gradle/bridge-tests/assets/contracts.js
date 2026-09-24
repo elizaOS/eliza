@@ -277,7 +277,10 @@
         "metered state contract",
       );
       const hints = await call("getPathHints");
-      assert(typeof hints.isConstrained === "boolean", "path hints contract");
+      assert(
+        hints.isExpensive === null && hints.isConstrained === null,
+        "Android path hints must remain unknown",
+      );
       break;
     }
     case "plugin-native-wifi": {
