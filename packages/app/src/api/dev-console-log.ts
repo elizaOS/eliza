@@ -44,6 +44,11 @@ export function readDevConsoleLogTail(
   absPath: string,
   options: { maxLines?: number; maxBytes?: number } = {},
 ): ReadDevConsoleLogResult {
+  for (const [name, value] of Object.entries(options)) {
+    if (value !== undefined && !Number.isSafeInteger(value)) {
+      return { ok: false, error: `${name} must be a finite safe integer` };
+    }
+  }
   const maxLines = Math.min(
     Math.max(1, options.maxLines ?? DEFAULT_MAX_LINES),
     ABS_CAP_LINES,
@@ -69,17 +74,26 @@ export function readDevConsoleLogTail(
     ) {
       return { ok: false, error: "log path is outside the state directory" };
     }
-    const st = fs.statSync(canonicalPath);
-    if (!st.isFile()) {
-      return { ok: false, error: "not a file" };
-    }
-    const readSize = Math.min(st.size, maxBytes);
-    const start = st.size - readSize;
     const fd = fs.openSync(canonicalPath, "r");
     try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return { ok: false, error: "not a file" };
+      const readSize = Math.min(st.size, maxBytes);
+      const start = st.size - readSize;
       const buf = Buffer.alloc(readSize);
-      fs.readSync(fd, buf, 0, readSize, start);
-      const text = buf.toString("utf8");
+      let bytesRead = 0;
+      while (bytesRead < readSize) {
+        const count = fs.readSync(
+          fd,
+          buf,
+          bytesRead,
+          readSize - bytesRead,
+          start + bytesRead,
+        );
+        if (count === 0) break;
+        bytesRead += count;
+      }
+      const text = buf.toString("utf8", 0, bytesRead);
       const lines = text.split("\n");
       while (lines.length > 0 && lines[lines.length - 1] === "") {
         lines.pop();

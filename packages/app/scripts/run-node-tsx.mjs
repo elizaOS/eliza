@@ -91,6 +91,7 @@ function forwardSignal(signal) {
     } else {
       child.kill(signal);
     }
+    if (forceKillTimer) return;
     forceKillTimer = setTimeout(() => {
       if (child.exitCode == null && child.signalCode == null) {
         if (exitWithParent) {

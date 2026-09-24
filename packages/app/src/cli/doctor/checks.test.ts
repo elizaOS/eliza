@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkConfigFile, checkHostConfig } from "./checks";
+import { checkConfigFile, checkHostConfig, checkPort } from "./checks";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -47,4 +48,33 @@ describe("doctor configuration boundaries", () => {
       expect(checkHostConfig({ ELIZA_API_BIND: host }).status).toBe("warn");
     },
   );
+});
+
+describe("doctor port availability", () => {
+  it.each([0, -1, 65536, 1.5, Number.NaN])(
+    "rejects invalid port %s",
+    async (port) => {
+      expect((await checkPort(port)).status).toBe("fail");
+    },
+  );
+
+  it("detects a real listener and releases its successful bind probe", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing listener port");
+    try {
+      expect((await checkPort(address.port)).status).toBe("warn");
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+    expect((await checkPort(address.port)).status).toBe("pass");
+    expect((await checkPort(address.port)).status).toBe("pass");
+  });
 });
