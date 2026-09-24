@@ -47,7 +47,7 @@ describe("ENTITIES provider content", () => {
     const message = {
       id: "00000000-0000-0000-0000-0000000000aa",
       roomId,
-      entityId: "00000000-0000-0000-0000-0000000000cc",
+      entityId: "00000000-0000-0000-0000-0000000000e1",
       content: { text: "tell vega to take a break", source: "discord" },
     } as unknown as Memory;
 
@@ -58,5 +58,8 @@ describe("ENTITIES provider content", () => {
     });
     expect(result.text).toContain("People in the Room");
     expect(result.text).toContain("Vega");
+    expect(result.discoveryText).toContain('["Vega"]');
+    expect(result.discoveryText).not.toContain("People in the Room");
+    expect(result.discoveryText).toContain("not proof of a legal name");
   });
 });
