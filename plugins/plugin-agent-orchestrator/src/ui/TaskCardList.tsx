@@ -4,11 +4,11 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/button";
-import { Card } from "@elizaos/ui/card";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Card } from "@elizaos/ui/components/ui/card";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Separator } from "@elizaos/ui/components/ui/separator";
 import { StatusPulseDot } from "@elizaos/ui/components/ui/status-badge";
-import { Input } from "@elizaos/ui/input";
 import {
   Archive,
   Circle,
