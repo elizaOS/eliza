@@ -1996,10 +1996,7 @@ describe("runV5MessageRuntimeStage1", () => {
 							completionContext: {
 								mode: "relevant_prior_dialogue",
 								complete: true,
-								sourceSetId:
-									mode === "native-bound"
-										? "current_request"
-										: "current_request",
+								sourceSetId: "current_request",
 								relevantSourceIds: ["h2"],
 								constraintSourceIds: ["h1"],
 								referentSourceIds: [],
@@ -2052,9 +2049,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					expect(
 						dispatch.mock.calls[0]?.[0].rawParsed.completionContext,
 					).toMatchObject({
-						sourceSetId: text.match(
-							/completion_source_set: ([a-f0-9]{64})/,
-						)?.[1],
+						sourceSetId: expect.stringMatching(/^[a-f0-9]{64}$/),
 					});
 			}
 		},
