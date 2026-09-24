@@ -61,7 +61,7 @@ CLI:
 
 Exit codes:
   0 — no errors (or --strict not set and report written)
-  1 — --strict and ≥1 invalid record
+  1 — --strict and either no records or ≥1 invalid record
   2 — input file missing / unreadable
 """
 
@@ -764,6 +764,10 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
             return 1
 
     _emit(report_path, total, valid, err_by_task, err_by_source, failing)
+    if strict and total == 0:
+        print(f"FAIL: no records found in {input_path}; supply a non-empty corpus",
+              file=sys.stderr)
+        return 1
     return 0 if total == valid else (1 if strict else 0)
 
 

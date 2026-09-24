@@ -27,17 +27,17 @@ pulls the same slice (not the full 258 MB repo). Skip the clone with
 Usage:
 
     # Sparse-clone the same slice + build manifest end-to-end:
-    python3 scripts/voice/build_same_manifest.py --sparse-clone /tmp/ai_voices
+    python3 scripts/voice/build_sam_manifest.py --sparse-clone /tmp/ai_voices
 
     # Use an existing clone, write manifest only:
-    python3 scripts/voice/build_same_manifest.py \\
+    python3 scripts/voice/build_sam_manifest.py \\
         --src /tmp/ai_voices/sam \\
         --dst packages/training/data/voice/same
 
     # Dry run — validate inputs, emit manifest in memory, do not write
     # normalized audio or ljspeech mirror (still writes manifest.jsonl
     # + source.json + ljspeech/metadata.csv).
-    python3 scripts/voice/build_same_manifest.py --src /tmp/ai_voices/sam --dry-run
+    python3 scripts/voice/build_sam_manifest.py --src /tmp/ai_voices/sam --dry-run
 
 Exit codes:
     0  success

@@ -14,7 +14,7 @@ for Kokoro (and as the freeze target for OmniVoice). Lands here from
 
 - **Upstream:** [`lalalune/ai_voices`](https://github.com/lalalune/ai_voices) — `sam/` subset (renamed locally to `same`).
 - **Format on disk (upstream):** flat directory of `samantha_NNN.wav` (44.1 kHz mono 16-bit PCM) + `samantha_NNN.txt` (Whisper-base transcripts). The build script re-keys these to `same_NNN.{wav,txt}` when landing them locally.
-- **Commit pinned in `source.json`** — written by `build_same_manifest.py` at fetch time.
+- **Commit pinned in `source.json`** — written by `build_sam_manifest.py` at fetch time.
 - **R12 inventory:** `.swarm/research/R12-ai_voices.md`.
 
 ## Layout
@@ -63,7 +63,7 @@ only the sam slice (not the full 258 MB repo).
 ### End-to-end (recommended)
 
 ```bash
-python3 packages/training/scripts/voice/build_same_manifest.py \
+python3 packages/training/scripts/voice/build_sam_manifest.py \
     --sparse-clone /tmp/ai_voices
 ```
 
@@ -86,7 +86,7 @@ This will:
 ### Two-step (when a clone already exists)
 
 ```bash
-python3 packages/training/scripts/voice/build_same_manifest.py \
+python3 packages/training/scripts/voice/build_sam_manifest.py \
     --src /tmp/ai_voices/sam \
     --dst packages/training/data/voice/same
 ```
@@ -94,7 +94,7 @@ python3 packages/training/scripts/voice/build_same_manifest.py \
 ### Pre-flight audit
 
 ```bash
-bash packages/training/scripts/voice/audit_same.sh /tmp/ai_voices/sam
+bash packages/training/scripts/voice/audit_sam.sh /tmp/ai_voices/sam
 ```
 
 I7 and I11 must run this **before** invoking the kokoro pipeline.
@@ -156,7 +156,7 @@ See `.swarm/collab.md` for the C0 decision log on license handling
 ## Known issues
 
 - **`same_002.txt = "641."`** — Whisper-base hallucination on a 1.37 s
-  clip. `build_same_manifest.py` fixes this when run with the
+  clip. `build_sam_manifest.py` fixes this when run with the
   default `--retranscribe` (loads `whisper-large-v3` and rewrites every
   transcript). When invoked with `--no-retranscribe` (CI / smoke) the
   clip is marked `excluded=true` in `manifest.jsonl` and skipped in

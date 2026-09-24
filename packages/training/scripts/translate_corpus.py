@@ -14,8 +14,8 @@ Strategy
        * XML: translate only contents of <thought>/<text>/<reasoning>/<description>
 3. Identifier protection: ALL_CAPS_TOKENS, URLs, paths, JSON-shaped substrings,
    code blocks are masked before translation and restored after.
-4. Output to data/synthesized/translated/<lang>.jsonl with progress tracking
-   for resume on failure.
+4. Output to data/synthesized/translated/<lang>.jsonl only after completion. Hidden per-language journals bind durable translated
+   rows to the complete source sample for resume after failure.
 
 Backend: argos-translate (offline NMT). One language pack per target language.
 """
@@ -23,6 +23,8 @@ Backend: argos-translate (offline NMT). One language pack per target language.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import tempfile
 import json
 import os
 import random
@@ -43,12 +45,9 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("CT2_INTER_THREADS", "1")
 os.environ.setdefault("CT2_INTRA_THREADS", "1")
 
-import argostranslate.translate
-
 ROOT = Path(__file__).resolve().parent.parent
 TRAIN_FILE = ROOT / "data" / "final" / "train.jsonl"
 OUT_DIR = ROOT / "data" / "synthesized" / "translated"
-PROGRESS_FILE = OUT_DIR / ".progress.json"
 
 # Final manifest task-type distribution (from data/final/manifest.json totals).
 TASK_TYPE_FRACTIONS = {
@@ -127,6 +126,8 @@ def mask_text(text: str) -> tuple[str, list[str]]:
     because argos-translate strips underscores around standalone tokens. We
     pick a rare letter sequence ("zkq") to minimize collisions.
     """
+    if RESTORE_RE.search(text):
+        raise ValueError("Source text contains a reserved translation placeholder")
     table: list[str] = []
     masked = text
     for pat in MASK_PATTERNS:
@@ -143,14 +144,13 @@ RESTORE_RE = re.compile(r"Zkq\s*(\d+)\s*Qkz", re.IGNORECASE)
 
 
 def restore_text(text: str, table: list[str]) -> str:
-    if not table:
-        return text
+    restored = sorted(int(match.group(1)) for match in RESTORE_RE.finditer(text))
+    if restored != list(range(len(table))):
+        raise ValueError("Translation lost, duplicated or invented a protected identifier")
 
     def _sub(m: re.Match) -> str:
         idx = int(m.group(1))
-        if 0 <= idx < len(table):
-            return table[idx]
-        return m.group(0)
+        return table[idx]
 
     return RESTORE_RE.sub(_sub, text)
 
@@ -162,6 +162,8 @@ def restore_text(text: str, table: list[str]) -> str:
 
 class Translator:
     def __init__(self, target: str):
+        import argostranslate.translate
+
         self.target = target
         langs = argostranslate.translate.get_installed_languages()
         en = next((lang for lang in langs if lang.code == "en"), None)
@@ -191,11 +193,7 @@ class Translator:
             return self._cache[text]
 
         masked, table = mask_text(text)
-        try:
-            out = self._tr.translate(masked)
-        except Exception as exc:  # argos sometimes throws on weird inputs
-            sys.stderr.write(f"[warn] translate failed ({exc}); keeping original\n")
-            return text
+        out = self._tr.translate(masked)
         out = restore_text(out, table)
         self.calls += 1
         if len(self._cache) < 10000:  # bounded
@@ -497,7 +495,7 @@ def stratified_sample(target_per_lang: int, seed: int = 42) -> list[dict]:
 # yield diminishing translation value while costing many seconds each.
 MAX_TEXT_CHARS = 800
 
-# Records whose total text surface exceeds this are skipped entirely. This
+# Records whose total text surface exceeds this are rejected before output. This
 # protects against a single 30 kB JSON-encoded reasoning trace blowing up
 # per-language runtime by 100x.
 MAX_RECORD_CHARS = 8000
@@ -591,21 +589,10 @@ def translate_record(record: dict, tr: Translator, lang: str) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def load_progress() -> dict:
-    if PROGRESS_FILE.exists():
-        return json.loads(PROGRESS_FILE.read_text())
-    return {}
-
-
-def save_progress(progress: dict) -> None:
-    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PROGRESS_FILE.write_text(json.dumps(progress, indent=2))
-
-
-def write_or_load_sample(per_lang: int, seed: int) -> list[dict]:
+def write_or_load_sample(per_lang: int, seed: int, out_dir: Path) -> list[dict]:
     """Cache the stratified sample on disk so parallel runs share it."""
-    cache = OUT_DIR / f".sample_n{per_lang}_seed{seed}.jsonl"
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    cache = out_dir / f".sample_n{per_lang}_seed{seed}.jsonl"
+    out_dir.mkdir(parents=True, exist_ok=True)
     if cache.exists():
         # Use line-iter (split on '\n' only). splitlines() splits on Unicode
         # line separators like \x1c,  , etc. that occur inside escaped
@@ -619,76 +606,96 @@ def write_or_load_sample(per_lang: int, seed: int) -> list[dict]:
         print(f"[sample] reused cached sample {cache} ({len(recs)} recs)")
         return recs
     sample = stratified_sample(per_lang, seed=seed)
-    with cache.open("w") as f:
-        for r in sample:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    _publish_jsonl(cache, sample)
     print(f"[sample] wrote cached sample to {cache}")
     return sample
 
 
-def run(langs: list[str], per_lang: int, seed: int) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def _digest(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
-    sample = write_or_load_sample(per_lang, seed)
-    print(f"[run] using sample of {len(sample)} records across {len(langs)} languages")
 
-    progress = load_progress()
-    progress["sample_size"] = len(sample)
-    progress["languages"] = progress.get("languages", {})
+def _publish_jsonl(path: Path, records) -> None:
+    """Replace a finalized corpus only after its complete bytes are durable."""
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=f".{path.name}.", delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            for record in records:
+                output.write(json.dumps(record, ensure_ascii=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
+
+def run(langs: list[str], per_lang: int, seed: int, *, out_dir: Path | None = None) -> None:
+    # The offline training hosts use POSIX advisory locks. Hold the journal's
+    # lock through publication so concurrent writers cannot duplicate rows.
+    import fcntl
+
+    if per_lang < 1 or not langs or any(not re.fullmatch(r"[a-z]{2,3}(?:-[A-Za-z]{2,4})?", lang) for lang in langs):
+        raise ValueError("Supply a positive sample size and language codes such as es or pt-BR")
+    out_dir = OUT_DIR if out_dir is None else out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    sample = write_or_load_sample(per_lang, seed, out_dir)
+    if not sample:
+        raise ValueError("Translation sample is empty; no language output was published")
+    for index, rec in enumerate(sample):
+        message = rec.get("currentMessage")
+        response = rec.get("expectedResponse", "")
+        if (rec.get("format") == "eliza_native_v1" or not isinstance(message, dict)
+                or not isinstance(message.get("content"), str) or not isinstance(response, str)):
+            raise ValueError(f"Source record {index} must use the supported legacy currentMessage/expectedResponse format")
+        size = len(message["content"]) + len(response)
+        if size > MAX_RECORD_CHARS:
+            raise ValueError(f"Source record {index} exceeds the {MAX_RECORD_CHARS}-character translation boundary; no records were omitted")
+    sample_hash = _digest(sample)
     for lang in langs:
-        out_path = OUT_DIR / f"{lang}.jsonl"
-        st = progress["languages"].get(lang, {"written": 0, "started": time.time()})
-        already = st.get("written", 0)
-        mode = "a" if already > 0 else "w"
-
-        print(f"\n=== {lang} === starting at idx={already}, target={len(sample)}", flush=True)
-        tr = Translator(lang)
-
-        t0 = time.time()
-        skipped_huge = 0
-        with out_path.open(mode) as f:
-            for i, rec in enumerate(sample):
-                if i < already:
-                    continue
-                # Skip oversized records.
-                cm_len = len((rec.get("currentMessage") or {}).get("content","") or "")
-                er_len = len(rec.get("expectedResponse","") or "")
-                if cm_len + er_len > MAX_RECORD_CHARS:
-                    skipped_huge += 1
-                    continue
-                try:
+        header = {"version": 2, "sample": sample_hash, "language": lang}
+        stage = out_dir / f".{lang}.translation.jsonl"
+        with stage.open("a+b") as journal:
+            fcntl.flock(journal, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            journal.seek(0)
+            completed: list[dict] = []
+            offset = 0
+            saw_header = False
+            for line in journal:
+                if not line.endswith(b"\n"):
+                    # Only the interrupted trailing append is uncommitted.
+                    journal.truncate(offset)
+                    break
+                item = json.loads(line)
+                if not saw_header:
+                    if item != header:
+                        raise ValueError(f"{stage} belongs to another sample or language; preserve it and select a separate output directory")
+                    saw_header = True
+                else:
+                    if not isinstance(item, dict) or set(item) != {"source", "record", "sha256"} or _digest(item["record"]) != item["sha256"]:
+                        raise ValueError(f"Invalid completed translation in {stage} at byte {offset}")
+                    if not isinstance(item["record"], dict) or len(completed) >= len(sample):
+                        raise ValueError(f"Invalid record count or shape in {stage}")
+                    if item["source"] != _digest(sample[len(completed)]):
+                        raise ValueError(f"Translation source order mismatch in {stage} at row {len(completed)}")
+                    completed.append(item["record"])
+                offset += len(line)
+            journal.seek(0, os.SEEK_END)
+            if not saw_header:
+                journal.write((json.dumps(header) + "\n").encode())
+                journal.flush()
+                os.fsync(journal.fileno())
+            if len(completed) < len(sample):
+                tr = Translator(lang)
+                for rec in sample[len(completed):]:
                     out = translate_record(rec, tr, lang)
-                except Exception as exc:
-                    sys.stderr.write(f"[warn] {lang} idx={i} failed: {exc}\n")
-                    continue
-                f.write(json.dumps(out, ensure_ascii=False) + "\n")
-                if (i + 1) % 25 == 0:
-                    f.flush()
-                    elapsed = time.time() - t0
-                    rate = (i + 1 - already) / elapsed if elapsed > 0 else 0
-                    eta = (len(sample) - i - 1) / rate if rate > 0 else 0
-                    print(f"  [{lang}] {i+1}/{len(sample)}  "
-                          f"{rate:.2f} rec/s  cache={tr.cache_hits} "
-                          f"skip_huge={skipped_huge} eta={eta/60:.1f}m",
-                          flush=True)
-                    progress["languages"][lang] = {
-                        "written": i + 1,
-                        "started": st.get("started", t0),
-                        "rate_per_sec": rate,
-                    }
-                    save_progress(progress)
-
-        progress["languages"][lang] = {
-            "written": len(sample),
-            "started": st.get("started", t0),
-            "elapsed_sec": time.time() - t0,
-            "calls": tr.calls,
-            "cache_hits": tr.cache_hits,
-        }
-        save_progress(progress)
-        print(f"=== {lang} done in {(time.time()-t0)/60:.1f}m, "
-              f"calls={tr.calls}, cache_hits={tr.cache_hits} ===")
+                    entry = {"source": _digest(rec), "record": out, "sha256": _digest(out)}
+                    journal.write((json.dumps(entry, ensure_ascii=False) + "\n").encode())
+                    journal.flush()
+                    os.fsync(journal.fileno())
+                    completed.append(out)
+            _publish_jsonl(out_dir / f"{lang}.jsonl", completed)
+            print(f"{lang}: finalized {len(completed)} of {len(sample)} records", flush=True)
 
 
 def main() -> None:
@@ -696,10 +703,12 @@ def main() -> None:
     ap.add_argument("--langs", default="es,fr,de,pt,zh,ja,ko,ru")
     ap.add_argument("--per-lang", type=int, default=12000)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--out-dir", type=Path, default=OUT_DIR,
+                    help="output and resume directory; choose a new directory for a changed sample")
     args = ap.parse_args()
 
     langs = [s.strip() for s in args.langs.split(",") if s.strip()]
-    run(langs, args.per_lang, args.seed)
+    run(langs, args.per_lang, args.seed, out_dir=args.out_dir)
 
 
 if __name__ == "__main__":

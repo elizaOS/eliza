@@ -59,6 +59,9 @@ checkpoints; do not pass a GGUF output directory to it. Staged GGUF bundles use
 `scripts/eval/eliza1_eval_suite.py`, whose release measurements are distinct
 from the checkpoint tool-call structure score.
 
+The pipeline source publisher resolves `HF_TOKEN` or
+`HUGGINGFACE_HUB_TOKEN` directly. Its dry-run mode requires no token.
+
 ## Cloning the pipeline on a fresh machine
 
 ```bash
@@ -257,6 +260,44 @@ Remote Vast bootstrap expects root split names
 `data/final/{train,val,test}.jsonl`; candidate repos use
 `data/validation.jsonl`, so stage or rename that split to `val.jsonl` before
 using it as the remote root dataset.
+
+Validate each prepared corpus with the existing schema/privacy gate:
+
+```bash
+uv run python scripts/validate_corpus.py --input data/final/train.jsonl \
+    --report data/synthesized/review/format_validation.json --strict
+```
+
+Strict mode rejects empty input and invalid rows. Omit `--strict` only for an
+advisory report. The retired converted-dataset validator's five-percent
+invalid-row tolerance and phrase-style verdict are no longer acceptance rules.
+
+For legacy flat `ElizaRecord` structure diagnostics only, run
+`python3 scripts/validate_eliza_schema.py <legacy.jsonl>`. It checks legacy
+fields and memory roles; it does not accept `eliza_native_v1` records or replace
+the corpus acceptance gate above.
+
+The offline `scripts/translate_corpus.py` producer accepts legacy
+`currentMessage`/`expectedResponse` records and requires installed Argos
+language packs. It rejects native records, empty samples and oversized records
+explicitly. Hidden per-language journals resume durable translations against
+an unchanged sample; complete language files are replaced atomically. Preserve
+those journals with the cached sample; use `--out-dir` to keep a changed sample
+separate. Journal source hashes also enforce row order. Historical `.progress.json` counters
+are ignored, so old runs are regenerated before replacement. Protected
+identifier loss fails in the producer; the separate output-only verifier is
+retired. A previous finalized file is preserved if a new run fails.
+
+The fixed-file `train_final.jsonl` repairs for empty memory entries, template
+lead-ins, password paraphrases and duplicated refusal prefixes are retired.
+Use the preparation/formatting paths above and validate their outputs; do not
+rewrite recorded requests, responses or structured receipts with those heuristics.
+
+For fresh legacy dataset splits, run `scripts/pack_dataset.py` through the
+normalization/packing flow above. The historical `split_v2.py` command is
+retired; its per-row random assignment is not a substitute for the packer's
+group-aware split policy. Existing `train_v2.jsonl` files are not direct packer
+inputs; preserve their provenance instead of silently repacking them.
 
 ## System prerequisites
 

@@ -1,45 +1,11 @@
 #!/usr/bin/env python3
-"""Comprehensive validator for the canonical eliza training-record schema.
+"""Diagnose structural errors in legacy flat Eliza training records.
 
-Runs deeper checks than the structural pass — validates every record
-against the elizaOS contract:
+Checks memoryEntries, currentMessage, expectedResponse, availableActions,
+and metadata for the legacy formatter input. Native trajectory records use
+validate_corpus.py --strict; this diagnostic does not accept that schema.
 
-Top level (REQUIRED):
-  - roomName:          str
-  - agentId:           str
-  - memoryEntries:     list of dict
-  - currentMessage:    dict
-  - expectedResponse:  str (non-empty)
-  - availableActions:  list of dict
-  - metadata:          dict
-
-memoryEntries[i] (each entry):
-  - role:        str (one of: user, assistant, system, tool, tool_output, reasoning)
-  - speaker:     str
-  - content:     str
-  - channel:     str
-
-currentMessage:
-  - content:     str (non-empty)
-  - speaker:     str (optional but expected)
-
-availableActions[i] (each action spec):
-  - name:        str
-  - description: str (optional, may be empty)
-
-metadata:
-  - task_type:   str
-  - source_dataset: str
-  - split:       str (train/val/test)
-
-Usage:
-    python3 scripts/validate_eliza_schema.py [path]
-
-Reports:
-  - Records validated
-  - Per-violation counts (per field per error type)
-  - Sample of each violation type (5 records)
-  - Summary verdict: PASS or FAIL
+Run with an optional JSONL path to report violation counts and sample records.
 """
 from __future__ import annotations
 
