@@ -19,6 +19,7 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 
 export default defineConfig({
   root: here,
+  esbuild: { jsx: "automatic" },
   resolve: {
     ...baseConfig.resolve,
     alias: [
