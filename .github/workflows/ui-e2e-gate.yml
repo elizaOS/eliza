@@ -2,11 +2,23 @@ name: UI Fixture Contracts
 on:
   workflow_call:
     inputs:
+      publish_bun_install_cache:
+        description: Allow this workflow's designated Bun install-cache writer
+        required: false
+        type: boolean
+        default: true
       concurrency_scope:
         description: Caller-owned concurrency namespace
         required: false
         type: string
         default: standalone
+  workflow_dispatch:
+    inputs:
+      publish_bun_install_cache:
+        description: Allow the designated UI job to publish the Bun install cache
+        required: false
+        type: boolean
+        default: true
 concurrency:
   group: ui-e2e-gate-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -30,6 +42,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           cache-bun-install: "false"
@@ -116,6 +129,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: ${{ inputs.publish_bun_install_cache }}
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -179,6 +193,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"

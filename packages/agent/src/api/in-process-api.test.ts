@@ -1,3 +1,4 @@
+/** Exercises the real API kernel over in-process transport, including host admission and lifecycle replacement. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,7 +41,13 @@ describe("full API dispatch over local IPC", () => {
       await initializeTestRuntime(replacement, { skipMigrations: true });
       const { startApiServer } = await import("./server.ts");
       expect((await dispatchApiRoute(request(runtime))).status).toBe(503);
+      let hostAllowed = true;
+      const boundaries: string[] = [];
       api = await startApiServer({
+        hostAdmission: (_request, boundary) => {
+          boundaries.push(boundary);
+          return hostAllowed;
+        },
         runtime,
         skipListen: true,
         skipDeferredStartupWork: true,
@@ -54,6 +61,9 @@ describe("full API dispatch over local IPC", () => {
           (await dispatchApiRoute({ ...request(runtime), headers })).status,
         ).toBe(401);
       }
+      hostAllowed = false;
+      expect((await dispatchApiRoute(request(runtime))).status).toBe(403);
+      hostAllowed = true;
       const invalidChat = await dispatchApiRoute({
         ...request(runtime),
         body: "{}",
@@ -72,6 +82,9 @@ describe("full API dispatch over local IPC", () => {
         (await dispatchApiRoute({ ...request(replacement), body: "{}" }))
           .status,
       ).toBe(400);
+      hostAllowed = false;
+      expect((await dispatchApiRoute(request(replacement))).status).toBe(403);
+      expect(boundaries).toEqual(Array(6).fill("request"));
       await api.close();
       api = undefined;
       expect((await dispatchApiRoute(request(replacement))).status).toBe(503);

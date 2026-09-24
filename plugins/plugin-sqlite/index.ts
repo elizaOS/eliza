@@ -1,4 +1,4 @@
-/** Registers the explicit Node SQLite adapter for one agent and one state path. */
+/** Registers the explicit SQLite adapter for one agent and one state path. */
 import {
   ElizaError,
   type IAgentRuntime,

@@ -73,7 +73,6 @@ Historically verified on a Windows GitHub runner:
 | `@elizaos/cloud-shared` | 720 | 2 mock-setup fails (cross-platform issue) |
 | `@elizaos/elizaos` (CLI) | 39 | 0 fail |
 | `@elizaos/credentials/vault` | 185 | 0 fail |
-| `@elizaos/registry` | 7 | 0 fail |
 | `@elizaos/logger` | 4 | 0 fail |
 | `plugin-elizacloud` | 147 | 0 fail |
 | `plugin-discord` | 87 | 0 fail |

@@ -2,8 +2,13 @@
 
 Shared contracts, configuration, utilities, and brand assets used by the agent,
 application hosts, UI, Cloud services, and plugins. This workspace depends on
-`@elizaos/core` and `@elizaos/registry`; it is not an independent foundation below
-them.
+`@elizaos/core`; it is not an independent foundation below it.
+
+`@elizaos/shared/catalog` owns the first-party catalog and its generated channel,
+provider, and app maps. Entries belong to maintained packages and plugins. Run
+`bun run --cwd packages/shared generate:first-party` after changing an entry, and
+`generate:first-party:check` to verify the committed artifacts. The community
+registry is retired; third-party listings are not accepted.
 
 ## Entry points
 

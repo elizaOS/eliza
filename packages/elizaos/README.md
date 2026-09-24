@@ -2,6 +2,9 @@
 
 Create and upgrade elizaOS projects and plugins.
 
+The community registry is retired. Third-party plugins and registry items are
+no longer accepted; the CLI no longer includes a registry submission command.
+
 ## Installation
 
 ```bash
@@ -46,15 +49,6 @@ Show available templates and languages.
 elizaos info
 elizaos info --template project
 elizaos info --language typescript
-```
-
-### `elizaos plugins submit`
-
-Generate third-party plugin metadata and, when maintainers provide a writable registry repository, open a pull request for that registry. The public discovery path is npm publication with the `elizaos` keyword.
-
-```bash
-elizaos plugins submit --dry-run
-elizaos plugins submit --registry owner/repo
 ```
 
 ### `elizaos deploy`

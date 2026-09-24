@@ -119,14 +119,22 @@ jobs:
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Apply required dependency compatibility patches
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.mjs
+          bun packages/scripts/patch-llama-cpp-capacitor.mjs
+          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
 
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
@@ -154,8 +162,26 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Resolve broad core bootstrap
+        id: core_scope
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: |
+          if [[ -f packages/scripts/pr-core-build-scope.mjs ]]; then
+            node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+          else
+            echo "Candidate predates scoped bootstrap; retaining the full core build."
+            echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build core contract
+        if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
+
+      - name: Build affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
 
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
@@ -170,11 +196,6 @@ jobs:
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
-
-      - name: Build affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -361,6 +382,7 @@ jobs:
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts

@@ -190,7 +190,7 @@ describe("Google GenAI config", () => {
       };
     };
     const generated = readPluginJsonFromRepository(
-      "packages/registry/src/first-party/generated.json",
+      "packages/shared/src/catalog/generated.json",
     ) as {
       entries: Array<{
         id: string;

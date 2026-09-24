@@ -120,6 +120,15 @@ export const smokeViewDeclarations = [
     { capabilities: ["agent-surface"] },
   ],
   [
+    "cockpit",
+    "Cockpit",
+    "plugin-task-coordinator",
+    "/cockpit",
+    "CockpitRoute",
+    "gui",
+    { capabilities: ["agent-surface"] },
+  ],
+  [
     "trajectory-logger",
     "Trajectory Logger",
     "plugin-trajectory-logger",
@@ -505,11 +514,11 @@ export function resolveBundleProvenance({
   if (requireRealBundle) {
     return { mode: "missing-real-bundle", status: 424, synthesized: false };
   }
-  const dedicated = new Set(["screenshare", "task-coordinator"]);
   return {
-    mode: dedicated.has(viewId)
-      ? `synthesized-${viewId}`
-      : "synthesized-generic",
+    mode:
+      viewId === "task-coordinator"
+        ? "synthesized-task-coordinator"
+        : "synthesized-generic",
     status: 200,
     synthesized: true,
   };

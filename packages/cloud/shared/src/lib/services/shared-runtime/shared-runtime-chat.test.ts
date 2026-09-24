@@ -1,8 +1,8 @@
 /**
  * Covers the cache-only shared chat engine across response and SSE boundaries.
  *
- * Real history-store and waitUntil contracts are used; model, money, and the
- * durable trace repository are deterministic seams.
+ * The service is real; turn execution, history storage, waitUntil, billing,
+ * and the durable trace repository use deterministic in-memory seams.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -459,6 +459,20 @@ type TestMessage = {
         observedAt: number;
       };
 };
+
+function sseFrames(body: string) {
+  return body
+    .split("\n\n")
+    .filter((frame) => frame.trim().length > 0 && !frame.startsWith(":"))
+    .map((frame) => {
+      const lines = frame.split("\n");
+      const event = lines.find((line) => line.startsWith("event: "))?.slice(7);
+      const data = JSON.parse(
+        lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}",
+      ) as Record<string, unknown>;
+      return { event, data };
+    });
+}
 
 function harness(initialHistory?: TestMessage[]) {
   let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
@@ -946,7 +960,7 @@ describe("SharedRuntimeChatService", () => {
     });
   });
 
-  test("always uses AgentRuntime execution without changing identity", async () => {
+  test("passes canonical identity and Todo scope to the turn boundary", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
     turn.actionResults = [expectedTodoActionResult];
@@ -999,7 +1013,7 @@ describe("SharedRuntimeChatService", () => {
     });
   });
 
-  test("keeps Todo-capable streaming on the same genuine AgentRuntime path", async () => {
+  test("passes canonical identity and Todo scope to the streaming turn boundary", async () => {
     streamTurn = {
       degraded: false,
       parts: (async function* () {
@@ -1400,7 +1414,13 @@ describe("SharedRuntimeChatService", () => {
     };
     const h = harness();
 
-    await (await new SharedRuntimeChatService().stream(agent, rpc, h)).text();
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, h);
+    const frames = sseFrames(await response.text());
+    expect(frames.map(({ event, data }) => [event, data.type])).toEqual([
+      ["chunk", "token"],
+      ["done", "done"],
+    ]);
+    expect(frames[1]?.data).toMatchObject({ text: "hello back", fullText: "hello back" });
 
     expect(h.history().at(-1)).toMatchObject({
       role: "assistant",
@@ -1640,16 +1660,7 @@ describe("SharedRuntimeChatService", () => {
     };
 
     const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
-    const frames = body
-      .split("\n\n")
-      .filter((frame) => Boolean(frame) && !frame.startsWith(":"))
-      .map((frame) => {
-        const lines = frame.split("\n");
-        return {
-          event: lines.find((line) => line.startsWith("event: "))?.slice(7),
-          data: JSON.parse(lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}"),
-        };
-      });
+    const frames = sseFrames(body);
 
     expect(frames.map((frame) => frame.event)).toEqual(["chunk", "done"]);
     expect(frames.map((frame) => frame.data.type)).toEqual(["token", "done"]);
@@ -1659,31 +1670,6 @@ describe("SharedRuntimeChatService", () => {
     expect(frames[1]?.data.messageId).toBe(frames[0]?.data.messageId);
     expect(frames[1]?.data.userMessageId).toBe(frames[0]?.data.userMessageId);
     expect(settleCalls).toEqual([0]);
-  });
-
-  test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
-    const service = new SharedRuntimeChatService();
-    const response = await service.stream(agent, rpc, harness());
-    const frames = (await response.text())
-      .split("\n\n")
-      .filter((frame) => frame.trim().length > 0 && !frame.startsWith(":"))
-      .map((frame) => {
-        const lines = frame.split("\n");
-        const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
-        const data = JSON.parse(
-          lines.find((line) => line.startsWith("data: "))?.slice("data: ".length) ?? "{}",
-        ) as Record<string, unknown>;
-        return { event, data };
-      });
-    expect(frames.length).toBeGreaterThanOrEqual(2);
-    for (const frame of frames) {
-      expect(frame.event).toBeDefined();
-      expect(frame.data.type).toBe(frame.event === "chunk" ? "token" : frame.event);
-    }
-    const doneData = frames.find((frame) => frame.event === "done")?.data ?? {};
-    const fullText = doneData.fullText;
-    expect(fullText).toBe(doneData.text);
-    expect(typeof fullText === "string" && fullText.length > 0).toBe(true);
   });
 
   test("stream error and no-parts paths conservatively settle unknown usage", async () => {
@@ -2353,13 +2339,8 @@ describe("SharedRuntimeChatService", () => {
     expect(streamTurnCalls).toBe(1);
     expect(lastStreamTurnInput?.originClientMessageId).toBe("client-key-1");
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
-    const doneFrame = (body: string) => {
-      const match = body.match(/event: done\ndata: (.*)\n/);
-      expect(match).toBeTruthy();
-      return JSON.parse(match![1]) as Record<string, unknown>;
-    };
-    const firstDone = doneFrame(firstBody);
-    const secondDone = doneFrame(secondBody);
+    const firstDone = sseFrames(firstBody).find((frame) => frame.event === "done")!.data;
+    const secondDone = sseFrames(secondBody).find((frame) => frame.event === "done")!.data;
     expect(secondDone.fullText).toBe("hello back");
     expect(secondDone.messageId).toBe(firstDone.messageId);
     expect(secondDone.userMessageId).toBe(firstDone.userMessageId);

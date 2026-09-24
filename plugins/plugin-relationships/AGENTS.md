@@ -18,9 +18,9 @@ this package's React views. Contact orchestration (the `ENTITY`
 action with LLM planner + voice-grounded replies) stays in
 `@elizaos/plugin-personal-assistant`.
 
-The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
-`@elizaos/plugin-sql` (declared as a peer dep and in
-`dependencies: ["@elizaos/plugin-sql"]`).
+The plugin is opt-in. PostgreSQL/PGlite uses `@elizaos/plugin-sql`; the standalone
+host rewrites that bootstrap dependency to `@elizaos/plugin-sqlite` in explicit
+SQLite mode. The graph uses the same agent adapter and shared merge engine.
 
 ## Plugin surface
 
@@ -105,8 +105,10 @@ needed.
 
 ## Conventions / gotchas
 
-- **`@elizaos/plugin-sql` must be loaded first.** The legacy-schema audit
-  resolves the SQL database adapter during startup.
+- **Load the selected database adapter first.** PostgreSQL startup inventories
+  the retired SQL schema. SQLite initializes versioned graph records in the
+  existing single-agent database and requires explicit migration for unknown
+  schema versions; it never interprets PostgreSQL SQL or imports legacy data.
 - **`SELF_ENTITY_ID = "self"`** is the canonical id of the owner; all
   ego-network edges originate from `self`.
 - **Built-in entity kinds:** `person`, `organization`, `place`, `project`,
@@ -134,3 +136,25 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## SQLite graph contract
+
+EntityStore and RelationshipStore use the adapter's agent-bound DurableRecordStore
+when present. Every public graph operation runs in one durable transaction;
+identity observation, merge/edge rewrites, retirement and its audit cannot expose
+intermediate writes. Explicit other-agent selection rejects before storage access.
+The same shared identity decision and merge functions serve both backends.
+
+The record namespaces reside inside the agent's existing SQLite database. No
+resident map is authoritative. Store startup validates the schema version; reads
+without a caller-supplied limit return the complete graph. Native close/reopen,
+concurrent observation, rollback, recipient confirmation and ownership tests use
+actual SQLite files and the pinned Node runtime.
+
+This port does not migrate existing PostgreSQL state, port household grants or
+personal-assistant repositories, or make the full application host SQLite-ready.
+The host must still initialize its other schema owners explicitly. PostgreSQL
+legacy-source archival remains a PostgreSQL migration operation. Runtime graph
+retirement audit is mutable domain data, not the independent compliance archive.
+Encrypted storage, backup fencing and restored consent authority remain deployment
+requirements. Do not enable another plugin merely because this graph port exists.

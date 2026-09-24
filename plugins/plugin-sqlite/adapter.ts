@@ -270,6 +270,26 @@ export class SQLiteDatabaseAdapter extends InMemoryDatabaseAdapter {
     await this.rebuildIndex();
   }
 
+  protected override cacheStorageKey(key: string): string {
+    // The persistent file already enforces one owner; retain its on-disk keys.
+    return key;
+  }
+
+  override async withAgentScope<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<IStorage>) => Promise<T>,
+  ): Promise<T> {
+    if (agentId !== this.sqlite.agentId) {
+      throw new ElizaError(
+        "Import a new agent into its own SQLite database file",
+        {
+          code: "SQLITE_AGENT_MISMATCH",
+        },
+      );
+    }
+    return this.transaction(callback);
+  }
+
   override async transaction<T>(
     callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
     options?: { entityContext?: UUID },

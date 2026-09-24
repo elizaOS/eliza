@@ -343,6 +343,19 @@ function inputRows(paths, tracked) {
   });
 }
 
+function startsQuotedYamlScalar(line, index) {
+  const prefix = line.match(
+    /^\s*(?:-\s+)?(?:[A-Za-z_][A-Za-z0-9_-]*\s*:\s*)?/,
+  )[0];
+  // Quotes embedded in plain values (for example, "workflow's") are data.
+  // Flow collections admit nested scalar boundaries; plain values do not.
+  if (index === prefix.length) return true;
+  return (
+    (line[prefix.length] === "[" || line[prefix.length] === "{") &&
+    /[[{,:]\s*$/.test(line.slice(0, index))
+  );
+}
+
 function stripYamlComment(line, label) {
   let singleQuoted = false;
   let doubleQuoted = false;
@@ -357,7 +370,11 @@ function stripYamlComment(line, label) {
       escaped = true;
       continue;
     }
-    if (!doubleQuoted && character === "'") {
+    if (
+      !doubleQuoted &&
+      character === "'" &&
+      (singleQuoted || startsQuotedYamlScalar(line, index))
+    ) {
       if (singleQuoted && line[index + 1] === "'") {
         index += 1;
         continue;
@@ -365,7 +382,11 @@ function stripYamlComment(line, label) {
       singleQuoted = !singleQuoted;
       continue;
     }
-    if (!singleQuoted && character === '"') {
+    if (
+      !singleQuoted &&
+      character === '"' &&
+      (doubleQuoted || startsQuotedYamlScalar(line, index))
+    ) {
       doubleQuoted = !doubleQuoted;
       continue;
     }
@@ -396,7 +417,11 @@ function quotedYamlMask(line) {
       masked += " ";
       continue;
     }
-    if (!doubleQuoted && character === "'") {
+    if (
+      !doubleQuoted &&
+      character === "'" &&
+      (singleQuoted || startsQuotedYamlScalar(line, index))
+    ) {
       if (singleQuoted && line[index + 1] === "'") {
         masked += "  ";
         index += 1;
@@ -406,7 +431,11 @@ function quotedYamlMask(line) {
       masked += character;
       continue;
     }
-    if (!singleQuoted && character === '"') {
+    if (
+      !singleQuoted &&
+      character === '"' &&
+      (doubleQuoted || startsQuotedYamlScalar(line, index))
+    ) {
       doubleQuoted = !doubleQuoted;
       masked += character;
       continue;
@@ -461,7 +490,7 @@ function parseAutomationSource(source, label, requiredRootKey) {
   const lines = source.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index];
-    const line = stripYamlComment(rawLine, label);
+    const line = stripYamlComment(rawLine, `${label}:${index + 1}`);
     if (!line.trim() || /^\s*(?:---|\.\.\.)\s*$/.test(line)) continue;
     const property = /^( *)(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(
       line,

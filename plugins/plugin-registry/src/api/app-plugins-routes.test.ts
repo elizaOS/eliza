@@ -49,7 +49,7 @@ vi.mock("@elizaos/app-core/api/response", () => ({
   sendJsonError: mocks.sendJsonError,
 }));
 
-vi.mock("@elizaos/registry/first-party", () => ({
+vi.mock("@elizaos/shared/catalog", () => ({
   loadRegistry: mocks.loadRegistry,
 }));
 

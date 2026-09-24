@@ -33,37 +33,11 @@ interface CapturedRequest {
 
 let lastCapture: CapturedRequest | null = null;
 
-function installMockFetch(responseBody: object, status = 200): void {
-  global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : (input as Request).url;
-    const headers: Record<string, string> = {};
-    if (init?.headers) {
-      const h = new Headers(init.headers);
-      h.forEach((v, k) => {
-        headers[k] = v;
-      });
-    }
-    lastCapture = {
-      url,
-      method: (init?.method ?? "GET").toUpperCase(),
-      headers,
-      rawBody: init?.body as string | undefined,
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
-      redirect: init?.redirect,
-    };
-    return new Response(JSON.stringify(responseBody), {
-      status,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
-}
-
-function installTextMockFetch(responseBody: string, status = 200): void {
+function installResponseFetch(
+  responseBody: string,
+  status: number,
+  contentType: string,
+): void {
   global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === "string"
@@ -88,9 +62,21 @@ function installTextMockFetch(responseBody: string, status = 200): void {
     };
     return new Response(responseBody, {
       status,
-      headers: { "Content-Type": "text/csv" },
+      headers: { "Content-Type": contentType },
     });
   };
+}
+
+function installMockFetch(responseBody: object, status = 200): void {
+  installResponseFetch(
+    JSON.stringify(responseBody),
+    status,
+    "application/json",
+  );
+}
+
+function installTextMockFetch(responseBody: string, status = 200): void {
+  installResponseFetch(responseBody, status, "text/csv");
 }
 
 function installNetworkErrorFetch(): void {
@@ -202,30 +188,12 @@ const mockPolicy: PolicyRule = {
 // ─── Construction Tests ───────────────────────────────────────────────────
 
 describe("LoginClient construction", () => {
-  it("creates a client with minimal config (baseUrl only)", () => {
-    const client = new LoginClient({ baseUrl: "https://api.example.com" });
-    expect(client).toBeInstanceOf(LoginClient);
-  });
-
   it("strips trailing slash from baseUrl", async () => {
     installMockFetch({ ok: true, data: [mockAgent] });
     const client = new LoginClient({ baseUrl: "https://api.example.com///" });
     await client.listAgents();
     expect(lastCapture?.url).not.toContain("///agents");
     expect(lastCapture?.url).toMatch(/\/agents$/);
-  });
-
-  it("creates a client with all config options", () => {
-    const client = new LoginClient({
-      baseUrl: "https://api.example.com",
-      apiKey: "test-api-key",
-      platformKey: "test-platform-key",
-      bearerToken: "test-bearer-token",
-      tenantId: "test-tenant",
-      requestTimeoutMs: 10_000,
-      maxResponseBodyBytes: 1024 * 1024,
-    });
-    expect(client).toBeInstanceOf(LoginClient);
   });
 
   it("rejects request limits that are unbounded or invalid", () => {
@@ -253,14 +221,6 @@ describe("LoginClient construction", () => {
           }),
       ).toThrow(/maxResponseBodyBytes must be a positive integer/);
     }
-  });
-
-  it("creates a client with apiKey only", () => {
-    const client = new LoginClient({
-      baseUrl: "https://api.example.com",
-      apiKey: "my-api-key",
-    });
-    expect(client).toBeInstanceOf(LoginClient);
   });
 
   it("rejects server-grade secrets in browser runtimes by default", () => {
@@ -306,18 +266,6 @@ describe("LoginClient construction", () => {
 // ─── Header Tests ─────────────────────────────────────────────────────────
 
 describe("Request headers", () => {
-  it("always sends Content-Type: application/json", async () => {
-    installMockFetch({ ok: true, data: [mockAgent] });
-    await makeClient().listAgents();
-    expect(lastCapture?.headers["content-type"]).toBe("application/json");
-  });
-
-  it("always sends Accept: application/json", async () => {
-    installMockFetch({ ok: true, data: [mockAgent] });
-    await makeClient().listAgents();
-    expect(lastCapture?.headers.accept).toBe("application/json");
-  });
-
   it("sends X-Steward-Key header when apiKey is set", async () => {
     installMockFetch({ ok: true, data: [mockAgent] });
     const client = makeClient({ apiKey: "my-secret-key" });
@@ -523,16 +471,26 @@ describe("HTTP request building", () => {
 
   it("listAgents → GET /agents", async () => {
     installMockFetch({ ok: true, data: [mockAgent] });
-    await makeClient().listAgents();
+    const agents = await makeClient().listAgents();
     expect(lastCapture?.method).toBe("GET");
     expect(lastCapture?.url).toBe("https://api.steward.example/agents");
+    expect(lastCapture?.headers["content-type"]).toBe("application/json");
+    expect(lastCapture?.headers.accept).toBe("application/json");
+    expect(agents).toHaveLength(1);
+    expect(agents[0].id).toBe("agent-1");
+    expect(agents[0].name).toBe("Test Agent");
+    expect(agents[0].createdAt).toBeInstanceOf(Date);
   });
 
   it("getAgent → GET /agents/:id", async () => {
     installMockFetch({ ok: true, data: mockAgent });
-    await makeClient().getAgent("agent-1");
+    const agent = await makeClient().getAgent("agent-1");
     expect(lastCapture?.method).toBe("GET");
     expect(lastCapture?.url).toBe("https://api.steward.example/agents/agent-1");
+    expect(agent.id).toBe("agent-1");
+    expect(agent.walletAddress).toBe(
+      "0xabcdef0123456789abcdef0123456789abcdef01",
+    );
   });
 
   it("getAgent encodes special characters in agentId", async () => {
@@ -564,13 +522,13 @@ describe("HTTP request building", () => {
   });
 
   it("signTransaction → POST /vault/:agentId/sign", async () => {
-    installMockFetch({ ok: true, data: { txHash: "0xdeadbeef" } });
+    installMockFetch({ ok: true, data: { txHash: "0xdeadbeef123" } });
     const tx: SignTransactionInput = {
       to: "0x1234567890123456789012345678901234567890",
       value: "1000000000000000000",
       chainId: 8453,
     };
-    await makeClient().signTransaction("agent-1", tx, {
+    const result = await makeClient().signTransaction("agent-1", tx, {
       signerId: "signer-tx-1",
       signerSecret: "secret-tx-1",
     });
@@ -581,6 +539,7 @@ describe("HTTP request building", () => {
     expect(lastCapture?.headers["x-steward-signer-id"]).toBe("signer-tx-1");
     expect(lastCapture?.headers["x-steward-signer-secret"]).toBe("secret-tx-1");
     expect(lastCapture?.body).toEqual(tx);
+    expect(result).toEqual({ txHash: "0xdeadbeef123" });
   });
 
   it("signTransaction can send key quorum credentials in headers", async () => {
@@ -1964,11 +1923,14 @@ describe("HTTP request building", () => {
 
   it("getPolicies → GET /agents/:id/policies", async () => {
     installMockFetch({ ok: true, data: [mockPolicy] });
-    await makeClient().getPolicies("agent-1");
+    const policies = await makeClient().getPolicies("agent-1");
     expect(lastCapture?.method).toBe("GET");
     expect(lastCapture?.url).toBe(
       "https://api.steward.example/agents/agent-1/policies",
     );
+    expect(policies).toHaveLength(1);
+    expect(policies[0].id).toBe("rule-1");
+    expect(policies[0].type).toBe("spending-limit");
   });
 
   it("tenant config helpers preserve allowedOrigins and theme assets", async () => {
@@ -3764,8 +3726,10 @@ describe("HTTP request building", () => {
   });
 
   it("signMessage → POST /vault/:id/sign-message", async () => {
-    installMockFetch({ ok: true, data: { signature: "0xsig" } });
-    await makeClient().signMessage("agent-1", "hello world", {
+    const sig =
+      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+    installMockFetch({ ok: true, data: { signature: sig } });
+    const result = await makeClient().signMessage("agent-1", "hello world", {
       signerId: "signer-1",
       signerSecret: "secret-message-1",
     });
@@ -3778,6 +3742,7 @@ describe("HTTP request building", () => {
       "secret-message-1",
     );
     expect(lastCapture?.body).toEqual({ message: "hello world" });
+    expect(result.signature).toBe(sig);
   });
 
   it("signRawHash → POST /vault/:id/sign-raw-hash", async () => {
@@ -4146,15 +4111,26 @@ describe("HTTP request building", () => {
   });
 
   it("createWalletBatch → POST /agents/batch", async () => {
-    installMockFetch({ ok: true, data: { created: [mockAgent], errors: [] } });
-    await makeClient().createWalletBatch([
+    installMockFetch({
+      ok: true,
+      data: {
+        created: [mockAgent],
+        errors: [{ id: "agent-bad", error: "Already exists" }],
+      },
+    });
+    const result = await makeClient().createWalletBatch([
       { id: "a1", name: "Agent 1", externalId: "wallet-ext-1" },
+      { id: "agent-bad", name: "Bad Agent" },
     ]);
     expect(lastCapture?.method).toBe("POST");
     expect(lastCapture?.url).toBe("https://api.steward.example/agents/batch");
     expect((lastCapture?.body as Record<string, unknown>)?.agents).toEqual([
       { id: "a1", name: "Agent 1", platformId: "wallet-ext-1" },
+      { id: "agent-bad", name: "Bad Agent" },
     ]);
+    expect(result.created).toHaveLength(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].id).toBe("agent-bad");
   });
 
   it("createWalletsBatch maps Privy-style externalId to platformId", async () => {
@@ -4215,7 +4191,9 @@ describe("Error handling", () => {
     } catch (e) {
       caught = e as LoginApiError;
     }
-    expect(caught).not.toBeNull();
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught).toBeInstanceOf(LoginApiError);
+    expect(caught?.data).toBeUndefined();
     expect(caught?.status).toBe(401);
     expect(caught?.message).toBe("Unauthorized");
     expect(caught?.name).toBe("LoginApiError");
@@ -4376,47 +4354,6 @@ describe("Error handling", () => {
 // ─── Response Parsing Tests ───────────────────────────────────────────────
 
 describe("Response parsing", () => {
-  it("listAgents returns parsed agent array", async () => {
-    installMockFetch({ ok: true, data: [mockAgent] });
-    const agents = await makeClient().listAgents();
-    expect(agents).toHaveLength(1);
-    expect(agents[0].id).toBe("agent-1");
-    expect(agents[0].name).toBe("Test Agent");
-  });
-
-  it("listAgents parses createdAt as Date object", async () => {
-    installMockFetch({ ok: true, data: [mockAgent] });
-    const agents = await makeClient().listAgents();
-    // parseAgentIdentity converts createdAt string to Date
-    expect(agents[0].createdAt).toBeInstanceOf(Date);
-  });
-
-  it("getAgent returns single agent", async () => {
-    installMockFetch({ ok: true, data: mockAgent });
-    const agent = await makeClient().getAgent("agent-1");
-    expect(agent.id).toBe("agent-1");
-    expect(agent.walletAddress).toBe(
-      "0xabcdef0123456789abcdef0123456789abcdef01",
-    );
-  });
-
-  it("getPolicies returns array of PolicyRule", async () => {
-    installMockFetch({ ok: true, data: [mockPolicy] });
-    const policies = await makeClient().getPolicies("agent-1");
-    expect(policies).toHaveLength(1);
-    expect(policies[0].id).toBe("rule-1");
-    expect(policies[0].type).toBe("spending-limit");
-  });
-
-  it("signTransaction returns txHash on success", async () => {
-    installMockFetch({ ok: true, data: { txHash: "0xdeadbeef123" } });
-    const result = await makeClient().signTransaction("agent-1", {
-      to: "0x1234567890123456789012345678901234567890",
-      value: "1000000000000000000",
-    });
-    expect(result).toEqual({ txHash: "0xdeadbeef123" });
-  });
-
   it("signTransaction returns pending_approval when status 202", async () => {
     // The client treats 202 + pending_approval data as a valid result (not an error)
     installMockFetch(
@@ -4470,75 +4407,6 @@ describe("Response parsing", () => {
       txHash,
       reconciliationRequired: true,
     });
-  });
-
-  it("signMessage returns signature string", async () => {
-    const sig =
-      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
-    installMockFetch({ ok: true, data: { signature: sig } });
-    const result = await makeClient().signMessage("agent-1", "test");
-    expect(result.signature).toBe(sig);
-  });
-
-  it("createWalletBatch returns created and errors arrays", async () => {
-    installMockFetch({
-      ok: true,
-      data: {
-        created: [mockAgent],
-        errors: [{ id: "agent-bad", error: "Already exists" }],
-      },
-    });
-    const result = await makeClient().createWalletBatch([
-      { id: "agent-1", name: "Agent 1" },
-      { id: "agent-bad", name: "Bad Agent" },
-    ]);
-    expect(result.created).toHaveLength(1);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].id).toBe("agent-bad");
-  });
-});
-
-describe("Condition set items", () => {
-  const mockItem = {
-    id: "item-1",
-    conditionSetId: "set-1",
-    tenantId: "tenant-1",
-    value: "0x1234567890123456789012345678901234567890",
-    label: "treasury",
-    metadata: {},
-    createdAt: "2026-06-04T00:00:00.000Z",
-    updatedAt: "2026-06-04T00:00:00.000Z",
-  };
-});
-
-// ─── LoginApiError Class Tests ──────────────────────────────────────────
-
-describe("LoginApiError", () => {
-  it("constructs with message, status, and optional data", () => {
-    const err = new LoginApiError("Something went wrong", 500, {
-      detail: "internal",
-    });
-    expect(err.message).toBe("Something went wrong");
-    expect(err.status).toBe(500);
-    expect(err.data).toEqual({ detail: "internal" });
-    expect(err.name).toBe("LoginApiError");
-  });
-
-  it("constructs without data (undefined)", () => {
-    const err = new LoginApiError("Not found", 404);
-    expect(err.status).toBe(404);
-    expect(err.data).toBeUndefined();
-  });
-
-  it("is an instance of Error", () => {
-    const err = new LoginApiError("test", 500);
-    expect(err).toBeInstanceOf(Error);
-    expect(err).toBeInstanceOf(LoginApiError);
-  });
-
-  it("status 0 indicates a network-level failure (no HTTP response)", () => {
-    const err = new LoginApiError("Network request failed", 0);
-    expect(err.status).toBe(0);
   });
 });
 

@@ -113,3 +113,16 @@ The plugin is picked up automatically when `EMBEDDING_BASE_URL` or `EMBEDDING_AP
   "plugins": ["@elizaos/plugin-embeddings"]
 }
 ```
+
+### Confidential host dispatch
+
+When invoked through a host-owned confidential inference authority, both single
+and batch requests use the same endpoint/model admission and pre-send audit
+boundary as text inference. A required attested host transport replaces ordinary
+fetch. Configured fallback cannot redispatch after authorization when the host
+requires reconciliation. Ordinary runtimes retain their existing HTTP behavior.
+
+The measured host must admit the exact registered handler and must not invoke the
+plugin's direct warm-up outside that authority. This transport integration does
+not validate embedding model provenance, prove hardware attestation, or establish
+network isolation; those remain separate host and runtime requirements.

@@ -1,7 +1,6 @@
 /** Tests for the FILE `grep` handler driving RipgrepService over a real temp workspace. */
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -9,90 +8,46 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type TestContext,
+  vi,
+} from "vitest";
 
 import { RipgrepService } from "../services/ripgrep-service.js";
-import { SandboxService } from "../services/sandbox-service.js";
-import { SessionCwdService } from "../services/session-cwd-service.js";
-import {
-  RIPGREP_SERVICE,
-  SANDBOX_SERVICE,
-  SESSION_CWD_SERVICE,
-} from "../types.js";
+import { RIPGREP_SERVICE } from "../types.js";
+import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { grepHandler } from "./grep.js";
 
-function locateSystemRg(): string | undefined {
-  const candidates = [
-    "/opt/homebrew/bin/rg",
-    "/usr/local/bin/rg",
-    "/usr/bin/rg",
-  ];
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
-  }
-  return undefined;
-}
-
+let env: TestEnv;
+let rg: RipgrepService;
+let runtime: IAgentRuntime;
 let tmpRoot: string;
 let blockedPath: string;
 
-interface RuntimeBundle {
-  runtime: IAgentRuntime;
-  message: Memory;
-}
-
-async function buildRuntime(
-  rootOverride?: string,
-  settings: Record<string, unknown> = {},
-): Promise<RuntimeBundle | null> {
-  const root = rootOverride ?? tmpRoot;
-  const mergedSettings = {
-    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
-    ...settings,
-  };
-  const runtimeSeed = {
-    getSetting: (key: string) => mergedSettings[key],
-    getService: <T>(_type: string): T | null => null,
-  } as IAgentRuntime;
-
-  const sandbox = await SandboxService.start(runtimeSeed);
-  const session = await SessionCwdService.start(runtimeSeed);
-  const rg = await RipgrepService.start(runtimeSeed);
-
-  // The bundled @vscode/ripgrep binary may be absent in dev installs; fall back
-  // to a system rg if so. If neither works, skip the test.
-  const initialBinary = rg.binary();
-  if (!existsSync(initialBinary)) {
-    const sysRg = locateSystemRg();
-    if (!sysRg) {
-      console.warn(
-        `no usable ripgrep found (tried ${initialBinary} and system paths); skipping`,
-      );
-      return null;
-    }
-    (rg as { rgPath: string }).rgPath = sysRg;
-  }
-
-  session.setCwd("test-room", root);
-
-  const runtime = {
-    getSetting: (key: string) => mergedSettings[key],
-    getService: <T>(serviceType: string): T | null => {
-      if (serviceType === SANDBOX_SERVICE) return sandbox as T;
-      if (serviceType === SESSION_CWD_SERVICE) return session as T;
-      if (serviceType === RIPGREP_SERVICE) return rg as T;
-      return null;
-    },
-  } as IAgentRuntime;
-
-  const message = { roomId: "test-room" } as Memory;
-  return { runtime, message };
+function requireRipgrep(context: TestContext): void {
+  const probe = spawnSync(rg.binary(), ["--version"], { stdio: "ignore" });
+  if (probe.error && "code" in probe.error && probe.error.code === "ENOENT")
+    context.skip("ripgrep executable is unavailable");
+  expect(probe.error).toBeUndefined();
+  expect(probe.status).toBe(0);
 }
 
 beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-grep-"));
-  blockedPath = path.join(tmpRoot, "_blocked");
-  await fs.mkdir(blockedPath, { recursive: true });
+  env = await setupEnv("ct-grep");
+  tmpRoot = env.tmpDir;
+  blockedPath = env.blockedPath;
+  env.sessionCwd.setCwd("test-room", tmpRoot);
+  rg = await RipgrepService.start(env.runtime);
+  runtime = {
+    ...env.runtime,
+    getService: <T>(key: string): T | null =>
+      key === RIPGREP_SERVICE ? (rg as T) : env.runtime.getService<T>(key),
+  } as IAgentRuntime;
   const fooDir = path.join(tmpRoot, "foo");
   const subDir = path.join(fooDir, "sub");
   await fs.mkdir(subDir, { recursive: true });
@@ -109,23 +64,31 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(tmpRoot, { recursive: true, force: true });
+  try {
+    await rg.stop();
+  } finally {
+    await env.cleanup();
+  }
 });
 
 const state: State | undefined = undefined;
 
 describe("GREP", () => {
-  it("returns matching files for a known token (default mode)", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("returns matching files for a known token (default mode)", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
 
-    const result = await grepHandler(runtime, message, state, {
-      parameters: { pattern: "NEEDLE" },
-    });
+    const callback = vi.fn();
+    const result = await grepHandler(
+      runtime,
+      message,
+      state,
+      {
+        parameters: { pattern: "NEEDLE" },
+      },
+      callback,
+    );
+    expect(callback).not.toHaveBeenCalled();
 
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
@@ -136,13 +99,9 @@ describe("GREP", () => {
     expect(result.text).toContain("notes.md");
   });
 
-  it("keeps search plugin-owned until fs.search parity exists", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("keeps search plugin-owned until fs.search parity exists", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
     const guardedRuntime = {
       ...runtime,
       getService: <T>(serviceType: string): T | null => {
@@ -161,13 +120,9 @@ describe("GREP", () => {
     expect(result.text).toContain("a.ts");
   });
 
-  it("matches case-insensitively when case_insensitive is true", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("matches case-insensitively when case_insensitive is true", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
 
     const sensitive = await grepHandler(runtime, message, state, {
       parameters: { pattern: "needle", output_mode: "files_with_matches" },
@@ -193,12 +148,7 @@ describe("GREP", () => {
   });
 
   it("rejects a path under the blocklist", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+    const { message } = env;
 
     const result = await grepHandler(runtime, message, state, {
       parameters: { pattern: "NEEDLE", path: blockedPath },
@@ -207,31 +157,31 @@ describe("GREP", () => {
     expect(result.text).toContain("path_blocked");
   });
 
-  it("returns 'no matches' for an unmatched pattern", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("returns 'no matches' for an unmatched pattern", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
 
-    const result = await grepHandler(runtime, message, state, {
-      parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" },
-    });
+    const callback = vi.fn();
+    const result = await grepHandler(
+      runtime,
+      message,
+      state,
+      {
+        parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" },
+      },
+      callback,
+    );
+    expect(callback).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
-    expect(result.text).toContain("no matches");
+    expect(result.text).toBe("no matches");
     expect(
       (result.data as Record<string, unknown> | undefined)?.matches_count,
     ).toBe(0);
   });
 
-  it("returns matches_count:0 for count mode on a zero-match pattern", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("returns matches_count:0 for count mode on a zero-match pattern", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
 
     // ripgrep exits 1 on zero matches in EVERY mode; count mode must surface
     // that as a clean empty answer, not a fabricated command failure.
@@ -251,13 +201,9 @@ describe("GREP", () => {
     expect(result.text).not.toContain("command_failed");
   });
 
-  it("preserves per-file counts for count mode on a matching pattern", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime, message } = bundle;
+  it("preserves per-file counts for count mode on a matching pattern", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
 
     const result = await grepHandler(runtime, message, state, {
       parameters: { pattern: "NEEDLE", output_mode: "count" },
@@ -273,61 +219,10 @@ describe("GREP", () => {
   });
 
   it("fails when roomId is missing", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) {
-      console.warn("no ripgrep available, skipping");
-      return;
-    }
-    const { runtime } = bundle;
     const result = await grepHandler(runtime, {} as Memory, state, {
       parameters: { pattern: "NEEDLE" },
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
-  });
-});
-
-describe("grepHandler — read-only query stays silent", () => {
-  // Read-only query results reach the model through ActionResult and the user
-  // through the planner's final message, so exploratory calls stay out of chat.
-  it("does not invoke the visible chat callback for matching results", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) return;
-    const { runtime, message } = bundle;
-    const callback = vi.fn();
-
-    const result = await grepHandler(
-      runtime,
-      message,
-      undefined,
-      { parameters: { pattern: "NEEDLE" } },
-      callback,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("a.ts");
-    expect(callback).not.toHaveBeenCalled();
-  });
-
-  it("does not invoke the visible chat callback for the zero-match early return", async () => {
-    const bundle = await buildRuntime();
-    if (!bundle) return;
-    const { runtime, message } = bundle;
-    const callback = vi.fn();
-
-    const result = await grepHandler(
-      runtime,
-      message,
-      undefined,
-      { parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" } },
-      callback,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.text).toBe("no matches");
-    expect(
-      (result.data as Record<string, unknown> | undefined)?.matches_count,
-    ).toBe(0);
-    expect(callback).not.toHaveBeenCalled();
   });
 });

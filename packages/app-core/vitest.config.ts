@@ -222,7 +222,6 @@ export default defineConfig({
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
-      "test/helpers/__tests__/live-agent-test.smoke.test.ts",
       ...(includeLiveE2e
         ? []
         : [

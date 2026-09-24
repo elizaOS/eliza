@@ -10,7 +10,7 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 | `src/cli/`      | Commander CLI: `start`, `setup`, `doctor`, `db`, `config`, `dashboard`, `update`, `auth`, …  |
 | `src/api/`      | Dashboard HTTP API: server, auth/pairing routes, dev-stack discovery, secrets/wallet routes. |
 | `src/runtime/`  | Eliza composition layer, focused startup lifecycle modules, dev server, runtime-mode, and Electrobun desktop runtimes. |
-| `src/registry/` | Compatibility re-export of the canonical `@elizaos/registry/first-party` registry. |
+| `src/registry/` | Compatibility re-export of the canonical `@elizaos/shared/catalog` registry. |
 | `src/security/` | Agent vault id + platform secure stores + wallet key hydration.                              |
 | `src/services/` | Auth store, steward credentials/sidecar, vault mirror/bootstrap, account pool, and more.     |
 | `src/platform/` | Per-platform bootstrap (Capacitor for mobile, browser stubs, native plugin entrypoints).     |
@@ -23,12 +23,17 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 
 // Targeted subpaths (see package.json exports for the full list)
-import { loadRegistry } from "@elizaos/registry/first-party";
+import { loadRegistry } from "@elizaos/shared/catalog";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 ```
 
 The full subpath list lives in the `exports` map of `package.json`.
+
+The shipped `scripts/generate-plugin-index.js` writes the legacy `plugins.json`
+manifest offline from `@elizaos/shared/catalog`. It fails if the catalog cannot
+be loaded or the output cannot be written; it does not contact the retired
+community registry or retain old third-party listings.
 
 ## Automation entrypoints
 
@@ -76,6 +81,11 @@ explicitly. Repository CI checks, homepage generation, plugin publication, and
 source-only benchmark harnesses remain available in the checkout and are not
 installed in generated projects. Native binary and patch directories remain
 intact for builders that discover their contents dynamically.
+
+SMS gateway operations, production Cloud gateway deployment, homepage/DNS
+maintenance, and Docker CI review are checkout-only tools. Run their existing
+package commands from this repository; they require repository sources or
+operator configuration and are not part of the installed app build interface.
 
 Published diagnostics include only the test helpers they use. Repository test
 runners and unrelated assertion, browser, and trajectory harnesses are not
@@ -184,3 +194,26 @@ fails the build. Update the lock deliberately when changing runtime versions.
 `ELIZA_BUN_X64_FILE` and `ELIZA_BUN_AARCH64_FILE` can supply downloaded ZIPs for
 local or offline builds, and must match those same pins. RISC-V retains its
 separate OS cross-build artifact and checksum contract.
+
+### Per-agent authentication storage
+
+Application authentication uses the existing identity, session, pairing, CSRF and
+replay contracts through `authStoreForRuntime`. A runtime exposing the durable
+record-store capability stores these records in its owning agent database; a SQL
+runtime retains the Drizzle-backed store. SQLite records survive reopen, and
+one-use claims and revocation updates are transactional. An incompatible database
+or mismatched agent identity is rejected. No second database is opened.
+
+This does not migrate an existing SQL database or grant conversation access.
+LifeOps still requires its verified Entity binding and domain permissions. SQLite
+storage also requires an encrypted deployment volume; its local audit records are
+not an independent tamper-resistant audit service. The explicit SQL maintenance
+CLI continues to operate on its configured SQL database.
+
+The fused embedding install verifier checks the pinned BGE-small artifact and
+CLS pooling. It checks tokenization against the native model.
+
+It also verifies vector dimensions, semantic separation and context reopening.
+A finite nonzero vector alone is insufficient.
+Explicit CPU builds disable accelerator backends and invalidate older CPU stamps
+that did not enforce that build contract.

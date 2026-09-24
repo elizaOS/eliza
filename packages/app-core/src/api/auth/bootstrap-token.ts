@@ -14,7 +14,7 @@
 
 import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
 import { createLocalJWKSet, jwtVerify } from "jose";
-import type { AuthStore } from "../../services/auth-store";
+import type { AuthRepository } from "../../services/auth-store";
 import {
   type JwksDocument,
   readCachedJwks,
@@ -55,7 +55,7 @@ export type VerifyBootstrapFailureReason =
 
 interface VerifyOptions {
   env?: RuntimeEnvRecord;
-  authStore: AuthStore;
+  authStore: AuthRepository;
   fetchImpl?: typeof fetch;
   now?: () => number;
 }

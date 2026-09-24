@@ -25,6 +25,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -75,6 +76,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -119,6 +121,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -140,6 +143,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -188,6 +192,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           publish-caches: ${{ matrix.shard == 1 }}
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
@@ -224,6 +229,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           publish-caches: ${{ matrix.shard == 1 }}
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -277,6 +283,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -311,11 +318,12 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -521,6 +529,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -577,6 +586,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -630,6 +640,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -688,6 +699,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -756,6 +768,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -783,6 +796,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -830,6 +844,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -887,6 +902,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -945,6 +961,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -1000,6 +1017,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"

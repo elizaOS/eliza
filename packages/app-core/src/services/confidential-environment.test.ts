@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { keccak256, SigningKey } from "ethers";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { encryptConfidentialEnvironment } from "./confidential-environment.ts";
 import { signConfidentialRelease } from "./confidential-release.ts";
 
@@ -26,7 +26,7 @@ afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
-async function fixture(change = "none") {
+async function fixture(change = "none", timestampOffsetSeconds = 0) {
   const authority = generateKeyPairSync("ed25519");
   const privatePem = authority.privateKey
     .export({ format: "pem", type: "pkcs8" })
@@ -68,9 +68,7 @@ async function fixture(change = "none") {
   if (!x) throw new Error("Missing recipient key");
   const publicKey = Buffer.from(x, "base64url").toString("hex");
   const signer = new SigningKey(`0x${"12".repeat(32)}`);
-  const timestamp =
-    Math.floor(Date.now() / 1000) +
-    (change === "old" ? -301 : change === "future" ? 61 : 0);
+  const timestamp = Math.floor(Date.now() / 1000) + timestampOffsetSeconds;
   const time = Buffer.alloc(8);
   time.writeBigUInt64BE(BigInt(timestamp));
   const digest = keccak256(
@@ -236,21 +234,49 @@ it("encrypts the complete environment and exact release for the authenticated re
   );
   expect(other.encryptedEnv).not.toBe(result.encryptedEnv);
 });
+// Only Date.now is fixed: HTTP, cryptography and timers remain real. A future
+// key 61 seconds ahead must not become valid while this test waits for HTTP.
 it.each([
-  "old",
-  "future",
-  "wrong-app",
-  "wrong-key",
-  "wrong-signer",
-  "legacy",
-  "redirect",
-])("rejects %s KMS material without returning ciphertext", async (change) => {
-  const f = await fixture(change);
-  await expect(
-    encryptConfidentialEnvironment(f.input, f.publicPem, f.privatePem),
-  ).rejects.toMatchObject({ code: "CONFIDENTIAL_ENVIRONMENT_REJECTED" });
-  expect(f.requests).toHaveLength(1);
-});
+  { offset: -301, accepted: false },
+  { offset: -300, accepted: true },
+  { offset: 60, accepted: true },
+  { offset: 61, accepted: false },
+])(
+  "checks the signed KMS timestamp boundary at $offset seconds",
+  async ({ offset, accepted }) => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    try {
+      const f = await fixture("none", offset);
+      const result = encryptConfidentialEnvironment(
+        f.input,
+        f.publicPem,
+        f.privatePem,
+      );
+      if (accepted) {
+        const encrypted = await result;
+        expect(encrypted.appId).toBe(f.appId);
+        expect(encrypted.encryptedEnv.length).toBeGreaterThan(0);
+      } else {
+        await expect(result).rejects.toMatchObject({
+          code: "CONFIDENTIAL_ENVIRONMENT_REJECTED",
+        });
+      }
+      expect(f.requests).toHaveLength(1);
+    } finally {
+      clock.mockRestore();
+    }
+  },
+);
+it.each(["wrong-app", "wrong-key", "wrong-signer", "legacy", "redirect"])(
+  "rejects %s KMS material without returning ciphertext",
+  async (change) => {
+    const f = await fixture(change);
+    await expect(
+      encryptConfidentialEnvironment(f.input, f.publicPem, f.privatePem),
+    ).rejects.toMatchObject({ code: "CONFIDENTIAL_ENVIRONMENT_REJECTED" });
+    expect(f.requests).toHaveLength(1);
+  },
+);
 it("rejects release substitution and duplicate or reserved launch names before HTTP", async () => {
   const f = await fixture();
   for (const input of [

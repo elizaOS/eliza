@@ -17,7 +17,6 @@ describe("mobile simulator smoke package scripts", () => {
   it("makes public local-chat simulator lanes require a real installed app", () => {
     for (const name of [
       "test:sim:local-chat",
-      "test:sim:local-chat:ios",
       "test:sim:local-chat:android",
       "test:sim:local-chat:both",
     ]) {

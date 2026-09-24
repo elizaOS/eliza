@@ -64,6 +64,17 @@ bun run ios:device:provision -- --device <udid> --product <App.app>
 bun run ios:device:e2e -- --device <id> # full app+appexes + freshly graft-signed XCUITest runner
 ```
 
+The installed-app launch smoke is `test:sim:local-chat`. To exercise the iOS
+local full-Bun backend and model through the native bridge, use
+`test:sim:local-chat:ios:full-bun` against a current installed simulator build.
+The former `test:sim:local-chat:ios:live` command only launched the app and has
+been removed, along with the duplicate `test:sim:local-chat:ios` alias.
+
+Use `build:ios:local:sim` and `build:ios:local:device` in place of their former
+`:full-bun` aliases; both already enable the full Bun engine. The distinct
+`build:ios:local:device:full-bun:release` store build remains available. Use
+`ios:device:e2e` in place of `test:e2e:ios:physical`.
+
 Provisioning enables capabilities exposed by the public App Store Connect API,
 then decodes every minted profile and verifies the complete target entitlement
 set. Before installation, the decoded profile must also match the requested

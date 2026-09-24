@@ -134,9 +134,11 @@ describe("Notes capability-to-UI journey", () => {
       },
       activeService(),
     );
+    const originalSnapshot = activeService().snapshot();
     await interactWithService(
       "update-note",
       {
+        expectedRevision: originalSnapshot.revision,
         query: "Demo briefing",
         content: "Demo briefing ready\nKeep the note wall durable",
       },

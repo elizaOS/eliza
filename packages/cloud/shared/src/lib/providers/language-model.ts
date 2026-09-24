@@ -22,6 +22,7 @@ import {
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
 import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
+import { createTeiEmbeddingModel } from "./tei-embeddings";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
 /**
@@ -48,13 +49,9 @@ export function isProviderConfigurationError(error: unknown): boolean {
 }
 
 /**
- * Model id served by the self-hosted TEI embeddings sidecar
- * (packages/cloud/services/embeddings — BAAI/bge-small-en-v1.5, 384 dims).
- * When LOCAL_EMBEDDINGS_BASE_URL is set the sidecar serves this id over its
- * OpenAI-compatible /v1/embeddings surface; ELIZA_EMBEDDINGS_FORCE_LOCAL="true"
- * additionally aliases EVERY embedding id onto it. The upstream request always
- * carries this id — the sidecar embeds with its one loaded model regardless of
- * the requested spelling.
+ * Canonical BGE identifier shared by Workers AI and verified TEI endpoints.
+ * Explicit force-local routing keeps TEI ownership; every returned vector still
+ * uses the canonical source preparation and named representation.
  */
 export const LOCAL_EMBEDDING_MODEL_ID = "bge-small-en-v1.5";
 
@@ -74,11 +71,6 @@ let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
 let openAIClient: {
   apiKey: string;
   baseURL?: string;
-  client: ReturnType<typeof createOpenAI>;
-} | null = null;
-let localEmbeddingsClient: {
-  apiKey: string;
-  baseURL: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
@@ -156,25 +148,6 @@ function isLocalEmbeddingsForced(): boolean {
 function isLocalEmbeddingRoutingActive(model: string): boolean {
   if (!getLocalEmbeddingsBaseURL()) return false;
   return isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID;
-}
-
-function getLocalEmbeddingsClient(baseURL: string) {
-  // TEI serves unauthenticated unless the sidecar sets API_KEY; the SDK client
-  // requires a bearer value, so an unauthenticated deployment sends a dummy.
-  const apiKey = getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local";
-  if (
-    !localEmbeddingsClient ||
-    localEmbeddingsClient.apiKey !== apiKey ||
-    localEmbeddingsClient.baseURL !== baseURL
-  ) {
-    localEmbeddingsClient = {
-      apiKey,
-      baseURL,
-      client: createOpenAI({ apiKey, baseURL }),
-    };
-  }
-
-  return localEmbeddingsClient.client;
 }
 
 function getCerebrasClient() {
@@ -962,13 +935,14 @@ export function getTextEmbeddingModel(model: string) {
       ? cloudflareEmbeddingCredentials()
       : null;
   if (cloudflare) return createCloudflareEmbeddingModel(cloudflare.accountId, cloudflare.token);
-  // Self-hosted TEI sidecar (packages/cloud/services/embeddings): serves the
-  // 384-dim local id, or EVERY id when ELIZA_EMBEDDINGS_FORCE_LOCAL aliases the
-  // deployment onto it. The upstream request always carries the local id — the
-  // sidecar embeds with its one loaded model regardless of requested spelling.
+  // Forced aliases still require the endpoint to prove it serves BGE/CLS;
+  // an older GTE sidecar cannot be labeled as the canonical representation.
   const localBaseURL = getLocalEmbeddingsBaseURL();
   if (localBaseURL && (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)) {
-    return getLocalEmbeddingsClient(localBaseURL).textEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
+    return createTeiEmbeddingModel(
+      localBaseURL,
+      getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local",
+    );
   }
 
   // BGE requires Workers AI or the explicitly configured sidecar. Never send

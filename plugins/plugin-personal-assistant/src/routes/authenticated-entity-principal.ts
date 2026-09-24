@@ -6,7 +6,7 @@
 
 import type http from "node:http";
 import { resolveAuthorizedRouteRole } from "@elizaos/app-core/api/auth";
-import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import { authStoreForRuntime } from "@elizaos/app-core/services/auth-store";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
@@ -21,10 +21,6 @@ export type LifeOpsAuthenticatedPrincipal =
 export type LifeOpsPrincipalResolution =
   | { ok: true; principal: LifeOpsAuthenticatedPrincipal }
   | { ok: false; status: 401 | 403 | 429 | 503; reason: string };
-
-function authDb(runtime: AgentRuntime): unknown {
-  return (runtime as { adapter?: { db?: unknown } | null }).adapter?.db;
-}
 
 async function verifiedEntityForAuthIdentity(
   runtime: AgentRuntime,
@@ -57,12 +53,11 @@ export async function entityHasVerifiedMachineAuthBinding(
   runtime: AgentRuntime,
   entityId: string,
 ): Promise<boolean> {
-  const db = authDb(runtime);
+  const auth = authStoreForRuntime(runtime);
   const graph = resolveKnowledgeGraphService(runtime);
-  if (!db || !graph) return false;
+  if (!auth || !graph) return false;
   const entity = await graph.getEntityStore(runtime.agentId).get(entityId);
   if (!entity) return false;
-  const auth = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
   for (const identity of entity.identities) {
     if (
       identity.platform !== AUTH_SESSION_ENTITY_PLATFORM ||
@@ -136,16 +131,14 @@ export async function bindMachineAuthIdentityToEntity(args: {
   entityId: string;
   authIdentityId: string;
 }): Promise<{ entityId: string; authIdentityId: string }> {
-  const db = authDb(args.runtime);
+  const auth = authStoreForRuntime(args.runtime);
   const graph = resolveKnowledgeGraphService(args.runtime);
-  if (!db || !graph) {
+  if (!auth || !graph) {
     throw new ElizaError("Auth or knowledge-graph storage is unavailable", {
       code: "AUTH_ENTITY_BINDING_UNAVAILABLE",
     });
   }
-  const authIdentity = await new AuthStore(
-    db as ConstructorParameters<typeof AuthStore>[0],
-  ).findIdentity(args.authIdentityId);
+  const authIdentity = await auth.findIdentity(args.authIdentityId);
   if (authIdentity?.kind !== "machine") {
     throw new ElizaError("Auth identity is not a paired machine identity", {
       code: "AUTH_ENTITY_BINDING_INVALID_IDENTITY",

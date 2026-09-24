@@ -13,13 +13,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { ElizaError, logger } from "@elizaos/core";
-import type { NormalizedRegistryEntry } from "@elizaos/registry/runtime-kernel";
+import type { NormalizedRegistryEntry } from "@elizaos/shared/catalog/runtime-kernel";
 import {
   CORE_REGISTRY_SEARCH_POLICY,
   decodeRuntimeRegistry,
   isRegistryCacheFresh,
   searchRegistryEntries,
-} from "@elizaos/registry/runtime-kernel";
+} from "@elizaos/shared/catalog/runtime-kernel";
 import type { PluginMetadata } from "../types.ts";
 
 // ---------------------------------------------------------------------------
@@ -333,6 +333,11 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
       );
     }
     throw err;
+  }
+
+  if (response.status === 410) {
+    logger.info("[registry] Community registry retired; using local plugins");
+    return scanLocalPlugins();
   }
 
   if (!response.ok) {

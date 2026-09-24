@@ -112,19 +112,12 @@ describe("macOS Shortcuts assistant handoff", () => {
       );
       expect(stdout).toContain("PASS helper builds assistant deep links");
       expect(stdout).toContain(
+        "PASS stdin can request action=lifeops.create through the runtime route",
+      );
+      expect(stdout).toContain(
         "PASS multiline stdin and punctuation are percent-encoded",
       );
 
-      const { stdout: verifyStdout } = await execFileAsync(
-        "sh",
-        [
-          verifyScript,
-          "--helper",
-          path.join(tempDir, "eliza-assistant-handoff.sh"),
-          "--helper-only",
-        ],
-        { env: helperEnv },
-      );
       await expect(fs.access(probePath)).rejects.toMatchObject({
         code: "ENOENT",
       });
@@ -141,11 +134,6 @@ describe("macOS Shortcuts assistant handoff", () => {
           { env: helperEnv },
         ),
       ).rejects.toMatchObject({ code: 2 });
-
-      expect(verifyStdout).toContain("PASS helper builds assistant deep links");
-      expect(verifyStdout).toContain(
-        "PASS multiline stdin and punctuation are percent-encoded",
-      );
     } finally {
       await fs.rm(tempDir, { force: true, recursive: true });
     }

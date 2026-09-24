@@ -4,7 +4,7 @@
  * these tests prove transport ownership, not platform hardware cryptography.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import {
   createServer as createHttpServer,
@@ -21,7 +21,21 @@ import {
   createServer as createTlsServer,
   type Server,
 } from "node:tls";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  fetchWithConfidentialInference,
+  ModelType,
+  runWithConfidentialInference,
+  type UUID,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runConfidentialProcess } from "../runtime/confidential-entry.ts";
+import { prepareConfidentialHost } from "../runtime/confidential-host-bootstrap.ts";
+import { startConfidentialRuntime } from "../runtime/confidential-runtime.ts";
+import {
+  CONFIDENTIAL_PROCESSOR_SIGNATURE_DOMAIN,
+  type ConfidentialHostConfiguration,
+  createConfidentialHostPolicy,
+} from "../security/confidential-host-policy.ts";
 import {
   type AttestedInferenceClientConfig,
   type AttestedInferenceServerConfig,
@@ -29,6 +43,7 @@ import {
   createAttestedInferenceServer,
 } from "./tee-attested-inference.ts";
 import type { DstackVerifierConfig } from "./tee-dstack-evidence.ts";
+import { DSTACK_RELEASE_SIGNATURE_DOMAIN } from "./tee-dstack-release.ts";
 import { createDstackAttestedInferenceServer } from "./tee-dstack-tls-identity.ts";
 
 let dir: string;
@@ -171,6 +186,7 @@ beforeEach(async () => {
   port = await listen(server);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   if (intermediary) await close(intermediary);
   await close(server);
   await close(guest);
@@ -719,4 +735,419 @@ describe("attested inference TLS admission", () => {
       "complete private prompt",
     ]);
   });
+});
+
+async function runtimeHostFixture() {
+  const keys = generateKeyPairSync("ed25519");
+  const publicKey = keys.publicKey
+    .export({ type: "spki", format: "pem" })
+    .toString();
+  const { appId, composeHash, osImageHash, variant } = config;
+  const identity = { appId, composeHash, osImageHash, variant };
+  const agentId = randomUUID() as UUID;
+  const endpoint = `https://localhost:${port}/v1/chat/completions`;
+  const configuration: ConfidentialHostConfiguration = {
+    schema: "eliza-confidential-host-v1",
+    agentId,
+    deploymentId: "synthetic-host",
+    stateDirectory: join(dir, "state"),
+    processorPolicyPath: join(dir, "processors.json"),
+    processorPolicyPublicKey: publicKey,
+    allowedRegions: ["us-test"],
+    verifier: config,
+    inferenceTransport: { caPem: cert },
+    listen: { host: "127.0.0.1", port: 0 },
+    character: { name: "Synthetic", bio: [], system: "Synthetic fixture" },
+  };
+  const payload = JSON.stringify({
+    schema: "eliza-confidential-processors-v1",
+    agentId,
+    deploymentId: "synthetic-host",
+    revision: "reviewed",
+    notBefore: Date.now() - 1000,
+    expiresAt: Date.now() + 60_000,
+    routes: [
+      {
+        id: "text",
+        endpoint,
+        model: "reviewed",
+        modelTypes: [
+          "TEXT_LARGE",
+          "TEXT_SMALL",
+          "TEXT_NANO",
+          "TEXT_MEDIUM",
+          "TEXT_MEGA",
+          "RESPONSE_HANDLER",
+          "ACTION_PLANNER",
+        ],
+        adapter: "openai-compatible",
+        transportIdentity: identity,
+        processorApproval: {
+          provider: "test",
+          service: "test",
+          region: "us-test",
+          contractRef: "test",
+          approvalRef: "test",
+          expiresAt: Date.now() + 60_000,
+        },
+      },
+      {
+        id: "embedding",
+        endpoint: `https://localhost:${port}/v1/embeddings`,
+        model: "reviewed-embedding",
+        modelTypes: ["TEXT_EMBEDDING", "TEXT_EMBEDDING_BATCH"],
+        adapter: "openai-compatible",
+        transportIdentity: identity,
+        processorApproval: {
+          provider: "test",
+          service: "test",
+          region: "us-test",
+          contractRef: "test",
+          approvalRef: "test",
+          expiresAt: Date.now() + 60_000,
+        },
+      },
+    ],
+  });
+  await writeFile(
+    configuration.processorPolicyPath,
+    JSON.stringify({
+      payload,
+      signature: sign(
+        null,
+        Buffer.from(CONFIDENTIAL_PROCESSOR_SIGNATURE_DOMAIN + payload),
+        keys.privateKey,
+      ).toString("base64"),
+    }),
+  );
+  const releasePayload = Buffer.from(
+    JSON.stringify({
+      ...identity,
+      schemaVersion: 1,
+      notBefore: new Date(Date.now() - 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }),
+  );
+  const localEnvironment = {
+    ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
+    ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify({
+      ...config,
+      socketPath: join(dir, "guest.sock"),
+    }),
+    ELIZA_DSTACK_RELEASE_PUBKEY: publicKey,
+    ELIZA_DSTACK_RELEASE_POLICY_JSON: JSON.stringify({
+      payload: releasePayload.toString("base64"),
+      signature: sign(
+        null,
+        Buffer.concat([
+          Buffer.from(DSTACK_RELEASE_SIGNATURE_DOMAIN),
+          releasePayload,
+        ]),
+        keys.privateKey,
+      ).toString("base64"),
+    }),
+  };
+  return { configuration, localEnvironment, agentId, endpoint };
+}
+
+it("composes local appraisal, real SQLite intent and remote TLS admission before application bytes", async () => {
+  const { configuration, localEnvironment, agentId, endpoint } =
+    await runtimeHostFixture();
+  let ordinaryRequests = 0;
+  const ordinaryFetch = Object.assign(
+    async () => {
+      ordinaryRequests++;
+      throw new Error("Ordinary fetch must not run");
+    },
+    { preconnect: fetch.preconnect },
+  );
+  const body = JSON.stringify({
+    model: "reviewed",
+    messages: [{ content: "complete synthetic private content" }],
+  });
+  const handler = () =>
+    fetchWithConfidentialInference(
+      endpoint,
+      {
+        method: "POST",
+        headers: { authorization: "Bearer synthetic-secret" },
+        body,
+      },
+      ordinaryFetch,
+    );
+  const host = await prepareConfidentialHost({
+    configuration,
+    localEnvironment,
+    handlers: [handler],
+  });
+  try {
+    await close(server);
+    server = await createDstackAttestedInferenceServer({
+      dnsName: "localhost",
+      guestSocketPath: join(dir, "guest.sock"),
+      policy: { routeId: "text", revision: host.authority.profile().revision },
+      handle: async (request) => {
+        const logs = await host.adapter.getLogs({
+          type: "confidential_inference",
+        });
+        expect(logs.map((log) => log.body.metadata?.phase)).toEqual([
+          "dispatch_intent",
+        ]);
+        received.push(
+          request.headers.get("authorization") ?? "missing",
+          await request.text(),
+        );
+        return new Response("complete response");
+      },
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(port, "127.0.0.1", resolve),
+    );
+    const response = await runWithConfidentialInference(
+      host.authority,
+      {
+        agentId,
+        modelType: "TEXT_LARGE",
+        handler,
+      },
+      handler,
+    );
+    expect(await response.text()).toBe("complete response");
+    expect(received).toEqual(["Bearer synthetic-secret", body]);
+    expect(ordinaryRequests).toBe(0);
+    const logs = await host.adapter.getLogs({ type: "confidential_inference" });
+    expect(logs.map((log) => log.body.metadata?.phase).sort()).toEqual([
+      "dispatch_intent",
+      "response_headers",
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("synthetic-secret");
+    expect(JSON.stringify(logs)).not.toContain("synthetic private content");
+    corrupt = true;
+    await expect(
+      runWithConfidentialInference(
+        host.authority,
+        {
+          agentId,
+          modelType: "TEXT_LARGE",
+          handler,
+        },
+        handler,
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFIDENTIAL_INFERENCE_TRANSPORT_REJECTED",
+    });
+    expect(received).toEqual(["Bearer synthetic-secret", body]);
+  } finally {
+    await host.close();
+  }
+});
+
+it.each([384, 385])(
+  "checks actual embedding width %i before fixed-runtime readiness",
+  async (returnedDimension) => {
+    const { configuration, localEnvironment, agentId } =
+      await runtimeHostFixture();
+    vi.stubEnv("ELIZA_STATE_DIR", configuration.stateDirectory);
+    vi.stubEnv(
+      "ELIZA_TRAJECTORY_DIR",
+      join(configuration.stateDirectory, "trajectories"),
+    );
+    vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
+    const textCredentialPath = join(dir, "text-key");
+    const embeddingCredentialPath = join(dir, "embedding-key");
+    await writeFile(textCredentialPath, "synthetic-text-key");
+    await writeFile(embeddingCredentialPath, "synthetic-embedding-key");
+    const profile =
+      createConfidentialHostPolicy(configuration).currentProfile();
+    await close(server);
+    // Readiness must perform the actual embedding route, not a local null probe.
+    server = await createDstackAttestedInferenceServer({
+      dnsName: "localhost",
+      guestSocketPath: join(dir, "guest.sock"),
+      policy: { routeId: "embedding", revision: profile.revision },
+      handle: async (request) => {
+        received.push(
+          request.headers.get("authorization") ?? "missing",
+          await request.text(),
+        );
+        return Response.json({
+          data: [{ index: 0, embedding: Array(returnedDimension).fill(0.01) }],
+        });
+      },
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(port, "127.0.0.1", resolve),
+    );
+    const starting = startConfidentialRuntime(
+      {
+        schema: "eliza-confidential-runtime-v1",
+        host: configuration,
+        textRouteId: "text",
+        embeddingRouteId: "embedding",
+        textCredentialPath,
+        embeddingCredentialPath,
+        embeddingDimensions: 384,
+      },
+      localEnvironment,
+    );
+    if (returnedDimension !== 384) {
+      await expect(starting).rejects.toMatchObject({
+        code: "CONFIDENTIAL_RUNTIME_STARTUP_REJECTED",
+      });
+      const reopened = await prepareConfidentialHost({
+        configuration,
+        localEnvironment,
+        handlers: [],
+      });
+      await reopened.close();
+      return;
+    }
+    const running = await starting;
+    try {
+      expect(running.runtime.agentId).toBe(agentId);
+      expect(running.runtime.messageService).not.toBeNull();
+      expect(running.runtime.isEmbeddingGenerationDisabled()).toBe(false);
+      expect(received[0]).toBe("Bearer synthetic-embedding-key");
+      expect(JSON.parse(received[1]).input).toBe(
+        "Confidential runtime embedding readiness check.",
+      );
+      expect(running.runtime.getModel(ModelType.RESEARCH)).toBeUndefined();
+      expect(running.runtime.getModel(ModelType.TRANSCRIPTION)).toBeUndefined();
+      expect(await running.hostAdmission()).toBe(true);
+      await close(server);
+      server = await createDstackAttestedInferenceServer({
+        dnsName: "localhost",
+        guestSocketPath: join(dir, "guest.sock"),
+        policy: { routeId: "text", revision: profile.revision },
+        handle: async (request) => {
+          received.push(
+            request.headers.get("authorization") ?? "missing",
+            await request.text(),
+          );
+          return Response.json({
+            id: "synthetic-response",
+            object: "chat.completion",
+            created: 1,
+            model: "reviewed",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "Complete synthetic reply.",
+                },
+              },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+            },
+          });
+        },
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(port, "127.0.0.1", resolve),
+      );
+      const prompt = "Complete synthetic request for approved runtime.";
+      expect(
+        await running.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+      ).toBe("Complete synthetic reply.");
+      expect(received[2]).toBe("Bearer synthetic-text-key");
+      expect(received[3]).toContain(prompt);
+      const count = received.length;
+      running.runtime.setSetting(
+        "OPENAI_BASE_URL",
+        "https://unapproved.example.test/v1",
+      );
+      await expect(
+        running.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+      ).rejects.toMatchObject({ code: "CONFIDENTIAL_INFERENCE_ROUTE_DENIED" });
+      expect(received).toHaveLength(count);
+    } finally {
+      const stopping = running.stop();
+      try {
+        await expect(running.hostAdmission()).rejects.toMatchObject({
+          code: "CONFIDENTIAL_HOST_CLOSED",
+        });
+      } finally {
+        await stopping;
+      }
+    }
+  },
+);
+
+it("drains a termination requested during real confidential runtime startup", async () => {
+  const { configuration, localEnvironment } = await runtimeHostFixture();
+  for (const [name, value] of Object.entries(localEnvironment))
+    vi.stubEnv(name, value);
+  vi.stubEnv("ELIZA_STATE_DIR", configuration.stateDirectory);
+  vi.stubEnv(
+    "ELIZA_TRAJECTORY_DIR",
+    join(configuration.stateDirectory, "trajectories"),
+  );
+  vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
+  const textCredentialPath = join(dir, "text-key");
+  const embeddingCredentialPath = join(dir, "embedding-key");
+  await writeFile(textCredentialPath, "synthetic-text-key");
+  await writeFile(embeddingCredentialPath, "synthetic-embedding-key");
+  const document = JSON.stringify({
+    schema: "eliza-confidential-runtime-v1",
+    host: configuration,
+    textRouteId: "text",
+    embeddingRouteId: "embedding",
+    textCredentialPath,
+    embeddingCredentialPath,
+    embeddingDimensions: 384,
+  });
+  const path = join(dir, "runtime.json");
+  await writeFile(path, document);
+  vi.stubEnv("ELIZA_CONFIDENTIAL_RUNTIME_CONFIG", path);
+  vi.stubEnv("ELIZA_CONFIDENTIAL_RUNTIME_CONFIG_SHA256", digest(document));
+  const profile = createConfidentialHostPolicy(configuration).currentProfile();
+  await close(server);
+  let readinessRequests = 0;
+  server = await createDstackAttestedInferenceServer({
+    dnsName: "localhost",
+    guestSocketPath: join(dir, "guest.sock"),
+    policy: { routeId: "embedding", revision: profile.revision },
+    handle: async (request) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer synthetic-embedding-key",
+      );
+      expect((await request.json()).input).toBe(
+        "Confidential runtime embedding readiness check.",
+      );
+      readinessRequests++;
+      // Exercise the registered signal listener while startup awaits this response.
+      process.emit("SIGTERM");
+      return Response.json({
+        data: [{ index: 0, embedding: Array(384).fill(0.01) }],
+      });
+    },
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(port, "127.0.0.1", resolve),
+  );
+  const listeners = process.listenerCount("SIGTERM");
+  await runConfidentialProcess();
+  expect(readinessRequests).toBe(1);
+  expect(process.listenerCount("SIGTERM")).toBe(listeners);
+  const reopened = await prepareConfidentialHost({
+    configuration,
+    localEnvironment,
+    handlers: [],
+  });
+  try {
+    const logs = await reopened.adapter.getLogs({
+      type: "confidential_inference",
+    });
+    expect(logs.map((log) => log.body.metadata?.phase).sort()).toEqual([
+      "dispatch_intent",
+      "response_headers",
+    ]);
+  } finally {
+    await reopened.close();
+  }
 });

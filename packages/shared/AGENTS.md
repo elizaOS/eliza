@@ -6,7 +6,7 @@ UI, Cloud services, and plugins. Repository rules in the
 
 ## Ownership and entry points
 
-This package depends on core and registry. Keep host assembly in agent/app-core,
+This package depends on core and owns the first-party catalog in `src/catalog/`. Keep host assembly in agent/app-core,
 view rendering in UI, and provider integration in its plugin. Importing an
 application host here can introduce a boot-time dependency cycle.
 

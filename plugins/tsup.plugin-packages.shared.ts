@@ -8,6 +8,7 @@
 
 import { existsSync, promises as fsp, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
+import { rewriteModuleSpecifiers } from "../packages/scripts/lib/rewrite-module-specifiers.mjs";
 
 type EsbuildOnLoadArgs = {
   path: string;
@@ -115,13 +116,14 @@ const rewriteRelativeTsExtensions = {
   setup(build: EsbuildPluginBuild) {
     build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args) => {
       const source = await fsp.readFile(args.path, "utf8");
-      const transformed = source.replace(
-        /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)(["'])/g,
-        (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${resolveRelativeRuntimeSpecifier(args.path, specifier)}${suffix}`,
+      const transformed = await rewriteModuleSpecifiers(
+        source,
+        args.path,
+        (specifier: string) =>
+          resolveRelativeRuntimeSpecifier(args.path, specifier),
       );
       return {
-        contents: transformed,
+        contents: transformed.source,
         loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
       };
     });

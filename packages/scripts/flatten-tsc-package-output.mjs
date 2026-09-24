@@ -1,13 +1,10 @@
 #!/usr/bin/env node
-// Drives repo automation flatten tsc package output with explicit CLI and CI behavior.
-import { execFile } from "node:child_process";
+/** Flattens TypeScript output while preserving unrelated sibling bundler artifacts. */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { promisify } from "node:util";
 import { findWorkspaceRoot } from "./lib/repo-root.mjs";
-
-const execFileAsync = promisify(execFile);
+import { removePathRecursive as removePath } from "./rm-path-recursive.mjs";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -22,12 +19,6 @@ const packageDir = path.resolve(root, packageDirArg);
 const relPackageDir = path.relative(root, packageDir).split(path.sep).join("/");
 const distDir = path.join(packageDir, "dist");
 const nestedSourceDir = path.join(distDir, ...relPackageDir.split("/"), "src");
-const cleanupHelper = path.join(
-  root,
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
 
 async function pathExists(filePath) {
   try {
@@ -64,9 +55,7 @@ async function retryTransientFsOperation(operation) {
 }
 
 async function removePathRecursive(targetPath) {
-  await execFileAsync(process.execPath, [cleanupHelper, targetPath], {
-    cwd: root,
-  });
+  await removePath(targetPath, root);
 }
 
 async function hasFlatEntryPoint() {

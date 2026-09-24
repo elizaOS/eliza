@@ -4,10 +4,10 @@
 
 import type { ViewKind } from "@elizaos/common";
 import type { IAgentRuntime } from "@elizaos/core";
-import curatedAppDefinitions from "@elizaos/registry/first-party/curated-app-definitions.json" with {
+import z from "zod";
+import curatedAppDefinitions from "../catalog/curated-app-definitions.json" with {
   type: "json",
 };
-import z from "zod";
 
 const APP_ROUTE_SLUG_RE = /^[a-z0-9](?:[a-z0-9._-]{0,127})$/;
 
@@ -751,8 +751,8 @@ function packageNameToBasename(packageName: string): string {
 // registry build time from each plugin's `registry-entry.json` `curatedApp`
 // marker (slug + order + aliases) and emitted as a small, browser-safe JSON. To
 // add/change a curated app, edit the owning plugin's registry-entry.json and run
-// `bun run --cwd packages/registry generate:first-party` — do NOT hand-edit this
-// list. Registration is plugin-side; see packages/registry/src/first-party/.
+// `bun run --cwd packages/shared generate:first-party` — do NOT hand-edit this
+// list. Registration is plugin-side; see packages/shared/src/catalog/.
 export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[] =
   curatedAppDefinitions;
 

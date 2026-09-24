@@ -1010,8 +1010,6 @@ export async function configureLocalEmbeddingPlugin(
 
   if (configuredGpuLayers) {
     process.env.LOCAL_EMBEDDING_GPU_LAYERS = configuredGpuLayers;
-  } else if (!process.env.LOCAL_EMBEDDING_GPU_LAYERS) {
-    process.env.LOCAL_EMBEDDING_GPU_LAYERS = String(detectedPreset.gpuLayers);
   }
 
   // Performance tuning
@@ -1019,7 +1017,9 @@ export async function configureLocalEmbeddingPlugin(
   // CUDA/Vulkan keep mmap enabled; the model is tiny and the file-backed load is
   // the safer default there.
   const resolvedGpuLayers =
-    configuredGpuLayers ?? process.env.LOCAL_EMBEDDING_GPU_LAYERS;
+    configuredGpuLayers ??
+    process.env.LOCAL_EMBEDDING_GPU_LAYERS ??
+    String(detectedPreset.gpuLayers);
   const shouldDisableMmap =
     resolvedGpuLayers === "auto" &&
     (detectedGpuBackend === "metal" ||
@@ -5514,7 +5514,6 @@ export async function startEliza(
         process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
         process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
         process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
-        process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
         model = reuse.model;
         modelRepo = reuse.modelRepo;
       }

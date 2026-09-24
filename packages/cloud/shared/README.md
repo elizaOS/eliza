@@ -177,3 +177,25 @@ updated finalizer. Intent/attempt identity and terminal outcomes are immutable;
 source erasure cascades their rows and the portable account export includes them.
 Local evidence uses real PGlite transactions and a loopback SMTP server only.
 Controlled live recipient/provider evidence and policy approval remain separate.
+
+## Canonical BGE embeddings
+
+Workers AI and the managed TEI route use the same BGE-small-en-v1.5 representation:
+384 dimensions, CLS pooling, L2 normalization and the shared token-verified source-tail
+policy. Stored source text remains complete. TEI endpoints must expose authenticated
+`/info` and `/embed`; the adapter checks the loaded model and pooling before sending
+source text and disables server-side truncation. Pin the deployment to Hugging Face
+revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`. An advertised different revision is
+rejected; a null `model_sha` does not attest the deployment's weights.
+
+The API rejects non-384 dimension requests on these routes before reserving credits.
+Successful responses carry `embedding_space`, so the runtime separates this
+representation from legacy vectors even when their dimensions match. Replacing a
+GTE/OpenAI endpoint requires a scoped backup and verified re-indexing of retained
+memories; changing a model label alone is not a migration.
+
+Self-hosted BGE pricing is owned by the local `selfhosted` catalog source. It
+retains the platform tariff independently of external provider credentials or
+catalog availability. The default catalog refresh includes this source; an
+operator can refresh only `selfhosted` through the existing admin pricing API.
+This does not bypass inference reservation/settlement or change the tariff.

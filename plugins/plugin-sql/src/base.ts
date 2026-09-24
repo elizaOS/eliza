@@ -2884,6 +2884,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  /** Lists every storage namespace belonging to the current agent. */
+  async listMemoryTypes(): Promise<string[]> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .selectDistinct({ type: memoryTable.type })
+        .from(memoryTable)
+        .where(eq(memoryTable.agentId, this.agentId));
+      return rows.map((row) => row.type).sort();
+    });
+  }
+
   /**
    * Asynchronously retrieves memories from the database based on the provided parameters.
    * @param {Object} params - The parameters for retrieving memories.
@@ -6946,6 +6957,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return result;
   }
 
+  async withAgentScope<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>
+  ): Promise<T> {
+    return this.transaction(async (scoped) => {
+      if (!(scoped instanceof BaseDrizzleAdapter)) {
+        throw new ElizaError("Agent scope requires a SQL transaction adapter", {
+          code: "DB_AGENT_SCOPE_UNSUPPORTED",
+        });
+      }
+      if (scoped.agentId !== agentId) {
+        scoped.embeddingSpace = null;
+        scoped.requestedEmbeddingSpace = null;
+        scoped.embeddingSpaceActivation = null;
+      }
+      scoped.agentId = agentId;
+      scoped._connectorAccountStore = undefined;
+      return callback(scoped);
+    });
+  }
+
   // ── Component batch methods ───────────────────────────────────────────
 
   async getComponentsByNaturalKeys(
@@ -7261,12 +7293,53 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[],
     includeComponents?: boolean
   ): Promise<EntitiesForRoomsResult> {
-    const result: EntitiesForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entities = await this.getEntitiesForRoom(roomId, includeComponents);
-      result.push({ roomId, entities });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      // PostgreSQL resolves UUID aliases; ordinality preserves duplicate inputs
+      // and their original spelling without sharing mutable result groups.
+      const requested = sql`unnest(${sql.param(roomIds)}::uuid[]) WITH ORDINALITY AS requested(room_id, ordinal)`;
+      const query = this.db
+        .select({
+          ordinal: sql<number>`requested.ordinal`.mapWith(Number),
+          entity: entityTable,
+          ...(includeComponents && { components: componentTable }),
+        })
+        .from(requested)
+        .innerJoin(participantTable, sql`${participantTable.roomId} = requested.room_id`)
+        .leftJoin(
+          entityTable,
+          and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
+        );
+      if (includeComponents) {
+        query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
+      }
+      const rows = await query;
+      const groups = roomIds.map(() => new Map<UUID, Entity>());
+      for (const row of rows) {
+        if (!row.entity) continue;
+        const group = groups[row.ordinal - 1];
+        const entityId = row.entity.id as UUID;
+        let entity = group.get(entityId);
+        if (!entity) {
+          entity = {
+            ...row.entity,
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
+            metadata: (row.entity.metadata || {}) as Metadata,
+            components: includeComponents ? [] : undefined,
+          };
+          group.set(entityId, entity);
+        }
+        if (includeComponents && row.components) {
+          if (!entity.components) entity.components = [];
+          entity.components.push(row.components);
+        }
+      }
+      return roomIds.map((roomId, index) => ({
+        roomId,
+        entities: Array.from(groups[index].values()),
+      }));
+    });
   }
 
   // ── Log batch methods ─────────────────────────────────────────────────
@@ -7538,12 +7611,26 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult> {
-    const result: ParticipantsForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entityIds = await this.getParticipantsForRoom(roomId);
-      result.push({ roomId, entityIds });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select({ roomId: participantTable.roomId, entityId: participantTable.entityId })
+        .from(participantTable)
+        .where(inArray(participantTable.roomId, roomIds));
+      const byRoom = new Map<string, UUID[]>();
+      for (const row of rows) {
+        if (row.roomId === null) continue;
+        const ids = byRoom.get(row.roomId) ?? [];
+        ids.push(row.entityId as UUID);
+        byRoom.set(row.roomId, ids);
+      }
+      // PostgreSQL UUID equality is case-insensitive; retain the caller's room
+      // identities, order, duplicates, and empty entries in the public result.
+      return roomIds.map((roomId) => ({
+        roomId,
+        entityIds: [...(byRoom.get(roomId.toLowerCase()) ?? [])],
+      }));
+    });
   }
 
   async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {

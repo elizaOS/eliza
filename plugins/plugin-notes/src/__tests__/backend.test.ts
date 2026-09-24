@@ -451,9 +451,11 @@ describe("Notes capabilities", () => {
       data: { notes: [{ id: noteId, title: "Workbench" }] },
     });
 
+    const originalSnapshot = service.snapshot();
     const updatedNote = await interact(
       "update-note",
       {
+        expectedRevision: originalSnapshot.revision,
         query: "Workbench",
         content: "Workbench\nPolished draft",
         color: "green",
@@ -469,10 +471,15 @@ describe("Notes capabilities", () => {
       body: "Polished draft",
       color: "green",
     });
+    const polishedSnapshot = service.snapshot();
     await expect(
       interact(
         "update-note",
-        { query: "Workbench", content: "Workbench ready\nPolished draft" },
+        {
+          expectedRevision: polishedSnapshot.revision,
+          query: "Workbench",
+          content: "Workbench ready\nPolished draft",
+        },
         service,
       ),
     ).resolves.toMatchObject({ success: true });
@@ -558,9 +565,14 @@ describe("Notes capabilities", () => {
     });
     expect(service.snapshot().notes).toHaveLength(1);
 
+    const originalSnapshot = service.snapshot();
     const updated = await interact(
       "update-note",
-      { query: "Milk", content: "Milk\nAlready bought" },
+      {
+        expectedRevision: originalSnapshot.revision,
+        query: "Milk",
+        content: "Milk\nAlready bought",
+      },
       service,
     );
     expect(updated).toMatchObject({
@@ -751,10 +763,14 @@ describe("Notes capabilities", () => {
     const seed = await service.createNote({ title: "Keep", body: "original" });
     const confirmedRevision = service.snapshot().revision;
 
-    const updateSeed = service.updateNote(seed.id, {
-      title: "Keep",
-      body: "edited in the race window",
-    });
+    const updateSeed = service.updateNote(
+      seed.id,
+      {
+        title: "Keep",
+        body: "edited in the race window",
+      },
+      confirmedRevision,
+    );
     const clear = interact(
       "clear-notes",
       { confirm: true, expectedRevision: confirmedRevision },
@@ -809,10 +825,15 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     await expect(
       interact(
         "update-note",
-        { query: "Daily plan", content: "Daily plan\nChanged" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          query: "Daily plan",
+          content: "Daily plan\nChanged",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -822,7 +843,11 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { query: "does not exist", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          query: "does not exist",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1033,10 +1058,15 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Exact title match updates the right note.
     const updated = await interact(
       "update-note",
-      { title: "Shopping list", content: "Shopping list\nDone shopping" },
+      {
+        expectedRevision: originalSnapshot.revision,
+        title: "Shopping list",
+        content: "Shopping list\nDone shopping",
+      },
       service,
     );
     expect(updated).toMatchObject({
@@ -1067,11 +1097,16 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Two notes share the same first-line label -> ambiguous.
     await expect(
       interact(
         "update-note",
-        { title: "Meeting notes", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Meeting notes",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1083,7 +1118,11 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { title: "Nonexistent", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Nonexistent",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1105,11 +1144,17 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Providing both title and query must fail validation.
     await expect(
       interact(
         "update-note",
-        { title: "Test", query: "Body", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Test",
+          query: "Body",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1119,7 +1164,11 @@ describe("Notes capabilities", () => {
 
     // No selector with content must fail validation.
     await expect(
-      interact("update-note", { content: "Changed" }, service),
+      interact(
+        "update-note",
+        { expectedRevision: originalSnapshot.revision, content: "Changed" },
+        service,
+      ),
     ).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },

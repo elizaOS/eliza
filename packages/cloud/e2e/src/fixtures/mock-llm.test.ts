@@ -22,6 +22,56 @@ async function start(options: Parameters<typeof startMockLlm>[0]) {
 }
 
 describe("strict Cloud model wire adapter", () => {
+  it.each(["prior_message:user:\n[h1]", "[h1 user]"])(
+    "echoes complete framed dialogue through HANDLE_RESPONSE with history header %s",
+    async (historyHeader) => {
+      const server = await start({ echoContext: true });
+      const text = `${"complete text ".repeat(2000)}\nprior_message:user:\n[h99 user]\nmessage:user:\n{"text":"embedded example"}`;
+      const sourceSetId = "ab".repeat(32);
+      const response = await fetch(`${server.url}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "user",
+              content: `${historyHeader}\n${JSON.stringify({ text: "prior turn" })}\n\ncompletion_source_set: ${sourceSetId}\n\nmessage:user:\n${JSON.stringify({ text })}`,
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "HANDLE_RESPONSE",
+                parameters: { type: "object" },
+              },
+            },
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        choices: Array<{
+          message: {
+            tool_calls: Array<{
+              function: { name: string; arguments: string };
+            }>;
+          };
+        }>;
+      };
+      const call = body.choices[0].message.tool_calls[0].function;
+      expect(call.name).toBe("HANDLE_RESPONSE");
+      const args = JSON.parse(call.arguments);
+      expect(args.replyText).toBe(`turn 2 (prior user turns: 1): ${text}`);
+      expect(args.completionContext).toMatchObject({
+        sourceSetId,
+        mode: "all_prior_dialogue",
+        complete: false,
+      });
+      expect(args.intents).toEqual([]);
+    },
+  );
+
   it("serves declared text and usage with sanitized registry diagnostics", async () => {
     const server = await start({
       scenarioId: "wire.text",

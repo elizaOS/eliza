@@ -22,7 +22,7 @@ import {
   tokenMatches,
 } from "@elizaos/app-core/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
-import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import { authStoreForRuntime } from "@elizaos/app-core/services/auth-store";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import {
@@ -108,10 +108,6 @@ function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   return resolveOwnerEntityIdOrDefault(runtime);
 }
 
-function runtimeAuthDb(runtime: AgentRuntime): unknown {
-  return (runtime as { adapter?: { db?: unknown } | null }).adapter?.db;
-}
-
 function hasConfiguredOwnerToken(req: http.IncomingMessage): boolean {
   const expectedToken = getCompatApiToken();
   const providedToken = getProvidedApiToken(req);
@@ -132,8 +128,8 @@ async function requestHasOwnerRouteRole(args: {
     return true;
   }
 
-  const db = runtimeAuthDb(runtime);
-  if (!db) {
+  const store = authStoreForRuntime(runtime);
+  if (!store) {
     return hasConfiguredOwnerToken(req);
   }
 
@@ -144,7 +140,6 @@ async function requestHasOwnerRouteRole(args: {
     return true;
   }
 
-  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
   const context = await ensureSessionForRequest(req, res, {
     store,
     allowBootstrapBearer: false,

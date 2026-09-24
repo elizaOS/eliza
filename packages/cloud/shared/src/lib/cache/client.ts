@@ -171,7 +171,7 @@ export class CacheClient {
       .trim()
       .toLowerCase();
 
-    if (raw === "native-redis" || raw === "redis-native") return "redis";
+    if (raw === "redis" || raw === "native-redis" || raw === "redis-native") return "redis";
     if (raw === "upstash" || raw === "rest" || raw === "redis-rest") return "redis-rest";
     if (raw === "wadis" || raw === "wasm-redis" || raw === "wasm_redis") return "wadis";
     if (raw === "kv" || raw === "cloudflare-kv" || raw === "workers-kv") return "kv";

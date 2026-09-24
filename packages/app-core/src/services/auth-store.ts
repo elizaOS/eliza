@@ -9,7 +9,9 @@
  * path must NEVER swallow a DB error and pretend a request was authenticated.
  */
 
+import { type DurableRecordStore, ElizaError, type UUID } from "@elizaos/core";
 import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
+import { AuthRecordStore } from "./auth-record-store";
 
 type AuthSqlRow = Record<string, unknown>;
 
@@ -723,4 +725,48 @@ function rowToOwnerLoginToken(row: AuthSqlRow): AuthOwnerLoginTokenRow {
         ? null
         : Number(row.consumedAt),
   };
+}
+
+/** Public authentication operations independent of the storage implementation. */
+export type AuthRepository = Pick<AuthStore, keyof AuthStore>;
+
+/** Runtime capabilities used by the shared auth selector; SQL hosts need no record store. */
+export interface AuthRuntimeSource {
+  agentId?: UUID;
+  adapter?: { db?: unknown; recordStore?: DurableRecordStore } | null;
+}
+function isAuthDrizzleDatabase(value: unknown): value is DrizzleDatabase {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "insert" in value &&
+    typeof value.insert === "function" &&
+    "select" in value &&
+    typeof value.select === "function" &&
+    "update" in value &&
+    typeof value.update === "function" &&
+    "delete" in value &&
+    typeof value.delete === "function"
+  );
+}
+/** Select the existing auth contract from the agent's own persistent database. */
+export function authStoreForRuntime(
+  runtime: AuthRuntimeSource | null | undefined,
+): AuthRepository | null {
+  const adapter = runtime?.adapter;
+  if (!adapter) return null;
+  if (adapter.recordStore) {
+    if (!runtime?.agentId)
+      throw new ElizaError(
+        "Authentication storage requires its owning agent identity",
+        { code: "AUTH_RECORD_STORE_AGENT_MISSING" },
+      );
+    return new AuthRecordStore(adapter.recordStore, runtime.agentId);
+  }
+  if (adapter.db === undefined || adapter.db === null) return null;
+  if (!isAuthDrizzleDatabase(adapter.db))
+    throw new ElizaError("Authentication database adapter is incompatible", {
+      code: "AUTH_DATABASE_INCOMPATIBLE",
+    });
+  return new AuthStore(adapter.db);
 }

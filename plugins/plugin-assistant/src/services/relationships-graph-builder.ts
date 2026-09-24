@@ -999,10 +999,10 @@ async function collectWorkspaceEntityIds(
   }
 
   if (rooms.length > 0) {
-    const roomEntities = await awaitGraphReads(
-      rooms.map((room) => runtime.getEntitiesForRoom(room.id)),
+    const roomEntities = await runtime.getEntitiesForRooms(
+      rooms.map((room) => room.id),
     );
-    for (const entities of roomEntities) {
+    for (const { entities } of roomEntities) {
       for (const entity of entities) {
         if (entity.id && entity.id !== runtime.agentId) {
           entityIds.add(entity.id);

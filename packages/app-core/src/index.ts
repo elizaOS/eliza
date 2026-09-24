@@ -28,11 +28,11 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
-export * from "@elizaos/registry/first-party";
+export * from "@elizaos/shared/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app-core registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
-export { type ConfigField, getPlugins } from "@elizaos/registry/first-party";
+export { type ConfigField, getPlugins } from "@elizaos/shared/catalog";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";

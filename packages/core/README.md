@@ -72,6 +72,21 @@ that planning stopped. The default reports incomplete work without asserting
 that no action completed. Settled or uncertain effects still take the caller's
 receipt-aware recovery path before this failure boundary.
 
+## Runtime construction migration
+
+The v2 barrel no longer exports `loadCharacters`, `createRuntimes`, or
+`mergeSettingsInto`, or their option types. Hosts read JSON files themselves,
+validate the resulting objects with `parseCharacter`, and construct `AgentRuntime` with explicitly
+selected plugins and storage, and call `initialize()`. The standalone host owns
+its startup and provisioning sequence. Hosts that need persisted settings call
+`mergeDbSettings(character, adapter, agentId)` before runtime construction;
+`provisionAgent` remains available for explicit provisioning.
+`flattenRuntimeSettings` remains exported for adapter bootstrap settings.
+Hosts retaining name-derived identities can supply `stringToUuid(character.name)`
+as the explicit agent ID. Hosts own plugin resolution, shared adapter lifetimes,
+and any batching of startup reads across multiple agents.
+No replacement composition facade is provided.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
@@ -888,3 +903,48 @@ context also remains complete. Node consumers can reuse `visibleHistoryEventIds`
 `historyRetentionContext`, `HISTORY_RETENTION_EVALUATOR` and
 `getEvaluatorProgressState` to validate existing retention checkpoints; those
 checkpoints never grant source access.
+
+## Host-owned confidential inference admission
+
+A host can pass `confidentialInference: new ConfidentialInferenceAuthority(...)`
+to the `AgentRuntime` constructor. The authority admits exact trusted handler
+function identities and reads a current, expiring server-owned route profile on
+every handler and HTTP attempt. Character settings and provider display names do
+not grant approval. A route binds its complete endpoint URL, actual wire model,
+model types and policy revision. Requests retain their complete original content.
+
+The OpenAI-compatible client's transport enforces this authority for its SDK
+requests, internal fallback requests and retries. The host must exclude unsupported
+handlers and opaque gateway endpoints from its profile. An approved OpenAI-compatible
+handler can target any endpoint the host admits; this library does not classify
+provider compliance or verify downstream gateway processing. Gateway approval
+requires independent downstream route proof and same-agent audit acknowledgement.
+Confidential requests reject redirects, and await a metadata-only audit intent before sending
+bytes. Audit storage failure prevents dispatch; failure to record an outcome
+after dispatch is an explicit error that cancels the response body. Denied
+handler, route and policy decisions are recorded without unapproved endpoint
+or model strings. `attemptId` joins phases; sinks must key entries by
+`(attemptId, phase)` rather than treating one attempt as one row.
+`response_headers` means headers arrived,
+not that a stream finished. A transport error may occur after the remote server
+received bytes and is not proof that execution never happened.
+
+The host must provide the mandatory audit sink backed by that agent's durable
+database. The runtime does not create another store or treat diagnostic logging
+as durable audit. Provider integration coverage uses PGlite; the agent host audit
+sink additionally exercises actual SQLite commit ordering, failure and reopen.
+Neither establishes complete application database portability. Measured host
+configuration must require this authority when selecting confidential operation.
+Omitting it preserves ordinary mode. This boundary trusts the admitted code and
+requires deployment network isolation to prevent raw plugin network bypass. It
+is not remote attestation, a provider contract, or a compliance certification.
+
+When the host supplies an attested `transport`, it must call `beforeDispatch`
+with verified evidence and connection-binding SHA-256 digests before sending
+application bytes. The authority checks current policy before and after the
+durable intent write and rejects a response returned without authorization.
+`redispatchPolicy: "deny-after-authorization"` shares one authorization across
+SDK attempts and runtime provider failover; any further authorized send needs
+external reconciliation. A local error cannot prove that a remote effect did not
+occur. These controls must be required by the measured host and its network
+policy; ordinary mode remains unchanged.

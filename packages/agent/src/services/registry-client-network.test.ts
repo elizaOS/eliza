@@ -199,6 +199,13 @@ describe("isExpectedRegistryNetworkFallback", () => {
 });
 
 describe("fetchFromNetwork", () => {
+  it("uses the local fallback contract when the community registry is retired", async () => {
+    fetchImpl = async () => httpResponse(410, "Gone");
+    await expect(fetchFromNetwork(params())).rejects.toBeInstanceOf(
+      RegistryNetworkFallbackError,
+    );
+  });
+
   it("throws a local-fallback error and does not fetch when the cloud is unreachable", async () => {
     isCloudReachable.mockResolvedValue(false);
 

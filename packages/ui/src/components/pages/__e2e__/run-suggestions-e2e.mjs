@@ -221,8 +221,10 @@ const state = {
   },
 };
 
-registerBuiltinViews();
-clearCurrentViewState();
+const hostKey = {};
+const clientId = "suggestions-e2e";
+registerBuiltinViews(runtime);
+clearCurrentViewState(runtime, { hostKey, clientId });
 
 const gate = new ObservedGate();
 registerProactiveInteractionDecider(runtime, {
@@ -235,13 +237,17 @@ registerProactiveInteractionDecider(runtime, {
 const noopRes = {};
 const jsonNoop = () => {};
 const errors400 = [];
+const navigationFrames = [];
 const errorCapture = (_res, message, status) => {
   errors400.push({ message, status });
 };
 
 function jsonRequest(body) {
   const req = Readable.from([Buffer.from(JSON.stringify(body))]);
-  req.headers = { "content-type": "application/json" };
+  req.headers = {
+    "content-type": "application/json",
+    "x-elizaos-client-id": clientId,
+  };
   return req;
 }
 
@@ -256,7 +262,13 @@ async function postNavigate(viewId, body) {
     json: jsonNoop,
     error: errorCapture,
     broadcastWs: jsonNoop,
+    broadcastWsToClientId: (targetClientId, frame) => {
+      if (targetClientId !== clientId) return 0;
+      navigationFrames.push(frame);
+      return 1;
+    },
     runtime,
+    hostKey,
   });
 }
 
@@ -346,6 +358,11 @@ assert(
   judgeCalls === 1 && proactiveFrames().length === 1,
   "s5: agent-initiated switch produced no proactive comment",
 );
+assert(
+  navigationFrames.length === 1 &&
+    navigationFrames[0].viewId === "settings",
+  "s5: agent-initiated navigation reached its originating view client",
+);
 
 // s6 — past the global cooldown, an intent-bearing shortcut is admitted.
 vnow = T0 + 130_000;
@@ -402,7 +419,10 @@ assert(
   `s9: textual dedup suppressed the identical offer (${gateDecisions.at(-1)?.reason})`,
 );
 
-assert(errors400.length === 0, "phase 1: no route rejected a valid report");
+assert(
+  errors400.length === 0,
+  `phase 1: no route rejected a valid report (${JSON.stringify(errors400)})`,
+);
 
 console.log("  gate ledger:");
 for (const d of gateDecisions) {

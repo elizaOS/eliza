@@ -1,4 +1,3 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Route-level mode guard.
  *
@@ -13,11 +12,16 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import type http from "node:http";
 import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   findProtectedNamespace,
   findRouteModeRule,
 } from "./route-mode-matrix.ts";
-import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode.ts";
+import {
+  getRuntimeModeSnapshot,
+  type RuntimeMode,
+  type RuntimeModeSnapshot,
+} from "./runtime-mode.ts";
 
 export interface ModeGateOutcome {
   /** True when the dispatcher should stop — guard wrote a 404. */
@@ -130,10 +134,10 @@ export function applyRouteModeGuard(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime?: RouteModeRuntimeLike | null,
+  snapshot: RuntimeModeSnapshot = getRuntimeModeSnapshot(),
 ): ModeGateOutcome {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = (req.method ?? "GET").toUpperCase();
-  const snapshot = getRuntimeModeSnapshot();
 
   const { hidden } = evaluateRouteModeGate({
     pathname: url.pathname,

@@ -1,12 +1,12 @@
 /**
- * Repository for pendant session snapshots over normalized runtime tables.
+ * Selects durable pendant session persistence for the runtime's database backend.
  *
- * The API boundary needs a whole-session snapshot for sync/export, but writes
- * land in session, segment, and insight-ref rows. This keeps lease ownership,
- * contiguous segment order, and revisions visible to the database while the
- * route layer enforces the domain state machine.
+ * PostgreSQL uses normalized session, segment and insight rows; SQLite uses
+ * the same agent database's record store. Revisions fence concurrent writes
+ * while the route layer owns capture leases and the domain state machine.
  */
 
+import { type DurableRecordStore, ElizaError } from "@elizaos/core";
 import {
   type PendantInsightRef,
   PendantInsightRefSchema,
@@ -17,6 +17,7 @@ import {
   PendantSessionStateSchema,
 } from "@elizaos/shared/contracts/pendant-session-sync";
 import { extractRows } from "@elizaos/shared/db/raw-sql";
+import { RecordPendantSessionRepository } from "./record-repository.ts";
 
 type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
@@ -28,8 +29,10 @@ type RawSqlQuery = {
 };
 
 type RuntimeWithDatabase = {
+  agentId?: string;
   adapter: {
     db?: unknown;
+    recordStore?: DurableRecordStore;
   };
 };
 
@@ -155,13 +158,16 @@ export interface PendantSessionRepository {
   }): Promise<void>;
 }
 
-export class PendantSessionRevisionConflictError extends Error {
+export class PendantSessionRevisionConflictError extends ElizaError {
+  override readonly name = "PendantSessionRevisionConflictError";
   constructor(
     readonly currentRevision: number,
     message = "Pendant session revision does not match",
   ) {
-    super(message);
-    this.name = "PendantSessionRevisionConflictError";
+    super(message, {
+      code: "PENDANT_SESSION_REVISION_CONFLICT",
+      context: { currentRevision },
+    });
   }
 }
 
@@ -656,5 +662,10 @@ export class InMemoryPendantSessionRepository
 export function createPendantSessionRepository(
   runtime: RuntimeWithDatabase,
 ): PendantSessionRepository {
+  if (runtime.adapter.recordStore)
+    return new RecordPendantSessionRepository(
+      runtime.adapter.recordStore,
+      runtime.agentId,
+    );
   return new SqlPendantSessionRepository(runtime);
 }

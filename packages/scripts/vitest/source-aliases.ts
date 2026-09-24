@@ -205,7 +205,7 @@ export function buildWorkspaceSourceAliases(
                 replacement: indexPath,
               },
               // Asset subpaths (JSON data imports like
-              // `@elizaos/registry/first-party/curated-app-definitions.json`)
+              // `@elizaos/shared/catalog/curated-app-definitions.json`)
               // resolve to the source file as-is; the generic rule below would
               // otherwise append `.ts` and break the resolve. First-match wins.
               {

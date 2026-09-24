@@ -25,7 +25,8 @@ vi.mock("./views-routes.ts", () => ({
   getViewsBroadcastWs: () => null,
 }));
 
-vi.mock("@elizaos/core", () => {
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
   const stringToUuid = (value: string) => {
     let hash = 2166136261;
     for (const character of value) {
@@ -36,6 +37,7 @@ vi.mock("@elizaos/core", () => {
     return `${seed}-${seed.slice(0, 4)}-4${seed.slice(1, 4)}-a${seed.slice(1, 4)}-${seed}${seed.slice(0, 4)}`;
   };
   return {
+    ...actual,
     deterministicOwnerEntityId: (agentId: string) =>
       stringToUuid(`${agentId}-admin-entity`),
     logger: { error: vi.fn(), warn: vi.fn() },

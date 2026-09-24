@@ -126,6 +126,44 @@ function replacementHandle(params: {
   };
 }
 
+function healthyNode(nodeId: string, allocatedCount: number) {
+  return {
+    node_id: nodeId,
+    hostname: `${nodeId}.internal`,
+    status: "healthy",
+    enabled: true,
+    capacity: 8,
+    allocated_count: allocatedCount,
+  } satisfies typeof dockerNodes.$inferInsert;
+}
+
+function healthyRuntimeFetch(requests: Array<{ url: string; headers: Headers }>): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    requests.push({ url, headers: new Headers(init?.headers) });
+    return new Response(
+      JSON.stringify(
+        url.endsWith("/api/status")
+          ? {
+              state: "running",
+              canRespond: true,
+              startup: { phase: "running", attempt: 0 },
+            }
+          : {
+              ready: true,
+              canRespond: true,
+              runtime: "ok",
+              database: "ok",
+              plugins: { loaded: 18, failed: 0 },
+              startup: { phase: "running", attempt: 0 },
+            },
+      ),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
 function uniq(prefix: string): string {
   seq += 1;
   return `${prefix}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
@@ -406,115 +444,74 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("warm-claim state constraint and recovery indexes exist in generated schema", async () => {
     const seeded = await seedAgents(0);
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000089",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          warm_claim_credential_state: "invalid" as never,
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000088",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "unpaired-cleanup-handle",
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000087",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_vpn_node_id: "unpaired-vpn-node",
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000086",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_allocation_counted: true,
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000085",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate",
-          replacement_cleanup_vpn_node_name: "candidate-vpn",
-          replacement_cleanup_allocation_counted: false,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000084",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate-without-attempt",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate-without-attempt",
-          replacement_cleanup_container_id: "sha256:container",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000083",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "old-primary",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "old-primary",
-          replacement_cleanup_preserved_vpn_node_id: "stale-candidate-identity",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000080",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate-vpn-id-without-registration",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate-vpn-id-without-registration",
-          replacement_cleanup_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          replacement_cleanup_vpn_node_id: "orphan-candidate-vpn-id",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
+    const invalidRows = [
+      {
+        id: "00000000-0000-4000-8000-000000000089",
+        warm_claim_credential_state: "invalid" as never,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000088",
+        replacement_cleanup_sandbox_id: "unpaired-cleanup-handle",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000087",
+        replacement_cleanup_vpn_node_id: "unpaired-vpn-node",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000086",
+        replacement_cleanup_allocation_counted: true,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000085",
+        replacement_cleanup_sandbox_id: "candidate",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate",
+        replacement_cleanup_vpn_node_name: "candidate-vpn",
+        replacement_cleanup_allocation_counted: false,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000084",
+        replacement_cleanup_sandbox_id: "candidate-without-attempt",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate-without-attempt",
+        replacement_cleanup_container_id: "sha256:container",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000083",
+        replacement_cleanup_sandbox_id: "old-primary",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "old-primary",
+        replacement_cleanup_preserved_vpn_node_id: "stale-candidate-identity",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000080",
+        replacement_cleanup_sandbox_id: "candidate-vpn-id-without-registration",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate-vpn-id-without-registration",
+        replacement_cleanup_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        replacement_cleanup_vpn_node_id: "orphan-candidate-vpn-id",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+    ] satisfies Partial<typeof agentSandboxes.$inferInsert>[];
+    for (const row of invalidRows) {
+      await expect(
+        dbWrite
+          .insert(agentSandboxes)
+          .values({
+            organization_id: seeded.organizationId,
+            user_id: seeded.actorUserId,
+            status: "pending",
+            ...row,
+          })
+          .execute(),
+      ).rejects.toThrow();
+    }
     await dbWrite.insert(agentSandboxes).values([
       {
         id: "00000000-0000-4000-8000-000000000082",
@@ -585,14 +582,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement intent reserves capacity exactly once and rejects unaccounted fleet placement", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-new",
-      hostname: "node-new.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 2,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-new", 2));
     const service = new ElizaSandboxService() as unknown as ReplacementStageService;
     const expected = {
       status: "running" as const,
@@ -689,14 +679,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement enrichment and cleanup preserve a PostgreSQL microsecond fence", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-new",
-      hostname: "node-new.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 2,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-new", 2));
     const provider = new DockerSandboxProvider();
     const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
       undefined,
@@ -843,14 +826,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement cleanup proves absence outside the transaction and fences a changed locator", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-new",
-      hostname: "node-new.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 3,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-new", 3));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -912,14 +888,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement cleanup rejects a forged Shared row before provider, fence, or node writes", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-shared-cleanup",
-      hostname: "node-shared-cleanup.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 3,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-shared-cleanup", 3));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -975,14 +944,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement cleanup preserves its fence and node count when the tier changes before release", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-cleanup-tier-race",
-      hostname: "node-cleanup-tier-race.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 3,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-cleanup-tier-race", 3));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1037,14 +999,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement cleanup sweep waits for lifecycle completion and candidate grace", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-candidate",
-      hostname: "node-candidate.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 3,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-candidate", 3));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1227,14 +1182,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("replacement cleanup rechecks lifecycle jobs after candidate selection", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-race",
-      hostname: "node-race.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 3,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-race", 3));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1360,14 +1308,7 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("admin canary cleanup rejects a locator from a later replacement generation", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-later",
-      hostname: "node-later.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 1,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-later", 1));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1425,24 +1366,9 @@ describe("admin agent image rollout on primary PGlite", () => {
         environment_vars: { ELIZA_API_TOKEN: "agent-token" },
       })
       .where(eq(agentSandboxes.id, agentId));
-    await dbWrite.insert(dockerNodes).values([
-      {
-        node_id: "node-1",
-        hostname: "node-1.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 1,
-      },
-      {
-        node_id: "node-new",
-        hostname: "node-new.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 0,
-      },
-    ]);
+    await dbWrite
+      .insert(dockerNodes)
+      .values([healthyNode("node-1", 1), healthyNode("node-new", 0)]);
 
     const provider = new DockerSandboxProvider();
     const create = spyOn(provider, "create").mockImplementation(
@@ -1487,30 +1413,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     const snapshot = spyOn(service, "snapshot").mockResolvedValue({ success: true });
     const originalFetch = globalThis.fetch;
     const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
-      return new Response(
-        JSON.stringify(
-          url.endsWith("/api/status")
-            ? {
-                state: "running",
-                canRespond: true,
-                startup: { phase: "running", attempt: 0 },
-              }
-            : {
-                ready: true,
-                canRespond: true,
-                runtime: "ok",
-                database: "ok",
-                plugins: { loaded: 18, failed: 0 },
-                startup: { phase: "running", attempt: 0 },
-              },
-        ),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as typeof fetch;
+    globalThis.fetch = healthyRuntimeFetch(runtimeRequests);
     try {
       const result = await service.executeUpgrade(
         agentId,
@@ -1586,24 +1489,9 @@ describe("admin agent image rollout on primary PGlite", () => {
         environment_vars: { ELIZA_API_TOKEN: "agent-token" },
       })
       .where(eq(agentSandboxes.id, agentId));
-    await dbWrite.insert(dockerNodes).values([
-      {
-        node_id: "node-current",
-        hostname: "node-current.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 1,
-      },
-      {
-        node_id: "node-rollback",
-        hostname: "node-rollback.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 0,
-      },
-    ]);
+    await dbWrite
+      .insert(dockerNodes)
+      .values([healthyNode("node-current", 1), healthyNode("node-rollback", 0)]);
 
     const provider = new DockerSandboxProvider();
     const create = spyOn(provider, "create").mockImplementation(
@@ -1668,30 +1556,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).mockResolvedValue(undefined);
     const originalFetch = globalThis.fetch;
     const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
-      return new Response(
-        JSON.stringify(
-          url.endsWith("/api/status")
-            ? {
-                state: "running",
-                canRespond: true,
-                startup: { phase: "running", attempt: 0 },
-              }
-            : {
-                ready: true,
-                canRespond: true,
-                runtime: "ok",
-                database: "ok",
-                plugins: { loaded: 18, failed: 0 },
-                startup: { phase: "running", attempt: 0 },
-              },
-        ),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as typeof fetch;
+    globalThis.fetch = healthyRuntimeFetch(runtimeRequests);
     try {
       const result = await service.executeDowngrade(
         agentId,
@@ -3205,14 +3070,7 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("a post-cutover worker restart resumes cleanup, completes the audit, and stays rollback-readable", async () => {
     const seeded = await seedAgents(1);
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-1",
-      hostname: "node-1.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 1,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-1", 1));
     await executeUpgradeCanary({
       actorUserId: seeded.actorUserId,
       targets: seeded.targets,
@@ -3228,29 +3086,10 @@ describe("admin agent image rollout on primary PGlite", () => {
     const data = readAdminCanaryImageJobData(claimed);
     const startedAt = new Date("2026-07-23T00:00:00.000Z");
     const cutoverAt = new Date("2026-07-23T00:01:00.000Z");
-    const pendingCutover = {
-      success: false,
-      cleanupPending: true,
-      cutoverAt: cutoverAt.toISOString(),
-      jobId: claimed.id,
-      operation: data.operation,
-      rolloutId: data.rolloutId,
-      actorUserId: data.actorUserId,
-      decisionAt: data.decisionAt,
-      agentId: data.agentId,
-      organizationId: data.organizationId,
-      targetOwnerUserId: data.targetOwnerUserId,
-      sourceImage: data.sourceImage,
-      sourceDigest: data.sourceDigest,
-      targetImage: data.targetImage,
-      targetDigest: data.targetDigest,
-      startedAt: startedAt.toISOString(),
-      finishedAt: cutoverAt.toISOString(),
-      oldNodeId: "node-1",
-      oldContainerName: "agent-1",
-      newNodeId: "node-blue",
-      newContainerName: "agent-blue",
-    };
+    const pendingCutover = pendingCutoverAuditFor(claimed, data, {
+      startedAt,
+      cutoverAt,
+    });
     await dbWrite.transaction(async (tx) => {
       await tx
         .update(agentSandboxes)
@@ -3436,14 +3275,7 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("post-cutover cleanup failure requeues immediately, then a scheduled claim converges exactly once", async () => {
     const seeded = await seedAgents(1);
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-1",
-      hostname: "node-1.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 1,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-1", 1));
     await executeUpgradeCanary({
       actorUserId: seeded.actorUserId,
       targets: seeded.targets,
@@ -3669,14 +3501,7 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("a stale cutover audit cannot retire cleanup or publish success after serving generation changes", async () => {
     const seeded = await seedAgents(1);
-    await dbWrite.insert(dockerNodes).values({
-      node_id: "node-later",
-      hostname: "node-later.internal",
-      status: "healthy",
-      enabled: true,
-      capacity: 8,
-      allocated_count: 1,
-    });
+    await dbWrite.insert(dockerNodes).values(healthyNode("node-later", 1));
     await executeUpgradeCanary({
       actorUserId: seeded.actorUserId,
       targets: seeded.targets,

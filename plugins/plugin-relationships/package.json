@@ -67,7 +67,7 @@
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
@@ -75,7 +75,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -85,9 +85,10 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@electric-sql/pglite": "^0.4.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",

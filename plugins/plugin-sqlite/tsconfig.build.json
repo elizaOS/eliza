@@ -6,7 +6,7 @@
     "declaration": true,
     "declarationMap": true,
     "composite": false,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "skipLibCheck": true
   },
   "include": ["./**/*.ts"],

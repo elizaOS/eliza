@@ -257,9 +257,18 @@ export async function executeV5PlannedToolCall(
           ),
         }
       : args.executorCtx;
-  // Reuse the validated source selection for domain extraction without changing
-  // cached provider state. A fallback explicitly clears any earlier selection.
-  const selectedConversation = selectCompletionContext(args.plannerContext);
+  // Reuse the core selection result even when it retains the complete context.
+  // `applied` reports omission, not whether original dialogue is authoritative.
+  const boundToRequest =
+    typeof args.executorCtx.message.id === "string" &&
+    args.executorCtx.message.id.length > 0 &&
+    args.plannerContext.metadata?.roomId === args.executorCtx.message.roomId &&
+    args.plannerContext.metadata?.messageId === args.executorCtx.message.id;
+  const actionConversation = boundToRequest
+    ? completionContextSources(
+        selectCompletionContext(args.plannerContext).context,
+      ).sources.map(({ event }) => event)
+    : [];
   const executorCtx = {
     ...routedExecutorCtx,
     state: routedExecutorCtx.state
@@ -267,13 +276,7 @@ export async function executeV5PlannedToolCall(
           ...routedExecutorCtx.state,
           values: {
             ...routedExecutorCtx.state.values,
-            selectedActionConversation: selectedConversation.applied
-              ? JSON.stringify(
-                  completionContextSources(
-                    selectedConversation.context,
-                  ).sources.map(({ event }) => event),
-                )
-              : null,
+            selectedActionConversation: JSON.stringify(actionConversation),
           },
         }
       : undefined,

@@ -131,29 +131,53 @@ try {
 		path.join(consumer, "verify.mjs"),
 		`
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { InMemoryDatabaseAdapter } from './adapter.mjs';
-import { AgentRuntime, ModelType, createLogger, ElizaError } from '@elizaos/core';
+import { AgentRuntime, ModelType, createLogger, ElizaError, parseCharacter, stringToUuid, flattenRuntimeSettings, mergeDbSettings, provisionAgent } from '@elizaos/core';
 import { ElizaError as CommonError } from '@elizaos/common';
 assert.equal(ElizaError, CommonError, 'core and hosts must share one error-class identity');
-const runtime = new AgentRuntime({ adapter: new InMemoryDatabaseAdapter(), character: { name: 'packed-kernel', bio: 'deterministic package verification' }, logLevel: 'fatal' });
+// Exercise the public v2 replacement for host composition against real storage.
+writeFileSync('character.json', JSON.stringify({ name: 'packed-kernel', bio: 'deterministic package verification', settings: { shouldRespondModel: 'character-model' }, secrets: { characterOnly: 'fixture-character', shared: 'character-top' } }));
+const character = parseCharacter(JSON.parse(readFileSync('character.json', 'utf8')));
+const original = structuredClone(character);
+const agentId = stringToUuid(character.name);
+assert.equal(flattenRuntimeSettings(character, {}).shouldRespondModel, 'character-model');
+const adapter = new InMemoryDatabaseAdapter();
+await adapter.initialize();
+await adapter.createAgents([{ id: agentId, name: character.name, settings: { shouldRespondModel: 'database-model', defaultTemperature: 0.42, secrets: { shared: 'database-setting', databaseNested: 'fixture-nested' } }, secrets: { shared: 'database-top', databaseTop: 'fixture-top' } }]);
+const merged = await mergeDbSettings(character, adapter, agentId);
+assert.deepEqual(character, original, 'persisted settings merge must not mutate character input');
+assert.equal(merged.settings.shouldRespondModel, 'character-model');
+assert.equal(merged.settings.defaultTemperature, 0.42);
+assert.deepEqual(merged.secrets, { shared: 'character-top', databaseTop: 'fixture-top', databaseNested: 'fixture-nested', characterOnly: 'fixture-character' });
 let calls = 0;
+const fixturePlugin = { name: 'fixture', description: 'explicit host-selected model', models: { [ModelType.TEXT_SMALL]: async (_runtime, input) => {
+  assert.equal(input.prompt, 'Return the fixture value.');
+  calls++;
+  return 'fixture:perfect';
+} } };
+const runtime = new AgentRuntime({ agentId, adapter, character: merged, plugins: [fixturePlugin], logLevel: 'fatal' });
 try {
   await runtime.initialize({ skipMigrations: true });
+  await provisionAgent(runtime, { runMigrations: false });
+  assert.equal(runtime.agentId, agentId);
+  assert.equal(runtime.getSetting('defaultTemperature'), 0.42);
+  assert.equal((await adapter.getEntitiesByIds([agentId]))[0].id, agentId);
+  assert.equal((await adapter.getRoomsByIds([agentId]))[0].id, agentId);
+  assert.ok((await adapter.getParticipantsForRooms([agentId]))[0].entityIds.includes(agentId));
   assert.equal(runtime.messageService, null);
   assert.equal("routes" in runtime, false);
   assert.equal("rerankMemories" in runtime, false);
   assert.equal("companionUrl" in runtime, false);
   assert.equal(runtime.actions.length, 0);
   assert.equal(runtime.providers.length, 0);
-  runtime.registerModel(ModelType.TEXT_SMALL, async (_runtime, input) => {
-    assert.equal(input.prompt, 'Return the fixture value.');
-    calls++;
-    return 'fixture:perfect';
-  }, 'fixture');
   assert.equal(await runtime.useModel(ModelType.TEXT_SMALL, { prompt: 'Return the fixture value.' }), 'fixture:perfect');
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  for (const retired of ['loadCharacters', 'createRuntimes', 'mergeSettingsInto']) {
+    assert.equal(retired in publicApi, false, retired + ' is retired from the v2 public API');
+  }
   for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'BM25', 'Tokenizer', 'rankMessageSearch', 'rerankMemories', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'fetchRemoteMedia', 'detectMime', 'describeImageCached', 'resolveAttachmentBytes', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'InMemoryDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
@@ -161,7 +185,7 @@ try {
     await assert.rejects(import('@elizaos/core/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }
 } finally { await runtime.stop(); }
-console.log('Packed kernel boot, deterministic inference, logger and root-only exports verified');
+console.log('Packed kernel host JSON loading, parseCharacter, persisted settings precedence, explicit plugin composition, initialization, agent/entity/self-room provisioning, deterministic inference, logger and root-only exports verified');
 `,
 	);
 	writeFileSync(
@@ -170,6 +194,12 @@ console.log('Packed kernel boot, deterministic inference, logger and root-only e
 import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID } from '@elizaos/core';
 // @ts-expect-error HTTP contracts are owned by the optional host package.
 import type { Route } from '@elizaos/core';
+// @ts-expect-error Host composition facade types are retired in v2.
+import type { CreateRuntimesOptions } from '@elizaos/core';
+// @ts-expect-error Host composition facade types are retired in v2.
+import type { LoadCharactersOptions } from '@elizaos/core';
+// @ts-expect-error Host composition facade types are retired in v2.
+import type { AgentRecordForMerge } from '@elizaos/core';
 const plugin: Plugin = { name: 'consumer', description: 'typed consumer', models: { [ModelType.TEXT_SMALL]: async (_runtime, _params) => 'fixture' } };
 const runtime: IAgentRuntime = new AgentRuntime({ character: { name: 'consumer', bio: [] }, plugins: [plugin] });
 const id: UUID = runtime.agentId;

@@ -328,24 +328,12 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
-
 function makeShellRouter(
   runCommand: ElizaCapabilityRouter["pty"]["runCommand"],
 ): ElizaCapabilityRouter {
-  const unavailable = new UnavailableCapabilityRouter("desktop");
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -356,21 +344,7 @@ function makeShellRouter(
         model: false,
       },
     }),
-    fs: {
-      list: async () => unavailableCapability("fs", "fs.list"),
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText: async () => unavailableCapability("fs", "fs.writeText"),
-    },
-    pty: { runCommand },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: unavailable.plugin,
+    pty: { ...router.pty, runCommand },
   };
 }
 
@@ -1213,6 +1187,7 @@ describeIfPosix("shellAction", () => {
       const { runtime, session, backgroundShell } = await makeRuntime({
         workspaceRoots: root,
         backgroundBufferChars: 5,
+        backgroundKillGraceMs: 10_000,
       });
       const message = makeMessage();
       session.setCwd(String(message.roomId), root);
@@ -1226,37 +1201,40 @@ describeIfPosix("shellAction", () => {
       const started = backgroundShell.startSession({
         conversationId: String(message.roomId),
         command:
-          "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
+          "trap 'while [ ! -f .git/test-release ]; do sleep 0.01; done; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
         cwd: root,
         workspaceObservation,
       });
       const handle = started.handle;
-      let terminating:
-        | Awaited<ReturnType<BackgroundShellService["inspect"]>>
-        | undefined;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        const candidate = await backgroundShell.inspect({
-          conversationId: String(message.roomId),
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(
+              await backgroundShell.inspect({
+                conversationId: String(message.roomId),
+                handle,
+              }),
+            ).toMatchObject({
+              status: "terminating",
+              endedAt: null,
+              workspaceDeltaReceipt: {
+                reasonCode: "BACKGROUND_RECEIPT_PENDING",
+                operation: { handle, status: "terminating" },
+              },
+            });
+          },
+          { timeout: 5_000, interval: 10 },
+        );
+      } finally {
+        await fs.writeFile(path.join(root, ".git/test-release"), "release");
+        await waitForBackgroundToSettle(
+          backgroundShell,
+          String(message.roomId),
           handle,
-        });
-        if (candidate.status === "terminating") {
-          terminating = candidate;
-          break;
-        }
-        await delay(10);
+        );
       }
-      expect(terminating).toMatchObject({
-        status: "terminating",
-        endedAt: null,
-        workspaceDeltaReceipt: {
-          reasonCode: "BACKGROUND_RECEIPT_PENDING",
-          operation: { handle, status: "terminating" },
-        },
-      });
-      await waitForBackgroundToSettle(
-        backgroundShell,
-        String(message.roomId),
-        handle,
+      expect(await fs.readFile(path.join(root, "generated.txt"), "utf8")).toBe(
+        "late",
       );
       const poll = requireActionResult(
         await shellAction.handler?.(runtime, message, undefined, {

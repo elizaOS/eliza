@@ -487,6 +487,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return callback(this as IDatabaseAdapter<IStorage>);
   }
 
+  async withAgentScope<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<IStorage>) => Promise<T>
+  ): Promise<T> {
+    const scoped = new InMemoryDatabaseAdapter(this.storage, agentId);
+    scoped.embeddingDimension = this.embeddingDimension;
+    await scoped.vectorIndex.init(this.embeddingDimension);
+    scoped.ready = this.ready;
+    try {
+      return await callback(scoped);
+    } finally {
+      await scoped.vectorIndex.clear();
+    }
+  }
+
   // ── Embedding ─────────────────────────────────────────────────────────
 
   async ensureEmbeddingDimension(dimension: number): Promise<void> {
@@ -1075,6 +1090,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "deleted", document: existing };
     });
+  }
+
+  async listMemoryTypes(): Promise<string[]> {
+    const rows = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => memory.agentId === this.agentId
+    );
+    const types = rows.map((memory) => {
+      const type = storedMemoryTableName(memory);
+      if (typeof type !== "string" || type.length === 0) {
+        throw new ElizaError("Cannot inventory memories with a missing storage type", {
+          code: "MEMORY_STORAGE_TYPE_INVALID",
+          context: { agentId: this.agentId, memoryId: memory.id },
+        });
+      }
+      return type;
+    });
+    return [...new Set(types)].sort();
   }
 
   async getMemories(params: {
@@ -2275,13 +2308,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Cache CRUD ────────────────────────────────────────────────────────
 
+  protected cacheStorageKey(key: string): string {
+    return JSON.stringify([this.agentId, key]);
+  }
+
   async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
     const out = new Map<string, T>();
     for (const key of keys) {
-      const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        this.cacheStorageKey(key)
+      );
       if (!entry) continue;
       if (entry.expiresAt && Date.now() > entry.expiresAt) {
-        await this.storage.delete(COLLECTIONS.CACHE, key);
+        await this.storage.delete(COLLECTIONS.CACHE, this.cacheStorageKey(key));
         continue;
       }
       out.set(key, entry.value);
@@ -2291,7 +2331,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
     for (const { key, value } of entries) {
-      await this.storage.set(COLLECTIONS.CACHE, key, { value });
+      await this.storage.set(COLLECTIONS.CACHE, this.cacheStorageKey(key), { value });
     }
     return true;
   }
@@ -2299,7 +2339,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteCaches(keys: string[]): Promise<boolean> {
     let removed = false;
     for (const key of keys) {
-      const ok = await this.storage.delete(COLLECTIONS.CACHE, key);
+      const ok = await this.storage.delete(COLLECTIONS.CACHE, this.cacheStorageKey(key));
       if (ok) removed = true;
     }
     return removed;

@@ -69,16 +69,16 @@
     "@elizaos/shared": "workspace:*",
     "ai": "^6.0.174",
     "ollama-ai-provider-v2": "^3.5.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@elizaos/core": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@types/node": "^25.0.3",
-    "bun-types": "^1.3.14",
+    "bun-types": "1.3.14",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

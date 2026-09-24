@@ -33,7 +33,7 @@ bun run --cwd plugins/plugin-omarchy test
 bun run --cwd plugins/plugin-omarchy typecheck
 bun run --cwd plugins/plugin-omarchy lint:check
 bun run --cwd plugins/plugin-omarchy build
-bun run --cwd packages/registry generate:first-party:check
+bun run --cwd packages/shared generate:first-party:check
 ```
 
 On a real Omarchy host, also inspect the returned version/theme/plugin data,

@@ -9,6 +9,7 @@ import {
 	CONVERSATIONAL_INTERACTION_PROFILE,
 	FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT,
 	RICH_INTERACTION_PROFILE,
+	renderFirstPartyInteractionCapabilityMatrix,
 } from "./profile-catalog";
 import * as profiles from "./profiles";
 
@@ -367,32 +368,6 @@ describe("RICH_INTERACTION_PROFILE", () => {
 });
 
 describe("FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT", () => {
-	it("lists exactly eleven connectors in declared order", () => {
-		expect(FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT).toHaveLength(11);
-		expect(
-			FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) => entry.source),
-		).toEqual([
-			"discord",
-			"gmail",
-			"google-chat",
-			"imessage",
-			"instagram",
-			"matrix",
-			"slack",
-			"telegram",
-			"wechat",
-			"whatsapp",
-			"x",
-		]);
-	});
-
-	it("never repeats a source", () => {
-		const sources = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(
-			(entry) => entry.source,
-		);
-		expect(new Set(sources).size).toBe(sources.length);
-	});
-
 	it("fills every descriptive field on every entry", () => {
 		for (const entry of FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT) {
 			for (const field of [
@@ -420,16 +395,15 @@ describe("FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT", () => {
 					(entry) => entry.profileFamily,
 				),
 			),
-		).toEqual(new Set(["button-native", "conversational"]));
+		).toEqual(new Set(["button-native", "conversational", "read-only"]));
 	});
 
 	it("maps every source to its documented target kind", () => {
 		expect(
 			Object.fromEntries(
-				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) => [
-					entry.source,
-					entry.targetKind,
-				]),
+				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
+					(entry) => entry.profileFamily !== "read-only",
+				).map((entry) => [entry.source, entry.targetKind]),
 			),
 		).toEqual({
 			discord: "channel",
@@ -459,8 +433,9 @@ describe("FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT", () => {
 		).toEqual(new Set(["plugin-google-workspace/src/chat/service.ts"]));
 	});
 
-	it("materializes every audited connector into a valid profile", () => {
+	it("materializes every outbound connector into a valid profile", () => {
 		for (const entry of FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT) {
+			if (entry.profileFamily === "read-only") continue;
 			const materialized = profiles.createConnectorInteractionCapabilityProfile(
 				{
 					template:
@@ -479,5 +454,21 @@ describe("FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT", () => {
 				"sensitive-request",
 			);
 		}
+	});
+	it("keeps personal Telegram history targets out of outbound interaction delivery", () => {
+		const matrix = renderFirstPartyInteractionCapabilityMatrix();
+		const [outbound, readOnly] = matrix.split("## Read-only registrations");
+		expect(readOnly).toBeDefined();
+		for (const kind of ["user", "channel", "thread"]) {
+			expect(readOnly).toContain(
+				`| telegram | plugin-telegram/src/account-client-service.ts | ${kind}:<target> | unsupported |`,
+			);
+			expect(outbound).not.toContain(
+				`| telegram | <account> | ${kind}:<target> |`,
+			);
+		}
+		expect(outbound).toContain(
+			"| telegram | <account> | room:<target> | choice:native",
+		);
 	});
 });

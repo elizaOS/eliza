@@ -1,8 +1,9 @@
 /**
  * RelationshipStore — typed-edge persistence + observation API.
  *
- * Backed by `app_lifeops.life_relationships_v2`; soft-delete via the
- * `status` column with audit rows in `life_relationship_audit_events`.
+ * Uses app_lifeops tables or the agent adapter's durable records. Retirement
+ * preserves the edge and its audit; SQLite commits each complete operation
+ * in one transaction, including concurrent strengthen-or-create decisions.
  *
  * `observe` is the canonical entry point for "ingest extraction-time
  * evidence into the graph" — it strengthens an existing matching edge
@@ -21,6 +22,10 @@ import type {
   RelationshipState,
   RelationshipStatus,
 } from "@elizaos/shared/knowledge-graph";
+import {
+  type GraphRecordRepository,
+  graphRecordRepository,
+} from "./record-repository.ts";
 import {
   executeRawSql,
   parseJsonArray,
@@ -93,10 +98,17 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
 }
 
 export class RelationshipStore {
+  private readonly records: GraphRecordRepository | null;
+
+  private operation<T>(work: () => Promise<T>): Promise<T> {
+    return this.records ? this.records.transaction(work) : work();
+  }
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
-  ) {}
+  ) {
+    this.records = graphRecordRepository(runtime, agentId);
+  }
 
   async upsert(
     input: Omit<
@@ -107,12 +119,47 @@ export class RelationshipStore {
       status?: RelationshipStatus;
     },
   ): Promise<Relationship> {
+    return this.operation(() => this.upsertOperation(input));
+  }
+
+  private async upsertOperation(
+    input: Omit<
+      Relationship,
+      "relationshipId" | "createdAt" | "updatedAt" | "status"
+    > & {
+      relationshipId?: string;
+      status?: RelationshipStatus;
+    },
+  ): Promise<Relationship> {
     const now = isoNow();
     const relationshipId = input.relationshipId ?? `rel_${crypto.randomUUID()}`;
-    const existing = await this.get(relationshipId);
+    const existing = await this.getOperation(relationshipId);
     const createdAt = existing?.createdAt ?? now;
     const cadenceDays = readCadenceDays(input.metadata);
     const status = input.status ?? existing?.status ?? "active";
+
+    if (this.records) {
+      return this.records.putRelationship({
+        relationshipId,
+        fromEntityId: input.fromEntityId,
+        toEntityId: input.toEntityId,
+        type: input.type,
+        ...(input.metadata && Object.keys(input.metadata).length > 0
+          ? { metadata: input.metadata }
+          : {}),
+        state: input.state,
+        evidence: input.evidence,
+        confidence: input.confidence,
+        source: input.source,
+        createdAt,
+        updatedAt: now,
+        status,
+        ...(existing?.retiredAt ? { retiredAt: existing.retiredAt } : {}),
+        ...(existing?.retiredReason
+          ? { retiredReason: existing.retiredReason }
+          : {}),
+      });
+    }
 
     await executeRawSql(
       this.runtime,
@@ -160,7 +207,7 @@ export class RelationshipStore {
          updated_at = EXCLUDED.updated_at`,
     );
 
-    const fetched = await this.get(relationshipId);
+    const fetched = await this.getOperation(relationshipId);
     if (!fetched) {
       throw new Error(
         `[RelationshipStore] failed to read back upserted relationship ${relationshipId}`,
@@ -170,6 +217,13 @@ export class RelationshipStore {
   }
 
   async get(relationshipId: string): Promise<Relationship | null> {
+    return this.operation(() => this.getOperation(relationshipId));
+  }
+
+  private async getOperation(
+    relationshipId: string,
+  ): Promise<Relationship | null> {
+    if (this.records) return this.records.getRelationship(relationshipId);
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_lifeops.life_relationships_v2
@@ -182,35 +236,46 @@ export class RelationshipStore {
   }
 
   async list(filter?: RelationshipFilter): Promise<Relationship[]> {
-    const clauses = [`agent_id = ${sqlQuote(this.agentId)}`];
-    if (!filter?.includeRetired) {
-      clauses.push(`status = 'active'`);
-    }
-    if (filter?.fromEntityId) {
-      clauses.push(`from_entity_id = ${sqlQuote(filter.fromEntityId)}`);
-    }
-    if (filter?.toEntityId) {
-      clauses.push(`to_entity_id = ${sqlQuote(filter.toEntityId)}`);
-    }
-    if (filter?.type) {
-      const types = Array.isArray(filter.type) ? filter.type : [filter.type];
-      const list = types.map((t) => sqlQuote(t)).join(", ");
-      clauses.push(`type IN (${list})`);
-    }
+    return this.operation(() => this.listOperation(filter));
+  }
 
-    const limitClause =
-      typeof filter?.limit === "number" && Number.isFinite(filter.limit)
-        ? `LIMIT ${sqlInteger(filter.limit)}`
-        : "";
+  private async listOperation(
+    filter?: RelationshipFilter,
+  ): Promise<Relationship[]> {
+    let results: Relationship[];
+    if (this.records) {
+      results = await this.records.listRelationships(filter);
+    } else {
+      const clauses = [`agent_id = ${sqlQuote(this.agentId)}`];
+      if (!filter?.includeRetired) {
+        clauses.push(`status = 'active'`);
+      }
+      if (filter?.fromEntityId) {
+        clauses.push(`from_entity_id = ${sqlQuote(filter.fromEntityId)}`);
+      }
+      if (filter?.toEntityId) {
+        clauses.push(`to_entity_id = ${sqlQuote(filter.toEntityId)}`);
+      }
+      if (filter?.type) {
+        const types = Array.isArray(filter.type) ? filter.type : [filter.type];
+        const list = types.map((t) => sqlQuote(t)).join(", ");
+        clauses.push(`type IN (${list})`);
+      }
 
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT * FROM app_lifeops.life_relationships_v2
+      const limitClause =
+        typeof filter?.limit === "number" && Number.isFinite(filter.limit)
+          ? `LIMIT ${sqlInteger(filter.limit)}`
+          : "";
+
+      const rows = await executeRawSql(
+        this.runtime,
+        `SELECT * FROM app_lifeops.life_relationships_v2
         WHERE ${clauses.join(" AND ")}
         ORDER BY updated_at DESC
         ${limitClause}`,
-    );
-    let results = rows.map(rowToRelationship);
+      );
+      results = rows.map(rowToRelationship);
+    }
 
     if (filter?.metadataMatch) {
       results = results.filter((rel) => {
@@ -265,9 +330,22 @@ export class RelationshipStore {
     occurredAt?: string;
     source?: RelationshipSource;
   }): Promise<Relationship> {
+    return this.operation(() => this.observeOperation(obs));
+  }
+
+  private async observeOperation(obs: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    metadataPatch?: Record<string, unknown>;
+    evidence: string[];
+    confidence: number;
+    occurredAt?: string;
+    source?: RelationshipSource;
+  }): Promise<Relationship> {
     const occurredAt = obs.occurredAt ?? isoNow();
 
-    const matching = await this.list({
+    const matching = await this.listOperation({
       fromEntityId: obs.fromEntityId,
       toEntityId: obs.toEntityId,
       type: obs.type,
@@ -287,7 +365,7 @@ export class RelationshipStore {
         ...(active.metadata ?? {}),
         ...(obs.metadataPatch ?? {}),
       };
-      const updated = await this.upsert({
+      const updated = await this.upsertOperation({
         ...active,
         metadata: mergedMetadata,
         evidence: mergedEvidence,
@@ -314,7 +392,7 @@ export class RelationshipStore {
       return retired;
     }
 
-    return this.upsert({
+    return this.upsertOperation({
       fromEntityId: obs.fromEntityId,
       toEntityId: obs.toEntityId,
       type: obs.type,
@@ -338,13 +416,31 @@ export class RelationshipStore {
    * never strengthened by new evidence.
    */
   async retire(relationshipId: string, reason: string): Promise<void> {
-    const existing = await this.get(relationshipId);
+    return this.operation(() => this.retireOperation(relationshipId, reason));
+  }
+
+  private async retireOperation(
+    relationshipId: string,
+    reason: string,
+  ): Promise<void> {
+    const existing = await this.getOperation(relationshipId);
     if (!existing) {
       throw new Error(
         `[RelationshipStore.retire] relationship ${relationshipId} not found`,
       );
     }
     const now = isoNow();
+    if (this.records) {
+      await this.records.putRelationship({
+        ...existing,
+        status: "retired",
+        retiredAt: now,
+        retiredReason: reason,
+        updatedAt: now,
+      });
+      await this.appendAudit(relationshipId, "retire", { reason });
+      return;
+    }
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_relationships_v2
@@ -366,6 +462,18 @@ export class RelationshipStore {
       createdAt: string;
     }>
   > {
+    return this.operation(() => this.listAuditEventsOperation(relationshipId));
+  }
+
+  private async listAuditEventsOperation(relationshipId: string): Promise<
+    Array<{
+      id: string;
+      kind: string;
+      details: Record<string, unknown>;
+      createdAt: string;
+    }>
+  > {
+    if (this.records) return this.records.listAudit(relationshipId);
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_lifeops.life_relationship_audit_events
@@ -386,6 +494,14 @@ export class RelationshipStore {
     kind: string,
     details: Record<string, unknown>,
   ): Promise<void> {
+    if (this.records)
+      return this.records.appendAudit({
+        id: `raud_${crypto.randomUUID()}`,
+        relationshipId,
+        kind,
+        details,
+        createdAt: isoNow(),
+      });
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_relationship_audit_events (

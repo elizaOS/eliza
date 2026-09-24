@@ -6,7 +6,6 @@
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/prompts": ["../../packages/prompts/src/index.ts"],
       "@elizaos/prompts/*": ["../../packages/prompts/src/*"],
-      "@elizaos/registry/*": ["../../packages/registry/src/*"],
       "@elizaos/shared/utils/filesystem": [
         "../../packages/shared/src/utils/filesystem.ts"
       ],

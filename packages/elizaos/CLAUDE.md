@@ -1,7 +1,7 @@
 # `elizaos`
 
 The package-first elizaOS CLI. It scaffolds and upgrades projects/plugins,
-submits plugin metadata, deploys Eliza Cloud apps, connects capability-router
+deploys Eliza Cloud apps, connects capability-router
 endpoints, and migrates supported file-based agent workspaces. It is published
 as `elizaos`; the `elizaos` bin maps to `dist/cli.js`.
 
@@ -17,14 +17,13 @@ A standalone, dependency-light CLI (only `@clack/prompts`, `commander`, `picocol
 ```
 src/
   cli.ts               #!/usr/bin/env node — Commander program; default action = interactive @clack menu
-  index.ts             Library exports (create, info, upgrade, version, registerPluginsCommand, submitPluginToRegistry, loadManifest, types)
+  index.ts             Library exports (create, info, upgrade, version, loadManifest, types)
   commands/
     index.ts           Barrel re-exporting every command function
     create.ts          `create` — prompt template/lang/name, render tree, init upstream submodule, write metadata
     upgrade.ts         `upgrade` — re-render template into temp dir, diff via managed-file hashes, apply
     info.ts            `info` — list templates (text or --json)
     version.ts         `version` — print CLI version from package.json
-    plugins.ts         `registerPluginsCommand` + `submitPluginToRegistry` — generate registry metadata and open an explicit registry PR via git/gh
     deploy.ts          `deploy` / `runDeploy` — Eliza Cloud app deploy trigger + status polling (`--dry-run` prints plan only)
     migrate-agent.ts   `migrate-agent` — import supported OCPlatform file agents into an Eliza archive
     capability-router.ts  `capabilityRouterConnect` — POST agent API /api/capability-router/connect
@@ -47,12 +46,12 @@ templates-manifest.json  Generated index of templates (loaded at runtime by mani
 
 ## Key exports
 
-`src/index.ts` re-exports: `create`, `info`, `upgrade`, `version`, `registerPluginsCommand`, `submitPluginToRegistry`, `loadManifest`, and types `TemplateDefinition` / `TemplatesManifest`. `src/cli.ts` additionally uses `deploy` and `capabilityRouterConnect` from `commands/index.ts`.
+`src/index.ts` re-exports: `create`, `info`, `upgrade`, `version`, `loadManifest`, and types `TemplateDefinition` / `TemplatesManifest`. `src/cli.ts` additionally uses `deploy` and `capabilityRouterConnect` from `commands/index.ts`.
 
 Commands registered on the Commander program: `version`, `info`, `create`,
-`upgrade`, `deploy`, `migrate-agent`, `plugins submit`, and
+`upgrade`, `deploy`, `migrate-agent`, and
 `capability-router connect`. With no subcommand, an interactive
-`@clack/prompts` menu offers create, upgrade, info, and plugin submission.
+`@clack/prompts` menu offers create, upgrade, and info.
 
 ## Templates
 
@@ -91,7 +90,6 @@ Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMet
 - `manifest.ts` and `getTemplatesDir` read `templates-manifest.json` and `templates/` relative to `getPackageRoot()` (one dir up from `dist/`), so the CLI only works after `build` and against the shipped `dist` + `templates` (both in the `files` allowlist). `loadManifest` throws if the manifest is missing — run `build` first.
 - `cli.ts` ends with top-level `await program.parseAsync()`; the bin shebang is `#!/usr/bin/env node` (re-applied by `ensureCliShebang` in `build.ts`).
 - Commands that interact with the user use `@clack/prompts` and call `process.exit(...)` directly on cancel/error; `deploy`/`capabilityRouterConnect` split a pure `run*` function (returns exit code) from the thin `process.exit` wrapper for testability.
-- `plugins submit --dry-run` prints the generated `entries/third-party/<pkg>.json` metadata. Opening a PR requires an explicit `--registry owner/repo`; no public default registry repository is configured. `@elizaos/*` names are rejected (reserved for first-party).
 - `deploy` queues `POST /api/v1/apps/:id/deploy`, optionally attaches
   `--domain`, and polls `GET /api/v1/apps/:id/deploy/status` until `READY` or
   `ERROR`; `--dry-run` prints the plan without network calls.

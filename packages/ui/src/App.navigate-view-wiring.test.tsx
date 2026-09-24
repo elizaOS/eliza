@@ -1523,6 +1523,7 @@ describe("App navigate-view event wiring", () => {
       const { container, getByTestId, queryByTestId } = render(<App />);
 
       await waitFor(() => getByTestId("managed-cloud-page"));
+      expect(getByTestId("first-run-conductor-mount")).toBeTruthy();
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
       expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
       await waitFor(() => {
@@ -1543,6 +1544,7 @@ describe("App navigate-view event wiring", () => {
     "pairing-required",
     "error",
     "starting-runtime",
+    "first-run-required",
     "ready",
   ])(
     "keeps authenticated account management available during agent %s",
@@ -1559,6 +1561,7 @@ describe("App navigate-view event wiring", () => {
       cloudSessionState.authenticated = true;
       authStatusMock.phase = "unauthenticated";
       appState.startupPhase = phase;
+      appState.firstRunComplete = false;
       appState.backendConnectionState = "disconnected";
       appState.tab = "cloud";
       window.history.replaceState(null, "", "/cloud/agents");
@@ -1566,6 +1569,8 @@ describe("App navigate-view event wiring", () => {
       render(<App />);
 
       await screen.findByTestId("managed-cloud-page");
+      expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
+      expect(screen.queryByTestId("chat-overlay")).toBeNull();
       expect(appState.retryStartup).not.toHaveBeenCalled();
     },
   );

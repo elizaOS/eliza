@@ -19,6 +19,17 @@ against PostgreSQL 16. It does not run scenarios, live providers, devices,
 deployments, or destructive effects. New commits cancel stale work for the same
 pull request or merge group.
 
+The source lane links installed workspaces and generates package outputs through
+its explicit builds, without running repository postinstall. Required dependency
+compatibility patches still run before builds and runtime consumers. The
+affected build runs before runtime consumers. The broad core bootstrap is
+retained for shared inputs, deleted or unknown workspace ownership, and owners
+without a build command. Changes wholly owned by buildable workspaces use their
+affected dependency closure; the on-demand CodeQL partition alone does not need
+runtime outputs. Older candidates without the scope helper retain the full core
+bootstrap. A present helper must succeed; invalid Git or workspace state fails
+scope selection.
+
 `develop-full.yml` validates `develop`, `staging`, and `main`. Each branch has
 its own cancellation scope. Manual recovery accepts only the exact canonical
 branch SHA and an effect digest; feature branches cannot obtain deployment
@@ -180,8 +191,19 @@ extended, and gesture fixtures with non-overlapping commands; engine variants
 remain separate tests.
 `ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
-and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
+and macOS/Windows contracts. Dev Smoke runs staging startup and HMR without
+direct model-provider credentials; billable local onboarding is excluded from
+automatic branch validation. `gitleaks.yml` scans branch commits once; PR
 admission retains its own diff scan.
+
+UI fixture contracts, Discord gateway source tests, and Gitleaks also accept
+manual dispatch on a fixed source ref when newer branch pushes repeatedly
+cancel the full graph. Use `gh workflow run <workflow>.yml --ref <fixed-ref>`;
+the selected ref supplies both the workflow and its checkout. Gitleaks retains
+its tip-commit scan when no push range is available. UI fixtures expose
+`publish_bun_install_cache=false` to disable their designated cache writer.
+These runs provide supplemental source evidence only: they do not create a
+full-graph completion certificate, deployment authority, or promotion receipt.
 
 The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
 wrappers and reusable classifier have no independent status
@@ -196,11 +218,23 @@ remain required; build caches cannot substitute for a green validation result.
 
 The shared setup action restores dependency and Turbo caches independently of
 validation. `publish-caches` defaults to `true`; the smoke and plugin matrices
-select shard 1 as their publisher and use restore-only actions in the other
-shards, with unchanged keys and restore prefixes. Every shard still installs and
-runs its own tasks. If the publisher fails, later runs may have a cold cache;
-that failure still fails the required matrix. Story shards serve the catalog
-artifact and disable Turbo caching because they do not execute Turbo tasks.
+retain shard 1 as their Turbo publisher. `publish-bun-install-cache` separately
+controls the large Bun download archive and inherits `publish-caches` when
+omitted. Canonical CI's Quality job owns that archive; other canonical jobs
+restore it without scheduling archive publication. Every job still performs its
+normal pinned install and required tests, including on a cache miss.
+
+Full validation chooses one writer for the shared Linux/Bun/lockfile key:
+canonical Quality when canonical CI runs, otherwise UI fixture contracts when
+that family runs, otherwise the Storybook catalog builder. Standalone UI fixture
+and Storybook calls retain their designated writer by default; their manual
+dispatch exposes the same opt-out. A failed writer leaves a cold cache for later
+runs and still fails its normal required job. No consumer waits for cache
+publication. PR source smoke owns its Bun archive; the subscription authority
+PostgreSQL job restores without publishing, retaining its separate Turbo cache.
+Other operating-system caches and Docker's separate cache key are
+unchanged. Story shards serve the catalog artifact and disable Turbo caching
+because they do not execute Turbo tasks.
 
 Physical-device and live-model evidence remains explicit through the existing
 manual/device entry points. `live-smoke.yml` with `suite=remote-capabilities`

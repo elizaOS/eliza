@@ -583,13 +583,13 @@ export function safeResponseOutcome(options) {
   };
 }
 
-/** Owns the Linux process group through natural exit, timeout, and descendant cleanup. */
+/** Owns a POSIX process group through natural exit, timeout, and descendant cleanup. */
 export async function runOwnedChild(command, args, options, timeoutMs) {
   let timedOut = false;
   const proc = spawn(command, args, {
     ...options,
     detached: true,
-    stdio: "ignore",
+    stdio: options.stdio ?? "ignore",
   });
   const signalGroup = (signal) => {
     if (!proc.pid) return false;

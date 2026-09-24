@@ -5,7 +5,10 @@
  */
 import { buildPlugin } from "../plugin-build";
 
-const reexport = "export * from '../index';\nexport { default } from '../index';\n";
+// Declarations are emitted under dist/node; every conditional package entry
+// must resolve that actual tree rather than a nonexistent dist/index.d.ts.
+const reexport =
+  "export * from '../node/index.node';\nexport { default } from '../node/index.node';\n";
 
 await buildPlugin({
   name: "@elizaos/plugin-embeddings",

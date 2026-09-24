@@ -57,7 +57,7 @@ not a safe deletion or mechanical cleanup.
   longer fabricate empty config, and editor launch failures are no longer
   swallowed.
 - Migrated in-repository registry consumers to
-  `@elizaos/registry/first-party`; the app-core subpath remains a documented
+  `@elizaos/shared/catalog`; the app-core subpath remains a documented
   compatibility export.
 
 ### Dependencies, artifacts, and packaging

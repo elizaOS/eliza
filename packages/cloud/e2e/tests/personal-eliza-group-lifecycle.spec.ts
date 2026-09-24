@@ -119,7 +119,7 @@ const AMBIENT_REPLY =
   "Friday sounds good — want me to set a reminder so nobody forgets?";
 const DEFAULT_REPLY = "Noted! I'm here if the group needs me.";
 
-const REMINDER_CREATE_MESSAGE = "Eliza remind us in 2 minutes: pizza time";
+const REMINDER_CREATE_MESSAGE = "Eliza remind us in 3 seconds: pizza time";
 const REMINDER_ACK = "Got it — I'll remind this group in 3 seconds: pizza time";
 const REMINDER_EGRESS_TEXT =
   "Reminder for this group from the group owner: pizza time";
@@ -184,6 +184,7 @@ interface CapturedDelivery {
   body: {
     platform?: string;
     project?: string;
+    connectorAccountId?: string;
     chatId?: string;
     text?: string;
     idempotencyKey?: string;
@@ -255,10 +256,24 @@ function decide(body: ChatCompletionBody): {
   if (toolNames.includes("HANDLE_RESPONSE")) {
     const args = {
       shouldRespond: "RESPOND",
-      contexts: wantsReminder ? [] : ["simple"],
-      intents: wantsReminder ? ["create group reminder"] : ["reply to group"],
+      contexts: wantsReminder ? ["general"] : ["simple"],
+      contextRequests: [],
+      intents: wantsReminder ? ["create group reminder"] : [],
+      completionContext: {
+        mode: "all_prior_dialogue",
+        sourceSetId:
+          messages
+            .map((message) => contentText(message.content))
+            .join("\n")
+            .match(/completion_source_set: ([a-f0-9]{64})/)?.[1] ?? "",
+        complete: false,
+        relevantSourceIds: [],
+        constraintSourceIds: [],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      },
       replyText: wantsReminder ? "On it." : cannedReply(current),
-      replyEffectStatus: "none",
+      replyEffectStatus: wantsReminder ? "pending" : "none",
       candidateActionNames: wantsReminder ? ["REMINDERS"] : [],
       facts: [],
       relationships: [],
@@ -283,6 +298,7 @@ function decide(body: ChatCompletionBody): {
         name: "REMINDERS",
         arguments: JSON.stringify({
           operation: "create",
+          eliza_turn_scope: "final",
           reminderText,
           // 0.05 minutes = 3000 ms — a CI-fast due time the cron can fire.
           inMinutes: 0.05,
@@ -926,8 +942,8 @@ test.describe("personal Eliza group lifecycle", () => {
       expect(created.status, JSON.stringify(created.json)).toBe(200);
       expect(created.json.data?.reply).toBe(REMINDER_ACK);
       expect(created.json.data?.groupDelivery).toEqual(bindingDelivery(2));
-      // HANDLE_RESPONSE projection, then the native REMINDERS tool call.
-      expect(groupHarness.modelCalls()).toBe(5);
+      // Route the request, execute REMINDERS, then ground the final reply in its receipt.
+      expect(groupHarness.modelCalls()).toBe(6);
       // Creation only schedules; nothing reaches the connector until the cron.
       expect(groupHarness.deliveries).toHaveLength(0);
       // The stored destination is the owner-gated group delivery, pinned to the
@@ -971,6 +987,7 @@ test.describe("personal Eliza group lifecycle", () => {
       expect(delivery.body).toEqual({
         platform: "blooio",
         project: PROJECT,
+        connectorAccountId: CONNECTOR_ACCOUNT,
         chatId: GROUP_CHAT_ID,
         text: REMINDER_EGRESS_TEXT,
         idempotencyKey: expect.stringMatching(DISPATCH_IDEMPOTENCY_KEY_PATTERN),
@@ -1076,7 +1093,7 @@ test.describe("personal Eliza group lifecycle", () => {
 
       // Steps 8–9 are route-owned: the scripted model saw no further turns and
       // the connector received nothing beyond the one cron-fired reminder.
-      expect(groupHarness.modelCalls()).toBe(5);
+      expect(groupHarness.modelCalls()).toBe(6);
       expect(groupHarness.deliveries).toHaveLength(1);
     });
   });

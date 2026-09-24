@@ -3,7 +3,7 @@ title: CLI
 description: "The elizaos CLI — scaffold, upgrade, deploy."
 ---
 
-The CLI is intentionally small. It does not manage running agents — your project's `package.json` scripts (`bun run dev`, `bun run build`, `bun run test`) do that. The CLI is for project-level operations: scaffolding, upgrading, deploying, and registry submission.
+The CLI is intentionally small. It does not manage running agents — your project's `package.json` scripts (`bun run dev`, `bun run build`, `bun run test`) do that. The CLI is for project-level operations: scaffolding, upgrading, and deploying.
 
 ## Install
 
@@ -27,7 +27,6 @@ elizaos --help
 | `upgrade`                        | Upgrade the current generated project to the latest template.               |
 | `deploy`                         | Deploy the current project to Eliza Cloud (experimental).                   |
 | `migrate-agent`                  | Convert a file-based OpenClaw agent into Eliza character and memory artifacts. |
-| `plugins submit`                 | Submit the current plugin project to the registry.                          |
 | `capability-router connect`      | Connect the running agent to a remote capability-router or Cloud sandbox.   |
 | `version`                        | Print CLI version.                                                          |
 

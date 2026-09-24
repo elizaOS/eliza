@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Defines the privacy-safe provisioning failure record consumed by the Hetzner
- * E2E workflow. The workflow renders operator guidance from this validated
- * record instead of inferring causes from human-readable error text.
+ * Defines privacy-safe provisioning failure records for the manual Hetzner diagnostic.
+ * Validated failure categories provide operator guidance without exposing raw
+ * provider responses or inferring causes from human-readable messages.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

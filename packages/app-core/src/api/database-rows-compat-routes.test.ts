@@ -59,13 +59,21 @@ vi.mock("./auth/sessions.js", () => ({
   verifyCsrfToken: mocks.verifyCsrfToken,
 }));
 
-vi.mock("../services/auth-store.js", () => ({
-  AuthStore: class MockAuthStore {
-    findSession = async (sessionId: string) =>
-      mocks.findActiveSession(undefined, sessionId);
-    findIdentity = mocks.findIdentity;
-  },
-}));
+vi.mock("../services/auth-store.js", () => {
+  const mocked = {
+    AuthStore: class MockAuthStore {
+      findSession = async (sessionId: string) =>
+        mocks.findActiveSession(undefined, sessionId);
+      findIdentity = mocks.findIdentity;
+    },
+  };
+  return {
+    ...mocked,
+    authStoreForRuntime: (
+      runtime: { adapter?: { db?: unknown } } | null | undefined,
+    ) => (runtime?.adapter?.db ? new mocked.AuthStore() : null),
+  };
+});
 
 const STATE_WITHOUT_DB = {
   current: null,

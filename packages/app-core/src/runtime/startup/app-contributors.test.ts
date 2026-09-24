@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock("@elizaos/registry/first-party", () => ({
+vi.mock("@elizaos/shared/catalog", () => ({
   loadRegistry: () => ({}),
   getApps: () => mocks.apps,
 }));

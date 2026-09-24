@@ -1702,14 +1702,6 @@ export async function runV5MessageRuntimeStage1(
     const recordingCallback: HandlerCallback | undefined = args.callback
       ? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
       : undefined;
-    const intermediateCallback: HandlerCallback | undefined = recordingCallback
-      ? async (content, ...rest) => {
-          const nonTextContent = filterIntermediateCallbackContent(content);
-          return nonTextContent
-            ? recordingCallback(nonTextContent, ...rest)
-            : [];
-        }
-      : undefined;
 
     // Settled planner tool results, in execution order, captured OUTSIDE the
     // loop so they survive a planner/evaluator crash. When the loop dies
@@ -1723,7 +1715,9 @@ export async function runV5MessageRuntimeStage1(
     }> = [];
 
     const callbackActionResults: ActionResult[] = [];
-    const callbackSettlementObservers = () => {
+    const callbackSettlementObservers = (
+      beforeCallbacks?: (result: ActionResult) => void,
+    ) => {
       let resultIndex: number | undefined;
       const retain = (result: ActionResult) => {
         if (resultIndex === undefined) {
@@ -1732,7 +1726,10 @@ export async function runV5MessageRuntimeStage1(
         } else callbackActionResults[resultIndex] = result;
       };
       return {
-        onBeforeCallbacks: retain,
+        onBeforeCallbacks: (result: ActionResult) => {
+          retain(result);
+          beforeCallbacks?.(result);
+        },
         onSettledResult: (result: ActionResult) => {
           retain(result);
           args.onSettledActionResult?.(result);
@@ -2076,6 +2073,24 @@ export async function runV5MessageRuntimeStage1(
           ]),
           providerAttributionState: plannerProviderAttributionState,
           executeToolCall: (toolCall, ctx) => {
+            let settledCallbackResult: ActionResult | undefined;
+            const settlementObservers = callbackSettlementObservers(
+              (result) => {
+                settledCallbackResult = result;
+              },
+            );
+            const intermediateCallback: HandlerCallback | undefined =
+              recordingCallback
+                ? async (content, ...rest) => {
+                    const visibleContent = filterIntermediateCallbackContent(
+                      content,
+                      settledCallbackResult,
+                    );
+                    return visibleContent
+                      ? recordingCallback(visibleContent, ...rest)
+                      : [];
+                  }
+                : undefined;
             args.onReplyRecoveryPrepared?.(async () => ({
               ...capturePlannerReplyRecovery(
                 args.runtime,
@@ -2093,7 +2108,8 @@ export async function runV5MessageRuntimeStage1(
                   await executeV5PlannedToolCall({
                     runtime: args.runtime,
                     toolCall,
-                    plannerContext: loopContext,
+                    plannerContext:
+                      ctx.trajectory.modelBaseContext ?? loopContext,
                     executorCtx: buildV5ExecutorContext({
                       message: args.message,
                       replyOwner: "planner",
@@ -2113,7 +2129,7 @@ export async function runV5MessageRuntimeStage1(
                     plannerRuntime,
                     executorOptions: {
                       actions: exposedPlannerActions,
-                      ...callbackSettlementObservers(),
+                      ...settlementObservers,
                     },
                     evaluatorEffects,
                     recorder,

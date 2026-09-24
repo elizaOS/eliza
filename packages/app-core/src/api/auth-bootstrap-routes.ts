@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger as Logger } from "@elizaos/core";
-import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
+import { authStoreForRuntime } from "../services/auth-store";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
@@ -31,18 +31,6 @@ import {
 
 /** 12h sliding TTL for browser sessions per plan §1.3. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-
-interface AdapterWithDb {
-  db?: unknown;
-}
-
-function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
-  const runtime = state.current;
-  if (!runtime) return null;
-  const adapter = runtime.adapter as AdapterWithDb | undefined;
-  if (!adapter?.db) return null;
-  return adapter.db as DrizzleDatabase;
-}
 
 function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
   // Stable per-cloud-user id so repeated exchanges by the same user reuse the
@@ -94,15 +82,14 @@ export async function handleAuthBootstrapRoutes(
     return true;
   }
 
-  const db = getDrizzleDb(state);
-  if (!db) {
+  const store = authStoreForRuntime(state.current);
+  if (!store) {
     sendJsonResponse(res, 503, {
       error: "db_unavailable",
       reason: "db_unavailable",
     });
     return true;
   }
-  const store = new AuthStore(db);
 
   const body = await readCompatJsonBody(req, res);
   if (body == null) return true;

@@ -241,7 +241,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
         with:
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
@@ -313,7 +313,7 @@ jobs:
       # that was verified (no second build, no "latest yt-dlp" drift between the
       # verified and published image).
       - id: build-local
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           file: packages/app-core/deploy/Dockerfile.ci

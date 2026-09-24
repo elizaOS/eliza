@@ -83,3 +83,13 @@ receives no vector or completion event; database failures throw. Custom database
 adapters must implement this contract when upgrading core. A separate read followed
 by an unconditional update is insufficient. Vector-only runtime writes retain the
 existing reconciliation-lease bypass and invalidate the room cache on success.
+
+Lifecycle `withAgentScope` callbacks use a separate agent-bound adapter over the
+same ephemeral records. Cache storage keys include the agent ID to keep lifecycle
+scopes independent. This does not add atomic rollback to the memory store. The
+single-owner SQLite subclass retains its existing persistent cache keys and rejects
+a different agent scope.
+
+`listMemoryTypes()` discovers the current agent's stored namespaces, including
+custom types, while excluding records belonging to another agent in shared
+storage. SQLite inherits this discovery within its single-owner file.

@@ -4,12 +4,35 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+async function stopServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill("SIGTERM");
+  await exited;
+}
+
+for (const [name, source] of [
+  ["normal exit", "process.exit(1)"],
+  ["signal exit", "process.kill(process.pid, 'SIGTERM')"],
+]) {
+  test(
+    `static server teardown handles an observed ${name}`,
+    { timeout: 2_000 },
+    async () => {
+      const child = spawn(process.execPath, ["-e", source], { stdio: "ignore" });
+      await once(child, "exit");
+      await stopServer(child);
+    },
+  );
+}
 
 async function unusedPort() {
   return await new Promise((resolve, reject) => {
@@ -93,8 +116,7 @@ test("static server returns inert generic text for malformed URL encoding", asyn
     assert.equal(body, "Bad Request");
     assert.doesNotMatch(body, /URI|stack|%ZZ|<script>/i);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stopServer(child);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -129,8 +151,7 @@ test("static server rejects encoded traversal into a root-prefix sibling", async
     assert.equal(response.body, "forbidden");
     assert.doesNotMatch(response.body, /token|secret/);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stopServer(child);
     await rm(root, { recursive: true, force: true });
     await rm(sibling, { recursive: true, force: true });
   }

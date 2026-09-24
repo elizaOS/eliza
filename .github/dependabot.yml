@@ -12,6 +12,17 @@ updates:
       dev-dependencies:
         dependency-type: "development"
     ignore:
+      # Bun types must match the repository's pinned runtime API baseline.
+      - dependency-name: "@types/bun"
+        versions: ["> 1.3.14"]
+      - dependency-name: "bun-types"
+        versions: ["> 1.3.14"]
+      # React's renderer must move with the host React version.
+      - dependency-name: "react-test-renderer"
+        versions: ["> 19.2.7"]
+      # RainbowKit 2.2.11 requires Wagmi 2; migrate the wallet stack together.
+      - dependency-name: "wagmi"
+        versions: [">= 3.0.0"]
       # This workspace alias intentionally resolves to the public Vite package;
       # Dependabot otherwise queries the synthetic alias name and receives a
       # registry 404, failing the whole weekly update run.
@@ -28,3 +39,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      codeql-actions:
+        patterns:
+          - "github/codeql-action/*"

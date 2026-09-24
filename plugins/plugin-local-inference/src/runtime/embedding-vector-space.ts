@@ -15,6 +15,57 @@ import {
 } from "../services/voice/ffi-bindings";
 import { BGE_EMBEDDING_MODEL } from "./bge-embedding-model";
 
+/** Resolves an explicit context-local setting or the detected hardware default. */
+export function resolveEmbeddingGpuLayers(
+	configured: string | undefined,
+	fallback = 999,
+): number {
+	const value = configured?.trim();
+	if (!value) return fallback;
+	if (value === "auto" || value === "max") return 999;
+	if (
+		!/^[0-9]+$/.test(value) ||
+		!Number.isSafeInteger(Number(value)) ||
+		Number(value) > 2147483647
+	) {
+		throw new ElizaError(
+			"Embedding GPU layers must be auto, max, or a nonnegative int32",
+			{ code: "EMBEDDING_GPU_LAYERS_INVALID" },
+		);
+	}
+	return Number(value);
+}
+
+export const BGE_SEMANTIC_PROBE_INPUTS = [
+	"The cat is sleeping on the sofa.",
+	"A kitten rests on a couch.",
+	"Quantum computers use qubits.",
+] as const;
+
+/** Reject a backend that returns plausible-looking but collapsed BGE vectors. */
+export function verifyBgeSemanticVectors(
+	vectors: ReadonlyArray<ArrayLike<number>>,
+): { related: number; unrelated: number } {
+	if (vectors.length !== 3 || vectors.some((vector) => vector.length !== 384)) {
+		throw new ElizaError(
+			"Canonical BGE requires three 384-dimensional probe vectors",
+			{ code: "EMBEDDING_BACKEND_INVALID" },
+		);
+	}
+	const normalized = vectors.map(normalizeEmbeddingVector);
+	const cosine = (left: number[], right: number[]) =>
+		left.reduce((sum, value, index) => sum + value * right[index], 0);
+	const related = cosine(normalized[0], normalized[1]);
+	const unrelated = cosine(normalized[0], normalized[2]);
+	if (!(related > unrelated + 0.1)) {
+		throw new ElizaError(
+			`Canonical BGE semantic separation failed: related=${related}, unrelated=${unrelated}`,
+			{ code: "EMBEDDING_BACKEND_INVALID" },
+		);
+	}
+	return { related, unrelated };
+}
+
 export function resolveEmbeddingPooling(
 	model: string,
 	configured?: string,

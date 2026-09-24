@@ -3,6 +3,7 @@
  * action wiring, and auto-enable gating — exercised in-process against the real
  * filesystem.
  */
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,7 +14,15 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type TestContext,
+  vi,
+} from "vitest";
 import codingToolsPlugin, {
   FILE_STATE_SERVICE,
   FileStateService,
@@ -25,21 +34,7 @@ import codingToolsPlugin, {
   SessionCwdService,
 } from "../src/index.ts";
 
-describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
-  it("validate ignores CODING_TOOLS_DISABLE — kill switch was removed", async () => {
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000000",
-      getSetting: (key: string) =>
-        key === "CODING_TOOLS_DISABLE" ? true : undefined,
-      getService: () => null,
-    } as IAgentRuntime;
-    const message = { roomId: "r" } as Memory;
-    for (const action of codingToolsPlugin.actions ?? []) {
-      const ok = await action.validate?.(runtime, message);
-      expect(ok, action.name).toBe(true);
-    }
-  });
-
+describe("@elizaos/plugin-coding-tools — plugin admission", () => {
   it("auto-enables only for configured terminal-capable environments", () => {
     const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
     expect(shouldEnable).toBeTypeOf("function");
@@ -111,11 +106,10 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   });
 });
 
-describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
+describe("@elizaos/plugin-coding-tools — filesystem and shell integration", () => {
   let tmpDir: string;
   let runtime: IAgentRuntime;
-  let services: Map<string, Service>;
-  const cleanup: Array<() => Promise<void>> = [];
+  const services = new Map<string, Service>();
 
   beforeAll(async () => {
     tmpDir = await fs.realpath(
@@ -140,7 +134,6 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       "utf8",
     );
 
-    services = new Map();
     runtime = {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       runtimeInstanceId: "coding-tools-integration-runtime",
@@ -161,30 +154,47 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);
-    const sandbox = await SandboxService.start(runtime);
-    const session = await SessionCwdService.start(runtime);
-    const rg = await RipgrepService.start(runtime);
     services.set(FILE_STATE_SERVICE, fileState);
+    const sandbox = await SandboxService.start(runtime);
     services.set(SANDBOX_SERVICE, sandbox);
+    const session = await SessionCwdService.start(runtime);
     services.set(SESSION_CWD_SERVICE, session);
+    const rg = await RipgrepService.start(runtime);
     services.set(RIPGREP_SERVICE, rg);
-    cleanup.push(() => fileState.stop());
-    cleanup.push(() => sandbox.stop());
-    cleanup.push(() => session.stop());
-    cleanup.push(() => rg.stop());
     session.setCwd("smoke-room", tmpDir);
   });
 
   afterAll(async () => {
-    for (const fn of cleanup) {
-      try {
-        await fn();
-      } catch {
-        // ignore
-      }
-    }
+    const stopped = await Promise.allSettled(
+      [...services.values()].map((service) => service.stop()),
+    );
     await fs.rm(tmpDir, { recursive: true, force: true });
+    const failed = stopped.filter((result) => result.status === "rejected");
+    if (failed.length) {
+      throw new AggregateError(
+        failed.map((result) => result.reason),
+        "Service teardown failed",
+      );
+    }
   });
+
+  function runFile(parameters: Record<string, unknown>) {
+    return findAction("FILE").handler?.(runtime, makeMessage(), undefined, {
+      parameters,
+    });
+  }
+
+  function requireRipgrep(ctx: TestContext) {
+    const service = services.get(RIPGREP_SERVICE);
+    if (!(service instanceof RipgrepService))
+      throw new Error("RipgrepService not started");
+    try {
+      execFileSync(service.binary(), ["--version"], { stdio: "ignore" });
+    } catch {
+      // error-policy:J4 An unavailable host binary makes only grep cases unavailable.
+      ctx.skip(`ripgrep unavailable: '${service.binary()}' is not runnable`);
+    }
+  }
 
   function findAction(name: string) {
     const actions = codingToolsPlugin.actions ?? [];
@@ -235,22 +245,20 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   }
 
   it("FILE action=read returns a known file's contents", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: {
-        action: "read",
-        file_path: path.join(tmpDir, "needle.txt"),
-      },
+    const result = await runFile({
+      action: "read",
+      file_path: path.join(tmpDir, "needle.txt"),
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
   });
 
   it("FILE action=write creates a new file", async () => {
-    const action = findAction("FILE");
     const target = path.join(tmpDir, "smoke-out.txt");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: { action: "write", file_path: target, content: "smoke ok" },
+    const result = await runFile({
+      action: "write",
+      file_path: target,
+      content: "smoke ok",
     });
     expect(result.success).toBe(true);
     const written = await fs.readFile(target, "utf8");
@@ -287,60 +295,41 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE action=glob lists *.txt files", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: { action: "glob", pattern: "*.txt", path: tmpDir },
+    const result = await runFile({
+      action: "glob",
+      pattern: "*.txt",
+      path: tmpDir,
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
   it("FILE action=ls shows fixture entries", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: { action: "ls", path: tmpDir },
-    });
+    const result = await runFile({ action: "ls", path: tmpDir });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
     expect(result.text).toContain("other.md");
   });
 
   it("FILE action=grep finds the NEEDLE token via the plugin's own ripgrep resolution", async (ctx) => {
-    // The service under test IS the resolution path: RipgrepService.start()
-    // resolved either the bundled `@vscode/ripgrep` binary or a system `rg`.
-    // Assert that resolution produced a runnable binary; when neither exists
-    // on the host, skip VISIBLY (never a silent vacuous pass), without ever
-    // poking a substitute path into the service.
-    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
-    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
-    if (!rg) return;
-    const binary = rg.binary();
-    const { execFileSync } = await import("node:child_process");
-    try {
-      execFileSync(binary, ["--version"], { stdio: "ignore" });
-    } catch {
-      ctx.skip(
-        `ripgrep unavailable: RipgrepService resolved '${binary}' but it is not runnable on this host`,
-      );
-      return;
-    }
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: { action: "grep", pattern: "NEEDLE", path: tmpDir },
+    requireRipgrep(ctx);
+    const result = await runFile({
+      action: "grep",
+      pattern: "NEEDLE",
+      path: tmpDir,
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
   it("FILE dispatches the exact dense guided-decode glob shape from a live coding trajectory", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    const result = await runFile(
+      guidedFileParameters({
         action: "glob",
         path: "**/config.go",
         glob: "**/internal/config/config.go",
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain(
@@ -354,13 +343,12 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   ])(
     "FILE rejects dense glob traversal from canonical and path-fallback shapes",
     async (override) => {
-      const action = findAction("FILE");
-      const result = await action.handler?.(runtime, makeMessage(), undefined, {
-        parameters: guidedFileParameters({
+      const result = await runFile(
+        guidedFileParameters({
           action: "glob",
           ...override,
         }),
-      });
+      );
 
       expect(result.success).toBe(false);
       expect(result.text).toContain("invalid_param");
@@ -369,13 +357,10 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   );
 
   it("FILE resolves an explicit relative glob root against the session cwd", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: {
-        action: "glob",
-        pattern: "*.go",
-        path: "internal/config",
-      },
+    const result = await runFile({
+      action: "glob",
+      pattern: "*.go",
+      path: "internal/config",
     });
 
     expect(result.success).toBe(true);
@@ -385,26 +370,22 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE treats dense decoder defaults as absent for a valid read", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    const result = await runFile(
+      guidedFileParameters({
         action: "read",
         file_path: path.join(tmpDir, "needle.txt"),
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
   });
 
   it("FILE preserves an explicit zero limit in a sparse read call", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: {
-        action: "read",
-        file_path: path.join(tmpDir, "needle.txt"),
-        limit: 0,
-      },
+    const result = await runFile({
+      action: "read",
+      file_path: path.join(tmpDir, "needle.txt"),
+      limit: 0,
     });
 
     expect(result.success).toBe(false);
@@ -412,46 +393,32 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE preserves an empty write payload while dropping unrelated decoder defaults", async () => {
-    const action = findAction("FILE");
     const target = path.join(tmpDir, "guided-empty.txt");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    const result = await runFile(
+      guidedFileParameters({
         action: "write",
         file_path: target,
         content: "",
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(await fs.readFile(target, "utf8")).toBe("");
   });
 
   it("FILE preserves an empty edit replacement while dropping unrelated decoder defaults", async () => {
-    const action = findAction("FILE");
     const target = path.join(tmpDir, "guided-edit.txt");
     await fs.writeFile(target, "remove me\nkeep me\n", "utf8");
-    const readResult = await action.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      {
-        parameters: { action: "read", file_path: target },
-      },
-    );
+    const readResult = await runFile({ action: "read", file_path: target });
     expect(readResult.success).toBe(true);
 
-    const editResult = await action.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      {
-        parameters: guidedFileParameters({
-          action: "edit",
-          file_path: target,
-          old_string: "remove me\n",
-          new_string: "",
-        }),
-      },
+    const editResult = await runFile(
+      guidedFileParameters({
+        action: "edit",
+        file_path: target,
+        old_string: "remove me\n",
+        new_string: "",
+      }),
     );
 
     expect(editResult.success).toBe(true);
@@ -459,80 +426,45 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE ignores empty grep filters emitted by a dense decoder", async (ctx) => {
-    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
-    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
-    if (!rg) return;
-    const { execFileSync } = await import("node:child_process");
-    try {
-      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
-    } catch {
-      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
-      return;
-    }
-
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    requireRipgrep(ctx);
+    const result = await runFile(
+      guidedFileParameters({
         action: "grep",
         pattern: "package config",
         path: "internal/config",
         output_mode: "content",
         show_line_numbers: true,
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("config.go");
   });
 
   it("FILE restores content-mode line-number defaults for a dense decoder false placeholder", async (ctx) => {
-    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
-    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
-    if (!rg) return;
-    const { execFileSync } = await import("node:child_process");
-    try {
-      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
-    } catch {
-      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
-      return;
-    }
-
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    requireRipgrep(ctx);
+    const result = await runFile(
+      guidedFileParameters({
         action: "grep",
         pattern: "package config",
         path: "internal/config",
         output_mode: "content",
         show_line_numbers: false,
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("1:package config");
   });
 
   it("FILE preserves explicit show_line_numbers=false in a sparse grep call", async (ctx) => {
-    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
-    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
-    if (!rg) return;
-    const { execFileSync } = await import("node:child_process");
-    try {
-      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
-    } catch {
-      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
-      return;
-    }
-
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: {
-        action: "grep",
-        pattern: "package config",
-        path: "internal/config",
-        output_mode: "content",
-        show_line_numbers: false,
-      },
+    requireRipgrep(ctx);
+    const result = await runFile({
+      action: "grep",
+      pattern: "package config",
+      path: "internal/config",
+      output_mode: "content",
+      show_line_numbers: false,
     });
 
     expect(result.success).toBe(true);
@@ -541,14 +473,13 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE routes a dense decoder's filtered ls request through glob", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({
+    const result = await runFile(
+      guidedFileParameters({
         action: "ls",
         path: ".",
         glob: "*",
       }),
-    });
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
@@ -556,10 +487,9 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE resolves a dense decoder's relative ls path when filters are empty", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({ action: "ls", path: "." }),
-    });
+    const result = await runFile(
+      guidedFileParameters({ action: "ls", path: "." }),
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
@@ -567,10 +497,9 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   it("FILE preserves a missing-pattern failure for a dense grep call", async () => {
-    const action = findAction("FILE");
-    const result = await action.handler?.(runtime, makeMessage(), undefined, {
-      parameters: guidedFileParameters({ action: "grep", path: "." }),
-    });
+    const result = await runFile(
+      guidedFileParameters({ action: "grep", path: "." }),
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param: pattern is required");

@@ -17,6 +17,7 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
+  parseNoteEditRevision,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -174,6 +175,21 @@ function resolveNoteIndex(
   return candidate.index;
 }
 
+function assertEditRevision(
+  current: number,
+  expected: number | undefined,
+): void {
+  if (expected !== undefined && current !== expected)
+    throw new ElizaError(
+      "The notes changed since this edit was prepared. Read the note again and reconcile the requested edit; nothing changed.",
+      {
+        code: "NOTES_EDIT_CONFLICT",
+        context: { expectedRevision: expected, currentRevision: current },
+        severity: "ephemeral",
+      },
+    );
+}
+
 function applyNotePatch(
   existing: StickyNote,
   patch: UpdateNoteInput,
@@ -293,15 +309,22 @@ export class NotesService extends Service {
     return this.snapshot().notes;
   }
 
-  getNote(idValue: unknown): StickyNote {
+  getNote(
+    idValue: unknown,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote {
     const id = parseEntityId(idValue);
-    const note = this.snapshot().notes.find((candidate) => candidate.id === id);
+    const note = snapshot.notes.find((candidate) => candidate.id === id);
     if (!note) throw notFound(id);
     return note;
   }
 
-  getNoteByLookup(selector: NoteLookupSelector, value: string): StickyNote {
-    const notes = this.snapshot().notes;
+  getNoteByLookup(
+    selector: NoteLookupSelector,
+    value: string,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote {
+    const notes = snapshot.notes;
     const note = notes[resolveNoteIndex(notes, selector, value)];
     if (!note) {
       throw new ElizaError("Resolved sticky note was missing.", {
@@ -317,8 +340,11 @@ export class NotesService extends Service {
     return queryMatches(notes, value).map(({ note }) => note);
   }
 
-  findNotesNamedInText(text: string): StickyNote[] {
-    return this.snapshot().notes.filter((note) =>
+  findNotesNamedInText(
+    text: string,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote[] {
+    return snapshot.notes.filter((note) =>
       titleAppearsAsNamedPhrase(text, note.title),
     );
   }
@@ -382,6 +408,7 @@ export class NotesService extends Service {
   async updateNoteWithCommit(
     idValue: unknown,
     patchValue: unknown,
+    expectedRevision?: unknown,
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -389,9 +416,11 @@ export class NotesService extends Service {
   }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
+    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     let consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
@@ -423,14 +452,21 @@ export class NotesService extends Service {
     };
   }
 
-  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
-    return (await this.updateNoteWithCommit(idValue, patchValue)).value;
+  async updateNote(
+    idValue: unknown,
+    patchValue: unknown,
+    expectedRevision?: unknown,
+  ): Promise<StickyNote> {
+    return (
+      await this.updateNoteWithCommit(idValue, patchValue, expectedRevision)
+    ).value;
   }
 
   async updateNoteByLookupWithCommit(
     selector: NoteLookupSelector,
     value: string,
     patchValue: unknown,
+    expectedRevision?: unknown,
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -438,9 +474,11 @@ export class NotesService extends Service {
     consolidatedIds: string[];
   }> {
     const patch = parseUpdateNoteInput(patchValue);
+    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
       if (!existing) {

@@ -72,7 +72,9 @@ function cookieHeaders(sessionId: string): Record<string, string> {
   };
 }
 
-describe.sequential("owner browser session WebSocket admission", () => {
+describe("owner browser session WebSocket admission", {
+  concurrent: false,
+}, () => {
   beforeAll(async () => {
     stateDir = await mkdtemp(path.join(tmpdir(), "eliza-cookie-ws-"));
     vi.stubEnv("ELIZA_STATE_DIR", stateDir);

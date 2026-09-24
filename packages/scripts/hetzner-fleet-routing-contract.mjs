@@ -39,6 +39,13 @@ const DIRECT_RUNNER_SELECTORS = new Set([
   CERTIFICATION_DISPATCH_SELECTOR,
 ]);
 const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
+// A literal self-hosted pin is allowed only for hardware that has no hosted
+// substitute. `android-device` is the physical ARM64 handset lane: there is no
+// GitHub-hosted runner with a device attached, so failing it closed to
+// `ubuntu-24.04` would not degrade, it would just break. Every other literal
+// self-hosted pin must carry the HETZNER_FLEET_ONLINE opt-in.
+const PHYSICAL_DEVICE_LABELS = new Set(["android-device"]);
+const DIRECT_RUNNER_PATH = /^jobs\.[^.]+\.runs-on$/;
 const MATRIX_RUNNER_PATH =
   /^jobs\.[^.]+\.strategy\.matrix\.include\.\d+\.runner$/;
 const JANITOR_ROUTE_PATH =
@@ -73,6 +80,26 @@ function collectFleetRoutes(node, source, pathParts = [], routes = []) {
   }
 
   if (isSeq(node)) {
+    const routePath = pathParts.join(".");
+    const labels = node.items.map((item) =>
+      isScalar(item) && typeof item.value === "string" ? item.value : null,
+    );
+    if (
+      DIRECT_RUNNER_PATH.test(routePath) &&
+      labels.every((label) => label !== null) &&
+      labels.some((label) => label.toLowerCase() === "self-hosted")
+    ) {
+      if (
+        !labels.some((label) => PHYSICAL_DEVICE_LABELS.has(label.toLowerCase()))
+      ) {
+        routes.push({
+          line: lineAt(source, node.range?.[0] ?? 0),
+          path: routePath,
+          value: `[${labels.join(", ")}] pins a self-hosted pool without the HETZNER_FLEET_ONLINE opt-in`,
+        });
+      }
+      return routes;
+    }
     node.items.forEach((item, index) => {
       collectFleetRoutes(item, source, [...pathParts, String(index)], routes);
     });
@@ -111,7 +138,7 @@ export function validateHetznerFleetRouting(repoRoot) {
 
     for (const route of routes) {
       const directRoute =
-        /^jobs\.[^.]+\.runs-on$/.test(route.path) &&
+        DIRECT_RUNNER_PATH.test(route.path) &&
         DIRECT_RUNNER_SELECTORS.has(route.value);
       const indirectRoute =
         MATRIX_RUNNER_PATH.test(route.path) &&

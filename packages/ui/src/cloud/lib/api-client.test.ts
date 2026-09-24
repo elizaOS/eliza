@@ -629,6 +629,31 @@ describe("cloud api-client transport bridge", () => {
   // while keeping auth + transport identical to `api`.
 
   describe("apiWithStatus (202/409 job protocol)", () => {
+    it.each(["POST", "PATCH", "DELETE"])(
+      "marks bodyless %s cookie mutations without a companion cookie",
+      async (method) => {
+        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+        setCookie("eliza_csrf=; Max-Age=0; path=/");
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+          new Response(JSON.stringify({ data: { jobId: "job-cookie" } }), {
+            status: 202,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+        const result = await apiWithStatus(
+          "/api/v1/eliza/agents/agent-1/wake",
+          { method },
+        );
+        expect(result.status).toBe(202);
+        const request = fetchSpy.mock.calls[0]?.[1];
+        expect(request?.credentials).toBe("include");
+        const headers = new Headers(request?.headers);
+        expect(headers.has("Authorization")).toBe(false);
+        expect(headers.get("x-eliza-csrf")).toBeTruthy();
+        expect(request?.body).toBeNull();
+      },
+    );
+
     it("202 accepted: resolves { status: 202, data } with cookie credentials AND the Bearer", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response(JSON.stringify({ data: { jobId: "job-1" } }), {

@@ -24,7 +24,7 @@ exports or route table. Hosts use shared HTTP contracts and their own registrati
 
 | Source | Responsibility |
 | --- | --- |
-| `runtime.ts`, `runtime-composition.ts` | Runtime lifecycle and explicit construction helpers |
+| `runtime.ts`, `runtime-settings.ts` | Runtime lifecycle and adapter bootstrap settings |
 | `plugin.ts`, `plugin-lifecycle.ts` | Plugin registration, contribution ownership and cleanup |
 | `runtime/execute-planned-tool-call.ts`, `runtime/action-gate.ts` | Canonical `params` validation and fresh action authority |
 | `runtime/action-handler-settlement.ts`, `runtime/effect-delivery.ts` | Explicit results, receipt validation and buffered delivery |
@@ -99,7 +99,7 @@ unaffected.
 because `getSetting()` reads the constructor-provided `settings` map and not
 `process.env`, a host that wants `.env` / `process.env` values honored must fold
 them into the runtime's settings at construction. `flattenRuntimeSettings(character)`
-(`runtime-composition.ts`) does exactly this — it flattens `character.settings`,
+(`runtime-settings.ts`) does exactly this — it flattens `character.settings`,
 `character.secrets`, and `env` into the `Record<string,string>` handed to
 adapter factories and the `AgentRuntime` constructor. Construct the runtime with
 those settings and dotenv is honored; skip it and only character config is

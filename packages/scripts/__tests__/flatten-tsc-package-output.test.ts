@@ -13,6 +13,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -157,5 +158,22 @@ describe("flatten-tsc-package-output", () => {
     expect(readFileSync(join(dist, "nested", "keep.js"), "utf8")).toBe(
       "keep\n",
     );
+  });
+});
+
+describe("recursive cleanup CLI", () => {
+  test("runs through a symlink while validating all targets before deletion", async () => {
+    const root = createFakeWorkspace();
+    const linkedDirectory = join(root, "linked-scripts");
+    symlinkSync(dirname(cleanupHelperPath), linkedDirectory, "junction");
+    const linkedScript = join(linkedDirectory, "rm-path-recursive.mjs");
+    const target = join(root, "target.txt");
+    writeFileSync(target, "retained until the complete request is valid");
+    await expect(
+      execFileAsync(process.execPath, [linkedScript, target, "."], { cwd: root }),
+    ).rejects.toThrow("Refusing to remove the current working directory");
+    expect(existsSync(target)).toBe(true);
+    await execFileAsync(process.execPath, [linkedScript, target], { cwd: root });
+    expect(existsSync(target)).toBe(false);
   });
 });

@@ -29,8 +29,7 @@ beforeEach(() => {
 
 /**
  * ensureEmbeddingDimension in core/provisioning.ts — the EMBEDDING_DIMENSION-
- * setting probe used by the daemon-composition path (createRuntimes({ provision:
- * true }) → provisionAgent). It has two silent early-returns — no TEXT_EMBEDDING
+ * setting probe used by explicit provisioning. It has two silent early-returns — no TEXT_EMBEDDING
  * model, and an unset/invalid EMBEDDING_DIMENSION — plus the happy path that
  * snaps the storage column to the configured width. A regression dropping the
  * model-or-dim guard would call adapter.ensureEmbeddingDimension with a

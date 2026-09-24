@@ -35,7 +35,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^1.0.0",
-    "marked": "^18.0.4",
+    "marked": "^18.0.13",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -73,7 +73,7 @@
   ],
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "tsup": "^8.5.1",
     "vite": "^8.3.0"
   }

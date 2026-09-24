@@ -495,12 +495,14 @@ describe("action-local conversation evidence", () => {
       expect(useModel).not.toHaveBeenCalled();
       expect(states).toHaveLength(1);
       const evidence = states[0]?.values.selectedActionConversation;
-      if (mode === "selected" || mode === "empty") {
-        expect(typeof evidence).toBe("string");
-        expect(JSON.parse(String(evidence))).toEqual(
-          mode === "empty" ? [] : [plannerContext.events[0]],
-        );
-      } else expect(evidence).toBeNull();
+      expect(typeof evidence).toBe("string");
+      expect(JSON.parse(String(evidence))).toEqual(
+        mode === "empty"
+          ? []
+          : mode === "selected"
+            ? [plannerContext.events[0]]
+            : plannerContext.events,
+      );
       expect({ state, plannerContext }).toEqual(before);
       expect(states[0]).not.toBe(state);
     },
