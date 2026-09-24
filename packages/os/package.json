@@ -26,7 +26,7 @@
     "lint": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check",
     "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
     "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test",
-    "test:release": "node --test scripts/__tests__/*.test.mjs && bun test scripts/__tests__/*.test.ts",
+    "test:release": "node --test scripts/__tests__/*.node.test.ts && bun test scripts/__tests__/*.bun.test.ts",
     "verify:layout": "node scripts/verify-os-repository-layout.ts",
     "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",
     "verify:installer-native": "bun run --cwd linux/installer test:native:compile",

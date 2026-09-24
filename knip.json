@@ -45,13 +45,13 @@
         "src/**/*.e2e.test.ts",
         "build.ts",
         "vitest.live.config.ts",
-        "scripts/**/*.mjs"
+        "scripts/**/*.ts"
       ],
       "project": [
         "src/**/*.ts",
         "build.ts",
         "vitest.live.config.ts",
-        "scripts/**/*.mjs"
+        "scripts/**/*.ts"
       ],
       "ignore": ["dist/**", ".turbo/**"]
     },
@@ -172,7 +172,7 @@
         "src/**/*.test.ts",
         "__tests__/**/*.test.ts",
         "tests/**/*.mjs",
-        "scripts/**/*.cjs",
+        "scripts/**/*.ts",
         "vitest.config.ts"
       ],
       "project": [
@@ -180,7 +180,7 @@
         "src/**/*.ts",
         "__tests__/**/*.ts",
         "tests/**/*.mjs",
-        "scripts/**/*.cjs",
+        "scripts/**/*.ts",
         "vitest.config.ts"
       ],
       "ignore": ["dist/**", ".turbo/**"]
@@ -196,7 +196,7 @@
         "vitest.*.config.ts",
         "vitest.e2e.config.ts",
         "playwright.*.config.ts",
-        "scripts/**/*.{mjs,ts}",
+        "scripts/**/*.ts",
         "vite/**/*.ts",
         "test/**/*.{ts,tsx}",
         "vitest.app-real-e2e.config.ts",
@@ -204,7 +204,7 @@
       ],
       "project": [
         "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
+        "scripts/**/*.ts",
         "vite/**/*.ts",
         "*.ts",
         "test/**/*.{ts,tsx}"
@@ -279,11 +279,11 @@
         "src/**/*.{ts,tsx,js}",
         "electrobun.config.ts",
         "vitest.electrobun.config.ts",
-        "scripts/**/*.{mjs,ts,js}"
+        "scripts/**/*.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx,js}",
-        "scripts/**/*.{mjs,ts,js}",
+        "scripts/**/*.ts",
         "electrobun.config.ts",
         "vitest.electrobun.config.ts"
       ],
@@ -300,13 +300,13 @@
       "entry": [
         "src/index.ts",
         "src/bin.ts",
-        "scripts/**/*.{mjs,ts,cjs}",
+        "scripts/**/*.ts",
         "test/**/*.{ts,tsx}",
         "vitest.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts,cjs}",
+        "scripts/**/*.ts",
         "test/**/*.{ts,tsx}",
         "*.ts"
       ],
@@ -383,12 +383,8 @@
       "ignore": ["dist/**", "storybook-static/**"]
     },
     "plugins/plugin-local-inference/native": {
-      "entry": [
-        "scripts/**/*.{mjs,ts}",
-        "verify/**/*.{mjs,ts}",
-        "package.json"
-      ],
-      "project": ["scripts/**/*.{mjs,ts}", "verify/**/*.{mjs,ts}"],
+      "entry": ["scripts/**/*.ts", "verify/**/*.{mjs,ts}", "package.json"],
+      "project": ["scripts/**/*.ts", "verify/**/*.{mjs,ts}"],
       "ignore": [
         "llama.cpp/**",
         "reports/**",
@@ -400,13 +396,13 @@
     "plugins/plugin-personal-assistant": {
       "entry": [
         "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
+        "scripts/**/*.ts",
         "test/**/*.{ts,tsx}",
         "vitest*.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
+        "scripts/**/*.ts",
         "test/**/*.{ts,tsx}",
         "vitest*.config.ts"
       ],

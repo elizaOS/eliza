@@ -218,7 +218,7 @@ function loc(relative) {
   return text.split("\n").length;
 }
 
-/** All packages/scripts/*.mjs basenames (the file universe we classify). */
+/** All packages/scripts/*.{ts,mjs} basenames (the file universe we classify). */
 function collectScriptFiles(candidateFiles) {
   const files = candidateFiles
     .filter((file) => /^packages\/scripts\/[^/]+\.(?:mjs|ts)$/i.test(file))
@@ -247,7 +247,7 @@ function referencedRootScripts(body) {
   return names;
 }
 
-/** packages/scripts/*.mjs basenames named anywhere in a text body. */
+/** packages/scripts/*.{ts,mjs} basenames named anywhere in a text body. */
 function referencedScriptFiles(body, fileUniverse) {
   const found = new Set();
   const universe = new Set(fileUniverse);
@@ -289,7 +289,7 @@ function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
   return seeds;
 }
 
-/** Root `package.json` script callers for packages/scripts/*.mjs files. */
+/** Root `package.json` script callers for packages/scripts/*.{ts,mjs} files. */
 function filesFromOperatorScripts(reachedRoots, rootScripts, fileUniverse) {
   const callersByFile = new Map();
   for (const name of reachedRoots) {
@@ -705,7 +705,9 @@ function printSummary(inv) {
   const { summary } = inv;
   const w = process.stdout.write.bind(process.stdout);
   const categoryWidth = 31;
-  w("\n[audit-scripts-inventory] packages/scripts/*.mjs static references\n\n");
+  w(
+    "\n[audit-scripts-inventory] packages/scripts/*.{ts,mjs} static references\n\n",
+  );
   w(`  ${"category".padEnd(categoryWidth)} files     loc   roots\n`);
   w(`  ${"-".repeat(categoryWidth)} ------- ------- -------\n`);
   for (const c of CATEGORIES) {

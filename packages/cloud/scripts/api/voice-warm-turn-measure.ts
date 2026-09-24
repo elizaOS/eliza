@@ -11,6 +11,40 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
+type VoiceSocket = Pick<
+  WebSocket,
+  "send" | "addEventListener" | "removeEventListener"
+>;
+interface ControlFrame {
+  t: string;
+  traceId?: string | null;
+  text?: string | null;
+  code?: unknown;
+}
+interface TurnState {
+  turnIndex: number;
+  counted: boolean;
+  traceId: string | null;
+  text: string;
+  sttFinalAt: number;
+  llmFirstTextAt: number;
+  firstAudioAt: number;
+  usageAt: number;
+}
+interface MeasurementReport {
+  measuredTurns: number;
+  target: string;
+  fixture: string;
+  note: string;
+  summary: Record<
+    | "sttFinalToLlmFirstText"
+    | "llmFirstTextToFirstAudio"
+    | "sttFinalToFirstAudio",
+    ReturnType<typeof summarize>
+  >;
+  samples: ReturnType<typeof normalizeSample>[];
+}
+
 const DEFAULT_TURNS = 20;
 const DEFAULT_CHUNK_BYTES = 3200;
 const DEFAULT_CHUNK_DELAY_MS = 100;
@@ -20,7 +54,10 @@ function usage() {
   return `Usage: bun packages/cloud/scripts/api/voice-warm-turn-measure.ts --ws-url <wss://.../api/v1/voice/session/ws?sessionId=...> --token <voice-session-jwt> --pcm <speech.pcm> [--turns 20] [--warmup 1]\n\nNo credentials are read from disk. This harness does not mint sessions, fund accounts, or bypass billing; run only against an already-authorized staging session whose spend has been separately approved.`;
 }
 
-export function parseArgs(argv, env = process.env) {
+export function parseArgs(
+  argv: string[],
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const args = {
     wsUrl: env.VOICE_STAGING_WS_URL ?? "",
     token: env.VOICE_SESSION_TOKEN ?? "",
@@ -114,11 +151,11 @@ export function parseArgs(argv, env = process.env) {
   return args;
 }
 
-function delay(ms) {
+function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function percentile(samples, fraction) {
+function percentile(samples: number[], fraction: number) {
   const sorted = [...samples].sort((left, right) => left - right);
   return (
     sorted[
@@ -127,11 +164,11 @@ function percentile(samples, fraction) {
   );
 }
 
-export function summarize(samples) {
+export function summarize(samples: number[]) {
   if (samples.length === 0) {
     throw new Error("cannot summarize an empty sample set");
   }
-  const round = (value) => Math.round(value * 10) / 10;
+  const round = (value: number) => Math.round(value * 10) / 10;
   return {
     count: samples.length,
     p50Ms: round(percentile(samples, 0.5)),
@@ -140,7 +177,7 @@ export function summarize(samples) {
   };
 }
 
-function printHuman(result) {
+function printHuman(result: MeasurementReport) {
   process.stdout.write(
     `[voice-warm-turn-measure] ${result.measuredTurns} warm turns against ${result.target}\n`,
   );
@@ -166,16 +203,16 @@ function printHuman(result) {
   process.stdout.write(`\n${result.note}\n`);
 }
 
-function connect(wsUrl) {
+function connect(wsUrl: string) {
   const ws = new WebSocket(wsUrl);
-  return new Promise((resolve, reject) => {
+  return new Promise<WebSocket>((resolve, reject) => {
     let settled = false;
     const cleanup = () => {
       clearTimeout(timeout);
       ws.removeEventListener("open", onOpen);
       ws.removeEventListener("error", onError);
     };
-    const finish = (callback) => {
+    const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -193,7 +230,7 @@ function connect(wsUrl) {
   });
 }
 
-function isBinaryMessage(data) {
+function isBinaryMessage(data: unknown) {
   return (
     data instanceof ArrayBuffer ||
     ArrayBuffer.isView(data) ||
@@ -201,15 +238,21 @@ function isBinaryMessage(data) {
   );
 }
 
-function messageText(data) {
-  return typeof data === "string" ? data : Buffer.from(data).toString("utf8");
+function messageText(data: unknown): string {
+  if (typeof data !== "string")
+    throw new Error("control frames must contain text");
+  return data;
 }
 
-function controlFrame(data, context) {
+function controlFrame(data: unknown, context: string): ControlFrame {
   try {
     const frame = JSON.parse(messageText(data));
     if (!frame || typeof frame !== "object" || typeof frame.t !== "string") {
       throw new Error("missing control-frame type");
+    }
+    for (const key of ["traceId", "text"]) {
+      if (frame[key] != null && typeof frame[key] !== "string")
+        throw new Error(`invalid control-frame ${key}`);
     }
     return frame;
   } catch (error) {
@@ -219,15 +262,15 @@ function controlFrame(data, context) {
   }
 }
 
-function waitForReady(ws, token) {
-  return new Promise((resolve, reject) => {
+function waitForReady(ws: VoiceSocket, token: string) {
+  return new Promise<ControlFrame>((resolve, reject) => {
     const cleanup = () => {
       clearTimeout(timeout);
       ws.removeEventListener("message", onMessage);
       ws.removeEventListener("error", onError);
       ws.removeEventListener("close", onClose);
     };
-    const fail = (error) => {
+    const fail = (error: unknown) => {
       cleanup();
       reject(error);
     };
@@ -235,7 +278,7 @@ function waitForReady(ws, token) {
       () => fail(new Error("ready timed out")),
       10_000,
     );
-    const onMessage = (event) => {
+    const onMessage = (event: MessageEvent<unknown>) => {
       if (isBinaryMessage(event.data)) return;
       let frame;
       try {
@@ -270,7 +313,11 @@ function waitForReady(ws, token) {
   });
 }
 
-async function sendPcmTurn(ws, pcm, args) {
+async function sendPcmTurn(
+  ws: VoiceSocket,
+  pcm: Buffer,
+  args: ReturnType<typeof parseArgs>,
+) {
   ws.send(
     JSON.stringify({
       t: "audio_meta",
@@ -289,8 +336,13 @@ async function sendPcmTurn(ws, pcm, args) {
   ws.send(JSON.stringify({ t: "end_audio" }));
 }
 
-export function measureTurn(ws, turnIndex, counted, timeoutMs) {
-  const state = {
+export function measureTurn(
+  ws: Omit<VoiceSocket, "send">,
+  turnIndex: number,
+  counted: boolean,
+  timeoutMs: number,
+) {
+  const state: TurnState = {
     turnIndex,
     counted,
     traceId: null,
@@ -302,7 +354,7 @@ export function measureTurn(ws, turnIndex, counted, timeoutMs) {
   };
   return {
     state,
-    promise: new Promise((resolve, reject) => {
+    promise: new Promise<TurnState>((resolve, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error(`turn ${turnIndex} timed out`));
@@ -313,11 +365,11 @@ export function measureTurn(ws, turnIndex, counted, timeoutMs) {
         ws.removeEventListener("error", onError);
         ws.removeEventListener("close", onClose);
       };
-      const fail = (error) => {
+      const fail = (error: unknown) => {
         cleanup();
         reject(error);
       };
-      const onMessage = (event) => {
+      const onMessage = (event: MessageEvent<unknown>) => {
         const now = performance.now();
         if (isBinaryMessage(event.data)) {
           if (state.sttFinalAt && !state.firstAudioAt) state.firstAudioAt = now;
@@ -368,8 +420,8 @@ export function measureTurn(ws, turnIndex, counted, timeoutMs) {
   };
 }
 
-function normalizeSample(sample) {
-  const round = (value) => Math.round(value * 10) / 10;
+function normalizeSample(sample: TurnState) {
+  const round = (value: number) => Math.round(value * 10) / 10;
   return {
     turn: sample.turnIndex,
     traceId: sample.traceId,
