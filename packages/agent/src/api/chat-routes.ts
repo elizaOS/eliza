@@ -22,6 +22,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  type EffectReceipt,
   ElizaError,
   EventType,
   emitInferenceTiming,
@@ -40,6 +41,7 @@ import {
   ModelType,
   markInference,
   nextInferenceTurnId,
+  normalizeEffectReceipts,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   readActionReplyFailure,
@@ -511,6 +513,7 @@ export interface ChatGenerationResult {
 }
 
 export interface ChatActionResultSummary {
+  effectReceipts?: readonly EffectReceipt[];
   actionName?: string;
   success: boolean;
   text?: string;
@@ -1310,8 +1313,11 @@ function summarizeActionResultForClient(
       : record.error instanceof Error
         ? record.error.message
         : undefined;
-  if (!actionName && !values && !text && !error) return null;
+  const effectReceipts = normalizeEffectReceipts(record.effectReceipts);
+  if (!actionName && !values && !text && !error && effectReceipts.length === 0)
+    return null;
   return {
+    ...(effectReceipts.length ? { effectReceipts } : {}),
     ...(actionName ? { actionName } : {}),
     success: Boolean(record.success),
     ...(text ? { text } : {}),

@@ -7,6 +7,43 @@ import { describe, expect, it } from "vitest";
 import { summarizeRuntimeActionResults } from "./chat-routes.ts";
 
 describe("chat action-result integrity", () => {
+  it("preserves committed effects when a later operation fails", () => {
+    const receipt = {
+      receiptId: "delete-receipt",
+      operation: "notes.note.delete",
+      resource: { kind: "notes.note", id: "deleted-note" },
+      artifacts: [],
+      idempotency: { key: "delete-key", replayed: false },
+      observedAt: "2026-09-24T03:03:21.000Z",
+      outcome: "applied" as const,
+      commit: {
+        kind: "durable" as const,
+        id: "deleted-note",
+        committedAt: "2026-09-24T03:03:21.000Z",
+      },
+    };
+    const results = summarizeRuntimeActionResults(
+      {} as AgentRuntime,
+      undefined,
+      [
+        {
+          success: true,
+          data: { actionName: "NOTES_DELETE" },
+          effectReceipts: [receipt],
+        },
+        {
+          success: false,
+          data: { actionName: "NOTES_PATCH" },
+          error: "NOTES_EDIT_REVISION_REQUIRED",
+        },
+      ],
+    );
+    expect(results[0]?.effectReceipts).toEqual([receipt]);
+    expect(results[1]).toMatchObject({
+      success: false,
+      error: "NOTES_EDIT_REVISION_REQUIRED",
+    });
+  });
   it("preserves long, deep, wide, and numerous action results", () => {
     const longText = "x".repeat(2_000);
     const wide = Object.fromEntries(

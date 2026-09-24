@@ -3943,9 +3943,10 @@ describe("historical navigation outcome continuity", () => {
       const rendered = JSON.stringify(evidence);
       expect(rendered).toContain(receipt.handoffId);
       expect(rendered).not.toContain("DO_NOT_HYDRATE");
-      const { historicalNavigationReceipts } = await import(
-        "../../../../../plugins/plugin-assistant/src/services/message/navigation-history.ts"
-      );
+      const { historicalActionResults, historicalNavigationReceipts } =
+        await import(
+          "../../../../../plugins/plugin-assistant/src/services/message/navigation-history.ts"
+        );
       const request = h.storedMemories.find(
         (memory) =>
           memory.entityId === USER_ID &&
@@ -3961,9 +3962,11 @@ describe("historical navigation outcome continuity", () => {
           metadata: { uiView: "chat", uiViewPath: "/chat" },
         },
       };
-      expect(historicalNavigationReceipts(request, moved, AGENT_ID)).toEqual([
-        { success: true, receipt: JSON.stringify(receipt) },
-      ]);
+      expect(
+        historicalNavigationReceipts(
+          historicalActionResults(request, moved, AGENT_ID),
+        ),
+      ).toEqual([{ success: true, receipt: JSON.stringify(receipt) }]);
       for (const variant of [
         "other-room",
         "other-user",
@@ -4001,7 +4004,9 @@ describe("historical navigation outcome continuity", () => {
             "different";
         marker.outcomeJson = JSON.stringify(outcome);
         expect(
-          historicalNavigationReceipts(altered, current, AGENT_ID),
+          historicalNavigationReceipts(
+            historicalActionResults(altered, current, AGENT_ID),
+          ),
           variant,
         ).toEqual([]);
       }
@@ -4016,7 +4021,11 @@ describe("historical navigation outcome continuity", () => {
         text: JSON.stringify({ ...receipt, status: "not-delivered" }),
       };
       failedMarker.outcomeJson = JSON.stringify(failedOutcome);
-      expect(historicalNavigationReceipts(failed, current, AGENT_ID)).toEqual([
+      expect(
+        historicalNavigationReceipts(
+          historicalActionResults(failed, current, AGENT_ID),
+        ),
+      ).toEqual([
         { success: false, receipt: failedOutcome.actionResults[0].text },
       ]);
       expect(h.handleMessage.mock.calls[1]?.[1].content.metadata).toMatchObject(
