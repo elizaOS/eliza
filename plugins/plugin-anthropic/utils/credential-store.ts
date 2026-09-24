@@ -213,13 +213,10 @@ export function clearTokenCache(accountId?: string): void {
 }
 
 function getEnvVar(key: string): string | undefined {
-  if (typeof process === "undefined") return undefined;
   return process.env[key];
 }
 
 function readAppManagedAnthropicToken(): OAuthToken | null {
-  if (typeof process === "undefined") return null;
-
   const cached = tokenCache.get(APP_CREDENTIAL_CACHE_KEY);
   if (cached && Date.now() < cached.expiresAt - 60_000) {
     return cached;
@@ -267,8 +264,6 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
 }
 
 function readFromCredentialStore(): ClaudeCredentials | null {
-  if (typeof process === "undefined") return null;
-
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
 

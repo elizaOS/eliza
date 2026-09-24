@@ -12,9 +12,9 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": "./index.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "eliza-source": "./index.ts"
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },

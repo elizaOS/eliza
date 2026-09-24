@@ -48,7 +48,7 @@ import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
-} from "./lib/repository-file-integrity.mjs";
+} from "./lib/repository-file-integrity.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");

@@ -312,8 +312,8 @@ export async function copyPublishAssets({
     ],
     ["packages/scripts/lib/workspaces.ts", "workspace-discovery.mjs"],
     [
-      "packages/scripts/lib/repository-file-integrity.mjs",
-      "repository-file-integrity.mjs",
+      "packages/scripts/lib/repository-file-integrity.ts",
+      "repository-file-integrity.ts",
     ],
   ]) {
     copyFileSync(

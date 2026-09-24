@@ -16,13 +16,13 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   Plugin,
-  ProcessEnvLike,
   TestCase,
   TestSuite,
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeAnthropic, type PluginConfig } from "./init";
+import { handleImageDescription } from "./models/image";
 import {
   handleActionPlanner,
   handleReasoningLarge,
@@ -34,7 +34,6 @@ import {
   handleTextNano,
   handleTextSmall,
 } from "./models/text";
-import { handleImageDescription } from "./models/image";
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
@@ -146,15 +145,7 @@ const pluginTests = [
   },
 ] as TestSuite[];
 
-function getProcessEnv(): ProcessEnvLike {
-  // In browsers, `process` is not defined (and we must not reference it unguarded).
-  if (typeof process === "undefined") {
-    return {};
-  }
-  return process.env as ProcessEnvLike;
-}
-
-const env = getProcessEnv();
+const env = process.env;
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;

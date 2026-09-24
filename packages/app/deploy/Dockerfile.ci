@@ -29,7 +29,7 @@ WORKDIR /app
 ARG APP_CORE_DIR
 COPY --parents package.json bun.lock \
   packages/scripts/lib/workspaces.ts \
-  packages/scripts/lib/repository-file-integrity.mjs \
+  packages/scripts/lib/repository-file-integrity.ts \
   packages/*/package.json \
   packages/cloud/*/package.json \
   plugins/*/package.json \

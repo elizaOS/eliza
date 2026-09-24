@@ -10,7 +10,10 @@ import { lstatSync } from "node:fs";
 import path from "node:path";
 
 /** Validate and return one canonical repository-relative Git path. */
-export function normalizeGitRepositoryPath(value, label = "repository path") {
+export function normalizeGitRepositoryPath(
+  value: string,
+  label = "repository path",
+) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
     throw new Error(`${label} must be a non-empty Git path`);
   }
@@ -34,8 +37,11 @@ export function normalizeGitRepositoryPath(value, label = "repository path") {
 }
 
 /** Reject duplicate and case/Unicode-colliding canonical repository identities. */
-export function assertUniqueRepositoryIdentities(values, label) {
-  const seen = new Map();
+export function assertUniqueRepositoryIdentities(
+  values: Iterable<string>,
+  label: string,
+) {
+  const seen = new Map<string, string>();
   for (const value of values) {
     const identity = value.normalize("NFC").toLocaleLowerCase("en-US");
     const previous = seen.get(identity);
@@ -50,7 +56,11 @@ export function assertUniqueRepositoryIdentities(values, label) {
  * Resolve a repository-relative path and require every descendant component to
  * be non-symlinked, with a regular file at the final identity.
  */
-export function assertContainedRegularFile(repoRoot, relativePath, label) {
+export function assertContainedRegularFile(
+  repoRoot: string,
+  relativePath: string,
+  label: string,
+) {
   const relative = normalizeGitRepositoryPath(relativePath, label);
   const root = path.resolve(repoRoot);
   const absolute = path.resolve(root, ...relative.split("/"));

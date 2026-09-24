@@ -34,7 +34,7 @@ for (const task of ["build", "@elizaos/app#build:dist"]) {
         "run-turbo.mjs",
         "lib/script-metadata.ts",
         "lib/workspaces.ts",
-        "lib/repository-file-integrity.mjs",
+        "lib/repository-file-integrity.ts",
       ]) {
         const target = `packages/scripts/${name}`;
         write(target, readFileSync(path.join(root, target)));
