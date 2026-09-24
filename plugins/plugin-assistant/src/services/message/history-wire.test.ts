@@ -1,9 +1,9 @@
 /** Proves exact history reassembly, occurrence order and identity isolation using the real wire encoder. */
 
 import {
-  completionContextSources,
   type ContextObject,
   type ContextObjectPromptSegment,
+  completionContextSources,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
