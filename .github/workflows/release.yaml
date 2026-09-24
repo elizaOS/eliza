@@ -257,9 +257,9 @@ jobs:
 
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0
+        uses: ./.github/actions/run-full-e2e
         env:
           RUN_TURBO_CONCURRENCY: "3"
-        run: bun run test
 
       - name: Rebind source immediately before pack
         if: inputs.candidate_run_id == 0
