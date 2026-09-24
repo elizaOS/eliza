@@ -17,7 +17,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runPool } from "./lib/test-task-pool.mjs";
+import { runPool } from "./lib/test-task-pool.ts";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const WORKSPACE_FIXTURE_SUITE = "packages/scripts/__tests__/run-all-tests-";
@@ -105,7 +105,8 @@ function runOne(file, options, fragmentPath, active) {
     if (fragmentPath) {
       args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
     }
-    args.push(file);
+    // Bun treats bare relative names as filters; absolute paths execute exactly this file.
+    args.push(path.resolve(file));
     const child = spawn("bun", args, {
       cwd: process.cwd(),
       detached: process.platform !== "win32",

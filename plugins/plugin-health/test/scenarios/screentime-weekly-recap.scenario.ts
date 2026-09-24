@@ -2,7 +2,7 @@
  * Screen-time parity scenario exercises weekly recap and focus adjustment
  * routing through the live-only scenario runner lane.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 export default scenario({
   lane: "live-only",
   id: "screentime-weekly-recap",

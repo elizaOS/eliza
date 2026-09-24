@@ -46,7 +46,7 @@
  * pair; a marker-store failure fails CLOSED (503 → normal per-origin login).
  */
 
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import { Hono } from "hono";
 import {
   mintStewardTokenFromClaims,

@@ -14,7 +14,7 @@ import {
   type ScenarioLane,
   scenarioLane,
   scenario as validateScenarioDefinition,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import ts from "typescript";
 
 async function walk(dir: string, out: string[]): Promise<void> {

@@ -17,7 +17,7 @@
  *    `failed` so observers see one consistent terminal state per branch.
  */
 
-import type { TaskExecutionProfile } from "@elizaos/shared/contracts/scheduled-task-execution";
+import type { TaskExecutionProfile } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // ScheduledTask schema (frozen)
@@ -52,11 +52,11 @@ export type ScheduledTaskKind =
  * they live in `@elizaos/shared` and are re-exported here for the
  * runner and existing `@elizaos/plugin-scheduling` consumers.
  */
-export type { TaskExecutionProfile } from "@elizaos/shared/contracts/scheduled-task-execution";
+export type { TaskExecutionProfile } from "@elizaos/shared";
 export {
   DEFAULT_TASK_EXECUTION_PROFILE,
   TASK_EXECUTION_PROFILES,
-} from "@elizaos/shared/contracts/scheduled-task-execution";
+} from "@elizaos/shared";
 
 export type ScheduledTaskPriority = "low" | "medium" | "high";
 

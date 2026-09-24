@@ -18,7 +18,7 @@ import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
-} from "./lib/repository-file-integrity.mjs";
+} from "./lib/repository-file-integrity.ts";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
 

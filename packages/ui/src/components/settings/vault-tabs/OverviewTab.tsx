@@ -5,6 +5,7 @@
  * editable preference state.
  */
 
+import { resolveApiUrl } from "@elizaos/shared";
 import {
   AlertCircle,
   CheckCircle2,
@@ -31,7 +32,6 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
-import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
 import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Badge, type BadgeProps } from "../../ui/badge";

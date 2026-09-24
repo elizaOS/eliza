@@ -16,7 +16,7 @@ import {
   IOS_CLOUD_ARTIFACT_ATTESTATION_SCHEMA,
   resolveIosAppFromBuildSettingsJson,
 } from "./ios-cloud-artifact-audit.mjs";
-import { writeRendererBuildManifest } from "./renderer-build-manifest.mjs";
+import { writeRendererBuildManifest } from "./renderer-build-manifest.ts";
 
 function makeFixture({ runtimeMode = "cloud" } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ios-cloud-artifact-"));

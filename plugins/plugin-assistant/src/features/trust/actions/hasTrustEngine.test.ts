@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Verifies TRUST action availability against the real runtime service registry,
  * including exact service-name matching and registration transitions.

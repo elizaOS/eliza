@@ -5,7 +5,7 @@
  */
 
 import type { Entity, IAgentRuntime, UUID } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test } from "vitest";
 import { AutonomyService } from "./service";
 

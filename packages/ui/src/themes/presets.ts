@@ -3,7 +3,7 @@
  * `BrandingConfig.theme`; users only control light/dark.
  */
 
-import type { ThemeDefinition } from "@elizaos/shared/contracts/theme";
+import type { ThemeDefinition } from "@elizaos/shared";
 
 export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
   id: "eliza-default",

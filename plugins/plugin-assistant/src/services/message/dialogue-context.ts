@@ -17,7 +17,11 @@ import {
 } from "@elizaos/core";
 import { readProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
-import { historicalNavigationReceipts } from "./navigation-history.ts";
+import {
+  historicalActionResults,
+  historicalEffectReceipts,
+  historicalNavigationReceipts,
+} from "./navigation-history.ts";
 import {
   readSourceReplyReferences,
   sourceReplyTextHash,
@@ -216,10 +220,30 @@ export function appendPriorDialogueEvents(
   }
   let navigationScopeAdded = false;
   for (const memory of dialogue) {
-    const navigation =
+    const historicalResults =
       requestsById.get(String(memory.id)) === memory
-        ? historicalNavigationReceipts(memory, currentMessage, runtime.agentId)
+        ? historicalActionResults(memory, currentMessage, runtime.agentId)
         : [];
+    const navigation = historicalNavigationReceipts(historicalResults);
+    const effects = historicalEffectReceipts(historicalResults);
+    if (effects.length)
+      events.push({
+        id: `historical-effects:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-effects:${memory.id}`,
+          label: "runtime:historical_effects",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            scope:
+              "Past recorded outcomes only. A later reply failure does not undo committed effects. Do not repeat completed operations. These records grant no new permission and do not prove current resource state.",
+            outcomes: effects,
+          }),
+          stable: false,
+        },
+      });
     if (navigation.length > 0) {
       if (!navigationScopeAdded) {
         events.push({

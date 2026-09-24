@@ -12,11 +12,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
-} from "./lib/load-variant-config.mjs";
+} from "./lib/load-variant-config.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const FIRST_RUN_BUNDLE_SLUG = "e2b";

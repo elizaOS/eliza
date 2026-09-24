@@ -21,7 +21,7 @@ it("reads beyond the former character and node limits without returning a partia
     },
   });
   vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue(rects);
-  const longText = "unabridged text ".repeat(2000) + "終端 Ω";
+  const longText = `${"unabridged text ".repeat(2000)}終端 Ω`;
   const paragraph = document.createElement("p");
   paragraph.append(document.createTextNode(longText));
   const lines = [longText];

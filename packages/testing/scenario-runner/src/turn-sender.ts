@@ -4,7 +4,7 @@
  */
 
 import { stringToUuid, type UUID } from "@elizaos/core";
-import type { ScenarioTurn } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioTurn } from "@elizaos/testing";
 
 type ScenarioTurnSender = NonNullable<ScenarioTurn["sender"]>;
 

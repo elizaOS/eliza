@@ -3,7 +3,7 @@
  * assistant records the interaction through ENTITY and schedules a structural
  * relationship follow-up instead of relying on narrative prompt text.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -2,7 +2,7 @@
  * AI SDK client factory for the Anthropic provider. `createAnthropicClientWithTopPSupport`
  * builds a `@ai-sdk/anthropic` client wired to the resolved auth mode: API key,
  * OAuth bearer (via the credential store, with async refresh and 401/429
- * failover reporting into the multi-account pool), or the browser proxy base URL.
+ * failover reporting into the multi-account pool).
  *
  * The name reflects a custom fetch wrapper that preserves `top_p` alongside
  * `temperature` handling and injects OAuth headers per request. Consumed by the
@@ -13,7 +13,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getApiKeyOptional, getAuthMode, getBaseURL, isBrowser } from "../utils/config";
+import { getApiKeyOptional, getAuthMode, getBaseURL } from "../utils/config";
 import {
   clearTokenCache,
   getClaudeOAuthToken,
@@ -121,7 +121,7 @@ function getApiKeyForSdk(runtime: IAgentRuntime, useOAuth: boolean): string | un
   // request auth is supplied by a custom fetch implementation. OAuth mode
   // deletes the SDK x-api-key header and injects the Bearer token per request.
   if (useOAuth) return OAUTH_SDK_API_KEY_SENTINEL;
-  return isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
+  return getApiKeyOptional(runtime) ?? undefined;
 }
 
 export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {

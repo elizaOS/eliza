@@ -36,7 +36,7 @@
     "lint:check": "bunx @biomejs/biome check src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css src/catalog/generated.json src/catalog/curated-app-definitions.json src/catalog/channel-plugin-map.json src/catalog/provider-plugin-map.json src/catalog/short-id-plugin-map.json",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css src/catalog/generated.json src/catalog/curated-app-definitions.json src/catalog/channel-plugin-map.json src/catalog/provider-plugin-map.json src/catalog/short-id-plugin-map.json && bun scripts/build-browser-contracts.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "sync": "node scripts/sync-to-public.mjs",
     "generate:first-party": "bun run src/catalog/generate.ts",
@@ -204,66 +204,6 @@
       "types": "./dist/local-inference/index.d.ts",
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
-    },
-    "./mcp": {
-      "types": "./dist/mcp/index.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/index.ts",
-        "import": "./src/mcp/index.ts",
-        "default": "./src/mcp/index.ts"
-      },
-      "import": "./dist/mcp/index.js",
-      "default": "./dist/mcp/index.js"
-    },
-    "./mcp/action-naming": {
-      "types": "./dist/mcp/action-naming.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/action-naming.ts",
-        "import": "./src/mcp/action-naming.ts",
-        "default": "./src/mcp/action-naming.ts"
-      },
-      "import": "./dist/mcp/action-naming.js",
-      "default": "./dist/mcp/action-naming.js"
-    },
-    "./mcp/json": {
-      "types": "./dist/mcp/json.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/json.ts",
-        "import": "./src/mcp/json.ts",
-        "default": "./src/mcp/json.ts"
-      },
-      "import": "./dist/mcp/json.js",
-      "default": "./dist/mcp/json.js"
-    },
-    "./mcp/prompts": {
-      "types": "./dist/mcp/prompts.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/prompts.ts",
-        "import": "./src/mcp/prompts.ts",
-        "default": "./src/mcp/prompts.ts"
-      },
-      "import": "./dist/mcp/prompts.js",
-      "default": "./dist/mcp/prompts.js"
-    },
-    "./mcp/schema-budget": {
-      "types": "./dist/mcp/schema-budget.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/schema-budget.ts",
-        "import": "./src/mcp/schema-budget.ts",
-        "default": "./src/mcp/schema-budget.ts"
-      },
-      "import": "./dist/mcp/schema-budget.js",
-      "default": "./dist/mcp/schema-budget.js"
-    },
-    "./mcp/schema-converter": {
-      "types": "./dist/mcp/schema-converter.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/schema-converter.ts",
-        "import": "./src/mcp/schema-converter.ts",
-        "default": "./src/mcp/schema-converter.ts"
-      },
-      "import": "./dist/mcp/schema-converter.js",
-      "default": "./dist/mcp/schema-converter.js"
     },
     "./local-inference/routing-preferences": {
       "types": "./dist/local-inference/routing-preferences.d.ts",
@@ -662,6 +602,11 @@
     },
     "./logger": {
       "types": "./dist/logger.d.ts",
+      "browser": {
+        "types": "./dist/browser-logger.d.ts",
+        "import": "./dist/browser-logger.js",
+        "default": "./dist/browser-logger.js"
+      },
       "eliza-source": "./src/logger.ts",
       "import": "./dist/logger.js",
       "default": "./dist/logger.js"
@@ -840,6 +785,85 @@
       },
       "import": "./dist/conversation-chat-marker.js",
       "default": "./dist/conversation-chat-marker.js"
+    },
+    "./views/view-kind": {
+      "types": "./dist/views/view-kind.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-kind.ts",
+        "import": "./src/views/view-kind.ts",
+        "default": "./src/views/view-kind.ts"
+      },
+      "import": "./dist/views/view-kind.js",
+      "default": "./dist/views/view-kind.js"
+    },
+    "./views/surface-manifest": {
+      "types": "./dist/views/surface-manifest.d.ts",
+      "eliza-source": {
+        "types": "./src/views/surface-manifest.ts",
+        "import": "./src/views/surface-manifest.ts",
+        "default": "./src/views/surface-manifest.ts"
+      },
+      "import": "./dist/views/surface-manifest.js",
+      "default": "./dist/views/surface-manifest.js"
+    },
+    "./views/view-declarations": {
+      "types": "./dist/views/view-declarations.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-declarations.ts",
+        "import": "./src/views/view-declarations.ts",
+        "default": "./src/views/view-declarations.ts"
+      },
+      "import": "./dist/views/view-declarations.js",
+      "default": "./dist/views/view-declarations.js"
+    },
+    "./browser-contracts": {
+      "types": "./dist/browser-contracts.d.ts",
+      "browser": "./dist/browser-contracts.browser.js",
+      "eliza-source": "./src/browser-contracts.ts",
+      "import": "./dist/browser-contracts.js",
+      "default": "./dist/browser-contracts.js"
+    },
+    "./views/swarm-activity": {
+      "types": "./dist/views/swarm-activity.d.ts",
+      "eliza-source": "./src/views/swarm-activity.ts",
+      "import": "./dist/views/swarm-activity.js",
+      "default": "./dist/views/swarm-activity.js"
+    },
+    "./utils/eliza-globals": {
+      "types": "./dist/utils/eliza-globals.d.ts",
+      "eliza-source": "./src/utils/eliza-globals.ts",
+      "import": "./dist/utils/eliza-globals.js",
+      "default": "./dist/utils/eliza-globals.js"
+    },
+    "./utils/name-tokens": {
+      "types": "./dist/utils/name-tokens.d.ts",
+      "eliza-source": "./src/utils/name-tokens.ts",
+      "import": "./dist/utils/name-tokens.js",
+      "default": "./dist/utils/name-tokens.js"
+    },
+    "./lifeops-normalize/time-zone": {
+      "types": "./dist/lifeops-normalize/time-zone.d.ts",
+      "eliza-source": "./src/lifeops-normalize/time-zone.ts",
+      "import": "./dist/lifeops-normalize/time-zone.js",
+      "default": "./dist/lifeops-normalize/time-zone.js"
+    },
+    "./contracts/first-run-routes": {
+      "types": "./dist/contracts/first-run-routes.d.ts",
+      "eliza-source": "./src/contracts/first-run-routes.ts",
+      "import": "./dist/contracts/first-run-routes.js",
+      "default": "./dist/contracts/first-run-routes.js"
+    },
+    "./utils/assistant-text": {
+      "types": "./dist/utils/assistant-text.d.ts",
+      "eliza-source": "./src/utils/assistant-text.ts",
+      "import": "./dist/utils/assistant-text.js",
+      "default": "./dist/utils/assistant-text.js"
+    },
+    "./utils/owner-name": {
+      "types": "./dist/utils/owner-name.d.ts",
+      "eliza-source": "./src/utils/owner-name.ts",
+      "import": "./dist/utils/owner-name.js",
+      "default": "./dist/utils/owner-name.js"
     }
   },
   "publishConfig": {
@@ -867,16 +891,14 @@
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
     "esbuild": "^0.28.0",
-    "@types/markdown-it": "^14.1.2"
+    "@types/markdown-it": "^14.1.2",
+    "tsup": "^8.5.1"
   },
   "types": "./dist/index.d.ts",
   "elizaos": {
     "scripts": {
       "coreBuild": true,
-      "buildOnInstall": {
-        "sentinel": "dist/brand/index.js",
-        "order": 2
-      },
+      "buildOnInstall": {},
       "testLanes": [
         "server"
       ]

@@ -16,7 +16,8 @@ import type { PluginAppNavTab } from "@elizaos/core";
 import {
   createNavigateViewEvent,
   NAVIGATE_VIEW_EVENT,
-} from "@elizaos/shared/events";
+  resetUiRegistryHostForTests,
+} from "@elizaos/shared";
 import {
   act,
   cleanup,
@@ -40,7 +41,6 @@ import {
   resolveInitialTabForPath,
   type Tab,
 } from "./navigation";
-import { resetUiRegistryHostForTests } from "./registry-host";
 import { useNavigationPathSync } from "./state/useAppProviderEffects";
 import { useNavigationState } from "./state/useNavigationState";
 import {

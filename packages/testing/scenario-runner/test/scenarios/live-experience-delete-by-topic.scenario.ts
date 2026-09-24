@@ -3,8 +3,8 @@
  * to delete a seeded experience by topic, not by id, and the model must route
  * through EXPERIENCE with a query selector and confirmation.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import type { ExperienceService } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,

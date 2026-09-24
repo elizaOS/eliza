@@ -15,7 +15,7 @@ import {
 	runWithStreamingContext,
 	type StreamChunkCallback,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readiness = vi.hoisted(() => ({

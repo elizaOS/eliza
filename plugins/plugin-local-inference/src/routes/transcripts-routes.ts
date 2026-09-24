@@ -16,6 +16,11 @@ import type {
 	UUID,
 } from "@elizaos/core";
 import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
+import type {
+	Route,
+	RouteHandlerContext,
+	RouteHandlerResult,
+} from "@elizaos/shared";
 import {
 	type MeetingArtifact,
 	TRANSCRIPT_SHARING_STATES,
@@ -28,11 +33,6 @@ import {
 	transcriptSpeakerCount,
 	validateMeetingArtifact,
 } from "@elizaos/shared";
-import type {
-	Route,
-	RouteHandlerContext,
-	RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,

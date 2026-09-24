@@ -44,19 +44,17 @@ function elapsedSinceModuleBodyStart(): number {
   return Date.now() - MODULE_BODY_START;
 }
 
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
-import { formatError } from "@elizaos/shared/format-error";
-import { setRestartHandler } from "@elizaos/shared/restart";
 import {
+  colorizeDevSettingsStartupBanner,
+  formatError,
+  formatUncaughtError,
+  getLogPrefix,
   resolveApiToken,
   resolveDesktopApiPort,
-  syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
-import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
-import {
-  formatUncaughtError,
+  setRestartHandler,
   shouldIgnoreUnhandledRejection,
-} from "./error-handlers.js";
+  syncResolvedApiPort,
+} from "@elizaos/shared";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
 import {
   mergedRecoverySkipPlugins,

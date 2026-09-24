@@ -11,10 +11,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import {
-  classifyElizaHostname,
-  ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
+import { classifyElizaHostname, ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,

@@ -1,6 +1,8 @@
 /** Defines app playwright behavior for dashboard host and runtime integration. */
+
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 const storybookPort = Number(process.env.ELIZA_UI_STORYBOOK_PORT || "6106");
 const recording = !!process.env.E2E_RECORD;
@@ -17,7 +19,7 @@ export default defineConfig({
   reporter: "list",
   outputDir: recording
     ? path.resolve(import.meta.dirname, "../../e2e-recordings/app/test-results")
-    : "./test-results",
+    : testOutputPath("app", "playwright"),
   use: {
     baseURL: `http://127.0.0.1:${storybookPort}`,
     trace: recording ? "on" : "retain-on-failure",

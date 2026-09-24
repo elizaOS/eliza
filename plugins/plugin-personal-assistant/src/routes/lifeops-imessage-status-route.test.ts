@@ -14,7 +14,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 

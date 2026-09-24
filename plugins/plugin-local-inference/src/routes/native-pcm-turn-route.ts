@@ -10,11 +10,7 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 import { localInferenceEngine } from "../services/engine";
 import type { VoicePipelineEvents } from "../services/voice/pipeline";
 

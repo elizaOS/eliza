@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "InterruptBench — TypeScript benchmark for interruption handling in the Eliza/elizaOS agent runtime (Stage-1 response-handler field evaluators, turn controller, room queue, cleanup scope).",
+  "description": "InterruptBench \u2014 TypeScript benchmark for interruption handling in the Eliza/elizaOS agent runtime (Stage-1 response-handler field evaluators, turn controller, room queue, cleanup scope).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -13,9 +13,7 @@
   },
   "scripts": {
     "bench": "bun run src/runner.ts",
-    "bench:smoke": "bun run scripts/cerebras-smoke.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "bench:smoke": "bun run ../../scripts/interrupt-bench/cerebras-smoke.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"

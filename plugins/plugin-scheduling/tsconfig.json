@@ -2,14 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "types": ["node", "vite/client"],
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
@@ -36,7 +29,8 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-scheduling": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

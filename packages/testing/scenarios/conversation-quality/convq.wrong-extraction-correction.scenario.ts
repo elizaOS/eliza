@@ -20,7 +20,7 @@
  * Synthetic persona (Ines Duarte, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const EXTRACTION_MACHINERY =
   /(my (notes|records|memory|data) (say|said|show|had)|extract|logged|must have (recorded|saved|noted)|i'?ll (update|correct) (my|the)|database)/i;

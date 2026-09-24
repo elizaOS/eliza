@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: casual wake-up / before-bed phrasing yields a daily brushing habit, verified by reading the created definition back through `/api/lifeops/definitions`.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

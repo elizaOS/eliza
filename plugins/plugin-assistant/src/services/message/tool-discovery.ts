@@ -123,7 +123,8 @@ export function createPlannerToolDiscoveryAction(
   const catalog = catalogFor(authorizedActions);
   const discoveryDescription =
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). " +
-    "mode=describe reads complete descriptions and schemas without enabling tools. " +
+    "To perform work use mode=load: complete schemas appear in the next tool surface. " +
+    "mode=describe answers capability or parameter questions without enabling tools. " +
     "names=[] reads the complete authorized catalog. Search and loads refresh permissions; no domain work executes. " +
     "Use loaded tools to perform work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
@@ -389,7 +390,7 @@ export function createPlannerToolDiscoveryAction(
         success: true,
         transcriptVisibility: "internal",
         modelReplyRequired: true,
-        text: "Named tools enabled for execution. This receipt contains no parameter definitions; use mode=describe with exact names to inspect them. No domain work or data mutation ran. Continue with requested work.",
+        text: "Named tools enabled for execution with complete schemas in the current tool surface. No domain work or data mutation ran. Use those tools to continue the requested work.",
         data: {
           readOnlyOperation: true,
           // Operations may share a canonical parent on the native tool wire.

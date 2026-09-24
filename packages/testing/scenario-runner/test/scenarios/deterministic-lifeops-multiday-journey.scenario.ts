@@ -41,15 +41,13 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import type {
-  RuntimeWithScenarioModelFixtures,
-  StrictActionRouteFixture,
-} from "@elizaos/testing";
-import type {
   CapturedAction,
+  RuntimeWithScenarioModelFixtures,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+  StrictActionRouteFixture,
+} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 import { typedTurnEvaluationFixtures } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 

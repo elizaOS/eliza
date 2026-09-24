@@ -35,7 +35,7 @@ vi.mock("../../../hooks/useRuntimeMode", () => ({
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "../../../services/local-inference/types";
+} from "@elizaos/shared";
 
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the
@@ -62,12 +62,6 @@ vi.mock("../../../api", () => ({
     getLocalInferenceHub: getHubMock,
     startLocalInferenceDownload: startDownloadMock,
   },
-}));
-
-// Isolate the navigation rail — assert the CustomEvent without the slash-command
-// controller side effects.
-vi.mock("../../../chat/shortcut-report", () => ({
-  reportUserViewSwitch: vi.fn(),
 }));
 
 // EventSource cannot open in jsdom; the widget already tolerates a null

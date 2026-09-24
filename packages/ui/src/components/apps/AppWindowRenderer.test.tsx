@@ -5,13 +5,13 @@
 
 // @vitest-environment jsdom
 
+import { registerOverlayApp } from "@elizaos/shared";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentButton } from "../../agent-surface";
 import { invokeViewInteract } from "../views/view-interact-registry";
 import { AppWindowRenderer, OverlayAppSurface } from "./AppWindowRenderer";
-import { registerOverlayApp } from "./overlay-app-registry";
 
 const reportRendererDiagnostic = vi.hoisted(() => vi.fn());
 vi.mock("../../utils/renderer-diagnostics", () => ({

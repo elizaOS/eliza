@@ -25,10 +25,6 @@ const appTaskCoordinatorSrc = path.join(
   "plugins/plugin-agent-orchestrator/src/ui",
 );
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
-const pluginAppManagerSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-app-manager/src",
-);
 const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src/ui");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
 const pluginTodosSrc = path.join(monorepoRoot, "plugins/plugin-todos/src");
@@ -37,10 +33,6 @@ const pluginBrowserBridgeSrc = path.join(
   "plugins/plugin-browser/src",
 );
 const pluginAnthropicRoot = path.join(monorepoRoot, "plugins/plugin-anthropic");
-const pluginCommandsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-commands/src",
-);
 const pluginComputerUseSrc = path.join(
   monorepoRoot,
   "plugins/plugin-computeruse/src",
@@ -70,20 +62,11 @@ const pluginNativeFilesystemSrc = path.join(
 );
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
-const pluginRegistrySrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-registry/src",
-);
 const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
 const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
-const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
 const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
-);
-const pluginAppControlSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-app-control/src",
 );
 const pluginGitpathologistSrc = path.join(
   monorepoRoot,
@@ -128,36 +111,26 @@ export default defineConfig({
   test: {
     include: [
       "src/connectors/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "src/desktop-native-notification-boundary.test.ts",
       "src/config/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/security/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/platform/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/runtime/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "src/desktop-test-bridge-notification-route.test.ts",
       "src/utils/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/cli/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/permissions/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/styles/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "src/entry-cloud-api-key.test.ts",
-      "src/state-dir-no-direct-env.test.ts",
       "src/diagnostics/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/registry/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/first-run/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/api/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "src/boot-profile.test.ts",
-      "src/alias-env-reads.13422.test.ts",
       "src/services/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/stubs/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/dev-stack/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/electrobun/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/app/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "test/real-runtime-critical-paths.test.ts",
-      "test/capacitor-ios-boot-eval-guard.test.ts",
       "test/browser-extension/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "test/server-config-filter.test.ts",
       "test/live-agent/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/benchmarks/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "test/scripts/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/fixtures/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/automations/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/helpers/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -182,11 +155,8 @@ export default defineConfig({
       "scripts/android-renderer-stamp.test.mjs",
       "scripts/audit-views-soak-navigation.test.mjs",
       "scripts/audit-views-soak-timing.test.mjs",
-      "scripts/browser-failure-policy.test.ts",
       "scripts/build.test.mjs",
       "scripts/capture-duration-entrypoint.test.mjs",
-      "scripts/capture-startup-trace.test.ts",
-      "scripts/check-startup-budget.test.ts",
       "scripts/desktop-voice-hardware-capture.test.mjs",
       "scripts/dev-server-registry.test.mjs",
       "scripts/device-e2e-bundle.test.mjs",
@@ -203,7 +173,6 @@ export default defineConfig({
       "scripts/lib/android-capture.test.mjs",
       "scripts/lib/android-device-apk.test.mjs",
       "scripts/lib/android-e2e-evidence-policy.test.mjs",
-      "scripts/lib/audit-capture-manifest.test.ts",
       "scripts/lib/audit-output.test.mjs",
       "scripts/lib/capture-output-backend-log-port.test.mjs",
       "scripts/lib/capture-output.test.mjs",
@@ -219,12 +188,10 @@ export default defineConfig({
       "scripts/lib/ios-mixed-content-smoke-contract.test.mjs",
       "scripts/lib/ios-simulator-app-product.test.mjs",
       "scripts/lib/local-inference-readiness.test.mjs",
-      "scripts/lib/playwright-node-options.test.ts",
       "scripts/lib/playwright-port.test.mjs",
       "scripts/lib/playwright-shard.test.mjs",
       "scripts/lib/visual-qa.test.ts",
       "scripts/macos-shortcuts/eliza-assistant-handoff.test.ts",
-      "scripts/measure-anonymous-login-transfer.test.ts",
       "scripts/mobile-local-chat-smoke-port-policy.test.mjs",
       "scripts/mobile-local-chat-smoke.test.mjs",
       "scripts/mvp-visual-verify.test.mjs",
@@ -266,7 +233,6 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/build-experimental-exact-window-helper.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
-      "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
       "scripts/android-pglite-staging.test.mjs",
@@ -286,7 +252,6 @@ export default defineConfig({
       // `bun run test:script-suites` (node --test list).
       "scripts/store-listing-urls.test.mjs",
       // Uses bun:test, not vitest; runs in `bun run test:script-suites`.
-      "scripts/lib/live-stack-safe-diagnostics.test.ts",
       "scripts/voice/voice-models-publish-all.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
@@ -314,7 +279,6 @@ export default defineConfig({
             "scripts/run-mobile-build-plugin-manifest.test.mjs",
             "scripts/voice-interactive.test.mjs",
             "scripts/aosp/compile-libllama.test.mjs",
-            "test/scripts/mobile-auth-simulator-smoke.test.ts",
           ]
         : []),
       ".claude/**",
@@ -330,335 +294,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: /^@elizaos\/app$/,
-        replacement: path.join(appCoreSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app\/(.+)$/,
-        replacement: path.join(appCoreSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/agent$/,
-        replacement: path.join(agentSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/agent\/(.+)$/,
-        replacement: path.join(agentSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-todos\/plugin$/,
-        replacement: path.join(pluginTodosSrc, "plugin.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-todos\/service$/,
-        replacement: path.join(pluginTodosSrc, "service.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-todos\/db\/schema$/,
-        replacement: path.join(pluginTodosSrc, "db/schema.ts"),
-      },
-      {
-        find: /^@elizaos\/auth\/auth$/,
-        replacement: path.join(authSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/auth\/auth\/(.+)$/,
-        replacement: path.join(authSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/auth$/,
-        replacement: path.join(monorepoRoot, "packages/auth/src/sdk/index.ts"),
-      },
-      { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
-      {
-        find: /^@elizaos\/ui\/api$/,
-        replacement: path.join(uiDir, "src/api/index.ts"),
-      },
-      { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiDir, "src/$1") },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/config$/,
-        replacement: path.join(sharedSrc, "config/types.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(sharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/atomic-json$/,
-        replacement: path.join(coreSrc, "utils/atomic-json.ts"),
-      },
-      {
-        // Must precede the @elizaos/core/(.+) catch-all: aliases match in
-        // array order, and the catch-all would rewrite core/edge to the
-        // nonexistent src/edge (plugin-scheduling imports @elizaos/core/edge).
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(coreSrc, "index.edge.ts"),
-      },
-      { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
-      {
-        find: /^@elizaos\/auth\/vault$/,
-        replacement: path.join(vaultSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/auth\/vault\/(.+)$/,
-        replacement: path.join(vaultSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/cloud-routing$/,
-        replacement: path.join(cloudRoutingSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/cloud-sdk$/,
-        replacement: path.join(cloudSdkSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-lifeops$/,
-        replacement: path.join(appLifeopsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-personal-assistant$/,
-        replacement: path.join(appLifeopsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-lifeops\/selfcontrol$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-personal-assistant/src/website-blocker/public.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-lifeops\/(.+)$/,
-        replacement: path.join(appLifeopsSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-wallet$/,
-        replacement: path.join(appWalletSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-wallet\/ui$/,
-        replacement: path.join(appWalletSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-wallet\/(.+)$/,
-        replacement: path.join(appWalletSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-sql$/,
-        replacement: path.join(pluginSqlSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-sql\/(.+)$/,
-        replacement: path.join(pluginSqlSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser$/,
-        replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/(.+)$/,
-        replacement: path.join(pluginBrowserBridgeSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-anthropic$/,
-        replacement: path.join(pluginAnthropicRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
-        replacement: path.join(pluginAnthropicRoot, "utils/config.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-anthropic\/(.+)$/,
-        replacement: path.join(pluginAnthropicRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-manager$/,
-        replacement: path.join(pluginAppManagerSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-manager\/(.+)$/,
-        replacement: path.join(pluginAppManagerSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-agent-orchestrator\/ui$/,
-        replacement: toVitePath(path.join(appTaskCoordinatorSrc, "index.ts")),
-      },
-      {
-        find: /^@elizaos\/plugin-agent-orchestrator\/ui\/(.+)$/,
-        replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
-      },
-      {
-        find: /^@elizaos\/plugin-scheduling$/,
-        replacement: path.join(pluginSchedulingSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-scheduling\/(.+)$/,
-        replacement: path.join(pluginSchedulingSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-inbox$/,
-        replacement: path.join(pluginInboxSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-inbox\/(.+)$/,
-        replacement: path.join(pluginInboxSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-commands$/,
-        replacement: path.join(pluginCommandsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-computeruse$/,
-        replacement: path.join(pluginComputerUseSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-coding-tools$/,
-        replacement: path.join(pluginCodingToolsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-coding-tools\/(.+)$/,
-        replacement: path.join(pluginCodingToolsSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-discord$/,
-        replacement: path.join(pluginDiscordRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-elizacloud$/,
-        replacement: path.join(pluginElizaCloudSrc, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
-        replacement: path.join(pluginElizaCloudSrc, "utils/config.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
-        replacement: path.join(pluginElizaCloudSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-openai$/,
-        replacement: path.join(pluginOpenAiSrc, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-openai\/endpoint-config$/,
-        replacement: path.join(pluginOpenAiSrc, "utils/config.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-openai\/(.+)$/,
-        replacement: path.join(pluginOpenAiSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-imessage$/,
-        replacement: path.join(pluginIMessageSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-imessage\/(.+)$/,
-        replacement: path.join(pluginIMessageSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-mcp$/,
-        replacement: path.join(pluginMcpSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-local-inference$/,
-        replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-local-inference\/(.+)$/,
-        replacement: path.join(pluginLocalInferenceSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-native-filesystem$/,
-        replacement: path.join(pluginNativeFilesystemSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-pdf$/,
-        replacement: path.join(pluginPdfSrc, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-pdf\/(.+)$/,
-        replacement: path.join(pluginPdfSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-registry$/,
-        replacement: path.join(pluginRegistrySrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-registry\/(.+)$/,
-        replacement: path.join(pluginRegistrySrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-video$/,
-        replacement: path.join(pluginVideoSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-wallet$/,
-        replacement: path.join(pluginWalletSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-wallet\/(.+)$/,
-        replacement: path.join(pluginWalletSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-whatsapp$/,
-        replacement: path.join(pluginWhatsappRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-agent-orchestrator$/,
-        replacement: path.join(pluginAgentOrchestratorSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(pluginAppControlSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-gitpathologist$/,
-        replacement: path.join(pluginGitpathologistSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-google-workspace$/,
-        replacement: path.join(pluginGoogleSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-pty$/,
-        replacement: path.join(pluginPtyRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-vision$/,
-        replacement: path.join(pluginVisionSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,
-        replacement: path.join(pluginAgentOrchestratorSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-workflow$/,
-        replacement: path.join(pluginWorkflowSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser$/,
-        replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/(.+)$/,
-        replacement: path.join(pluginBrowserBridgeSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-task-coordinator$/,
-        replacement: path.join(appTaskCoordinatorSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-task-coordinator\/(.+)$/,
-        replacement: path.join(appTaskCoordinatorSrc, "$1"),
-      },
       { find: "react", replacement: reactPkg },
       {
         find: "react/jsx-runtime",

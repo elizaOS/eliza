@@ -61,9 +61,6 @@ Outputs
         ├── train_manifest.json   # hyperparams, dataset hashes, training commit
         └── eval_log.jsonl        # per-checkpoint SpkSim / WER / UTMOS / RTF
 
-Synthetic-smoke (``--synthetic-smoke``) skips torch + GPU, materializes a
-minimal valid ``train_manifest.json`` + dummy checkpoints so the CI pipeline
-gate is exercised without the full stack.
 """
 
 from __future__ import annotations
@@ -114,11 +111,6 @@ class TrainStats:
     best_speaker_similarity: float = -1.0
     best_speaker_similarity_step: int = 0
     eval_history: list[dict[str, Any]] = field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Synthetic-smoke path (no torch import; exercises the manifest shape only).
-# ---------------------------------------------------------------------------
 
 
 def _git_commit() -> str | None:
@@ -187,84 +179,6 @@ def _build_manifest(
         "topK": top_k_paths,
         "trainingCommit": _git_commit(),
     }
-
-
-def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    """Walk file layout, write JSON sidecar checkpoints + manifest. No torch."""
-    log.info("synthetic-smoke: full-FT pipeline shape only, no real training")
-    run_dir = Path(args.run_dir).resolve()
-    processed = run_dir / "processed"
-
-    train_list_path = processed / "train_list.txt"
-    val_list_path = processed / "val_list.txt"
-    if not train_list_path.exists():
-        processed.mkdir(parents=True, exist_ok=True)
-        with train_list_path.open("w") as fh:
-            for i in range(5):
-                fh.write(f"wavs_norm/SMOKE-{i:04d}.wav|hh ah l ow|0\n")
-        with val_list_path.open("w") as fh:
-            fh.write("wavs_norm/SMOKE-9999.wav|hh ah l ow|0\n")
-
-    train_list = _list_lines(train_list_path)
-    val_list = _list_lines(val_list_path)
-
-    ckpt_dir = run_dir / "checkpoints"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    checkpoints: list[str] = []
-    for step in (50, 100, 150):
-        fake = ckpt_dir / f"step_{step}.json"
-        fake.write_text(
-            json.dumps(
-                {
-                    "kind": "kokoro-full-finetune-synthetic",
-                    "step": step,
-                    "trainLoss": 0.5 - step * 1e-4,
-                    "speakerSimilarity": 0.5 + step * 1e-4,
-                    "baseModel": cfg["base_model"],
-                },
-                indent=2,
-            )
-            + "\n"
-        )
-        checkpoints.append(str(fake))
-
-    best_path = ckpt_dir / "best.json"
-    best_path.write_text(Path(checkpoints[-1]).read_text())
-    checkpoints.append(str(best_path))
-
-    stats = TrainStats(
-        step=150,
-        epoch=1,
-        train_loss=0.5 - 150 * 1e-4,
-        val_loss=0.5,
-        best_val_loss=0.5,
-        best_step=150,
-        best_speaker_similarity=0.5 + 150 * 1e-4,
-        best_speaker_similarity_step=150,
-        eval_history=[
-            {"step": 100, "speaker_similarity": 0.51, "wer": 0.06, "utmos": 3.9, "rtf": 95.0},
-            {"step": 150, "speaker_similarity": 0.515, "wer": 0.058, "utmos": 3.95, "rtf": 96.1},
-        ],
-    )
-
-    top_k = [
-        {"step": 150, "path": str(best_path), "speaker_similarity": 0.515},
-        {"step": 100, "path": checkpoints[1], "speaker_similarity": 0.51},
-    ]
-    manifest = _build_manifest(
-        args=args,
-        cfg=cfg,
-        train_list=train_list,
-        val_list=val_list,
-        stats=stats,
-        prep_manifest_sha256=None,
-        synthetic=True,
-        checkpoint_paths=checkpoints,
-        top_k_paths=top_k,
-    )
-    (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    log.info("synthetic-smoke wrote %s", ckpt_dir / "train_manifest.json")
-    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -609,8 +523,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:  # noqa: 
     )
     if device == "cpu":
         log.warning(
-            "running on CPU — full FT on CPU is impractical; this is fine only for "
-            "the synthetic-smoke shape test"
+            "running full fine-tuning on CPU; training may be slow"
         )
 
     dtype = torch.bfloat16 if (device == "cuda" and cfg.get("bf16", True)) else torch.float32
@@ -934,11 +847,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable the per-checkpoint inline eval (faster, but no SpkSim early stop).",
     )
-    p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Run pipeline shape without torch/CUDA (for CI).",
-    )
     return p
 
 
@@ -960,8 +868,6 @@ def main(argv: list[str] | None = None) -> int:
     random.seed(cfg.get("seed", 1337))
     os.environ.setdefault("PYTHONHASHSEED", str(cfg.get("seed", 1337)))
 
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args, cfg)
     return _real_train(args, cfg)
 
 

@@ -12,7 +12,7 @@
  * capabilities that shell out are unavailable.
  */
 
-import { isTruthyEnvValue } from "@elizaos/core";
+import { isTruthyEnvValue } from "@elizaos/shared/browser-contracts";
 import { getBootConfigEnvAliases } from "./config/boot-config-store.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";

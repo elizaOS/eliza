@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs launch QA launch qa run automation for release-readiness checks.
+/** Orchestrates release-readiness checks and collects their results. */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,10 +26,10 @@ const TASKS = [
     command: "node",
     args: [
       "packages/scripts/launch-qa/check-docs.mjs",
-      "--scope=launchdocs",
+      "--scope=docs",
       "--json",
     ],
-    description: "Launchdocs links and documented command references",
+    description: "Documentation links and documented command references",
   },
   {
     id: "mobile-artifacts",
@@ -57,12 +57,10 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/src/runtime/operations/vault-integration.test.ts",
+      "packages/agent/test/connector-credential-durable.test.ts",
     ],
-    requiredFiles: [
-      "packages/agent/src/runtime/operations/vault-integration.test.ts",
-    ],
-    description: "Focused agent vault runtime tests",
+    requiredFiles: ["packages/agent/test/connector-credential-durable.test.ts"],
+    description: "Agent credential durability across full process restarts",
   },
   {
     id: "lifeops-focused",
@@ -111,13 +109,6 @@ const TASKS = [
     description: "Cloud package split typecheck",
   },
   {
-    id: "ui-smoke",
-    tier: 2,
-    command: "node",
-    args: ["packages/scripts/launch-qa/run-ui-smoke-offline.mjs"],
-    description: "Deterministic offline Playwright UI smoke suite",
-  },
-  {
     id: "cloud-api-key-redaction",
     tier: 1,
     command: "bun",
@@ -130,17 +121,6 @@ const TASKS = [
       "120000",
     ],
     description: "Cloud API-key create/list redaction e2e",
-  },
-  {
-    id: "cloud-api-key-client",
-    tier: 0,
-    command: "bun",
-    args: ["test", "packages/cloud/shared/src/lib/client/api-keys.test.ts"],
-    env: {
-      SKIP_DB_DEPENDENT: "1",
-      SKIP_SERVER_CHECK: "true",
-    },
-    description: "Cloud API-key client helper redaction contract",
   },
 ];
 

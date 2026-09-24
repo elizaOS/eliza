@@ -6,7 +6,6 @@
 		"assets",
 		"entitlements",
 		"native",
-		"scripts",
 		"remotes",
 		"src",
 		"electrobun.config.ts",
@@ -14,7 +13,7 @@
 		"tsconfig.json"
 	],
 	"scripts": {
-		"dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
+		"dev": "bun run build:preload && PATH=\"$PWD/../../scripts/electrobun/bin:$PATH\" bunx electrobun dev",
 		"build": "cd ../../../.. && node packages/app/scripts/desktop-build.mjs build",
 		"typecheck": "tsc --noEmit",
 		"test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
@@ -24,8 +23,8 @@
 		"voice:validate:dry": "bun src/voice/voice-live-validation.ts",
 		"voice:validate:live": "bun src/voice/voice-live-validation.ts",
 		"build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-		"build:native-effects": "bash scripts/build-macos-effects.sh",
-		"bench:cloud-login": "node scripts/bench-cloud-login.mjs"
+		"build:native-effects": "bash ../../scripts/electrobun/build-macos-effects.sh",
+		"bench:cloud-login": "node ../../scripts/electrobun/bench-cloud-login.mjs"
 	},
 	"dependencies": {
 		"@elizaos/agent": "workspace:*",

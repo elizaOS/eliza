@@ -8,8 +8,9 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError, resolveSurfaceManifest } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@elizaos/shared/logger";
+import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import {
   act,
   cleanup,
@@ -153,6 +154,21 @@ describe("host-external importer resolution (factory hostImport)", () => {
   it("provides the authenticated fetch helper to plugin view bundles", async () => {
     const api = await resolveHostExternal("@elizaos/ui/api/csrf-client");
     expect(typeof api.fetchWithCsrf).toBe("function");
+  });
+
+  it("resolves shared root time-zone helpers without exposing host mutation APIs", async () => {
+    const shared = await resolveHostExternal("@elizaos/shared");
+    const normalize = shared.normalizeTimeZone;
+    const isValid = shared.isValidTimeZone;
+    if (typeof normalize !== "function" || typeof isValid !== "function") {
+      throw new Error("Shared view time-zone helpers are unavailable");
+    }
+    expect(normalize("Zulu")).toBe("UTC");
+    expect(normalize("America/Los_Angeles")).toBe("America/Los_Angeles");
+    expect(isValid("not-a-time-zone")).toBe(false);
+    expect(shared.registerOverlayApp).toBeUndefined();
+    expect(shared.loadElizaConfig).toBeUndefined();
+    expect(Object.isFrozen(shared)).toBe(true);
   });
 
   it("provides the canonical view header to plugin view bundles", async () => {

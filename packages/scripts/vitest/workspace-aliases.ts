@@ -1,10 +1,7 @@
 /** Configures the workspace aliases shared Vitest lane used by workspace package tests. */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import {
-  getInstalledPackageEntry,
-  resolveModuleEntry,
-} from "@elizaos/testing/eliza-package-paths";
+import { getInstalledPackageEntry, resolveModuleEntry } from "@elizaos/testing";
 
 /** Vite rollup alias shape; structural type avoids duplicate vite versions in Bun's typings. */
 export type ModuleAlias = {

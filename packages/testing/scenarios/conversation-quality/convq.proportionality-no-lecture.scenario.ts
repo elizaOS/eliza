@@ -20,7 +20,7 @@
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const LECTURE =
   /(i know your pattern|this is (the|your) (slippery slope|old cycle)|every time you|you always do this|we talked about (this|how)|disappoint)/i;

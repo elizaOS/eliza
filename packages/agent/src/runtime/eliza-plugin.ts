@@ -1,9 +1,7 @@
 /**
- * Eliza plugin for elizaOS — workspace context, session keys, and agent
- * lifecycle actions (restart).
- *
- * Compaction is handled by core auto-compaction in the recent-messages provider.
- * Memory search/get actions are superseded by the todos plugin.
+ * Composes the agent host's workspace providers, lifecycle actions, HTTP routes
+ * and concrete services. Assistant policy is registered separately; this plugin
+ * supplies host storage, permissions, media and runtime integration.
  */
 
 import type { IAgentRuntime, ServiceClass } from "@elizaos/core";
@@ -23,7 +21,7 @@ import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
 } from "@elizaos/plugin-relationships/knowledge-graph";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";

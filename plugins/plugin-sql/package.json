@@ -47,9 +47,8 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist src/dist .turbo",
     "format": "bunx @biomejs/biome format --write src build.ts",
     "format:check": "bunx @biomejs/biome format src build.ts",
-    "test:e2e": "node ../../packages/app/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e",
-    "test:postgres": "bash scripts/run-integration-tests.sh --postgres",
+    "test:postgres": "bash ../../packages/scripts/plugins/plugin-sql/run-integration-tests.sh --postgres",
     "test:real": "cd src && vitest run --config vitest.real.config.ts"
   },
   "dependencies": {

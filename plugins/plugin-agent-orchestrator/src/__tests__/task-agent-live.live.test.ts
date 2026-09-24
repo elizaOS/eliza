@@ -13,7 +13,7 @@ import { once } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
-import { runOwnedChild } from "../../scripts/live-pi-linked-account.mjs";
+import { runOwnedChild } from "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs";
 
 const RUN_LIVE = process.env.ORCHESTRATOR_LIVE === "1";
 type Framework = "claude" | "codex";

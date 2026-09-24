@@ -14,8 +14,8 @@
  * Fail-without-fix anchor: with the old no-op seedMemory the fact row never
  * exists, so the FACTS render check fails.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const SEEDED_FACT =
   "Owner fact: largest account is Halcyon Freight; their contact sometimes messages from a plain personal address with no signature.";

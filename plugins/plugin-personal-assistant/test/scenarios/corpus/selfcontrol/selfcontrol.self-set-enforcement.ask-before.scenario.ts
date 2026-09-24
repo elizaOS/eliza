@@ -1,8 +1,7 @@
 /** Scenario fixture for selfcontrol self set enforcement ask before; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 function expectClarificationBeforeBlock(
   ctx: ScenarioContext,

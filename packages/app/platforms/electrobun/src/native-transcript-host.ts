@@ -11,7 +11,7 @@ import {
 	type TranscriptReducerState,
 	type TranscriptViewModel,
 	toViewModel,
-} from "../../../../src/ui/native-transcript/core";
+} from "@elizaos/ui/native-transcript/core";
 import { logger } from "./logger";
 
 let reducerState: TranscriptReducerState = initialReducerState();

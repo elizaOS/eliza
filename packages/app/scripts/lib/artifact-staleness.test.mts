@@ -8,8 +8,8 @@ import {
   artifactStaleness,
   fileMtime,
   maxMtimeUnder,
-} from "./artifact-staleness.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+} from "./artifact-staleness.ts";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

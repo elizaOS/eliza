@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.build_search_index import _document_from_product
+from elizaos_webshop_tools.build_search_index import _document_from_product
 
 
 def test_document_projection_matches_upstream_search_text() -> None:

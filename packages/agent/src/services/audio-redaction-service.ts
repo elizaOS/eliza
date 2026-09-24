@@ -8,6 +8,7 @@
  */
 
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
+import type { TranscriptWord } from "@elizaos/shared";
 import {
   assertCompleteAudioRedactionPlan,
   buildAudioRedactionSpans,
@@ -17,7 +18,6 @@ import {
   type RedactionTranscriber,
   verifyAudioRedaction,
 } from "@elizaos/shared/audio-redaction-verify";
-import type { TranscriptWord } from "@elizaos/shared/transcripts";
 import {
   findRedactedAudioVariant,
   persistVerifiedRedactedAudioVariant,

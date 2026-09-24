@@ -23,13 +23,13 @@ import {
 	type ProviderDataRecord,
 	type UUID,
 } from "@elizaos/core";
-import type { PiiTextSpan } from "@elizaos/shared/audio-redaction";
 import type {
+	PiiTextSpan,
 	Transcript,
 	TranscriptCaptureSharingState,
 	TranscriptSharingState,
-} from "@elizaos/shared/transcripts";
-import { transcriptCapturePrivacyState } from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
+import { transcriptCapturePrivacyState } from "@elizaos/shared";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import type { TranscriptServiceRuntime } from "../services/voice/transcript-service.js";
 import {

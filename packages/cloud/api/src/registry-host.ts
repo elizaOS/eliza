@@ -2,7 +2,7 @@
  * Returns an explicit retirement notice on the former community registry hosts.
  * Other hosts fall through to the normal Worker router; no artifact is fetched.
  */
-import { ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 type RegistryHostBindings = Pick<

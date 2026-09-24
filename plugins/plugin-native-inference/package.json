@@ -70,7 +70,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "test": "bun run test:aosp && bun run test:mobile",
-    "check:android-manifest": "node scripts/check-android-manifest.mjs",
+    "check:android-manifest": "node ../../packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
     "test:aosp": "bun test __tests__",
     "test:mobile": "vitest run --config vitest.config.ts"
   },

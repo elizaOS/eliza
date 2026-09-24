@@ -34,11 +34,8 @@ import {
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/plugin-assistant";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
 import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
-import type {
-  RouteHelpers,
-  RouteRequestContext,
-} from "@elizaos/shared/api/route-helpers";
 import {
   getDocumentContentType,
   getDocumentDeleteability,

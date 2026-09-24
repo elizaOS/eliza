@@ -3,12 +3,12 @@
  * deterministic routing fixtures; no network service participates.
  */
 
+import type { ScenarioContext } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  scenario,
 } from "@elizaos/testing";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const guidanceSlug = "scenario-guidance";

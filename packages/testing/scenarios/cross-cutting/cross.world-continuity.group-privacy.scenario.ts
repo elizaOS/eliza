@@ -3,7 +3,7 @@
  * history seeded in a Discord DM must not be injected into a Telegram group,
  * even when the same canonical owner participates in both rooms.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -1,11 +1,17 @@
 /** Applies the UI product policy to the shared local-model recommendation kernel. */
 
+import type {
+  CatalogModel,
+  HardwareProbe,
+  TextGenerationSlot,
+} from "@elizaos/shared";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeBytes,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel as chooseSharedSmallerFallbackModel,
   classifyRecommendationPlatform,
+  MODEL_CATALOG,
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,
@@ -13,9 +19,7 @@ import {
   selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
   selectRecommendedModels as selectSharedRecommendedModels,
   UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
-} from "@elizaos/shared/local-inference";
-import { MODEL_CATALOG } from "./catalog";
-import type { CatalogModel, HardwareProbe, TextGenerationSlot } from "./types";
+} from "@elizaos/shared";
 
 export type RecommendationOptions = Omit<SharedRecommendationOptions, "policy">;
 export type { RecommendationPlatformClass, RecommendedModelSelection };

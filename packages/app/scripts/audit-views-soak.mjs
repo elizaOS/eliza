@@ -39,7 +39,7 @@ import {
   isExpectedEmbeddedBrowserConsoleError,
   isExpectedInactiveLifeOpsActivitySignalsResponse,
   isExpectedUnavailableBrowserBridgeCompanionsResponse,
-} from "./browser-failure-policy.mjs";
+} from "./browser-failure-policy.ts";
 
 /** Default view-churn rounds when `ROUNDS` is unset. */
 export const DEFAULT_ROUNDS = 6;

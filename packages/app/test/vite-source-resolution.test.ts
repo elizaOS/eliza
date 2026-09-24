@@ -11,7 +11,8 @@ import {
   type UserConfig,
 } from "vite";
 import { describe, expect, test } from "vitest";
-import appViteConfig, { rejectRuntimeInRendererPlugin } from "../vite.config";
+import { rejectRuntimeInRendererPlugin } from "../scripts/lib/renderer-runtime-boundary.ts";
+import appViteConfig from "../vite.config";
 
 const appRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -165,24 +166,34 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves pure runtime contracts through the renderer adapter while %s config resolves",
+    "resolves canonical browser contracts and rejects runtime imports with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core",
-            path.resolve(appRoot, "../shared/src/env-utils.ts"),
+            "@elizaos/shared/browser-contracts",
+            path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
-          normalizePath(path.resolve(appRoot, "src/shims/core-browser.ts")),
-        );
-        await expect(
-          server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core/client-public",
-            path.join(appRoot, "src/main.tsx"),
+          normalizePath(
+            path.resolve(
+              appRoot,
+              "../shared/scripts/browser-contracts-entry.ts",
+            ),
           ),
-        ).rejects.toThrow();
+        );
+        for (const runtimeImport of [
+          "@elizaos/core",
+          "@elizaos/core/client-public",
+        ]) {
+          await expect(
+            server.environments.client.pluginContainer.resolveId(
+              runtimeImport,
+              path.join(appRoot, "src/main.tsx"),
+            ),
+          ).rejects.toThrow("Node runtime import");
+        }
       } finally {
         await server.close();
       }

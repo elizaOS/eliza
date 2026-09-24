@@ -723,7 +723,7 @@ export async function runEvaluator(
     });
   if (
     typeof output.raw?.contextRequest === "string" &&
-    !output.protocolFailure
+    ["history", "providers", "full"].includes(output.raw.contextRequest)
   ) {
     const scope = output.raw?.contextRequest;
     const original = params.trajectory.modelBaseContext ?? params.context;
@@ -733,7 +733,9 @@ export async function runEvaluator(
       (readHistory && selectCompletionContext(original).applied) ||
       (readProviders && projectDeferredProviders(original).available.length)
     ) {
-      // This is a read of the original in-memory sources, not another
+      // A context read takes precedence over a conflicting verdict. Record
+      // the invalid draft, but never deliver it or replay a completed action.
+      // This reads only the authorized original sources, not another
       // planner turn. No callbacks or tools run before the full-context
       // evaluator decides; removing the selector makes this one-shot.
       await recordOutput();

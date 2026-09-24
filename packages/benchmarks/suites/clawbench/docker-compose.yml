@@ -17,8 +17,8 @@ services:
   # ==========================================================================
   init:
     build:
-      context: .
-      dockerfile: Dockerfile.init
+      context: ../..
+      dockerfile: suites/clawbench/Dockerfile.init
     volumes:
       - ./fixtures:/fixtures:ro
       - ./scenarios:/scenarios:ro

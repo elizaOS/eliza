@@ -1,5 +1,5 @@
 /** Generated MuPPET-style privacy probe; run behavior/_generate-static.ts. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { buildPrivacyProbeSetup } from "./_factory.ts";
 import { travel as config } from "./_privacy-cases.ts";
 

@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

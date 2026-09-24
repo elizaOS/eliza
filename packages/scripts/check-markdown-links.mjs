@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Validates local links in maintained documentation, excluding consumed fixtures. */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -18,6 +19,8 @@ const EXCLUDED_PREFIXES = [
   "packages/training/",
   "packages/ui/src/services/local-inference/",
   "packages/app/test/",
+  // Task prompts contain literal code/regex examples, not documentation links.
+  "packages/benchmarks/suites/nl2repo/test_files/",
   "plugins/plugin-agent-orchestrator/docs/",
   "plugins/plugin-computeruse/",
   "plugins/plugin-local-inference/",
@@ -124,13 +127,30 @@ function targetExists(sourceFile, rawHref) {
 }
 
 function stripCode(markdown) {
-  return markdown
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/~~~[\s\S]*?~~~/g, "")
-    .replace(/`[^`\n]+`/g, "");
+  const prose = [];
+  let fence = null;
+  for (const line of markdown.split(/\r?\n/)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      if (
+        marker &&
+        marker[1][0] === fence[0] &&
+        marker[1].length >= fence.length &&
+        marker[2].trim() === ""
+      )
+        fence = null;
+      continue;
+    }
+    if (marker && (marker[1][0] !== "`" || !marker[2].includes("`"))) {
+      fence = marker[1];
+      continue;
+    }
+    prose.push(line);
+  }
+  return prose.join("\n").replace(/`[^`\n]+`/g, "");
 }
 
-function markdownLinks(markdown) {
+export function markdownLinks(markdown) {
   const links = [];
   const searchable = stripCode(markdown);
   const inlinePattern = /!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -144,24 +164,30 @@ function markdownLinks(markdown) {
   return links;
 }
 
-const failures = [];
-for (const file of trackedMarkdownFiles()) {
-  const markdown = readFileSync(path.join(ROOT, file), "utf8");
-  for (const href of markdownLinks(markdown)) {
-    if (!targetExists(file, href)) {
-      failures.push(`${file}: missing relative link target ${href}`);
+export function checkMarkdownLinks() {
+  const failures = [];
+  for (const file of trackedMarkdownFiles()) {
+    const markdown = readFileSync(path.join(ROOT, file), "utf8");
+    for (const href of markdownLinks(markdown)) {
+      if (!targetExists(file, href)) {
+        failures.push(`${file}: missing relative link target ${href}`);
+      }
     }
   }
-}
 
-if (failures.length > 0) {
-  console.error(
-    `[check-markdown-links] ${failures.length} missing relative link target(s):`,
-  );
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
+  if (failures.length > 0) {
+    console.error(
+      `[check-markdown-links] ${failures.length} missing relative link target(s):`,
+    );
+    for (const failure of failures) {
+      console.error(`- ${failure}`);
+    }
+    process.exit(1);
   }
-  process.exit(1);
+
+  console.log("[check-markdown-links] PASS: relative Markdown links resolve.");
 }
 
-console.log("[check-markdown-links] PASS: relative Markdown links resolve.");
+if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename) {
+  checkMarkdownLinks();
+}

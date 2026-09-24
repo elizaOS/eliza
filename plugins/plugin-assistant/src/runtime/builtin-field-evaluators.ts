@@ -18,6 +18,7 @@ import {
   parseCompletionContextSelection,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
 
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
@@ -225,14 +226,17 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
-    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
+    ACKNOWLEDGMENT_RULE +
+    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   descriptionCompressed:
-    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
+    ACKNOWLEDGMENT_RULE +
+    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   priority: 20,
   schema: {
     type: "string",
     description:
-      "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
+      ACKNOWLEDGMENT_RULE +
+      " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   },
   parse(value) {
     if (typeof value !== "string") return "";

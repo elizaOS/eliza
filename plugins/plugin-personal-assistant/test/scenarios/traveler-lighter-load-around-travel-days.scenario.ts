@@ -14,7 +14,7 @@
  * (delta:1) rather than dropped, and the judge grades the load-bearing nuance —
  * that it was scheduled OFF the travel days, not on them.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

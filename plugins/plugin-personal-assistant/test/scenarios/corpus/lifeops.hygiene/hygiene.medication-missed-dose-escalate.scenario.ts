@@ -3,10 +3,7 @@
  * habits should escalate after a single miss, not 2+.
  */
 
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

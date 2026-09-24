@@ -2,10 +2,10 @@
 
 import {
   describeCalls,
+  scenario,
   successfulCalls,
   toRecord,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

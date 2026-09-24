@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "harness_runner.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "eliza-1" / "harness_runner.py"
 SPEC = importlib.util.spec_from_file_location("eliza_1_harness_runner", SCRIPT)
 assert SPEC and SPEC.loader
 RUNNER = importlib.util.module_from_spec(SPEC)

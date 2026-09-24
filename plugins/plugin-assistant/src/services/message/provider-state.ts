@@ -27,6 +27,7 @@ import { normalizeActionIdentifier } from "./direct-action-heuristics";
 export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "RECENT_MESSAGES",
   "CHARACTER_GATE_NOTICE",
+  "ENTITIES",
   "userPersonalityPreferences",
   "BOT_AWARENESS",
   "CHOICE",

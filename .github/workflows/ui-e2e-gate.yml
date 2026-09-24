@@ -54,7 +54,7 @@ jobs:
       - name: Build core runtime contract
         run: bun run build:core
       - name: Install Playwright Chromium
-        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Agent surface e2e
         run: bun run --cwd packages/ui test:agent-surface-e2e
       - name: Orchestrator accounts widget e2e
@@ -138,7 +138,7 @@ jobs:
           setup-python: "false"
           install-protoc: "false"
       - name: Install Playwright Chromium + WebKit
-        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium webkit
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium webkit
       - name: Build core contract
         run: bun run build:core
       - name: Settings page e2e
@@ -202,11 +202,9 @@ jobs:
           setup-python: "false"
           install-protoc: "false"
       - name: Install Playwright chromium + webkit
-        run: .github/scripts/install-playwright-browsers.sh chromium webkit
+        run: packages/scripts/github/install-playwright-browsers.sh chromium webkit
       - name: Render-parity contract
         run: bun run --cwd packages/ui test -- src/components/chat/render-parity.contract.test.tsx
-      - name: Conversation-nav unit + interleaving
-        run: bun run --cwd packages/ui test -- src/components/shell/conversation-nav.test.ts
       - name: Chat-sheet Safari/WebKit gesture smoke
         run: bun run --cwd packages/ui test:chat-sheet-safari-e2e
       - name: Chat-scroll web e2e

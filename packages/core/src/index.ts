@@ -114,7 +114,6 @@ export * from "./plugin";
 // Export recent-errors provider (#12263)
 export * from "./providers/recent-errors";
 // Export skill eligibility provider
-export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
 export * from "./recent-messages-state";
@@ -211,6 +210,7 @@ export {
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
+	selectHistoricalNavigation,
 	withRequiredCompletionSourceIdentity,
 } from "./runtime/completion-context.ts";
 export {
@@ -425,6 +425,15 @@ export {
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
 export {
+	buildElizaNativeTrajectoryRows,
+	iterateTrajectoryLlmCalls,
+	resolveJsonShape,
+	resolveTrajectoryStatus,
+	serializeTrajectoryExport,
+	summarizeTrajectoryCache,
+	summarizeTrajectoryUsage,
+} from "./services/trajectory-export.ts";
+export {
 	createTrajectoryJsonBudget,
 	type SanitizationState,
 	sanitizeTrajectoryJsonObject,
@@ -537,14 +546,7 @@ export type {
 	ViewKind,
 	ViewKindBearer,
 } from "./types/view-kind";
-export {
-	isAlwaysOnViewKind,
-	isViewKindEnabled,
-	isViewVisible,
-	resolveViewKind,
-	VIEW_KIND_META,
-	VIEW_KINDS,
-} from "./types/view-kind";
+
 export * from "./types/view-kind.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";

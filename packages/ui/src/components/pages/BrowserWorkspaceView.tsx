@@ -1,20 +1,10 @@
-/**
- * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * whose tabs fold into a switcher sheet, with companion-bridge status and the
- * policy-controlled agent browser session panel (takeover, domain modes,
- * receipts) when the bridge plugin is available.
- *
- * The builtin registry declares this view `header: "fullscreen"`, so the shell
- * mounts it edge-to-edge and the view owns a compact, familiar navigation rail
- * plus the isolated web-content surface. Responsive layout changes only the
- * chrome density; browsing, storage, and security policy stay canonical.
- *
- * Tabs, navigation, and snapshots flow through the `client` browser API; on
- * native the tabs render via a registered renderer impl
- * (`browser-tabs-renderer-registry`), while desktop/web fall back to the
- * companion bridge. Mounted in `App.tsx` under the `browser` route key.
- */
+/** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 import { Capacitor } from "@capacitor/core";
+import {
+  BROWSER_TAB_PRELOAD_SCRIPT,
+  resolveApiUrl,
+  setBrowserTabsRendererImpl,
+} from "@elizaos/shared";
 import {
   ArrowLeft,
   ArrowRight,
@@ -35,12 +25,7 @@ import {
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import {
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-} from "../../events";
-import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
+import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -50,12 +35,6 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
-import { resolveApiUrl } from "../../utils/asset-url";
-import {
-  BROWSER_TAB_PRELOAD_SCRIPT,
-  setBrowserTabsRendererImpl,
-} from "../../utils/browser-tabs-renderer-registry";
-import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -311,23 +290,6 @@ function resolveBrowserWorkspaceTabPartition(
     case "user":
       return undefined;
   }
-}
-
-function isBrowserBridgePlugin(plugin: {
-  id?: string;
-  name?: string;
-  npmName?: string;
-}): boolean {
-  const identifiers = [plugin.id, plugin.name, plugin.npmName]
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim().toLowerCase());
-  return identifiers.some(
-    (value) =>
-      value === "browser" ||
-      value === "browser-bridge" ||
-      value === "plugin-browser" ||
-      value === "@elizaos/plugin-browser",
-  );
 }
 
 function isBrowserWorkspaceSessionMode(
@@ -632,7 +594,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     getStewardStatus,
     setActionNotice,
     t,
-    plugins,
     uiTheme,
     walletAddresses,
     walletConfig,
@@ -641,7 +602,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     getStewardStatus: s.getStewardStatus,
     setActionNotice: s.setActionNotice,
     t: s.t,
-    plugins: s.plugins,
     uiTheme: s.uiTheme,
     walletAddresses: s.walletAddresses,
     walletConfig: s.walletConfig,
@@ -674,9 +634,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // multi-tab surface — opened from the toolbar's fold control.
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherReturnFocusRef = useRef<HTMLButtonElement | null>(null);
-  const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
-    readPersistedMobileRuntimeMode,
-  );
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
@@ -813,12 +770,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // leak into a user tab. The address bar remains the explicit path for opening
   // a chosen URL.
   const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-  const browserBridgeSupported = useMemo(
-    () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
-    [plugins],
-  );
-  const browserBridgeUnsupportedInNativeLocalMode =
-    Capacitor.isNativePlatform() && mobileRuntimeMode === "local";
 
   workspaceSnapshotRef.current = workspace;
 
@@ -859,23 +810,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     walletAddresses,
     walletConfig,
   ]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const syncRuntimeMode = () => {
-      setMobileRuntimeMode(readPersistedMobileRuntimeMode());
-    };
-    document.addEventListener(
-      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-      syncRuntimeMode,
-    );
-    return () => {
-      document.removeEventListener(
-        MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-        syncRuntimeMode,
-      );
-    };
-  }, []);
 
   const loadBrowserWalletState = useCallback(async () => {
     try {
@@ -3078,17 +3012,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           role="alert"
         >
           {loadError.message}
-        </div>
-      ) : null}
-
-      {browserBridgeSupported && !browserBridgeUnsupportedInNativeLocalMode ? (
-        <div
-          data-testid="browser-session-policy-dock"
-          className="pointer-events-none absolute inset-x-3 bottom-3 z-30 max-h-[min(40%,24rem)] overflow-y-auto"
-        >
-          <div className="pointer-events-auto mx-auto w-full max-w-xl rounded-sm bg-background/95 shadow-lg">
-            <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
-          </div>
         </div>
       ) : null}
 

@@ -1,109 +1,15 @@
 # eliza-adapter
 
-Python bridge that connects benchmark runners to the TypeScript [eliza](../../eliza/) agent via HTTP.
+Python bridge that connects benchmark runners (Python) to the elizaOS agent runtime (TypeScript) over HTTP.
 
-## Architecture
+## Development
 
-```
-Python Benchmark Runner
-    |  (imports adapter)
-eliza-adapter  (this package)
-    |  (HTTP requests)
-Eliza Benchmark Server  (TypeScript / Node.js)
-    |  (runs agent)
-ElizaOS AgentRuntime
-```
+Use a Python environment matching `pyproject.toml` and install the required dependencies.
 
-The **server side** lives in this repo at [`suites/lifeops-bench/runner/src/`](../../suites/lifeops-bench/runner/src/):
+No compilation or wheel build is required to run this suite from source.
 
-- `server.ts` -- lightweight HTTP server wrapping the full agent runtime
-- `plugin.ts` -- provider + action that inject task context and capture agent decisions
-
-This package provides the **client side**: an HTTP client, subprocess manager, and benchmark-specific adapters.
-
-## Modules
-
-| Module | Purpose |
-|---|---|
-| `client.py` | `ElizaClient` -- HTTP client for `/api/benchmark/*` endpoints |
-| `server_manager.py` | `ElizaServerManager` -- spawns and manages the Node.js benchmark server subprocess |
-| `agentbench.py` | AgentBench harness adapter |
-| `context_bench.py` | context-bench LLM query adapter |
-| `mind2web.py` | Mind2Web agent adapter |
-| `tau_bench.py` | tau-bench agent adapter |
-| `replay_eval.py` | Offline scorer for normalized Eliza replay artifacts |
-
-## Quick start
-
-```python
-from eliza_adapter import ElizaServerManager
-
-mgr = ElizaServerManager()
-mgr.start()          # spawns the TS server, waits until healthy
-client = mgr.client  # ready-to-use ElizaClient
-
-# send a benchmark message
-resp = client.send_message("hello", context={"benchmark": "agentbench", "taskId": "1"})
-print(resp.text, resp.params)
-
-mgr.stop()
-```
-
-Or start the server manually and point the client at it:
+Test from this directory:
 
 ```bash
-# in the eliza repo root
-bun run --cwd suites/lifeops-bench/runner benchmark:server
-# or: node --import tsx suites/lifeops-bench/runner/src/server.ts
+python -m pytest
 ```
-
-```python
-from eliza_adapter import ElizaClient
-
-client = ElizaClient("http://localhost:3939")
-client.wait_until_ready()
-```
-
-## Configuration
-
-| Environment variable | Default | Description |
-|---|---|---|
-| `ELIZA_BENCH_PORT` | `3939` | Port the benchmark server listens on |
-
-The server auto-detects model provider plugins from API key env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.).
-
-## Native runtime diagnostic
-
-Before spending model credits, exercise the real subprocess, HTTP boundary,
-`AgentRuntime`, generic message service, and native tool-model path against a
-loopback OpenAI-compatible fixture:
-
-```bash
-PYTHONPATH=harnesses/eliza \
-  python harnesses/eliza/run_native_runtime_diagnostic.py
-```
-
-The command writes health, upstream-call summaries, trajectories, telemetry,
-and server logs under `benchmark_results/`. It deliberately
-uses a fake model and zero-vector embedding, so the artifact is marked
-`publishable: false`, `stand_in: true`, and `release_evidence: false`. A real
-campaign turn is publishable only when the server reports its exact native API
-(`messageService.handleMessage` or `useModel`), transport, tool bridge,
-`direct_model_bypass: false`, and no stand-in components.
-
-## Used by
-
-- [`benchmarks/agentbench/`](../agentbench/) -- `run_benchmark.py`
-- [`benchmarks/context-bench/`](../context-bench/) -- `run_benchmark.py`
-- [`benchmarks/mind2web/`](../mind2web/) -- `runner.py`
-- [`benchmarks/tau-bench/`](../tau-bench/) -- `elizaos_tau_bench/runner.py`
-
-## Server-side reference
-
-The TypeScript benchmark server and plugin that this adapter communicates with are maintained in the eliza package:
-
-- **Server:** [`suites/lifeops-bench/runner/src/server.ts`](../../lifeops-bench/src/server.ts)
-- **Plugin:** [`suites/lifeops-bench/runner/src/plugin.ts`](../../suites/lifeops-bench/runner/src/plugin.ts)
-- **npm script:** `benchmark:server` in `@elizaos/lifeops-bench` (`bun run --cwd suites/lifeops-bench/runner benchmark:server`)
-
-See the [benchmark server README](../../lifeops-bench/src/README.md) for endpoint documentation and plugin details.

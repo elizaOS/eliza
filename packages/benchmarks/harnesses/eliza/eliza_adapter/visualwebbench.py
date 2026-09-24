@@ -170,8 +170,8 @@ def _load_vision_harness_runtime():
         repo_root
         / "packages"
         / "benchmarks"
-        / "vision-language"
         / "scripts"
+        / "vision-language"
         / "vision_harness_runtime.py"
     )
     spec = importlib.util.spec_from_file_location("vision_harness_runtime", script)

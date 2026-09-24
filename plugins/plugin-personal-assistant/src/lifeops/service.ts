@@ -13,24 +13,13 @@ export {
 } from "./service-types.js";
 
 import type {
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionPreflightRequest,
-  BrowserBridgeCompanionPreflightResponse,
-  BrowserBridgeCompanionRevocationResetResponse,
-  BrowserBridgeCompanionRevokeResponse,
-  BrowserBridgeCompanionSessionBeginRequest,
-  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncRequest,
-  BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
-import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord/user-account-scraper";
+import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
 import type {
   DuffelOffer,
   DuffelOrder,
@@ -1461,50 +1450,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.browserDomain.getCurrentBrowserPage();
   }
 
-  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
-    companion: BrowserBridgeCompanionStatus;
-    tabs: BrowserBridgeTabSummary[];
-    currentPage: BrowserBridgePageContext | null;
-  }> {
-    return this.browserDomain.syncBrowserState(request);
-  }
-
-  createBrowserCompanionPairing(
-    request: CreateBrowserBridgeCompanionPairingRequest,
-  ): Promise<BrowserBridgeCompanionPairingResponse> {
-    return this.browserDomain.createBrowserCompanionPairing(request);
-  }
-
-  resetBrowserCompanionRevocation(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
-    return this.browserDomain.resetBrowserCompanionRevocation(companionId);
-  }
-
-  syncBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionSyncRequest,
-  ): Promise<BrowserBridgeCompanionSyncResponse> {
-    return this.browserDomain.syncBrowserCompanion(
-      companionId,
-      pairingToken,
-      request,
-    );
-  }
-
-  preflightBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionPreflightRequest,
-  ): Promise<BrowserBridgeCompanionPreflightResponse> {
-    return this.browserDomain.preflightBrowserCompanion(
-      companionId,
-      pairingToken,
-      request,
-    );
-  }
-
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]> {
     return this.browserDomain.listBrowserSessions();
   }
@@ -1538,64 +1483,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     request: UpdateLifeOpsBrowserSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession> {
     return this.browserDomain.updateBrowserSessionProgress(sessionId, request);
-  }
-
-  updateBrowserSessionProgressFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionProgressRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.updateBrowserSessionProgressFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  beginBrowserSessionActionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionBeginRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.beginBrowserSessionActionFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  completeBrowserSessionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: CompleteLifeOpsBrowserSessionRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.completeBrowserSessionFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  revokeBrowserCompanion(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse> {
-    return this.browserDomain.revokeBrowserCompanion(companionId);
-  }
-
-  revokeBrowserCompanionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse> {
-    return this.browserDomain.revokeBrowserCompanionFromCompanion(
-      companionId,
-      pairingToken,
-    );
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

@@ -22,7 +22,8 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { readAliasedEnv } from "@elizaos/shared";
 import dotenv from "dotenv";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
@@ -279,7 +280,7 @@ function wireToolCallToToolCall(value: unknown): ToolCall | null {
   // `ToolCall.arguments` as a string so no value-shape cast is needed.
   const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs);
   const id = typeof call.id === "string" ? call.id : name;
-  return { id, name, arguments: args, type: "function" };
+  return { id, name, arguments: args };
 }
 
 /**
@@ -1158,7 +1159,7 @@ export async function startBenchmarkServer() {
   // succeed with a crowded context, it demonstrates sufficient context handling.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const plugins: Plugin[] = [];
+  const plugins: Plugin[] = [createAssistantPlugin()];
   const loadedPlugins: string[] = [];
   const failedPlugins: string[] = [];
 
@@ -1680,9 +1681,6 @@ export async function startBenchmarkServer() {
       },
     },
     plugins,
-    enableDocuments: lifecycleProfile ? false : undefined,
-    enableRelationships: lifecycleProfile ? false : undefined,
-    enableTrajectories: lifecycleProfile ? false : undefined,
   });
 
   await runtime.initialize();

@@ -51,7 +51,7 @@ import {
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
-} from "@elizaos/shared/config/config-catalog";
+} from "@elizaos/shared";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
 import type { ControlType, FormControl, TypeHandler } from "./types";

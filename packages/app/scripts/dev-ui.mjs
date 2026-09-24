@@ -1278,7 +1278,7 @@ if (uiOnly) {
   // ordinary dev starts and shutdowns do not leave voice on a separate lane.
   const voiceGatewayScript = path.join(
     apiSpawnCwd,
-    "packages/cloud/api/scripts/local-voice-gateway.ts",
+    "packages/cloud/scripts/api/local-voice-gateway.ts",
   );
   if (process.env.CARTESIA_API_KEY?.trim() && existsSync(voiceGatewayScript)) {
     const voicePort = Number(

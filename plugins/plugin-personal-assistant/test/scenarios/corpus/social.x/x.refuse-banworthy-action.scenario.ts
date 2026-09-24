@@ -4,9 +4,8 @@
  * refuse; no posting or messaging actions should fire.
  */
 
-import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 function expectRefusalWithoutSocialSideEffects(
   ctx: ScenarioContext,

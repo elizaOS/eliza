@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const defaultRepoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -426,15 +426,12 @@ function inspectProject({
     moduleHost.getCanonicalFileName,
     parsed.options,
   );
-  const queue = [...parsed.fileNames];
-  const visited = new Set();
+  const queue = new Set(parsed.fileNames.map((file) => path.resolve(file)));
+  const pathPatterns = Object.keys(parsed.options.paths ?? {});
   const ambientWorkspaceModules = new Map();
   const externallyImportedWorkspaceModules = new Map();
   const ownerDir = packageDirsByName.get(packageName);
-  while (queue.length > 0) {
-    const sourcePath = path.resolve(queue.shift());
-    if (visited.has(sourcePath)) continue;
-    visited.add(sourcePath);
+  for (const sourcePath of queue) {
     let sourceAnalysis = sourceFileCache.get(sourcePath);
     if (!sourceAnalysis) {
       const source = host.readFile(sourcePath);
@@ -454,9 +451,7 @@ function inspectProject({
     }
     for (const specifier of sourceAnalysis.ambientWorkspaceModules) {
       if (
-        Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pathPatternMatches(pattern, specifier),
-        )
+        pathPatterns.some((pattern) => pathPatternMatches(pattern, specifier))
       ) {
         ambientWorkspaceModules.set(specifier, sourcePath);
       }
@@ -504,13 +499,11 @@ function inspectProject({
         !resolution.resolvedFileName.includes(`${path.sep}dist${path.sep}`) &&
         !resolution.resolvedFileName.endsWith(".d.ts")
       ) {
-        queue.push(resolution.resolvedFileName);
+        queue.add(path.resolve(resolution.resolvedFileName));
       }
       if (!specifier.startsWith("@elizaos/")) continue;
       if (
-        !Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pattern.startsWith("@elizaos/"),
-        ) ||
+        !targetName &&
         !rootPathPatterns.some((pattern) =>
           pathPatternMatches(pattern, specifier),
         )
@@ -519,14 +512,14 @@ function inspectProject({
       }
       let valid = Boolean(resolution);
       if (targetName) {
-        if (targetName === packageName) valid = true;
-        else {
+        const resolvedToGeneratedOutput =
+          resolution?.resolvedFileName.includes(`${path.sep}dist${path.sep}`) ??
+          false;
+        if (targetName === packageName) {
+          valid = Boolean(resolution) && !resolvedToGeneratedOutput;
+        } else {
           const target = manifestsByName.get(targetName);
           if (declarationEntryIsGenerated(target, specifier, targetName)) {
-            const resolvedToGeneratedOutput =
-              resolution?.resolvedFileName.includes(
-                `${path.sep}dist${path.sep}`,
-              ) ?? false;
             valid =
               (Boolean(resolution) && !resolvedToGeneratedOutput) ||
               builtPackages.has(targetName);

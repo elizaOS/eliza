@@ -1,5 +1,5 @@
 // Defines the schedule plan capability LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 /**
  * Behavior scenario for the `schedule_plan` LifeOps capability.

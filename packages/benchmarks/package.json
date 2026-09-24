@@ -5,12 +5,20 @@
   "type": "module",
   "description": "elizaOS benchmark suites, harness adapters, and the @elizaos/plugin-benchmarks action vocabulary plugin.",
   "license": "MIT",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
+    "test": "node --test suites/mobile-resource/metrics.test.mjs && vitest run suites/loadperf/frontend-kpi.test.mjs",
     "build:plugin": "bun run --cwd plugin-benchmarks build",
     "test:plugin": "bun run --cwd plugin-benchmarks test",
     "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",
     "test:py": "pytest tests/ -v",
-    "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development suites/lifeops-bench/scripts/export-action-manifest.ts"
+    "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development scripts/lifeops-bench/export-action-manifest.ts"
   },
   "engines": {
     "node": "24.15.0",

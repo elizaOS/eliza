@@ -14,7 +14,7 @@ import path from "node:path";
 
 import AdmZip from "adm-zip";
 
-import { assertStagedRendererMatchesBuild } from "./renderer-build-manifest.mjs";
+import { assertStagedRendererMatchesBuild } from "./renderer-build-manifest.ts";
 
 export const IOS_CLOUD_ARTIFACT_ATTESTATION_SCHEMA =
   "elizaos.ios-cloud-artifact-attestation/v1";

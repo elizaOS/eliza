@@ -51,6 +51,7 @@ import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.mjs";
+import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -1477,6 +1478,9 @@ function resolveSharedSourceExportTarget(
   if (key === ".") {
     return path.join(sharedPkgDir, "src/index.ts");
   }
+  if (key === "./browser-contracts") {
+    return path.join(sharedPkgDir, "scripts/browser-contracts-entry.ts");
+  }
 
   const exportTarget = resolvePackageExportTarget(value);
   if (!exportTarget) return null;
@@ -1490,24 +1494,6 @@ function resolveSharedSourceExportTarget(
   );
 }
 
-/** The renderer receives audited pure contracts; runtime subpaths stay Node-only. */
-export function rejectRuntimeInRendererPlugin(): Plugin {
-  return {
-    name: "reject-runtime-in-renderer",
-    enforce: "pre",
-    resolveId(id, importer) {
-      if (id === "@elizaos/core") {
-        return path.resolve(here, "src/shims/core-browser.ts");
-      }
-      if (id.startsWith("@elizaos/core/")) {
-        throw new Error(
-          `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
-        );
-      }
-      return null;
-    },
-  };
-}
 
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
@@ -2862,7 +2848,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // into the eager entry graph.
       {
         find: /^@elizaos\/shared\/logger$/,
-        replacement: path.resolve(elizaRoot, "packages/shared/src/logger.ts"),
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/shared/scripts/browser-logger.ts",
+        ),
       },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the

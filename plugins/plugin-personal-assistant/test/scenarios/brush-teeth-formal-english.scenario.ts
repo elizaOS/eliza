@@ -1,7 +1,7 @@
 /**
  * Live-model smoke scenario: formal executive-register English ("I would appreciate it if you could establish…") still routes to a daily 8am/9pm brushing habit save.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

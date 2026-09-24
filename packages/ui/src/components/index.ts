@@ -3,6 +3,34 @@
  * local to avoid a root-barrel cycle during the subpath API migration.
  */
 
+export type {
+  AppDetailExtensionComponent,
+  AppDetailExtensionProps,
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/shared";
+export {
+  autoLabel,
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  ENV_KEY_ACRONYMS,
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+  getAllOverlayApps,
+  getAppDetailExtension,
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isAospAndroid,
+  isDocumentImageFile,
+  isOverlayApp,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+  type OverlayAppAvailabilityContext,
+  overlayAppToRegistryInfo,
+  registerDetailExtension,
+  registerOverlayApp,
+} from "@elizaos/shared";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,
@@ -154,20 +182,12 @@ export {
   DashboardRouteError,
   formatDashboardRouteErrorMessage,
 } from "../cloud-ui/components/primitives";
-export * from "../utils/documents-upload-image";
-export * from "../utils/labels";
-export * from "../utils/trajectory-format";
 export * from "./accounts/EditableAccountLabel";
-export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
 export * from "./apps/extensions/surface.helpers";
-export * from "./apps/extensions/types";
 export * from "./apps/FullscreenView";
 export * from "./apps/FullscreenView.helpers";
 export * from "./apps/GameViewOverlay";
-export * from "./apps/overlay-app-api";
-export * from "./apps/overlay-app-registry";
-export * from "./browser";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";

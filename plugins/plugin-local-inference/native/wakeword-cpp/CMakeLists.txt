@@ -67,7 +67,7 @@ add_test(NAME wakeword_window_test COMMAND wakeword_window_test)
 # test refuses to run without the GGUFs (a missing fixture must NOT
 # pass for "OK"). Drop them under ${CMAKE_BINARY_DIR}/wakeword/<phrase>.{melspec,embedding,classifier}.gguf
 # before running ctest by invoking
-#   python3 plugins/plugin-local-inference/native/wakeword-cpp/scripts/wakeword_to_gguf.py \
+#   python3 packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py \
 #     --melspec-onnx ... --embedding-onnx ... --classifier-onnx ... \
 #     --phrase "hey eliza" --out-dir <CMAKE_BINARY_DIR>/wakeword
 add_executable(wakeword_runtime_test test/wakeword_runtime_test.c)

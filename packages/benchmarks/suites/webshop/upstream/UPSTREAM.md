@@ -22,10 +22,10 @@ We vendor:
   `items_human_ins.json` (duplicates of `data/items_human_ins.json` after
   fetching) are intentionally **not** vendored — they are large and either
   redundant or only needed for retraining baselines. Fetch them via
-  `scripts/fetch_data.py` (see `data` profile flags).
+  `python -m elizaos_webshop_tools.fetch_data` (see `data` profile flags).
 - `setup.sh` — original Princeton bootstrap script. We do not invoke it
   directly (it assumes `gdown` + `conda` + Java) but it documents the
-  authoritative data URLs, which we mirror in `scripts/fetch_data.py`.
+  authoritative data URLs, which we mirror in `python -m elizaos_webshop_tools.fetch_data`.
 - `requirements.txt` — original dependency pin set.
 
 We removed `web_agent_site/envs/chromedriver` (16 MB Linux binary) since

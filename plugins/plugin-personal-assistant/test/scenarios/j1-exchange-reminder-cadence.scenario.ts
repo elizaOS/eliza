@@ -3,7 +3,7 @@
  * It checks that handoff-day support is modeled as recurring owner logistics,
  * not one-off chat advice.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

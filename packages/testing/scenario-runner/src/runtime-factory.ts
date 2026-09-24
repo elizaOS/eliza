@@ -25,18 +25,14 @@ import {
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
-} from "@elizaos/testing/deterministic-model-plugin";
-import {
   type LiveProviderConfig,
   type LiveProviderName,
-  selectLiveProvider,
-} from "@elizaos/testing/live-provider";
-import {
-  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
-} from "@elizaos/testing/scenario-runner/schema";
+  selectLiveProvider,
+} from "@elizaos/testing";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
@@ -416,7 +412,6 @@ const EXACT_LIVE_PROVIDER_CREDENTIALS: Partial<
   groq: ["GROQ_API_KEY"],
   openai: ["OPENAI_API_KEY"],
   anthropic: ["ANTHROPIC_API_KEY"],
-  google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
   openrouter: ["OPENROUTER_API_KEY"],
 };
 

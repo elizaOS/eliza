@@ -25,7 +25,7 @@ import {
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
 import {
   cloneRequestWithScheduledCronMetadata,

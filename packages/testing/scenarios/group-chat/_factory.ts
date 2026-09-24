@@ -8,7 +8,7 @@ import type {
   ScenarioDefinition,
   ScenarioSeedStep,
   ScenarioTurn,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 type MessageTurn = ScenarioTurn;
 type GroupChatTimingSetup = Pick<

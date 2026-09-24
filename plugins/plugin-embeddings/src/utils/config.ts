@@ -75,29 +75,8 @@ export function getBooleanSetting(
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
-export function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: Document }).document !== "undefined"
-  );
-}
-
-/**
- * Resolved base URL of the OpenAI-compatible embedding endpoint.
- *
- * In a browser build the server-side proxy URL (`EMBEDDING_BROWSER_URL`) is
- * preferred so the real endpoint/key stay server-side. There is NO default
- * endpoint and NO chat-provider fallback: when nothing is configured this
- * returns `undefined` and the handler throws (Commandment 8 — never invent an
- * endpoint that could silently produce or persist a wrong vector).
- */
+/** Resolves the configured server endpoint without inventing a default. */
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string | undefined {
-  if (isBrowser()) {
-    const browserURL = getSetting(runtime, "EMBEDDING_BROWSER_URL");
-    if (browserURL && browserURL.trim() !== "") {
-      return browserURL.trim();
-    }
-  }
   const baseURL = getSetting(runtime, "EMBEDDING_BASE_URL");
   return baseURL && baseURL.trim() !== "" ? baseURL.trim() : undefined;
 }
@@ -129,33 +108,14 @@ export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", 1536);
 }
 
-/**
- * Auth header for the embedding request.
- *
- * In a browser build the `Authorization` header is NOT sent unless an explicit
- * browser proxy URL (`EMBEDDING_BROWSER_URL`) is configured — mirrors
- * plugin-openai's `isBrowser` gating so a frontend bundle never leaks the key.
- * The proxy is expected to inject auth server-side.
- */
+/** Builds the authorization header for the configured embedding endpoint. */
 export function getAuthHeader(runtime: IAgentRuntime): Record<string, string> {
-  if (isBrowser() && !getSetting(runtime, "EMBEDDING_BROWSER_URL")) {
-    return {};
-  }
   const key = getEmbeddingApiKey(runtime);
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
-/**
- * Auth header for a specific endpoint. Browser builds suppress direct bearer
- * tokens unless the request goes through the configured server-side proxy.
- */
-export function getEndpointAuthHeader(
-  runtime: IAgentRuntime,
-  apiKey: string | undefined
-): Record<string, string> {
-  if (isBrowser() && !getSetting(runtime, "EMBEDDING_BROWSER_URL")) {
-    return {};
-  }
+/** Builds the authorization header for a primary or fallback endpoint. */
+export function getEndpointAuthHeader(apiKey: string | undefined): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 

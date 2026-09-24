@@ -12,7 +12,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "lib": ["ES2024", "DOM"],
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../ui/src/*"],
@@ -26,15 +26,11 @@
       "@elizaos/testing": ["../src/index.ts"],
       "@elizaos/core/atomic-json": ["../../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../../core/src/*"],
-      "@elizaos/logger": ["../../logger/src/index.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "../../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
       "@elizaos/plugin-anthropic": [
         "../../../plugins/plugin-anthropic/index.ts"
-      ],
-      "@elizaos/plugin-anthropic/endpoint-config": [
-        "../../../plugins/plugin-anthropic/utils/config.ts"
       ],
       "@elizaos/plugin-browser": [
         "../../../plugins/plugin-browser/src/index.ts"
@@ -64,14 +60,14 @@
       "@elizaos/plugin-personal-assistant": [
         "../../../plugins/plugin-personal-assistant/src/index.ts"
       ],
+      "@elizaos/plugin-personal-assistant/*": [
+        "../../../plugins/plugin-personal-assistant/src/*"
+      ],
       "@elizaos/plugin-mcp": ["../../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-native-messages": [
         "../../../plugins/plugin-native-messages/src/index.ts"
       ],
       "@elizaos/plugin-openai": ["../../../plugins/plugin-openai/index.ts"],
-      "@elizaos/plugin-openai/endpoint-config": [
-        "../../../plugins/plugin-openai/utils/config.ts"
-      ],
       "@elizaos/plugin-native-phone": [
         "../../../plugins/plugin-native-phone/src/index.ts"
       ],
@@ -138,9 +134,6 @@
       "@elizaos/plugin-native-messages/bridge": [
         "../../../plugins/plugin-native-messages/src/bridge.ts"
       ],
-      "@elizaos/plugin-native-inference/bridge": [
-        "../../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
-      ],
       "@elizaos/capacitor-mobile-signals": [
         "../../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
@@ -196,13 +189,9 @@
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-scheduling/*": [
-        "../../../plugins/plugin-scheduling/src/*"
-      ],
       "@elizaos/plugin-telegram": [
         "../../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-mcp/*": ["../../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/*": ["../../../plugins/plugin-todos/src/*"],
       "@elizaos/plugin-vision": ["../../../plugins/plugin-vision/src/index.ts"],
@@ -212,11 +201,9 @@
       "@elizaos/plugin-local-inference/*": [
         "../../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/*": ["../src/*"],
       "@elizaos/testing/scenario-runner": ["./src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./src/*"],
       "@elizaos/testing/synthetic-world": ["../synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": ["./schema/index.js"],
       "@elizaos/plugin-assistant": [
         "../../../plugins/plugin-assistant/src/index.ts"
       ],
@@ -291,6 +278,9 @@
       ],
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
+      ],
+      "@elizaos/plugin-x/lifeops-message-adapter": [
+        "../../../plugins/plugin-x/src/lifeops-message-adapter.ts"
       ]
     }
   },

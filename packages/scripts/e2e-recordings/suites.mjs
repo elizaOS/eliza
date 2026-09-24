@@ -28,14 +28,6 @@ export const UI_E2E_SUITES = [
       "Boots the local cloud API, cloud frontend, auth cookie login, provisioning flows, screenshots, traces, and videos.",
   },
   {
-    name: "homepage",
-    displayName: "Homepage",
-    configDir: "packages/homepage",
-    script: "test:e2e",
-    coverage:
-      "Runs marketing routes, navigation, onboarding controls, contact capture, route coverage, screenshots, traces, and videos.",
-  },
-  {
     name: "ui-agent-surface",
     displayName: "Shared UI agent surface",
     configDir: "packages/ui",

@@ -16,8 +16,8 @@ import {
   resolveUserFacingEffectReceipts,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/shared";
 import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 import { replyTemplate } from "../prompts.js";
 

@@ -2,7 +2,7 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -78,6 +78,8 @@ async function setup(
     adapter,
     logLevel: "fatal",
   });
+  await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(3);
   runtime.evaluators.length = 0;
   runtime.composeState = vi.fn(async () => state);
   runtime.emitEvent = vi.fn(async () => {});
@@ -2168,6 +2170,12 @@ describe("durable background memory", () => {
       },
     ]);
     await runtime.createRoomParticipants([other], message.roomId);
+    const readEntities = runtime.getEntitiesForRoom.bind(runtime);
+    let reorder = false;
+    runtime.getEntitiesForRoom = async (roomId) => {
+      const entities = await readEntities(roomId);
+      return reorder ? [...entities].reverse() : entities;
+    };
     const before = await runtime.getEntitiesForRoom(message.roomId);
     runtime.registerEvaluator(relationshipEvaluator);
     const started = deferred<void>();
@@ -2180,8 +2188,9 @@ describe("durable background memory", () => {
     const running = execute(runtime, await job(runtime));
     await started.promise;
     await runtime.roomHandlerQueue.withLease(message.roomId, async () => {
-      await runtime.removeParticipant(message.entityId, message.roomId);
-      await runtime.createRoomParticipants([message.entityId], message.roomId);
+      // SQL does not promise insertion order. Reverse the real query result
+      // explicitly to exercise order-insensitive inference settlement.
+      reorder = true;
     });
     const after = await runtime.getEntitiesForRoom(message.roomId);
     expect(after).toEqual([...before].reverse());

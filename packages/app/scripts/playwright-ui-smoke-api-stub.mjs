@@ -14,7 +14,7 @@ import { WebSocketServer } from "ws";
 import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
-} from "../../agent/src/api/dynamic-view-host-external.mjs";
+} from "../../agent/src/api/dynamic-view-host-external.ts";
 // Pure catalog data; keep the Node-run stub aligned without loading a runtime.
 import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 // The declarations + provenance decision live in one place so a removed plugin
@@ -4241,23 +4241,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/extension/status") {
-    sendJson(req, res, 200, {
-      installed: false,
-      connected: false,
-      relayReachable: false,
-      relayPort: 0,
-      extensionPath: null,
-      chromeBuildPath: null,
-      chromePackagePath: null,
-      safariWebExtensionPath: null,
-      safariAppPath: null,
-      safariPackagePath: null,
-      releaseManifest: null,
-    });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/lifeops/overview") {
     sendJson(req, res, 200, emptyLifeOpsOverview);
     return;
@@ -4382,24 +4365,6 @@ const server = http.createServer(async (req, res) => {
       authUrl: null,
       lastSyncedAt: null,
     });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/browser-bridge/settings") {
-    sendJson(req, res, 200, { settings: emptyBrowserBridgeSettings });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/browser-bridge/companions"
-  ) {
-    sendJson(req, res, 200, { companions: [] });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/browser-bridge/packages") {
-    sendJson(req, res, 200, { status: emptyBrowserBridgePackageStatus });
     return;
   }
 

@@ -44,7 +44,7 @@ import {
   parseJsonObject,
   resolveCanonicalOwnerId,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
+import { isMobilePlatform } from "@elizaos/shared";
 import { getEntityDetails } from "../entities.ts";
 import {
   buildFactKeywordsForStorage,

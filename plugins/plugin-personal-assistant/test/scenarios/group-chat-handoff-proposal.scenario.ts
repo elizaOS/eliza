@@ -6,7 +6,7 @@
  * not just the reply), and (2) nothing was dispatched on an external send channel
  * before approval — the negative space is the assertion.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

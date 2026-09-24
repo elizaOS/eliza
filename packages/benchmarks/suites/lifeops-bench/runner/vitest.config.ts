@@ -1,17 +1,6 @@
-/** Resolve runner tests against the containing monorepo or an explicit checkout. */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+/** Resolve benchmark tests through the repository's canonical workspace source aliases. */
 import { defineConfig } from "vitest/config";
-
-const fileDir = path.dirname(fileURLToPath(import.meta.url));
-// ELIZA_REPO_DIR may select a different runtime checkout.
-const monorepoRoot = process.env.ELIZA_REPO_DIR
-  ? path.resolve(process.env.ELIZA_REPO_DIR)
-  : path.resolve(fileDir, "../../../../..");
-const coreSrc = path.join(monorepoRoot, "packages/core/src");
-const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
-const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
-const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
+import { buildWorkspaceSourceAliases } from "../../../../scripts/vitest/source-aliases.ts";
 
 export default defineConfig({
   test: {
@@ -19,33 +8,5 @@ export default defineConfig({
     hookTimeout: 120_000,
     server: { deps: { inline: [/@elizaos\//] } },
   },
-  resolve: {
-    alias: [
-      {
-        find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/node$/,
-        replacement: path.join(coreSrc, "index.ts"),
-      },
-      { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(sharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/cloud-routing$/,
-        replacement: path.join(cloudRoutingSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/cloud-sdk$/,
-        replacement: path.join(cloudSdkSrc, "index.ts"),
-      },
-    ],
-  },
+  resolve: { alias: buildWorkspaceSourceAliases() },
 });

@@ -3,7 +3,7 @@
  * package. Keeping the manifest here makes payload additions reviewable and
  * gives tests one canonical contract instead of parsing a package script.
  */
-import { copyFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { copyPackageAssets } from "../../scripts/copy-package-assets.mjs";
@@ -19,18 +19,18 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   // Consumer entrypoints and their shared dependencies are explicit: adding a
   // repository script must not silently expand the installed package.
   "scripts/README.md",
+  "scripts/electrobun",
   "scripts/align-electrobun-version.mjs",
   "scripts/aosp/compile-libllama-paths.mjs",
   "scripts/aosp/compile-libllama.mjs",
   "scripts/aosp/compile-shim.mjs",
-  "scripts/aosp/lib/load-variant-config.mjs",
+  "scripts/aosp/lib/load-variant-config.ts",
   "scripts/aosp/seccomp-shim/loader-wrap.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler.c",
   "scripts/aosp/stage-default-models.mjs",
   "scripts/aosp/stage-models-dfm.mjs",
-  "scripts/aosp/variant-config-schema.ts",
   "scripts/audit-apple-store-sandbox.mjs",
   "scripts/audit-ios-cloud-artifact.mjs",
   "scripts/benchmark-preflight.mjs",
@@ -55,8 +55,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/container-entrypoint.mjs",
   "scripts/continue-sms-gateway-work.mjs",
   "scripts/copy-runtime-node-modules.ts",
-  "scripts/coverage-policy.d.mts",
-  "scripts/coverage-policy.mjs",
+  "scripts/coverage-policy.ts",
   "scripts/deploy-cloud-api-production-gateway.mjs",
   "scripts/deploy-image.sh",
   "scripts/desktop-build.mjs",
@@ -64,7 +63,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/dev-platform.mjs",
   "scripts/dev-ui.mjs",
   "scripts/disable-local-eliza-workspace.mjs",
-  "scripts/docker-ci-smoke.sh",
+  "scripts/verify-agent-image.sh",
   "scripts/docker-entrypoint.sh",
   "scripts/docker-runtime-review.mjs",
   "scripts/ensure-avatars.mjs",
@@ -76,7 +75,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/entry.ts",
   "scripts/ffi-stub/Makefile",
   "scripts/ffi-stub/README.md",
-  "scripts/ffi-stub/asr-ffi-smoke.ts",
   "scripts/ffi-stub/ffi-stub.c",
   "scripts/ffi-stub/ffi.h",
   "scripts/ffi-stub/tts-stream-ffi-smoke.ts",
@@ -102,8 +100,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/apk-runtime-provenance.mjs",
   "scripts/lib/app-dir.mjs",
   "scripts/lib/apple-entitlement-audit.mjs",
-  "scripts/lib/artifact-staleness.d.mts",
-  "scripts/lib/artifact-staleness.mjs",
+  "scripts/lib/artifact-staleness.ts",
   "scripts/lib/asset-cdn.mjs",
   "scripts/lib/bun-version-guard.mjs",
   "scripts/lib/capacitor-platform-templates.mjs",
@@ -122,8 +119,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/dev-ui-onchain.mjs",
   "scripts/lib/dev-ui-vision.mjs",
   "scripts/lib/dev-ui-vite.mjs",
-  "scripts/lib/duet-bridge.d.mts",
-  "scripts/lib/duet-bridge.mjs",
+  "scripts/lib/duet-bridge.ts",
   "scripts/lib/electrobun-linux-build-dir.mjs",
   "scripts/lib/electrobun-loopback-hardening.mjs",
   "scripts/lib/eliza-error.mjs",
@@ -152,10 +148,8 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/read-app-identity.mjs",
   "scripts/lib/release-check-pack-dry-run.ts",
   "scripts/lib/renderer-build-action.mjs",
-  "scripts/lib/renderer-build-manifest.d.mts",
-  "scripts/lib/renderer-build-manifest.mjs",
-  "scripts/lib/repo-root.d.mts",
-  "scripts/lib/repo-root.mjs",
+  "scripts/lib/renderer-build-manifest.ts",
+  "scripts/lib/repo-root.ts",
   "scripts/lib/restart-guard.mjs",
   "scripts/lib/run-node-tsx-lifecycle.mjs",
   "scripts/lib/setup-state-dir.mjs",
@@ -164,10 +158,8 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/static-asset-manifest.mjs",
   "scripts/lib/sync-eliza-env-aliases.mjs",
   "scripts/lib/ui-smoke-stub-decision.mjs",
-  "scripts/lib/verify-ondevice-artifact.d.mts",
-  "scripts/lib/verify-ondevice-artifact.mjs",
-  "scripts/lib/vite-renderer-dist-stale.d.mts",
-  "scripts/lib/vite-renderer-dist-stale.mjs",
+  "scripts/lib/verify-ondevice-artifact.ts",
+  "scripts/lib/vite-renderer-dist-stale.ts",
   "scripts/lib/voice-latency-report-limit.mjs",
   "scripts/lib/voice-latency-report.mjs",
   "scripts/lib/websocket-pending-queue.ts",
@@ -252,7 +244,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/schemas/desktop-artifact-manifest.schema.json",
   "scripts/set-package-version.mjs",
   "scripts/setup-upstreams.mjs",
-  "scripts/smoke-api-status.mjs",
   "scripts/smoke-lifeops.mjs",
   "scripts/smoke-view-declarations.mjs",
   "scripts/sms-gateway-status.mjs",
@@ -300,7 +291,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/workspace-plugin-patches",
   "scripts/aosp/llama-cpp-patches",
   "platforms",
-  "packaging",
 ]);
 
 export async function copyPublishAssets({
@@ -316,13 +306,13 @@ export async function copyPublishAssets({
   // separate implementations for installed consumers.
   for (const [source, destination] of [
     [
-      "plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+      "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
       "ios-app-store-runtime-policy.mjs",
     ],
-    ["packages/scripts/lib/workspaces.mjs", "workspace-discovery.mjs"],
+    ["packages/scripts/lib/workspaces.ts", "workspaces.ts"],
     [
-      "packages/scripts/lib/repository-file-integrity.mjs",
-      "repository-file-integrity.mjs",
+      "packages/scripts/lib/repository-file-integrity.ts",
+      "repository-file-integrity.ts",
     ],
   ]) {
     copyFileSync(
@@ -330,6 +320,10 @@ export async function copyPublishAssets({
       path.join(destinationPackage, "dist/scripts/lib", destination),
     );
   }
+  writeFileSync(
+    path.join(destinationPackage, "dist/scripts/lib/workspace-discovery.mjs"),
+    'export { collectWorkspaceMaps } from "./workspaces.ts";\n',
+  );
 }
 
 if (

@@ -13,11 +13,12 @@
  * state of their own. ShellControllerContext provides one instance so the pill
  * and the overlay stay in lock-step without double-mounting this hook.
  */
+
+import type { TranscriptSegment } from "@elizaos/shared";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared/events";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import * as React from "react";
 import type {
   ChatTurnStatus,
@@ -1075,6 +1076,7 @@ export function useShellController(): ShellController {
       if (
         cached &&
         cached.content === message.text &&
+        cached.planningAcknowledgment === message.planningAcknowledgment &&
         cached.interrupted === (message.interrupted || undefined) &&
         cached.failureKind === message.failureKind &&
         cached.terminalFailure === message.terminalFailure &&
@@ -1094,6 +1096,7 @@ export function useShellController(): ShellController {
         id: message.id,
         role: message.role,
         content: message.text,
+        planningAcknowledgment: message.planningAcknowledgment,
         createdAt: message.timestamp,
         ...(message.interrupted ? { interrupted: true } : {}),
         // Invariant per id (like role/createdAt), so the cache compare above

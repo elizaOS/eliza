@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * iOS Simulator voice round-trip lane (#13688). WKWebView is not CDP-drivable,
  * so this mirrors ios-attachment-smoke: seed Capacitor Preferences, launch the
@@ -19,11 +24,7 @@
  * reply is AUDIBLE through a real speaker (acoustic output, echo cancellation)
  * requires audio hardware and is covered on the physical-device lane.
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   evaluateVoiceSelfTestReport,
   resolveVoiceSelfTestPollPolicy,
@@ -36,7 +37,7 @@ import {
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
-const resultDir = path.join(appDir, "test-results", "ios-voice-selftest");
+const resultDir = testOutputPath("app", "ios-voice-selftest");
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

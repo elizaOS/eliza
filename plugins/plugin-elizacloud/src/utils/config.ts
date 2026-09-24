@@ -1,7 +1,7 @@
 /** Resolves Cloud model and endpoint settings from runtime and environment state. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, resolveSetting } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL, DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL, DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   type DevCloudEnvAuthority,
@@ -27,17 +27,6 @@ export function getSetting(
     : resolveSetting(runtime, key, { defaultValue });
 }
 
-export function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: Document }).document !== "undefined"
-  );
-}
-
-export function isProxyMode(runtime: IAgentRuntime): boolean {
-  return isBrowser() && !!getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL");
-}
-
 export type EndpointSettingReader = (key: string) => string | undefined;
 
 /** Atomic Cloud endpoint and credential choice used by outbound SDK clients. */
@@ -50,15 +39,13 @@ export interface CloudSdkAuthorityTuple {
 
 /** Pure endpoint policy shared by inference and diagnostic surfaces. */
 export function resolveElizaCloudBaseURL(
-  readSetting: EndpointSettingReader,
-  options: { browser?: boolean } = {}
+  readSetting: EndpointSettingReader
 ): string {
   const read = (key: string): string | undefined => {
     const value = readSetting(key)?.trim();
     return value ? value : undefined;
   };
   return (
-    (options.browser ? read("ELIZAOS_CLOUD_BROWSER_BASE_URL") : undefined) ??
     read("ELIZAOS_CLOUD_BASE_URL") ??
     "https://api.eliza.app/api/v1"
   );
@@ -73,16 +60,12 @@ function resolveUnmanagedBaseURL(runtime: IAgentRuntime): string {
           ? undefined
           : String(runtimeValue).trim() || undefined;
       return normalizedRuntime ?? resolveSetting(null, key);
-    },
-    { browser: isBrowser() }
+    }
   );
 }
 
 function resolveUnmanagedEmbeddingBaseURL(runtime: IAgentRuntime): string {
-  const embeddingURL = isBrowser()
-    ? getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL") ||
-      getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL")
-    : getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_URL");
+  const embeddingURL = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_URL");
   if (embeddingURL) {
     logger.debug(`[ELIZAOS_CLOUD] Using specific embedding base URL: ${embeddingURL}`);
     return embeddingURL;
@@ -126,18 +109,13 @@ export function resolveCloudSdkAuthorityTuple(
   runtime: IAgentRuntime,
   embedding = false,
 ): CloudSdkAuthorityTuple {
-  const snapshot =
-    !isBrowser() && typeof process !== "undefined"
-      ? captureDevCloudEnvAuthoritySnapshot(process.env)
-      : null;
+  const snapshot = captureDevCloudEnvAuthoritySnapshot(process.env);
 
   if (!snapshot) {
     const apiBaseUrl = embedding
       ? resolveUnmanagedEmbeddingBaseURL(runtime)
       : resolveUnmanagedBaseURL(runtime);
-    const apiKey = isBrowser()
-      ? undefined
-      : embedding
+    const apiKey = embedding
         ? resolveUnmanagedEmbeddingApiKey(runtime)
         : resolveUnmanagedApiKey(runtime);
     return Object.freeze({

@@ -3,7 +3,7 @@
  * Needs live model credentials (live-only lane); the deterministic twin is
  * deterministic-inbound-attachment-actions.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 // Real-LLM (live lane) counterpart of deterministic-inbound-attachment-actions
 // (#8876). Same inbound-attachment flow, but routed through a REAL model with no

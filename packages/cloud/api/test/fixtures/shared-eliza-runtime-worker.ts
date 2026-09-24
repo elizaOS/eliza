@@ -9,7 +9,7 @@ import type {
   ScheduledTask,
   ScheduledTaskInput,
   ScheduledTaskRunner,
-} from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/plugin-scheduling";
 import type {
   CreateTodoInput,
   Todo,

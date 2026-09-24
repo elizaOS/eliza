@@ -8,7 +8,6 @@ from typing import Any
 from . import adapters as adapter_module
 from .adapters import (
     HERMES_SANDBOX_UNAVAILABLE_REASON,
-    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
     SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
@@ -48,17 +47,6 @@ class RuntimeGateReport:
 
 def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGateReport:
     gates = (
-        RuntimeGate(
-            id="hyperliquid_live",
-            ok=adapter_module._has_hyperliquid_live_backend(),
-            reason=None
-            if adapter_module._has_hyperliquid_live_backend()
-            else HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
-            benchmarks=("hyperliquid_bench",),
-            metadata=None
-            if adapter_module._has_hyperliquid_live_backend()
-            else {"required_env": ["HL_PRIVATE_KEY"]},
-        ),
         RuntimeGate(
             id="terminal_bench_docker",
             ok=adapter_module._has_terminal_bench_docker_backend(),

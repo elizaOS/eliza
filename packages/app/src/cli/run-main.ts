@@ -9,13 +9,14 @@
  * tests opt out so a rejection still fails the test.
  */
 import process from "node:process";
-import { installProcessCrashGuards } from "@elizaos/shared/process-guards";
-import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/shared/restart";
-import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import {
   formatUncaughtError,
+  getLogPrefix,
+  installProcessCrashGuards,
+  RESTART_EXIT_CODE,
+  setRestartHandler,
   shouldIgnoreUnhandledRejection,
-} from "../runtime/error-handlers";
+} from "@elizaos/shared";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 

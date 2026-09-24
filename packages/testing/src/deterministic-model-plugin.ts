@@ -19,6 +19,8 @@ import { ModelType } from "@elizaos/core";
 export interface DeterministicModelCall {
   modelType: ModelTypeName;
   params: GenerateTextParams;
+  /** Original provider input, including audio bytes and media options. */
+  input?: unknown;
   latestUserText: string;
   toolNames: string[];
 }
@@ -26,7 +28,10 @@ export interface DeterministicModelCall {
 export type DeterministicModelResponse =
   | string
   | GenerateTextResult
-  | Record<string, JsonValue>;
+  | Record<string, JsonValue>
+  | JsonValue[]
+  | ArrayBuffer
+  | Uint8Array;
 
 export type DeterministicTextMatcher =
   | string
@@ -77,6 +82,7 @@ export interface DeterministicModelFixtureBehavior {
 
 export interface DeterministicModelCallDiagnostic {
   modelType: ModelTypeName;
+  streaming: boolean;
   latestUserTextFingerprint: string;
   promptFingerprint: string;
   latestUserTextLength: number;
@@ -138,6 +144,8 @@ export interface DeterministicModelPlugin extends Plugin {
 }
 
 export interface DeterministicModelPluginOptions {
+  /** Extra capabilities for predicate fixtures or fixtures registered after startup. */
+  modelTypes?: ModelTypeName[];
   fixtures?: DeterministicModelFixture[];
   fixtureRegistry?: DeterministicModelFixtureRegistry;
   priority?: number;
@@ -158,11 +166,14 @@ interface RegisteredFixture extends DeterministicModelFixture {
 }
 
 class DeterministicModelMatchError extends Error {
+  readonly kind: "unmatched" | "ambiguous" | "over-consumed";
+
   constructor(
-    readonly kind: "unmatched" | "ambiguous" | "over-consumed",
+    kind: "unmatched" | "ambiguous" | "over-consumed",
     message: string,
   ) {
     super(message);
+    this.kind = kind;
     this.name = "DeterministicModelMatchError";
   }
 }
@@ -256,12 +267,28 @@ export function createDeterministicModelPlugin(
   }
 
   const models: NonNullable<Plugin["models"]> = {};
-  for (const modelType of TEXT_MODEL_TYPES) {
-    models[modelType] = (async (
+  const fixtureTypes = (options.fixtures ?? []).flatMap((fixture) => {
+    const match = fixture.match;
+    if (!match || typeof match === "function" || !match.modelType) return [];
+    return Array.isArray(match.modelType) ? match.modelType : [match.modelType];
+  });
+  const modelTypes = new Set([
+    ...TEXT_MODEL_TYPES,
+    ...fixtureTypes,
+    ...(options.modelTypes ?? []),
+  ]);
+  for (const modelType of modelTypes) {
+    models[modelType as keyof typeof models] = (async (
       _runtime: IAgentRuntime,
-      params: GenerateTextParams,
+      input: unknown,
     ) => {
-      const call = buildCall(modelType, params);
+      const isText = (TEXT_MODEL_TYPES as readonly string[]).includes(
+        modelType,
+      );
+      const params = isText
+        ? (input as GenerateTextParams)
+        : mediaParams(input);
+      const call = { ...buildCall(modelType, params), input };
       let resolved: DeterministicModelFixtureResolution;
       try {
         resolved = fixtures.resolve(call);
@@ -286,9 +313,34 @@ export function createDeterministicModelPlugin(
         resolved.behavior,
         params.signal,
       );
+      if (!isText) return resolved.rawResponse;
+      const raw = resolved.rawResponse;
+      const native =
+        typeof raw === "object" &&
+        raw !== null &&
+        "text" in raw &&
+        typeof raw.text === "string"
+          ? (raw as GenerateTextResult)
+          : undefined;
+      const text = native?.text ?? resolved.response;
       const stream = resolved.behavior?.stream ?? options.stream;
-      await streamResponse(params, resolved.response, stream, modelType);
-      return resolved.response;
+      if (params.stream) {
+        return {
+          textStream: textChunks(params, text, stream),
+          text: Promise.resolve(text),
+          usage: Promise.resolve(native?.usage),
+          finishReason: Promise.resolve(native?.finishReason ?? "stop"),
+          toolCalls: Promise.resolve(native?.toolCalls ?? []),
+          providerMetadata: native?.providerMetadata,
+        };
+      }
+      await streamResponse(params, text, stream, modelType);
+      return params.messages ||
+        params.tools ||
+        params.toolChoice ||
+        params.responseSchema
+        ? (native ?? { text, toolCalls: [], finishReason: "stop" })
+        : text;
     }) as never;
   }
 
@@ -542,8 +594,54 @@ function resolveFixtureResponse(
 }
 
 function normalizeResponse(response: DeterministicModelResponse): string {
+  if (response instanceof ArrayBuffer || ArrayBuffer.isView(response))
+    return "[audio bytes]";
   return typeof response === "string" ? response : JSON.stringify(response);
 }
+
+function mediaParams(input: unknown): GenerateTextParams {
+  if (typeof input === "string") return { prompt: input };
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    ArrayBuffer.isView(input) ||
+    input instanceof ArrayBuffer
+  )
+    return { prompt: "" };
+  const params = input as Record<string, unknown>;
+  return {
+    prompt:
+      typeof params.text === "string"
+        ? params.text
+        : typeof params.prompt === "string"
+          ? params.prompt
+          : "",
+    ...(params.signal instanceof AbortSignal ? { signal: params.signal } : {}),
+  };
+}
+
+async function* textChunks(
+  params: GenerateTextParams,
+  text: string,
+  stream: DeterministicModelPluginOptions["stream"],
+): AsyncGenerator<string> {
+  const chunkSize = stream?.chunkSize ?? Math.max(1, text.length);
+  if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0)
+    throw new Error("Invalid stream chunkSize");
+  for (let offset = 0; offset < text.length; offset += chunkSize) {
+    if (params.signal?.aborted)
+      throw params.signal.reason ?? new DOMException("Aborted", "AbortError");
+    const chunk = text.slice(offset, offset + chunkSize);
+    // The runtime consumes iterators and delivers their chunks to callbacks.
+    yield chunk;
+    if (offset + chunkSize < text.length && stream?.intervalMs) {
+      await abortableDelay(stream.intervalMs, params.signal);
+    }
+  }
+}
+
+/** Canonical perfect-result provider; the historical name remains an import alias. */
+export const createPerfectResultPlugin = createDeterministicModelPlugin;
 
 function buildCall(
   modelType: ModelTypeName,
@@ -562,6 +660,7 @@ function callDiagnostic(
 ): DeterministicModelCallDiagnostic {
   return {
     modelType: call.modelType,
+    streaming: call.params.stream === true,
     latestUserTextFingerprint: fingerprint(call.latestUserText),
     promptFingerprint: fingerprint(call.params.prompt ?? ""),
     latestUserTextLength: call.latestUserText.length,

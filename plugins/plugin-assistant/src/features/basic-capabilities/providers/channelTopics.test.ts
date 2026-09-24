@@ -10,7 +10,7 @@ import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import {
   createSQLiteTestRuntime,
   SQLiteDatabaseAdapter,
-} from "@elizaos/testing/sqlite-adapter";
+} from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";

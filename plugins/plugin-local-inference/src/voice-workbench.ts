@@ -65,7 +65,4 @@ export {
 	type RealVoiceWorkbenchRuntime,
 } from "./services/voice/workbench-real-services";
 
-export {
-	groundTruthMockServices,
-	VOICE_WORKBENCH_SCENARIOS,
-} from "./services/voice/workbench-scenarios";
+export { VOICE_WORKBENCH_SCENARIOS } from "./services/voice/workbench-scenarios";

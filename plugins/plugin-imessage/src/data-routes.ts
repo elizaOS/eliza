@@ -18,7 +18,7 @@
  */
 
 import { buildSetupError, type IAgentRuntime } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
 import { type ParsedContactId, parseIMessageContactId } from "./contact-path.js";
 
 const IMESSAGE_SERVICE_NAME = "imessage";

@@ -11,6 +11,8 @@
  * See the "Files / attachments" note in this package's CLAUDE.md — don't add a
  * second attachment download path or URL guard; reuse the ones referenced here.
  */
+
+import { resolveApiUrl } from "@elizaos/shared";
 import {
   Box,
   Code2,
@@ -31,7 +33,6 @@ import type {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { resolveApiUrl } from "../../utils/asset-url";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { RedactedBadge } from "../RedactedBadge";
 import {

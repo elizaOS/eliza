@@ -64,10 +64,6 @@ import {
 } from "./dynamic-views";
 import { KioskCanvas } from "./dynamic-views/kiosk-canvas";
 import {
-	composeExtensionStatusSnapshot,
-	readExtensionStatusViaHttp,
-} from "./extension-rpc";
-import {
 	composeFirstRunOptionsSnapshot,
 	composeFirstRunStatusSnapshot,
 	readFirstRunOptionsViaHttp,
@@ -514,11 +510,6 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				params?.force ?? false,
 				readUpdateStatusViaHttp,
-			),
-		getExtensionStatus: async () =>
-			composeExtensionStatusSnapshot(
-				resolveRpcAgentPort(agent.getStatus().port),
-				readExtensionStatusViaHttp,
 			),
 		getSubscriptionStatus: async () =>
 			composeSubscriptionStatusSnapshot(

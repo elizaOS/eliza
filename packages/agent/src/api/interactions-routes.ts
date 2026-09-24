@@ -22,7 +22,7 @@ import {
   EventType,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
+import { readRequestBodyBuffer } from "@elizaos/shared";
 
 const MAX_BODY_BYTES = 4 * 1024;
 

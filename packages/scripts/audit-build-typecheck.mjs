@@ -15,8 +15,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { resolveBuildModelExceptions } from "./lib/script-metadata.ts";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,10 +32,6 @@ const workspaceGlobs = rootPackage.workspaces;
 // and declaration emit may remain on TypeScript 6 while stable native checks
 // resolve through the @typescript/native package alias.
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
-  [
-    "plugins/plugin-app-manager/build.ts",
-    "custom declaration emit flags for allowImportingTsExtensions/rootDir",
-  ],
   [
     "plugins/plugin-computeruse/build.ts",
     "multiple published entrypoints plus parallel declaration emit",
@@ -237,11 +233,13 @@ export function analyzeBuildTypecheck(options = {}) {
   const turbo =
     options.turbo ??
     JSON.parse(readFileSync(path.join(root, "turbo.json"), "utf8"));
-  for (const taskName of ["typecheck", "lint", "lint:check"]) {
+  // Typechecks consume published workspace declarations and wait for builds.
+  // Lint reads source directly and must not rebuild dependencies.
+  for (const taskName of ["lint", "lint:check"]) {
     const deps = turbo.tasks?.[taskName]?.dependsOn ?? [];
     if (deps.includes("^build")) {
       violations.push(
-        `turbo ${taskName}: generic task depends on ^build; keep typecheck/lint source-first and add explicit package overrides only where dist is required`,
+        `turbo ${taskName}: lint reads source directly and must not depend on ^build`,
       );
     }
   }

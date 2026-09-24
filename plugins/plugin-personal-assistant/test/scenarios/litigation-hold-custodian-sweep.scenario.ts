@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Litigation hold sweep grounds in seeded custodian state; follow-ups stay staged.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

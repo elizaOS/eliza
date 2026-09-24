@@ -8,7 +8,7 @@
 import type {
   Transcript,
   TranscriptCaptureSharingState,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import {
   client,
   type DocumentDetail,

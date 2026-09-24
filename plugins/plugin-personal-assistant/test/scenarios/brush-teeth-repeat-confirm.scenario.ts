@@ -1,7 +1,7 @@
 /**
  * Live-model scenario asserting idempotent confirmation: a repeated "save" turn after the brushing habit is already stored must not create a duplicate definition.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

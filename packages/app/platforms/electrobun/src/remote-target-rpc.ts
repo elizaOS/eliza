@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import type { RemoteTargetPublicIdentity } from "@elizaos/shared/contracts/remote-control";
+import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
 import { logger } from "./logger";
 import {
 	LoopbackRemoteTargetExecutor,

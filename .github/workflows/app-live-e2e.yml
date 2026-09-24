@@ -121,7 +121,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
@@ -234,10 +234,10 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
-        run: .github/scripts/install-apt-packages.sh ffmpeg
+        run: packages/scripts/github/install-apt-packages.sh ffmpeg
 
       # Vite resolves linked workspace package exports while loading the app
       # config, before renderer aliases can redirect to source files.
@@ -383,7 +383,7 @@ jobs:
 
       - name: Install Playwright Chromium
         if: ${{ !inputs.production_credential_preflight_only }}
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Cloud-live still builds the same renderer bundle, so it needs the same
       # workspace dists before Vite can load packages/app/vite.config.ts.
@@ -414,7 +414,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-production-progress
-          path: packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -505,7 +505,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Build @elizaos/core + @elizaos/shared browser bundles
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
@@ -642,9 +642,9 @@ jobs:
           name: app-live-e2e-cloud-staging
           path: |
             artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-post-reload-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 
@@ -758,7 +758,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright runner
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Build the packaged desktop app (catches build/packaging breaks). Run from
       # the repo root so desktop-build.mjs resolves packages/app.
@@ -776,7 +776,7 @@ jobs:
           name: app-live-e2e-desktop
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 7
 

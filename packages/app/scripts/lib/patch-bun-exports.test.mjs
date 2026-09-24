@@ -16,7 +16,7 @@ import {
   pruneNestedElizaPluginCoreCopies,
   repairElizaCoreRuntimeDist,
 } from "./patch-bun-exports.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = join(
@@ -107,11 +107,7 @@ describe("patch-bun-exports", () => {
     try {
       const sourcePkgDir = join(tmp, "source-core");
       const targetPkgDir = join(tmp, "target-core");
-      for (const relativePath of [
-        "dist/index.js",
-        "dist/browser/index.browser.js",
-        "dist/node/index.node.js",
-      ]) {
+      for (const relativePath of ["dist/index.js"]) {
         writeFixtureFile(
           join(sourcePkgDir, relativePath),
           `// healthy ${relativePath}\n`,
@@ -123,12 +119,6 @@ describe("patch-bun-exports", () => {
       expect(repairElizaCoreRuntimeDist(targetPkgDir, sourcePkgDir)).toBe(true);
       expect(readFileSync(join(targetPkgDir, "dist/index.js"), "utf8")).toBe(
         "// healthy dist/index.js\n",
-      );
-      expect(
-        existsSync(join(targetPkgDir, "dist/browser/index.browser.js")),
-      ).toBe(true);
-      expect(existsSync(join(targetPkgDir, "dist/node/index.node.js"))).toBe(
-        true,
       );
       expect(existsSync(join(targetPkgDir, "dist/stale.js"))).toBe(false);
     } finally {

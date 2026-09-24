@@ -14,7 +14,7 @@
  * `FirstRunService.runCustomizePath` (`persistCustomizePartials` +
  * `nextCustomizeQuestion`).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   abandonResumeNoDataLoss,
   resetFirstRunPrecondition,

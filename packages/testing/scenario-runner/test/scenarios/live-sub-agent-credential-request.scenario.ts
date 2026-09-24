@@ -27,10 +27,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import type { AcpActionService } from "../../../../../plugins/plugin-agent-orchestrator/src/actions/common";
 import type { SessionInfo } from "../../../../../plugins/plugin-agent-orchestrator/src/services/types";
 import { codingAgentRoutePlugin } from "../../../../../plugins/plugin-agent-orchestrator/src/setup-routes";

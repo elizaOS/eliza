@@ -8,7 +8,7 @@ import ts from "typescript";
 const pluginFile = "packages/core/src/types/plugin.ts";
 const capabilityFile = "packages/core/src/capabilities/index.ts";
 const conformanceFile =
-  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+  "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
 const fixtureServerFile =
   "packages/agent/scripts/capability-router-fixture-server.ts";
 const liveReportValidatorFile =

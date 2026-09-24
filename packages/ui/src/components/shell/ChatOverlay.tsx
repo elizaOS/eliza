@@ -3,9 +3,8 @@
  * available across views.
  */
 
-import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared/chat-upload-limits";
+import { MAX_CHAT_MEDIA_RAW_BYTES, transcriptPlainText } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
-import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
   FileText,
@@ -2514,6 +2513,14 @@ export function ChatOverlay({
           messageId={m.id}
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
+          {m.role === "assistant" && m.planningAcknowledgment ? (
+            <p
+              className="px-2 pt-2 text-sm text-muted"
+              data-testid="chat-acknowledgment"
+            >
+              {m.planningAcknowledgment}
+            </p>
+          ) : null}
           <ChatMessage
             actionAccessory={
               m.id === speakingSourceMessageId ? (

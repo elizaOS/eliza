@@ -31,7 +31,7 @@ export { prepareDevTrajectoryRecovery } from "@elizaos/agent";
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   createRuntimeBootResources,
   failRuntimeRepair,

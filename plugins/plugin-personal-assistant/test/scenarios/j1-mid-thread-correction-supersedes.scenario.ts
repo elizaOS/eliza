@@ -6,7 +6,7 @@
  * reminder, a duplicate makes it two), while the judge grades whether the
  * surviving reminder reflects the correction.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

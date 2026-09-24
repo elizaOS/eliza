@@ -15,14 +15,14 @@
 import type { JsonValue } from "@elizaos/core";
 import type {
 	EncryptedRemoteControlEnvelope,
+	ExistingElizaInstallInfo,
 	RemoteCommandAction,
 	RemoteControllerPlatform,
 	RemoteControllerPublicIdentity,
 	RemoteJsonValue,
 	RemoteTargetPublicIdentity,
 	SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
-import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
+} from "@elizaos/shared";
 import type { RPCSchema } from "electrobun/bun";
 import type {
 	DatabaseBackupResult,
@@ -132,7 +132,7 @@ export interface NavigateBrowserWorkspaceTabRequest {
 export type {
 	ExistingElizaInstallInfo,
 	ExistingElizaInstallSource,
-} from "@elizaos/shared/types";
+} from "@elizaos/shared";
 
 export interface StateDirMigrationResult {
 	ok: boolean;
@@ -415,18 +415,16 @@ export type {
 	PermissionId,
 	PermissionState,
 	PermissionStatus,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
-import type {
-	AgentAutomationMode as SharedAgentAutomationMode,
-	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-} from "@elizaos/shared/api/agent-api-types";
-import type { SubscriptionStatusResponse } from "@elizaos/shared/contracts/first-run-options";
 import type {
 	PermissionId,
 	PermissionState,
-} from "@elizaos/shared/contracts/permissions";
-import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/shared/contracts/wallet-types";
+	AgentAutomationMode as SharedAgentAutomationMode,
+	TradePermissionMode as SharedTradePermissionMode,
+	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+	SubscriptionStatusResponse,
+} from "@elizaos/shared";
 
 export type SystemPermissionId = PermissionId;
 
@@ -875,18 +873,6 @@ export interface AgentUpdateStatusSnapshot {
 	error: string | null;
 }
 
-export interface ExtensionStatusSnapshot {
-	relayReachable: boolean;
-	relayPort: number;
-	extensionPath: string | null;
-	chromeBuildPath?: string | null;
-	chromePackagePath?: string | null;
-	safariWebExtensionPath?: string | null;
-	safariAppPath?: string | null;
-	safariPackagePath?: string | null;
-	releaseManifest?: Record<string, unknown> | null;
-}
-
 export interface RuntimeDebugSnapshotParams {
 	depth?: number;
 	maxArrayLength?: number;
@@ -1210,10 +1196,6 @@ export type ElizaDesktopRPCSchema = {
 			getUpdateStatus: {
 				params: { force?: boolean } | undefined;
 				response: AgentUpdateStatusSnapshot;
-			};
-			getExtensionStatus: {
-				params: undefined;
-				response: ExtensionStatusSnapshot;
 			};
 			getSubscriptionStatus: {
 				params: undefined;

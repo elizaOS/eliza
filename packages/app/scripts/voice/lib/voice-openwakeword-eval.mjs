@@ -1,6 +1,8 @@
 // Shares script lib voice openwakeword eval helpers across repo automation entrypoints.
+
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 export const OPENWAKEWORD_SCHEMA = "eliza_voice_openwakeword_eval_v1";
 export const OPENWAKEWORD_ISSUE = "9958";
@@ -280,7 +282,7 @@ export function resolveOpenWakeWordReportPath(env = process.env) {
 
 export function defaultOpenWakeWordOutputDir(
   env = process.env,
-  repoRoot = process.cwd(),
+  repoRoot = path.dirname(testOutputPath()),
 ) {
   if (env.ELIZA_VOICE_OPENWAKEWORD_OUT?.trim()) {
     return path.resolve(env.ELIZA_VOICE_OPENWAKEWORD_OUT.trim());

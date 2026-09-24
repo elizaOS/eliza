@@ -2,7 +2,9 @@
  * Playwright configuration for the Playwright Electrobun Packaged app test
  * lane, including browser projects and app-server wiring.
  */
+
 import { defineConfig } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 // NOTE: this config intentionally has no `webServer`. The packaged Electrobun
 // e2e suite expects the app binary to be built out-of-band before invocation
@@ -15,6 +17,7 @@ import { defineConfig } from "@playwright/test";
 // (`PLAYWRIGHT_SKIP_PACKAGED=1`) and rely on `playwright.ui-smoke.config.ts`
 // which points at the dev stack (`packages/app/scripts/playwright-ui-live-stack.ts`).
 export default defineConfig({
+  outputDir: testOutputPath("app", "electrobun.packaged"),
   testDir: "./test/electrobun-packaged",
   testMatch: ["**/*.e2e.spec.ts"],
   testIgnore:

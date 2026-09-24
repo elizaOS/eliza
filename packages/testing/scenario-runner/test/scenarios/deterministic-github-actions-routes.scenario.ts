@@ -7,21 +7,21 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import type {
+  CapturedAction,
+  ScenarioContext,
+  ScenarioTurnExecution,
+} from "@elizaos/testing";
 import {
   type DeterministicModelFixture,
   finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  scenario,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildPreview } from "../../../../../plugins/plugin-github/src/actions/issue-op.ts";
 import { buildReviewPreview } from "../../../../../plugins/plugin-github/src/actions/pr-op.ts";
 import githubPlugin, {

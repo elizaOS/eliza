@@ -14,7 +14,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { resolveElectrobunDir } from "./lib/app-dir.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 

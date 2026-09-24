@@ -1,0 +1,68 @@
+name: Benchmark harnesses
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      live_framework:
+        description: Run the framework against OpenAI (uses API credits)
+        type: boolean
+        default: false
+      model:
+        description: OpenAI model for the optional live run
+        type: string
+        default: gpt-4o-mini
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: ${{ github.workspace }}/packages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          run-postinstall: 'false'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: packages/benchmarks/requirements-ci.txt
+      - run: python -m pip install -r packages/benchmarks/requirements-ci.txt
+      - run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pytest packages/benchmarks/tests packages/benchmarks/lib packages/benchmarks/suites/orchestrator/tests -q
+      - run: python -m pytest --import-mode=importlib packages/benchmarks/harnesses -q
+      - run: python -m benchmarks.orchestrator inventory --format markdown
+      - run: bun run --cwd packages/benchmarks/plugin-benchmarks test
+
+  live-framework:
+    if: github.event_name == 'workflow_dispatch' && inputs.live_framework
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          run-postinstall: 'false'
+      - name: Run requested live model
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_SMALL_MODEL: ${{ inputs.model }}
+          OPENAI_LARGE_MODEL: ${{ inputs.model }}
+        run: |
+          test -n "$OPENAI_API_KEY" || { echo 'OPENAI_API_KEY is required'; exit 1; }
+          bun packages/benchmarks/framework/typescript/src/bench.ts --real-llm --scenarios=single-message --iterations=1 --warmup=0 --output=/tmp/framework-live.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: framework-live
+          path: /tmp/framework-live.json

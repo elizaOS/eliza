@@ -2,7 +2,7 @@
  * The compiled-template cache is shared across runtime instances. */
 
 import type { PromptSegment, State } from "@elizaos/core";
-import { compileTemplate } from "@elizaos/shared/text/template-rendering";
+import { compileTemplate } from "@elizaos/shared";
 
 const RUNTIME_TEMPLATE_CACHE = new Map<
   string,

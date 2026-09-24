@@ -21,8 +21,13 @@ ALLOW_STALE_ARTIFACTS=0
 MAX_ARTIFACT_MTIME_SPREAD_SECONDS=3600
 FLASH_SUPPORTED_CODENAMES=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POST_FLASH_VALIDATOR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/validate-post-flash.sh"
-RELEASE_MANIFEST_VALIDATOR="$ROOT/scripts/validate-release-manifest.mjs"
+VALIDATOR_DIR="$ROOT/../../scripts/android-installer"
+# Packaged installers carry their validators alongside the entry point.
+if [[ ! -d "$VALIDATOR_DIR" ]]; then
+  VALIDATOR_DIR="$ROOT/scripts"
+fi
+POST_FLASH_VALIDATOR="$VALIDATOR_DIR/validate-post-flash.sh"
+RELEASE_MANIFEST_VALIDATOR="$VALIDATOR_DIR/validate-release-manifest.mjs"
 declare -a IMAGE_SPECS=()
 declare -a PLAN=()
 declare -a VALIDATION_PLAN=()

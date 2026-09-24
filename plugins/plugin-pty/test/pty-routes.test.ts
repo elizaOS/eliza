@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ptyRoutes } from "../index";
 import {
   ELIZA_CLOUD_FAST_MODEL,
   ELIZA_CLOUD_SMART_MODEL,
 } from "../lib/eliza-code-spec";
-import { ptyRoutes } from "../routes/pty-routes";
 import { PtyService } from "../services/pty-service";
 import { makeFakeSpawn, type SpawnCall } from "./fake-pty";
 

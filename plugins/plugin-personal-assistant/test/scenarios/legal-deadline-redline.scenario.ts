@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: the assistant triages vendor contract redlines and summarizes risky clauses while preserving the approval gate (nothing sent to counsel), then schedules a 4pm deadline reminder for the riskiest clause.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

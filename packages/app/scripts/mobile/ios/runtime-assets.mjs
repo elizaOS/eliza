@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { artifactStaleness } from "../../lib/artifact-staleness.mjs";
+import { artifactStaleness } from "../../lib/artifact-staleness.ts";
 import { appStoreExecutionProfile } from "../../lib/ios-app-store-runtime-policy.mjs";
 import { rmRecursive } from "../build-tools.mjs";
 import { iosDir, packagesRoot, repoRoot } from "../context.mjs";

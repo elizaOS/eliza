@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listPackages } from "../lib/workspaces.mjs";
+import { listPackages } from "../lib/workspaces.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -185,9 +185,9 @@ function e2eFamily() {
     liveLaneCount: live.length,
     lanes: live.sort(),
     scriptedRealServices: [
-      "packages/testing/scenario-runner/scripts/real-llm-attachment-smoke.mjs",
-      "packages/testing/scenario-runner/scripts/real-service-audio-roundtrip.mjs",
-      "packages/testing/scenario-runner/scripts/real-service-voice-e2e.mjs",
+      "packages/testing/scripts/scenario-runner/real-llm-attachment-smoke.mjs",
+      "packages/testing/scripts/scenario-runner/real-service-audio-roundtrip.mjs",
+      "packages/testing/scripts/scenario-runner/real-service-voice-e2e.mjs",
     ],
   };
 }

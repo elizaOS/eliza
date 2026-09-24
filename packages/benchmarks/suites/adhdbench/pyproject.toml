@@ -18,7 +18,7 @@ openai = []
 anthropic = []
 
 [project.scripts]
-adhdbench = "scripts.run_benchmark:main"
+adhdbench = "elizaos_adhdbench_cli.run_benchmark:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -26,6 +26,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["elizaos_adhdbench"]
+only-include = ["elizaos_adhdbench", "elizaos_adhdbench_cli", "cli-source"]
+
+[tool.hatch.build.targets.wheel.sources]
+"cli-source" = "elizaos_adhdbench_cli"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["elizaos_adhdbench", "elizaos_adhdbench_cli", "cli-source", "pyproject.toml", "README.md"]
+
+[tool.hatch.build.targets.sdist.sources]
+"cli-source" = "elizaos_adhdbench_cli"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

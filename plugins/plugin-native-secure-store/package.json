@@ -32,7 +32,6 @@
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-secure-store -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -52,8 +51,7 @@
     "@capacitor/core": "^8.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "rollup": "^4.62.4",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

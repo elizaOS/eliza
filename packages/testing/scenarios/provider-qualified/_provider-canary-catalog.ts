@@ -10,7 +10,6 @@ import slack from "./provider.slack.confirmed-send.scenario.ts";
 import telegram from "./provider.telegram.confirmed-send.scenario.ts";
 import twilioSms from "./provider.twilio-sms.confirmed-send.scenario.ts";
 import twilioVoice from "./provider.twilio-voice.confirmed-call.scenario.ts";
-import whatsapp from "./provider.whatsapp.confirmed-send.scenario.ts";
 import xDm from "./provider.x-dm.confirmed-send.scenario.ts";
 
 export const PROVIDER_CANARY_SCENARIOS = [
@@ -25,6 +24,5 @@ export const PROVIDER_CANARY_SCENARIOS = [
   telegram,
   twilioSms,
   twilioVoice,
-  whatsapp,
   xDm,
 ] as const;

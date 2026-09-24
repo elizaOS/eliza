@@ -6,11 +6,9 @@
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud/domain-contract";
-import {
   isLoopbackBindHost,
   isWildcardBindHost,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";

@@ -1,7 +1,7 @@
 /**
  * Live-model smoke scenario: German formal (Sie) phrasing yields a daily 8am/9pm brushing habit save.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url, {
   fallbackToCwd: true,

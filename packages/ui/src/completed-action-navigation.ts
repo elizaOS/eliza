@@ -5,11 +5,11 @@
  * user navigation wins over a late fallback.
  */
 
-import type { NavigateViewDetail } from "@elizaos/shared/events";
+import type { NavigateViewDetail } from "@elizaos/shared";
 import {
   NAVIGATE_VIEW_EVENT,
   normalizeCompletedActionHandoffId,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { getWindowNavigationPath } from "./navigation";
 
 const MAX_TRACKED_HANDOFFS = 256;

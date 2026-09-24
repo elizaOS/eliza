@@ -1,7 +1,7 @@
 /** Exercises real discovery, execution and planner settlement with deterministic model responses. */
 
 import { randomUUID } from "node:crypto";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { PlannerRuntime } from "../../../../../packages/core/src/runtime/planner-types.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";

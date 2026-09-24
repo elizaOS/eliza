@@ -74,7 +74,11 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/shared";
+import type {
+  ChatFailureKind,
+  ChatTerminalFailure,
+  RouteRequestContext,
+} from "@elizaos/shared";
 import {
   isChatFailureKind,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
@@ -88,7 +92,6 @@ import {
   parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import {
   conversationClientUserMemoryId,
   type DurableConversationChatMarker,
@@ -121,12 +124,10 @@ import {
   admitChatMessageId,
   ChatIdempotencyWaitAbortedError,
   classifyChatFailure,
-  createChatTokenStreamWriter,
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
   getChatMessageIdOutcome,
-  initSse,
   isIntentionalNoResponseResult,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
@@ -140,12 +141,16 @@ import {
   resolveNoResponseFallback,
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
+} from "./chat-routes.ts";
+import {
+  createChatTokenStreamWriter,
+  initSse,
   writeChatStatusSse,
   writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseJson,
-} from "./chat-routes.ts";
+} from "./chat-stream-writer.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   assertConversationConnectionRuntime,
@@ -1138,6 +1143,8 @@ async function resolvePersistedAssistantTurn(
         generatedTerminalFailure?.code !== result.terminalFailure.code);
     if (
       generatedText !== text ||
+      generatedTurn.content.planningAcknowledgment !==
+        result.planningAcknowledgment ||
       (userMessageId !== undefined &&
         generatedTurn.content.inReplyTo !== userMessageId) ||
       terminalFailureNeedsReconciliation
@@ -1430,6 +1437,7 @@ export function buildPersistedAssistantContent(
   result:
     | {
         actionCallbackHistory?: string[];
+        planningAcknowledgment?: string;
         responseContent?: Content | null;
         responseMessages?: Array<{ id?: string; content?: Content }>;
         transcriptVisibility?: "internal";
@@ -1481,12 +1489,18 @@ export function buildPersistedAssistantContent(
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(result?.planningAcknowledgment
+          ? { planningAcknowledgment: result.planningAcknowledgment }
+          : {}),
       }
     : {
         text,
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(result?.planningAcknowledgment
+          ? { planningAcknowledgment: result.planningAcknowledgment }
+          : {}),
       };
 }
 
@@ -2296,6 +2310,9 @@ function buildGenerationMessageIdOutcome(
     agentName: result.agentName,
     ...(messageId ? { messageId } : {}),
     ...terminal,
+    // The streamed text does not carry display-only acknowledgment metadata.
+    // Reuse the canonical history refresh after its durable reply is saved.
+    ...(result.planningAcknowledgment ? { historyRefreshRequired: true } : {}),
     ...(result.transcriptVisibility
       ? { transcriptVisibility: result.transcriptVisibility }
       : {}),
@@ -3446,6 +3463,10 @@ async function listConversationMessages(
           id: m.id ?? "",
           role,
           text,
+          ...(role === "assistant" &&
+          typeof content.planningAcknowledgment === "string"
+            ? { planningAcknowledgment: content.planningAcknowledgment }
+            : {}),
           timestamp: m.createdAt ?? 0,
           ...(content.replyRecoveryAvailable === true
             ? { replyRecoveryAvailable: true as const }
@@ -4912,8 +4933,7 @@ async function streamConversationMessage(
     { traceId: trace.traceId, traceSource: trace.source },
     "[ConversationStream] accepted validated trace context",
   );
-  // Deps are the module-imported write fns so route tests that vi.mock
-  // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
+  // Both protocols use the same response writer and delivery boundary.
   const tokenWriter = createChatTokenStreamWriter(streamProtocol ?? "legacy", {
     writeChatTokenSse,
     writeSse,

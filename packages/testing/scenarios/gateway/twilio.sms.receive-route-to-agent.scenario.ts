@@ -1,7 +1,6 @@
 /** Scenario fixture for twilio sms receive route to agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectTurnToCallAction } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { expectTurnToCallAction, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

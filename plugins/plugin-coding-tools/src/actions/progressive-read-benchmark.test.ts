@@ -43,7 +43,7 @@ describe("progressive read benchmark", () => {
     outputs.push(output);
     const script = path.resolve(
       import.meta.dirname,
-      "../../scripts/progressive-read-benchmark.ts",
+      "../../../../packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
     );
     const child = spawn(
       "bun",

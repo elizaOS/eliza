@@ -7,9 +7,12 @@
  */
 
 import http from "node:http";
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
 import { resolveElizaPluginImportSpecifier } from "@elizaos/agent/runtime/plugin-types";
 import { AgentRuntime, elizaLogger, type Plugin } from "@elizaos/core";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import dotenv from "dotenv";
 import {
   type BenchmarkSession,

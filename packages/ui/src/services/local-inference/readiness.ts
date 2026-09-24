@@ -2,8 +2,7 @@
  * Derives text-generation readiness for a slot from the active model, download
  * jobs, and installed models — the signal the composer gates on.
  */
-import { MODEL_CATALOG } from "./catalog";
-import { catalogDownloadSizeBytes } from "./recommendation";
+
 import type {
   ActiveModelState,
   CatalogModel,
@@ -15,7 +14,9 @@ import type {
   LocalInferenceSlotReadiness,
   ModelAssignments,
   TextGenerationSlot,
-} from "./types";
+} from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared";
+import { catalogDownloadSizeBytes } from "./recommendation";
 
 const TERMINAL_STATES = new Set<DownloadState>([
   "completed",

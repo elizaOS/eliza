@@ -3,7 +3,7 @@
  * `ex_partner_of` edge, but user-facing copy must not editorialize about the
  * relationship or share private labels with third parties.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

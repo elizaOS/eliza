@@ -14,7 +14,7 @@ import {
   OPTIMIZED_PROMPT_SERVICE,
   type UUID,
 } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
 import {
   type OptimizedPromptArtifact,

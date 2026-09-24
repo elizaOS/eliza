@@ -1,41 +1,10 @@
 /**
- * LogsRetentionService — the scheduled sweep that enforces
- * {@link planRetention} against the append-only `logs` table, keeping it
- * bounded so it cannot fill the disk.
- *
- * WHY a SECOND service (not just another partition on MemoryRetentionService):
- * the `logs` table is NOT a memory partition. It has its own adapter surface
- * (`getLogs` / `deleteLogs`) that is entirely separate from the memory
- * partitions' `getMemories` / `deleteManyMemories`, and deleting a log must NOT
- * cascade to any embedding. Sharing the memory sweep would either couple two
- * unrelated table families or smuggle `logs` into `RETENTION_PARTITIONS`
- * (which is deliberately memory-only). So logs get their own restart-safe
- * service that REUSES the pure planner + config primitives from
- * `memory-retention.ts` and only swaps the table adapter.
- *
- * Empirically (SOLIZA-M5-RETENTION-2026-07-20) `logs` is the single biggest
- * always-growing surface — ~3.9 log rows per memory row, ~3.4 KB/row, i.e. the
- * dominant linear-growth term left after #16714 bounded memories+embeddings.
- *
- * SCOPE: `logs` ONLY. `central_messages` and `memory_access_logs` were flagged
- * as unbounded too, but the core `IDatabaseAdapter` exposes NO clean
- * get-by-time + delete-by-id pair for them (unlike `logs`' getLogs/deleteLogs),
- * so bounding them cleanly would require new adapter methods / raw SQL — a
- * separate, larger change. They are intentionally deferred here rather than
- * bounded through a leaky back door. See the receipt for the follow-up note.
- *
- * Boot-time contract (identical discipline to MemoryRetentionService):
- *   - Config from `runtime.getSetting` (host-folded) with a `process.env`
- *     fallback, under the INDEPENDENT `ELIZA_LOGS_RETENTION_*` prefix.
- *   - OFF by default: no active bound => never schedules a sweep, no-op.
- *   - When active: one sweep after a short boot-settle delay, then every
- *     `intervalMinutes` (default 360 = 6h). Timers are `unref`'d so retention
- *     never keeps the process alive.
- *   - `stop()` clears timers; restart-safe / idempotent (re-plans from the
- *     live DB each boot, no persisted cursor).
+ * Applies the host's opt-in logs retention policy through the core task clock.
+ * Storage policy stays separate from scheduling; failures remain observable and
+ * shutdown drains any sweep already in progress before releasing the service.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   planRetention,
   policyIsActive,
@@ -43,6 +12,7 @@ import {
   type RetainableRow,
   resolveRetentionConfigWithPrefix,
 } from "./memory-retention.ts";
+import { RetentionTask } from "./retention-task.ts";
 
 export const LOGS_RETENTION_SERVICE = "eliza_logs_retention";
 
@@ -50,16 +20,10 @@ export const LOGS_RETENTION_SERVICE = "eliza_logs_retention";
 export const LOGS_RETENTION_PREFIX = "ELIZA_LOGS_RETENTION";
 
 const DEFAULT_INTERVAL_MINUTES = 360; // 6h
-const START_DELAY_MS = 30_000; // let boot settle before first sweep
-/** Upper bound on rows scanned per sweep (memory safety on the fetch). */
-const SCAN_LIMIT = 100_000;
 /** Stable bucket key for logs that carry no roomId (count bound still applies). */
 const NULL_ROOM_KEY = "__no_room__";
 
-/**
- * Minimal adapter surface the logs sweep needs — narrowed to exactly the two
- * `logs`-table methods on `IDatabaseAdapter`, for testability without a DB.
- */
+/** Legacy public adapter shape retained for existing type consumers; the service uses the canonical runtime contract. */
 export interface LogsRetentionAdapter {
   getLogs(params: {
     entityId?: string;
@@ -71,24 +35,6 @@ export interface LogsRetentionAdapter {
     Array<{ id?: string; roomId?: string; createdAt?: number | Date }>
   >;
   deleteLogs(logIds: string[]): Promise<void>;
-}
-
-/**
- * Structural guard: narrow the runtime's `adapter` (typed as the broad
- * IDatabaseAdapter) to the {@link LogsRetentionAdapter} surface the sweep needs.
- * Runtime-checks the two methods it calls so a non-conforming adapter is a
- * clean skip rather than a throw, and lets us narrow without an unsafe cast.
- */
-function asLogsRetentionAdapter(adapter: unknown): LogsRetentionAdapter | null {
-  if (!adapter || typeof adapter !== "object") return null;
-  const candidate = adapter as Partial<LogsRetentionAdapter>;
-  if (
-    typeof candidate.getLogs !== "function" ||
-    typeof candidate.deleteLogs !== "function"
-  ) {
-    return null;
-  }
-  return candidate as LogsRetentionAdapter;
 }
 
 export interface LogsSweepResult {
@@ -104,18 +50,20 @@ export class LogsRetentionService extends Service {
   override capabilityDescription =
     "Scheduled bounded retention for the append-only logs table: prunes oldest rows past a day/row-count bound so the logs table (the biggest growth surface) cannot fill the disk";
 
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private startTimer: ReturnType<typeof setTimeout> | null = null;
-  private sweeping = false;
+  private readonly retentionTask = new RetentionTask<LogsSweepResult>(
+    this.runtime,
+    "HOST_LOGS_RETENTION",
+    () => this.sweepOnce(),
+  );
   private retentionConfig: ResolvedRetentionConfig = {};
 
   static async start(runtime: IAgentRuntime): Promise<LogsRetentionService> {
     const svc = new LogsRetentionService(runtime);
-    svc.init();
+    await svc.init();
     return svc;
   }
 
-  private init(): void {
+  private async init(): Promise<void> {
     this.retentionConfig = resolveRetentionConfigWithPrefix((key) => {
       const fromSettings = this.runtime.getSetting(key);
       if (fromSettings !== undefined && fromSettings !== null) {
@@ -125,6 +73,7 @@ export class LogsRetentionService extends Service {
     }, LOGS_RETENTION_PREFIX);
 
     if (!policyIsActive(this.retentionConfig)) {
+      await this.retentionTask.start(undefined);
       logger.info(
         "[logs-retention] no active bound (ELIZA_LOGS_RETENTION_DAYS/MAX_ROWS_PER_ROOM unset) — logs retention DISABLED",
       );
@@ -137,27 +86,11 @@ export class LogsRetentionService extends Service {
       `[logs-retention] enabled: retentionDays=${this.retentionConfig.retentionDays ?? "off"} maxRowsPerRoom=${this.retentionConfig.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${this.retentionConfig.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
     );
 
-    // First sweep after a short delay (don't block boot), then on cadence.
-    this.startTimer = setTimeout(() => {
-      void this.sweep();
-      this.timer = setInterval(
-        () => void this.sweep(),
-        intervalMinutes * 60 * 1000,
-      );
-      this.timer.unref?.();
-    }, START_DELAY_MS);
-    this.startTimer.unref?.();
+    await this.retentionTask.start(intervalMinutes * 60 * 1000);
   }
 
   async stop(): Promise<void> {
-    if (this.startTimer) {
-      clearTimeout(this.startTimer);
-      this.startTimer = null;
-    }
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    await this.retentionTask.stop();
   }
 
   /**
@@ -165,40 +98,21 @@ export class LogsRetentionService extends Service {
    * never overlaps the next tick. Returns the sweep result (also useful in
    * tests / ops probes).
    */
-  async sweep(): Promise<LogsSweepResult> {
-    const empty: LogsSweepResult = {
-      scanned: 0,
-      evictable: 0,
-      deleted: 0,
-      clamped: false,
-    };
-    if (this.sweeping) {
-      logger.debug("[logs-retention] sweep already in progress, skipping tick");
-      return empty;
+  sweep(): Promise<LogsSweepResult> {
+    return this.retentionTask.run(() => this.sweepOnce());
+  }
+
+  private async sweepOnce(): Promise<LogsSweepResult> {
+    if (!policyIsActive(this.retentionConfig)) {
+      return { scanned: 0, evictable: 0, deleted: 0, clamped: false };
     }
-    if (!policyIsActive(this.retentionConfig)) return empty;
-
-    this.sweeping = true;
     try {
-      const adapter = asLogsRetentionAdapter(this.runtime.adapter);
-      if (!adapter) {
-        logger.warn("[logs-retention] adapter missing getLogs, skipping sweep");
-        return empty;
-      }
+      const adapter = this.runtime.adapter;
 
-      let rows: Array<{
-        id?: string;
-        roomId?: string;
-        createdAt?: number | Date;
-      }>;
-      try {
-        rows = await adapter.getLogs({ limit: SCAN_LIMIT });
-      } catch (err) {
-        logger.debug(
-          `[logs-retention] getLogs failed (${(err as Error)?.message}); skipping sweep`,
-        );
-        return empty;
-      }
+      // One query avoids unstable offset pages while log writers remain active.
+      // This exceeds JavaScript's maximum array length, so every representable
+      // inventory fits without imposing a retention scan ceiling.
+      const rows = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
 
       const retainable: RetainableRow[] = [];
       for (const r of rows) {
@@ -224,8 +138,12 @@ export class LogsRetentionService extends Service {
 
       let deleted = 0;
       if (plan.deleteIds.length > 0) {
-        await adapter.deleteLogs(plan.deleteIds);
-        deleted = plan.deleteIds.length;
+        const selected = new Set(plan.deleteIds);
+        const ids = rows.flatMap((row) =>
+          row.id && selected.has(row.id) ? [row.id] : [],
+        );
+        await adapter.deleteLogs(ids);
+        deleted = ids.length;
       }
 
       const result: LogsSweepResult = {
@@ -241,11 +159,13 @@ export class LogsRetentionService extends Service {
         );
       }
       return result;
-    } catch (err) {
-      logger.error(`[logs-retention] sweep failed: ${(err as Error)?.message}`);
-      return empty;
-    } finally {
-      this.sweeping = false;
+    } catch (cause) {
+      // error-policy:J2 TaskService or the direct caller owns failure reporting.
+      throw new ElizaError("Unable to complete logs retention", {
+        code: "LOGS_RETENTION_FAILED",
+        cause,
+        context: { agentId: this.runtime.agentId },
+      });
     }
   }
 }

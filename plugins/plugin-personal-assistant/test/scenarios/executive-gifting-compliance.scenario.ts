@@ -6,7 +6,7 @@
  * planted in the seeded context never surfaces in chat, and no order is
  * dispatched.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalResolvedApproved,
   expectNoExternalSendDispatch,

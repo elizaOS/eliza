@@ -2,7 +2,7 @@
  * Live-model scenario driving a reminder through create, deliver, snooze, and
  * re-delivery via the LifeOps reminder API.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;

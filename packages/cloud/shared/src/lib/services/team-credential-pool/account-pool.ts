@@ -7,7 +7,7 @@
  * strategy, affinity, and health semantics local to cloud-shared without a
  * runtime dependency on app.
  */
-import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
+import type { LinkedAccountConfig } from "@elizaos/shared";
 import type {
   AccountPool,
   AccountPoolDeps,

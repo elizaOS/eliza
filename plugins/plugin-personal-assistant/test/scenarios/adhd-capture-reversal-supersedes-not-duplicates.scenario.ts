@@ -7,7 +7,7 @@
  * mode this row exists to catch: for an ADHD owner, a stale duplicate reminder
  * is worse than none, because it teaches them to ignore the whole channel.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

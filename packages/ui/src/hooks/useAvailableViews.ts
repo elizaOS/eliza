@@ -6,13 +6,13 @@
  * registry is unavailable; transport and payload failures remain visible errors.
  */
 
-import {
-  type AppShellBackgroundPolicy,
-  ElizaError,
-  type SurfaceManifest,
-  type ViewHeaderPolicy,
-  type ViewKind,
+import type {
+  AppShellBackgroundPolicy,
+  SurfaceManifest,
+  ViewHeaderPolicy,
+  ViewKind,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";

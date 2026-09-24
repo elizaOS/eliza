@@ -19,11 +19,8 @@
 
 import { deflateSync } from "node:zlib";
 import type { Action } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { OcrCoordinateGroundingActor } from "../../../../../plugins/plugin-computeruse/src/actor/actor.ts";
 import {
   Brain,

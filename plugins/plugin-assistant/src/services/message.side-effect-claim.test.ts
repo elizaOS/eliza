@@ -7,10 +7,7 @@
  * production architecture; only model transport is absent.
  */
 
-import {
-  createTestRuntime,
-  type TestRuntimeResult,
-} from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stringToUuid } from "../../../../packages/core/src/index.ts";
 import { registerCandidateActionBackstopRule } from "../../../../packages/core/src/runtime/candidate-action-backstop.ts";

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
@@ -13,7 +14,6 @@ import {
 	ELIZA_POOLING_LAST,
 	ELIZA_POOLING_MEAN,
 } from "../services/voice/ffi-bindings";
-import { BGE_EMBEDDING_MODEL } from "./bge-embedding-model";
 
 /** Resolves an explicit context-local setting or the detected hardware default. */
 export function resolveEmbeddingGpuLayers(

@@ -5,10 +5,7 @@
  * the domain artifact the action claims to have produced or read — and fail
  * with a precise diff when the effect is missing.
  */
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "../../schema/index.js";
 
 export function toRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {

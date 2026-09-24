@@ -5,20 +5,18 @@
  * provider and linked-account fields are required and must fail closed.
  */
 
-import { ElizaError } from "@elizaos/core";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-} from "@elizaos/shared/contracts/coding-agent-capabilities";
-import {
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/shared/contracts/service-routing";
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+} from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type { AccountsListResponse } from "./client-agent";
 
 /** Stable classification for malformed account inventory responses. */

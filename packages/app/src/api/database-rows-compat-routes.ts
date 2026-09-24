@@ -15,7 +15,7 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "@elizaos/shared/utils/sql-compat";
+} from "@elizaos/shared";
 import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,

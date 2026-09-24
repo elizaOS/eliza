@@ -8,7 +8,7 @@
  * destructive action or explicit DELETE_TASK if a future plugin adds it.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const DELETE_ACTIONS = ["LIFE", "DELETE_TASK"];
 

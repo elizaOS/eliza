@@ -3,6 +3,8 @@
  * tick from the owner's merged schedule state — sleep/wake status, regularity,
  * and bedtime-target timing — the sleep/wake `LifeOpsEventKind` events.
  */
+
+import { parseIsoMs } from "@elizaos/shared";
 import type {
   LifeOpsCircadianState,
   LifeOpsEventKind,
@@ -11,7 +13,6 @@ import type {
   LifeOpsScheduleSleepStatus,
   LifeOpsUnclearReason,
 } from "../contracts/health.js";
-import { parseIsoMs } from "../util/time-util.js";
 
 /**
  * Structural shape of `LifeOpsScheduleMergedState` (declared in

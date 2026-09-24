@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
         fprintf(stderr,
                 "[runtime-test] usage: %s <silero-vad-v5.gguf>\n"
                 "  Generate the fixture with:\n"
-                "    python3 plugins/plugin-local-inference/native/silero-vad-cpp/scripts/silero_vad_to_gguf.py "
+                "    python3 packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py "
                 "--output build/silero-vad-v5.gguf\n",
                 argv[0] ? argv[0] : "silero_vad_runtime_test");
         return 2;
@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
     if (rc != 0) {
         fprintf(stderr,
                 "[runtime-test] silero_vad_open(%s) rc=%d — fixture missing or "
-                "malformed. Re-run scripts/silero_vad_to_gguf.py to (re)create it.\n",
+                "malformed. Re-run packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py to (re)create it.\n",
                 gguf_path, rc);
         return 2;
     }

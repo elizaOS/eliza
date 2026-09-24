@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: a brushing habit emerges from smalltalk about chaotic mornings rather than an explicit reminder request, exercising intent extraction from indirect context.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

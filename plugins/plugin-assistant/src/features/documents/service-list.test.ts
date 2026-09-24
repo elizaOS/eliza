@@ -3,7 +3,7 @@
  * DocumentService, and SQLiteDatabaseAdapter with persisted memory records.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
@@ -186,12 +186,14 @@ describe("DocumentService list semantics", () => {
       ),
     );
     await seedDocuments(runtime, documents);
-    await seedDocuments(runtime, [
-      documentMemory(999, {
-        agentId: OTHER_AGENT_ID,
-        content: { text: "Other agent needle" },
-      }),
-    ]);
+    await expect(
+      seedDocuments(runtime, [
+        documentMemory(999, {
+          agentId: OTHER_AGENT_ID,
+          content: { text: "Other agent needle" },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "SQLITE_AGENT_MISMATCH" });
 
     const queryResult = await service.listDocumentsDetailed(undefined, {
       query: "needle",
@@ -526,11 +528,12 @@ describe("DocumentService list semantics", () => {
         position: 0,
       },
     });
-    await seedDocuments(runtime, [
-      hiddenDocument,
-      foreignDocument,
-      nonDocument,
-    ]);
+    await expect(
+      seedDocuments(runtime, [foreignDocument]),
+    ).rejects.toMatchObject({
+      code: "SQLITE_AGENT_MISMATCH",
+    });
+    await seedDocuments(runtime, [hiddenDocument, nonDocument]);
     vi.spyOn(runtime, "getRoom").mockResolvedValue({
       id: ROOM_A,
       agentId: AGENT_ID,

@@ -5,12 +5,9 @@
  * `@elizaos/plugin-health`; this domain assembles the assistant projection.
  */
 import crypto from "node:crypto";
-import {
-  type BrowserBridgeCompanionStatus,
-  type BrowserBridgeSettings,
-  browserBridgeCompanionIsRecent,
-  browserBridgePermissionsReady,
-  isBrowserBridgePaused,
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
 import {
   androidUsageRowsFromSignals,
@@ -280,49 +277,10 @@ function inWindow(
   return Number.isFinite(parsed) && parsed >= sinceMs && parsed <= untilMs;
 }
 
-function browserTrackingDataSourceState(
-  settings: BrowserBridgeSettings,
-  companions: BrowserBridgeCompanionStatus[],
-): "live" | "partial" | "unwired" {
-  if (!settings.enabled || settings.trackingMode === "off") {
-    return "unwired";
-  }
-  if (isBrowserBridgePaused(settings)) {
-    return "partial";
-  }
-  if (companions.length === 0) {
-    return "unwired";
-  }
-
-  const connectedCompanions = companions.filter(
-    (companion) => companion.connectionState === "connected",
-  );
-  if (connectedCompanions.length === 0) {
-    return companions.some(
-      (companion) => companion.connectionState === "permission_blocked",
-    )
-      ? "partial"
-      : "unwired";
-  }
-
-  const recentConnectedCompanions = connectedCompanions.filter((companion) =>
-    browserBridgeCompanionIsRecent(companion),
-  );
-  if (recentConnectedCompanions.length === 0) {
-    return "partial";
-  }
-
-  return recentConnectedCompanions.some((companion) =>
-    browserBridgePermissionsReady(settings, companion.permissions),
-  )
-    ? "live"
-    : "partial";
-}
-
 export class ScreenTimeDomain {
   constructor(
     private readonly ctx: LifeOpsContext,
-    private readonly deps: ScreenTimeDomainDeps,
+    readonly _deps: ScreenTimeDomainDeps,
   ) {}
 
   async recordScreenTimeEvent(
@@ -554,14 +512,12 @@ export class ScreenTimeDomain {
       inWindow(dm.repliedAt, sinceMs, untilMs),
     ).length;
 
-    const [browserSettings, browserCompanions, recentMobileSignals] =
-      await Promise.all([
-        this.deps.getBrowserSettings(),
-        this.deps.listBrowserCompanions(),
-        this.ctx.repository.listActivitySignals(this.ctx.agentId(), {
-          sinceAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
-        }),
-      ]);
+    const recentMobileSignals = await this.ctx.repository.listActivitySignals(
+      this.ctx.agentId(),
+      {
+        sinceAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
+      },
+    );
     const messageChannels = [
       {
         channel: "x_dm" as const,
@@ -572,10 +528,6 @@ export class ScreenTimeDomain {
         replied: xReplied,
       },
     ];
-    const browserState = browserTrackingDataSourceState(
-      browserSettings,
-      browserCompanions,
-    );
     const androidState = mobileScreenTimeDataSourceFromSignals(
       recentMobileSignals,
       "android",
@@ -616,19 +568,10 @@ export class ScreenTimeDomain {
         {
           id: "browser_bridge",
           label: "Browser",
-          state: browserState,
-          statusLabel:
-            browserState === "live"
-              ? "Live"
-              : browserState === "partial"
-                ? "Needs attention"
-                : "Not connected",
+          state: "unwired",
+          statusLabel: "Retired",
           detail:
-            browserState === "live"
-              ? "Browser focus sessions are included in website totals."
-              : browserState === "partial"
-                ? "Browser tracking is enabled but permissions, recency, or pause state need attention."
-                : "Browser tracking is disabled or no companion is connected.",
+            "Stored browser history is retained; companion tracking is no longer available.",
         },
         {
           id: "android_usage_stats",

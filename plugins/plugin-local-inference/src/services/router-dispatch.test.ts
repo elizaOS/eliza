@@ -7,7 +7,7 @@ import {
 	ModelType,
 	runWithStreamingContext,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Force a deterministic manual policy pinned to our fake cloud provider so the

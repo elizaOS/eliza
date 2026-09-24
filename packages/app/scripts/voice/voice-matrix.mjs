@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-/** Drives repo automation voice matrix with explicit CLI and CI behavior. */
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+/** Drives repo automation voice matrix with explicit CLI and CI behavior. */
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -90,7 +91,7 @@ const CELLS = [
       "test/ui-smoke/voice-realaudio.spec.ts",
     ],
     env: UI_SMOKE_MATRIX_ENV,
-    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    evidence: ["test-results/app", "e2e-recordings/app/test-results"],
     probe: "web",
   },
   {
@@ -126,7 +127,7 @@ const CELLS = [
       // entering Cloud-onboarding mode, which deliberately skips first-run.
       ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE: "1",
     },
-    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    evidence: ["test-results/app", "e2e-recordings/app/test-results"],
     probe: "webLiveRailway",
   },
   {
@@ -153,7 +154,7 @@ const CELLS = [
       "voice failure paths",
     ],
     env: UI_SMOKE_MATRIX_ENV,
-    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    evidence: ["test-results/app", "e2e-recordings/app/test-results"],
     probe: "web",
   },
   {
@@ -178,7 +179,7 @@ const CELLS = [
       "test/ui-smoke/transcript-realaudio.spec.ts",
     ],
     env: UI_SMOKE_MATRIX_ENV,
-    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    evidence: ["test-results/app", "e2e-recordings/app/test-results"],
     probe: "web",
   },
   {
@@ -202,10 +203,7 @@ const CELLS = [
       "test/ui-smoke/voice-workbench-response-state-sse.spec.ts",
     ],
     env: UI_SMOKE_MATRIX_ENV,
-    evidence: [
-      "test-results/evidence/8785-voice-headful",
-      "packages/app/test-results",
-    ],
+    evidence: ["test-results/evidence/8785-voice-headful", "test-results/app"],
     probe: "web",
   },
   {
@@ -274,7 +272,7 @@ const CELLS = [
     env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
       "$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip",
-      "packages/app/test-results",
+      "test-results/app",
     ],
     probe: "macosElectrobun",
   },
@@ -295,7 +293,7 @@ const CELLS = [
     env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
       "$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip",
-      "packages/app/test-results",
+      "test-results/app",
     ],
     probe: "windowsElectrobun",
   },
@@ -385,7 +383,7 @@ const CELLS = [
     },
     class: "mobile-live-voice",
     command: ["bun", "run", "--cwd", "packages/app", "test:e2e:android:local"],
-    evidence: ["packages/app/test-results", "test-results/evidence"],
+    evidence: ["test-results/app", "test-results/evidence"],
     probe: "android",
   },
   {
@@ -494,7 +492,7 @@ const CELLS = [
 function parseArgs(argv) {
   const args = {
     run: false,
-    out: path.join("test-results", "evidence", `${ISSUE}-voice-matrix`),
+    out: testOutputPath("evidence", `${ISSUE}-voice-matrix`),
     platforms: new Set(),
     includeHeavy: false,
     requireGreen: false,

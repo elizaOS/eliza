@@ -833,9 +833,10 @@ describe("Qwen3.8 response-schema wire contract", () => {
     vi.stubEnv("ELIZA_PROVIDER", undefined);
     expect(await invoke({ schema: evaluatorSchema })).toEqual(verdict);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format?.json_schema?.schema.required).toEqual(
-      Object.keys(evaluatorSchema.properties ?? {})
-    );
+    const required = requests[0].response_format?.json_schema?.schema.required;
+    const propertyNames = Object.keys(evaluatorSchema.properties ?? {});
+    expect(required).toEqual(expect.arrayContaining(propertyNames));
+    expect(required).toHaveLength(propertyNames.length);
   });
 
   it("round-trips schema-only planner arguments through the strict entry representation", async () => {

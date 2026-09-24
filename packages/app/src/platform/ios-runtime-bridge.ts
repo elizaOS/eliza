@@ -13,7 +13,8 @@ import {
   formatError,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/shared/browser-contracts";
+import type { ElizaWindowBridge } from "@elizaos/ui/bridge/eliza-window-bridge";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings";
 
@@ -43,7 +44,8 @@ declare global {
 let iosFullBunSmokeStarted = false;
 
 function hasIosLocalAgentNativeRequest(): boolean {
-  return typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function";
+  const bridge: ElizaWindowBridge | undefined = window.__ELIZA_BRIDGE__;
+  return typeof bridge?.iosLocalAgentRequest === "function";
 }
 
 async function writeIosFullBunSmokeResult(

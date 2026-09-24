@@ -3,7 +3,7 @@
  * manifest, signed provider observation, and independent semantic judgment.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   id: "provider.twilio-sms.confirmed-send",

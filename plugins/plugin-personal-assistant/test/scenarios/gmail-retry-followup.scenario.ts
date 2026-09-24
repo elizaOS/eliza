@@ -6,7 +6,7 @@
  * (gmailMessageSent:false), and every write is provably constrained to the
  * loopback mock (gmailNoRealWrite).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

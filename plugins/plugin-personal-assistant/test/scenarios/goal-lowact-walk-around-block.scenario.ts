@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (LLM-judged): a low-activation owner describes a tiny movement goal in fragmentary language, and the assistant grounds it without guilt or therapy framing.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

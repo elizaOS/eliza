@@ -1,40 +1,14 @@
-# Coding remote runner
+# @elizaos/coding-remote-runner
 
-Bun-based HTTP runner image for Eliza Cloud coding containers and home-machine
-Remote runner hosting.
+A small, single-file Bun HTTP runner that exposes a sandboxed workspace (filesystem +
+process execution) over HTTP.
 
-It exposes the contract consumed by `packages/agent/src/services/remote-coding-runner.ts`:
+## Development
 
-```text
-GET  /health
-GET  /v1/health
-GET  /v1/fs/entries?path=/workspace
-GET  /v1/fs/file?path=/workspace/file.ts
-PUT  /v1/fs/file?path=/workspace/file.ts
-POST /v1/processes/run
-```
-
-Required runtime env:
-
-```text
-ELIZA_REMOTE_RUNNER_HTTP_TOKEN=<generated per container>
-ELIZA_CODING_WORKSPACE=/workspace
-```
-
-The image includes `git`, `ripgrep`, `python3`, `openssh-client`, Codex CLI,
-and Claude Code by default. Disable individual CLI installs at build
-time:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-docker build \
-  --build-arg INSTALL_CODEX=false \
-  --build-arg INSTALL_CLAUDE_CODE=false \
-  -t ghcr.io/elizaos/coding-remote-runner:local \
-  packages/cloud/services/coding-remote-runner
+bun run --cwd packages/cloud/services/coding-remote-runner test   # tests
 ```
 
-Configure Eliza Cloud to use the published image with:
-
-```text
-ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE=ghcr.io/elizaos/coding-remote-runner:<tag>
-```
+No standalone build script is defined; this package is consumed or executed from source.

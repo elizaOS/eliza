@@ -12,15 +12,15 @@ import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Request,
+  readRequestBody,
 } from "@elizaos/shared";
-import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentBackupV2CaptureComponentSource,
   AgentBackupV2CaptureError,
   type AgentBackupV2CaptureRuntime,
   createAgentBackupV2Capture,
-} from "../services/agent-backup-v2-capture.ts";
+} from "../services/agent-backup.ts";
 
 export interface AgentBackupV2WritableResponse {
   statusCode: number;

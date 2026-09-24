@@ -18,7 +18,7 @@ import {
   NATIVE_PLUGINS_ROOT,
   resolveNativePluginDir as nativePluginDir,
 } from "./capacitor-plugin-names.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
@@ -133,10 +133,7 @@ function main() {
 
   rmNodeModulesCaches();
 
-  rmPath(
-    "packages/app/test-results",
-    path.join(root, "packages", "app", "test-results"),
-  );
+  rmPath("test-results/app", path.join(root, "test-results", "app"));
   rmPath(
     "packages/app/playwright-report",
     path.join(root, "packages", "app", "playwright-report"),

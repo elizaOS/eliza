@@ -2,10 +2,12 @@
  * Playwright configuration for the Playwright Ui Smoke app test lane,
  * including browser projects and app-server wiring.
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 // The committed source of truth for the known-phrase audio is the data-URL .ts
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
@@ -57,12 +59,7 @@ const chromiumExecutablePath =
 // plays this WAV file as the fake capture device so the REAL local-ASR recorder
 // (getUserMedia + WAV encode + POST) runs end-to-end with no human/microphone.
 // Materialized from the committed data-URL fixture (no gitignored binary).
-const fakeAudioWav = path.join(
-  appDir,
-  "test-results",
-  ".voice",
-  "known-phrase.wav",
-);
+const fakeAudioWav = testOutputPath("app", ".voice", "known-phrase.wav");
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
 writeFileSync(
   fakeAudioWav,
@@ -195,7 +192,7 @@ export default defineConfig({
   reporter: "list",
   outputDir: recording
     ? path.resolve(appDir, "../../e2e-recordings/app/test-results")
-    : "./test-results",
+    : testOutputPath("app", "ui-smoke"),
   use: {
     baseURL: `http://127.0.0.1:${uiSmokePort}`,
     trace: recording ? "on" : "retain-on-failure",

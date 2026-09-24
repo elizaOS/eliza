@@ -5,11 +5,8 @@
  */
 
 import { asUUID } from "@elizaos/core";
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   generateMessageCorpus,
   seedMessageCorpus,

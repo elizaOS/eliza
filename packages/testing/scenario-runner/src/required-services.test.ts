@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Required-service preflight regressions over real AgentRuntime instances.
  * Service classes are deterministic; registration, startup, retry, and stop
@@ -12,10 +12,7 @@ import {
   type Plugin,
   Service,
 } from "@elizaos/core";
-import {
-  type ScenarioDefinition,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioDefinition, scenario } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   resolveRequiredServiceTypes,

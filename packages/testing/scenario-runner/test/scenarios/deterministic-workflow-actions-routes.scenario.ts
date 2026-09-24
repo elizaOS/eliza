@@ -4,16 +4,15 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import type { RuntimeWithScenarioModelFixtures } from "@elizaos/testing";
-import { strictActionRouteFixtures } from "@elizaos/testing/deterministic-action-fixtures";
 import type {
   CapturedAction,
+  RuntimeWithScenarioModelFixtures,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import { scenario, strictActionRouteFixtures } from "@elizaos/testing";
 import workflowPlugin, {
   workflowRoutePlugin,
 } from "../../../../../plugins/plugin-workflow/src/index.ts";

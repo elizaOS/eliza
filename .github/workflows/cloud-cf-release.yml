@@ -1225,7 +1225,7 @@ jobs:
           STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$STEWARD_UPSTREAM_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface upstream
@@ -2192,7 +2192,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$API_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface proxy
@@ -3133,7 +3133,7 @@ jobs:
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+              node packages/cloud/scripts/verify-steward-provider-discovery.ts \
                 --base-url "$served_url" \
                 --environment "$DEPLOY_ENVIRONMENT" \
                 --surface proxy
@@ -3309,7 +3309,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.
@@ -3365,7 +3365,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 

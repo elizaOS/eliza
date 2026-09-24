@@ -31,7 +31,6 @@ jobs:
       run_canonical: ${{ steps.resolve.outputs.run_canonical }}
       run_cloud: ${{ steps.resolve.outputs.run_cloud }}
       run_dev_smoke: ${{ steps.resolve.outputs.run_dev_smoke }}
-      run_docker: ${{ steps.resolve.outputs.run_docker }}
       run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
       run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
@@ -68,7 +67,7 @@ jobs:
       - name: Check source whitespace
         run: git show --format= --check HEAD
       - name: Install pinned workflow linters
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
       - name: Validate workflow graph before fan-out
         run: '"$RUNNER_TEMP/workflow-linters/actionlint" -config-file .github/actionlint.yaml'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -102,13 +101,6 @@ jobs:
     with:
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
-  docker:
-    needs: plan
-    if: needs.plan.outputs.run_docker == 'true'
-    uses: ./.github/workflows/docker-ci-smoke.yml
-    with:
-      concurrency_scope: promotion-full-${{ github.ref_name }}
-    secrets: inherit
   platform-smoke:
     needs: plan
     if: needs.plan.outputs.run_platform_smoke == 'true'
@@ -137,14 +129,13 @@ jobs:
       - cloud
       - cloud-gateway-discord
       - dev-smoke
-      - docker
       - platform-smoke
       - ui-core
       - ui-stories
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

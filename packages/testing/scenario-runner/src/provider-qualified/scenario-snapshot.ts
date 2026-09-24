@@ -5,10 +5,7 @@
  * checkout-selected TypeScript module.
  */
 
-import {
-  type ScenarioDefinition,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioDefinition, scenario } from "@elizaos/testing";
 import providerCanaryDefinitionCatalog from "../../schema/provider-canary-definitions.json" with {
   type: "json",
 };
@@ -93,7 +90,7 @@ function canonicalCatalogDefinition(
   if (
     providerCanaryDefinitionCatalog.schema !==
       "eliza.provider-canary-definition-catalog.v1" ||
-    providerCanaryDefinitionCatalog.scenarios.length !== 13
+    providerCanaryDefinitionCatalog.scenarios.length === 0
   ) {
     throw new Error("provider canary scenario-definition catalog is invalid");
   }

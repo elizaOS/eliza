@@ -22,7 +22,7 @@
  * genuine attestation evidence.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";

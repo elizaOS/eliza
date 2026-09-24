@@ -13,7 +13,7 @@
  * boundary, not error-swallowing business logic.
  */
 /** Mirrors the canonical manifest written by buildRendererManifest() in
- * `@elizaos/app/scripts/lib/renderer-build-manifest.mjs`. */
+ * `@elizaos/app/scripts/lib/renderer-build-manifest.ts`. */
 export interface RendererBuildStamp {
   schema: string;
   buildId: string;

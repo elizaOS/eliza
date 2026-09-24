@@ -45,7 +45,7 @@ import {
   ServiceType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,

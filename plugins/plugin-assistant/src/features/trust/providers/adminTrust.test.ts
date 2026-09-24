@@ -3,7 +3,7 @@
  * Uses typed room and world boundary fakes while exercising the real provider.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
 import {
   ChannelType,

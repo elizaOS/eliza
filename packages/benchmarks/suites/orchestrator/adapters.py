@@ -113,36 +113,8 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
-# Benchmarks for which a smithers harness per-benchmark factory exists. The
-# smithers harness is added to a benchmark's compatibility tuple only when it
-# appears here, so the runner never tries to import a missing smithers factory.
-SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
-    {
-        "bfcl",
-        "action-calling",
-        "humaneval",
-        "gsm8k",
-        "mmlu",
-        "context_bench",
-        "abliteration-robustness",
-        "scambench",
-        "clawbench",
-        "agentbench",
-        "woobench",
-        "tau_bench",
-        "mint",
-        "realm",
-        "lifeops_bench",
-        "mt_bench",
-        "rlm_bench",
-        "mind2web",
-        "terminal_bench",
-        "swe_bench",
-        "swe_bench_orchestrated",
-        "webshop",
-        "osworld",
-    }
-)
+
+# Historical result readers retain this diagnostic; no live adapter registers it.
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
@@ -189,17 +161,10 @@ VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON = (
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    base = _base_agent_compatibility_for(benchmark_id)
-    # Add the smithers harness only for benchmarks with a real factory, and
-    # only when the benchmark is runnable at all (base is non-empty).
-    if base and benchmark_id in SMITHERS_BENCHMARKS and "smithers" not in base:
-        return (*base, "smithers")
-    return base
+    return _base_agent_compatibility_for(benchmark_id)
 
 
 def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    if benchmark_id == "hyperliquid_bench":
-        return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
     if benchmark_id == "terminal_bench":
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
@@ -229,12 +194,6 @@ def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
 _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
 
 
-def _has_hyperliquid_live_backend() -> bool:
-    """Return true when Hyperliquid can run outside demo/smoke mode."""
-    # This is an environment-only probe. Do not cache it: tests and runbook
-    # scripts often validate the matrix, set HL_PRIVATE_KEY, then validate
-    # again in the same Python process.
-    return bool(os.environ.get("HL_PRIVATE_KEY"))
 
 
 def _surfpool_start_help(binary: str) -> str:
@@ -888,7 +847,6 @@ def _make_registry_adapter(
         str((benchmarks_root.parent / "harnesses" / "eliza").resolve()),
         str((benchmarks_root.parent / "harnesses" / "hermes").resolve()),
         str((benchmarks_root.parent / "harnesses" / "openclaw").resolve()),
-        str((benchmarks_root.parent / "harnesses" / "smithers").resolve()),
     ]
     lifeops_bench_path = benchmarks_root / "lifeops-bench"
     if lifeops_bench_path.exists():
@@ -953,11 +911,6 @@ def _make_registry_adapter(
             desktop_socket = Path.home() / ".docker" / "run" / "docker.sock"
             if desktop_socket.exists():
                 env.setdefault("DOCKER_HOST", f"unix://{desktop_socket}")
-        if benchmark_id == "hyperliquid_bench":
-            # Hyperliquid asks for strict JSON text plans. The generic
-            # benchmark action tool surface makes malformed-plan retries more
-            # likely and can stall the smoke when the model keeps tool-calling.
-            env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
         return env
 
     return BenchmarkAdapter(
@@ -1022,25 +975,6 @@ def _make_extra_adapter(
     )
 
 
-def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    args = [
-        sys.executable,
-        "-m",
-        "benchmarks.HyperliquidBench",
-        "--coverage",
-        "--output",
-        str(ctx.output_root),
-    ]
-    if ctx.request.model:
-        args.extend(["--model", ctx.request.model])
-    if "max_steps" in ctx.request.extra_config:
-        args.extend(["--max-steps", str(int(ctx.request.extra_config["max_steps"]))])
-    if "max_iterations" in ctx.request.extra_config:
-        args.extend(
-            ["--max-iterations", str(int(ctx.request.extra_config["max_iterations"]))]
-        )
-    _append_scenario_control_flags(args, ctx.request.extra_config)
-    return args
 
 
 def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -1075,7 +1009,7 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         )
     args = [
         sys.executable,
-        "scripts/run_benchmark.py",
+        "../../scripts/adhdbench/run_benchmark.py",
         "run",
         "--provider",
         effective_provider,
@@ -1280,7 +1214,7 @@ def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
         return [
             sys.executable,
-            "framework/scripts/harness_runner.py",
+            "scripts/framework/harness_runner.py",
             "--harness",
             ctx.request.agent.strip().lower(),
             "--provider",
@@ -1462,212 +1396,14 @@ def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, 
     return env
 
 
-def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    args = [
-        sys.executable,
-        "-m",
-        "benchmarks.woobench",
-        "--model",
-        ctx.request.model,
-        "--output",
-        str(ctx.output_root),
-    ]
-    provider_lower = ctx.request.provider.strip().lower()
-    agent_lower = ctx.request.agent.strip().lower()
-    payment_mode = (
-        ctx.request.extra_config.get("payment") is True
-        or ctx.request.extra_config.get("payments") is True
-    )
-    if (
-        ctx.request.extra_config.get("mock") is True
-        or provider_lower == "mock"
-        or agent_lower == "dummy"
-    ):
-        args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
-        args.extend(["--evaluator", "heuristic"])
-    elif agent_lower in {"eliza", "hermes", "openclaw"}:
-        args.extend(["--agent", agent_lower])
-        evaluator = ctx.request.extra_config.get("evaluator")
-        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
-            args.extend(["--evaluator", evaluator])
-    else:
-        args.extend(["--agent", "eliza"])
-        evaluator = ctx.request.extra_config.get("evaluator")
-        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
-            args.extend(["--evaluator", evaluator])
-
-    payment_mock_url = ctx.request.extra_config.get("payment_mock_url")
-    if isinstance(payment_mock_url, str) and payment_mock_url.strip():
-        args.extend(["--payment-mock-url", payment_mock_url.strip()])
-
-    explicit_scope = False
-    for extra_key, cli_key in (
-        ("scenario", "--scenario"),
-        ("system", "--system"),
-        ("persona", "--persona"),
-    ):
-        value = ctx.request.extra_config.get(extra_key)
-        if isinstance(value, str) and value.strip():
-            args.extend([cli_key, value.strip()])
-            explicit_scope = True
-
-    if not explicit_scope:
-        scenarios = ctx.request.extra_config.get("scenarios")
-        if isinstance(scenarios, list):
-            scenario_ids = [
-                str(item).strip()
-                for item in scenarios
-                if isinstance(item, str) and item.strip()
-            ]
-            if scenario_ids:
-                args.extend(["--scenarios", ",".join(scenario_ids)])
-        elif isinstance(scenarios, str) and scenarios.strip():
-            args.extend(["--scenarios", scenarios.strip()])
-
-    max_tasks = ctx.request.extra_config.get("max_tasks")
-    has_scope_filter = False
-    for key in ("scenarios", "scenario", "system", "persona"):
-        value = ctx.request.extra_config.get(key)
-        if isinstance(value, str) and value.strip():
-            has_scope_filter = True
-        elif isinstance(value, list) and any(
-            isinstance(item, str) and item.strip() for item in value
-        ):
-            has_scope_filter = True
-    if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
-        args.extend(["--scenario", "skeptic_tarot_01"])
-
-    concurrency = ctx.request.extra_config.get("concurrency")
-    if isinstance(concurrency, int) and concurrency > 0:
-        args.extend(["--concurrency", str(concurrency)])
-    random_seed = ctx.request.extra_config.get(
-        "random_seed", ctx.request.extra_config.get("seed")
-    )
-    if isinstance(random_seed, int):
-        args.extend(["--random-seed", str(random_seed)])
-    _append_scenario_control_flags(args, ctx.request.extra_config)
-    return args
 
 
-def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    existing = ctx.env.get("PYTHONPATH", "")
-    adapter_paths = [
-        str((ctx.benchmarks_root.parent / "harnesses" / "eliza").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "hermes").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "openclaw").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "smithers").resolve()),
-    ]
-    env = {
-        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
-    }
-    model = _provider_model_name(ctx.request.provider, ctx.request.model)
-    provider = ctx.request.provider.strip().upper()
-    if model:
-        env.update(
-            {
-                "BENCHMARK_MODEL_NAME": model,
-                "MODEL_NAME": model,
-                "SMALL_MODEL": model,
-                "LARGE_MODEL": model,
-            }
-        )
-        if provider and provider != "MOCK":
-            env[f"{provider}_SMALL_MODEL"] = model
-            env[f"{provider}_LARGE_MODEL"] = model
-    return env
 
 
-def _command_hyperliquid_env(
-    ctx: ExecutionContext, adapter: BenchmarkAdapter
-) -> dict[str, str]:
-    existing = ctx.env.get("PYTHONPATH", "")
-    adapter_path = str((ctx.benchmarks_root.parent / "harnesses" / "eliza").resolve())
-    env: dict[str, str] = {
-        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
-    }
-    model = _provider_model_name(ctx.request.provider, ctx.request.model)
-    provider = ctx.request.provider.strip().lower()
-    harness = (
-        str(
-            ctx.request.extra_config.get("agent")
-            or ctx.request.extra_config.get("harness")
-            or ctx.request.agent
-        )
-        .strip()
-        .lower()
-    )
-    if harness:
-        env["BENCHMARK_HARNESS"] = harness
-        env["ELIZA_BENCH_HARNESS"] = harness
-    if model:
-        env["MODEL_NAME"] = model
-        env["BENCHMARK_MODEL_NAME"] = model
-    if provider:
-        env["MODEL_PROVIDER"] = provider
-        env["BENCHMARK_MODEL_PROVIDER"] = provider
-    http_timeout = ctx.request.extra_config.get("eliza_bench_http_timeout_s", 90)
-    if isinstance(http_timeout, (int, float)) and http_timeout > 0:
-        env["ELIZA_BENCH_HTTP_TIMEOUT"] = str(float(http_timeout))
-    command_timeout = ctx.request.extra_config.get("hl_bench_command_timeout_s", 60)
-    if isinstance(command_timeout, (int, float)) and command_timeout > 0:
-        env["HL_BENCH_COMMAND_TIMEOUT_S"] = str(float(command_timeout))
-    # Hyperliquid wants strict JSON text, not the generic required benchmark
-    # action surface.
-    env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
-    return env
 
 
-def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return [
-        sys.executable,
-        "-m",
-        "benchmarks.solana.eliza_agent",
-        "--output-dir",
-        str(ctx.output_root),
-    ]
 
 
-def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    existing = ctx.env.get("PYTHONPATH", "")
-    adapter_paths = [
-        str((ctx.benchmarks_root.parent / "harnesses" / "eliza").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "hermes").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "openclaw").resolve()),
-        str((ctx.benchmarks_root.parent / "harnesses" / "smithers").resolve()),
-    ]
-    harness = ctx.request.agent.strip().lower()
-    model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
-    env: dict[str, str] = {
-        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
-        "BENCHMARK_HARNESS": harness,
-        "ELIZA_BENCH_HARNESS": harness,
-        "BENCHMARK_MODEL_PROVIDER": ctx.request.provider.strip(),
-        "BENCHMARK_MODEL_NAME": model_name,
-        "MODEL_NAME": model_name,
-        "OUTPUT_DIR": str(ctx.output_root),
-        "USE_EXTERNAL_SURFPOOL": "true"
-        if bool(ctx.request.extra_config.get("use_external_surfpool", False))
-        else "false",
-    }
-    max_messages = ctx.request.extra_config.get("max_messages")
-    if not isinstance(max_messages, int):
-        max_messages = ctx.request.extra_config.get("max_tasks")
-    if isinstance(max_messages, int) and max_messages > 0:
-        env["MAX_MESSAGES"] = str(max_messages)
-    environment_config = ctx.request.extra_config.get("environment_config")
-    if isinstance(environment_config, str) and environment_config.strip():
-        env["ENVIRONMENT_CONFIG"] = environment_config.strip()
-    else:
-        env["ENVIRONMENT_CONFIG"] = "voyager/environments/basic_env.json"
-    if (
-        ctx.request.extra_config.get("expand_scenarios") is True
-        or ctx.request.extra_config.get("include_edge_scenarios") is True
-    ):
-        env["EXPAND_SCENARIOS"] = "true"
-    code_file = ctx.request.extra_config.get("code_file")
-    if isinstance(code_file, str) and code_file.strip():
-        env["CODE_FILE"] = code_file.strip()
-    return env
 
 
 def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -1681,7 +1417,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         osworld_python = str(conda_python) if conda_python.exists() else sys.executable
     args = [
         osworld_python,
-        "scripts/python/run_multienv_eliza.py",
+        "../../scripts/osworld/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
         "--model",
@@ -1801,7 +1537,7 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if task in {"should_respond", "should-respond"}:
         args = [
             sys.executable,
-            "scripts/harness_runner.py",
+            "../../scripts/eliza-1/harness_runner.py",
             "--harness",
             str(harness).strip().lower(),
             "--model",
@@ -2184,53 +1920,6 @@ def _score_from_trust(path: Path) -> ScoreSummary:
     )
 
 
-def _score_from_woobench(path: Path) -> ScoreSummary:
-    import json
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
-    raw = data.get("overall_score")
-    score = float(raw) / 100.0 if isinstance(raw, (int, float)) else None
-    scenarios = data.get("scenarios", [])
-    scenario_rows = scenarios if isinstance(scenarios, list) else []
-    total_revenue_raw = data.get("total_revenue")
-    total_revenue = (
-        float(total_revenue_raw) if isinstance(total_revenue_raw, (int, float)) else 0.0
-    )
-    converted_count = sum(
-        1
-        for scenario in scenario_rows
-        if isinstance(scenario, dict) and scenario.get("payment_converted") is True
-    )
-    completed_count = sum(
-        1
-        for scenario in scenario_rows
-        if isinstance(scenario, dict) and scenario.get("agent_responsive") is True
-    )
-    total_instances = len(scenario_rows)
-    return ScoreSummary(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "overall_score": data.get("overall_score"),
-            "revenue_efficiency": data.get("revenue_efficiency"),
-            "revenue_score": data.get("revenue_score"),
-            "price_discipline_score": data.get("price_discipline_score"),
-            "conversion_efficiency_score": data.get("conversion_efficiency_score"),
-            "resilience_score": data.get("resilience_score"),
-            "failed_scenarios": data.get("failed_scenarios"),
-            "total_revenue": total_revenue,
-            "avg_revenue_per_scenario": (
-                total_revenue / total_instances if total_instances else 0.0
-            ),
-            "payment_converted_count": converted_count,
-            "completed_reading_count": completed_count,
-            "total_instances": total_instances,
-            "interrupted": data.get("interrupted") is True,
-        },
-    )
 
 
 def _score_from_framework(path: Path) -> ScoreSummary:
@@ -2567,14 +2256,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "positions": ["middle"],
             "tasks_per_position": 1,
         },
-        "rlm_bench": {
-            "mode": "eliza",
-            "tasks_per_config": 1,
-            "context_lengths": [1000],
-            "max_iterations": 3,
-            "max_depth": 2,
-            "no_oolong": True,
-        },
         "mint": {
             "agent": "eliza",
             "categories": ["reasoning"],
@@ -2605,14 +2286,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "max_steps": 3,
             "timeout": 60000,
-        },
-        "hyperliquid_bench": {
-            "max_steps": 1,
-            "max_iterations": 2,
-            "eliza_bench_http_timeout_s": 90,
-            "hl_bench_command_timeout_s": 60,
-            "no_demo": True,
-            "expand_scenarios": True,
         },
         # Standard-suite smoke defaults keep `limit` tiny for cost, but
         # max_tokens must stay at the suite's real default (2048): GSM8K needs
@@ -2717,10 +2390,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "hermes_swe_env": {
             "max_tasks": 1,
         },
-        "scambench": {
-            "max_examples": 2,
-            "max_new_tokens": 128,
-        },
         "mmau": {
             "limit": 2,
             "no_traces": True,
@@ -2751,9 +2420,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "terminal_bench": "terminal-bench",
         "tau_bench": "tau-bench",
         "vending_bench": "vending-bench",
-        "rlm_bench": "rlm-bench",
         "swe_bench_orchestrated": "swe_bench",
-        "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "multitask_bench": "multitask-bench",
@@ -2809,8 +2476,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 directory = "OSWorld"
             elif entry.id == "gauntlet" and "gauntlet" in benchmark_dirs:
                 directory = "gauntlet"
-            elif entry.id == "solana" and "solana" in benchmark_dirs:
-                directory = "solana"
             elif entry.id == "agentbench" and "agentbench" in benchmark_dirs:
                 directory = "agentbench"
             elif entry.id == "mind2web" and "mind2web" in benchmark_dirs:
@@ -3027,43 +2692,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 "max_tasks": 1,
                 "max_turns": 8,
                 "profile": "small",
-            },
-        ),
-        _make_extra_adapter(
-            adapter_id="woobench",
-            directory="woobench",
-            description="WooBench mystical reading benchmark",
-            cwd=str(workspace_root.resolve()),
-            command_builder=_command_woobench,
-            env_builder=_env_woobench,
-            result_patterns=["woobench_*.json"],
-            score_extractor=_score_from_woobench,
-            default_extra_config={
-                "scenarios": [
-                    "friend_supporter_tarot_01",
-                    "repeat_customer_tarot_01",
-                ],
-                "concurrency": 1,
-                "evaluator": "heuristic",
-                "random_seed": 1,
-            },
-        ),
-        _make_extra_adapter(
-            adapter_id="solana",
-            directory="solana",
-            description="Solana instruction discovery benchmark via Eliza agent",
-            cwd=str(workspace_root.resolve()),
-            command_builder=_command_solana,
-            env_builder=_env_solana,
-            result_patterns=[
-                "eliza_*_metrics.json",
-                "suites/solana/solana-gym-env/metrics/eliza_*_metrics.json",
-            ],
-            score_extractor=score_extractor_factory.for_benchmark("solana"),
-            default_timeout_seconds=14400,
-            default_extra_config={
-                "environment_config": "voyager/environments/basic_env.json",
-                "max_messages": 2,
             },
         ),
         _make_extra_adapter(

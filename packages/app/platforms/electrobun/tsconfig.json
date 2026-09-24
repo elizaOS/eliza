@@ -46,8 +46,6 @@
 			"@elizaos/core": ["../../../core/src/index.ts"],
 			"@elizaos/shared": ["../../../shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../../shared/src/*"],
-			"@elizaos/ui": ["../../../src/ui/index.ts"],
-			"@elizaos/ui/*": ["../../../src/ui/*"],
 			"@elizaos/plugin-elizacloud": [
 				"../../../../plugins/plugin-elizacloud/src/index.node.ts"
 			],
@@ -73,6 +71,9 @@
 			],
 			"@elizaos/plugin-wallet/*": ["../../../../plugins/plugin-wallet/src/*"],
 			"@elizaos/plugin-agent-orchestrator": [
+				"../../../../plugins/plugin-agent-orchestrator/src/index.ts"
+			],
+			"@elizaos/plugin-agent-orchestrator/ui": [
 				"../../../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
 			],
 			"@elizaos/plugin-agent-orchestrator/ui/*": [
@@ -119,12 +120,9 @@
 				"../../../../plugins/plugin-native-inference/src/index.ts"
 			],
 			"@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
-			"@elizaos/plugin-openai/endpoint-config": [
-				"../../../../plugins/plugin-openai/utils/config.ts"
-			],
 			"@elizaos/plugin-video": ["../../../../plugins/plugin-video/src/index.ts"]
 		}
 	},
-	"include": ["src/**/*.ts", "scripts/**/*.ts"],
+	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],
 	"exclude": ["node_modules", "dist"]
 }

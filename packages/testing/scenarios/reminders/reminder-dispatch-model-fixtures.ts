@@ -1,6 +1,6 @@
 /** Supplies strict deterministic model fixtures for direct reminder API scenarios. */
 
-import type { ScenarioModelFixtureDeclaration } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioModelFixtureDeclaration } from "@elizaos/testing";
 
 export function reminderDispatchModelFixtures(
   maximumModelCalls: number,

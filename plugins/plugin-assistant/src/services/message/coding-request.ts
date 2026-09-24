@@ -1,29 +1,10 @@
 /** Recognizes explicit coding and delegation requests while excluding literal snippets and creative-writing requests. */
-import { looksLikeBareLinkShare } from "./direct-action-heuristics.ts";
+import {
+  looksLikeActionExplanationRequest,
+  looksLikeBareLinkShare,
+} from "./direct-action-heuristics.ts";
 
-export function looksLikeActionExplanationRequest(text: string): boolean {
-  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-  const asksForExplanation =
-    /\b(?:explain|describe|teach|walk\s+me\s+through|what\s+does|what\s+is|how\s+(?:does|do|to)|why)\b/iu.test(
-      normalized,
-    ) ||
-    /\b(?:can\s+you\s+)?tell\s+me\s+(?:about|what|why|how)\b/iu.test(
-      normalized,
-    );
-  if (!asksForExplanation) {
-    return false;
-  }
-
-  const asksToExecuteAfterExplanation =
-    /\b(?:and|then|also|after(?:wards)?|next)\s+(?:please\s+)?(?:run|execute)\b/iu.test(
-      normalized,
-    ) ||
-    /\b(?:run|execute)\b.*\b(?:after|once)\s+(?:you\s+)?(?:explain|describe|teach|walk\s+me\s+through)\b/iu.test(
-      normalized,
-    );
-
-  return !asksToExecuteAfterExplanation;
-}
+export { looksLikeActionExplanationRequest } from "./direct-action-heuristics.ts";
 
 // Ask classes a coding delegation can never serve: an explicit "don't spawn",
 // an explanation/teaching ask, or creative writing that isn't a coding task.

@@ -23,8 +23,8 @@ import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const OVERDUE_INSTRUCTIONS = "review the overdue quarterly report";
 const FUTURE_INSTRUCTIONS = "prep tomorrow's standup notes";

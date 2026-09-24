@@ -16,12 +16,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type {
-  LegacyRouteHandler,
-  Route,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+import type { LegacyRouteHandler, Route, RouteRequest, RouteResponse } from "@elizaos/shared";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";

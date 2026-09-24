@@ -2,7 +2,7 @@
  * Descriptors for the custom model-search providers (HuggingFace, ModelScope):
  * labels, placeholders, and whether search is supported for each.
  */
-import type { CatalogModel } from "./types";
+import type { CatalogModel } from "@elizaos/shared";
 
 export type LocalModelSearchProviderId = "huggingface" | "modelscope";
 

@@ -8,14 +8,12 @@
  */
 
 import {
-  type ModelOption,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/first-run-options";
-import {
   buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type ModelOption,
   normalizeServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
+  resolveServiceRoutingInConfig,
+} from "@elizaos/shared";
 import { useCallback, useMemo, useState } from "react";
 import { client, type FirstRunOptions } from "../../api";
 import { useTimeout } from "../../hooks/useTimeout";

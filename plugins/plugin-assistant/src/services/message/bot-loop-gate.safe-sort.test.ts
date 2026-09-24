@@ -2,7 +2,7 @@
  * Exercises safe NaN handling and ascending sort order in runBotLoopGate.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";

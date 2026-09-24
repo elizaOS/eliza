@@ -26,3 +26,31 @@ benchmark-data/
 /htmlcov/
 /suites/lifeops-bench/corpus-audit.json
 /suites/lifeops-bench/CORPUS_AUDIT.md
+
+# Authored benchmark tasks and consumed fixtures override root runtime-state rules.
+!/suites/app-eval/tasks/
+!/suites/app-eval/tasks/**
+!/suites/eliza-1/src/tasks/
+!/suites/eliza-1/src/tasks/**
+!/suites/terminal-bench/tasks/
+!/suites/terminal-bench/tasks/**
+!/suites/lifeops-bench/data/
+!/suites/lifeops-bench/data/snapshots/
+!/suites/lifeops-bench/data/snapshots/*.json
+!/suites/tau-bench/elizaos_tau_bench/upstream/envs/*/data/
+!/suites/tau-bench/elizaos_tau_bench/upstream/envs/*/data/__init__.py
+!/suites/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/products.json
+!/suites/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/readme.md
+
+# Task fixtures may contain authored logs/build inputs, but never Python caches.
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/node_modules/
+**/.pytest_cache/
+**/.ruff_cache/
+**/benchmark_results/
+**/benchmark-results/
+**/bench_results/
+**/test-results*/
+**/reports/

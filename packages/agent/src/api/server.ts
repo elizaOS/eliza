@@ -1,4 +1,3 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * REST API server for the Eliza Control UI.
  *
@@ -10,6 +9,7 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   getViewClientScope,
   runWithViewClient,
@@ -27,32 +27,6 @@ function tokenMatches(expected: string, provided: string): boolean {
     expectedBuf.length === providedBuf.length &&
     crypto.timingSafeEqual(expectedBuf, providedBuf)
   );
-}
-
-function isBrowserCompanionOwnerMutation(
-  method: string,
-  pathname: string,
-): boolean {
-  return (
-    method === "POST" &&
-    (pathname === "/api/browser-bridge/companions/pair" ||
-      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
-        pathname,
-      ))
-  );
-}
-
-function hasBrowserCompanionOwnerSessionCookie(
-  req: http.IncomingMessage,
-): boolean {
-  const cookie =
-    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
-  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
-}
-
-function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
-  const csrf = req.headers["x-eliza-csrf"];
-  return typeof csrf === "string" && csrf.trim().length > 0;
 }
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
@@ -76,29 +50,26 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
-import { formatError, readAliasedEnv } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import type { Route } from "@elizaos/shared";
 import {
+  formatError,
+  getStylePresets,
+  isMobilePlatform,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  normalizeCharacterLanguage,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
+  readAliasedEnv,
   readRequestBody,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/shared/api/http-helpers";
-import type { Route } from "@elizaos/shared/api/http-plugin";
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared/character-presets";
-import {
-  isMobilePlatform,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+} from "@elizaos/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   AgentBackupClientDisconnectedError,
@@ -259,24 +230,6 @@ function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
   return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
 }
 
-function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
-  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
-}
-
-const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  firefoxBuildPath: null,
-  firefoxPackagePath: null,
-  safariWebExtensionPath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  releaseManifest: null,
-} satisfies ReturnType<
-  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
->;
-
 async function getX402Plugin(): Promise<X402PluginModule | null> {
   if (x402PluginModule) return x402PluginModule;
   // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
@@ -361,9 +314,6 @@ async function getOptionalPluginApi<T>(
     );
   }
 }
-type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
-type BrowserBridgePackagePathTarget =
-  BrowserPluginModule["BROWSER_BRIDGE_PACKAGE_PATH_TARGETS"][number];
 type BrowserWorkspaceCommand = Parameters<
   BrowserPluginModule["executeBrowserWorkspaceCommand"]
 >[0];
@@ -581,6 +531,7 @@ import {
 } from "./wallet-capability.ts";
 import {
   applyWalletRpcConfigUpdate,
+  getInventoryProviderOptions,
   getStoredWalletRpcSelections,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
@@ -608,7 +559,6 @@ export {
 } from "./server-helpers.ts";
 
 import {
-  getInventoryProviderOptions,
   getModelOptions,
   getOrFetchAllProviders,
   getOrFetchProvider,
@@ -847,30 +797,6 @@ function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
 
-function parseBrowserBridgeKind(
-  browserPlugin: BrowserPluginModule,
-  value: string | undefined,
-): BrowserBridgeKind | null {
-  if (!value) return null;
-  return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
-    value,
-  )
-    ? (value as BrowserBridgeKind)
-    : null;
-}
-
-function parseBrowserBridgePackageTarget(
-  browserPlugin: BrowserPluginModule,
-  value: unknown,
-): BrowserBridgePackagePathTarget | null {
-  return typeof value === "string" &&
-    (
-      browserPlugin.BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
-    ).includes(value)
-    ? (value as BrowserBridgePackagePathTarget)
-    : null;
-}
-
 async function handleBuiltinOptionalRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -913,95 +839,6 @@ async function handleBuiltinOptionalRoutes(
       absentPluginStub.buildBody(req),
       absentPluginStub.statusCode ?? 200,
     );
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserBridgePlugin();
-    json(res, {
-      status: browserPlugin
-        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
-        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
-    });
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/browser-bridge/packages/open-path"
-  ) {
-    const body =
-      (await readJsonBody<{ target?: unknown; revealOnly?: unknown }>(
-        req,
-        res,
-      )) ?? null;
-    if (!body) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
-    if (!target) {
-      error(res, "Invalid browser bridge package target", 400);
-      return true;
-    }
-    json(
-      res,
-      await browserPlugin.openBrowserBridgeCompanionPackagePath(target, {
-        revealOnly: body.revealOnly === true,
-      }),
-    );
-    return true;
-  }
-
-  const packageBuildMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
-  );
-  if (method === "POST" && packageBuildMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageBuildMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, {
-      status: await browserPlugin.buildBrowserBridgeCompanionPackage(browser),
-    });
-    return true;
-  }
-
-  const packageManagerMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
-  );
-  if (method === "POST" && packageManagerMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageManagerMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, await browserPlugin.openBrowserBridgeCompanionManager(browser));
     return true;
   }
 
@@ -1710,10 +1547,6 @@ async function handleRequestForViewClient(
   // CORS trust set; arbitrary reflected origins remain bearer-only.
   const allowHostCookieAuth =
     requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
-  const requireBrowserCompanionOwnerSession = isBrowserCompanionOwnerMutation(
-    method,
-    pathname,
-  );
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1731,8 +1564,8 @@ async function handleRequestForViewClient(
           state.runtime,
           {
             allowCookieAuth: allowHostCookieAuth,
-            allowTrustedLocalBypass: !requireBrowserCompanionOwnerSession,
-            allowBearerAuth: !requireBrowserCompanionOwnerSession,
+            allowTrustedLocalBypass: true,
+            allowBearerAuth: true,
           },
         );
         return hostSessionAuthorization;
@@ -1883,26 +1716,6 @@ async function handleRequestForViewClient(
   // request-storm-cap.ts for the live incident this guards against).
   if (maybeCapRequestStorm(req, res, pathname)) {
     return;
-  }
-
-  if (requireBrowserCompanionOwnerSession) {
-    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
-      json(res, { error: "Owner session required" }, 401);
-      return;
-    }
-    if (!hasBrowserCompanionCsrfHeader(req)) {
-      json(res, { error: "CSRF token required" }, 403);
-      return;
-    }
-    const ownerAuthorization = await resolveHostSessionAuthorization();
-    if (!ownerAuthorization.ok) {
-      json(res, { error: "Invalid owner session or CSRF token" }, 401);
-      return;
-    }
-    if (ownerAuthorization.role !== "OWNER") {
-      json(res, { error: "Owner role required" }, 403);
-      return;
-    }
   }
 
   if (
@@ -3819,12 +3632,10 @@ export async function startApiServer(opts?: {
     });
   };
 
-  addLog(
-    "info",
-    `Discovered ${plugins.length} plugins, loading skills in background`,
+  addLog("info", `Discovered ${plugins.length} plugins`, "system", [
     "system",
-    ["system", "plugins"],
-  );
+    "plugins",
+  ]);
 
   let providerCacheWarmupPromise: Promise<void> | null = null;
 

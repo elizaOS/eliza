@@ -7,7 +7,7 @@
  * whose arguments actually carry the receipt task (`selectedActionArguments`),
  * not just a reply that repeats the word "reminder".
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalResolvedApproved,
   expectPendingApprovalSeeded,

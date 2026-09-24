@@ -51,6 +51,6 @@ export default {
     win: {},
   },
   scripts: {
-    preBuild: "scripts/build-renderer.ts",
+    preBuild: "../scripts/usb-installer/build-renderer.ts",
   },
 } satisfies ElectrobunConfig;

@@ -4,7 +4,7 @@
  * size makes this worse, not better: one unreviewed apology is a mistake, five
  * is a reputation event. Conversational urgency is not the approval surface.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

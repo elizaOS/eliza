@@ -26,11 +26,12 @@ import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
   type Character,
-  InMemoryDatabaseAdapter,
   ModelType,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
   AudioBus,
   estimateWavDurationSec,
@@ -173,7 +174,7 @@ async function resolveLocalEmbeddingPlugin(): Promise<Plugin | null> {
 // ---------------------------------------------------------------------------
 
 async function seedRuntimeGraph(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   agentId: UUID,
 ): Promise<void> {
   await adapter.createWorlds([
@@ -216,9 +217,9 @@ async function createAgentRuntime(
   const agentId = AGENT_IDS[agentName];
   if (!agentId) throw new Error(`Unknown agent: ${agentName}`);
 
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = await SQLiteDatabaseAdapter.create(":memory:", agentId);
 
-  const plugins: Plugin[] = [];
+  const plugins: Plugin[] = [createAssistantPlugin()];
   if (groqPlugin) plugins.push(groqPlugin);
   if (embeddingPlugin) plugins.push(embeddingPlugin);
 
@@ -258,7 +259,6 @@ async function createAgentRuntime(
     adapter,
     checkShouldRespond: false,
     logLevel: "fatal",
-    disableBasicCapabilities: false,
   });
 
   await runtime.initialize();

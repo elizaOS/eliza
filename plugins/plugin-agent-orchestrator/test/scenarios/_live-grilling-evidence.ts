@@ -9,7 +9,9 @@
  *
  * Run: bun --conditions=eliza-source plugins/plugin-agent-orchestrator/test/scenarios/_live-grilling-evidence.ts
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
+import { testOutputPath } from "../../../../packages/scripts/lib/test-output.ts";
 import {
   makeGrillingRuntime,
   makeScriptedAcp,
@@ -182,7 +184,7 @@ async function main() {
     modelCalls: modelCalls.length,
   };
 
-  const outDir = "test-results/evidence/8932-orchestrator-scenarios";
+  const outDir = testOutputPath("evidence", "8932-orchestrator-scenarios");
   mkdirSync(outDir, { recursive: true });
   const outPath = `${outDir}/live-grilling-trajectory.json`;
   writeFileSync(outPath, JSON.stringify(report, null, 2));

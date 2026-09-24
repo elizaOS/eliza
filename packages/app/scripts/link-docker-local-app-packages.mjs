@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { collectDockerWorkspaceDirs } from "./collect-docker-runtime-deps.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);

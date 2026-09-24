@@ -33,12 +33,12 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { isMainModule } from "../distro-android/is-main.mjs";
-import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
-} from "./lib/load-variant-config.mjs";
+} from "../../../app/scripts/aosp/lib/load-variant-config.ts";
+import { isMainModule } from "../distro-android/is-main.mjs";
+import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
 
 // Node 22+ ships undici as the fetch implementation but does NOT
 // expose it under the bare `undici` specifier — it lives behind the

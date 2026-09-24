@@ -51,7 +51,7 @@ import {
   rendererDistMatchesPlaywrightTestAuth,
   resolvePlaywrightTestAuth,
   viteRendererBuildNeeded,
-} from "./lib/vite-renderer-dist-stale.mjs";
+} from "./lib/vite-renderer-dist-stale.ts";
 import {
   clearPendingWebSocketQueue,
   createPendingWebSocketQueueState,

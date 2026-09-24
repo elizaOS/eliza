@@ -81,14 +81,6 @@
           "label": "Experimental Telemetry",
           "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
           "advanced": true
-        },
-        "ANTHROPIC_BROWSER_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Browser Base Url",
-          "help": "Browser-only proxy endpoint base URL for Anthropic requests (no secrets in the client).",
-          "advanced": false
         }
       },
       "render": {
@@ -400,9 +392,7 @@
         "app-browser",
         "appBrowser",
         "eliza-browser",
-        "elizaBrowser",
-        "browser-bridge",
-        "browserBridge"
+        "elizaBrowser"
       ],
       "kind": "plugin",
       "subtype": "devtools"
@@ -1162,22 +1152,6 @@
           "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
           "advanced": true
         },
-        "ELIZAOS_CLOUD_BROWSER_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Cloud Browser Base Url",
-          "help": "Browser-only proxy endpoint base URL for ElizaOS Cloud requests (no secrets in the client).",
-          "advanced": false
-        },
-        "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Cloud Browser Embedding Url",
-          "help": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
-          "advanced": false
-        },
         "ELIZAOS_CLOUD_ENABLED": {
           "type": "boolean",
           "required": false,
@@ -1287,14 +1261,6 @@
           "label": "Embedding Dimensions",
           "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
           "advanced": false
-        },
-        "EMBEDDING_BROWSER_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Embedding Browser Url",
-          "help": "Browser-only server-side proxy URL for /embeddings. In a browser build the Authorization header is never sent unless this is set, so the API key stays server-side.",
-          "advanced": true
         }
       },
       "render": {
@@ -2776,14 +2742,6 @@
           "label": "Experimental Telemetry",
           "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
           "advanced": true
-        },
-        "NEARAI_BROWSER_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Browser Base URL",
-          "help": "Browser-only proxy endpoint base URL for NEAR AI requests. Do not expose API keys in browser clients.",
-          "advanced": true
         }
       },
       "render": {
@@ -3066,22 +3024,6 @@
           "label": "Experimental Telemetry",
           "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
           "advanced": true
-        },
-        "OPENAI_BROWSER_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Browser Base Url",
-          "help": "Browser-only proxy endpoint base URL for OpenAI requests (no secrets in the client).",
-          "advanced": false
-        },
-        "OPENAI_BROWSER_EMBEDDING_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Browser Embedding Url",
-          "help": "Browser-only proxy endpoint base URL for OpenAI embeddings.",
-          "advanced": false
         }
       },
       "render": {

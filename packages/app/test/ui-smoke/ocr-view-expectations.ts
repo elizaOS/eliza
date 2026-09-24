@@ -46,11 +46,6 @@ const LAUNCHER_FALLBACK: OcrExpectation = {
   requireAny: ["Projects", "Calendar", "Automations"],
 };
 
-const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
-  requireAll: ["Views", "Refresh"],
-  requireAny: ["ready views", "gui ready"],
-};
-
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
   requireAll: [
     "View unavailable",
@@ -293,18 +288,9 @@ export const VIEW_OCR_POLICIES = {
     ],
     forbid: ["Loading sessions", "unavailable"],
   }),
-  "plugin-finances-gui": expected({
-    requireAny: ["Balance", "Transactions", "Recurring"],
-    forbid: ["Loading"],
-  }),
   "plugin-goals-gui": expected({
     requireAny: ["Active", "needs a review", "paused"],
   }),
-  "plugin-lifeops-live-test-gui": exempt(
-    "unregistered-remote-bundle",
-    "The LifeOps live-test GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
-  ),
   "plugin-health-gui": expected({
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
@@ -330,10 +316,6 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-wallet-gui": expected({
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
-  }),
-  "plugin-views-manager-gui": expected({
-    requireAll: ["Views", "Refresh"],
-    requireAny: ["ready views", "gui ready"],
   }),
   "plugin-notes-gui": expected({
     requireAll: ["Launch checklist", "Follow up"],

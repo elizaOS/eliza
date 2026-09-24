@@ -2,7 +2,7 @@
  * Validates the action provenance and owner-facing result captured by the
  * credentialed missing-input scenario without depending on model routing.
  */
-import type { ScenarioTurnExecution } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioTurnExecution } from "@elizaos/testing";
 
 const FAILURE_RE =
   /sorry, something went wrong|trajectory limit|try again|failed on my end/i;

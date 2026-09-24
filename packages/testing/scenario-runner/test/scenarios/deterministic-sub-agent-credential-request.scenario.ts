@@ -21,7 +21,7 @@ import {
   type ScenarioContext,
   type ScenarioTurnExecution,
   scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import type { AcpActionService } from "../../../../../plugins/plugin-agent-orchestrator/src/actions/common";
 import {
   CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,

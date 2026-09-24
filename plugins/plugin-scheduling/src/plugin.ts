@@ -8,7 +8,7 @@
  * scheduled-task REST route.
  */
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";

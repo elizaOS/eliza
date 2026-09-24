@@ -29,8 +29,8 @@
  *   probe support, that path wins automatically.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { loadCapacitorLlama } from "./load-capacitor-llama.js";
 
 interface DeviceCapabilities {

@@ -4,6 +4,12 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  type CheckoutContract,
+  checkoutContractDigest,
+  readCheckoutContract,
+  requireCheckoutContract,
+} from "../../lib/services/subscription-checkout-contract";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -92,6 +98,7 @@ export interface EnqueueSubscriptionCommandInput {
   idempotencyKey: string;
   providerIdempotencyKey: string;
   requestDigest: string;
+  checkoutContract?: CheckoutContract;
   now: Date;
 }
 
@@ -183,8 +190,10 @@ function exactCommandReplay(
   row: BillingSubscriptionCommand,
   input: EnqueueSubscriptionCommandInput,
 ) {
-  return (
-    (input.id === undefined || row.id === input.id) &&
+  const adoptCheckoutWinner =
+    input.kind === "checkout" && input.checkoutContract !== undefined && row.id !== input.id;
+  const sameIntent =
+    (adoptCheckoutWinner || input.id === undefined || row.id === input.id) &&
     row.organization_id === input.organizationId &&
     row.subscription_id === input.subscriptionId &&
     row.requested_by_user_id === input.requestedByUserId &&
@@ -193,7 +202,19 @@ function exactCommandReplay(
     row.expected_subscription_revision === input.expectedSubscriptionRevision &&
     row.idempotency_key === input.idempotencyKey &&
     row.provider_idempotency_key === input.providerIdempotencyKey &&
-    row.request_digest === input.requestDigest
+    row.request_digest === input.requestDigest;
+  if (!sameIntent) return false;
+  if (adoptCheckoutWinner) {
+    readCheckoutContract(row);
+    return true;
+  }
+  return (
+    input.checkoutContract === undefined ||
+    canonicalJson(row.checkout_contract) ===
+      canonicalJson({
+        payload: input.checkoutContract,
+        digest: checkoutContractDigest(input.checkoutContract),
+      })
   );
 }
 
@@ -231,6 +252,24 @@ function exactFence(row: SubscriptionBillingFence, input: AdvanceSubscriptionFen
 }
 
 export class SubscriptionBillingOperationsRepository {
+  /** Looks up a tenant-scoped request without changing its original command. */
+  async findCommandByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<BillingSubscriptionCommand | undefined> {
+    const [row] = await dbWrite
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          eq(billingSubscriptionCommands.organization_id, organizationId),
+          eq(billingSubscriptionCommands.idempotency_key, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
   /** Lets a current billing manager resume the single pending checkout across devices. */
   async findPendingCheckout(
     organizationId: string,
@@ -270,6 +309,19 @@ export class SubscriptionBillingOperationsRepository {
     input: EnqueueSubscriptionCommandInput,
   ): Promise<RepositoryMutation<BillingSubscriptionCommand>> {
     requireDate(input.now, "now");
+    const contract =
+      input.checkoutContract === undefined ? null : requireCheckoutContract(input.checkoutContract);
+    if (
+      contract &&
+      (input.kind !== "checkout" ||
+        contract.params.client_reference_id !== input.id ||
+        contract.params.metadata.organization_id !== input.organizationId ||
+        contract.planKey !== input.targetPlanKey)
+    )
+      invalid("Checkout contract differs from command authority", "checkoutContract");
+    const storedContract = contract
+      ? { payload: contract, digest: checkoutContractDigest(contract) }
+      : null;
     return writeTransaction(async (tx) => {
       const organization = await this.lockLifecycleOrganization(tx, input.organizationId);
       if (!organization)
@@ -361,6 +413,7 @@ export class SubscriptionBillingOperationsRepository {
           idempotency_key: input.idempotencyKey,
           provider_idempotency_key: input.providerIdempotencyKey,
           request_digest: input.requestDigest,
+          checkout_contract: storedContract,
           created_at: input.now,
           updated_at: input.now,
         })

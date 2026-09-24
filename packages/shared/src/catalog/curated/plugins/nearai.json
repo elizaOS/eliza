@@ -53,14 +53,6 @@
       "label": "Experimental Telemetry",
       "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
       "advanced": true
-    },
-    "NEARAI_BROWSER_BASE_URL": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Browser Base URL",
-      "help": "Browser-only proxy endpoint base URL for NEAR AI requests. Do not expose API keys in browser clients.",
-      "advanced": true
     }
   },
   "render": {

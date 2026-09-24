@@ -10,8 +10,8 @@
 
 import type { JsonValue } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { DeterministicModelFixture } from "./deterministic-model-plugin";
-import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
+import type { DeterministicModelFixture } from "./deterministic-model-plugin.ts";
+import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture.ts";
 
 type JsonRecord = Record<string, JsonValue>;
 

@@ -1,7 +1,7 @@
 /**
  * Live-model scenario asserting a narrative "did anyone named Pat email me" request routes to Gmail search, never to task/agent-spawn actions.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

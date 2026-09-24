@@ -22,7 +22,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "@elizaos/testing/eliza-package-paths";
+} from "@elizaos/testing";
 import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {
@@ -81,12 +81,6 @@ const ciExcludedRealPaths = [
   ),
   elizaWorkspacePattern(
     "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
-  ),
-  elizaWorkspacePattern(
-    "packages/agent/src/providers/media-provider.real.test.ts",
-  ),
-  elizaWorkspacePattern(
-    "packages/agent/src/actions/life-param-extractor-real.test.ts",
   ),
   elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/rpc-providers.live.test.ts",

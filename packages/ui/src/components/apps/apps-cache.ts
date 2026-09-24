@@ -5,7 +5,7 @@
  * cache on any malformed or unparseable payload.
  */
 
-import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/shared";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";

@@ -46,7 +46,6 @@
         "../../plugins/plugin-coding-tools/src/*"
       ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
-      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
@@ -137,21 +136,17 @@
   "include": [
     "src/connectors",
     "src/ui-compat.ts",
-    "src/desktop-native-notification-boundary.test.ts",
     "src/config",
     "src/security",
     "src/entry.ts",
     "src/platform",
     "src/runtime",
-    "src/desktop-test-bridge-notification-route.test.ts",
     "src/utils",
     "src/desktop-shell.ts",
     "src/cli",
     "src/permissions",
     "src/browser.ts",
     "src/styles",
-    "src/entry-cloud-api-key.test.ts",
-    "src/state-dir-no-direct-env.test.ts",
     "src/boot-profile.ts",
     "src/diagnostics",
     "src/registry",
@@ -160,7 +155,6 @@
     "src/index.ts",
     "src/account-pool.ts",
     "src/entry-cloud-api-key.ts",
-    "src/boot-profile.test.ts",
     "src/alias-env-reads.13422.test.ts",
     "src/services",
     "vite-env.d.ts"

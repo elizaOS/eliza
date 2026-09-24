@@ -9,8 +9,8 @@
  * token that appears in no user turn; a planted decoy color must not leak.
  */
 
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 function expectSpanishFavoriteRecall(ctx: ScenarioContext): string | undefined {
   const reply = ctx.turns?.[1]?.responseText;

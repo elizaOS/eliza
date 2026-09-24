@@ -70,7 +70,7 @@ import {
   BGE_EMBEDDING_MODEL,
   FIRST_RUN_DEFAULT_MODEL_ID,
   tierBundleSlug,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,

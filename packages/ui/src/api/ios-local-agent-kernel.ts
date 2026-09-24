@@ -4,11 +4,29 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { formatError } from "@elizaos/core";
-import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
-import { logger } from "@elizaos/shared/logger";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import type {
+  ActiveModelState,
+  AgentModelSlot,
+  CatalogModel,
+  DownloadJob,
+  HardwareProbe,
+  InstalledModel,
+  ModelAssignments,
+  ProviderStatus,
+  RoutingPreferences,
+} from "@elizaos/shared";
 import {
+  AGENT_MODEL_SLOTS,
+  asRecord,
+  buildCoinGeckoMarketsUrl,
+  buildMarketMovers,
+  buildMarketPriceSnapshots,
+  COINGECKO_MARKET_PROVIDER,
+  findCatalogModel,
+  MODEL_CATALOG,
+  POLYMARKET_MARKET_PROVIDER,
+  parseCanonicalInteger,
+  parseCoinGeckoMarkets,
   summarizeTranscript,
   type Transcript,
   type TranscriptScope,
@@ -16,22 +34,11 @@ import {
   type TranscriptSource,
   transcriptDurationMs,
   transcriptSpeakerCount,
-} from "@elizaos/shared/transcripts";
-import { asRecord } from "@elizaos/shared/type-guards";
-import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
-import {
-  buildCoinGeckoMarketsUrl,
-  buildMarketMovers,
-  buildMarketPriceSnapshots,
-  COINGECKO_MARKET_PROVIDER,
-  POLYMARKET_MARKET_PROVIDER,
-  parseCoinGeckoMarkets,
-} from "@elizaos/shared/wallet/market-overview";
+} from "@elizaos/shared";
+import { formatError } from "@elizaos/shared/browser-contracts";
+import { logger } from "@elizaos/shared/logger";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { getBootConfig } from "../config/boot-config-store";
-import {
-  findCatalogModel,
-  MODEL_CATALOG,
-} from "../services/local-inference/catalog";
 import {
   filterSettingsDefaultLocalModels,
   isSettingsDefaultLocalModel,
@@ -42,17 +49,6 @@ import {
   chooseSmallerFallbackModel,
   selectRecommendedModelForSlot,
 } from "../services/local-inference/recommendation";
-import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
-import type {
-  ActiveModelState,
-  AgentModelSlot,
-  CatalogModel,
-  DownloadJob,
-  HardwareProbe,
-  InstalledModel,
-  ModelAssignments,
-} from "../services/local-inference/types";
-import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
 import { resolveCloudEnvironmentBase } from "../utils/cloud-agent-base";
 import type { MemoryBrowseItem } from "./client-types-chat";

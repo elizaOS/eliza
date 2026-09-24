@@ -22,7 +22,7 @@
  * Synthetic (Devin Aluko / Tollgate). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { IRIS } from "./_personas";
 
 // A confidently-asserted specific value = fabrication for a fact Iris can't have.

@@ -1,5 +1,5 @@
 /** Scenario fixture for todo create every 10 days; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 // 10 days * 24 hours * 60 minutes = 14,400 minutes
 const EVERY_10_DAYS_MINUTES = 14_400;

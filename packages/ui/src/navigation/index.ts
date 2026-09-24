@@ -10,6 +10,7 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
+import { userAgentHasElizaOSMarker } from "@elizaos/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
@@ -26,7 +27,6 @@ import {
   listAppShellPages,
 } from "../app-shell-registry";
 import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
-import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
 import { isDeveloperWorkspaceRoute } from "./developer-route";
 import { resolveDefaultLandingTab } from "./main-tab";

@@ -3,7 +3,7 @@
  * domain: a double-booking is created, CONFLICT_DETECT surfaces the clash, and
  * the owner reschedules the lower-priority event to resolve it.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

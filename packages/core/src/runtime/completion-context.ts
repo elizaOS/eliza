@@ -20,7 +20,7 @@ export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selecti
 Review every [hN] original for the current request. Select needed facts, applicable standing constraints and corrections, referents, and explicitly continued unfinished work in completionContext. Assign each ID once to its most specific category; the runtime retains their complete union without a cap.
 Keep old applicable constraints, but scope completed-task restrictions to that task unless made standing or continued now. Unrelated completed tasks, greetings and repeated navigation are not pending work. Include original corrections and their referents, and referenced assistant proposals, IDs and receipts. Quote or attribute only the speaker's original; identify recaps as recaps.
 Use relevant_prior_dialogue with complete=true only after resolving dependencies; a reviewed empty selection is valid. Use all_prior_dialogue with complete=false for unresolved dependencies, exhaustive conversation coverage/counts, or no source set. Live-record reads/counts are tool work, not exhaustive dialogue recall; long history alone does not require full selection.
-Use the sourceSetId prescribed by the native schema, otherwise copy completion_source_set exactly. This review certifies relevance, never tool completion. Current request, system/provider constraints and tool evidence stay complete; future receipts append automatically and do not make this review incomplete.`;
+Use the sourceSetId prescribed by the native schema, otherwise copy completion_source_set exactly. This review certifies relevance, never tool completion. Historical navigation receipts follow their original request source; select or restore that request to inspect its receipt. Current request, system/provider constraints and tool evidence stay complete; future receipts append automatically and do not make this review incomplete.`;
 
 /** Shared static and registered Stage-1 wire schema. */
 export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
@@ -210,6 +210,63 @@ export function collectCompletionContextSources(
 	return sources;
 }
 
+function isHistoricalNavigationEvent(
+	event: ContextEvent,
+): event is ContextSegmentEvent {
+	if (
+		event.type !== "segment" ||
+		event.source !== "message-service" ||
+		!("segment" in event)
+	)
+		return false;
+	const segment = event.segment;
+	return (
+		!!segment &&
+		typeof segment === "object" &&
+		!Array.isArray(segment) &&
+		"label" in segment &&
+		segment.label === "runtime:historical_navigation" &&
+		"content" in segment &&
+		typeof segment.content === "string" &&
+		"id" in segment &&
+		segment.id === event.id
+	);
+}
+
+/** Historical navigation is evidence for its original request, not a new task.
+ * Only known, unambiguous request bindings may follow a history projection.
+ * Unknown or malformed records stay inline; originals are never modified. */
+export function selectHistoricalNavigation(
+	context: ContextObject,
+	includedEventIds: ReadonlySet<string>,
+): ContextObject {
+	const sources = collectCompletionContextSources(context);
+	if (sources.length === 0) return context;
+	const known = new Set(sources.map(({ event }) => event.id));
+	return {
+		...context,
+		events: context.events.filter((event) => {
+			if (!isHistoricalNavigationEvent(event)) return true;
+			try {
+				const receipt: unknown = JSON.parse(event.segment.content);
+				if (
+					!receipt ||
+					typeof receipt !== "object" ||
+					Array.isArray(receipt) ||
+					!("requestSourceEventId" in receipt) ||
+					typeof receipt.requestSourceEventId !== "string" ||
+					!known.has(receipt.requestSourceEventId)
+				)
+					return true;
+				return includedEventIds.has(receipt.requestSourceEventId);
+			} catch {
+				// error-policy:J3 A malformed binding cannot authorize context omission.
+				return true;
+			}
+		}),
+	};
+}
+
 /** Compact IDs are bound to the exact turn, room, identities and source bytes. */
 export function completionContextSources(context: ContextObject): {
 	sourceSetId: string;
@@ -222,6 +279,7 @@ export function completionContextSources(context: ContextObject): {
 			roomId: context.metadata?.roomId,
 			messageId: context.metadata?.messageId,
 			sources: sources.map(({ id, event }) => ({ id, event })),
+			navigationEvidence: context.events.filter(isHistoricalNavigationEvent),
 		}),
 		sources,
 	};
@@ -254,7 +312,14 @@ export function selectCompletionContext(context: ContextObject): {
 	return {
 		context: {
 			...context,
-			events: context.events.filter((event) => !omittedEvents.has(event)),
+			events: selectHistoricalNavigation(
+				context,
+				new Set(
+					sources
+						.filter(({ id }) => selectedIds.has(id))
+						.map(({ event }) => event.id),
+				),
+			).events.filter((event) => !omittedEvents.has(event)),
 		},
 		applied: true,
 		omittedSourceCount: omittedEvents.size,

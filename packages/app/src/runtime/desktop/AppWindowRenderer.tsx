@@ -9,7 +9,13 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
-import { formatError } from "@elizaos/core";
+import type { OverlayApp } from "@elizaos/shared";
+import {
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isOverlayApp,
+} from "@elizaos/shared";
+import { formatError } from "@elizaos/shared/browser-contracts";
 import { Button, Card, Spinner } from "@elizaos/ui";
 import {
   type AppLaunchResult,
@@ -23,12 +29,6 @@ import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
 } from "@elizaos/ui/components/apps/internal-tool-apps";
-import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
-import {
-  getAvailableOverlayApps,
-  getOverlayApp,
-  isOverlayApp,
-} from "@elizaos/ui/components/apps/overlay-app-registry";
 import { useRegistryCatalog } from "@elizaos/ui/components/apps/useRegistryCatalog";
 import {
   resolveEmbeddedViewerUrl,

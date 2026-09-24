@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * iOS Simulator cloud-onboarding smoke for the production first-run path.
  *
@@ -8,12 +14,7 @@
  * CDP-drivable, so the app reports structured pass/fail details through a
  * simulator Preference key while this script records screenshots and video.
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   assertLiveChallengeReply,
   buildLivenessChallenge,
@@ -27,7 +28,7 @@ import {
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
-const resultRoot = path.join(appDir, "test-results", "ios-cloud-onboarding");
+const resultRoot = testOutputPath("app", "ios-cloud-onboarding");
 
 const REQUEST_KEY = "eliza:ios-cloud-onboarding-smoke:request";
 const RESULT_KEY = "eliza:ios-cloud-onboarding-smoke:result";

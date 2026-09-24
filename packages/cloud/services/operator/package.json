@@ -38,11 +38,9 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "build": "node ./scripts/build.mjs",
+    "build": "node ../../scripts/operator/build.ts",
     "clean": "rm -rf dist",
-    "dev": "bunx pepr dev",
-    "deploy:local": "ELIZA_OPERATOR_SKIP_CRD_REGISTER=1 PATH=./scripts:$PATH bunx pepr build && ./scripts/deploy-local.sh"
+    "dev": "bunx pepr dev"
   },
   "dependencies": {
     "ioredis": "^5.10.1",

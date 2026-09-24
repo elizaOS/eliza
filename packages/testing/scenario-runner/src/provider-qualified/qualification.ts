@@ -10,7 +10,7 @@ import {
   createPublicKey,
   verify as verifySignature,
 } from "node:crypto";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import type {
   ScenarioEvidenceObservation,
   ScenarioEvidenceObserverProvenance,

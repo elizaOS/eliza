@@ -3,11 +3,8 @@
  * terminal text. Only the action-owned preview may reach the owner.
  */
 import type { Action } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const ACTION_NAME = "NOOP_PROVENANCE_CHECK";
 const ACTION_PREVIEW =

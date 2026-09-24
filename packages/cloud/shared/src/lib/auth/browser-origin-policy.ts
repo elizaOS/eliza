@@ -4,7 +4,7 @@
  * same-origin requests without trusting arbitrary eliza.app subdomains.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 
 const ELIZA_BROWSER_ORIGIN_HOSTS: ReadonlySet<string> = new Set([
   ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [

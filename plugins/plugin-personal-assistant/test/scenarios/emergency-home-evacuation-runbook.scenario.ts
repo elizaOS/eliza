@@ -5,7 +5,7 @@
  * convert the runbook into a captured scheduled action whose arguments carry the
  * seeded household specifics (selectedActionArguments), not just reply wording.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

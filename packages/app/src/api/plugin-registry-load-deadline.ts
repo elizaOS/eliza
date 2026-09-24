@@ -1,6 +1,6 @@
 /** Owns the plugin-registry boundary's deadline budget and fallback policy. */
 
-import { resolveAtDeadline } from "@elizaos/shared/utils/deadline";
+import { resolveAtDeadline } from "@elizaos/shared";
 
 /** How long a /api/plugins request waits for the lazy plugin-registry module
  * before answering 503 (the import keeps loading; retries land once warm). */

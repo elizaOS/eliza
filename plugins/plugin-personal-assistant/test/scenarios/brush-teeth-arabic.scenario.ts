@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: the assistant turns polite right-to-left Arabic phrasing into a daily tooth-brushing habit (8am / 9pm reminders), confirming across a preview then a save turn.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

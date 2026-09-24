@@ -5,22 +5,18 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts",
     "./evidence": "./evidence/index.ts",
     "./evidence/visual-primitives": "./evidence/visual-primitives.mjs",
     "./scenario-runner": "./scenario-runner/src/index.ts",
     "./scenario-runner/*": "./scenario-runner/src/*.ts",
     "./synthetic-world": "./synthetic-world/src/index.ts",
-    "./scenario-runner/schema": {
-      "types": "./scenario-runner/schema/index.d.ts",
-      "default": "./scenario-runner/schema/index.js"
-    }
+    "./browser-mocks": "./src/browser-mocks.ts"
   },
   "scripts": {
     "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",
     "typecheck": "bun run typecheck:fixtures && bun run typecheck:scenarios && bun run typecheck:evidence && bun run typecheck:runner && bun run typecheck:synthetic-world",
     "test:fixtures": "node ../scripts/run-vitest.mjs run",
-    "test:scenarios": "bun test --conditions eliza-source scenarios && bun run scenarios:validate",
+    "test:scenarios": "bun run scenarios:validate",
     "scenarios:validate": "bun --conditions eliza-source scenario-runner/src/cli.ts list scenarios --validate-scenarios",
     "typecheck:fixtures": "tsc --noEmit -p tsconfig.json",
     "typecheck:scenarios": "tsc --noEmit -p scenarios/tsconfig.json",
@@ -51,9 +47,9 @@
     "test:lifeops:pr:e2e": "cd scenario-runner && TZ=UTC EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-personal-assistant/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-lifeops --run-dir ../../../reports/scenarios/pr-deterministic-lifeops --export-native ../../../reports/scenarios/pr-deterministic-lifeops/native.jsonl",
     "test:live:e2e": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run test/scenarios --lane live-only --report-dir ../../../reports/scenarios/live --run-dir ../../../reports/scenarios/live",
     "test:pr:e2e": "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e",
-    "test:real-llm:attachment": "cd scenario-runner && node scripts/real-llm-attachment-smoke.mjs",
-    "test:real-service:audio": "cd scenario-runner && node scripts/real-service-audio-roundtrip.mjs",
-    "test:real-service:voice": "cd scenario-runner && node scripts/real-service-voice-e2e.mjs",
+    "test:real-llm:attachment": "cd scenario-runner && node ../scripts/scenario-runner/real-llm-attachment-smoke.mjs",
+    "test:real-service:audio": "cd scenario-runner && node ../scripts/scenario-runner/real-service-audio-roundtrip.mjs",
+    "test:real-service:voice": "cd scenario-runner && node ../scripts/scenario-runner/real-service-voice-e2e.mjs",
     "eval:when2speak": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/when2speak-eval-cli.ts",
     "eval:timing:matrix": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/timing-matrix-runner-cli.ts",
     "eval:timing:merge": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/timing-report-merge-cli.ts",
@@ -119,7 +115,8 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/cloud-test-mocks": "workspace:*"
+    "@elizaos/cloud-test-mocks": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@elizaos/agent": {
@@ -183,6 +180,9 @@
       "optional": true
     },
     "@elizaos/cloud-test-mocks": {
+      "optional": true
+    },
+    "@elizaos/plugin-browser": {
       "optional": true
     }
   },

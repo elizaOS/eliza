@@ -1,5 +1,5 @@
 /**
- * End-to-end CLI tests: `runCli` driven against a real tmp git repository
+ * CLI integration tests: `runCli` driven against a real tmp git repository
  * with real fixture silos — create a bundle, verify it, tamper with it, and
  * confirm usage errors exit non-zero. Output is captured through the injected
  * writer instead of spawning a child process; everything else is real.
@@ -56,9 +56,8 @@ function initFixtureRepo(): string {
   execFileSync("git", ["config", "user.name", "Evidence Test"], { cwd: repo });
   const auditDir = path.join(
     repo,
-    "packages",
-    "app",
-    "aesthetic-audit-output",
+    "test-results",
+    "aesthetic-audit",
     "desktop",
   );
   fs.mkdirSync(auditDir, { recursive: true });
@@ -168,7 +167,7 @@ describe("runCli create", () => {
     ).toBe(0);
     expect(fs.existsSync(baselinePath)).toBe(true);
 
-    const current = path.join(repo, "packages", "app", "test-results");
+    const current = path.join(repo, "test-results", "app");
     fs.mkdirSync(current, { recursive: true });
     fs.writeFileSync(path.join(current, "current.log"), "new-run\n");
     const captured = capture();
@@ -297,7 +296,7 @@ describe("runCli create", () => {
 
   it("rejects bundle output nested under a canonical producer before creation", async () => {
     const repo = initFixtureRepo();
-    const out = path.join(repo, "packages/app/test-results/bundles");
+    const out = path.join(repo, "test-results/app/bundles");
     const captured = capture();
     expect(
       await runCli(

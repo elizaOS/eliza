@@ -10,8 +10,8 @@
  * Personas-as-data: the ambiguous message lives in the turn text, never in
  * `promptInstructions` (root AGENTS.md — one scheduler, structural fields only).
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 // A silent non-urgent auto-file would show up as a connector dispatch that
 // buries the message with no owner-facing surfacing. Derived from behavior, not

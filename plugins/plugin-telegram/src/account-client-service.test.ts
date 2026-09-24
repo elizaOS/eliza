@@ -11,10 +11,7 @@ import {
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
-import type {
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared";
 import { Api, TelegramClient } from "telegram";
 import { AuthKey } from "telegram/crypto/AuthKey.js";
 import { readBigIntFromBuffer } from "telegram/Helpers.js";

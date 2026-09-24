@@ -11,9 +11,7 @@
  * options and parse capability-invoke responses.
  */
 
-import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
-import { theme } from "@elizaos/shared/terminal/theme";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+import { readAliasedEnv, resolveDesktopApiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
 function resolveDefaultAgentApiBase(): string {

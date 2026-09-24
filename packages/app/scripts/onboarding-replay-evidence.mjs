@@ -15,10 +15,12 @@
  * Exits non-zero when any invariant breaks; writes numbered screenshots and a
  * summary.json into the output directory for PR evidence.
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const UI_PORT = process.env.ELIZA_UI_PORT || "2190";
 const BASE = `http://127.0.0.1:${UI_PORT}`;
@@ -26,7 +28,7 @@ const outFlag = process.argv.indexOf("--out");
 const OUT =
   outFlag > -1
     ? process.argv[outFlag + 1]
-    : join(import.meta.dirname, "..", "test-results", "onboarding-replay");
+    : testOutputPath("app", "onboarding-replay");
 mkdirSync(OUT, { recursive: true });
 
 const failures = [];

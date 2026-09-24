@@ -46,11 +46,6 @@ vi.mock("../../../hooks/useCloudHandoffPhase", () => ({
 vi.mock("../../../cloud/billing-console", () => ({
   openCloudBillingConsole: openCloudBillingConsoleMock,
 }));
-// useWidgetNavigation → reportUserViewSwitch; stub it so the click test isolates
-// the navigation call.
-vi.mock("../../../chat/shortcut-report", () => ({
-  reportUserViewSwitch: vi.fn(),
-}));
 vi.mock("./home-widget-card", async () => {
   const react = await import("react");
   return {

@@ -1,24 +1,15 @@
 # Meeting Corpus Importers
 
-License-gated importer contracts for #12491. The package does not download or
-bundle real corpora. It discovers local cache folders, reports missing corpora
-honestly, and parses small synthetic fixture annotations that exercise the same
-manifest shape expected from real AMI, CHiME/DiPCo, LibriCSS, VoxConverse,
-DIHARD, MUSAN, WHAMR, and LibriMix imports.
+Importers and contract tests for meeting audio corpora.
 
-## Run
+## Development
+
+Use a Python environment matching `pyproject.toml` and install the required dependencies.
+
+No compilation or wheel build is required to run this suite from source.
+
+Test from this directory:
 
 ```bash
-python -m pytest tests -q
+python -m pytest
 ```
-
-## Scope
-
-- P0 corpus registry with license/citation metadata.
-- Deterministic local-cache manifest generation.
-- Fixture parser that emits transcript, speaker-turn, source-stream, RTTM, and
-  annotation-coverage data.
-- Honest skip/missing status for unavailable licensed corpora.
-
-Real corpus downloads, terms review, and live model runs are human-gated and
-tracked outside this code-only package.

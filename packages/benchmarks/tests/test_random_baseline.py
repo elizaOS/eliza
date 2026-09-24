@@ -96,8 +96,6 @@ def test_registry_has_all_required_benchmarks() -> None:
         "tau-bench",
         "swe-bench",
         "mint",
-        "solana",
-        "hyperliquid",
         "lifeops-bench",
         "clawbench",
     }
@@ -385,7 +383,8 @@ def test_cli_list_emits_valid_json() -> None:
     parsed = json.loads(out)
     assert "bfcl" in parsed
     assert parsed["bfcl"]["name"] == "function_call"
-    assert parsed["solana"]["is_meaningful"] is False
+    assert "solana" not in parsed
+    assert "hyperliquid" not in parsed
 
 
 def test_cli_lift_emits_valid_json() -> None:

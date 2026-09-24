@@ -3,6 +3,8 @@
  * `classifyLifeOpsSleepCycleType` (overnight / nap / unknown), and
  * `resolveLifeOpsDayBoundary` over health and activity signals.
  */
+
+import { roundConfidence } from "@elizaos/shared";
 import type {
   LifeOpsActivitySignal,
   LifeOpsDayBoundary,
@@ -20,7 +22,6 @@ import {
   getLocalDateKey,
   getZonedDateParts,
 } from "../util/time.js";
-import { roundConfidence } from "../util/time-util.js";
 
 const COMPLETED_SLEEP_GAP_MIN_MS = 3 * 60 * 60 * 1_000;
 const CURRENT_SLEEP_GAP_MIN_MS = 2 * 60 * 60 * 1_000;

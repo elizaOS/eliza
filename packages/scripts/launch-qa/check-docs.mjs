@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs launch QA launch qa check docs automation for release-readiness checks.
+/** Validates documentation links, package commands, and private security reporting. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,11 +21,10 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "SECURITY.md", "WINDOWS.md"];
+const ROOT_DOCS = ["README.md", "AGENTS.md"];
 const ISSUE_TEMPLATE_CONFIG = ".github/ISSUE_TEMPLATE/config.yml";
-const SECURITY_POLICY_FILE = "SECURITY.md";
-const SECURITY_POLICY_CONTACT_URL =
-  "https://github.com/elizaOS/eliza/blob/develop/SECURITY.md";
+const SECURITY_CONTACT_URL =
+  "https://github.com/elizaOS/eliza/security/advisories/new";
 
 function rel(repoRoot, filePath) {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");
@@ -131,10 +130,10 @@ function collectDocs(repoRoot, scope = "all") {
   const files = new Set();
   const dirs =
     scope === "launchdocs"
-      ? ["launchdocs"]
+      ? ["launchdocs", "packages/docs/docs/launchdocs"]
       : scope === "docs"
-        ? ["docs"]
-        : ["docs", "launchdocs"];
+        ? ["docs", "packages/docs"]
+        : ["docs", "launchdocs", "packages/docs"];
 
   for (const dirName of dirs) {
     for (const filePath of walkMarkdownFiles(path.join(repoRoot, dirName))) {
@@ -486,18 +485,8 @@ function readIssueTemplateSecurityContactUrl(configPath) {
   }
 }
 
-function checkSecurityPolicy(repoRoot) {
+function checkSecurityContact(repoRoot) {
   const errors = [];
-  const securityPolicyPath = path.join(repoRoot, SECURITY_POLICY_FILE);
-  if (!exists(securityPolicyPath)) {
-    errors.push({
-      type: "missing-security-policy",
-      file: SECURITY_POLICY_FILE,
-      message: `missing root ${SECURITY_POLICY_FILE} required for GitHub security-policy discovery`,
-    });
-    return errors;
-  }
-
   const configPath = path.join(repoRoot, ISSUE_TEMPLATE_CONFIG);
   if (!exists(configPath)) {
     errors.push({
@@ -519,12 +508,12 @@ function checkSecurityPolicy(repoRoot) {
     return errors;
   }
 
-  if (securityContactUrl !== SECURITY_POLICY_CONTACT_URL) {
+  if (securityContactUrl !== SECURITY_CONTACT_URL) {
     errors.push({
       type: "stale-security-contact",
       file: ISSUE_TEMPLATE_CONFIG,
       target: securityContactUrl,
-      message: `Security vulnerability contact must target ${SECURITY_POLICY_CONTACT_URL}`,
+      message: `Security vulnerability contact must target ${SECURITY_CONTACT_URL}`,
     });
   }
 
@@ -542,7 +531,7 @@ export function checkDocs(options = {}) {
   }
   const scriptsByDir = collectPackageScripts(repoRoot);
   const errors = [
-    ...checkSecurityPolicy(repoRoot),
+    ...checkSecurityContact(repoRoot),
     ...checkLinks({ repoRoot, docFiles, contentByFile }),
     ...checkCommands({ repoRoot, docFiles, contentByFile, scriptsByDir }),
   ];

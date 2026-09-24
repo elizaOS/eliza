@@ -12,7 +12,7 @@ import {
   scanAppleAppBundleForNativeRuntimeSignals,
   validateEntitlementsAgainstTarget,
 } from "./apple-entitlement-audit.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

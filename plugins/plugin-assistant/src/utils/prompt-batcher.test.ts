@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test } from "vitest";
 import {
   BatcherDisposedError,

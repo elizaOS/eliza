@@ -86,7 +86,7 @@ export type MixinClass<
 // Helpers used only inside the base class
 // ---------------------------------------------------------------------------
 
-function browserActionChangesState(
+function _browserActionChangesState(
   action: Pick<BrowserBridgeAction, "kind">,
 ): boolean {
   return (
@@ -260,26 +260,13 @@ export class LifeOpsServiceBase {
   public async requireBrowserAvailableForActions(
     actions: readonly BrowserBridgeAction[],
   ): Promise<BrowserBridgeSettings> {
-    const settings = await this.getBrowserSettingsInternal();
-    if (!settings.enabled || settings.trackingMode === "off") {
-      fail(
-        409,
-        "Agent Browser Bridge is disabled. Enable it in settings before starting browser sessions.",
-      );
-    }
-    if (this.isBrowserPaused(settings)) {
-      fail(409, "Agent Browser Bridge is paused.");
-    }
-    if (
-      actions.some((action) => browserActionChangesState(action)) &&
-      !settings.allowBrowserControl
-    ) {
-      fail(
-        409,
-        "Agent Browser Bridge control is disabled. Enable browser control in settings before running control actions.",
-      );
-    }
-    return settings;
+    throw new ElizaError(
+      "The companion browser extension has been retired. Use BROWSER with the workspace or Stagehand target.",
+      {
+        code: "BROWSER_COMPANION_RETIRED",
+        context: { requestedActionCount: actions.length },
+      },
+    );
   }
 
   public buildBrowserCompanion(

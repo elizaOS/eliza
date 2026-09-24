@@ -10,7 +10,7 @@
  * parsed assignments directly through `options.parameters`).
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,

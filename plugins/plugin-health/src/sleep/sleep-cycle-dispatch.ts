@@ -2,6 +2,8 @@
  * Derives the morning and night check-in scheduling windows (and their recap
  * payloads) from a resolved sleep-cycle state and the owner's baseline/profile.
  */
+
+import { parseIsoMs } from "@elizaos/shared";
 import type {
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,
@@ -9,7 +11,6 @@ import type {
   LifeOpsScheduleRegularity,
 } from "../contracts/health.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
-import { parseIsoMs } from "../util/time-util.js";
 import type { SleepRecap } from "./sleep-recap.js";
 
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;

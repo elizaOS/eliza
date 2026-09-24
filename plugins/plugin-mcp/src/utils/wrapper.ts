@@ -10,8 +10,8 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { parseStructuredModelOutput } from "@elizaos/shared";
 import { DEFAULT_MAX_RETRIES, isMcpSettings, type ValidationResult } from "../types";
-import { parseStructuredModelOutput } from "./json";
 
 export type Input = string | Record<string, unknown>;
 

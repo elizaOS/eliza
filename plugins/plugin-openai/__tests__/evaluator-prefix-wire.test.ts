@@ -6,12 +6,12 @@
  */
 
 import { createServer } from "node:http";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import type { Evaluator, Memory, PromptSegment } from "../../../packages/core/src/types";
 import { ModelType } from "../../../packages/core/src/types";
 import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
-import { handleTextSmall } from "../models";
+import { handleTextSmall } from "../models/text";
 
 afterEach(() => {
   vi.unstubAllEnvs();

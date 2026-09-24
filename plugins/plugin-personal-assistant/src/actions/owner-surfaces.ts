@@ -50,20 +50,6 @@ const OWNER_LIFE_ACTIONS = [
 
 type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number] | "reopen";
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
-const OWNER_FINANCE_ACTIONS = [
-  "dashboard",
-  "list_sources",
-  "add_source",
-  "remove_source",
-  "import_csv",
-  "list_transactions",
-  "spending_summary",
-  "recurring_charges",
-  "childcare_work_scenario",
-  "subscription_audit",
-  "subscription_cancel",
-  "subscription_status",
-] as const;
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
   const record = options as Record<string, unknown>;

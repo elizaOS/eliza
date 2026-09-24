@@ -6,7 +6,7 @@ import {
   codingProviderEnrollmentAvailability,
   codingProviderSubscriptionAuthMode,
   codingProviderSubscriptionBillingMode,
-} from "@elizaos/shared/contracts/coding-agent-capabilities";
+} from "@elizaos/shared";
 
 export interface OAuthCredentials {
   access: string;

@@ -8,4 +8,20 @@ tasks/**/.DS_Store
 # snapshot even though `!tasks/**` re-includes task data.
 tasks/**/__pycache__/
 tasks/**/*.pyc
+tasks/**/.pytest_cache/
+tasks/**/.ruff_cache/
+tasks/**/benchmark_results/
+tasks/**/benchmark-results/
+tasks/**/bench_results/
+tasks/**/test-results*/
+tasks/**/reports/
 test_output/
+
+# Large immutable inputs restored by scripts/fetch-corpus-assets.py.
+/tasks/fmri-encoding-r/fMRIdata.RData
+/tasks/train-fasttext/tests/private_test.txt
+/tasks/sqlite-with-gcov/vendor/sqlite-fossil-release.tar.gz
+/tasks/weighted-max-sat-solver/test_instance.wcnf
+/tasks/pytorch-model-recovery/tests/weights_gtruth.pt
+/tasks/pytorch-model-recovery/weights.pt
+/tasks/causal-inference-r/task-deps/data.csv

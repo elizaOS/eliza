@@ -37,9 +37,10 @@ export const entitiesProvider: Provider = {
     // Format entities for display
     const formattedEntities = formatEntities({ entities: entitiesData ?? [] });
     // Find sender name
-    const senderName = entitiesData?.find(
+    const sender = entitiesData?.find(
       (entity: Entity) => entity.id === entityId,
-    )?.names[0];
+    );
+    const senderName = sender?.names[0];
     // Create formatted text with header
     const entities =
       formattedEntities && formattedEntities.length > 0
@@ -56,6 +57,10 @@ export const entitiesProvider: Provider = {
       data,
       values,
       text: entities,
+      discoveryText: [
+        `Current sender's registered names: ${JSON.stringify(sender?.names ?? [])}. These are account/participant labels, not proof of a legal name or a newly stated preference.`,
+        "The complete current-room participant context is available through ENTITIES when needed. An absent registered name does not prove no name exists in conversation or memory.",
+      ].join("\n"),
     };
   },
 };

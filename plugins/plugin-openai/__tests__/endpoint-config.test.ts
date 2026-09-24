@@ -4,7 +4,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getBaseURL, resolveOpenAIBaseURL } from "../utils/config";
+import { getBaseURL, resolveOpenAIBaseURL } from "../index";
 
 afterEach(() => vi.unstubAllEnvs());
 

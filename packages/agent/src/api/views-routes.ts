@@ -30,19 +30,17 @@ import {
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
+import type { RouteRequestMeta } from "@elizaos/shared";
 import {
+  AGENT_SURFACE_CAPABILITY_IDS,
   createShellNavigateViewWsFrame,
   normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
-} from "@elizaos/shared";
-import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
-import {
-  AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,
-} from "@elizaos/shared/views/view-interact-protocol";
+} from "@elizaos/shared";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,

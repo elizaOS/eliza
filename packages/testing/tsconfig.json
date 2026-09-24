@@ -1,25 +1,19 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true,
     "types": ["node", "bun"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/testing": ["./src/index.ts"],
-      "@elizaos/testing/*": ["./src/*"],
       "@elizaos/plugin-sqlite": ["../../plugins/plugin-sqlite/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/testing/scenario-runner": ["./scenario-runner/src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
-      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": [
-        "./scenario-runner/schema/index.js"
-      ]
+      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"]
     },
     "composite": false,
-    "incremental": false,
-    "skipLibCheck": true
+    "incremental": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]

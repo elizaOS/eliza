@@ -6,7 +6,7 @@
  * reminders) would resolve against whichever copy is read first. The correction
  * must supersede in place, and the owner never spells that requirement out.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

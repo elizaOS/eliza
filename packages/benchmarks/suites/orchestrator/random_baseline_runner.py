@@ -273,16 +273,6 @@ def _recall_bench_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _scambench_payload(score: float) -> dict[str, Any]:
-    return {
-        "metrics": {
-            "score": score,
-            "scam_refuse_rate": score,
-            "legit_help_rate": score,
-            "n_scam": 1,
-            "n_legit": 1,
-        }
-    }
 
 
 def _app_eval_payload(score: float) -> dict[str, Any]:
@@ -377,17 +367,6 @@ def _eliza_1_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _solana_payload(score: float) -> dict[str, Any]:
-    return {
-        "normalized_score": score,
-        "final_reward": score,
-        "max_reward": 1.0,
-        "final_programs": _passed_count(score),
-        "messages": ["synthetic calibration rollout"],
-        "cumulative_rewards": [score],
-        "model": "synthetic-calibration",
-        "run_id": "synthetic-calibration",
-    }
 
 
 def _experience_payload(score: float) -> dict[str, Any]:
@@ -427,26 +406,6 @@ def _hermes_env_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _hyperliquid_payload(score: float) -> dict[str, Any]:
-    signature = f"synthetic-calibration-{score:.6f}"
-    return {
-        "final_score": score,
-        "total_score": score,
-        "base": score,
-        "bonus": 0,
-        "penalty": 0,
-        "total_scenarios": 2,
-        "passed_scenarios": _passed_count(score),
-        "scenarios": [
-            {
-                "id": "synthetic-calibration",
-                "success": True,
-                "unique_signatures": [signature],
-            }
-        ],
-        "mode": "synthetic-calibration",
-        "demo_mode": False,
-    }
 
 
 def _interrupt_payload(score: float) -> dict[str, Any]:
@@ -613,19 +572,6 @@ def _three_agent_dialogue_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _rlm_payload(score: float) -> dict[str, Any]:
-    total = 2
-    return {
-        "metrics": {
-            "overall_accuracy": score,
-            "total_tasks": total,
-            "passed_tasks": _passed_count(score, total),
-            "s_niah_by_length": {"1000": score},
-            "oolong_accuracy": score,
-            "oolong_pairs_accuracy": score,
-        },
-        "results": [{"id": "calibration", "score": score}],
-    }
 
 
 def _swe_bench_payload(score: float) -> dict[str, Any]:
@@ -780,24 +726,6 @@ def _webshop_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _woobench_payload(score: float) -> dict[str, Any]:
-    return {
-        "overall_score": score * 100.0,
-        "revenue_efficiency": score * 100.0,
-        "revenue_score": score * 100.0,
-        "price_discipline_score": score * 100.0,
-        "conversion_efficiency_score": score * 100.0,
-        "resilience_score": score * 100.0,
-        "failed_scenarios": 0 if score > 0 else 2,
-        "total_revenue": score,
-        "scenarios": [
-            {
-                "id": "calibration",
-                "payment_converted": score > 0,
-                "agent_responsive": True,
-            }
-        ],
-    }
 
 
 def _clawbench_payload(score: float) -> dict[str, Any]:
@@ -1024,7 +952,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "adhdbench": ("adhdbench_summary_random_v1.json", _adhd_payload),
     "agentbench": ("agentbench-results.json", _agentbench_payload),
     "realm": ("realm_results_random_v1.json", _realm_payload),
-    "scambench": ("scambench-results.json", _scambench_payload),
     "app-eval": ("summary.json", _app_eval_payload),
     "clawbench": ("trajectory_random_v1.json", _clawbench_payload),
     "configbench": ("configbench-results-random_v1.json", _configbench_payload),
@@ -1043,8 +970,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     ),
     "hermes_yc_bench": ("hermes_yc_bench_random_v1.json", _hermes_env_payload),
     "humaneval": ("humaneval-results.json", _metrics_score_payload),
-    "hyperliquid_bench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
-    "hyperliquidbench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
     "interrupt_bench": ("report.json", _interrupt_payload),
     "lifeops_bench": ("lifeops-bench-random_v1.json", _lifeops_payload),
     "meeting_transcription_proof": (
@@ -1081,8 +1006,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "osworld": ("osworld-results.json", _osworld_payload),
     "personality_bench": ("report.json", _personality_payload),
     "recall_bench": ("recall-bench-results.json", _recall_bench_payload),
-    "rlm_bench": ("rlm-results.json", _rlm_payload),
-    "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
     "three_agent_dialogue": ("verification.json", _three_agent_dialogue_payload),
     "swe_bench_orchestrated": (
@@ -1103,7 +1026,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
         _voicebench_quality_payload,
     ),
     "webshop": ("webshop-results.json", _webshop_payload),
-    "woobench": ("woobench_random_v1.json", _woobench_payload),
 }
 
 
@@ -1214,6 +1136,15 @@ def run_synthetic_baseline(
         raise ValueError(f"unknown synthetic harness: {harness}")
 
     strategy = get_strategy(benchmark_id)
+    if benchmark_id == "action-calling":
+        action_cli = importlib.import_module("benchmarks.action-calling.cli")
+        if not action_cli.DEFAULT_TEST.is_file():
+            return RandomBaselineOutcome(
+                harness=harness, status="incompatible", score=None, result_path=None,
+                strategy_name=strategy.name, is_meaningful=False,
+                note="Full action-calling corpus unavailable; set ELIZA_TRAINING_ROOT before calibration.",
+            )
+
     expected_score = (
         synthetic_score_for_benchmark_harness(benchmark_id, harness)
         if score is None

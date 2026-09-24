@@ -4,12 +4,12 @@
  * choices that can be tested without starting the iOS kernel.
  */
 
-import { findCatalogModel } from "../services/local-inference/catalog";
 import type {
   CatalogModel,
   HardwareProbe,
   InstalledModel,
-} from "../services/local-inference/types";
+} from "@elizaos/shared";
+import { findCatalogModel } from "@elizaos/shared";
 
 export interface MobileModelLoadOptions {
   modelPath: string;

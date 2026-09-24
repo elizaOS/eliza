@@ -34,7 +34,6 @@
       "@elizaos/plugin-scheduling": [
         "../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-scheduling/*": ["../../plugins/plugin-scheduling/src/*"],
       "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/plugin": [
         "../../plugins/plugin-todos/src/plugin.ts"
@@ -125,14 +124,7 @@
         "../../plugins/plugin-elizacloud/src/utils/config.ts"
       ],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
-      "@elizaos/plugin-anthropic/endpoint-config": [
-        "../../plugins/plugin-anthropic/utils/config.ts"
-      ],
-      "@elizaos/plugin-openai/endpoint-config": [
-        "../../plugins/plugin-openai/utils/config.ts"
-      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
-      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
       "@elizaos/plugin-vision": ["../../plugins/plugin-vision/src/index.ts"],
       "@elizaos/plugin-notes/plugin": [

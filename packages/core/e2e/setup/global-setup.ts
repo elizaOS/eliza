@@ -8,10 +8,12 @@
 
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
-import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
-import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import {
+	createOllamaModelHandlers,
+	detectInferenceProviders,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing";
 import { AgentRuntime } from "../../src/runtime";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";

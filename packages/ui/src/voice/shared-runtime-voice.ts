@@ -6,10 +6,10 @@
  * while explicit custom origins remain configurable.
  */
 
+import { getElizaApiBase } from "@elizaos/shared";
 import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
 import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
-import { getElizaApiBase } from "../utils/eliza-globals";
 
 /**
  * Derive the cloud API worker origin from a shared-runtime agent base.

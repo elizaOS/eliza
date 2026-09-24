@@ -1,7 +1,7 @@
 /** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
 
 import { ChannelType, type IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing";
 import { assert, describe, expect, it, vi } from "vitest";
 import { completionContextSources } from "../../../../packages/core/src/runtime/completion-context.ts";
 import {

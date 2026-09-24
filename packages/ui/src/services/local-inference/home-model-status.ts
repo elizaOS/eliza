@@ -5,7 +5,7 @@
 import type {
   LocalInferenceReadiness,
   LocalInferenceSlotReadiness,
-} from "./types";
+} from "@elizaos/shared";
 
 export type HomeModelStatusKind =
   | "not-required"

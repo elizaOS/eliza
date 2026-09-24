@@ -41,6 +41,7 @@ describe("subscription operation migrations", () => {
     for (const name of [
       "0383_subscription_cancellation_result.sql",
       "0384_subscription_cancellation_undo.sql",
+      "0397_subscription_checkout_contract.sql",
     ]) {
       const upgrade = await readFile(new URL(name, import.meta.url), "utf8");
       for (const statement of upgrade.split("--> statement-breakpoint"))
@@ -51,6 +52,7 @@ describe("subscription operation migrations", () => {
     if (!existing) throw new Error("Migration lost the existing cancellation command");
     expect(existing).toMatchObject({
       idempotency_key: "command.before-upgrade",
+      checkout_contract: null,
       cancellation_dispatch_state: null,
       result_subscription_revision: null,
       schedule_predecessor_command_id: null,

@@ -1,5 +1,5 @@
 /** Scenario fixture for todo prioritize; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const TOP_TODO_TITLE = "Submit tax forms";
 const TOP_TODO_PRIORITY = 1;

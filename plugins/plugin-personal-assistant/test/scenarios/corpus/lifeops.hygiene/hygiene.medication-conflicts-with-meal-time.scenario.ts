@@ -4,7 +4,7 @@
  * for clarification rather than guessing.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { seedMeetingPreferences } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

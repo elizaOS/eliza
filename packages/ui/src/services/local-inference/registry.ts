@@ -10,9 +10,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { InstalledModel } from "@elizaos/shared";
 import { scanExternalModels } from "./external-scanner";
 import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
-import type { InstalledModel } from "./types";
 
 type StoredInstalledModel = Omit<
   InstalledModel,

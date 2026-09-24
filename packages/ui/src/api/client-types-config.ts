@@ -9,8 +9,7 @@ import type {
   SurfaceManifest,
   ViewKind,
 } from "@elizaos/core";
-import type { PluginParamDef } from "@elizaos/shared/api/agent-api-types";
-import type { MessageExampleContent } from "@elizaos/shared/contracts/first-run-options";
+import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
   ConversationScope,
@@ -20,13 +19,6 @@ import type {
   TriggerSummary,
 } from "./client-types-core";
 
-export type {
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared/contracts/calendar";
 export type {
   CloudCodingAgent,
   CloudCodingContainerSession,
@@ -42,24 +34,20 @@ export type {
   CloudVfsFile,
   CloudVfsFileEncoding,
   CloudVfsSourceKind,
-  PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
-  RequestCodingAgentContainerRequest,
-  RequestCodingAgentContainerResponse,
-  SyncCloudCodingContainerRequest,
-  SyncCloudCodingContainerResponse,
-} from "@elizaos/shared/contracts/cloud-coding-containers";
-export type {
   CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
   CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
+  CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   LifeOpsBrowserSession as BrowserBridgeSession,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailReplyDraft,
@@ -67,23 +55,29 @@ export type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsReminderInspection,
   LifeOpsReminderPlan,
   LifeOpsTaskDefinition,
+  PostWorkbenchVfsPromoteToCloudRequest,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/personal-assistant";
-export type { PostWorkbenchVfsPromoteToCloudRequest } from "@elizaos/shared/contracts/workbench-routes";
+} from "@elizaos/shared";
 export type {
-  BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
@@ -607,7 +601,7 @@ export interface AutomationListResponse {
   executionFetchErrors: AutomationExecutionFetchError[];
 }
 
-export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/personal-assistant";
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";
 
 // Voice / TTS config
 export type VoiceProvider =

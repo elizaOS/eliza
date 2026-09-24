@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { JSONSchema, ResponseHandlerResult } from "./core-lite.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BRIDGE_SCRIPT = resolve(HERE, "../scripts/harness_stage1_turn.py");
+const BRIDGE_SCRIPT = resolve(HERE, "../../../scripts/harness-turn.py");
 // The bridge imports `eliza_adapter`, which lives in harnesses/eliza at the repo root.
 const ELIZA_HARNESS_DIR = resolve(HERE, "../../../harnesses/eliza");
 
@@ -210,26 +210,30 @@ export async function callHarnessStage1(
   input: HarnessCallInput,
 ): Promise<HarnessCallResult> {
   const started = Date.now();
-  const completed = spawnSync(pythonExecutable(), [BRIDGE_SCRIPT], {
-    input: JSON.stringify({
-      prompt: buildPrompt(input),
-      context: {
-        benchmark: "interrupt_bench",
-        task_id: input.scenarioId,
-        harness: harnessName(),
-        call_index: input.callIndex,
+  const completed = spawnSync(
+    pythonExecutable(),
+    [BRIDGE_SCRIPT, "--benchmark", "interrupt_bench"],
+    {
+      input: JSON.stringify({
+        prompt: buildPrompt(input),
+        context: {
+          benchmark: "interrupt_bench",
+          task_id: input.scenarioId,
+          harness: harnessName(),
+          call_index: input.callIndex,
+        },
+      }),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PYTHONPATH: [ELIZA_HARNESS_DIR, process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(":"),
       },
-    }),
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PYTHONPATH: [ELIZA_HARNESS_DIR, process.env.PYTHONPATH]
-        .filter(Boolean)
-        .join(":"),
+      timeout: input.timeoutMs ?? 120_000,
+      maxBuffer: 2 * 1024 * 1024,
     },
-    timeout: input.timeoutMs ?? 120_000,
-    maxBuffer: 2 * 1024 * 1024,
-  });
+  );
   const latencyMs = Date.now() - started;
   if (completed.error) throw completed.error;
   if (completed.status !== 0) {

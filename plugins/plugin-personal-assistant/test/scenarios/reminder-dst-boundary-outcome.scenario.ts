@@ -1,5 +1,5 @@
 // Defines the reminder dst boundary outcome LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;

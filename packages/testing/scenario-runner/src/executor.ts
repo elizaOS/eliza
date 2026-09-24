@@ -40,8 +40,8 @@ import type {
   RouteBodyValue,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing/deterministic-model-plugin";
+} from "@elizaos/shared";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import {
   type CapturedAction,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
@@ -54,7 +54,7 @@ import {
   type ScenarioTurn,
   type ScenarioTurnExecution,
   scenarioLane,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";

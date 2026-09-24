@@ -2,8 +2,9 @@
  * Resolves bundled VRM avatar assets from boot config — count, slug lookup, and
  * asset URLs — with a fallback slug when none are declared.
  */
+
+import { resolveAppAssetUrl } from "@elizaos/shared";
 import { type BundledVrmAsset, getBootConfig } from "../config/boot-config";
-import { resolveAppAssetUrl } from "../utils/asset-url";
 import type { UiTheme } from "./ui-preferences";
 
 const BUNDLED_VRM_FALLBACK_SLUG = "bundled-1";

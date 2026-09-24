@@ -90,6 +90,16 @@ def _load_corpus_manifest() -> dict[str, object]:
 def _verify_pinned_corpus(tasks_dir: Path) -> dict[str, object]:
     """Verify the complete pinned snapshot plus assets Git may ignore."""
     manifest = _load_corpus_manifest()
+    missing_downloads = [
+        asset["path"] for asset in manifest.get("downloadable_assets", [])
+        if not (tasks_dir / asset["path"]).is_file()
+    ]
+    if missing_downloads:
+        raise TerminalBenchDatasetMissingError(
+            "Terminal-Bench large inputs are missing: " + ", ".join(missing_downloads)
+            + ". Run python3 packages/benchmarks/scripts/terminal-bench/"
+            "fetch-corpus-assets.py from the repository root."
+        )
     expected_count = manifest.get("expected_task_count")
     if not isinstance(expected_count, int) or expected_count <= 0:
         raise TerminalBenchDatasetIntegrityError(

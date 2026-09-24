@@ -3,6 +3,55 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
+import { build } from "esbuild";
+
+it("runs published browser contracts without Node globals or runtime shims", async () => {
+  const result = await build({
+    stdin: {
+      contents: `import { replaceNameTokens, resolveEnvAlias, ElizaError } from '@elizaos/shared/browser-contracts';
+        globalThis.result = {
+          text: replaceNameTokens('{{name}} and {{ agentName }}', 'M$&M'),
+          alias: resolveEnvAlias('ELIZA_KEY', [['ELIZA_KEY', 'HOST_KEY']], {HOST_KEY: 'configured'}),
+          code: new ElizaError('invalid input', {code: 'INPUT_INVALID'}).code
+        };`,
+      resolveDir: fileURLToPath(new URL("..", import.meta.url)),
+    },
+    bundle: true,
+    // Exercise published export conditions rather than repository source aliases.
+    tsconfigRaw: { compilerOptions: {} },
+    platform: "browser",
+    format: "iife",
+    write: false,
+  });
+  const sandbox = {};
+  runInNewContext(result.outputFiles[0].text, sandbox);
+  assert.equal(sandbox.result.text, "M$&M and M$&M");
+  assert.equal(sandbox.result.alias, "configured");
+  assert.equal(sandbox.result.code, "INPUT_INVALID");
+});
+
+it("preserves runtime error classification through shared contracts in Node", () => {
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { ElizaError, isElizaError } from '@elizaos/core';
+    import { ElizaError as SharedError } from '@elizaos/shared/browser-contracts';
+    const cause = new Error('host failed');
+    const error = new SharedError('configuration unavailable', {code: 'CONFIG_UNAVAILABLE', cause});
+    assert.ok(error instanceof ElizaError);
+    assert.ok(isElizaError(error));
+    assert.equal(error.cause, cause);
+    assert.equal(error.code, 'CONFIG_UNAVAILABLE');
+    process.stdout.write('ok');
+  `;
+  assert.equal(
+    execFileSync("node", ["--input-type=module", "--eval", probe], {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+    }),
+    "ok",
+  );
+});
 
 it("loads complete template helpers from the shared distribution in native Node", {
   timeout: 60_000,

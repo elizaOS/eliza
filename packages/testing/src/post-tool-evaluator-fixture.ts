@@ -8,8 +8,8 @@ import {
   normalizeEffectReceipts,
   projectCompleteToolArgsForModel,
 } from "@elizaos/core";
-import { matchesScenarioInput } from "./deterministic-action-fixtures";
-import type { DeterministicModelFixture } from "./deterministic-model-plugin";
+import { matchesScenarioInput } from "./deterministic-action-fixtures.ts";
+import type { DeterministicModelFixture } from "./deterministic-model-plugin.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

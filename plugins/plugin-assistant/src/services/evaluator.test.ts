@@ -7,7 +7,7 @@
  */
 
 import { resolveEffectiveSystemPrompt } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
@@ -1583,22 +1583,25 @@ describe("lossless evaluator prefix and processing", () => {
     ).toBe(second.content.text);
     expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
     expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
+    const native = captured.find((call) => call.format === "schema");
+    expect(native).toBeDefined();
     for (const conversation of new Set(
       captured.map((call) => call.conversation),
     )) {
       const calls = captured.filter(
         (call) => call.conversation === conversation,
       );
-      const native = calls.find((call) => call.format === "schema");
-      expect(native).toBeDefined();
-      for (const fallback of calls.filter((call) => call.format !== "schema")) {
-        expect(fallback.schemaText).toBe(native?.schemaText);
-        expect(
-          fallback.prompt.replace(
-            `## Output JSON Schema\n${fallback.schemaText}\n\n`,
-            "",
-          ),
-        ).toBe(native?.prompt);
+      // Provider rejection is cached across rooms. A room may start at JSON,
+      // but every retry must retain its complete prompt and the same schema.
+      const withoutInlineSchema = (call: (typeof captured)[number]) =>
+        call.prompt.replace(
+          `## Output JSON Schema\n${call.schemaText}\n\n`,
+          "",
+        );
+      expect(calls.some((call) => call.format === "plain")).toBe(true);
+      for (const call of calls) {
+        expect(call.schemaText).toBe(native?.schemaText);
+        expect(withoutInlineSchema(call)).toBe(withoutInlineSchema(calls[0]));
       }
     }
     for (const call of captured) {

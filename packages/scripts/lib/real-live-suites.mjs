@@ -69,11 +69,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["CEREBRAS_API_KEY"],
   },
   {
-    file: "packages/core/src/__tests__/planner-continuation.live.test.ts",
-    optIn: "ELIZA_RUN_LIVE_TESTS",
-    requires: ["CEREBRAS_API_KEY"],
-  },
-  {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/issue-read-write-composition.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
@@ -107,34 +102,9 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
   },
   {
-    file: "packages/agent/src/services/push/push-delivery.real.test.ts",
-    anyOf: [["ELIZA_APNS_KEY_ID"], ["ELIZA_FCM_SERVICE_ACCOUNT"]],
-    guardVia: [
-      "packages/agent/src/services/push/apns-provider.ts",
-      "packages/agent/src/services/push/fcm-provider.ts",
-    ],
-    blocked:
-      "packages/agent/vitest.config.ts excludes *.real.test.ts in every deterministic lane; run explicitly via `bunx vitest run --config packages/agent/vitest.push-real.config.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
-  },
-  {
     file: "packages/app/src/services/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "operator-run multi-account integration; not part of routine CI",
-  },
-  {
-    file: "packages/app/test/services/smithers-linked-codex-subscription.live.test.ts",
-    optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
-    notes:
-      "app Smithers-linked Codex subscription roundtrip; needs an authenticated ~/.codex/auth.json and spends real ChatGPT-subscription traffic",
-  },
-  {
-    file: "packages/core/src/runtime/__tests__/field-registry-cerebras.live.test.ts",
-    optIn: "ELIZA_RUN_LIVE_TESTS",
-    requires: ["CEREBRAS_API_KEY"],
-  },
-  {
-    file: "packages/core/src/runtime/__tests__/pii-swap-live-cerebras.real.test.ts",
-    requires: ["CEREBRAS_API_KEY"],
   },
   {
     file: "plugins/plugin-assistant/src/__tests__/should-respond.live.test.ts",
@@ -159,10 +129,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     optIn: "ELIZA_VISION_QA_CLI_LIVE",
     notes:
       "vision-qa CLI backend driving a real claude/codex CLI (ELIZA_VISION_QA_CLI selects); spends operator CLI tokens",
-  },
-  {
-    file: "plugins/plugin-agent-orchestrator/__tests__/live/native-acp-smoke.live.test.ts",
-    optIn: "RUN_LIVE_NATIVE_ACP",
   },
   {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/smithers-codex-subscription.live.test.ts",

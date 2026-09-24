@@ -3,7 +3,7 @@
  * carries an image description that must be available from a linked Telegram
  * room without exposing its private capability URL in the response.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
