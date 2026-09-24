@@ -190,9 +190,7 @@ describe("platform probe factories", () => {
 		},
 	);
 
-	function setIosPathHints(
-		hints: { isExpensive: boolean; isConstrained: boolean } | "throws",
-	): void {
+	function setIosPathHints(hints: unknown): void {
 		vi.stubGlobal("ElizaNetworkPolicy", {
 			getPathHints: async () => {
 				if (hints === "throws") throw new Error("simulated native error");
@@ -211,6 +209,47 @@ describe("platform probe factories", () => {
 		async ({ metered, ...hints }) => {
 			setIosPathHints(hints);
 			expect((await capacitorIosProbe().probe()).metered).toBe(metered);
+		},
+	);
+
+	it.each([
+		null,
+		undefined,
+		{},
+		{ isExpensive: null, isConstrained: null },
+		{ isExpensive: false },
+		{ isConstrained: false },
+		{ isExpensive: false, isConstrained: null },
+		{ isExpensive: 0, isConstrained: false },
+		{ isExpensive: false, isConstrained: "false" },
+	])(
+		"does not authorize a Wi-Fi download from unknown iOS hints %#",
+		async (hints) => {
+			vi.stubGlobal("Capacitor", {
+				Plugins: {
+					Network: { getStatus: async () => ({ connectionType: "wifi" }) },
+				},
+			});
+			setIosPathHints(hints);
+			const probe = capacitorIosProbe();
+			await expect(probe.probe()).resolves.toEqual({
+				connectionType: "wifi",
+				metered: null,
+			});
+			await expect(
+				evaluateRuntimePolicy({ probe, estimatedBytes: 2 ** 30 }),
+			).resolves.toMatchObject({ allow: false });
+		},
+	);
+
+	it.each([
+		{ isExpensive: true, isConstrained: null },
+		{ isExpensive: null, isConstrained: true },
+	])(
+		"preserves restrictive iOS hints when the other value is unknown %#",
+		async (hints) => {
+			setIosPathHints(hints);
+			expect((await capacitorIosProbe().probe()).metered).toBe(true);
 		},
 	);
 
