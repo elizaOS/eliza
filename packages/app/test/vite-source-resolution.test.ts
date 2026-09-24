@@ -11,7 +11,7 @@ import {
   type UserConfig,
 } from "vite";
 import { describe, expect, test } from "vitest";
-import appViteConfig from "../vite.config";
+import appViteConfig, { rejectRuntimeInRendererPlugin } from "../vite.config";
 
 const appRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -48,6 +48,7 @@ async function createAppResolutionServer(
   const server = await createServer({
     configFile: false,
     root: appRoot,
+    plugins: [rejectRuntimeInRendererPlugin()],
     logLevel: "silent",
     optimizeDeps: { noDiscovery: true },
     resolve: {
@@ -164,7 +165,7 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves shared environment utilities through the Node runtime owner while %s config resolves",
+    "resolves pure runtime contracts through the renderer adapter while %s config resolves",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
       try {
@@ -174,14 +175,7 @@ describe("workspace package resolution", () => {
             path.resolve(appRoot, "../shared/src/env-utils.ts"),
           );
         expect(resolved?.id).toBe(
-          normalizePath(
-            path.resolve(
-              appRoot,
-              command === "serve"
-                ? "../core/dist/index.js"
-                : "../core/dist/index.js",
-            ),
-          ),
+          normalizePath(path.resolve(appRoot, "src/shims/core-browser.ts")),
         );
         await expect(
           server.environments.client.pluginContainer.resolveId(

@@ -1490,13 +1490,16 @@ function resolveSharedSourceExportTarget(
   );
 }
 
-/** The renderer imports pure shared contracts; the agent kernel runs in Node. */
-function rejectRuntimeInRendererPlugin(): Plugin {
+/** The renderer receives audited pure contracts; runtime subpaths stay Node-only. */
+export function rejectRuntimeInRendererPlugin(): Plugin {
   return {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
     resolveId(id, importer) {
-      if (id === "@elizaos/core" || id.startsWith("@elizaos/core/")) {
+      if (id === "@elizaos/core") {
+        return path.resolve(here, "src/shims/core-browser.ts");
+      }
+      if (id.startsWith("@elizaos/core/")) {
         throw new Error(
           `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
         );

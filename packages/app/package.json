@@ -315,7 +315,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.10.0",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "@noble/hashes": "2.2.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
