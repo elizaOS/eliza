@@ -8,7 +8,6 @@
 		"declarationMap": false,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@elizaos/core": ["./src/index.ts"],
 			"@elizaos/core/*": ["./src/*"]
 		}
 	},

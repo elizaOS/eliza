@@ -12,16 +12,8 @@
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "bun": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
+      "eliza-source": "./src/plugin.ts",
+      "bun": "./src/plugin.ts",
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"

@@ -1,0 +1,16 @@
+{
+  "name": "@elizaos/repository-tools",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  }
+}

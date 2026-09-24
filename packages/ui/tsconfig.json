@@ -21,7 +21,6 @@
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
-      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -45,7 +44,6 @@
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
         "../cloud/sdk/src/cloud-setup-session/index.ts"
