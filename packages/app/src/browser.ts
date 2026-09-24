@@ -2,7 +2,7 @@
  * Browser-safe surface of `@elizaos/app`, aliased in by browser bundlers in
  * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
  * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
- * `@elizaos/shared`, and provides inert stubs for the server-only helpers
+ * `@elizaos/shared`, and provides explicit failures for the server-only helpers
  * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
  * against the same names without pulling in Node server modules.
  */
@@ -70,6 +70,8 @@ export {
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
+import { unsupportedServerOperation } from "./platform/empty-node-module";
+
 export type CompatRuntimeState = {
   current: unknown;
   pendingAgentName?: string | null;
@@ -80,13 +82,17 @@ export function sendJson(
   _res: unknown,
   _status: number,
   _body: unknown,
-): void {}
+): never {
+  return unsupportedServerOperation();
+}
 
 export function sendJsonError(
   _res: unknown,
   _status: number,
   _message: string,
-): void {}
+): never {
+  return unsupportedServerOperation();
+}
 
 export async function ensureRouteAuthorized(): Promise<boolean> {
   return false;
@@ -97,9 +103,9 @@ export async function ensureCompatApiAuthorized(): Promise<boolean> {
 }
 
 export async function readCompatJsonBody(): Promise<unknown> {
-  return null;
+  return unsupportedServerOperation();
 }
 
 export function sharedVault(): never {
-  throw new Error("sharedVault is server-only");
+  return unsupportedServerOperation();
 }

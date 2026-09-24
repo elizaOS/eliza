@@ -15,7 +15,6 @@ const allowed = new Set([
   "packages/app/src/types/app-plugin-module-exports.d.ts",
   "packages/app/src/types/app-plugin-modules.d.ts",
   "packages/app/src/types/side-effect-app-modules.d.ts",
-  "packages/app/src/types/typecheck-package-shims.d.ts",
   "packages/app/test/utils/get-free-port.d.ts",
 ]);
 const files = execFileSync(

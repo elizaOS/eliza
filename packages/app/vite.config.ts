@@ -2074,86 +2074,6 @@ function workspaceJsxInJsPlugin(): Plugin {
   };
 }
 
-const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
-  [/^cookie$/, "src/shims/cookie.ts"],
-  [
-    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
-    "src/shims/set-cookie-parser.ts",
-  ],
-  [
-    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
-    "src/shims/use-sync-external-store-with-selector.ts",
-  ],
-  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
-  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
-  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
-  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
-  [
-    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-uniqBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sortBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-throttle.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/last(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-last.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-maxBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-minBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/range(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-range.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/omit(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-omit.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sumBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-isPlainObject.ts",
-  ],
-  [
-    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
-    "src/shims/decimal-js-light.ts",
-  ],
-  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
-  [/^react-is$/, "src/shims/react-is.ts"],
-  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
-];
-
-function devCjsInteropShimAliasesPlugin(): Plugin {
-  return {
-    name: "dev-cjs-interop-shim-aliases",
-    apply: "serve",
-    enforce: "pre",
-    resolveId(source) {
-      const sourceWithoutQuery = source.split("?")[0] ?? source;
-      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
-        if (find.test(sourceWithoutQuery)) {
-          return path.resolve(here, replacement);
-        }
-      }
-      return null;
-    },
-  };
-}
-
 // Builds a Vite/Rolldown plugin that resolves `es-toolkit/compat/<name>` to
 // its ESM `dist/compat/**/<name>.mjs` and re-exports the named binding as
 // default, bypassing the CJS-only export map. Must be registered in both
@@ -2527,7 +2447,6 @@ export const INVALID_TRACER_PROVIDER = {};
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
-    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -2602,32 +2521,8 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: SOLANA_WALLET_CSS_RESOLVED,
       },
       {
-        find: /^fast-redact$/,
-        replacement: path.resolve(here, "src/shims/fast-redact.ts"),
-      },
-      {
-        find: /^cron-parser$/,
-        replacement: path.resolve(here, "src/shims/cron-parser.ts"),
-      },
-      {
         find: /^picocolors$/,
         replacement: path.resolve(here, "src/shims/picocolors.ts"),
-      },
-      {
-        find: /^cookie$/,
-        replacement: path.resolve(here, "src/shims/cookie.ts"),
-      },
-      {
-        find: /^set-cookie-parser$/,
-        replacement: path.resolve(here, "src/shims/set-cookie-parser.ts"),
-      },
-      {
-        find: /^style-to-js(?:\/cjs\/index\.js)?$/,
-        replacement: path.resolve(here, "src/shims/style-to-js.ts"),
-      },
-      {
-        find: /^debug(?:\/src\/browser(?:\.js)?)?$/,
-        replacement: path.resolve(here, "src/shims/debug.ts"),
       },
       {
         find: /^extend$/,
@@ -2647,10 +2542,6 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^unpdf$/,
         replacement: path.resolve(here, "src/shims/unpdf.ts"),
-      },
-      {
-        find: /^handlebars$/,
-        replacement: path.resolve(here, "src/shims/handlebars.ts"),
       },
       {
         find: /^@vercel\/oidc$/,
@@ -2765,6 +2656,15 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
+      // Host bridge imports must resolve on a clean checkout before native
+      // plugin distribution files have been built.
+      ...["contacts", "messages", "phone"].map((name) => ({
+        find: `@elizaos/plugin-native-${name}/bridge`,
+        replacement: path.resolve(
+          elizaRoot,
+          `plugins/plugin-native-${name}/src/bridge.ts`,
+        ),
+      })),
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
@@ -3108,7 +3008,7 @@ export const INVALID_TRACER_PROVIDER = {};
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
           // when bundling that re-export chain for the renderer. Route the
           // import to the local browser replacement, which already provides all of
-          // those names as no-ops (see `platform/empty-node-module.ts`).
+          // those names as throwing placeholders (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
             replacement: path.join(
@@ -3162,6 +3062,16 @@ export const INVALID_TRACER_PROVIDER = {};
       "recharts",
       "nprogress",
       "cookie",
+      "set-cookie-parser",
+      "style-to-js",
+      "debug",
+      "decimal.js-light",
+      "eventemitter3",
+      "react-is",
+      "handlebars",
+      "cron-parser",
+      "fast-redact",
+
       "yaml",
       "uuid",
       "adze",

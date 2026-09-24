@@ -124,7 +124,7 @@ async function appendJsonLine(filePath: string, line: JsonLine): Promise<void> {
 /**
  * Append an audit event to the database AND the JSONL log.
  *
- * Both writes are attempted. The first error is rethrown to the caller —
+ * Both writes are attempted. A rejected write is rethrown to the caller —
  * an audit-write failure is a real problem and should surface, not be
  * swallowed.
  */
@@ -150,25 +150,10 @@ export async function appendAuditEvent(
     metadata: safeMetadata,
   };
 
-  let firstError: unknown = null;
-  const fileWrite = appendJsonLine(filePath, line).catch((err) => {
-    if (firstError === null) firstError = err;
-  });
-  const dbWrite = options.store
-    .appendAuditEvent({
-      id,
-      ts: now,
-      actorIdentityId: input.actorIdentityId,
-      ip: input.ip,
-      userAgent,
-      action: input.action,
-      outcome: input.outcome,
-      metadata: safeMetadata,
-    })
-    .catch((err) => {
-      if (firstError === null) firstError = err;
-    });
-
-  await Promise.all([fileWrite, dbWrite]);
-  if (firstError !== null) throw firstError;
+  const writes = await Promise.allSettled([
+    appendJsonLine(filePath, line),
+    Promise.resolve().then(() => options.store.appendAuditEvent(line)),
+  ]);
+  const failure = writes.find((write) => write.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
 }
