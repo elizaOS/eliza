@@ -123,6 +123,8 @@ const chargeSchema = z.object({
   transfer_data: z.null(),
 });
 export interface PaidRenewalObjects {
+  /** Current account retrieved alongside a persisted purchase contract; absent for legacy authority. */
+  providerAccountId?: string;
   invoice: unknown;
   subscription: unknown;
   customer: unknown;

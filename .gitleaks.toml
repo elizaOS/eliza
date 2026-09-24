@@ -393,3 +393,11 @@ condition = "AND"
 paths = ['''(^|/)packages/app-core/src/api/server\.ts$''']
 regexTarget = "line"
 regexes = ['''^\s*// Bind before consulting native credential stores: Keychain/libsecret may\s*$''']
+
+# The checkout rotation case uses this invented value with its injected Stripe client.
+[[allowlists]]
+description = "Checkout credential rotation controlled-transport sentinel"
+condition = "AND"
+paths = ['''(^|/)packages/cloud/shared/src/lib/services/subscription-checkout\.pglite\.test\.ts$''']
+regexTarget = "line"
+regexes = ['''^\s*process\.env\.STRIPE_SECRET_KEY = "sk_test_rotatedcredential";\s*$''']

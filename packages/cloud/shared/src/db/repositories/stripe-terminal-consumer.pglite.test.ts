@@ -59,6 +59,7 @@ beforeAll(async () => {
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
     "0385_subscription_reconciliation.sql",
+    "0397_subscription_checkout_contract.sql",
   ]) {
     const migrationSql = await readFile(
       new URL(`../migrations/${migration}`, import.meta.url),

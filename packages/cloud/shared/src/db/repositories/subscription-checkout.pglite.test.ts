@@ -1,6 +1,7 @@
 /** Exercises atomic initial subscription activation, duplicate delivery, payment rejection and real allowance spending against migrated PGlite. */
 import { afterAll, beforeAll, expect, mock, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { installCancellationTestSchema } from "./subscription-cancellation-test-fixture";
 import { seedRenewalTestAccount } from "./subscription-renewal-test-fixture";
 
@@ -16,6 +17,7 @@ setDefaultTimeout(120000);
 let providerFixture: Awaited<ReturnType<typeof seed>>;
 mock.module("../../lib/stripe", () => ({
   requireStripe: () => ({
+    accounts: { retrieve: async () => ({ id: "acct_checkoutfixture" }) },
     checkout: {
       sessions: {
         retrieve: async () => providerFixture.session,
@@ -56,8 +58,13 @@ async function seed(planKey: "plus_monthly" | "pro_monthly" = "plus_monthly") {
   ]);
   const operations = (await import("./subscription-billing-operations"))
     .subscriptionBillingOperationsRepository;
+  const binding = (
+    await import("../../lib/services/subscription-catalog")
+  ).resolveSubscriptionProviderBinding(process.env, planKey, "v1");
+  const commandId = randomUUID();
   const command = (
     await operations.enqueueCommand({
+      id: commandId,
       organizationId: orgId,
       requestedByUserId: actorId,
       kind: "checkout",
@@ -67,13 +74,39 @@ async function seed(planKey: "plus_monthly" | "pro_monthly" = "plus_monthly") {
       idempotencyKey: randomUUID(),
       providerIdempotencyKey: randomUUID(),
       requestDigest: "b".repeat(64),
+      checkoutContract: {
+        version: 1,
+        catalogVersion: "v1",
+        planKey,
+        accountId: "acct_checkoutfixture",
+        expectedLivemode: false,
+        priceId: binding.priceId,
+        productId: binding.productId,
+        params: {
+          mode: "subscription",
+          customer: customerId,
+          client_reference_id: commandId,
+          line_items: [{ price: binding.priceId, quantity: 1 }],
+          payment_method_types: ["card"],
+          allow_promotion_codes: false,
+          automatic_tax: { enabled: false },
+          metadata: { app: "eliza-cloud", organization_id: orgId, command_id: commandId },
+          subscription_data: {
+            metadata: { app: "eliza-cloud", organization_id: orgId, command_id: commandId },
+          },
+          success_url:
+            "https://cloud.eliza.app/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}",
+          cancel_url: "https://cloud.eliza.app/cloud/billing",
+          expires_at: Math.floor(Date.now() / 1000) + 86400,
+        },
+      },
       now: new Date(),
     })
   ).value;
   await operations.markCommandOutcomeUnknown({
     organizationId: orgId,
     commandId: command.id,
-    expectedStateRevision: 1,
+    expectedStateRevision: command.state_revision,
     expectedExecutionGeneration: 0,
   });
   // These provider identities must not overlap the fixture's historical subscription.
@@ -102,7 +135,7 @@ async function seed(planKey: "plus_monthly" | "pro_monthly" = "plus_monthly") {
     client_reference_id: command.id,
     metadata: { app: "eliza-cloud", organization_id: orgId, command_id: command.id },
   };
-  return { ...fixture, session, orgId, command };
+  return { ...fixture, session, orgId, command, providerAccountId: "acct_checkoutfixture" };
 }
 async function count(orgId: string, table: string) {
   return (
@@ -244,3 +277,126 @@ for (const invoiceFirst of [true, false]) {
     expect(await count(providerFixture.orgId, "subscription_allowance_periods")).toBe(1);
   });
 }
+
+test("paid original checkout survives binding rotation and grants exactly once", async () => {
+  const input = await seed();
+  const original = process.env.STRIPE_PLUS_MONTHLY_PRICE_ID;
+  process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plusRotated";
+  try {
+    expect((await finalize(input)).replayed).toBe(false);
+    expect((await finalize(input)).replayed).toBe(true);
+    expect(await count(input.orgId, "subscription_allowance_periods")).toBe(1);
+  } finally {
+    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = original;
+  }
+});
+
+test("a different provider account cannot finalize the original checkout", async () => {
+  const input = await seed();
+  await expect(finalize({ ...input, providerAccountId: "acct_other" })).rejects.toThrow(
+    "authority changed",
+  );
+  expect(await count(input.orgId, "billing_subscriptions")).toBe(0);
+  expect(await count(input.orgId, "subscription_allowance_periods")).toBe(0);
+});
+
+test("completed checkout idempotency returns its original command without a new provider request", async () => {
+  const input = await seed();
+  await finalize(input);
+  const { submitSubscriptionCheckout } = await import("../../lib/services/subscription-checkout");
+  process.env.NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app";
+  const result = await submitSubscriptionCheckout(
+    {
+      organizationId: input.orgId,
+      actorId: input.command.requested_by_user_id,
+      planKey: "plus_monthly",
+      idempotencyKey: input.command.idempotency_key,
+    },
+    async () => {},
+  );
+  expect(result).toEqual({ status: "completed", commandId: input.command.id, checkoutUrl: null });
+  expect(await count(input.orgId, "billing_subscription_commands")).toBe(1);
+});
+
+test("original paid checkout settles without the unrelated plan configuration", async () => {
+  const input = await seed();
+  const price = process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
+  const product = process.env.STRIPE_PRO_PRODUCT_ID;
+  delete process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
+  delete process.env.STRIPE_PRO_PRODUCT_ID;
+  try {
+    expect((await finalize(input)).replayed).toBe(false);
+    expect((await finalize(input)).replayed).toBe(true);
+    expect(await count(input.orgId, "subscription_allowance_periods")).toBe(1);
+  } finally {
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = price;
+    process.env.STRIPE_PRO_PRODUCT_ID = product;
+  }
+});
+
+test("migrated settled checkout replays without writes and rejects mismatched durable identities", async () => {
+  const input = await seed();
+  await finalize(input);
+  const db = client.getPgliteClientForTests();
+  // Retain real paid publication while restoring the pre-contract storage shape.
+  await db.exec(`DROP TRIGGER preserve_subscription_checkout_contract ON billing_subscription_commands;
+    ALTER TABLE billing_subscription_commands DROP COLUMN checkout_contract;`);
+  await db.exec(
+    await readFile(
+      new URL("../migrations/0397_subscription_checkout_contract.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  const snapshot = async () =>
+    Promise.all(
+      [
+        "billing_subscription_commands",
+        "billing_subscriptions",
+        "subscription_allowance_periods",
+        "organization_entitlements",
+      ].map(
+        async (table) =>
+          (await db.query(`SELECT * FROM ${table} WHERE organization_id=$1`, [input.orgId])).rows,
+      ),
+    );
+  const before = await snapshot();
+  expect(before[0]![0]).toMatchObject({ status: "APPLIED", checkout_contract: null });
+  const { reconcileSubscriptionCheckout } = await import(
+    "../../lib/services/subscription-checkout"
+  );
+  providerFixture = input;
+  const replay = () => reconcileSubscriptionCheckout(input.session.id, input.orgId);
+  expect(await Promise.all([replay(), replay()])).toEqual([
+    { subscriptionId: input.command.id, replayed: true },
+    { subscriptionId: input.command.id, replayed: true },
+  ]);
+  expect(await snapshot()).toEqual(before);
+  for (const mismatch of [
+    "invoice",
+    "invoiceCustomer",
+    "subscription",
+    "customer",
+    "mode",
+    "organization",
+  ] as const) {
+    providerFixture = structuredClone(input);
+    if (mismatch === "invoice") providerFixture.invoice.id = "in_other";
+    if (mismatch === "invoiceCustomer") providerFixture.invoice.customer = "cus_other";
+    if (mismatch === "subscription") providerFixture.subscription.id = "sub_other";
+    if (mismatch === "customer") providerFixture.customer.id = "cus_other";
+    if (mismatch === "mode") providerFixture.session.livemode = true;
+    if (mismatch === "organization")
+      providerFixture.session.metadata.organization_id = randomUUID();
+    await expect(replay()).rejects.toThrow();
+    expect(await snapshot()).toEqual(before);
+  }
+  providerFixture = input;
+  const originalKey = process.env.STRIPE_SECRET_KEY;
+  try {
+    process.env.STRIPE_SECRET_KEY = "sk_live_wrongmode";
+    await expect(replay()).rejects.toThrow();
+    expect(await snapshot()).toEqual(before);
+  } finally {
+    process.env.STRIPE_SECRET_KEY = originalKey;
+  }
+});
