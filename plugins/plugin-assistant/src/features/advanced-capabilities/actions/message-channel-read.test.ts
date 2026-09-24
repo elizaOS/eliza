@@ -39,10 +39,10 @@ describe("MESSAGE channel read limits", () => {
     expect(getMemories).toHaveBeenLastCalledWith(
       expect.objectContaining({
         roomId,
-        count: undefined,
         start: Date.parse("2026-01-01"),
       }),
     );
+    expect(getMemories.mock.lastCall?.[0].count).toBeUndefined();
   });
 
   it.each([0, -1, 1.5, "invalid", Number.MAX_SAFE_INTEGER + 1])(
