@@ -208,10 +208,10 @@ import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
-import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
+  isTrustedAppLink,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
@@ -261,7 +261,10 @@ import {
 } from "./runtime-chooser-override";
 import {
   isElizaCloudSharedHost,
+  isLoopbackApiHost,
+  isPrivateOrLoopbackApiHost,
   isTrustedCloudOnlyApiBaseUrl,
+  isTrustedPrivateHttpHost,
 } from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -2944,34 +2947,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-function isTrustedPrivateHttpHost(host: string): boolean {
-  return (
-    host === "0.0.0.0" ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    host === "local" ||
-    host === "internal" ||
-    host === "lan" ||
-    host === "ts.net" ||
-    host.endsWith(".local") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".ts.net")
-  );
-}
-
-function isLoopbackApiHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host === "::1"
-  );
-}
-
 /**
  * Dedicated Cloud agents serve their runtime on the canonical managed-agent
  * hostname family. The shared classifier also recognizes legacy agent hosts
@@ -2987,18 +2962,6 @@ function isNativeIosStoreBuild(): boolean {
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
-}
-
-function isPrivateOrLoopbackApiHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    isLoopbackApiHost(normalized) ||
-    (normalized.includes(":") &&
-      (normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
-    isTrustedPrivateHttpHost(normalized)
-  );
 }
 
 function isNativeIosCloudRuntimeMode(): boolean {

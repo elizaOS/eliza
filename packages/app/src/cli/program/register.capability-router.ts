@@ -799,10 +799,10 @@ function readConformanceModules(value: unknown): ConformanceModule[] {
       routes: readRouteList(item.routes),
       views: readViewList(item.views),
       models: readModelList(item.models),
-      lifecycleHooks: readLifecycleHooks(item.lifecycle),
+      lifecycleHooks: readHooks(item.lifecycle),
       events: readEventList(item.events),
       services: readServiceList(item.services),
-      appBridgeHooks: readAppBridgeHooks(item.appBridge),
+      appBridgeHooks: readHooks(item.appBridge),
       evaluators: readNamedList(item.evaluators),
       responseHandlerEvaluators: readNamedList(item.responseHandlerEvaluators),
       responseHandlerFieldEvaluators: readNamedList(
@@ -860,7 +860,7 @@ function readModelList(value: unknown): Array<{ modelType: string }> {
     .map((item) => ({ modelType: item.modelType as string }));
 }
 
-function readLifecycleHooks(value: unknown): string[] {
+function readHooks(value: unknown): string[] {
   if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
   return value.hooks.filter(
     (item): item is string =>
@@ -896,14 +896,6 @@ function readServiceList(
           )
         : [],
     }));
-}
-
-function readAppBridgeHooks(value: unknown): string[] {
-  if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
-  return value.hooks.filter(
-    (item): item is string =>
-      typeof item === "string" && item.trim().length > 0,
-  );
 }
 
 function readRouteStatus(value: unknown): number {
