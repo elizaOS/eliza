@@ -36,7 +36,7 @@ Tracking: https://github.com/elizaOS/eliza/issues/32494
 
 ## Verification and delivery
 
-- [ ] Workflow syntax and local reusable-call graph are valid.
+- [x] Workflow syntax and local reusable-call graph are valid (actionlint).
 - [ ] Every retained test command resolves to full E2E; zero tests is a failure.
 - [ ] No ordinary test lane requires a paid model or voice service.
 - [ ] Retained full E2E commands pass on the integrated source.
@@ -46,5 +46,25 @@ Tracking: https://github.com/elizaOS/eliza/issues/32494
 - [ ] Compare job count and completed-run work; do not claim latency savings
   from cancelled or failing runs.
 
-Progress: source integration and ownership are established. Workflow edits,
-provider adoption, test deletion integration, and terminal validation remain.
+Progress checkpoint:
+
+- Workflows: 57 to 44 compared with the pulled mega branch.
+- Canonical CI: 21 to 4 job definitions; PR: 5 to 3; Develop Full: 11 to 4.
+- Perfect-result provider: four runtime/tool E2Es pass with 25 assertions;
+  streaming and ordinary execution create real note/file/SQL effects.
+- Authentication: browser and embedded-server E2E pass with 27 assertions.
+- Provider typecheck, changed-source Biome, workflow syntax, trigger policy,
+  and cache policy pass. Core-only build passes without the 74-task bootstrap.
+- Remaining: remove obsolete script-test inventory enforcement, integrate the
+  rest of the test retirement, review cloud/device/certification test entry
+  points, and run terminal repository/hosted validation before develop delivery.
+- Mega's native submodule c4401ff01c80e7bf4f9f12149eae772fcb7dfef0 is not
+  remotely fetchable. A locally seeded native install is not fresh-fetch proof.
+- Current Markdown validation reports unresolved mega-refactor links outside
+  this workflow change. The removed broad bootstrap exposed a stale app patches
+  path; the script owner's fix is integrated.
+
+The runtime audio fixture does not prove product voice transport, acoustic
+quality, or a browser voice experience. The notes runtime currently reports an
+unconfigured host WebSocket broadcaster; file/SQL mutation is verified, host
+broadcast delivery is not. These limits must remain visible in delivery evidence.

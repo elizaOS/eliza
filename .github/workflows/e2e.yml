@@ -22,13 +22,19 @@ jobs:
   e2e:
     name: Full E2E
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha) }}
           submodules: false
           persist-credentials: false
+      - name: Verify exact test source
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha) }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14"
@@ -49,8 +55,8 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.mjs
           bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
       - name: Build runtime dependencies
-        run: bun run build:core
+        run: bun run --cwd packages/core build
       - name: Assistant persistence and voice through the perfect-result provider
         run: bun test --conditions eliza-source packages/testing/e2e/perfect-result-runtime.e2e.test.ts
       - name: Browser authentication through the real API and database
-        run: bun run --cwd packages/auth test:browser
+        run: bun run --cwd packages/auth test:e2e

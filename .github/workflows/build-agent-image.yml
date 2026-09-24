@@ -112,9 +112,6 @@ jobs:
           sudo docker image prune -a -f || true
 
       - name: Install jq
-        # Used by docker-ci-smoke's boot-KPI budget parser after the image is
-        # built. Keep it explicit so the real boot gate reports the committed
-        # budget instead of falling back to its baked-in default.
         run: sudo apt-get install -y --no-install-recommends jq
 
       - name: Setup Bun
@@ -227,8 +224,7 @@ jobs:
         # keep root node_modules (Dockerfile.ci's pruner relink scripts
         # consume them) but strip per-package node_modules and the other
         # bulky CI-only inputs. Use the canonical CI dockerignore from
-        # packages/app/deploy/.dockerignore.ci, mirroring what
-        # docker-ci-smoke.sh does before its `docker build`.
+        # packages/app/deploy/.dockerignore.ci.
         run: |
           cp packages/app/deploy/.dockerignore.ci .dockerignore
 
