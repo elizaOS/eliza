@@ -119,7 +119,7 @@
     "jose": "^6.2.1",
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
-    "@simplewebauthn/server": "^13",
+    "@simplewebauthn/server": "^14",
     "resend": "^6.9.4"
   },
   "devDependencies": {
