@@ -68,7 +68,6 @@
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"

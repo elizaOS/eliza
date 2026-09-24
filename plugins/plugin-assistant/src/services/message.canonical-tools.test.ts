@@ -3,16 +3,17 @@
  * action handlers. No model or connector is called; provider wire and live
  * planner behavior are verified separately by the integration workflow.
  */
-import { describe, expect, it } from "vitest";
+
+import type { Action } from "@elizaos/core";
 import {
+  AgentRuntime,
   actionToJsonSchema,
+  createContextObject,
   type JsonSchema,
-} from "../../../../packages/core/src/actions/action-schema.ts";
-import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
-import { validateSchema } from "../../../../packages/core/src/actions/validate-tool-args.ts";
-import { createContextObject } from "../../../../packages/core/src/runtime/context-object.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import type { Action } from "../../../../packages/core/src/types/components.ts";
+  promoteSubactionsToActions,
+  validateSchema,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import {
   collectActionsFromContext,

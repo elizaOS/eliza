@@ -4,13 +4,14 @@
  * reaches evaluation and cannot replace the model's conversational answer or
  * prematurely end compound work. No live model or external services are used.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   ContextObject,
   PlannerRuntime,
   PlannerToolCall,
-} from "../../../../../packages/core/src/runtime/planner-types.ts";
-import { ModelType } from "../../../../../packages/core/src/types/model.ts";
+} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,

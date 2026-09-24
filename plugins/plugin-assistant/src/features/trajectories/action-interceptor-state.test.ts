@@ -2,14 +2,10 @@
  * Verifies trajectory state snapshots preserve complete acyclic state while
  * representing cycles and getter failures without crashing diagnostics.
  */
+
+import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { logger } from "../../../../../packages/core/src/logger.ts";
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../packages/core/src/types/index.ts";
 import {
   setTrajectoryContext,
   snapshotStateForTrajectory,

@@ -4,23 +4,14 @@
  * AgentRuntime, model registry, and in-memory adapter.
  */
 
+import type { Character, Memory, UUID } from "@elizaos/core";
+import { AgentRuntime, ElizaError, MemoryType, ModelType } from "@elizaos/core";
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
   SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ElizaError } from "../../../../../packages/core/src/errors.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import {
-  MemoryType,
-  ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 import { generateContentBasedId } from "./utils.ts";
 

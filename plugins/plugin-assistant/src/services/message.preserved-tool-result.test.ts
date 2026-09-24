@@ -13,21 +13,23 @@ import { createAssistantPlugin } from "../index.ts";
  * candidate selection.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { ElizaError } from "../../../../packages/core/src/errors.ts";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   ActionResult,
+  AgentRuntime,
   Content,
   HandlerCallback,
   Memory,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
-import { PROVIDER_CONTEXT_OVERFLOW } from "../../../../packages/core/src/utils/model-errors.ts";
+} from "@elizaos/core";
+import {
+  ChannelType,
+  createCharacter,
+  ElizaError,
+  ModelType,
+  PROVIDER_CONTEXT_OVERFLOW,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlannerToolResult } from "../runtime/planner-loop.ts";
 import {
   answerlessToolTurnReport,

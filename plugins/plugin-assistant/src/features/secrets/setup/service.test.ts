@@ -7,13 +7,9 @@
  * Telegram.
  */
 
+import type { Memory, TargetInfo, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Memory,
-  TargetInfo,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type { SetupConfig, SetupSetting } from "./config.ts";
 import { SetupService } from "./service.ts";
 

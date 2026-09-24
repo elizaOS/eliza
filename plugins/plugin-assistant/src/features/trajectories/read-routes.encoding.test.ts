@@ -6,8 +6,8 @@
  * list and GET /api/trajectories/stats stay untouched.
  */
 import type { ServerResponse } from "node:http";
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes.ts";
 
 function mockRes(): {

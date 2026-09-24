@@ -1,10 +1,8 @@
 /** Verifies enumerable reference schemas match discovery validation without
  * changing custom field contracts or the original registry schema. */
+
+import type { GenerateTextResult, JSONSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  GenerateTextResult,
-  JSONSchema,
-} from "../../../../../packages/core/src/types/model.ts";
 import {
   createContextReadTool,
   extractContextRead,

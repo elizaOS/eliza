@@ -6,20 +6,20 @@
  * AgentRuntime + SQLiteDatabaseAdapter with a stubbed useModel.
  */
 
-import { resolveEffectiveSystemPrompt } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type ActionResult,
+  ChannelType,
   type Character,
+  conversationMessagesHeader,
   type Evaluator,
   type GenerateTextResult,
   type Memory,
   ModelType,
-} from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
-import { conversationMessagesHeader } from "../../../../packages/core/src/utils.ts";
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import {
   factMemoryEvaluator,
   successEvaluator,

@@ -7,14 +7,14 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { FetchMediaOptions } from "@elizaos/core";
 import {
 	ElizaError,
+	fetchRemoteMedia,
 	type IAgentRuntime,
 	resolveStateDir,
 	resolveUserPath,
 } from "@elizaos/core";
-import { fetchRemoteMedia } from "@elizaos/core/media";
-import type { FetchMediaOptions } from "@elizaos/core/media/fetch";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 

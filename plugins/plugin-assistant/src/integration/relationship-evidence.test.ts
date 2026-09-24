@@ -3,10 +3,10 @@
 
 import type { Memory } from "@elizaos/core";
 import { ChannelType, type UUID } from "@elizaos/core";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createIsolatedTestDatabase } from "../../../plugin-sql/src/__tests__/test-helpers";
-import type { DrizzleDatabase } from "../../../plugin-sql/src/types";
 import { relationshipEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items.ts";
 import { applyAddressedTo } from "../runtime/addressed-to.ts";
 import { EvaluatorService } from "../services/evaluator.ts";

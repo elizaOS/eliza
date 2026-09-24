@@ -3,9 +3,9 @@
  * chips parse through the real core interaction parser and every chip value
  * survives the connector reply-callback size cap. No model, no DB.
  */
+
+import { encodeReplyCallback, parseInteractionBlocks } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { encodeReplyCallback } from "../../../packages/core/src/messaging/interactions/callback";
-import { parseInteractionBlocks } from "../../../packages/core/src/messaging/interactions/parse";
 import {
   appendCheckinAckChoiceMarker,
   buildApprovalChoiceText,

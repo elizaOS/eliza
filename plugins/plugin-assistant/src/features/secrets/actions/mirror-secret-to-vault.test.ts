@@ -6,8 +6,8 @@
  * is an in-memory stub recording its `setSecret` writes — no live model or DB.
  */
 
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { ChannelType } from "../../../../../../packages/core/src/types/primitives.ts";
 import { mirrorSecretToVaultHandler } from "./mirror-secret-to-vault.ts";
 
 interface VaultStub {

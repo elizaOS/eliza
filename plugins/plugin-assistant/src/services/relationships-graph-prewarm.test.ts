@@ -3,8 +3,9 @@
  * stale-while-revalidate cache instead of awaiting a first build that adds
  * avoidable latency to provider composition.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/index.ts";
 import {
   createNativeRelationshipsGraphService,
   drainRelationshipsGraphBuilds,

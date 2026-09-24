@@ -4,12 +4,9 @@
  */
 
 import crypto from "node:crypto";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { createUniqueUuid } from "../../../../../packages/core/src/entities.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-} from "../../../../../packages/core/src/types/index.ts";
 import { trajectoriesPlugin } from "./index";
 import { TrajectoriesService } from "./TrajectoriesService";
 

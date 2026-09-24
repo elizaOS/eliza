@@ -7,17 +7,16 @@
  * this suite drives the real service directly against deterministic in-memory
  * collaborator doubles.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryType } from "../../../../packages/core/src/types/memory.ts";
+
 import type {
+  IAgentRuntime,
   JsonValue,
-  UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import type {
   Task,
   TaskWorker,
-} from "../../../../packages/core/src/types/task.ts";
+  UUID,
+} from "@elizaos/core";
+import { MemoryType } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FollowUpService } from "./followUp.ts";
 import type { ContactInfo } from "./relationships.ts";
 

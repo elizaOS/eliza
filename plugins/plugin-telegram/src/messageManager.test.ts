@@ -29,6 +29,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    resolveAttachmentBytes: resolveAttachmentBytesMock,
     logger: {
       ...actual.logger,
       error: loggerErrorMock,
@@ -36,11 +37,6 @@ vi.mock("@elizaos/core", async (importOriginal) => {
     },
   };
 });
-
-vi.mock("@elizaos/core/media", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/core/media")>()),
-  resolveAttachmentBytes: resolveAttachmentBytesMock,
-}));
 
 function createManager() {
   let messageId = 0;

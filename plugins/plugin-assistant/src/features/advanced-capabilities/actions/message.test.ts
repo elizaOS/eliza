@@ -4,8 +4,6 @@
  * createMockRuntime with deterministic mock connectors — no live model, no DB.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -13,7 +11,9 @@ import type {
   SendHandlerOutcome,
   SendHandlerReceipt,
   SendHandlerResult,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
 
 function mockConnector(
@@ -321,9 +321,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
     hasBinding: boolean,
   ): Promise<{ runtime: IAgentRuntime; sent: { called: boolean } }> {
     const { ConnectorAccountManager, InMemoryConnectorAccountStorage } =
-      await import(
-        "../../../../../../packages/core/src/connectors/account-manager.ts"
-      );
+      await import("@elizaos/core");
     // getStorage() returns the lazy-resolving facade since #18095, which
     // carries only the ConnectorAccountStorage contract — seed bindings on an
     // explicitly injected in-memory backend instead.

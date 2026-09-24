@@ -9,18 +9,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ElizaError,
+  fetchRemoteMedia,
   fetchWithSsrfGuard,
   type IAgentRuntime,
   type IFileStorageService,
   type LookupFn,
   type PinnedLookupFetchLike,
+  readResponseWithLimit,
   resolveOwnerEntityIdOrDefault,
   type Service,
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/core/media";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar";
 import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar";

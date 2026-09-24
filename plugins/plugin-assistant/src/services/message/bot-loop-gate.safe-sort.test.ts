@@ -2,15 +2,10 @@
  * Exercises safe NaN handling and ascending sort order in runBotLoopGate.
  */
 
+import type { Memory, UUID } from "@elizaos/core";
+import { AgentRuntime, ChannelType, createCharacter } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { createCharacter } from "../../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../packages/core/src/types/index.ts";
 import { createAssistantPlugin } from "../../index.ts";
 import { runBotLoopGate } from "./bot-loop-gate.ts";
 

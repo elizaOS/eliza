@@ -2,8 +2,9 @@
  * Unit-tests buildDmWorldMetadata directly, feeding it fabricated runtime
  * settings to assert which DM senders receive an owner grant and which get none.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { buildDmWorldMetadata } from "./index.ts";
 
 /**

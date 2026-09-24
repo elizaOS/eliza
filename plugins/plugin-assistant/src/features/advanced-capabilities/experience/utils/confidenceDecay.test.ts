@@ -3,8 +3,9 @@
  * grace period, minConfidence floor, reinforcement boosting,
  * domain/type-specific decay tuning, and confidence trend generation.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
 import { type Experience, ExperienceType } from "../types.ts";
 import { ConfidenceDecayManager } from "./confidenceDecay.ts";
 

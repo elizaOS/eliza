@@ -5,20 +5,15 @@
  * model or database is involved.
  */
 
-import { fetchRemoteMedia } from "@elizaos/core/media";
+import { fetchRemoteMedia, getLocalServerUrl } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getLocalServerUrl } from "../../../../../packages/core/src/utils/node.ts";
 
-vi.mock("@elizaos/core/media", async (importOriginal) => {
+vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
 });
 
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   listConversationAttachments,
   readAttachmentRecords,

@@ -3,8 +3,8 @@
  * by persisted relationship memories, including ISO strings and invalid input.
  */
 
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import { countSharedConversationWindows } from "./relationships.ts";
 
 const LEFT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;

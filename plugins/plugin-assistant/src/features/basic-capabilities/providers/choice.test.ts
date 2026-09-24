@@ -5,8 +5,6 @@
  * rendering of legacy string options alongside typed option objects.
  */
 
-import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
@@ -14,7 +12,9 @@ import type {
   Task,
   TaskMetadata,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
+import { describe, expect, it } from "vitest";
 import choiceProviderDefault, { choiceProvider } from "./choice.ts";
 
 const roomId = "00000000-0000-0000-0000-0000000000bb" as UUID;

@@ -3,8 +3,9 @@
  * Verifies that unordered entity pairs share a canonical cache entry regardless
  * of argument order, and that TTL expiry is evaluated against computation time.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import { RelationshipsService } from "./relationships.ts";
 
 const ENTITY_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;

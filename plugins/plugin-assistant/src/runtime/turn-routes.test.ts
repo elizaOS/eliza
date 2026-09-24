@@ -5,8 +5,8 @@
  * (validation, reason defaulting, abortTurn invocation), and TURN_STATUS_ROUTE handling.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
 import { TURN_CONTROL_ROUTES } from "./turn-routes.ts";
 
 function createMockRes() {

@@ -5,9 +5,6 @@
  * without a live connector, model, or database.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { logger } from "../../../../../../../packages/core/src/logger.ts";
 import type {
   Content,
   HandlerCallback,
@@ -15,7 +12,10 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+
+import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {

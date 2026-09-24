@@ -1,12 +1,9 @@
 /**
  * Unit tests for WorldMetadataStorage: validates secrets stored in world.metadata.secrets.
  */
+
+import type { IAgentRuntime, UUID, World } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-  World,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type { KeyManager } from "../crypto/encryption.ts";
 import type { SecretContext } from "../types.ts";
 import { WorldMetadataStorage } from "./world-store.ts";

@@ -2,15 +2,15 @@
  * Proves the real CHANNEL_TOPICS provider context reaches a live model through AgentRuntime.
  */
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import { describeLive } from "../../../../../../packages/app/test/helpers/live-agent-test.ts";
-import { ChannelTopicsService } from "../../../../../../packages/core/src/services/channel-topics.ts";
 import {
+  ChannelTopicsService,
   ChannelType,
   type Memory,
   ModelType,
   type UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { describeLive } from "../../../../../../packages/app/test/helpers/live-agent-test.ts";
 
 const requiredProviderEnv = process.env.OPENAI_API_KEY?.trim()
   ? "OPENAI_API_KEY"

@@ -6,8 +6,9 @@
  * (Infinity) extreme, or that leaves ties in arbitrary insertion order fails
  * here.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../packages/core/src/types/primitives.ts";
 import { RelationshipsService, safeSortNumber } from "./relationships.ts";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111" as UUID;
