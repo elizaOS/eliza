@@ -149,7 +149,8 @@ class PhonePlugin : Plugin() {
                 entry.put("rawType", type)
                 entry.put("isNew", cursor.getInt(newCol) == 1)
                 entry.put("phoneAccountId", cursor.getString(accountCol) ?: JSONObject.NULL)
-                entry.put("geocodedLocation", cursor.getString(locationCol) ?: JSONObject.NULL)
+                // CallLog can replace missing geocoding with an empty string.
+                entry.put("geocodedLocation", cursor.getString(locationCol)?.takeUnless { it.isEmpty() } ?: JSONObject.NULL)
                 entry.put("transcription", cursor.getString(transcriptionCol) ?: JSONObject.NULL)
                 entry.put("voicemailUri", cursor.getString(voicemailCol) ?: JSONObject.NULL)
                 entry.put("agentTranscript", savedTranscript?.optionalString("transcript") ?: JSONObject.NULL)

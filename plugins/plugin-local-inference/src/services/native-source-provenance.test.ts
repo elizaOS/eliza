@@ -1,6 +1,6 @@
 /**
- * Hash gate for native sources copied from canonical standalone packages into
- * the integrated llama.cpp fork. Adapted fork files require recorded reasons.
+ * Implementation hash gate for native sources copied into the llama.cpp fork.
+ * Repository-relative documentation can differ; adapted code needs provenance.
  */
 
 import { createHash } from "node:crypto";
@@ -31,8 +31,18 @@ const manifest = JSON.parse(
 	readFileSync(manifestPath, "utf8"),
 ) as OwnershipManifest;
 
+function implementationHash(source: string): string {
+	// Protect quoted literals before removing C comments. Replace comments with
+	// whitespace so a comment separating identifiers cannot concatenate them.
+	const implementation = source.replace(
+		/("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g,
+		(_match, literal: string | undefined) => literal ?? " ",
+	);
+	return createHash("sha256").update(implementation).digest("hex");
+}
+
 function sha256(path: string): string {
-	return createHash("sha256").update(readFileSync(path)).digest("hex");
+	return implementationHash(readFileSync(path, "utf8"));
 }
 
 const nativeSourceExtensions = new Set([
@@ -81,6 +91,20 @@ function expectFile(path: string, label: string): void {
 }
 
 describe("native copied-source ownership", () => {
+	it("ignores documentation changes but preserves code and literal bytes", () => {
+		expect(implementationHash("/* old path */ int value = 1;")).toBe(
+			implementationHash("/* relocated path */ int value = 1;"),
+		);
+		expect(
+			implementationHash('const char *value = "/* original */";'),
+		).not.toBe(implementationHash('const char *value = "/* changed */";'));
+		expect(implementationHash("int value = 1;")).not.toBe(
+			implementationHash("int value = 2;"),
+		);
+		expect(implementationHash("int/**/value;")).not.toBe(
+			implementationHash("intvalue;"),
+		);
+	});
 	it("uses a complete, non-overlapping classification schema", () => {
 		expect(manifest.version).toBe(1);
 		const familyNames = new Set<string>();
@@ -133,7 +157,7 @@ describe("native copied-source ownership", () => {
 	});
 
 	for (const family of manifest.families) {
-		it(`${family.name} exact mirrors match their canonical owner byte-for-byte`, () => {
+		it(`${family.name} exact implementations match their canonical owner`, () => {
 			for (const file of family.exact) {
 				const mirrorPath = ownedPath(family.mirrorRoot, file);
 				const ownerPath = ownedPath(family.ownerRoot, file);

@@ -680,7 +680,6 @@ function createPiiScrubHandler() {
 			() =>
 				generate.call(service, {
 					prompt,
-					maxTokens: 1024,
 					temperature: 0,
 				}),
 		);
