@@ -11,3 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/os build  # build
 bun run --cwd packages/os test   # tests
 ```
+
+Release-script tests (`test:release`) require e2fsprogs (`mkfs.ext4` and
+`debugfs`) on `PATH` for real Android partition-image fixtures.

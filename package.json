@@ -67,7 +67,7 @@
     "migrate": "node packages/scripts/run-turbo.ts run migrate --filter=./plugins/plugin-sql --force",
     "migrate:generate": "node packages/scripts/run-turbo.ts run migrate:generate --filter=./plugins/plugin-sql",
     "test": "node packages/scripts/run-all-tests.ts --only=test --no-cloud --require-work && bun run test:scripts",
-    "test:scripts": "node packages/scripts/run-script-tests.ts --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml && bun run test:scripts:node",
+    "test:scripts": "node packages/scripts/run-script-tests.ts --report test-results/script-tests/inventory.json --junit test-results/script-tests/junit.xml && bun run test:scripts:node",
     "test:e2e:record": "node packages/scripts/e2e-recordings/run-all.ts",
     "test:e2e:record:review": "node packages/scripts/e2e-recordings/run-all.ts --review --open-review",
     "test:matrix:review": "node packages/scripts/evidence-review/run-matrix.ts --open",

@@ -1,5 +1,5 @@
 /**
- * Resolves generated test evidence only within the repository's reports tree.
+ * Resolves generated test evidence only within the repository's test-results or legacy reports tree.
  *
  * Producers may replace their exact output file, but they never traverse a
  * symlinked parent or accept an absolute/traversal path that could overwrite
@@ -51,14 +51,18 @@ function assertSafeParents(
   absolute: string,
   label: string,
 ) {
-  assertSafeDirectory(reportsRoot, "reports", label);
+  assertSafeDirectory(reportsRoot, path.basename(reportsRoot), label);
   let current = path.dirname(absolute);
   while (current !== reportsRoot) {
     const relative = path.relative(reportsRoot, current);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(`${label} escapes the repository reports directory`);
     }
-    assertSafeDirectory(current, `reports/${relative}`, label);
+    assertSafeDirectory(
+      current,
+      `${path.basename(reportsRoot)}/${relative}`,
+      label,
+    );
     const parent = path.dirname(current);
     if (parent === current) {
       throw new Error(`${label} could not be contained within the repository`);
@@ -109,7 +113,10 @@ export function resolveReportArtifactPath(
     }
   }
   const relative = path.posix.normalize(normalizedSlashes);
-  if (segments[0] !== "reports" || segments.length < 2) {
+  if (
+    !["reports", "test-results"].includes(segments[0]) ||
+    segments.length < 2
+  ) {
     throw new Error(`${label} must be under reports/`);
   }
   if (
@@ -119,7 +126,7 @@ export function resolveReportArtifactPath(
     throw new Error(`${label} must name a ${extension} file`);
   }
   const root = path.resolve(repoRoot);
-  const reportsRoot = path.resolve(root, "reports");
+  const reportsRoot = path.resolve(root, segments[0]);
   const absolute = path.resolve(reportsRoot, ...segments.slice(1));
   const containment = path.relative(reportsRoot, absolute);
   if (

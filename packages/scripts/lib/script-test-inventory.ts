@@ -24,7 +24,7 @@ import {
 import { execFileSync } from "./spawn-sync-captured.ts";
 
 export const SCRIPT_TEST_RUNNER =
-  "node packages/scripts/run-script-tests.ts --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml && bun run test:scripts:node";
+  "node packages/scripts/run-script-tests.ts --report test-results/script-tests/inventory.json --junit test-results/script-tests/junit.xml && bun run test:scripts:node";
 export const SCRIPT_TEST_LANE_COMMANDS = {
   "test:scripts:node":
     "node --conditions=eliza-source --import tsx node_modules/vitest/vitest.mjs run --config packages/scripts/vitest.node.config.ts",
