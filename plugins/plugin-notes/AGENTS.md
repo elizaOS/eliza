@@ -6,4 +6,4 @@ Use the shared view broker and tenant-scoped storage. Keep each exact note ID pa
 
 Build, test, and setup: [README.md](README.md).
 
-Promoted `NOTES_PATCH` requires the revision of the complete note snapshot used for replacement. Atomic literal substitutions use existing `NOTES_UPDATE` with `textEdit`. Preserve the owner, ambiguity and stale-write guards; do not invent or refresh a revision alone.
+Promoted `NOTES_PATCH` requires `expectedRevision` from the complete snapshot used to prepare the edit, including calls with `textEdit`. After any intervening Notes mutation, read and reconcile again; never invent or refresh a token alone. Revision-free literal substitutions use `NOTES_UPDATE` with its atomic unique-match `textEdit` contract.

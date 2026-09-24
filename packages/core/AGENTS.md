@@ -6,4 +6,4 @@ Keep core independent of application hosts, database adapters, and assistant beh
 
 Build, test, and setup: [README.md](README.md).
 
-Historical navigation receipts follow source-bound request selection; full authorized restoration retains exact receipts. Unknown bindings and current effects remain inline.
+Historical navigation receipts may follow their exact, unambiguous original request through history selection. Include receipt bytes in the source hash and restore them with that request. Missing, malformed or stale bindings retain full evidence; current tools, mutation outcomes and standing constraints remain inline.

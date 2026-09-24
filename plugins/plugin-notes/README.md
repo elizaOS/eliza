@@ -12,4 +12,6 @@ bun run --cwd plugins/plugin-notes build  # build
 bun run --cwd plugins/plugin-notes test   # tests
 ```
 
-Promoted `NOTES_PATCH` requires the revision of the complete note snapshot used for replacement. Atomic literal substitutions use existing `NOTES_UPDATE` with `textEdit`. Preserve the owner, ambiguity and stale-write guards; do not invent or refresh a revision alone.
+## Editing notes
+
+`NOTES_PATCH` requires `expectedRevision` from the complete note snapshot used to prepare the edit. Any intervening Notes mutation requires a fresh read and reconciliation. For an atomic literal substitution without a revision, use `NOTES_UPDATE` with `textEdit`; it must match exactly once and preserves all other text.
