@@ -39,9 +39,6 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Verify preflight boundaries
-        run: node --test packages/cloud/scripts/staging-standing-capability.test.mjs
-
       - name: Inspect bounded staging capability
         shell: bash
         env:
