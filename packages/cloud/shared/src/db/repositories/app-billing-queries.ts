@@ -84,6 +84,8 @@ export async function readAppBillingMembership(
 }
 
 export class AppBillingQueries {
+  /* global-scope: Approved active apps expose published catalog metadata to prospective buyers;
+   * the public DTO contains no private owner or provider records. */
   async catalog(appId: string, livemode: boolean) {
     const [app] = await dbWrite
       .select({
@@ -118,6 +120,8 @@ export class AppBillingQueries {
     return writeTransaction((tx) => readAppBillingMembership(tx, input));
   }
 
+  /* global-scope: Resolve the seller for organization-first locking. Purchasers may belong to
+   * another organization; exact app/account/environment membership is required before return. */
   async snapshot(input: AppBillingReadIdentity) {
     return writeTransaction(async (tx) => {
       const [app] = await tx

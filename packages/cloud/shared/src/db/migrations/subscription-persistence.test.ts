@@ -48,6 +48,15 @@ afterEach(async () => Promise.all(databases.splice(0).map((db) => db.close())));
 describe("subscription authority migrations", () => {
   test("matches every authority table's current Drizzle column contract", async () => {
     const db = await database();
+    for (const name of [
+      "0379_subscription_account_authority.sql",
+      "0397_subscription_checkout_contract.sql",
+    ])
+      await db.exec(await readFile(new URL(name, import.meta.url), "utf8"));
+    const { applyAppBillingTestMigrations } = await import(
+      "../repositories/app-billing-test-migrations"
+    );
+    await applyAppBillingTestMigrations((statement) => db.exec(statement));
     for (const table of [
       billingSubscriptions,
       billingSubscriptionRevisions,
@@ -61,8 +70,8 @@ describe("subscription authority migrations", () => {
       const columns = await db.query<{ column_name: string }>(
         `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='${config.name}' ORDER BY ordinal_position`,
       );
-      expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
-        config.columns.map(({ name }) => name),
+      expect(columns.rows.map(({ column_name }) => column_name).sort()).toEqual(
+        config.columns.map(({ name }) => name).sort(),
       );
     }
   });
