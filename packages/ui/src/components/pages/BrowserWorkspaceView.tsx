@@ -1,19 +1,4 @@
-/**
- * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * whose tabs fold into a switcher sheet, with companion-bridge status and the
- * policy-controlled agent browser session panel (takeover, domain modes,
- * receipts) when the bridge plugin is available.
- *
- * The builtin registry declares this view `header: "fullscreen"`, so the shell
- * mounts it edge-to-edge and the view owns a compact, familiar navigation rail
- * plus the isolated web-content surface. Responsive layout changes only the
- * chrome density; browsing, storage, and security policy stay canonical.
- *
- * Tabs, navigation, and snapshots flow through the `client` browser API; on
- * native the tabs render via a registered renderer impl
- * (`browser-tabs-renderer-registry`), while desktop/web fall back to the
- * companion bridge. Mounted in `App.tsx` under the `browser` route key.
- */
+/** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 import { Capacitor } from "@capacitor/core";
 import {
   ArrowLeft,
@@ -36,11 +21,9 @@ import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import {
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
 } from "../../events";
-import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -615,7 +598,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     getStewardStatus,
     setActionNotice,
     t,
-    plugins,
     uiTheme,
     walletAddresses,
     walletConfig,
@@ -624,7 +606,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     getStewardStatus: s.getStewardStatus,
     setActionNotice: s.setActionNotice,
     t: s.t,
-    plugins: s.plugins,
     uiTheme: s.uiTheme,
     walletAddresses: s.walletAddresses,
     walletConfig: s.walletConfig,
@@ -657,9 +638,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // multi-tab surface — opened from the toolbar's fold control.
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherReturnFocusRef = useRef<HTMLButtonElement | null>(null);
-  const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
-    readPersistedMobileRuntimeMode,
-  );
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
@@ -837,22 +815,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     walletConfig,
   ]);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const syncRuntimeMode = () => {
-      setMobileRuntimeMode(readPersistedMobileRuntimeMode());
-    };
-    document.addEventListener(
-      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-      syncRuntimeMode,
-    );
-    return () => {
-      document.removeEventListener(
-        MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-        syncRuntimeMode,
-      );
-    };
-  }, []);
 
   const loadBrowserWalletState = useCallback(async () => {
     try {
