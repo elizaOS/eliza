@@ -23,7 +23,7 @@ Android distributions live in the separate
 | Use Eliza | [Open the web app](https://cloud.eliza.app), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
 | Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
-| Contribute | Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guide in [AGENTS.md](AGENTS.md) |
+| Contribute | Read the repository guide in [AGENTS.md](AGENTS.md) |
 | Run a whole device as elizaOS | Use the installers and target guides in [`elizaOS/os`](https://github.com/elizaOS/os) |
 
 ## Run Eliza from source
@@ -47,6 +47,7 @@ automatically during local-inference warmup. Fetch archived artifact fixtures ex
 Common repository commands:
 
 ```bash
+bun run start       # run the standalone agent host
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
 bun run test        # repository unit/integration test lane
@@ -54,8 +55,21 @@ bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
 ```
 
-See [AGENTS.md](AGENTS.md) for package scoping, shared development servers, and
-the evidence required before a change is considered complete.
+Package build/test commands are in each package's README. Use
+`bun run --cwd <package> <script>` to scope a command.
+
+## Benchmark
+
+Use Python 3.11+ and install the dependencies required by the selected suite, then run from
+the repository root:
+
+```bash
+PYTHONPATH=packages python3 -m benchmarks.orchestrator list-benchmarks
+PYTHONPATH=packages python3 -m benchmarks.orchestrator run --benchmarks <id> --provider <provider> --model <model>
+```
+
+See [benchmarks](packages/benchmarks/README.md) for setup. Live benchmarks require
+the selected provider's credentials and may incur usage costs.
 
 ## What is in the stack?
 
@@ -89,7 +103,7 @@ The framework is model-agnostic and extended through plugins:
   API, and platform orchestration for Eliza app targets.
 - [`@elizaos/ui`](packages/ui) contains the shared React UI used by app
   surfaces.
-- [`elizaos`](packages/elizaos) is the project and plugin scaffolding, upgrade,
+- `elizaos` is the project and plugin scaffolding, upgrade,
   and deployment CLI.
 
 A plugin exports a `Plugin` object. Plugins can register actions, providers,
@@ -161,19 +175,13 @@ We no longer accept third-party plugins or registry items, including new listing
 listing updates, and registry submission tooling. Related issues and pull requests
 will be closed as out of scope.
 
-Open an issue before a non-trivial change and submit work through a pull request
-against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,
-testing, synchronization, and human-verifiable evidence requirements.
+Submit changes through a pull request against `develop`; follow
+[AGENTS.md](AGENTS.md) and the owning package's guide. Include verification of
+the changed behavior.
 
-- [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
-- [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
-- [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
-- [Windows setup](WINDOWS.md)
-- [Security policy](SECURITY.md)
-- [Security architecture documentation](packages/docs/security.md)
-
-Report vulnerabilities privately through the [security policy](SECURITY.md),
-not a public issue.
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new)
+or `security@elizalabs.ai`.
 
 ## License
 

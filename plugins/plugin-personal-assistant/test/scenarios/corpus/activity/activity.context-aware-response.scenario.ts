@@ -1,5 +1,5 @@
 /** Scenario fixture for activity context aware response; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { setScreenContextSamplerForTesting } from "../../../../src/activity-profile/service.ts";
 import {
   LifeOpsScreenContextSampler,

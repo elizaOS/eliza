@@ -16,7 +16,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { parseTcpPort } from "./lib/cli-numbers.mjs";
-import { resolveDevAllSkipPlugins } from "./lib/script-metadata.mjs";
+import { resolveDevAllSkipPlugins } from "./lib/script-metadata.ts";
 
 /** Default wall-clock budget for each service readiness wait (ms). */
 export const DEFAULT_SERVICE_STARTUP_TIMEOUT_MS = 120_000;

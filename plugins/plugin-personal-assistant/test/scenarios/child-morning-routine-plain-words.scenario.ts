@@ -8,7 +8,7 @@
  * first ask correctly yields an unsaved draft, so the stored-outcome final
  * checks can only be satisfied after the child says yes.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

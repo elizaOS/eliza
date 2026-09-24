@@ -21,10 +21,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { updateLifeOpsMeetingPreferences } from "../../../../src/lifeops/owner-profile.ts";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";

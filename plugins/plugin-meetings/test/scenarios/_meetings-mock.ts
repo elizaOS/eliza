@@ -14,7 +14,7 @@ import type {
   ScenarioCleanupStep,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import {
   ASSERT_MEETING_MOCK_LEDGER,
   clearMockMeetingScripts,

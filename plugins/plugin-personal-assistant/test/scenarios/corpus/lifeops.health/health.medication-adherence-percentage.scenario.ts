@@ -3,10 +3,7 @@
  * meds this month. The agent should compute completed/total occurrences.
  */
 
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

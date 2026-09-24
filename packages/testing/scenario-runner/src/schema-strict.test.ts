@@ -18,7 +18,7 @@ import {
   type ScenarioTurn,
   type ScenarioTurnExecution,
   scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   providerQualifiedScenarioProblems,

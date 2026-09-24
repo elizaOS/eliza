@@ -102,7 +102,7 @@ jobs:
           path: packages/ui/storybook-static
 
       - name: Install Playwright Chromium
-        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Run deterministic Story Gate shard
         timeout-minutes: 20

@@ -7,6 +7,12 @@ export {
   type TestPgliteStorageMode,
   testPgliteStorageMode,
 } from "@elizaos/shared/utils/pglite-storage";
+export * from "../scenario-runner/schema/index.js";
+export * from "../scenario-runner/src/scenario-assertions/action-assertions.ts";
+export * from "../scenario-runner/src/scenario-assertions/action-result-assertions.ts";
+export * from "../scenario-runner/src/scenario-assertions/browser-task-assertions.ts";
+export * from "../scenario-runner/src/scenario-assertions/calendar-assertions.ts";
+export * from "../scenario-runner/src/scenario-assertions/effect-assertions.ts";
 export { contextBenchProvider } from "./benchmark-context-provider";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
@@ -119,3 +125,14 @@ export {
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "./real-runtime";
+
+export {
+  createSQLiteTestRuntime,
+  initializeTestRuntime,
+  SQLiteDatabaseAdapter,
+} from "./sqlite-adapter";
+export {
+  CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
+  CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
+} from "./capability-protocol-fixture";
+export { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";

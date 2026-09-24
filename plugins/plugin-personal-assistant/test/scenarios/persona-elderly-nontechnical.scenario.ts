@@ -1,5 +1,5 @@
 // Defines the persona elderly nontechnical LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { personaDentistFinalChecks } from "./_helpers/persona-dentist-outcome";
 
 /**

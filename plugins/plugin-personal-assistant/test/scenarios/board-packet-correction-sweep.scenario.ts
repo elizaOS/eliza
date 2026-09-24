@@ -8,7 +8,7 @@
  * seed must never surface before counsel clears it, and no packet may be
  * resent before approval.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

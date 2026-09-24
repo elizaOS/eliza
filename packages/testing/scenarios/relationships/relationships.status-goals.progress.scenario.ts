@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();

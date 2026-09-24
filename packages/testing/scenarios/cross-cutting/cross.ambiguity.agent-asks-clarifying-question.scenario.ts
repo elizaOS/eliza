@@ -4,9 +4,8 @@
  * before sending anything. MESSAGE firing is a hard failure.
  */
 
-import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 function expectClarificationWithoutMessage(
   ctx: ScenarioContext,

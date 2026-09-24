@@ -1,8 +1,9 @@
+/** Registers PDF extraction and exposes its service and public document types. */
 import type { Plugin } from "@elizaos/core";
 import { PdfService } from "./services/pdf";
 
-export { PdfService } from "./services/pdf";
 export * from "./types";
+export { PdfService };
 
 export const pdfPlugin: Plugin = {
   name: "pdf",

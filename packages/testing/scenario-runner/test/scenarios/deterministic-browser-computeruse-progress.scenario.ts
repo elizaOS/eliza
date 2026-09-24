@@ -3,11 +3,8 @@
  * to the scenario surface. Runs on the pr-deterministic lane under the model provider.
  */
 import type { Action, AgentRuntime } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { browserPlugin } from "../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,

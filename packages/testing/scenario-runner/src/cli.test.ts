@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CliDependencies,

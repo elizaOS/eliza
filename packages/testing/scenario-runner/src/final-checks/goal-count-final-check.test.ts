@@ -1,9 +1,6 @@
 /** Tests the `goalCount` final check (final-checks/index.ts) against a synthetic scenario context, asserting the goal tally is compared to the expected bounds. */
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioFinalCheck,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioFinalCheck } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { runFinalCheck } from "./index";
 

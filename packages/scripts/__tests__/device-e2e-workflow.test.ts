@@ -77,7 +77,7 @@ const androidRouteCoverageSource = read(
   "packages/app/test/android/route-coverage.android.spec.ts",
 );
 const arm64PreflightSource = read(
-  ".github/scripts/device-e2e/arm64-local-preflight.sh",
+  "packages/scripts/github/device-e2e/arm64-local-preflight.sh",
 );
 const workflowReadme = read(".github/workflows/README.md");
 const ci = Bun.YAML.parse(read(".github/workflows/ci.yml")) as {

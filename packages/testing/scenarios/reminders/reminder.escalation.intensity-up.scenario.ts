@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder escalation intensity up; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**

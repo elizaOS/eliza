@@ -1,7 +1,7 @@
 /** Tests the `reminderIntensity` final check (final-checks/index.ts) with LifeOpsService and reminder-preference state mocked, asserting reminder lifecycle metadata is read and the intensity expectation is enforced. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { REMINDER_LIFECYCLE_METADATA_KEY } from "@elizaos/plugin-personal-assistant/lifeops/service-constants";
-import type { ScenarioFinalCheck } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioFinalCheck } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockLifeOpsState = vi.hoisted(() => ({

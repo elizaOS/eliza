@@ -1,9 +1,6 @@
 /** Tests final-check routing and trusted-observation matching against bounded in-memory contexts. */
 import { createHash } from "node:crypto";
-import type {
-  ScenarioContext,
-  ScenarioFinalCheck,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioFinalCheck } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { ScenarioEvidenceReport } from "../types.ts";
 import { type FinalCheckRuntime, runFinalCheck } from "./index";

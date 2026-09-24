@@ -19,14 +19,14 @@ type WorkflowStep = {
 };
 
 const smokeBrowserInstallCommand =
-  "PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit";
+  "PLAYWRIGHT_INSTALL_CWD=packages/app packages/scripts/github/install-playwright-browsers.sh chromium webkit";
 
 // The e2e lane is split across two jobs: `smoke` shards the Playwright suite in
 // packages/app, and `smoke_lanes` runs the tasks that cannot be sharded — one of
 // which (@elizaos/ui#test:e2e) launches its own Chromium. Each job must install
 // the engines it launches; a job that inherits none dies at browserType.launch.
 const smokeLanesBrowserInstallCommand =
-  "PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium";
+  "PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium";
 
 const smokeShardE2eCommand = "bun run --cwd packages/app test:e2e";
 const smokeLanesE2eCommand =
@@ -306,7 +306,7 @@ describe("GitHub action supply-chain references", () => {
     };
     expect(parsed.jobs["fixture-e2e"]["runs-on"]).toBe("ubuntu-24.04");
     expect(source).toContain(
-      ".github/scripts/install-playwright-browsers.sh chromium webkit",
+      "packages/scripts/github/install-playwright-browsers.sh chromium webkit",
     );
   });
 
@@ -319,7 +319,7 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
 
     expect(source).toContain(
-      ".github/scripts/install-playwright-browsers.sh chromium webkit",
+      "packages/scripts/github/install-playwright-browsers.sh chromium webkit",
     );
   });
 
@@ -331,7 +331,7 @@ describe("GitHub action supply-chain references", () => {
 
     expect(
       source.match(
-        /\.github\/scripts\/install-playwright-browsers\.sh chromium/g,
+        /packages\/scripts\/github\/install-playwright-browsers\.sh chromium/g,
       ),
     ).toHaveLength(2);
 

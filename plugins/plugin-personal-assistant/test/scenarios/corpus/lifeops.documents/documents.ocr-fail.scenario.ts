@@ -25,11 +25,7 @@
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 
 const SCENARIO_ID = "documents.ocr-fail";
 const ROOM_ID_TOKEN = "main";

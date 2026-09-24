@@ -21,7 +21,7 @@ import {
   resolveDevAllSkipPlugins,
   resolveTestLaneDirs,
   resolveTestSerialPackages,
-} from "../lib/script-metadata.mjs";
+} from "../lib/script-metadata.ts";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -83,7 +83,7 @@ function writePlugin(
 /** Discover the `test/scenarios` roots the way build-manifest.mjs now does. */
 function discoverScenarioRoots(root: string): Promise<string[]> {
   return import(
-    path.join(REPO_ROOT, "packages/scripts/lib/workspaces.mjs")
+    path.join(REPO_ROOT, "packages/scripts/lib/workspaces.ts")
   ).then(
     (mod: { listPackages: (o: { repoRoot: string }) => { dir: string }[] }) =>
       mod
@@ -244,7 +244,7 @@ describe("plugin discovery is zero-edit", () => {
     // A generic script that discovers via the seam — no plugin tokens — passes.
     fs.writeFileSync(
       path.join(root, "packages", "scripts", "clean.ts"),
-      "import { listPackages } from './lib/workspaces.mjs';\nexport const x = listPackages();\n",
+      "import { listPackages } from './lib/workspaces.ts';\nexport const x = listPackages();\n",
     );
     expect(runCouplingAudit(root).ok).toBe(true);
 

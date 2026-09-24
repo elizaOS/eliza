@@ -1,8 +1,7 @@
 /** Scenario fixture for selfcontrol block websites followup after detour; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { callPayloadBlob } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { callPayloadBlob, scenario } from "@elizaos/testing";
 
 function expectFollowupBlockRecoveredSites(
   ctx: ScenarioContext,

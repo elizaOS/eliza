@@ -25,7 +25,7 @@
  * ratio below is intentional — recency must win despite being outnumbered.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const STALE_PRESENT =
   /you'?re (still )?(a barista|at saguaro|in tucson)|currently.{0,30}(saguaro|tucson)/i;

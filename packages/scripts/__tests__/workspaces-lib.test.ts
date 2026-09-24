@@ -1,6 +1,6 @@
 /**
  * Unit + live-repo-parity tests for the workspace/submodule discovery seam
- * (packages/scripts/lib/workspaces.mjs). Synthetic cases exercise glob
+ * (packages/scripts/lib/workspaces.ts). Synthetic cases exercise glob
  * semantics against throwaway temp trees; parity cases assert the lib agrees
  * with the real repo's package.json and .gitmodules. Deterministic, no network.
  */
@@ -16,7 +16,7 @@ import {
   listPackages,
   listSubmodules,
   listWorkspaceDirs,
-} from "../lib/workspaces.mjs";
+} from "../lib/workspaces.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

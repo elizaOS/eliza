@@ -17,8 +17,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Action, IAgentRuntime, Plugin } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store";
 import {
   makeGrillingRuntime,

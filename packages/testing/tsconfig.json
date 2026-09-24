@@ -12,10 +12,7 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/testing/scenario-runner": ["./scenario-runner/src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
-      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": [
-        "./scenario-runner/schema/index.js"
-      ]
+      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"]
     },
     "composite": false,
     "incremental": false,

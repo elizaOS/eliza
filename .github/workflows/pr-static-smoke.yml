@@ -76,7 +76,7 @@ jobs:
 
       - name: Install pinned workflow linters
         shell: bash
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
 
       - name: Lint changed workflows
         shell: bash
@@ -214,7 +214,7 @@ jobs:
         tsconfig.json
         tsconfig.base.json
         .github/actions/cloud-setup-test-env
-        .github/scripts/install-playwright-browsers.sh
+        packages/scripts/github/install-playwright-browsers.sh
         .github/develop-surface-graph.json
         .github/workflows/develop-full.yml
         .github/workflows/pr-static-smoke.yml
@@ -237,7 +237,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { spawnSync } from "node:child_process";
           import { appendFileSync } from "node:fs";
-          import { listPackages } from "./packages/scripts/lib/workspaces.mjs";
+          import { listPackages } from "./packages/scripts/lib/workspaces.ts";
 
           function requiredEnv(name) {
             const value = process.env[name]?.trim();
@@ -310,7 +310,7 @@ jobs:
         uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
         if: steps.billing-diff.outputs.run == 'true'
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run billing payment replay spec
         if: steps.billing-diff.outputs.run == 'true'
         run: >-

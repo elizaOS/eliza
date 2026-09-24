@@ -6,6 +6,7 @@
     "declaration": false,
     "declarationMap": false,
     "types": ["node"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../ui/src/*"],
@@ -175,9 +176,6 @@
       ],
       "@elizaos/plugin-local-inference/runtime/*": [
         "../../../plugins/plugin-local-inference/src/runtime/*"
-      ],
-      "@elizaos/testing/scenario-runner/scenario-assertions": [
-        "../scenario-runner/src/scenario-assertions.ts"
       ],
       "@elizaos/testing/scenario-runner/action-families": [
         "../scenario-runner/src/action-families.ts"

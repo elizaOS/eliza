@@ -17,7 +17,7 @@ import {
   normalizeGitRepositoryPath,
 } from "./repository-file-integrity.mjs";
 import { execFileSync } from "./spawn-sync-captured.mjs";
-import { listPackages } from "./workspaces.mjs";
+import { listPackages } from "./workspaces.ts";
 
 const VIEW_CONFIG_BASENAME =
   /^vite\.config\.views\.(?:ts|mts|cts|js|mjs|cjs)$/i;

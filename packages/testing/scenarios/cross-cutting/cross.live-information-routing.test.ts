@@ -3,7 +3,7 @@
  * route, URL-safety, execution-result, and visible-failure assertions.
  */
 
-import type { ScenarioTurnExecution } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioTurnExecution } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/agent/runtime/actions/web-fetch", () => ({

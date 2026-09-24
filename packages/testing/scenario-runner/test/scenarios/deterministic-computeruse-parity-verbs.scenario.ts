@@ -7,11 +7,8 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { useComputerAction } from "../../../../../plugins/plugin-computeruse/src/actions/use-computer.ts";
 import { windowAction } from "../../../../../plugins/plugin-computeruse/src/actions/window.ts";
 import type { ComputerUseService } from "../../../../../plugins/plugin-computeruse/src/services/computer-use-service.ts";

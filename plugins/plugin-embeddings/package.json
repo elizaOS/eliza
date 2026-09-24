@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-embeddings",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaOS/eliza.git",
@@ -13,28 +13,9 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -125,24 +106,16 @@
         "required": false,
         "default": "1536",
         "sensitive": false
-      },
-      "EMBEDDING_BROWSER_URL": {
-        "type": "string",
-        "description": "Browser-only server-side proxy URL for /embeddings. In a browser build the Authorization header is never sent unless this is set, so the API key stays server-side.",
-        "required": false,
-        "sensitive": false
       }
     }
   },
   "eliza": {
     "platforms": [
-      "browser",
       "node"
     ],
-    "runtime": "both",
+    "runtime": "node",
     "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js ESM package entry"
     }
   }
 }

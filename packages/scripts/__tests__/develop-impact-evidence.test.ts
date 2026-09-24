@@ -164,7 +164,7 @@ describe("Develop Full impact graph", () => {
     expect([...visited].map((file) => path.basename(file)).sort()).toEqual([
       "develop-impact-evidence.mjs",
       "repository-file-integrity.mjs",
-      "workspaces.mjs",
+      "workspaces.ts",
     ]);
   });
 

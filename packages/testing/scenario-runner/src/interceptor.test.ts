@@ -6,7 +6,7 @@
  * push into) and `detach()` must restore the original handlers.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { CapturedConnectorDispatch } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedConnectorDispatch } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   attachInterceptor,

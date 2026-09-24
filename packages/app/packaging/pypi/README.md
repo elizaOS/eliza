@@ -2,13 +2,14 @@
 
 Python launcher for the elizaOS App.
 
-This package provides the `elizaos-app` command for environments that install
-applications through PyPI. The launcher validates that Node.js is available,
-then delegates to the version-matched npm `elizaos` command.
+## Development
+
+Use a Python environment matching `pyproject.toml` and install the required dependencies.
+
+Build from this directory:
 
 ```bash
-pip install elizaos-app
-elizaos-app --help
+python -m pip wheel --no-deps . --wheel-dir dist
 ```
 
-Node.js 22 or newer must be available on `PATH`.
+No dedicated Python test suite is present here.

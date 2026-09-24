@@ -1,7 +1,7 @@
 /**
  * Live-model smoke scenario for the core brushing-habit flow: a plain-English request previews a daily 8am/9pm brushing routine, then a confirm turn saves it as a scheduled reminder definition.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

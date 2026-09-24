@@ -1,22 +1,19 @@
 # Vending-Bench
 
-elizaOS reimplementation of Andon Labs' [Vending-Bench](https://arxiv.org/abs/2502.15840): a
-long-horizon coherence benchmark that runs an LLM agent as the operator of a simulated vending
-machine business over up to 30 days. The agent manages inventory ordering, pricing, and cash;
-the headline score is net worth at end of run.
+elizaOS reimplementation of Andon Labs' Vending-Bench ([arXiv 2502.15840](https://arxiv.org/abs/2502.15840), [leaderboard](https://andonlabs.com/evals/vending-bench)): evaluates LLM long-horizon coherence by simulating a vending-machine business (inventory ordering, pricing, cash management).
 
-## Quick Start
+## Development
+
+Use a Python environment matching `pyproject.toml` and install the required dependencies.
+
+Build from this directory:
 
 ```bash
-# No API key — heuristic agent
-python -m elizaos_vending_bench.cli run --provider heuristic --runs 1 --days 3 --starter-inventory
-
-# OpenAI
-python -m elizaos_vending_bench.cli run --provider openai --model gpt-4o --runs 5 --days 30
-
-# Via suite orchestrator
-python -m benchmarks.orchestrator run --benchmarks vending_bench --provider openai --model gpt-4o
+python -m pip wheel --no-deps . --wheel-dir dist
 ```
 
-See [AGENTS.md](AGENTS.md) for full run options, test commands, and layout.
-See [RESEARCH.md](RESEARCH.md) for paper background and implementation notes.
+Test from this directory:
+
+```bash
+python -m pytest
+```

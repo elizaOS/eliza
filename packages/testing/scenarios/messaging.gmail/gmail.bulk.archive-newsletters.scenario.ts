@@ -1,7 +1,6 @@
 /** Scenario fixture for gmail bulk archive newsletters; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

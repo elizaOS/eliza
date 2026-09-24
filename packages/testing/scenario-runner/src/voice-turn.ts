@@ -20,7 +20,7 @@ import {
   type VoiceWorkbenchScenarioRun,
   type VoiceWorkbenchServices,
 } from "@elizaos/plugin-local-inference/voice-workbench";
-import type { ScenarioTurn } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioTurn } from "@elizaos/testing";
 
 /** A scenario turn carrying an inline voice scenario + optional services. */
 export type VoiceScenarioTurn = ScenarioTurn & {

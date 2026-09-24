@@ -320,7 +320,7 @@ export async function copyPublishAssets({
       "plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
       "ios-app-store-runtime-policy.mjs",
     ],
-    ["packages/scripts/lib/workspaces.mjs", "workspace-discovery.mjs"],
+    ["packages/scripts/lib/workspaces.ts", "workspace-discovery.mjs"],
     [
       "packages/scripts/lib/repository-file-integrity.mjs",
       "repository-file-integrity.mjs",

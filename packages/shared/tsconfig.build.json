@@ -1,8 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "allowImportingTsExtensions": true,
-    "allowJs": false,
     "noEmit": false,
     "rewriteRelativeImportExtensions": true,
     "declaration": true,
@@ -12,7 +10,8 @@
     "rootDir": "./src",
     "paths": {
       "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@types/*": ["./src/*"]
+      "@elizaos/shared": ["./src/index.ts"],
+      "@elizaos/shared/*": ["./src/*"]
     }
   },
   "include": ["src"],

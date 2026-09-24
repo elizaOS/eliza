@@ -1,63 +1,17 @@
 # @elizaos/shared
 
-Shared contracts, configuration, utilities, and brand assets used by the agent,
-application hosts, UI, Cloud services, and plugins. This workspace depends on
-`@elizaos/core`; it is not an independent foundation below it.
+Shared contracts, configuration, utilities, and assets used by runtime hosts, UI, Cloud
+services, and plugins.
 
-`@elizaos/shared/catalog` owns the first-party catalog and its generated channel,
-provider, and app maps. Entries belong to maintained packages and plugins. Run
-`bun run --cwd packages/shared generate:first-party` after changing an entry, and
-`generate:first-party:check` to verify the committed artifacts. The community
-registry is retired; third-party listings are not accepted.
-
-## Entry points
-
-The [package manifest](package.json) defines the public exports. Choose the entry
-that matches the consumer's runtime:
-
-- The root barrel combines contracts with runtime helpers, including Node-only
-  Cloud TTS helpers. Browser use depends on the host's bundler configuration; it
-  is not proof that every root export is browser-safe.
-- `@elizaos/shared/knowledge-graph` exposes pure graph types and identity-merge
-  helpers without loading the root barrel or Cloud helpers.
-- `@elizaos/shared/utils/tts-debug` is the server-only tracing helper. It emits
-  through the runtime logger and is intentionally absent from the root barrel.
-- `@elizaos/shared/platform/native-library-policy` owns native-library path and
-  signed-bundle containment checks for hosts and plugins.
-- `@elizaos/shared/brand` owns shared brand constants; `@elizaos/shared/brand.css`
-  exposes the stylesheet.
-- `@elizaos/shared/local-inference` exposes model metadata and cross-platform
-  policies. Filesystem verification and routing persistence use the separate
-  `/local-inference/verify` and `/local-inference/routing-preferences` exports.
-- `@elizaos/shared/steward-session-client` owns browser session synchronization.
-  Refresh credentials use the HttpOnly cookie; clearing legacy local storage
-  does not make it an active credential source.
-
-```ts
-import type { ElizaConfig } from "@elizaos/shared";
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
-import { syncStewardSession } from "@elizaos/shared/steward-session-client";
-```
+Shared contracts, configuration, utilities, translations, catalog metadata, and assets.
+Check package.json exports before importing a subpath. First-party catalog sources live
+in src/catalog; use the catalog scripts rather than editing generated output.
 
 ## Development
 
-From the repository root:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd packages/shared build
-bun run --cwd packages/shared typecheck
-bun run --cwd packages/shared lint:check
-bun run --cwd packages/shared test
+bun run --cwd packages/shared build  # build
+bun run --cwd packages/shared test   # tests
 ```
-
-Build emits the package distribution; typecheck validates source without writing
-it. Keyword data and matching live in [shared keyword data](src/i18n/keywords.ts);
-shared adds application locale normalization. Brand assets live in `assets/`;
-the `sync` script copies them into consumer public directories.
-
-See [AGENTS.md](AGENTS.md) for ownership and contribution details.
-
-`@elizaos/shared/media` owns Node media fetching, MIME detection, attachment
-normalization, image-description caching, and local media-store URL checks.
-Its transport uses core network guards; importing core does not load this leaf
-or install its MIME detector.

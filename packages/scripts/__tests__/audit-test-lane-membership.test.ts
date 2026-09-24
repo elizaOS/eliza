@@ -12,7 +12,7 @@ import {
   testShapedScriptNames,
 } from "../audit-test-lane-membership.mjs";
 
-import { EXTRA_SCRIPT_NAMES } from "../lib/script-metadata.mjs";
+import { EXTRA_SCRIPT_NAMES } from "../lib/script-metadata.ts";
 
 const ROOT_SCRIPTS = {
   "test:server": "node run-all-tests.mjs --lane=server --no-cloud",

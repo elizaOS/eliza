@@ -13,19 +13,19 @@ import type {
   RouteResponse,
 } from "@elizaos/shared/api/http-plugin";
 import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import type {
+  CapturedAction,
+  ScenarioContext,
+  ScenarioTurnExecution,
+} from "@elizaos/testing";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  scenario,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,

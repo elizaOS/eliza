@@ -8,7 +8,7 @@ import type {
   CapturedStateTransition,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   expectApprovalRequest,

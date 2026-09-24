@@ -368,19 +368,8 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: "@elizaos/testing/scenario-runner/schema",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages",
-      "testing",
-      "scenario-runner",
-      "schema",
-      "index.js",
-    ),
-  },
-  {
     find: /^@elizaos\/plugin-pdf$/,
-    replacement: path.join(pluginPdfSrc, "index.node.ts"),
+    replacement: path.join(pluginPdfSrc, "index.ts"),
   },
   ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),

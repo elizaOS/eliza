@@ -42,7 +42,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
 
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # The full suite (33 specs) measured ~12 minutes of Playwright wall time
       # locally on top of the linked-workspace build; the 30-minute historical

@@ -3,7 +3,7 @@
  * (Mon-Fri). The agent must NOT include Sat/Sun.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

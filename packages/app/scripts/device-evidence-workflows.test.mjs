@@ -21,7 +21,7 @@ const androidRunner = fs.readFileSync(
 );
 const preflight = path.join(
   repoRoot,
-  ".github/scripts/device-e2e/arm64-local-preflight.sh",
+  "packages/scripts/github/device-e2e/arm64-local-preflight.sh",
 );
 const runnerTempExpression = "$" + "{{ runner.temp }}";
 const runIdentityExpression =

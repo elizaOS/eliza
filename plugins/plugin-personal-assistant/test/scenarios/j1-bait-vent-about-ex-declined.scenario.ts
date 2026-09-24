@@ -3,7 +3,7 @@
  * The assistant should acknowledge briefly, set a logistics boundary, and avoid
  * therapy, legal, crisis, or blame framing when the owner baits it.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

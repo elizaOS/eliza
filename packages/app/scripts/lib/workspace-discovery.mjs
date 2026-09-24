@@ -4,4 +4,4 @@
  * disagreeing about package membership or malformed manifests.
  */
 
-export { collectWorkspaceMaps } from "../../../scripts/lib/workspaces.mjs";
+export { collectWorkspaceMaps } from "../../../scripts/lib/workspaces.ts";

@@ -15,8 +15,8 @@ import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { DocumentService } from "../../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";
 import { GoogleGmailAdapter } from "../../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";

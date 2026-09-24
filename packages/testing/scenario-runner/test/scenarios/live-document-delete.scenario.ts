@@ -27,8 +27,8 @@ import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { DocumentService } from "../../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 
 const SCENARIO_ID = "live-document-delete";

@@ -5,10 +5,7 @@
  * checkout-selected TypeScript module.
  */
 
-import {
-  type ScenarioDefinition,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioDefinition, scenario } from "@elizaos/testing";
 import providerCanaryDefinitionCatalog from "../../schema/provider-canary-definitions.json" with {
   type: "json",
 };

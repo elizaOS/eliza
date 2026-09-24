@@ -5,7 +5,7 @@
  * stale draft behind it: an apology for a thread the owner already answered is
  * worse than no apology at all.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

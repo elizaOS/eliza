@@ -39,7 +39,7 @@ async function writeTwoBaseScenarioDir(): Promise<{
   const baseIdA = "fixture.todo.create";
   const baseIdB = "fixture.todo.list";
   await writeScenarioFile(dir, "todo.create.scenario.ts", [
-    'import { scenario } from "@elizaos/testing/scenario-runner/schema";',
+    'import { scenario } from "@elizaos/testing";',
     "export default scenario({",
     `  id: "${baseIdA}",`,
     '  title: "Create fixture todo",',
@@ -49,7 +49,7 @@ async function writeTwoBaseScenarioDir(): Promise<{
     "});",
   ]);
   await writeScenarioFile(dir, "todo.list.scenario.ts", [
-    'import { scenario } from "@elizaos/testing/scenario-runner/schema";',
+    'import { scenario } from "@elizaos/testing";',
     "export default scenario({",
     `  id: "${baseIdB}",`,
     '  title: "List fixture todos",',
@@ -66,7 +66,7 @@ async function writeFixtureScenario(): Promise<string> {
   await writeFile(
     join(dir, "todo.create.scenario.ts"),
     [
-      'import { scenario } from "@elizaos/testing/scenario-runner/schema";',
+      'import { scenario } from "@elizaos/testing";',
       "export default scenario({",
       '  id: "fixture.todo.create",',
       '  title: "Create fixture todo",',

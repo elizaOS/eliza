@@ -68,14 +68,6 @@
       "label": "Embedding Dimensions",
       "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
       "advanced": false
-    },
-    "EMBEDDING_BROWSER_URL": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Embedding Browser Url",
-      "help": "Browser-only server-side proxy URL for /embeddings. In a browser build the Authorization header is never sent unless this is set, so the API key stays server-side.",
-      "advanced": true
     }
   },
   "render": {

@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { listPackages } from "../lib/workspaces.mjs";
+import { listPackages } from "../lib/workspaces.ts";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const source = readFileSync(

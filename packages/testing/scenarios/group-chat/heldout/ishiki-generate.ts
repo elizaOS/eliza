@@ -248,7 +248,7 @@ function renderScenario(
  * Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION}.
  * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   buildHeldoutSetup,
   type HeldoutScenarioConfig,

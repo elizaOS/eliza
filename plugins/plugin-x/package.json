@@ -46,7 +46,6 @@
   },
   "dependencies": {
     "headers-polyfill": "^5.0.0",
-    "json-stable-stringify": "^1.3.0",
     "twitter-api-v2": "^1.23.2",
     "twitter-text": "3.1.0",
     "@elizaos/plugin-assistant": "workspace:*",

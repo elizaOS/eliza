@@ -22,7 +22,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
-import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { findWorkspaceRoot } from "./lib/repo-root.ts";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_STALE_AFTER_MS = 1_800_000;

@@ -27,8 +27,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveTurboNonImportedBuildDepOwners } from "./lib/script-metadata.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { resolveTurboNonImportedBuildDepOwners } from "./lib/script-metadata.ts";
+import { listPackages } from "./lib/workspaces.ts";
 
 const repoRoot = path.resolve(
   process.env.AUDIT_TURBO_REPO_ROOT ??

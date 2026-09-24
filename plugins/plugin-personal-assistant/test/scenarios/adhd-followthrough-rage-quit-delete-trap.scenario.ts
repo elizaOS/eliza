@@ -14,7 +14,7 @@
  * blocks broad destructive delete requests before any deletion call; this
  * scenario stays active as the live regression.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

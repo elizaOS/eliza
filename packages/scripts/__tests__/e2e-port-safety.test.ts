@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -31,13 +31,20 @@ function isE2eScript(file: string): boolean {
 }
 
 function trackedE2eScripts(): string[] {
-  return execFileSync("git", ["ls-files", "-z"], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  })
+  return execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  )
     .split("\0")
-    .filter((file) => file && isE2eScript(file));
+    .filter(
+      (file) =>
+        file && isE2eScript(file) && existsSync(path.join(REPO_ROOT, file)),
+    );
 }
 
 const TRACKED_E2E_SCRIPTS = trackedE2eScripts();
@@ -217,7 +224,7 @@ describe("e2e port safety", () => {
       "packages/ui/src/cloud/organization/__e2e__/run-credentials-e2e.mjs",
       "packages/core/e2e/setup/global-setup.ts",
       "packages/cloud/shared/scripts/verify-e2e-container-db.sh",
-      ".github/scripts/android-device-e2e/pr-device-smoke.sh",
+      "packages/scripts/github/android-device-e2e/pr-device-smoke.sh",
     ]) {
       expect(files).toContain(exemplar);
     }

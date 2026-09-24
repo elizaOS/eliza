@@ -1,9 +1,6 @@
 /** Exercises the real calendar assertion factories against captured CALENDAR calls. */
 
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   expectCalendarPayload,

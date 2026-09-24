@@ -15,8 +15,6 @@ Our system builds upon recent approaches in agentic computer use and follows the
 - **Action Planner (GPT-5)**: Responsible for generating high-level action sequences, reasoning about task goals and observing modifications in the environment.
 - **Grounder (UI-TARS 1.5 + Internal UI Predictor)**: This component translates abstract plans into concrete interactions with the user interface. The UI-TARS 1.5 serves as the grounding mechanism, mapping planned actions to locations on screen, while the Internal UI Predictor assists in resolving ambiguous predictions, increasing the robustness and probability of the predictions to fall within UI elements.
 
-![Schema](imgs/schema.png)
-
 ## Run
 ```
 python run_multienv_uipath.py \
@@ -65,8 +63,6 @@ The UI element predictor consists of a shared feature extractor backbone and mul
 - identifying UI elements or controls such as icons, input boxes, checkboxes, buttons, radio buttons
 - tables and cells
 - few other tasks not used for our approach, but employed in other use-cases and needed in training for improving the feature extractor performance
-
-![Element preditions](imgs/element_predictions.png)
 
 In most interfaces, actions are expected to interact directly with UI elements: buttons, fields, icons, or menus. When a prediction lands outside any element, this often signals a potential misprediction. While there are legitimate cases where a click outside elements makes sense (e.g., dismissing a modal, dragging to select text, or changing window focus), they are exceptions rather than the rule. By treating these situations as possible errors, we can provide the model with a structured way to reconsider its output.
 

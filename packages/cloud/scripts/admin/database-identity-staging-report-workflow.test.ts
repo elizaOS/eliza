@@ -57,10 +57,6 @@ const workflowPath = resolve(
   ".github/workflows/database-identity-staging-report.yml",
 );
 const workflowSource = readFileSync(workflowPath, "utf8");
-const railwayGuide = readFileSync(
-  resolve(repoRoot, "packages/cloud/infra/cloud/RAILWAY.md"),
-  "utf8",
-);
 const workflow = parse(workflowSource) as Workflow;
 const admission = workflow.jobs.admission;
 const job = workflow.jobs.report;
@@ -359,14 +355,9 @@ function admissionStep(name: string): Step {
 
 describe("database identity staging report workflow", () => {
   test("does not overstate source review or Environment approval", () => {
-    for (const source of [workflowSource, railwayGuide]) {
-      expect(source).not.toContain("exact reviewed staging SHA");
-      expect(source).not.toContain("staging Environment approval");
-    }
+    expect(workflowSource).not.toContain("exact reviewed staging SHA");
+    expect(workflowSource).not.toContain("staging Environment approval");
     expect(workflowSource).toContain("it does not prove reviewer approval");
-    expect(railwayGuide).toMatch(
-      /proves neither human review nor Environment\s+reviewer approval/,
-    );
   });
 
   test("pins the complete parsed workflow execution envelope", () => {

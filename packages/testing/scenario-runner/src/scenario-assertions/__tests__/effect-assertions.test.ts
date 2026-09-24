@@ -1,9 +1,6 @@
 /** Exercises the real scenario effect-assertion helpers against captured action records. */
 
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   callPayloadBlob,

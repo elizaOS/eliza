@@ -6,7 +6,7 @@
  * resolves against whichever is read first. The correction must supersede in
  * place, and she never spells that out.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

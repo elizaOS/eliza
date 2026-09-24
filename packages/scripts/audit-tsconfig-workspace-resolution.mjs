@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const defaultRepoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

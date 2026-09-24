@@ -1,7 +1,7 @@
 /**
  * Live-model smoke scenario: polite French (vous) phrasing yields a daily brushing habit, replying in-language while creating the scheduled reminder.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

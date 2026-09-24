@@ -27,9 +27,9 @@
 import type { Action, AgentRuntime } from "@elizaos/core";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 
 const KNOWLEDGE_GRAPH = "KNOWLEDGE_GRAPH";
 type R = AgentRuntime & {

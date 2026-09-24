@@ -3,7 +3,7 @@
  * Exercises the LIFE definition pipeline for a count-based daily habit.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

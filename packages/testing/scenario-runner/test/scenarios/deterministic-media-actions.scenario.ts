@@ -4,16 +4,16 @@
  */
 import { ModelType, type Plugin } from "@elizaos/core";
 import { generateMediaAction } from "@elizaos/plugin-assistant/actions/generate-media";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  strictActionRouteFixtures,
-} from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  scenario,
+  strictActionRouteFixtures,
+} from "@elizaos/testing";
 import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const transparentPngDataUrl =

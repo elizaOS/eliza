@@ -3,7 +3,7 @@
 `packages/scripts/` is the single home for repository-wide build, test, release,
 security, evidence, and development tools. It has no package manifest; root
 `package.json` commands invoke its entrypoints. Package-specific scripts remain
-with their owning packages, and GitHub-specific helpers remain in `.github/scripts/`.
+in `packages/*/scripts/`; GitHub helpers live in `packages/scripts/github/`.
 
 Run commands from the repository root:
 

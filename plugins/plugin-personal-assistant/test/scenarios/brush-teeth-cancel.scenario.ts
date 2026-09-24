@@ -1,7 +1,7 @@
 /**
  * Live-model scenario asserting the assistant honors a mid-flow cancellation: after previewing a brushing routine the owner backs out, and no habit definition is persisted (definitionCountDelta 0).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

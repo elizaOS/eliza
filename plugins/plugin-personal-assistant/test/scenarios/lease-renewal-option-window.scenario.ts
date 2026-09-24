@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Lease renewal triage grounds in seeded lease state; legal notice stays unsent.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

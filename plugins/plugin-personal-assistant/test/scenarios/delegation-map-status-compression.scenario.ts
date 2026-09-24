@@ -6,7 +6,7 @@
  * must land as a captured scheduled action whose arguments carry the blocked item
  * (selectedActionArguments), not just reply wording.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

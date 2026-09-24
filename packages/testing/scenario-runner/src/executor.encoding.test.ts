@@ -11,7 +11,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
   stringToUuid: (value: string) => value,
 }));
 vi.mock("@elizaos/plugin-local-inference/voice-workbench", () => ({}));
-vi.mock("@elizaos/testing/scenario-runner/schema", () => ({
+vi.mock("@elizaos/testing", () => ({
   DEFAULT_SCENARIO_EXECUTION_PROFILE: {},
   scenarioLane: () => "default",
 }));

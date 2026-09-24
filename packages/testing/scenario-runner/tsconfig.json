@@ -216,7 +216,6 @@
       "@elizaos/testing/scenario-runner": ["./src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./src/*"],
       "@elizaos/testing/synthetic-world": ["../synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": ["./schema/index.js"],
       "@elizaos/plugin-assistant": [
         "../../../plugins/plugin-assistant/src/index.ts"
       ],

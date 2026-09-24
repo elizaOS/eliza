@@ -144,12 +144,6 @@ describe("Railway voice service definitions (#14374)", () => {
     });
   }
 
-  test("both services are recorded in the canonical Railway topology doc", () => {
-    const railwayDoc = read("packages/cloud/infra/cloud/RAILWAY.md");
-    for (const svc of SERVICES) {
-      expect(railwayDoc).toContain(svc.dir);
-    }
-  });
 });
 
 interface WorkflowStep {

@@ -10,7 +10,7 @@ import type { Action, AgentRuntime } from "@elizaos/core";
 import type {
   ScenarioDefinition,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor.ts";
 

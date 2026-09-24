@@ -19,7 +19,7 @@
  * consented step, non-shaming tone, follow-up offered) and definitionCountDelta
  * proves the agreed micro-step was actually scheduled after consent.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

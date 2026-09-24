@@ -21,7 +21,7 @@
  * Synthetic persona (Priya Raman). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const REOPENERS =
   /(anything else|let me know if|is there anything|want me to|shall i|to recap|in summary|as (i|we) (mentioned|discussed)|how (are you|was your)|what (else|about))/i;

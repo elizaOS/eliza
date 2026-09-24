@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   canonicalSha256,

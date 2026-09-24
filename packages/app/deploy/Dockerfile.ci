@@ -28,7 +28,7 @@ FROM node:${NODE_VERSION}-slim AS runtime-deps
 WORKDIR /app
 ARG APP_CORE_DIR
 COPY --parents package.json bun.lock \
-  packages/scripts/lib/workspaces.mjs \
+  packages/scripts/lib/workspaces.ts \
   packages/scripts/lib/repository-file-integrity.mjs \
   packages/*/package.json \
   packages/cloud/*/package.json \

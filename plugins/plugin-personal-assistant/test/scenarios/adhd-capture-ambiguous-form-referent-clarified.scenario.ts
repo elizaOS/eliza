@@ -9,10 +9,7 @@
  * a change to only the selected deadline; the judge assesses clarification tone.
  */
 import { isDeepStrictEqual } from "node:util";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 
 type RecordValue = Record<string, unknown>;
 function isRecord(value: unknown): value is RecordValue {

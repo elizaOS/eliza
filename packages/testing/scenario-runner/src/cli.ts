@@ -16,14 +16,14 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
   type ScenarioExecutionProfile,
   type ScenarioLane,
   scenarioExecutionProfile,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import {
   countScenarioCorpus,
   listScenarioMetadata,

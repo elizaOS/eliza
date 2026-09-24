@@ -38,5 +38,5 @@ Before working, comment `CLAIMING: <scope>` with your lane tag, add this issue
 to the active Project, set `Status = Claimed`, and set `Claimed by = <tag>`.
 When active work starts, move the card to `In progress`.
 
-Follow the full workflow in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) (claim
+Follow the full workflow in [`AGENTS.md`](../../AGENTS.md) (claim
 protocol, GitHub Projects states, and the mechanically-enforced evidence bar).

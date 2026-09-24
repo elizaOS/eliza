@@ -42,6 +42,7 @@ const TS_CONFIG = {
 describe("workspace production emit", () => {
   test.each([
     ["packages/agent", "index.js"],
+    ["packages/shared", "index.js"],
     ["plugins/plugin-computeruse", "index.d.ts"],
     ["plugins/plugin-wallet", "index.d.ts"],
   ])(
@@ -424,44 +425,7 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     ).rejects.toThrow();
   });
 
-  test("dtsTolerant swallows a failed declaration emit and warns, keeping JS outputs", async () => {
-    // No tsconfig present → tsc fails (TS5058, missing project) → tolerant mode
-    // must warn + continue rather than abort. Spy on console.warn to prove the
-    // tolerant branch actually fired (not that tsc silently never ran).
-    makeFixture({ tsconfig: false });
-    const warnings: string[] = [];
-    const realWarn = console.warn;
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map(String).join(" "));
-    };
-    try {
-      await buildPlugin({
-        name: "@elizaos/fixture-plugin",
-        targets: [
-          {
-            label: "Node",
-            entry: "src/index.ts",
-            outSubdir: ".",
-            target: "node",
-            format: "esm",
-          },
-        ],
-        dtsProject: "tsconfig.json",
-        dtsTolerant: true,
-      });
-    } finally {
-      console.warn = realWarn;
-    }
-    // JS target survived even though declaration emit failed.
-    expect(existsSync(distPath("index.js"))).toBe(true);
-    expect(existsSync(distPath("index.d.ts"))).toBe(false);
-    // The tolerant branch logged the specific warning.
-    expect(warnings.some((w) => /declaration generation failed/i.test(w))).toBe(
-      true,
-    );
-  });
-
-  test("dtsProject failure WITHOUT dtsTolerant rejects (the strict default)", async () => {
+  test("a failed declaration emit rejects the build", async () => {
     makeFixture({ tsconfig: false });
     await expect(
       buildPlugin({

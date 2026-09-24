@@ -3,7 +3,7 @@
  * stretch, and a wind-down step. Mirror of the morning routine scenario.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

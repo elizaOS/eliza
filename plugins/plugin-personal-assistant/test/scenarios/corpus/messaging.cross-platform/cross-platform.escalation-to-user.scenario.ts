@@ -3,8 +3,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import { receivePendingIntents } from "../../../../src/lifeops/intent-sync.ts";
 
 export default scenario({

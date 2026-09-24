@@ -6,9 +6,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   BUILD_CORE_PREREQUISITE_SCRIPTS,
   buildCoreTurboArgs,
+  CORE_BUILD_PACKAGES,
   isBuildCoreEntrypoint,
 } from "../build-core.mjs";
-import { CORE_BUILD_PACKAGES } from "../build-core-packages.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
@@ -73,7 +73,7 @@ describe("build-core package set (issue #10200)", () => {
     );
     expect(
       missing,
-      `build-core-packages.mjs lists package(s) that no longer exist in the ` +
+      `build-core.mjs selects package(s) that no longer exist in the ` +
         `workspace: ${missing.join(", ")}. Remove or rename them.`,
     ).toEqual([]);
   });

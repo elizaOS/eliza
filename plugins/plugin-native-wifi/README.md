@@ -1,55 +1,15 @@
 # @elizaos/plugin-native-wifi
 
-Wi-Fi overlay app for the elizaOS Android agent. Scan, inspect, and connect to nearby Wi-Fi networks from within the elizaOS mobile interface.
+Android-only overlay app that lets an Eliza agent scan, inspect, and connect to nearby
+Wi-Fi networks.
 
-## What it does
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-- Displays the currently connected Wi-Fi network (SSID, signal strength, frequency).
-- Scans for nearby networks and lists them sorted by signal strength.
-- Lets the user tap a network, enter a password if required, and connect.
-- Surfaces nearby network data (SSID, BSSID, RSSI, frequency, security) to the agent planner as the `wifiNetworks` provider.
+## Development
 
-## Android-only
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-This plugin is only functional on Android. The overlay app is registered in the elizaOS app catalog exclusively when running inside the elizaOS Android host. On other platforms (iOS, desktop, web) the side-effect registration leaves the app catalog unchanged. `@elizaos/plugin-native-wifi/bridge` uses Android's `WifiManager` API directly.
-
-## Capabilities added to an Eliza agent
-
-| Surface | Name | Description |
-|---------|------|-------------|
-| Provider | `wifiNetworks` | Dynamic provider gated to the `system` context (`contextGate: { anyOf: ["system"] }`); injects every deduplicated nearby Wi-Fi network when that context is selected for a turn. Fields per network: `ssid`, `bssid`, `rssi` (dBm), `frequency` (MHz), `secured` (boolean). |
-| Overlay UI | WiFi | Full-screen app accessible from the elizaOS app catalog. Scan, view connected network, connect/disconnect. |
-
-## Required permissions
-
-Android `ACCESS_FINE_LOCATION` must be granted at the OS level before Wi-Fi scans can return results. The plugin does not prompt for this permission itself — it relies on the host app's permission flow.
-
-## Enabling the plugin
-
-Register it in your elizaOS agent configuration by importing from the `/plugin` export:
-
-```ts
-import wifiPlugin from "@elizaos/plugin-native-wifi/plugin";
-// or
-import { appWifiPlugin } from "@elizaos/plugin-native-wifi/plugin";
+```bash
+bun run --cwd plugins/plugin-native-wifi build  # build
+bun run --cwd plugins/plugin-native-wifi test   # tests
 ```
-
-The overlay UI registers itself automatically when the package is loaded on an elizaOS Android host (via the `register.ts` side-effect entry). No additional setup is required.
-
-## Package exports
-
-| Export path | Contents |
-|-------------|----------|
-| `@elizaos/plugin-native-wifi` | Full barrel: plugin, UI components, registration helpers |
-| `@elizaos/plugin-native-wifi/plugin` | `appWifiPlugin` (the `Plugin` object with the `wifiNetworks` provider) |
-
-## Dependencies
-
-- `@elizaos/plugin-native-wifi/bridge` — Capacitor plugin wrapping Android WifiManager.
-- `@elizaos/capacitor-system` — Used by the UI to open Android network settings.
-- `@elizaos/ui` — Overlay app registry + shared UI primitives.
-- `@elizaos/core` — elizaOS plugin and provider types.
-
-## Native bridge
-
-The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-wifi/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.

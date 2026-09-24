@@ -6,10 +6,7 @@
  * no handler, session, provider call, or language-model routing is allowed.
  */
 
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   assertMeetingMockLedger,
   finalizeMeetingMockLedger,

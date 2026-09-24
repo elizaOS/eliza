@@ -18,11 +18,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectApprovalRequest,
   judgeRubric,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 

@@ -2,7 +2,7 @@
  * K1 approval gate. A supportive friend response is staged as a draft and the
  * scenario proves no external connector delivered it before owner approval.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

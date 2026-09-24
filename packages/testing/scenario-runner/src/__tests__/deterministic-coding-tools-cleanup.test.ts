@@ -4,8 +4,8 @@
  */
 
 import { access } from "node:fs/promises";
+import type { ScenarioContext } from "@elizaos/testing";
 import { createDeterministicModelFixtureRegistry } from "@elizaos/testing";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
 import { afterEach, describe, expect, it } from "vitest";
 
 import codingToolsScenario from "../../test/scenarios/deterministic-coding-tools-actions.scenario.ts";

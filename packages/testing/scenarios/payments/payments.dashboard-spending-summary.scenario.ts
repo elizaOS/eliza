@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 /**
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/

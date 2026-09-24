@@ -15,7 +15,7 @@
  * BOTH named sources captured as always-breakthrough, neither dropped into the
  * batch.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

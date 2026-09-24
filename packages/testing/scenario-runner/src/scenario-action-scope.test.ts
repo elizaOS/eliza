@@ -13,8 +13,8 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import type { Action, AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { createDeterministicModelPlugin } from "@elizaos/testing";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor.ts";
 import {

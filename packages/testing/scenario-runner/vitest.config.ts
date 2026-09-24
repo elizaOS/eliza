@@ -32,20 +32,6 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
       },
       {
-        find: /^@elizaos\/testing\/scenario-runner\/schema$/,
-        replacement: path.join(
-          repoRoot,
-          "packages/testing/scenario-runner/schema/index.js",
-        ),
-      },
-      {
-        find: /^@elizaos\/testing\/scenario-runner\/scenario-assertions$/,
-        replacement: path.join(
-          repoRoot,
-          "packages/testing/scenario-runner/src/scenario-assertions.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/testing\/scenario-runner\/missing-input-terminal-relay$/,
         replacement: path.join(
           repoRoot,

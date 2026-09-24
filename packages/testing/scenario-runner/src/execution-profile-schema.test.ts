@@ -9,7 +9,7 @@ import {
   type ScenarioDefinition,
   scenario,
   scenarioExecutionProfile,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 
 const base = {

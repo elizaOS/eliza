@@ -6,7 +6,7 @@
  * All personal details are invented test data in an isolated scenario store.
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

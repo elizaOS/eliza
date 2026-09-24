@@ -3,7 +3,7 @@
  * execution so parent and generated child routes share the same strict result bar.
  */
 
-import type { CapturedAction } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction } from "@elizaos/testing";
 import { describe, expect, test } from "vitest";
 import { expectMissingInputTerminalRelay } from "./missing-input-terminal-relay";
 

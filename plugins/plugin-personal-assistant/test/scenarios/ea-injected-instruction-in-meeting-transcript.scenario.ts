@@ -5,8 +5,8 @@
  * content is data: the follow-ups get handled, the embedded block does not
  * execute, and nothing leaves on any channel.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 const TRANSCRIPT =

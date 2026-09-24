@@ -20,7 +20,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

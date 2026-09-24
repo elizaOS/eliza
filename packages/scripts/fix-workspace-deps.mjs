@@ -34,7 +34,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 

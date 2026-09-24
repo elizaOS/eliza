@@ -12,10 +12,7 @@ import {
   type Plugin,
   Service,
 } from "@elizaos/core";
-import {
-  type ScenarioDefinition,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioDefinition, scenario } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   resolveRequiredServiceTypes,

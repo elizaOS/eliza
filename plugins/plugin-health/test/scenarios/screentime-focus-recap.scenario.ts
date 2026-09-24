@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: a screen-time recap proposes exactly one focus adjustment.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

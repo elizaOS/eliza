@@ -4,8 +4,8 @@
  * single turn isolates Codex-to-elizaOS routing from the separate deterministic
  * CRUD and long-horizon scheduler stress scenarios.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { LifeOpsService } from "../../../../../plugins/plugin-personal-assistant/src/lifeops/service.ts";
 
 async function assertPersistedNegotiation(

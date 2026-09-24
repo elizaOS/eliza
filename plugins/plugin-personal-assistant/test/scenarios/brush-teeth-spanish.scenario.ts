@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: Spanish morning/night phrasing yields a daily brushing routine, replying in-language and saving the scheduled reminder.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -3,7 +3,7 @@
  * something 20 feet away for 20 seconds. Interval habit at 20 minutes.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

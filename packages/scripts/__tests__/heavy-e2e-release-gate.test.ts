@@ -90,7 +90,7 @@ describe("release-electrobun.yml heavy E2E step", () => {
     expect(heavyIndex).toBeGreaterThan(provisionIndex);
     const provision = steps[provisionIndex];
     expect(provision?.run).toContain(
-      ".github/scripts/install-playwright-browsers.sh chromium",
+      "packages/scripts/github/install-playwright-browsers.sh chromium",
     );
     expect(provision?.run).toContain("chromium.executablePath()");
     expect(provision?.run).not.toContain("@puppeteer/browsers");

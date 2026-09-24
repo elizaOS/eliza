@@ -7,8 +7,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 

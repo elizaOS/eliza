@@ -11,7 +11,7 @@ import {
   sign as signPayload,
 } from "node:crypto";
 import { resolve } from "node:path";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type {
   ProviderEffectObservation,

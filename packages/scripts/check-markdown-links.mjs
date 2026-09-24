@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Validates local links in maintained documentation, excluding consumed fixtures. */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -18,6 +19,8 @@ const EXCLUDED_PREFIXES = [
   "packages/training/",
   "packages/ui/src/services/local-inference/",
   "packages/app/test/",
+  // Task prompts contain literal code/regex examples, not documentation links.
+  "packages/benchmarks/suites/nl2repo/test_files/",
   "plugins/plugin-agent-orchestrator/docs/",
   "plugins/plugin-computeruse/",
   "plugins/plugin-local-inference/",

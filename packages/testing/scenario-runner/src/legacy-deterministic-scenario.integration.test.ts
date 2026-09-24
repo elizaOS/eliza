@@ -1,7 +1,7 @@
 /** Runs a pre-manifest deterministic scenario through the real runtime migration bridge. */
 
 import { ModelType } from "@elizaos/core";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runScenario } from "./executor.ts";
 import { beginScenarioModelFixtureAttempt } from "./model-fixtures.ts";

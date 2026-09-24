@@ -12,10 +12,7 @@
  * fails honestly on a missing, duplicated, or mis-rendered delivery.
  */
 
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioDefinition } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import concurrentDayScenario from "../test/scenarios/deterministic-lifeops-concurrent-day.scenario.ts";
 

@@ -1,5 +1,5 @@
 // Provides shared scenario helpers for LifeOps approval and owner-outcome checks.
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 
 /**
  * Shared OUTCOME predicates for approval-gated executive-assistant scenarios.

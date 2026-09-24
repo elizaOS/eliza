@@ -11,7 +11,7 @@
  * endpoint and the seeded source nodes remain, so `entityAbsent` reports they
  * are still persisted.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 function assertMergedTarget(
   _status: number,

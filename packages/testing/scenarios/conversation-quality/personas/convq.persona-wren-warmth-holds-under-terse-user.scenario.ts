@@ -24,7 +24,7 @@
  * Synthetic (Sana Okafor / Nadia, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { WREN } from "./_personas";
 
 // Saccharine over-perk that steamrolls a low mood.
