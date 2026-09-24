@@ -5,7 +5,6 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
-	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
@@ -257,6 +256,9 @@ void text;
 		process.execPath,
 		[
 			path.join(repository, "node_modules/typescript/bin/tsc"),
+			// The consumer supplies every compiler option and may live below a
+			// repository-local TMPDIR; never inherit an ancestor tsconfig.
+			"--ignoreConfig",
 			"--noEmit",
 			"--strict",
 			"--skipLibCheck",
