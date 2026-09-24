@@ -12,11 +12,22 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  existingTypeInstallRoots,
   findCachedPackageDir,
   readLockfilePinnedVersions,
 } from "./ensure-type-package-aliases.mjs";
 
 const cleanups = [];
+
+it("repairs only installed roots without inventing a retired eliza checkout", () => {
+  const root = makeFixtureDir();
+  const main = path.join(root, "node_modules");
+  const nested = path.join(root, "eliza", "node_modules");
+  mkdirSync(main);
+  expect(existingTypeInstallRoots(root)).toEqual([main]);
+  mkdirSync(nested, { recursive: true });
+  expect(existingTypeInstallRoots(root)).toEqual([main, nested]);
+});
 
 afterEach(() => {
   while (cleanups.length > 0) {
