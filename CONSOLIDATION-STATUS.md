@@ -5,7 +5,7 @@ Status: **QA/performance and preservation audit remain open; not approved for re
 
 ## Integration boundary
 
-Shaw's `shaw/mega-refactor` at `b45c2b8525b` includes our branch through `0730db6be16`. This checkout stays separate while he refactors. Do not repeat the old consolidation or assume later commits are included. Follow-up `ae86a28b62a` clarifies tool loading and optional evaluator context reads. Experimental reasoning change `816bad9bca5` was reverted by `7bc7bc3f0a4`; their net code change is zero. No new PR, protected merge, deployment, branch deletion or PR closure was performed by this task.
+Shaw's `shaw/mega-refactor` at `b45c2b8525b` includes our branch through `0730db6be16`. This checkout stays separate while he refactors. Do not repeat the old consolidation or assume later commits are included. Follow-up `ae86a28b62a` clarifies tool loading and optional evaluator context reads. `00424ecd686` resolves authorized evaluator context reads before conflicting drafts, without replaying tools or publishing the draft. Experimental reasoning change `816bad9bca5` was reverted by `7bc7bc3f0a4`; their net code change is zero. No new PR, protected merge, deployment, branch deletion or PR closure was performed by this task.
 
 ## What is preserved and changed
 
@@ -33,11 +33,11 @@ Shaw's `shaw/mega-refactor` at `b45c2b8525b` includes our branch through `0730db
 
 Separate background-memory calls are recorded in the private metrics; they are not included in the foreground counts. Cached tokens are provider-reported, not assumed. A three-stage design does not guarantee three calls: extraction, discovery and validation recovery are separately counted.
 
-Root verification passed at `0730db6be16`; final follow-up verification passed at `7bc7bc3f0a4` (net source equals `ae86a28b62a`). Existing routing445 and discovery47 tests passed. Exact stored Notes and Calendar state was inspected; unrelated records remained unchanged. Physical microphone/playback/animation acceptance is separate from synthetic Cartesia protocol proof. The actual assistant bundle must be rebuilt and fingerprinted before runtime testing; a source-only restart did not load two late changes, and those runs are explicitly excluded from change-effect claims.
+Root verification passed at `0730db6be16`; final follow-up verification passed at `7bc7bc3f0a4` (net source equals `ae86a28b62a`). Existing routing445 and discovery47 tests passed. The evaluator read-first follow-up passed162context/evaluator checks plus plugin build/typecheck; its final root verification passed, and the rebuilt preview passed Notes navigation (2.223s/1call) and a complete two-event Calendar read (4.624s/3calls). Exact stored Notes and Calendar state was inspected; unrelated records remained unchanged. Physical microphone/playback/animation acceptance is separate from synthetic Cartesia protocol proof. The actual assistant bundle must be rebuilt and fingerprinted before runtime testing; a source-only restart did not load two late changes, and those runs are explicitly excluded from change-effect claims.
 
 ## Remaining gates
 
-- Finish the two-week preservation expansion. The original159branch-name audit is a cutoff snapshot, not exhaustive proof; additional refs include duplicates, already-contained history and separate Cloud/recovery archives. No saved ref was deleted.
+- Retain the documented two-week preservation supplement:21additional commits match current patches and12more have current behavior evidence;25Cloud/deployment/test alternatives remain separately scoped. The original159branch-name audit is a cutoff snapshot, not exhaustive proof; additional refs include duplicates, already-contained history and separate Cloud/recovery archives. No saved ref was deleted.
 - Resolve or explicitly qualify avoidable discovery/recovery overhead and provider latency. The sub3-second target is not met for every action flow; do not remove correctness guards to advertise it.
 - Final candidate verification, matching runtime artifact, concise user QA and video. User approval precedes publication/integration; Shaw's refactor requires combined QA after he takes any later fixes.
 
