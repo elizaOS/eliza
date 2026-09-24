@@ -3,7 +3,7 @@
  * `validate()` paths to gate on message content. Both scan the current message
  * plus every retained recent message; keyword matching is case-insensitive.
  */
-import type { Memory } from "../types";
+import type { Memory } from "../types/memory.js";
 
 /**
  * Validates if any of the given keywords are present in the recent message history.

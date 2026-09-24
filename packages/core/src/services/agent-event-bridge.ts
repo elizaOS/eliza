@@ -13,10 +13,10 @@ import type {
 	MessagePayload,
 	RunEventPayload,
 } from "../types/events.ts";
-import type { IAgentRuntime } from "../types/index.ts";
 import type { NotificationInput } from "../types/notification.ts";
 import type { JsonValue } from "../types/primitives.ts";
 import { ChannelType } from "../types/primitives.ts";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { ServiceType } from "../types/service.ts";
 import type { AgentEventService } from "./agentEvent.ts";
 

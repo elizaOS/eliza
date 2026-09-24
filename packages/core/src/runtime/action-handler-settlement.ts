@@ -9,14 +9,6 @@
 
 import { ElizaError } from "../errors";
 import { runWithSuppressedModelStream } from "../streaming-context";
-import type {
-	Action,
-	ActionResult,
-	Content,
-	HandlerCallback,
-	IAgentRuntime,
-	Memory,
-} from "../types";
 import {
 	type ActionFailureProvenance,
 	normalizeActionFailureProvenance,
@@ -26,6 +18,11 @@ import {
 	applyGroundedActionReply,
 	normalizeActionReplyFailure,
 } from "../types/action-reply";
+import type {
+	Action,
+	ActionResult,
+	HandlerCallback,
+} from "../types/components.js";
 import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
@@ -34,6 +31,9 @@ import {
 	tagsMayProduceEffects,
 	tagsRequireEffectReceipts,
 } from "../types/effects";
+import type { Memory } from "../types/memory.js";
+import type { Content } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	isProviderContextOverflowFailure,
 	PROVIDER_CONTEXT_OVERFLOW,

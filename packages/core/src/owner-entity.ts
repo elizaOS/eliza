@@ -8,7 +8,7 @@
  */
 import { ElizaError } from "./errors";
 import { deterministicOwnerEntityId, resolveCanonicalOwnerId } from "./roles";
-import type { IAgentRuntime } from "./types";
+import type { IAgentRuntime } from "./types/runtime.js";
 
 type WorldMetadataShape = {
 	ownership?: { ownerId?: string };

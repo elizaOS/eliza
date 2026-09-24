@@ -9,15 +9,15 @@ import {
 	resolveArtifactDisclosure,
 } from "../access-control/artifact-disclosure";
 import { ElizaError } from "../errors";
+import type { AccessContext } from "../types/access-context.js";
+import type { MessageContentSourceSelector } from "../types/database.js";
+import type { Memory } from "../types/memory.js";
 import type {
-	AccessContext,
 	Content,
 	ContentValue,
 	Media,
-	Memory,
-	MessageContentSourceSelector,
 	UUID,
-} from "../types";
+} from "../types/primitives.js";
 import { createHash } from "../utils/crypto-compat";
 
 export const MESSAGE_CONTENT_SEGMENT_VERSION = 1 as const;

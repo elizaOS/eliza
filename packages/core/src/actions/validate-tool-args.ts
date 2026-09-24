@@ -8,7 +8,7 @@
  * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
  * since a JS regex runs synchronously and cannot be interrupted.
  */
-import type { Action } from "../types";
+import type { Action } from "../types/components.js";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import {
 	type ActionParametersJsonSchema,

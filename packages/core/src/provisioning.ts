@@ -10,9 +10,10 @@
  */
 
 import { createLogger } from "./logger";
-import type { Agent, Character, JsonValue, UUID } from "./types";
-import { ChannelType } from "./types";
+import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
+import type { JsonValue, UUID } from "./types/primitives.js";
+import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
