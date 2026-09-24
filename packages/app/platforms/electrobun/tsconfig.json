@@ -21,16 +21,6 @@
 				"../../../../plugins/plugin-assistant/src/*"
 			],
 			"@elizaos/plugin-github/*": ["../../../../plugins/plugin-github/src/*"],
-			"drizzle-orm": [
-				"../../../../plugins/plugin-sql/node_modules/drizzle-orm"
-			],
-			"drizzle-orm/*": [
-				"../../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-			],
-			"@capacitor/app": [
-				"../../../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
-			],
-			"@clack/prompts": ["../../../agent/node_modules/@clack/prompts"],
 			"@elizaos/app": ["../../src/index.ts"],
 			"@elizaos/app/*": ["../../src/*"],
 			"@elizaos/agent": ["../../../agent/src/index.ts"],

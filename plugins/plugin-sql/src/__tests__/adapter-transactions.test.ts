@@ -13,7 +13,7 @@ import { PgDatabaseAdapter } from "../pg/adapter";
 import { PostgresConnectionManager } from "../pg/manager";
 import { PgliteDatabaseAdapter } from "../pglite/adapter";
 import { PGliteClientManager } from "../pglite/manager";
-import * as schema from "../schema";
+import { schema } from "../schema";
 
 const postgresUrl = process.env.SQL_TRANSACTION_TEST_POSTGRES_URL;
 const backends = postgresUrl ? ["pglite", "postgres"] : ["pglite"];

@@ -12,7 +12,7 @@ import {
   messageExamplesFromDb,
   messageExamplesToDb,
 } from "../agent-mapping";
-import { agentTable } from "../schema/index";
+import { agentTable } from "../schema/agent";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

@@ -1,9 +1,9 @@
 /** Exercises actual SQL list reads and choice dispatch with a corrupt stored schedule. */
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
+import { taskTable } from "@elizaos/plugin-sql";
 import { eq } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { createIsolatedTestDatabase } from "../../../plugin-sql/src/__tests__/test-helpers";
-import { taskTable } from "../../../plugin-sql/src/schema";
 import type { DrizzleDatabase } from "../../../plugin-sql/src/types";
 import { choiceAction } from "../features/basic-capabilities/actions/choice";
 
