@@ -703,7 +703,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         return;
       await this.unloadContext();
       const native = await import("llama-cpp-capacitor");
-      if (typeof native.initBgeEmbedding !== "function") {
+      if (
+        !("initBgeEmbedding" in native) ||
+        typeof native.initBgeEmbedding !== "function"
+      ) {
         throw new ElizaError(
           "Install the fused mobile BGE bridge before embedding",
           { code: "EMBEDDING_BACKEND_UNAVAILABLE" },
@@ -715,10 +718,25 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           code: "EMBEDDING_CONTEXT_INVALID",
         });
       }
-      this.bgeContext = await native.initBgeEmbedding({
+      const context: unknown = await native.initBgeEmbedding({
         model: options.modelPath,
         n_ctx: limit,
       });
+      if (
+        typeof context !== "object" ||
+        context === null ||
+        !("tokenize" in context) ||
+        typeof context.tokenize !== "function" ||
+        !("embedding" in context) ||
+        typeof context.embedding !== "function" ||
+        !("release" in context) ||
+        typeof context.release !== "function"
+      ) {
+        throw new ElizaError("Mobile BGE bridge returned an invalid context", {
+          code: "EMBEDDING_BACKEND_INVALID",
+        });
+      }
+      this.bgeContext = context as NonNullable<typeof this.bgeContext>;
       this.bgeContextLimit = limit;
       this.loadedPath = options.modelPath;
       return;
