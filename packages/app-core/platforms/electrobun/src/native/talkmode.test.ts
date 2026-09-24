@@ -61,6 +61,7 @@ function immediateSpawn(): {
     kill,
     proc: {
       exited: Promise.resolve(0),
+      stderr: streamChunks([]),
       kill,
     } as unknown as ReturnType<typeof Bun.spawn>,
   };
@@ -82,6 +83,7 @@ function hangingSpawn(): {
     },
     proc: {
       exited: exited.promise,
+      stderr: streamChunks([]),
       kill,
     } as unknown as ReturnType<typeof Bun.spawn>,
   };
@@ -108,7 +110,10 @@ describe("TalkModeManager", () => {
     manager = new TalkModeManager();
     manager.setSendToWebview(sendToWebview);
     setApiKey(undefined);
-    vi.stubGlobal("Bun", { spawn: vi.fn() });
+    vi.stubGlobal("Bun", {
+      spawn: vi.fn(),
+      which: vi.fn((name: string) => name),
+    });
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
@@ -159,7 +164,7 @@ describe("TalkModeManager", () => {
     vi.spyOn(Bun, "spawn").mockImplementation(() => {
       throw new Error("say missing");
     });
-    await manager.speak({ text: "hi" });
+    await expect(manager.speak({ text: "hi" })).rejects.toThrow("say missing");
     await expect(manager.getState()).resolves.toEqual({ state: "error" });
     await expect(manager.isEnabled()).resolves.toEqual({ enabled: true });
 
@@ -236,7 +241,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
@@ -266,7 +271,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
@@ -277,7 +282,7 @@ describe("TalkModeManager", () => {
 
   it.each([
     ["darwin", ["say", "hello there"]],
-    ["linux", ["espeak", "hello there"]],
+    ["linux", ["espeak-ng", "--stdin"]],
   ] as const)(
     "speaks through the %s system voice when no API key is set",
     async (platform, argv) => {
@@ -287,7 +292,18 @@ describe("TalkModeManager", () => {
 
       await manager.speak({ text: "hello there" });
 
-      expect(spawn).toHaveBeenCalledWith(argv, { stderr: "pipe" });
+      expect(spawn).toHaveBeenCalledWith(
+        argv,
+        platform === "linux"
+          ? { stdin: expect.any(Blob), stdout: "ignore", stderr: "pipe" }
+          : { stderr: "pipe" },
+      );
+      if (platform === "linux") {
+        const input = spawn.mock.calls[0][1]?.stdin;
+        if (!(input instanceof Blob))
+          throw new Error("Expected complete speech input");
+        expect(await input.text()).toBe("hello there");
+      }
       expect(globalThis.fetch).toBe(originalFetch);
       expect(sendToWebview).toHaveBeenCalledWith("talkmodeStateChanged", {
         state: "speaking",
@@ -345,7 +361,9 @@ describe("TalkModeManager", () => {
       throw new Error("spawn failed");
     });
 
-    await manager.speak({ text: "nope" });
+    await expect(manager.speak({ text: "nope" })).rejects.toThrow(
+      "spawn failed",
+    );
 
     await expect(manager.getState()).resolves.toEqual({ state: "error" });
     await expect(manager.isSpeaking()).resolves.toEqual({ speaking: false });
@@ -365,7 +383,9 @@ describe("TalkModeManager", () => {
     vi.spyOn(Bun, "spawn").mockImplementation(() => {
       throw new Error("spawn failed");
     });
-    await manager.speak({ text: "nope" });
+    await expect(manager.speak({ text: "nope" })).rejects.toThrow(
+      "spawn failed",
+    );
     await expect(manager.getState()).resolves.toEqual({ state: "error" });
 
     await manager.start();
@@ -468,7 +488,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
@@ -490,7 +510,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
@@ -528,7 +548,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
@@ -541,24 +561,85 @@ describe("TalkModeManager", () => {
     expect(url).toBe("https://api.elevenlabs.io/v1/text-to-speech//stream");
   });
 
-  it("completes ElevenLabs speech when the response body is missing", async () => {
-    setApiKey("sk-live");
-    globalThis.fetch = vi.fn(async () => {
-      return {
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        body: null,
-      } as unknown as Response;
-    }) as unknown as typeof fetch;
+  it.each([null, "empty"])(
+    "rejects an ElevenLabs response without audio (%s)",
+    async (body) => {
+      setApiKey("sk-live");
+      globalThis.fetch = vi.fn(
+        async () => new Response(body === null ? null : streamChunks([])),
+      ) as unknown as typeof fetch;
+      await expect(manager.speak({ text: "nobody" })).rejects.toMatchObject({
+        code: "TTS_AUDIO_MISSING",
+      });
+      expect(sendToWebview).not.toHaveBeenCalledWith("talkmodeSpeakComplete");
+      await expect(manager.getState()).resolves.toEqual({ state: "error" });
+    },
+  );
 
-    await manager.speak({ text: "nobody" });
-    expect(sendToWebview).not.toHaveBeenCalledWith(
-      "talkmodeAudioChunkPush",
-      expect.anything(),
+  it("rejects a failed system process instead of reporting completed speech", async () => {
+    const spawned = immediateSpawn();
+    Object.assign(spawned.proc, {
+      exited: Promise.resolve(2),
+      stderr: streamChunks([
+        new TextEncoder().encode("audio device unavailable"),
+      ]),
+    });
+    vi.spyOn(Bun, "spawn").mockReturnValue(spawned.proc);
+    await expect(manager.speak({ text: "hello" })).rejects.toMatchObject({
+      code: "SYSTEM_TTS_FAILED",
+      context: expect.objectContaining({
+        exitCode: 2,
+        diagnostic: "audio device unavailable",
+      }),
+    });
+    expect(sendToWebview).not.toHaveBeenCalledWith("talkmodeSpeakComplete");
+  });
+
+  it("rejects missing Linux voices before spawning and supports legacy espeak", async () => {
+    stubPlatform("linux");
+    vi.mocked(Bun.which).mockReturnValue(null);
+    await expect(manager.speak({ text: "hello" })).rejects.toMatchObject({
+      code: "SYSTEM_TTS_UNAVAILABLE",
+    });
+    expect(Bun.spawn).not.toHaveBeenCalled();
+    vi.mocked(Bun.which).mockImplementation((name) =>
+      name === "espeak" ? "/usr/bin/espeak" : null,
     );
-    expect(sendToWebview).toHaveBeenCalledWith("talkmodeSpeakComplete");
-    await expect(manager.getState()).resolves.toEqual({ state: "idle" });
+    vi.mocked(Bun.spawn).mockReturnValue(immediateSpawn().proc);
+    const text = `--help\n${"complete speech ".repeat(10000)}`;
+    await manager.speak({ text });
+    const [argv, options] = vi.mocked(Bun.spawn).mock.calls[0];
+    expect(argv).toEqual(["/usr/bin/espeak", "--stdin"]);
+    const input = options?.stdin;
+    if (!(input instanceof Blob))
+      throw new Error("Expected complete speech input");
+    expect(await input.text()).toBe(text);
+  });
+
+  it("stopping the session cancels speech without a completion event", async () => {
+    const spawned = hangingSpawn();
+    vi.mocked(Bun.spawn).mockReturnValue(spawned.proc);
+    const speaking = manager.speak({ text: "long" });
+    await manager.stop();
+    await speaking;
+    expect(spawned.kill).toHaveBeenCalledOnce();
+    expect(sendToWebview).not.toHaveBeenCalledWith("talkmodeSpeakComplete");
+  });
+
+  it("a cancelled old process cannot clear a newer speech operation", async () => {
+    const first = hangingSpawn();
+    const second = hangingSpawn();
+    vi.mocked(Bun.spawn)
+      .mockReturnValueOnce(first.proc)
+      .mockReturnValueOnce(second.proc);
+    const oldSpeech = manager.speak({ text: "old" });
+    const newSpeech = manager.speak({ text: "new" });
+    await oldSpeech;
+    await expect(manager.isSpeaking()).resolves.toEqual({ speaking: true });
+    await manager.stopSpeaking();
+    await newSpeech;
+    expect(second.kill).toHaveBeenCalledOnce();
+    expect(sendToWebview).not.toHaveBeenCalledWith("talkmodeSpeakComplete");
   });
 
   it("reports an ElevenLabs HTTP error and stays in error without speakComplete", async () => {
@@ -572,7 +653,9 @@ describe("TalkModeManager", () => {
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
-    await manager.speak({ text: "secret" });
+    await expect(manager.speak({ text: "secret" })).rejects.toThrow(
+      "401 Unauthorized",
+    );
 
     expect(sendToWebview).toHaveBeenCalledWith("talkmodeError", {
       source: "elevenlabs",
@@ -593,7 +676,7 @@ describe("TalkModeManager", () => {
       throw new Error("ECONNRESET");
     }) as unknown as typeof fetch;
 
-    await manager.speak({ text: "down" });
+    await expect(manager.speak({ text: "down" })).rejects.toThrow();
 
     expect(sendToWebview).toHaveBeenCalledWith("talkmodeError", {
       source: "elevenlabs",
@@ -609,7 +692,7 @@ describe("TalkModeManager", () => {
       throw "upstream-down";
     }) as unknown as typeof fetch;
 
-    await manager.speak({ text: "down" });
+    await expect(manager.speak({ text: "down" })).rejects.toThrow();
 
     expect(sendToWebview).toHaveBeenCalledWith("talkmodeError", {
       source: "elevenlabs",
@@ -657,7 +740,7 @@ describe("TalkModeManager", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        body: null,
+        body: streamChunks([new Uint8Array([1])]),
       } as unknown as Response;
     }) as unknown as typeof fetch;
 
