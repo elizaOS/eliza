@@ -34,5 +34,5 @@
     },
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "tests", "scripts", "playwright.config.ts"]
+  "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"]
 }

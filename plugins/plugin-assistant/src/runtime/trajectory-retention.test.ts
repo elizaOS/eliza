@@ -12,7 +12,7 @@ import {
   type TaskWorker,
   type UUID,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { basicServices } from "../features/basic-capabilities/index.ts";
 import { createJsonFileTrajectoryRecorder } from "./trajectory-recorder.ts";

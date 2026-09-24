@@ -6,7 +6,7 @@
  * default.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {

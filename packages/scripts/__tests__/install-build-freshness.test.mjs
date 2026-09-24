@@ -5,12 +5,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  realpathSync,
-  symlinkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";

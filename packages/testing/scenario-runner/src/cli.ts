@@ -16,6 +16,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import type { LiveProviderName } from "@elizaos/testing";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
@@ -23,7 +24,6 @@ import {
   type ScenarioLane,
   scenarioExecutionProfile,
 } from "@elizaos/testing";
-import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import {
   countScenarioCorpus,
   listScenarioMetadata,
@@ -504,7 +504,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     ScenarioRuntimeFactoryModule,
     NativeExportModule,
   ] = await Promise.all([
-    import("@elizaos/testing/live-provider"),
+    import("@elizaos/testing"),
     import("./executor.ts"),
     import("./reporter.ts"),
     import("./runtime-factory.ts"),

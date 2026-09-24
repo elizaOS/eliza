@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 /** Drives repo automation voice matrix with explicit CLI and CI behavior. */
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

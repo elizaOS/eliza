@@ -5,6 +5,8 @@ Wi-Fi networks.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
+Scanning requires Android location permission and the native mobile shell.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

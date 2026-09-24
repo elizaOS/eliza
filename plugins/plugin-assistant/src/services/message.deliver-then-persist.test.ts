@@ -11,7 +11,7 @@
  * adapter transaction begins, and delegates real writes to the real adapter.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";

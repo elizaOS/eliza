@@ -11,8 +11,10 @@ Build from the repository root:
 bun run --cwd packages/cloud/services/operator build
 ```
 
-Test from the repository root:
+Validate from the repository root:
 
 ```bash
-bun run --cwd packages/cloud/services/operator test
+bun run --cwd packages/cloud/services/operator typecheck  # static validation
 ```
+
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

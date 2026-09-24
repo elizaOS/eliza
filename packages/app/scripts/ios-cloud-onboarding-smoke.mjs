@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
  * CDP-drivable, so the app reports structured pass/fail details through a
  * simulator Preference key while this script records screenshots and video.
  */
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   assertLiveChallengeReply,
   buildLivenessChallenge,

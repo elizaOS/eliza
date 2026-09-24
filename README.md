@@ -22,7 +22,7 @@ Android distributions live in the separate
 | --- | --- |
 | Use Eliza | [Open the web app](https://cloud.eliza.app), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
-| Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
+| Build an agent or plugin | Start with [the runtime](#build-an-agent) and the [developer docs](https://docs.elizaos.ai/) |
 | Contribute | Read the repository guide in [AGENTS.md](AGENTS.md) |
 | Run a whole device as elizaOS | Use the installers and target guides in [`elizaOS/os`](https://github.com/elizaOS/os) |
 
@@ -96,15 +96,13 @@ document the exact support and setup for each capability.
 The framework is model-agnostic and extended through plugins:
 
 - [`@elizaos/core`](packages/core) defines `AgentRuntime`, the canonical types,
-  the message loop, memory and state primitives, and plugin contracts.
+  authorization, memory and state primitives, and plugin contracts.
 - [`@elizaos/agent`](packages/agent) assembles a standalone agent and HTTP
   backend around the core runtime.
 - [`@elizaos/app`](packages/app) provides shared application hosting,
   API, and platform orchestration for Eliza app targets.
 - [`@elizaos/ui`](packages/ui) contains the shared React UI used by app
   surfaces.
-- `elizaos` is the project and plugin scaffolding, upgrade,
-  and deployment CLI.
 
 A plugin exports a `Plugin` object. Plugins can register actions, providers,
 evaluators, services, model handlers, routes, events, tests, and app views. See
@@ -137,21 +135,9 @@ bootable Linux and AOSP distributions, installers, release manifests, and OS
 toolchains. This monorepo retains the Eliza application shells and native
 runtime bridges used by desktop, iOS, Android, and device integrations.
 
-## Build with `elizaos`
+## Build an agent
 
-The beta CLI published from this branch uses the unscoped `elizaos` package:
-
-```bash
-bun add --global elizaos@beta
-elizaos create my-project --template project
-elizaos create plugin-example --template plugin
-```
-
-Projects are deployable workspaces; plugins are reusable capability packages.
-The packaged templates and their scaffold contracts live in
-`packages/elizaos/templates/`.
-
-To embed the runtime directly without the CLI or application host, import
+To embed the runtime directly without an application host, import
 `@elizaos/core`. The scenario runner provides executable integration coverage
 against a real runtime and, when configured, live models.
 

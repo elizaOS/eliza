@@ -1,4 +1,4 @@
-/** Runtime, provider, connector, and browser utilities for package-owned tests. */
+/** Scenario authoring contracts and explicit runtime fixtures for package-owned validation. */
 
 // PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
 export {
@@ -8,12 +8,24 @@ export {
   testPgliteStorageMode,
 } from "@elizaos/shared/utils/pglite-storage";
 export * from "../scenario-runner/schema/index.js";
+export {
+  CerebrasJudge,
+  type CerebrasJudgeOptions,
+  type CerebrasJudgeVerdict,
+  type JudgeCallOptions,
+  type JudgeResponse,
+  extractBalancedJsonObject,
+  normalizeVerdict,
+  parseJudgeScore,
+  tolerantJsonParse,
+  verdictFromScore,
+} from "../scenario-runner/src/cerebras-judge.ts";
 export * from "../scenario-runner/src/scenario-assertions/action-assertions.ts";
 export * from "../scenario-runner/src/scenario-assertions/action-result-assertions.ts";
 export * from "../scenario-runner/src/scenario-assertions/browser-task-assertions.ts";
 export * from "../scenario-runner/src/scenario-assertions/calendar-assertions.ts";
 export * from "../scenario-runner/src/scenario-assertions/effect-assertions.ts";
-export { contextBenchProvider } from "./benchmark-context-provider";
+export { contextBenchProvider } from "./benchmark-context-provider.ts";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
   createCanvas2DContext,
@@ -22,7 +34,11 @@ export {
   installCanvasShims,
   installMediaElementShims,
   suppressReactTestConsoleErrors,
-} from "./browser-mocks";
+} from "./browser-mocks.ts";
+export {
+  CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
+  CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
+} from "./capability-protocol-fixture.ts";
 export {
   type InteractionAdapterConformanceOptions,
   type InteractionConformanceCaseName,
@@ -32,7 +48,7 @@ export {
   REQUIRED_INTERACTION_CONFORMANCE_CASES,
   runInteractionAdapterConformance,
   runInteractionLeaseConformance,
-} from "./computer-use-conformance";
+} from "./computer-use-conformance.ts";
 export {
   actionSlug,
   benignExternalMessageFixture,
@@ -45,7 +61,7 @@ export {
   stage1ResponseHandlerFixture,
   strictActionRouteFixtures,
   strictTerminalReplyFixture,
-} from "./deterministic-action-fixtures";
+} from "./deterministic-action-fixtures.ts";
 export {
   applyDeterministicModelFixtureBehavior,
   createDeterministicModelFixtureRegistry,
@@ -66,7 +82,7 @@ export {
   type DeterministicModelResponse,
   type DeterministicSchemaMatcher,
   type DeterministicTextMatcher,
-} from "./deterministic-model-plugin";
+} from "./deterministic-model-plugin.ts";
 // Package path resolution for monorepo tests
 export {
   getAppCoreSourceRoot,
@@ -77,7 +93,7 @@ export {
   getSharedSourceRoot,
   getUiSourceRoot,
   resolveModuleEntry,
-} from "./eliza-package-paths";
+} from "./eliza-package-paths.ts";
 // HTTP test request helpers
 export {
   createConversation,
@@ -86,13 +102,13 @@ export {
   postConversationMessage,
   readConversationId,
   req,
-} from "./http";
+} from "./http.ts";
 // Inference provider detection and validation
 export {
   detectInferenceProviders,
   type InferenceProviderDetectionResult,
   type InferenceProviderInfo,
-} from "./inference-provider";
+} from "./inference-provider.ts";
 // Live LLM provider selection
 export {
   availableProviderNames,
@@ -101,39 +117,34 @@ export {
   type LiveProviderName,
   requireLiveProvider,
   selectLiveProvider,
-} from "./live-provider";
-export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
+} from "./live-provider.ts";
+export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime.ts";
 export {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
   type ModelProviderTestRuntimeOptions,
-} from "./model-provider-runtime";
+} from "./model-provider-runtime.ts";
 // Ollama model handlers (for local inference)
 export {
   createOllamaModelHandlers,
   isOllamaAvailable,
   listOllamaModels,
-} from "./ollama-provider";
+} from "./ollama-provider.ts";
 // PGLite runtime factory for tests
 export {
   createTestRuntime,
   type TestRuntimeOptions,
   type TestRuntimeResult,
-} from "./pglite-runtime";
+} from "./pglite-runtime.ts";
+export { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture.ts";
 // Real runtime factory with LLM/connector support
 export {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
-} from "./real-runtime";
-
+} from "./real-runtime.ts";
 export {
   createSQLiteTestRuntime,
   initializeTestRuntime,
   SQLiteDatabaseAdapter,
-} from "./sqlite-adapter";
-export {
-  CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
-  CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
-} from "./capability-protocol-fixture";
-export { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
+} from "./sqlite-adapter.ts";

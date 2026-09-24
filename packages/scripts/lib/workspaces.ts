@@ -52,23 +52,22 @@ export interface Submodule {
   initialized: boolean;
 }
 
-
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
 
-function normalizePath(value) {
+function normalizePath(value: string) {
   return value.split(path.sep).join("/");
 }
 
-function compareText(left, right) {
+function compareText(left: string, right: string) {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
 }
 
-function readJson(filePath) {
+function readJson(filePath: string) {
   const source = readFileSync(filePath, "utf8");
   try {
     return JSON.parse(source);
@@ -78,17 +77,22 @@ function readJson(filePath) {
   }
 }
 
-function resolveRepoRoot(opts) {
+function resolveRepoRoot(opts?: WorkspaceDiscoveryOptions) {
   return opts?.repoRoot ? path.resolve(opts.repoRoot) : DEFAULT_REPO_ROOT;
 }
 
-function isMissingPathError(error) {
-  return error?.code === "ENOENT" || error?.code === "ENOTDIR";
+function isMissingPathError(error: unknown) {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
 }
 
 // Compile one workspace glob segment-pattern to a RegExp over the "/"-joined
 // relative path. `**` spans segments (including zero), `*` stays within one.
-function workspaceGlobToRegExp(glob) {
+function workspaceGlobToRegExp(glob: string) {
   let pattern = "";
   for (let i = 0; i < glob.length; i += 1) {
     const char = glob[i];
@@ -138,14 +142,14 @@ const WALK_SKIP_DIRS = new Set([
 // A directory child is traversable/matchable as a workspace only if it is not
 // hidden and not a build/vendor dir. Applied uniformly to `*` and `**` so both
 // segment kinds agree on membership.
-function isTraversableChild(name) {
+function isTraversableChild(name: string) {
   return !name.startsWith(".") && !WALK_SKIP_DIRS.has(name);
 }
 
 // Walk the tree expanding one positive glob into concrete directories. A `*`
 // segment enumerates children; a `**` segment matches this directory and every
 // descendant directory; a literal segment descends by name.
-function expandPositiveGlob(repoRoot, pattern) {
+function expandPositiveGlob(repoRoot: string, pattern: string) {
   let dirs = [repoRoot];
   const parts = pattern.split("/");
   for (let i = 0; i < parts.length; i += 1) {
@@ -181,7 +185,7 @@ function expandPositiveGlob(repoRoot, pattern) {
   return dirs;
 }
 
-function readDirEntries(dir) {
+function readDirEntries(dir: string) {
   try {
     return readdirSync(dir, { withFileTypes: true });
   } catch (error) {
@@ -193,7 +197,7 @@ function readDirEntries(dir) {
 
 // Depth-first directory list rooted at `start` (inclusive), skipping hidden and
 // heavy build/vendor dirs so `**` expansion stays bounded and deterministic.
-function walkDirs(start) {
+function walkDirs(start: string) {
   const out = [start];
   for (const entry of readDirEntries(start)) {
     if (!entry.isDirectory()) continue;
@@ -208,7 +212,10 @@ function walkDirs(start) {
  * into a deduped, sorted list of relative directory paths. Positive patterns
  * add matches; a leading `!` pattern removes earlier matches (exclude-wins).
  */
-export function expandWorkspaceGlobs(patterns: string[], opts?: WorkspaceDiscoveryOptions): string[] {
+export function expandWorkspaceGlobs(
+  patterns: string[],
+  opts?: WorkspaceDiscoveryOptions,
+): string[] {
   const repoRoot = resolveRepoRoot(opts);
   const matchers = patterns.map((glob) => {
     const negated = glob.startsWith("!");
@@ -218,7 +225,7 @@ export function expandWorkspaceGlobs(patterns: string[], opts?: WorkspaceDiscove
     };
   });
 
-  function isMember(relativeDir) {
+  function isMember(relativeDir: string) {
     let member = false;
     for (const { negated, regExp } of matchers) {
       if (regExp.test(relativeDir)) member = !negated;
@@ -293,7 +300,9 @@ export function listWorkspaceDirs(opts?: WorkspaceDiscoveryOptions): string[] {
  * package.json `name` field (may be undefined for a private, unnamed package)
  * and `dir` is the workspace-relative directory.
  */
-export function listPackages(opts?: WorkspaceDiscoveryOptions): WorkspacePackage[] {
+export function listPackages(
+  opts?: WorkspaceDiscoveryOptions,
+): WorkspacePackage[] {
   const repoRoot = resolveRepoRoot(opts);
   const packages = listWorkspaceDirs({
     repoRoot,
@@ -371,9 +380,9 @@ export function collectWorkspaceMaps(repoRoot: string, patterns: string[]) {
 // Minimal INI parser for .gitmodules: sections keyed by `[submodule "name"]`,
 // with `path` / `url` / `branch` values. Indentation and comment lines (`#`,
 // `;`) are ignored; unknown keys are dropped.
-function parseGitmodules(text) {
-  const sections = [];
-  let current = null;
+function parseGitmodules(text: string) {
+  const sections: Record<string, string>[] = [];
+  let current: Record<string, string> | null = null;
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#") || line.startsWith(";")) continue;
@@ -400,7 +409,7 @@ function parseGitmodules(text) {
 export function listSubmodules(opts?: WorkspaceDiscoveryOptions): Submodule[] {
   const repoRoot = resolveRepoRoot(opts);
   const gitmodulesPath = path.join(repoRoot, ".gitmodules");
-  let source;
+  let source: string;
   try {
     source = readFileSync(gitmodulesPath, "utf8");
   } catch (error) {
@@ -419,7 +428,7 @@ export function listSubmodules(opts?: WorkspaceDiscoveryOptions): Submodule[] {
     }));
 }
 
-function isSubmoduleInitialized(absPath) {
+function isSubmoduleInitialized(absPath: string) {
   if (existsSync(path.join(absPath, ".git"))) return true;
   const entries = readDirEntries(absPath);
   return entries.length > 0;

@@ -13,7 +13,7 @@ import {
   test,
 } from "@playwright/test";
 import { _android } from "playwright";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { adbReverse, resolveAdb } from "../../scripts/lib/android-device.mjs";
 import {

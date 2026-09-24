@@ -12,12 +12,12 @@ import {
   type DeterministicModelFixtureRegistry,
   type DeterministicModelPlugin,
   type DeterministicModelPluginOptions,
-} from "./deterministic-model-plugin";
+} from "./deterministic-model-plugin.ts";
 import {
   createTestRuntime,
   type TestRuntimeOptions,
   type TestRuntimeResult,
-} from "./pglite-runtime";
+} from "./pglite-runtime.ts";
 
 export interface ModelProviderTestRuntime extends TestRuntimeResult {
   modelProvider: DeterministicModelPlugin;

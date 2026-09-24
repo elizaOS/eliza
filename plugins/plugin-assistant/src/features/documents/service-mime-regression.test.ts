@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {

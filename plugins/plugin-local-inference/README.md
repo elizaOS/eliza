@@ -9,6 +9,8 @@ model artifacts. Root installation builds/verifies the desktop fused library; GG
 models download during warmup. See [native/README.md](native/README.md) for native
 builds. Missing hardware/models are unavailable, not fabricated inference.
 
+Initial model downloads require a network connection and sufficient disk space. Register this plugin in the agent configuration; select local/cloud routing in Settings → Model Routing.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

@@ -15,8 +15,8 @@ import { AgentRuntime, ModelType } from "@elizaos/core";
 import {
   createOllamaModelHandlers,
   isOllamaAvailable,
-} from "@elizaos/testing/ollama-provider";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shouldRespondTemplate } from "../services/message/prompts.js";
 

@@ -9,5 +9,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/benchmarks/plugin-benchmarks build  # build
-bun run --cwd packages/benchmarks/plugin-benchmarks test   # tests
+bun run --cwd packages/benchmarks/plugin-benchmarks typecheck  # static validation
 ```
+
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

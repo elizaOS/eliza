@@ -4,7 +4,7 @@
  */
 
 import { defineConfig } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 // NOTE: this config intentionally has no `webServer`. The packaged Electrobun
 // e2e suite expects the app binary to be built out-of-band before invocation

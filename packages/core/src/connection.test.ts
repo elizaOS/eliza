@@ -3,7 +3,7 @@
  * including durable shared-world role metadata across sequential callers.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { ensureConnection } from "./connection";
 import { recordOwnerGrant, recordRoleGrant } from "./roles";

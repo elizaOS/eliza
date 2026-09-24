@@ -7,6 +7,8 @@ The Node service requires `TAVILY_API_KEY` in agent settings or the environment.
 it, requests fail as unavailable. The `./edge` entry provides the separate
 credential-free Worker-safe action.
 
+The Node service requires `TAVILY_API_KEY`; register the plugin with the agent to expose the web search category.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

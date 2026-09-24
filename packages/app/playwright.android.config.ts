@@ -6,7 +6,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 // Playwright config for the REAL on-device Android WebView e2e suite. Unlike
 // playwright.ui-smoke.config.ts (desktop Chromium + mocked /api), this drives

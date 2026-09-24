@@ -10,7 +10,7 @@
 import {
   CerebrasJudge,
   type JudgeResponse,
-} from "../../../../packages/testing/scenario-runner/src/cerebras-judge.ts";
+} from "@elizaos/testing";
 
 interface ResolvedClientConfig {
   apiKey: string;

@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 // The committed source of truth for the known-phrase audio is the data-URL .ts
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.

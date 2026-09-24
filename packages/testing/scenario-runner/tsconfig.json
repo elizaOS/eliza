@@ -215,7 +215,6 @@
       "@elizaos/plugin-local-inference/*": [
         "../../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/*": ["../src/*"],
       "@elizaos/testing/scenario-runner": ["./src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./src/*"],
       "@elizaos/testing/synthetic-world": ["../synthetic-world/src/index.ts"],

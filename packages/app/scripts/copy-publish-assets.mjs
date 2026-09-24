@@ -103,7 +103,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/app-dir.mjs",
   "scripts/lib/apple-entitlement-audit.mjs",
   "scripts/lib/artifact-staleness.d.mts",
-  "scripts/lib/artifact-staleness.mjs",
+  "scripts/lib/artifact-staleness.ts",
   "scripts/lib/asset-cdn.mjs",
   "scripts/lib/bun-version-guard.mjs",
   "scripts/lib/capacitor-platform-templates.mjs",

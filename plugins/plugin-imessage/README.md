@@ -10,6 +10,8 @@ use `IMESSAGE_TRANSPORT=blooio` with `IMESSAGE_BLOOIO_API_KEY`,
 `/api/imessage/webhook/blooio`; preserve raw-body signature verification and channel
 isolation.
 
+Native mode requires macOS Messages, Full Disk Access for history, and Automation permission for sending. Blooio mode uses its configured channel and API credentials and can run on Linux.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

@@ -6,7 +6,7 @@
  */
 
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 import {
   CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,

@@ -9,7 +9,7 @@
  * embedding API handlers registered through the production model router.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {

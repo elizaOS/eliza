@@ -7,7 +7,7 @@
  * origin, with the REAL localStorage/sessionStorage. No jsdom, no module mocks.
  *
  * The smoke stack serves the BUILT renderer (there is no dev-server module
- * graph to dynamic-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+ * graph to dynamic-import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import from), so the real modules are bundled from their
  * repo sources with esbuild at spec runtime — the same technique the reviewed
  * accounts-ui e2e uses — and injected into the page as one script. The boot

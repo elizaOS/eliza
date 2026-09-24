@@ -7,7 +7,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { ModelType } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";
 import {

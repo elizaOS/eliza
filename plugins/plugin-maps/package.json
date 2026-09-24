@@ -69,8 +69,7 @@
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.0.0",
-    "zod": "^4.4.3",
-    "@elizaos/shared": "workspace:*"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.5",

@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { devices, expect, type Page, test } from "@playwright/test";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   hideChatOverlay,
   installDefaultAppRoutes,

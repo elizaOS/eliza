@@ -1,6 +1,6 @@
 # @elizaos/benchmark-framework
 
-Supporting workspace for @elizaos/benchmark-framework.
+Measures runtime overhead with a real AgentRuntime, controlled model responses, and optional live-model runs.
 
 Install workspace dependencies with `bun install` at the repository root.
 

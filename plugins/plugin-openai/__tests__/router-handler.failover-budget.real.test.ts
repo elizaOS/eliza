@@ -13,7 +13,7 @@ import {
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";

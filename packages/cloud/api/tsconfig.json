@@ -64,6 +64,7 @@
     }
   },
   "include": [
+    "../scripts/api/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx",
     "../shared/src/db/**/*.ts",

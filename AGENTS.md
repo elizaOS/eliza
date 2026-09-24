@@ -19,7 +19,7 @@ bridges, benchmarks, and first-party plugins. Read the nearest package
 - Keep READMEs and agent guides short. Retain other Markdown only when consumed
   by runtime, build, tests, publishing, or required attribution. Generated
   reports belong in ignored repository-root `test-results/`, with one leaf per producer.
-  Use `packages/scripts/lib/test-output.mjs` for stable output paths.
+  Use `packages/scripts/lib/test-output.ts` for stable output paths.
 - Verify changed behavior with the owning package's tests, typecheck, and lint,
   then `bun run verify`. Validate documentation links for docs-only changes.
   UI changes require the app visual audit and desktop/mobile inspection.

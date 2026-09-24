@@ -1,6 +1,6 @@
 /** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";

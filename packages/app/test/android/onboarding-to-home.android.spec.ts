@@ -22,7 +22,7 @@
 // the final turn to the shared liveness assertion (non-empty, non-stub reply).
 
 import path from "node:path";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
   APP_ID,

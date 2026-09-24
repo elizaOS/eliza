@@ -8,5 +8,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/benchmarks/suites/gauntlet/sdk/typescript build  # build
-bun run --cwd packages/benchmarks/suites/gauntlet/sdk/typescript test   # tests
+bun run --cwd packages/benchmarks/suites/gauntlet/sdk/typescript typecheck  # static validation
 ```
+
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

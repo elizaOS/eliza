@@ -7,8 +7,10 @@ Install workspace dependencies with `bun install` at the repository root.
 
 No separate build script; this workspace runs from source.
 
-Test from the repository root:
+Validate from the repository root:
 
 ```bash
-bun run --cwd packages/cloud/services/agent-server test
+bun run --cwd packages/cloud/services/agent-server typecheck  # static validation
 ```
+
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

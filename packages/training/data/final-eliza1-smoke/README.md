@@ -8,7 +8,7 @@ Use a Python environment matching `pyproject.toml` and install the required depe
 
 No standalone wheel build is configured; run the Python sources directly.
 
-Test from this directory:
+Test from `packages/training`:
 
 ```bash
 python -m pytest

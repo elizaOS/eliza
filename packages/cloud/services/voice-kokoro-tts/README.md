@@ -13,8 +13,9 @@ docker build -t eliza-kokoro-tts .
 railway up . --path-as-root --service kokoro-tts
 ```
 
-Test deployment contracts from the repository root:
+Test both deployed voice services from the repository root (requires reachable
+`KOKORO_TTS_URL` and `WHISPER_STT_URL`):
 
 ```bash
-bun test packages/scripts/__tests__/voice-railway-service-defs.test.ts
+ELIZA_VOICE_LIVE_RAILWAY=1 bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
 ```

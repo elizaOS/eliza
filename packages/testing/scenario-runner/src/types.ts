@@ -13,13 +13,13 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
+  DeterministicModelDiagnostics,
   ScenarioContext,
   ScenarioEvidenceScope,
   ScenarioExecutionProfile,
   ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing/deterministic-model-plugin";
 import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 

@@ -8,16 +8,14 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import type {
+  DeterministicModelFixture,
+  DeterministicModelFixtureRegistry,
+  DeterministicTextMatcher,
   ScenarioDefinition,
   ScenarioModelFixture,
   ScenarioModelFixtureDeclaration,
   ScenarioModelTextMatcher,
 } from "@elizaos/testing";
-import type {
-  DeterministicModelFixture,
-  DeterministicModelFixtureRegistry,
-  DeterministicTextMatcher,
-} from "@elizaos/testing/deterministic-model-plugin";
 
 export type RuntimeWithScenarioModelFixtureRegistry = AgentRuntime & {
   scenarioModelFixtures?: DeterministicModelFixtureRegistry;

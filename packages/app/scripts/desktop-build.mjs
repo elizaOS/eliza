@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { artifactStaleness } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.ts";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,

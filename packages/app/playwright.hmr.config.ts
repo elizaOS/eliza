@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));

@@ -5,7 +5,6 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts",
     "./evidence": "./evidence/index.ts",
     "./evidence/visual-primitives": "./evidence/visual-primitives.mjs",
     "./scenario-runner": "./scenario-runner/src/index.ts",

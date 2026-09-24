@@ -13,7 +13,8 @@
     "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist"]
-    },  },
+    }
+  },
   "include": ["**/*.ts"],
   "exclude": [
     "build.ts",

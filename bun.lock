@@ -1901,7 +1901,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
         "react": "^19.0.0",
@@ -2755,7 +2754,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
         "devalue": "6.0.1",
         "sql.js": "1.14.2",
       },

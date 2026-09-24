@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import sharp from "sharp";
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   type EvaluateArgs,

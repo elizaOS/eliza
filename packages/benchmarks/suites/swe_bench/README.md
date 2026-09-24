@@ -6,14 +6,10 @@ Software engineering benchmark (Lite / Verified / Full / Multilingual): generate
 
 Use a Python environment matching `pyproject.toml` and install the required dependencies.
 
-Build from this directory:
+No compilation or wheel build is required to run this suite from source.
+
+Test from the repository root:
 
 ```bash
-python -m pip wheel --no-deps . --wheel-dir dist
-```
-
-Test from this directory:
-
-```bash
-python -m pytest
+PYTHONPATH=packages python -m pytest packages/benchmarks/suites/swe_bench/tests
 ```

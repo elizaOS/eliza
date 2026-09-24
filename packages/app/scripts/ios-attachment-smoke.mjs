@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 // connect it to a real local agent, then let the attachment verifier exercise
 // the media store + Capacitor Filesystem/Share plugins and report back via
 // Preferences.
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import {
   captureIosSimulatorScreenshot,

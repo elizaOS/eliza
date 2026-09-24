@@ -11,7 +11,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
-import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 

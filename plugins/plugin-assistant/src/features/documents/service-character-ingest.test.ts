@@ -7,8 +7,8 @@
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
-} from "@elizaos/testing/mock-runtime";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ElizaError } from "../../../../../packages/core/src/errors.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";

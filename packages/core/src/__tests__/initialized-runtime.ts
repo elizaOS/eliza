@@ -1,7 +1,7 @@
 /** Real initialized kernel fixture. In-memory persistence supplies the authority
  * reads needed by provider composition; every fixture drains and closes. */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach } from "vitest";
 import type { AgentRuntime } from "../runtime";
 

@@ -190,12 +190,13 @@ export function normalizeVerdict(
 }
 
 class CerebrasJudgeError extends Error {
-  constructor(
-    message: string,
-    public readonly status?: number,
-    public readonly body?: string,
-  ) {
+  readonly status?: number;
+  readonly body?: string;
+
+  constructor(message: string, status?: number, body?: string) {
     super(message);
+    this.status = status;
+    this.body = body;
     this.name = "CerebrasJudgeError";
   }
 }

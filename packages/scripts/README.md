@@ -23,7 +23,7 @@ correct when moving tools between subdirectories.
 ## Generated test output
 
 Audit and test artifacts belong in the ignored repository-root `test-results/`,
-never under a package. Use `testOutputPath` from `lib/test-output.mjs` so paths
+never under a package. Use `testOutputPath` from `lib/test-output.ts` so paths
 do not depend on the command's working directory. Each Playwright lane owns a
 separate leaf under `test-results/app/`; audits use `test-results/aesthetic-audit/`
 and `test-results/aesthetic-audit-cloud/`. Device bundles use

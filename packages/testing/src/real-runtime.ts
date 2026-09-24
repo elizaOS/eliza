@@ -32,7 +32,7 @@ import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
-} from "./live-provider";
+} from "./live-provider.ts";
 
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

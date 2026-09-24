@@ -9,7 +9,7 @@
 
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { APP_ID } from "../../scripts/lib/android-device.mjs";
 import {

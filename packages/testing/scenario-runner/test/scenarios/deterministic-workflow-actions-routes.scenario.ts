@@ -12,8 +12,7 @@ import type {
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
-import { scenario } from "@elizaos/testing";
-import { strictActionRouteFixtures } from "@elizaos/testing/deterministic-action-fixtures";
+import { scenario, strictActionRouteFixtures } from "@elizaos/testing";
 import workflowPlugin, {
   workflowRoutePlugin,
 } from "../../../../../plugins/plugin-workflow/src/index.ts";

@@ -10,7 +10,9 @@ ELIZA_VISION_CUA_E2E_REAL=1 to wire to the real runtime.
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd packages/benchmarks/suites/eliza-1/vision-cua-e2e test   # tests
+bun run --cwd packages/benchmarks/suites/eliza-1/vision-cua-e2e typecheck  # static validation
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
+
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

@@ -16,12 +16,12 @@ import {
   type DeterministicModelCall,
   type DeterministicModelFixture,
   matchesScenarioInput,
+  postToolEvaluatorFixture,
   type RuntimeWithScenarioModelFixtures,
   type StrictActionRouteFixture,
   scenario,
   stage1ResponseHandlerFixture,
 } from "@elizaos/testing";
-import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-fixture";
 import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";
 
 const execFileAsync = promisify(execFile);

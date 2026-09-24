@@ -9,7 +9,7 @@ import {
   createCharacter,
   stringToUuid,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { ComputerUseService } from "../../src/services/computer-use-service.js";
 
 /** Starts the service through the same AgentRuntime registration path used in production. */

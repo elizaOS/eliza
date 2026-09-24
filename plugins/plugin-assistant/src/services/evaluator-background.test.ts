@@ -2,7 +2,7 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";

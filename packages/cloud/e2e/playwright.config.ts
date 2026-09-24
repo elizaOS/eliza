@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 // Load cloud/shared/.env into process.env (without overriding an explicit shell
 // value) so provider keys placed there — e.g. CEREBRAS_API_KEY for the real-LLM

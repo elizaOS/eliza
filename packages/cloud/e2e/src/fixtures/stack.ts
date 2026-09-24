@@ -527,7 +527,7 @@ export async function startCloudStack(
         spawnLogged(
           "frontend",
           "node",
-          [join(REPO_ROOT, "packages/cloud/e2e/scripts/frontend.mjs")],
+          [join(REPO_ROOT, "packages/cloud/scripts/e2e/frontend.mjs")],
           {
             env: frontendEnv,
             cwd: frontendDir,

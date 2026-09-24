@@ -426,15 +426,12 @@ function inspectProject({
     moduleHost.getCanonicalFileName,
     parsed.options,
   );
-  const queue = [...parsed.fileNames];
-  const visited = new Set();
+  const queue = new Set(parsed.fileNames.map((file) => path.resolve(file)));
+  const pathPatterns = Object.keys(parsed.options.paths ?? {});
   const ambientWorkspaceModules = new Map();
   const externallyImportedWorkspaceModules = new Map();
   const ownerDir = packageDirsByName.get(packageName);
-  while (queue.length > 0) {
-    const sourcePath = path.resolve(queue.shift());
-    if (visited.has(sourcePath)) continue;
-    visited.add(sourcePath);
+  for (const sourcePath of queue) {
     let sourceAnalysis = sourceFileCache.get(sourcePath);
     if (!sourceAnalysis) {
       const source = host.readFile(sourcePath);
@@ -454,9 +451,7 @@ function inspectProject({
     }
     for (const specifier of sourceAnalysis.ambientWorkspaceModules) {
       if (
-        Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pathPatternMatches(pattern, specifier),
-        )
+        pathPatterns.some((pattern) => pathPatternMatches(pattern, specifier))
       ) {
         ambientWorkspaceModules.set(specifier, sourcePath);
       }
@@ -504,13 +499,11 @@ function inspectProject({
         !resolution.resolvedFileName.includes(`${path.sep}dist${path.sep}`) &&
         !resolution.resolvedFileName.endsWith(".d.ts")
       ) {
-        queue.push(resolution.resolvedFileName);
+        queue.add(path.resolve(resolution.resolvedFileName));
       }
       if (!specifier.startsWith("@elizaos/")) continue;
       if (
-        !Object.keys(parsed.options.paths ?? {}).some((pattern) =>
-          pattern.startsWith("@elizaos/"),
-        ) ||
+        !pathPatterns.some((pattern) => pattern.startsWith("@elizaos/")) ||
         !rootPathPatterns.some((pattern) =>
           pathPatternMatches(pattern, specifier),
         )

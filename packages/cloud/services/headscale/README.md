@@ -8,8 +8,5 @@ Keep internal `tag:agent` traffic isolated from customer `tag:eliza-tunnel`
 traffic. `tag:eliza-proxy` reaches customer HTTPS endpoints and agent port 2138;
 customer routing remains subject to tenant authorization.
 
-Test the control-plane integration from the repository root:
-
-```bash
-bun test packages/scripts/__tests__/headscale-arm-workflow.test.ts
-```
+There is no standalone test suite in this directory. Validate policy changes
+through an authorized staging control-plane deployment before production.

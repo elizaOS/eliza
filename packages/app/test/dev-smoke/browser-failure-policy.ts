@@ -14,4 +14,4 @@ export {
   isExpectedInactiveLifeOpsActivitySignalsResponse,
   isExpectedUnavailableBrowserBridgeCompanionsResponse,
   isLifeOpsActivitySignals503,
-} from "../../scripts/browser-failure-policy.mjs";
+} from "../../scripts/browser-failure-policy.ts";
