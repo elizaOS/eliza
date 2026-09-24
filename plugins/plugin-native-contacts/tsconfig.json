@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
