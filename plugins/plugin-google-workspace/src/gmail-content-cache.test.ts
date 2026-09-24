@@ -3,7 +3,7 @@
  * persistence, bounded late reads, authorization denial, corruption, restart,
  * atomic publication, and explicit retention cleanup.
  */
-import { type IAgentRuntime, type UUID } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { describe, expect, it } from "vitest";
 import {

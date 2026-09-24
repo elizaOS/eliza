@@ -1123,6 +1123,30 @@ function canariesFor(
   });
 }
 
+// The filler repeats every 32 text bytes, 80 line bytes, or 256 binary bytes.
+// Precompute their periods once; native Buffer.fill avoids per-byte JS branches
+// when generating and independently verifying large scale artifacts.
+const textFiller = Buffer.from("abcdefghijklmnopqrstuvwxyzABCDEF", "ascii");
+function lineFiller(crlf: boolean): Buffer {
+  const period = Buffer.alloc(160).fill(textFiller);
+  for (let end = 79; end < period.length; end += 80) {
+    period[end] = 0x0a;
+    if (crlf) period[end - 1] = 0x0d;
+  }
+  return period;
+}
+const objectFillPatterns: Record<ProgressiveContentFormat, Buffer> = {
+  "lf-lines": lineFiller(false),
+  "crlf-lines": lineFiller(true),
+  "no-final-newline": lineFiller(false),
+  "single-line": textFiller,
+  "invalid-utf8": textFiller,
+  "minified-json-like": Buffer.from('{"key":"escaped\\nvalue","n":123},'),
+  binary: Buffer.from(
+    Array.from({ length: 256 }, (_, index) => (index * 131 + 17) & 0xff),
+  ),
+};
+
 function deterministicObjectChunk(
   offset: number,
   length: number,
@@ -1130,30 +1154,13 @@ function deterministicObjectChunk(
   canaries: readonly ProgressiveContentCanary[],
   format: ProgressiveContentFormat,
 ): Buffer {
-  const chunk = Buffer.allocUnsafe(length);
-  // Keep filler and line-ending edits single-byte. Unicode coverage comes from
-  // complete canary byte spans; repeating or overwriting arbitrary bytes from
-  // a multibyte pattern can manufacture malformed UTF-8 in a text fixture.
-  const textPattern = Buffer.from("abcdefghijklmnopqrstuvwxyzABCDEF", "ascii");
-  const jsonPattern = Buffer.from('{"key":"escaped\\nvalue","n":123},');
-  for (let local = 0; local < length; local += 1) {
-    const absolute = offset + local;
-    chunk[local] =
-      format === "binary"
-        ? (absolute * 131 + 17) & 0xff
-        : (textPattern[absolute % textPattern.length] ?? 0x61);
-    if (format === "lf-lines" && absolute % 80 === 79) chunk[local] = 0x0a;
-    if (format === "crlf-lines") {
-      if (absolute % 80 === 78) chunk[local] = 0x0d;
-      if (absolute % 80 === 79) chunk[local] = 0x0a;
-    }
-    if (format === "no-final-newline" && absolute % 80 === 79) {
-      chunk[local] = 0x0a;
-    }
-    if (format === "minified-json-like") {
-      chunk[local] = jsonPattern[absolute % jsonPattern.length] ?? 0x61;
-    }
-  }
+  const pattern = objectFillPatterns[format];
+  const phase = offset % pattern.length;
+  const rotated =
+    phase === 0
+      ? pattern
+      : Buffer.concat([pattern.subarray(phase), pattern.subarray(0, phase)]);
+  const chunk = Buffer.allocUnsafe(length).fill(rotated);
   if (
     format === "no-final-newline" &&
     byteLength > 0 &&

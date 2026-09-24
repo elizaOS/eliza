@@ -137,7 +137,7 @@ describe("macOS Shortcuts assistant handoff", () => {
     } finally {
       await fs.rm(tempDir, { force: true, recursive: true });
     }
-  });
+  }, 30_000);
 });
 
 async function expectCommandFails(

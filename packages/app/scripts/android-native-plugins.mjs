@@ -90,6 +90,46 @@ export function parseInstrumentation(output, expectedTests) {
   return { pass: problems.length === 0, tests, problems };
 }
 
+/** Device tests may export small, complete media artifacts in instrumentation status bundles. */
+export function parseNativeArtifacts(output) {
+  const artifacts = [];
+  const names = new Set();
+  let fields = {};
+  for (const line of output.split(/\r?\n/)) {
+    const field = line.match(
+      /^INSTRUMENTATION_STATUS: nativeArtifact(Name|Base64)=(.*)$/,
+    );
+    if (field) {
+      if (Object.hasOwn(fields, field[1]))
+        throw new Error("Duplicate native artifact field");
+      fields[field[1]] = field[2];
+    }
+    if (!/^INSTRUMENTATION_STATUS_CODE:/.test(line)) continue;
+    if (Object.keys(fields).length) {
+      if (
+        line !== "INSTRUMENTATION_STATUS_CODE: 2" ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(png|jpg|mp4|wav|json|txt)$/.test(
+          fields.Name ?? "",
+        ) ||
+        names.has(fields.Name) ||
+        typeof fields.Base64 !== "string" ||
+        !fields.Base64
+      ) {
+        throw new Error("Invalid or duplicate native artifact status");
+      }
+      const bytes = Buffer.from(fields.Base64, "base64");
+      if (bytes.toString("base64") !== fields.Base64)
+        throw new Error(`Invalid base64 for native artifact ${fields.Name}`);
+      names.add(fields.Name);
+      artifacts.push({ name: fields.Name, bytes });
+    }
+    fields = {};
+  }
+  if (Object.keys(fields).length)
+    throw new Error("Incomplete native artifact status");
+  return artifacts;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const value = (flag) => args[args.indexOf(flag) + 1];
@@ -227,7 +267,21 @@ async function main() {
           entry,
           parseInstrumentation(output, plugin.expectedTests),
         );
+        entry.artifacts = parseNativeArtifacts(output).map(
+          ({ name, bytes }) => {
+            const relativePath = `${plugin.directory}/${name}`;
+            const destination = path.join(outputDir, relativePath);
+            fs.mkdirSync(path.dirname(destination), { recursive: true });
+            fs.writeFileSync(destination, bytes);
+            return {
+              path: relativePath,
+              bytes: bytes.length,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+            };
+          },
+        );
       } catch (error) {
+        entry.pass = false;
         entry.problems.push(String(error));
         if (error.stdout)
           fs.writeFileSync(

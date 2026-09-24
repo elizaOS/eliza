@@ -1634,7 +1634,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       }
       const now = Date.now();
       const storedSegments: StoredMemory[] = params.segments.map((segment) => ({
-        ...segment,
+        ...persistableMemory(segment),
         id: segment.id,
         tableName: "message_content_segments",
         agentId: publicationAgentId,
@@ -1643,7 +1643,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const storedParent: StoredMemory =
         params.mode === "create"
           ? {
-              ...params.parent,
+              ...persistableMemory(params.parent),
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
@@ -1651,7 +1651,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             }
           : {
               ...(existing as StoredMemory),
-              content: params.replacementContent,
+              content: persistableMemory({ content: params.replacementContent })
+                .content,
             };
       let parentIndexStaged = false;
       try {
@@ -1991,13 +1992,24 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (
         (params.expectedRevision === null && current !== null) ||
         (params.expectedRevision !== null &&
-          currentRevision !== params.expectedRevision) ||
-        (current &&
-          (current.agentId !== this.agentId ||
-            current.roomId !== params.head.memory.roomId ||
-            storedMemoryTableName(current) !== params.head.tableName))
+          currentRevision !== params.expectedRevision)
       )
         return { status: "conflict" };
+      if (
+        current &&
+        (current.agentId !== this.agentId ||
+          current.roomId !== params.head.memory.roomId ||
+          current.entityId !== params.head.memory.entityId ||
+          storedMemoryTableName(current) !== params.head.tableName)
+      ) {
+        throw new ElizaError(
+          "Atomic publication cannot replace another owner's head",
+          {
+            code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+            context: { memoryId: headId },
+          },
+        );
+      }
       if (!this.storage.applyBatch) {
         throw new ElizaError(
           "SQLite storage cannot atomically publish memory dependencies",
@@ -2025,6 +2037,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             storedMemoryTableName(stored) !== dependency.tableName ||
             stored.agentId !== this.agentId ||
             stored.roomId !== dependency.memory.roomId ||
+            stored.entityId !== dependency.memory.entityId ||
             JSON.stringify(stored.content) !==
               JSON.stringify(dependency.memory.content)
           ) {
@@ -2050,8 +2063,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const head: StoredMemory = current
         ? {
             ...current,
-            content: params.head.memory.content,
-            metadata: params.head.memory.metadata,
+            ...persistableMemory(params.head.memory),
+            id: headId,
+            tableName: params.head.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: current.createdAt,
           }
         : {
             ...persistableMemory(params.head.memory),
@@ -2072,6 +2089,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       for (const [id, memory] of additions) {
         if (memory.embedding?.length)
           await this.vectorIndex.add(id, memory.embedding);
+        else await this.vectorIndex.remove(id);
       }
       return { status: "published", head: toMemory(head) };
     });

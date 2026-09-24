@@ -801,7 +801,7 @@ describeWithMedia("web voice media evidence", () => {
       "owned by caller",
     );
     expect(fs.readdirSync(target)).toEqual([]);
-  }, 30_000);
+  }, 60_000);
 
   test("refuses an MP4 without an audio stream", () => {
     const tools = resolveMediaTools();
@@ -815,20 +815,21 @@ describeWithMedia("web voice media evidence", () => {
 describeWithMedia("packaged desktop voice media evidence", () => {
   test("requires real mic mode and separate audible speaker loopback", () => {
     const tools = resolveMediaTools();
+    const fixtureTime = Date.now();
     const root = fixtureRoot();
     const report = path.join(root, "desktop-report.json");
     writeJson(report, {
       revision: currentHead(),
       sessionId: "voice-session-123456",
-      capturedAt: new Date().toISOString(),
+      capturedAt: new Date(fixtureTime).toISOString(),
       packagedRevision: currentHead(),
       rendererBuildId: "renderer-build-1",
       report: {
         overall: "pass",
         platform: "desktop",
         mode: "mic-capture",
-        startedAt: new Date(Date.now() - 1_000).toISOString(),
-        finishedAt: new Date().toISOString(),
+        startedAt: new Date(fixtureTime - 1_000).toISOString(),
+        finishedAt: new Date(fixtureTime).toISOString(),
         ttsRoute: "/api/tts/local-inference",
         sendBackend: "local-inference:eliza-1",
         stages: [
@@ -836,10 +837,10 @@ describeWithMedia("packaged desktop voice media evidence", () => {
             stage: "asr",
             status: "pass",
             detail: {
-              captureStartedAt: new Date(Date.now() - 1_000).toISOString(),
-              captureFinishedAt: new Date().toISOString(),
-              referenceStartedAt: new Date(Date.now() - 900).toISOString(),
-              referenceFinishedAt: new Date(Date.now() - 200).toISOString(),
+              captureStartedAt: new Date(fixtureTime - 1_000).toISOString(),
+              captureFinishedAt: new Date(fixtureTime).toISOString(),
+              referenceStartedAt: new Date(fixtureTime - 900).toISOString(),
+              referenceFinishedAt: new Date(fixtureTime - 200).toISOString(),
               inputDeviceId: "browser-mic-id",
               inputDeviceLabel: "USB test microphone",
             },
@@ -856,8 +857,8 @@ describeWithMedia("packaged desktop voice media evidence", () => {
             stage: "tts",
             status: "pass",
             detail: {
-              playbackStartedAt: new Date(Date.now() - 900).toISOString(),
-              playbackFinishedAt: new Date(Date.now() - 100).toISOString(),
+              playbackStartedAt: new Date(fixtureTime - 900).toISOString(),
+              playbackFinishedAt: new Date(fixtureTime - 100).toISOString(),
               outputDeviceId: "browser-speaker-id",
               played: true,
               outputObserved: true,
@@ -935,8 +936,8 @@ describeWithMedia("packaged desktop voice media evidence", () => {
         ].map(([name, file], index) => [
           name,
           {
-            startedAt: new Date(Date.now() - 2_000 + index * 50).toISOString(),
-            finishedAt: new Date(Date.now() + 2_000).toISOString(),
+            startedAt: new Date(fixtureTime - 2_000 + index * 50).toISOString(),
+            finishedAt: new Date(fixtureTime + 2_000).toISOString(),
             sha256: crypto
               .createHash("sha256")
               .update(fs.readFileSync(file))

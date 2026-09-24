@@ -111,77 +111,81 @@ describe("audit-project propagation contract", () => {
   });
 });
 
-test("propagates audit projects to workers without enabling them by default", async () => {
-  const tempRoot = mkdtempSync(
-    path.join(tmpdir(), "eliza-audit-project-propagation-"),
-  );
-  const server = http.createServer((_, response) => {
-    response.writeHead(200, { "content-type": "text/plain" });
-    response.end("audit project regression\n");
-  });
-
-  await listen(server);
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error(
-      "Audit-project regression server did not expose a TCP port.",
+test(
+  "propagates audit projects to workers without enabling them by default",
+  async () => {
+    const tempRoot = mkdtempSync(
+      path.join(tmpdir(), "eliza-audit-project-propagation-"),
     );
-  }
+    const server = http.createServer((_, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("audit project regression\n");
+    });
 
-  const baseEnv = {
-    ...process.env,
-    ELIZA_AUDIT_APP_DIR: path.join(tempRoot, "audit-output"),
-    ELIZA_UI_SMOKE_REUSE_SERVER: "1",
-    ELIZA_UI_SMOKE_PORT: String(address.port),
-    ELIZA_UI_SMOKE_SKIP_BUILD: "1",
-    ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
-    ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
-    ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE: `audit-project-regression-${process.pid}`,
-  };
+    await listen(server);
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error(
+        "Audit-project regression server did not expose a TCP port.",
+      );
+    }
 
-  try {
-    for (const project of UI_SMOKE_AUDIT_PROJECTS) {
-      const result = await runPlaywright(
+    const baseEnv = {
+      ...process.env,
+      ELIZA_AUDIT_APP_DIR: path.join(tempRoot, "audit-output"),
+      ELIZA_UI_SMOKE_REUSE_SERVER: "1",
+      ELIZA_UI_SMOKE_PORT: String(address.port),
+      ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+      ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+      ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+      ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE: `audit-project-regression-${process.pid}`,
+    };
+
+    try {
+      for (const project of UI_SMOKE_AUDIT_PROJECTS) {
+        const result = await runPlaywright(
+          [
+            "--config",
+            "playwright.ui-smoke.config.ts",
+            `--project=${project}`,
+            workerContract,
+          ],
+          baseEnv,
+        );
+        expect(
+          result.code,
+          `${project} failed across the Playwright worker boundary:\n${result.stdout}${result.stderr}`,
+        ).toBe(0);
+        expect(`${result.stdout}${result.stderr}`).not.toContain(
+          `Project "${project}" not found in the worker process`,
+        );
+      }
+
+      const defaultResult = await runPlaywright(
         [
           "--config",
           "playwright.ui-smoke.config.ts",
-          `--project=${project}`,
+          "--list",
+          "--pass-with-no-tests",
           workerContract,
         ],
-        baseEnv,
+        {
+          ...baseEnv,
+          [UI_SMOKE_AUDIT_PROJECTS_ENV]: "audit-app",
+        },
       );
       expect(
-        result.code,
-        `${project} failed across the Playwright worker boundary:\n${result.stdout}${result.stderr}`,
+        defaultResult.code,
+        `default E2E project selection failed:\n${defaultResult.stdout}${defaultResult.stderr}`,
       ).toBe(0);
-      expect(`${result.stdout}${result.stderr}`).not.toContain(
-        `Project "${project}" not found in the worker process`,
-      );
+      expect(defaultResult.stdout).toMatch(/Total:\s+0 tests/);
+      for (const project of UI_SMOKE_AUDIT_PROJECTS) {
+        expect(defaultResult.stdout).not.toContain(`[${project}]`);
+      }
+    } finally {
+      await close(server);
+      rmSync(tempRoot, { recursive: true, force: true });
     }
-
-    const defaultResult = await runPlaywright(
-      [
-        "--config",
-        "playwright.ui-smoke.config.ts",
-        "--list",
-        "--pass-with-no-tests",
-        workerContract,
-      ],
-      {
-        ...baseEnv,
-        [UI_SMOKE_AUDIT_PROJECTS_ENV]: "audit-app",
-      },
-    );
-    expect(
-      defaultResult.code,
-      `default E2E project selection failed:\n${defaultResult.stdout}${defaultResult.stderr}`,
-    ).toBe(0);
-    expect(defaultResult.stdout).toMatch(/Total:\s+0 tests/);
-    for (const project of UI_SMOKE_AUDIT_PROJECTS) {
-      expect(defaultResult.stdout).not.toContain(`[${project}]`);
-    }
-  } finally {
-    await close(server);
-    rmSync(tempRoot, { recursive: true, force: true });
-  }
-}, 45_000);
+  },
+  20_000 * (UI_SMOKE_AUDIT_PROJECTS.length + 1) + 10_000,
+);

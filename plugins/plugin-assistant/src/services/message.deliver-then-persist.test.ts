@@ -145,19 +145,17 @@ async function createHarness(opts: HarnessOptions = {}) {
   // Observation-only storage seam: records when the agent-reply row write
   // COMPLETES relative to the delivery callback, and optionally injects
   // latency, a hold-open gate, or a fault for the failure/race tests. Real
-  // writes always reach the real in-memory adapter.
+  // writes always reach the real SQLite adapter.
   let releaseReplyPersist: () => void = () => {};
   const replyPersistGate = new Promise<void>((resolve) => {
     releaseReplyPersist = resolve;
   });
   releasePersistenceGates.push(releaseReplyPersist);
   // Hold before SQLite's transaction queue so unrelated rooms can still write.
-  const realCreateMemory = runtime.createMemory.bind(runtime);
-  runtime.createMemory = async (memory, tableName, unique) => {
+  const realCreateMessageMemory = runtime.createMessageMemory.bind(runtime);
+  runtime.createMessageMemory = async (memory, unique) => {
     const isReplyWrite =
-      tableName === "messages" &&
-      memory.entityId === runtime.agentId &&
-      memory.content?.text === replyText;
+      memory.entityId === runtime.agentId && memory.content?.text === replyText;
     if (isReplyWrite && opts.persistDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
     }
@@ -167,7 +165,7 @@ async function createHarness(opts: HarnessOptions = {}) {
     if (isReplyWrite && opts.failReplyPersist) {
       throw new Error("injected reply-persist failure");
     }
-    const id = await realCreateMemory(memory, tableName, unique);
+    const id = await realCreateMessageMemory(memory, unique);
     if (isReplyWrite) {
       order.push("persist:reply");
     }

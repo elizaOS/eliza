@@ -7,16 +7,15 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from benchmarks.standard._base import (
+    ENDPOINT_ENV_CHAIN,
+    PROVIDER_BASE_URLS,
     BenchmarkResult,
     ChatMessage,
-    ENDPOINT_ENV_CHAIN,
     GenerationConfig,
     GenerationResult,
     HarnessClient,
     MockClient,
-    PROVIDER_BASE_URLS,
     make_client,
     resolve_api_key,
     resolve_endpoint,
@@ -33,12 +32,20 @@ def _clear_endpoint_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_resolve_endpoint_prefers_explicit_url() -> None:
-    assert resolve_endpoint(model_endpoint="http://x/v1", provider="openai") == "http://x/v1"
+    assert (
+        resolve_endpoint(model_endpoint="http://x/v1", provider="openai")
+        == "http://x/v1"
+    )
 
 
-def test_resolve_endpoint_explicit_url_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_endpoint_explicit_url_beats_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
-    assert resolve_endpoint(model_endpoint="http://x/v1", provider="cerebras") == "http://x/v1"
+    assert (
+        resolve_endpoint(model_endpoint="http://x/v1", provider="cerebras")
+        == "http://x/v1"
+    )
 
 
 def test_resolve_endpoint_env_chain_order(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,7 +103,10 @@ def test_resolve_endpoint_ignores_blank_env(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_resolve_endpoint_uses_provider_map() -> None:
-    assert resolve_endpoint(model_endpoint=None, provider="openai") == PROVIDER_BASE_URLS["openai"]
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="openai")
+        == PROVIDER_BASE_URLS["openai"]
+    )
 
 
 def test_resolve_endpoint_rejects_unknown_provider() -> None:
@@ -270,3 +280,15 @@ def test_benchmark_result_roundtrip(tmp_path: Path) -> None:
     assert data["benchmark"] == "dummy"
     assert data["metrics"]["score"] == 0.5
     assert data["raw_json"]["detail"] == "x"
+
+
+@pytest.mark.parametrize("harness", ["smithers", "unknown-framework"])
+def test_unknown_harness_cannot_silently_become_direct_or_eliza(monkeypatch, harness):
+    monkeypatch.delenv("ELIZA_BENCH_HARNESS", raising=False)
+    monkeypatch.setenv("BENCHMARK_HARNESS", harness)
+    with pytest.raises(ValueError, match="Unsupported benchmark harness"):
+        make_client(endpoint="http://invalid.invalid", api_key="unused")
+    with pytest.raises(ValueError, match="Unsupported benchmark harness"):
+        HarnessClient(
+            harness=harness, endpoint="http://invalid.invalid", api_key="unused"
+        )

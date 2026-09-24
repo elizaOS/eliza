@@ -6,7 +6,7 @@
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference";
 import {
   act,
   cleanup,

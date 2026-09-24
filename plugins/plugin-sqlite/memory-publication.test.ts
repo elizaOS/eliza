@@ -181,6 +181,32 @@ describe("atomic memory publication", () => {
   });
 
   it.each(["head", "dependency"])(
+    "rejects same-agent publication ownership collisions on %s",
+    async (target) => {
+      const initial = publication();
+      await adapter.compareAndSwapMemoryPublication(initial);
+      const next = publication(initial.head.memory.id, "r2", "r1");
+      next.dependencies = [
+        {
+          ...initial.dependencies[0],
+          memory: { ...initial.dependencies[0].memory },
+        },
+      ];
+      (target === "head"
+        ? next.head.memory
+        : next.dependencies[0].memory).entityId = uuid();
+      await expect(
+        adapter.compareAndSwapMemoryPublication(next),
+      ).rejects.toMatchObject({
+        code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+      });
+      expect(
+        (await adapter.getMemoriesByIds([initial.head.memory.id]))[0].metadata,
+      ).toMatchObject({ revision: "r1" });
+    },
+  );
+
+  it.each(["head", "dependency"])(
     "rejects a foreign-agent %s without writing anything",
     async (target) => {
       const input = publication();

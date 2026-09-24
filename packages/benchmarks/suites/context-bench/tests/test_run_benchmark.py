@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 from elizaos_context_bench import ContextBenchConfig, ContextBenchRunner
 
 
@@ -37,6 +39,7 @@ def test_adapter_import_paths_are_present_and_idempotent() -> None:
 
 
 def test_canonical_full_configuration_contains_270_base_cases() -> None:
+    """Count the complete requested corpus before executing it."""
     module = _load_run_benchmark_module()
     config = ContextBenchConfig(
         context_lengths=[1024, 2048, 4096, 8192, 16384, 32768],
@@ -60,3 +63,11 @@ def test_canonical_full_configuration_contains_270_base_cases() -> None:
     ).count_scenarios()
 
     assert counts == {"base": 270, "edge": 0, "total": 270, "edge_multiplier": 10}
+
+
+@pytest.mark.parametrize("harness", ["smithers", "unknown-framework"])
+def test_unknown_harness_does_not_fall_back_to_eliza(harness: str) -> None:
+    """Reject a missing framework before starting any other adapter."""
+    module = _load_run_benchmark_module()
+    with pytest.raises(ValueError, match="Unsupported context benchmark harness"):
+        module.get_llm_query_fn("cerebras", harness=harness)

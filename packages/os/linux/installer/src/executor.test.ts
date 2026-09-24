@@ -323,7 +323,10 @@ describe("privileged installer execution boundary", () => {
     expect(appliedCount).toBe(plan.actions.length);
   });
 
-  it.each(["healthy", "missing", "corrupt"] as const)(
+  // Real durable journals use Linux descriptor-relative IO.
+  it
+    .skipIf(process.platform !== "linux")
+    .each(["healthy", "missing", "corrupt"] as const)(
     "reopens a durable recovery checkpoint with a %s backup before resuming",
     async (state) => {
       const directory = await mkdtemp(join(tmpdir(), "installer-recovery-"));

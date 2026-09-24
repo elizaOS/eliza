@@ -46,9 +46,10 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
+    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.30",
-    "js-tiktoken": "^1.0.21",
-    "@elizaos/shared": "workspace:*"
+    "gpt-tokenizer": "^4.0.0",
+    "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
