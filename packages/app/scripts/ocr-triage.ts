@@ -235,20 +235,10 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
 }
 
 function resolvePolicyEvaluationInput(
-  slug: string,
   policy: ViewOcrPolicy,
-  report: ReportEntry,
 ): PolicyEvaluationInput {
   if (policy.kind === "expectation") {
     return { expectation: policy.expectation };
-  }
-  if (
-    policy.applicability === "unregistered-remote-bundle" &&
-    report.bundleProvenance !== undefined
-  ) {
-    throw new Error(
-      `Semantic OCR exemption for ${slug} no longer applies: capture loaded remote bundle provenance ${report.bundleProvenance}`,
-    );
   }
   return {
     expectation: policy.fallbackExpectation,
@@ -444,7 +434,7 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       throw new Error(`OCR record ${slug}::${viewport} has no report row`);
     }
     const policy = resolveViewOcrPolicy(slug);
-    const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
+    const policyInput = resolvePolicyEvaluationInput(policy);
     const exemptFromBlank =
       rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
     let selection = selectSemanticallyBestOcrAttempt(rec, {

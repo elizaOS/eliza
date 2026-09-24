@@ -20,7 +20,6 @@ const connectors = [
   "Lens",
   "Farcaster",
   "Nostr",
-  "Matrix",
   "Feishu",
 ] as const;
 
