@@ -28,3 +28,7 @@ patches/CHECKSUMS.sha256 -text
 # literals. Force a textual diff so security-relevant assertion changes remain
 # reviewable instead of appearing as an opaque binary replacement.
 plugins/plugin-personal-assistant/test/connector-payload-fuzz.test.ts diff
+
+# The relocated benchmark cost model is hashed corpus input. Preserve its
+# original trailing spaces and bytes, including on Windows checkouts.
+packages/benchmarks/scripts/terminal-bench/llm-inference-batching-scheduler/cost_model.py -text whitespace=-blank-at-eol
