@@ -1,24 +1,9 @@
-/**
- * Browser service mixin: declares the LifeOps browser-companion service surface
- * and the `withBrowser` mixin that composes the browser domain's pairing,
- * settings, tab-context, and session methods onto the LifeOpsService base.
- */
+/** Declares the legacy browser history and stored-session surface used by LifeOps. New automation uses the browser workspace action. */
 import type {
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionPreflightRequest,
-  BrowserBridgeCompanionPreflightResponse,
-  BrowserBridgeCompanionRevocationResetResponse,
-  BrowserBridgeCompanionRevokeResponse,
-  BrowserBridgeCompanionSessionBeginRequest,
-  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncRequest,
-  BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
 import type {

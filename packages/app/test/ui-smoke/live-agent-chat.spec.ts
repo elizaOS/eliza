@@ -9,7 +9,7 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   ExpectedDevSmokeFailureMatcher,
   isExpectedDevSmokeResponseCandidate,
-} from "../dev-smoke/browser-failure-policy";
+} from "../../scripts/browser-failure-policy";
 import { selectLiveProviderAsync } from "../helpers/live-provider";
 import {
   installDefaultAppRoutes,

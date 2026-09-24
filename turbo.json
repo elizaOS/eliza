@@ -247,7 +247,11 @@
       "outputs": []
     },
     "@elizaos/plugin-vision#typecheck": {
-      "dependsOn": ["@elizaos/plugin-computeruse#build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-computeruse#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-native-contacts#typecheck": {
@@ -334,11 +338,15 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@elizaos/app#build:dist", "^build"],
       "outputs": []
     },
     "@elizaos/testing#typecheck": {
-      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
+      "dependsOn": [
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-personal-assistant#build",
+        "^build"
+      ],
       "outputs": []
     }
   }

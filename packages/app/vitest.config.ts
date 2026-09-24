@@ -156,7 +156,7 @@ export default defineConfig({
       "test/android/**/*.test.{ts,tsx,mjs}",
       "test/main-bootstrap.test.tsx",
       "test/fixtures/**/*.test.{ts,tsx,mjs}",
-      "test/dev-smoke/**/*.test.{ts,tsx,mjs}",
+      "test/dev-auth/**/*.test.{ts,tsx,mjs}",
       "test/design-review/**/*.test.{ts,tsx,mjs}",
       "test/pages-middleware-serving.test.ts",
       "test/dev-http-proxy.test.ts",

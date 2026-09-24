@@ -83,7 +83,6 @@ export type {
 } from "@elizaos/shared/contracts/personal-assistant";
 export type { PostWorkbenchVfsPromoteToCloudRequest } from "@elizaos/shared/contracts/workbench-routes";
 export type {
-  BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
   BrowserBridgeSettings,

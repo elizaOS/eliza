@@ -918,6 +918,12 @@
       "eliza-source": "./src/utils/assistant-text.ts",
       "import": "./dist/utils/assistant-text.js",
       "default": "./dist/utils/assistant-text.js"
+    },
+    "./utils/owner-name": {
+      "types": "./dist/utils/owner-name.d.ts",
+      "eliza-source": "./src/utils/owner-name.ts",
+      "import": "./dist/utils/owner-name.js",
+      "default": "./dist/utils/owner-name.js"
     }
   },
   "publishConfig": {

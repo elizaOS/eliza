@@ -102,7 +102,7 @@
       },
       "EMBEDDING_DIMENSIONS": {
         "type": "string",
-        "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+        "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database \u2014 changing it invalidates stored vectors.",
         "required": false,
         "default": "1536",
         "sensitive": false

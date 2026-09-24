@@ -11,6 +11,7 @@ import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   executeRawSql,
+  extractRequiredRows,
   sqlQuote,
 } from "../src/runtime/trajectory-internals.ts";
 import {
@@ -185,6 +186,46 @@ it("reads complete persisted calls with the same filters and failures on both lo
   expect((await fetch(`${origin}/api/trajectories/${foreignId}`)).status).toBe(
     404,
   );
+
+  const reward = {
+    trajectoryId,
+    idempotencyKey: "read-acceptance-reward",
+    reward: 5,
+    component: "acceptance",
+  };
+  expect(
+    await Promise.all([direct.applyReward(reward), bridge.applyReward(reward)]),
+  ).toEqual([true, true]);
+  expect(
+    extractRequiredRows(
+      await executeRawSql(
+        fixture.runtime,
+        `SELECT total_reward FROM trajectories WHERE id = ${sqlQuote(trajectoryId)}`,
+      ),
+    ),
+  ).toMatchObject([{ total_reward: 5 }]);
+  bridge.setEnabled(false);
+  try {
+    expect(
+      await bridge.applyReward({
+        ...reward,
+        idempotencyKey: "disabled-reward",
+      }),
+    ).toBe(false);
+  } finally {
+    bridge.setEnabled(true);
+  }
+  expect(await bridge.applyReward({ ...reward, trajectoryId: foreignId })).toBe(
+    false,
+  );
+  expect(
+    extractRequiredRows(
+      await executeRawSql(
+        fixture.runtime,
+        `SELECT total_reward FROM trajectories WHERE id = ${sqlQuote(trajectoryId)}`,
+      ),
+    ),
+  ).toMatchObject([{ total_reward: 5 }]);
 
   await executeRawSql(
     fixture.runtime,

@@ -6,20 +6,22 @@ import { browserAction } from "./actions/browser.js";
 import { BrowserService } from "./browser-service.js";
 import { browserWorkspaceProvider } from "./providers/workspace.js";
 import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
+import { browserBridgeSchema } from "./schema.js";
 import { preflightStagehandServer } from "./targets/stagehand-target.js";
 
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
-  description: "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
+  description:
+    "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
+  // Existing LifeOps history still reads these persisted record tables.
+  schema: browserBridgeSchema,
   routes: browserWorkspaceRoutes,
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
   // Prepare the optional local stagehand-server before services start. Owned
   // here so the resolver no longer special-cases this plugin by name (#12665).
   preflight: () => preflightStagehandServer(),
-  actions: [
-    ...promoteSubactionsToActions(browserAction),
-  ],
+  actions: [...promoteSubactionsToActions(browserAction)],
   // Self-declared auto-enable: activate when features.browser is enabled.
   autoEnable: {
     shouldEnable: (_env, config) => {

@@ -1764,14 +1764,6 @@ export async function startMockApiServer(
       });
       return;
     }
-    if (method === "GET" && pathname === "/api/extension/status") {
-      json(res, 200, {
-        relayReachable: false,
-        relayPort: 18792,
-        extensionPath: null,
-      });
-      return;
-    }
 
     if (pathname.startsWith("/api/")) {
       // Catch-all for any unmatched API route (GET, POST, PUT, DELETE).

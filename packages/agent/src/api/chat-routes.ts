@@ -1,14 +1,7 @@
 /**
- * Chat route handlers extracted from server.ts.
- *
- * Handles:
- *   POST /v1/chat/completions   – OpenAI-compatible
- *   POST /v1/messages           – Anthropic-compatible
- *   GET  /v1/models             – OpenAI model listing
- *   GET  /v1/models/:id         – OpenAI single model
- *
- * Also exports generateChatResponse() and supporting helpers so that
- * conversation-routes.ts (and server.ts itself) can reuse them.
+ * Serves model-compatible chat APIs and adapts runtime replies for host routes.
+ * Conversation routes reuse generation, request admission and reply persistence;
+ * Node HTTP event framing lives in the dedicated stream writer.
  */
 
 import crypto from "node:crypto";
@@ -106,6 +99,7 @@ import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
 } from "./chat-augmentation.ts";
+import { initSse, writeSseData, writeSseJson } from "./chat-stream-writer.ts";
 import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
@@ -1746,186 +1740,21 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
 // SSE helpers
 // ---------------------------------------------------------------------------
 
-export function initSse(res: http.ServerResponse): void {
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-}
-
-export function writeSse(
-  res: http.ServerResponse,
-  payload: Record<string, unknown>,
-): void {
-  if (res.writableEnded || res.destroyed) return;
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-export function writeChatTokenSse(
-  res: http.ServerResponse,
-  text: string,
-  fullText: string,
-  options?: ChatTokenWriteOptions,
-): void {
-  writeSse(res, {
-    type: "token",
-    text,
-    fullText,
-    ...(options?.provisional ? { provisional: true } : {}),
-  });
-}
-
-export { DELTA_STREAM_PROTOCOL };
-
-export type ChatTokenStreamProtocol = "legacy" | typeof DELTA_STREAM_PROTOCOL;
-
-/**
- * The two write functions a token-stream writer needs, injected so a caller can
- * pass its OWN (test-mockable) imports. `conversation-routes` imports
- * `writeChatTokenSse`/`writeSse` from this module; several route tests
- * `vi.mock` those exports to capture frames, so the writer must dispatch
- * through the caller's references, not this module's closure-bound originals.
- */
-export interface ChatTokenStreamWriterDeps {
-  writeChatTokenSse: typeof writeChatTokenSse;
-  writeSse: typeof writeSse;
-}
-
-/**
- * Framing-agnostic front for the streaming chat token wire. `legacy` reproduces
- * the historical per-token `{text, fullText}` frame byte-for-byte; `delta-v2`
- * ships bare `{text}` deltas and re-sends the accumulated `fullText` only on a
- * geometric byte budget, so an M-chunk reply carries O(N) bytes instead of the
- * legacy O(N²) (every token re-serialized its whole prefix). The protocol is
- * negotiated per request (see `readChatRequestPayload`).
- */
-/**
- * Per-write options for the token wire. `provisional: true` marks the carried
- * text as an in-flight action-callback delivery the turn's final reply may
- * replace — voice clients must not synthesize it until the terminal `done`
- * frame (or a later non-provisional frame) confirms it, because speech cannot
- * be retracted the way a re-rendered chat bubble can (the "double-speak"
- * defect). Text bubbles may render it exactly as before.
- */
-export interface ChatTokenWriteOptions {
-  provisional?: boolean;
-}
-
-export interface ChatTokenStreamWriter {
-  /** An incremental streamed chunk. `fullText` is the accumulated text so far. */
-  writeChunk(
-    res: http.ServerResponse,
-    chunk: string,
-    fullText: string,
-    options?: ChatTokenWriteOptions,
-  ): void;
-  /** An authoritative full-text replace (structured-field rewrite, single-frame
-   *  reply). The client treats the carried `fullText` as the new buffer. */
-  writeSnapshot(
-    res: http.ServerResponse,
-    fullText: string,
-    options?: ChatTokenWriteOptions,
-  ): void;
-}
-
-export function createChatTokenStreamWriter(
-  protocol: ChatTokenStreamProtocol,
-  deps: ChatTokenStreamWriterDeps,
-): ChatTokenStreamWriter {
-  const provisionalField = (options?: ChatTokenWriteOptions) =>
-    options?.provisional ? { provisional: true as const } : {};
-  if (protocol === "legacy") {
-    return {
-      writeChunk(res, chunk, fullText, options) {
-        deps.writeChatTokenSse(res, chunk, fullText, options);
-      },
-      writeSnapshot(res, fullText, options) {
-        deps.writeChatTokenSse(res, fullText, fullText, options);
-      },
-    };
-  }
-
-  // delta-v2. Snapshot cost is amortized geometrically: a full-text frame is
-  // re-sent only after at least as many delta bytes have streamed as the
-  // previous snapshot's length (floor 2048 so short replies still self-heal on
-  // a dropped/reordered delta). Snapshots therefore land at ~2048, 4096, 8192,
-  // … bytes — genuinely periodic — and their bytes sum to ~2N, keeping the
-  // total wire (deltas N + snapshots 2N) linear in reply length. A fixed
-  // every-K-tokens cadence would still be O(N²/K) and is intentionally avoided.
-  let bytesSinceSnapshot = 0;
-  let lengthAtLastSnapshot = 0;
-  return {
-    writeChunk(res, chunk, fullText, options) {
-      bytesSinceSnapshot += chunk.length;
-      if (bytesSinceSnapshot >= Math.max(2048, lengthAtLastSnapshot)) {
-        deps.writeSse(res, {
-          type: "token",
-          text: chunk,
-          fullText,
-          ...provisionalField(options),
-        });
-        bytesSinceSnapshot = 0;
-        lengthAtLastSnapshot = fullText.length;
-      } else {
-        deps.writeSse(res, {
-          type: "token",
-          text: chunk,
-          ...provisionalField(options),
-        });
-      }
-    },
-    writeSnapshot(res, fullText, options) {
-      // No `text` field: the client reads `fullText` as an authoritative
-      // replace rather than an append.
-      deps.writeSse(res, {
-        type: "token",
-        fullText,
-        ...provisionalField(options),
-      });
-      bytesSinceSnapshot = 0;
-      lengthAtLastSnapshot = fullText.length;
-    },
-  };
-}
-
-export function writeChatStatusSse(
-  res: http.ServerResponse,
-  status: ChatTurnStatus,
-): void {
-  writeSse(res, { type: "status", ...status });
-}
-
-export function writeChatToolSse(
-  res: http.ServerResponse,
-  event: ChatToolCallEvent,
-): void {
-  writeSse(res, { type: "tool", ...event });
-}
-
-export function writeSseData(
-  res: http.ServerResponse,
-  data: string,
-  event?: string,
-): void {
-  if (res.writableEnded || res.destroyed) return;
-  const safeEvent =
-    typeof event === "string" && /^[A-Za-z0-9_.-]+$/.test(event) ? event : null;
-  if (safeEvent) res.write(`event: ${safeEvent}\n`);
-  for (const line of data.split(/\r\n|\r|\n/)) {
-    res.write(`data: ${line}\n`);
-  }
-  res.write("\n");
-}
-
-export function writeSseJson(
-  res: http.ServerResponse,
-  payload: unknown,
-  event?: string,
-): void {
-  writeSseData(res, JSON.stringify(payload), event);
-}
+export {
+  type ChatTokenStreamProtocol,
+  type ChatTokenStreamWriter,
+  type ChatTokenStreamWriterDeps,
+  type ChatTokenWriteOptions,
+  createChatTokenStreamWriter,
+  DELTA_STREAM_PROTOCOL,
+  initSse,
+  writeChatStatusSse,
+  writeChatTokenSse,
+  writeChatToolSse,
+  writeSse,
+  writeSseData,
+  writeSseJson,
+} from "./chat-stream-writer.ts";
 
 // ---------------------------------------------------------------------------
 // Persistence helpers

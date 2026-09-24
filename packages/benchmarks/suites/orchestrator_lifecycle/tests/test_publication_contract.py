@@ -72,7 +72,7 @@ def _point_scorer_at_temp_lifecycle_sources(
     tasks_tool: object | None = None,
 ) -> None:
     registry_dir = tmp_path / "installed" / "registry"
-    lifecycle_dir = tmp_path / "installed" / "orchestrator_lifecycle"
+    lifecycle_dir = tmp_path / "installed" / "suites" / "orchestrator_lifecycle"
     registry_dir.mkdir(parents=True)
     lifecycle_dir.mkdir(parents=True)
     canonical_contract_path = Path(lifecycle_contract.__file__)

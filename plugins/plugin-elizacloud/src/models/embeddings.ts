@@ -309,8 +309,7 @@ export async function handleBatchTextEmbedding(
   // Credential/endpoint and app attribution changes create a different flight.
   // The key is process-local, never logged, and removed when work settles.
   const authority = resolveCloudSdkAuthorityTuple(runtime, true);
-  // Cookie-backed browser sessions can change without changing this tuple.
-  // Without an explicit credential, retain an independent authenticated call.
+  // Without an explicit credential, keep calls independent of credential-keyed flights.
   if (!authority.apiKey) {
     return executeEmbeddingBatch(
       runtime,

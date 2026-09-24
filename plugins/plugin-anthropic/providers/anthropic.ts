@@ -2,7 +2,7 @@
  * AI SDK client factory for the Anthropic provider. `createAnthropicClientWithTopPSupport`
  * builds a `@ai-sdk/anthropic` client wired to the resolved auth mode: API key,
  * OAuth bearer (via the credential store, with async refresh and 401/429
- * failover reporting into the multi-account pool), or the browser proxy base URL.
+ * failover reporting into the multi-account pool).
  *
  * The name reflects a custom fetch wrapper that preserves `top_p` alongside
  * `temperature` handling and injects OAuth headers per request. Consumed by the

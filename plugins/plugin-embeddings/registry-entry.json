@@ -1,7 +1,7 @@
 {
   "id": "embeddings",
   "name": "Embeddings",
-  "description": "Provider-agnostic (bring-your-own) TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL / EMBEDDING_API_KEY at any OpenAI-compatible /embeddings endpoint (a personal OpenAI key, Eliza Cloud, Voyage, Together, or a local TEI/Infinity/vLLM/LM Studio server) to get real memory/RAG embeddings independently of the chat brain. Registers ONLY the embedding slot — no text/image/audio handlers.",
+  "description": "Provider-agnostic (bring-your-own) TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL / EMBEDDING_API_KEY at any OpenAI-compatible /embeddings endpoint (a personal OpenAI key, Eliza Cloud, Voyage, Together, or a local TEI/Infinity/vLLM/LM Studio server) to get real memory/RAG embeddings independently of the chat brain. Registers ONLY the embedding slot \u2014 no text/image/audio handlers.",
   "npmName": "@elizaos/plugin-embeddings",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -66,7 +66,7 @@
       "sensitive": false,
       "default": "1536",
       "label": "Embedding Dimensions",
-      "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+      "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database \u2014 changing it invalidates stored vectors.",
       "advanced": false
     }
   },

@@ -4,10 +4,6 @@
  */
 
 export { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
-export {
-  resolveElizaPackageRoot,
-  resolveElizaPackageRootSync,
-} from "@elizaos/shared/utils/eliza-root";
 export { isSafeExecutableValue } from "@elizaos/shared/utils/exec-safety";
 export {
   type ParseClampedIntegerOptions,

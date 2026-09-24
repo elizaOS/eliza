@@ -181,7 +181,7 @@ async function requestEmbeddingsFromEndpoint(
     {
       method: "POST",
       headers: {
-        ...getEndpointAuthHeader(runtime, endpoint.apiKey),
+        ...getEndpointAuthHeader(endpoint.apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

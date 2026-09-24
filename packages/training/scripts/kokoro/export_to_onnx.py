@@ -20,8 +20,6 @@ This script:
    Eliza-1 publish flow can stitch into `elizaos/eliza-1` (see
    `package_voice_for_release.py` for the final voice-preset packaging).
 
-Synthetic-smoke mode (`--synthetic-smoke`) writes a minimal-but-valid ONNX
-identity graph so downstream wiring tests pass without torch or a real model.
 """
 
 from __future__ import annotations
@@ -97,50 +95,6 @@ def _manifest_fragment(
             ),
         },
     }
-
-
-def _write_synthetic_onnx(path: Path) -> None:
-    """Emit a minimal-but-valid ONNX file (one Identity node) for smoke runs."""
-    import onnx  # noqa: PLC0415
-    from onnx import TensorProto, helper  # noqa: PLC0415
-
-    x = helper.make_tensor_value_info("phonemes", TensorProto.INT64, ["batch", "seq"])
-    y = helper.make_tensor_value_info("audio", TensorProto.INT64, ["batch", "seq"])
-    node = helper.make_node("Identity", inputs=["phonemes"], outputs=["audio"])
-    graph = helper.make_graph([node], "kokoro_smoke", [x], [y])
-    opset = onnx.helper.make_opsetid("", 17)
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.ir_version = 8
-    onnx.save(model, str(path))
-
-
-def _run_synthetic_smoke(args: argparse.Namespace) -> int:
-    out_dir = Path(args.out_dir).resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    onnx_path = out_dir / "kokoro.onnx"
-    try:
-        _write_synthetic_onnx(onnx_path)
-    except ImportError:
-        # Keep CI smoke import-free. Real exports still require torch + onnx,
-        # but the synthetic path only needs a non-empty sidecar so packaging
-        # and publish layout checks can run in minimal environments.
-        onnx_path.write_bytes(b"ELIZA-KOKORO-SYNTHETIC-ONNX-STUB\n")
-
-    fragment = _manifest_fragment(
-        voice_name=args.voice_name,
-        voice_display_name=args.voice_display_name,
-        voice_lang=args.voice_lang,
-        voice_tags=args.voice_tags.split(",") if args.voice_tags else [],
-        onnx_path=onnx_path,
-        voice_bin_path=Path(args.voice_bin) if args.voice_bin else None,
-        base_model=args.base_model,
-        synthetic=True,
-        lora_checkpoint=Path(args.lora_checkpoint) if args.lora_checkpoint else None,
-    )
-    frag_path = out_dir / "manifest-fragment.json"
-    frag_path.write_text(json.dumps(fragment, indent=2) + "\n")
-    log.info("synthetic-smoke wrote %s + %s", onnx_path, frag_path)
-    return 0
 
 
 def _real_export(args: argparse.Namespace) -> int:
@@ -224,18 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--voice-display-name", default="Eliza Custom Voice")
     p.add_argument("--voice-lang", default="a")
     p.add_argument("--voice-tags", default="custom,eliza-1")
-    p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Write a minimal synthetic ONNX without torch (CI smoke).",
-    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args)
     return _real_export(args)
 
 

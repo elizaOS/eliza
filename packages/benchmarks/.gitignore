@@ -47,3 +47,10 @@ benchmark-data/
 **/*.pyc
 **/.DS_Store
 **/node_modules/
+**/.pytest_cache/
+**/.ruff_cache/
+**/benchmark_results/
+**/benchmark-results/
+**/bench_results/
+**/test-results*/
+**/reports/

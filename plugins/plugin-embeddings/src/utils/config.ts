@@ -75,7 +75,7 @@ export function getBooleanSetting(
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
-/** Resolves the configured endpoint without a default or chat-provider fallback. */
+/** Resolves the configured server endpoint without inventing a default. */
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string | undefined {
   const baseURL = getSetting(runtime, "EMBEDDING_BASE_URL");
   return baseURL && baseURL.trim() !== "" ? baseURL.trim() : undefined;
@@ -108,16 +108,14 @@ export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", 1536);
 }
 
-/** Auth header for the configured embedding endpoint. */
+/** Builds the authorization header for the configured embedding endpoint. */
 export function getAuthHeader(runtime: IAgentRuntime): Record<string, string> {
-  return getEndpointAuthHeader(runtime, getEmbeddingApiKey(runtime));
+  const key = getEmbeddingApiKey(runtime);
+  return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
-/** Auth header for a specific endpoint. */
-export function getEndpointAuthHeader(
-  _runtime: IAgentRuntime,
-  apiKey: string | undefined
-): Record<string, string> {
+/** Builds the authorization header for a primary or fallback endpoint. */
+export function getEndpointAuthHeader(apiKey: string | undefined): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 

@@ -1,4 +1,4 @@
-name: Dev Smoke
+name: Dev HMR
 on:
   workflow_call:
     inputs:
@@ -21,55 +21,8 @@ env:
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
   ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only
 jobs:
-  dev-smoke:
-    name: default staging startup
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 35
-    env:
-      PGLITE_WASM_MODE: node
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Free disk space for browser smoke
-        run: |
-          set -euxo pipefail
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
-          docker system prune -af || true
-          df -h /
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
-          cache-bun-install: "false"
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          setup-python: "false"
-          install-protoc: "false"
-      - name: Install Playwright Chromium
-        run: packages/scripts/github/install-playwright-browsers.sh chromium
-      - name: Build core and shared dependencies
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
-      - name: Run default staging dev smoke
-        run: bun run --cwd packages/app test:dev-smoke
-      - name: Upload dev-smoke artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: dev-smoke-results
-          path: |
-            packages/app/playwright-report/
-            test-results/app/
-          if-no-files-found: ignore
   hmr:
-    name: Vite HMR dependency-level smoke
+    name: Vite dependency HMR
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
@@ -104,7 +57,7 @@ jobs:
         run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Build core and shared dependencies
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
-      - name: Run Vite HMR dependency-level smoke
+      - name: Run Vite dependency HMR
         run: bun run --cwd packages/app test:hmr
 
       - name: Upload HMR artifacts

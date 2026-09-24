@@ -5,7 +5,6 @@
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
   "types": "dist/index.node.d.ts",
-  "browser": "dist/browser/index.browser.js",
   "sideEffects": [
     "./src/register.ts",
     "./dist/register.js"
@@ -32,11 +31,6 @@
         "types": "./src/index.node.ts",
         "import": "./src/index.node.ts",
         "default": "./src/index.node.ts"
-      },
-      "browser": {
-        "types": "./dist/index.browser.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
       },
       "node": {
         "types": "./dist/index.node.d.ts",
@@ -151,7 +145,6 @@
     "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/plugins/plugin-elizacloud/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "test:e2e": "node ../../packages/app/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },
   "publishConfig": {
@@ -333,18 +326,6 @@
         "default": false,
         "sensitive": false
       },
-      "ELIZAOS_CLOUD_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud requests (no secrets in the client).",
-        "required": false,
-        "sensitive": false
-      },
-      "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
-        "required": false,
-        "sensitive": false
-      },
       "ELIZAOS_CLOUD_ENABLED": {
         "type": "boolean",
         "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
@@ -364,12 +345,10 @@
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "eliza": {
     "platforms": [
-      "browser",
       "node"
     ],
-    "runtime": "both",
+    "runtime": "node",
     "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
       "node": "Node.js build available via exports.node"
     }
   }
