@@ -198,7 +198,6 @@ def parse_args() -> argparse.Namespace:
             "eliza",
             "hermes",
             "openclaw",
-            "smithers",
             "openai",
             "groq",
             "openrouter",
@@ -465,11 +464,9 @@ async def run_benchmark(
             trajectory_dataset=trajectory_dataset,
         )
 
-        if runtime_provider in {"eliza", "hermes", "openclaw", "smithers"}:
+        if runtime_provider in {"eliza", "hermes", "openclaw"}:
             # The bridge agent forwards every multi-turn LLM call to the TS bench
             # server; MINTRunner reuses runner.executor and runner.feedback_generator.
-            # ElizaMINTAgent is client-agnostic, so the smithers harness injects a
-            # SmithersClient and runs bridge-free (direct OpenAI-compatible calls).
             from eliza_adapter.mint import ElizaMINTAgent
             from eliza_adapter.client import ElizaClient
             from eliza_adapter.server_manager import ElizaServerManager
@@ -503,15 +500,7 @@ async def run_benchmark(
             os.environ["BENCHMARK_HARNESS"] = runtime_provider
             os.environ["ELIZA_BENCH_HARNESS"] = runtime_provider
             harness = runtime_provider
-            if harness == "smithers":
-                from smithers_adapter.client import SmithersClient
-
-                client = SmithersClient(
-                    provider=provider_name or "cerebras",
-                    model=model_name,
-                    temperature=config.temperature,
-                )
-            elif harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
+            if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
                 bridge_manager = ElizaServerManager()
                 bridge_manager.start()
                 client = bridge_manager.client
