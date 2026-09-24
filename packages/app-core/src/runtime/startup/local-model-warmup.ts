@@ -155,9 +155,10 @@ async function warmupEmbeddingModelImpl(
       process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
       process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
       process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
-      process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
       process.env.LOCAL_EMBEDDING_USE_MMAP =
-        reuse.gpuLayers === "auto" ? "false" : "true";
+        (process.env.LOCAL_EMBEDDING_GPU_LAYERS ?? reuse.gpuLayers) === "auto"
+          ? "false"
+          : "true";
       model = reuse.model;
       modelRepo = reuse.modelRepo;
     }

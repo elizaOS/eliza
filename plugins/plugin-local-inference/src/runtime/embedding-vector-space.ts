@@ -15,15 +15,13 @@ import {
 } from "../services/voice/ffi-bindings";
 import { BGE_EMBEDDING_MODEL } from "./bge-embedding-model";
 
-/** Backend choice is context-local; canonical BGE defaults to the verified CPU path. */
+/** Resolves an explicit context-local setting or the detected hardware default. */
 export function resolveEmbeddingGpuLayers(
-	model: string,
 	configured: string | undefined,
 	fallback = 999,
 ): number {
 	const value = configured?.trim();
-	if (!value)
-		return path.basename(model) === BGE_EMBEDDING_MODEL.filename ? 0 : fallback;
+	if (!value) return fallback;
 	if (value === "auto" || value === "max") return 999;
 	if (
 		!/^[0-9]+$/.test(value) ||

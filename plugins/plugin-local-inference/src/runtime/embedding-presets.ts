@@ -53,11 +53,12 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	standard: {
 		tier: "standard",
 		label: "Efficient (compact text embedding)",
-		description: "bge-small-en-v1.5 local embeddings on the verified CPU path",
+		description:
+			"bge-small-en-v1.5 local embeddings on a verified accelerator or CPU",
 		model: BGE_SMALL_EMBEDDING.model,
 		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
 		dimensions: BGE_SMALL_EMBEDDING.dimensions,
-		gpuLayers: 0,
+		gpuLayers: "auto",
 		contextSize: BGE_SMALL_EMBEDDING.contextSize,
 		downloadSizeMB: BGE_SMALL_EMBEDDING.downloadSizeMB,
 	},
@@ -70,7 +71,7 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 		model: BGE_SMALL_EMBEDDING.model,
 		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
 		dimensions: BGE_SMALL_EMBEDDING.dimensions,
-		gpuLayers: 0,
+		gpuLayers: "auto",
 		contextSize: BGE_SMALL_EMBEDDING.contextSize,
 		downloadSizeMB: BGE_SMALL_EMBEDDING.downloadSizeMB,
 	},
