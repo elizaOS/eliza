@@ -3397,7 +3397,7 @@
         "@elizaos/shared": "workspace:*",
         "ffmpeg-static": "^5.3.0",
         "fluent-ffmpeg": "2.1.3",
-        "youtube-dl-exec": "^3.1.5",
+        "youtube-dl-exec": "^3.1.15",
       },
       "devDependencies": {
         "@types/node": "22.19.17",
@@ -9794,7 +9794,7 @@
 
     "tinyrainbow": ["tinyrainbow@3.1.1", "", {}, "sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw=="],
 
-    "tinyspawn": ["tinyspawn@1.5.9", "", {}, "sha512-eTFD3RhtoT+GsCPA+h1YCM1w2qG20Il0vd6oVuyolBe39IWfceKLfEVyJnCexMH57crjkAd5hx65bn0Zz1xkTw=="],
+    "tinyspawn": ["tinyspawn@1.5.10", "", {}, "sha512-bZ5HikC4mL7ZqQHXM0JqrWZBVHC+urj/AX7EZY1vBZZhk8TpUcEqu7bHAqOP8PL4D39WQskPuwPWPApQUp6vew=="],
 
     "tinyspy": ["tinyspy@4.0.4", "", {}, "sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q=="],
 
@@ -10182,7 +10182,7 @@
 
     "youch-core": ["youch-core@0.3.3", "", { "dependencies": { "@poppinss/exception": "^1.2.2", "error-stack-parser-es": "^1.0.5" } }, "sha512-ho7XuGjLaJ2hWHoK8yFnsUGy2Y5uDpqSTq1FkHLK4/oqKtyUU1AFbOOxY4IpC9f0fTLjwYbslUz0Po5BpD1wrA=="],
 
-    "youtube-dl-exec": ["youtube-dl-exec@3.1.12", "", { "dependencies": { "binary-version-check": "~6.1.0", "dargs": "~7.0.0", "debug-logfmt": "~1.4.0", "is-unix": "~2.0.10", "tinyspawn": "~1.5.0" } }, "sha512-S7YwBZ1Kka7TYA/t0eOnHfI2QQMGFxJXp8UFQYOEwqg8sp+OH8MJ5c1c0RgJfoqewP/PGS5j8EtmcXg5E2HM4Q=="],
+    "youtube-dl-exec": ["youtube-dl-exec@3.1.15", "", { "dependencies": { "binary-version-check": "~6.1.0", "dargs": "~7.0.0", "debug-logfmt": "~1.4.0", "is-unix": "~2.0.10", "tinyspawn": "~1.5.10" } }, "sha512-hUWpBIF6hQMtqEr1icf6PP1bEOIX3xvdhvDMbQqMmj5Vg8pI7DIrGzlPTHUZWtHX/sh7LzOgIzBTXZAztrrskA=="],
 
     "zip-dir": ["zip-dir@2.0.0", "", { "dependencies": { "async": "^3.2.0", "jszip": "^3.2.2" } }, "sha512-uhlsJZWz26FLYXOD6WVuq+fIcZ3aBPGo/cFdiLlv3KNwpa52IF3ISV8fLhQLiqVu5No3VhlqlgthN6gehil1Dg=="],
 
