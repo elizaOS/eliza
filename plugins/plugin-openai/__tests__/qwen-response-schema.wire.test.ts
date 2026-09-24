@@ -833,10 +833,14 @@ describe("Qwen3.8 response-schema wire contract", () => {
     vi.stubEnv("ELIZA_PROVIDER", undefined);
     expect(await invoke({ schema: evaluatorSchema })).toEqual(verdict);
     expect(requests).toHaveLength(1);
-    const required = requests[0].response_format?.json_schema?.schema.required;
-    const propertyNames = Object.keys(evaluatorSchema.properties ?? {});
-    expect(required).toEqual(expect.arrayContaining(propertyNames));
-    expect(required).toHaveLength(propertyNames.length);
+    // Strict normalization preserves declared required order, then appends
+    // optional properties. JSON Schema required membership is order-independent.
+    expect(requests[0].response_format?.json_schema?.schema.required).toEqual([
+      ...new Set([
+        ...(evaluatorSchema.required ?? []),
+        ...Object.keys(evaluatorSchema.properties ?? {}),
+      ]),
+    ]);
   });
 
   it("round-trips schema-only planner arguments through the strict entry representation", async () => {
