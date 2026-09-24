@@ -28,7 +28,7 @@ it("ships consumer build tools without private repository test dependencies", as
       "scripts",
       "platforms",
       "packaging",
-          "test",
+      "test",
     ]) {
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
