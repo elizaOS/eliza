@@ -17,3 +17,11 @@ Android bridge verification:
 ```bash
 node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-secure-store
 ```
+
+Android bridge instances serialize Keystore key creation and AtomicFile operations
+within one process. Recovery includes backup-only values; removal checks base,
+backup and pending writes. The existing ciphertext format and account binding
+remain compatible. Keystore availability does not assert StrongBox protection.
+Device tests use synthetic credentials in an isolated UID and cover complete
+262,144-byte values, backup recovery, corruption and concurrent cold key creation.
+Inspect the terminal instrumentation result, not only the shell exit status.
