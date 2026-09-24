@@ -1,10 +1,15 @@
+/** Exercises passkey registration, login and MFA request contracts with controlled HTTP and WebAuthn responses. */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { isLoginPasskeyAlreadyRegisteredError, LoginAuth } from "../auth";
 import type { SessionStorage } from "../auth-types";
 import { LoginApiError } from "../client";
 
-// Track requests and responses to model an end-to-end addPasskey call.
-type Captured = { url: string; body?: Record<string, unknown> };
+// Capture the real SDK requests; WebAuthn and server responses are controlled.
+type Captured = {
+  url: string;
+  body?: Record<string, unknown>;
+  authorization?: string | null;
+};
 let captured: Captured[];
 let originalFetch: typeof fetch;
 let originalWindow: unknown;
@@ -39,7 +44,11 @@ function installFetch(): void {
           ? input.toString()
           : (input as Request).url;
     const body = init?.body ? JSON.parse(init.body as string) : undefined;
-    captured.push({ url, body });
+    captured.push({
+      url,
+      body,
+      authorization: new Headers(init?.headers).get("authorization"),
+    });
     // /auth/passkey/register/options returns the WebAuthn options directly
     // (no { ok, data } envelope) so the SDK can pass them to startRegistration.
     if (url.endsWith("/auth/passkey/register/options")) {
@@ -160,7 +169,7 @@ afterEach(() => {
 
 describe("LoginAuth.addPasskey", () => {
   it("registers a fresh credential by going straight to register/options + verify", async () => {
-    const { auth } = authenticatedAuth();
+    const { auth, token } = authenticatedAuth();
     const result = await auth.addPasskey("shadow@shad0w.xyz");
 
     // It must call register/options first, then register/verify.
@@ -190,15 +199,10 @@ describe("LoginAuth.addPasskey", () => {
     // And the resulting session reflects the verify payload.
     expect(result.token).toBe("test-jwt");
     expect(result.user?.email).toBe("shadow@shad0w.xyz");
-  });
-
-  it("never calls /auth/passkey/login/options — addPasskey skips the login probe", async () => {
-    const { auth } = authenticatedAuth();
-    await auth.addPasskey("shadow@shad0w.xyz");
-    const paths = captured.map((c) =>
-      c.url.replace("https://api.example.test", ""),
-    );
-    expect(paths).not.toContain("/auth/passkey/login/options");
+    expect(captured.map((request) => request.authorization)).toEqual([
+      `Bearer ${token}`,
+      `Bearer ${token}`,
+    ]);
   });
 
   it("surfaces server errors from register/options without falling back", async () => {
@@ -216,34 +220,6 @@ describe("LoginAuth.addPasskey", () => {
     await expect(auth.addPasskey("shadow@shad0w.xyz")).rejects.toBeInstanceOf(
       LoginApiError,
     );
-  });
-
-  it("authenticates both registration requests with the stored bearer token", async () => {
-    const { auth, token } = authenticatedAuth();
-
-    global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        `Bearer ${token}`,
-      );
-      if (url.endsWith("/auth/passkey/register/options")) {
-        return new Response(JSON.stringify(REG_OPTIONS), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      if (url.endsWith("/auth/passkey/register/verify")) {
-        return new Response(JSON.stringify(VERIFY_RESPONSE), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ ok: false, error: "unexpected" }), {
-        status: 500,
-      });
-    }) as typeof fetch;
-
-    await auth.addPasskey("shadow@shad0w.xyz");
   });
 
   it("rejects a signed-out registration before making a request when no email grant exists", async () => {
