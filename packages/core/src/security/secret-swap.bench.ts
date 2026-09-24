@@ -1,10 +1,10 @@
 /**
  * Throughput benchmarks for the secret-swap layer (#10469). Run with
- * `bunx vitest bench src/security/secret-swap.bench.ts`. These measure the
+ * `bunx vitest bench --run src/security/secret-swap.bench.ts`. These measure the
  * ingress (detect + substitute) and egress (restore) cost on realistic prompt
  * payloads so a future regex change that tanks performance is caught.
  */
-import { bench, describe } from "vitest";
+import { describe, test } from "vitest";
 import { detectPii } from "./pii-detectors";
 import { SecretSwapSession } from "./secret-swap";
 
@@ -43,19 +43,31 @@ const cleanDoc = makeDoc(100, false); // ~100KB benign
 const denseDoc = makeDoc(50, true); // ~50KB with hundreds of secrets
 
 describe("secret-swap throughput", () => {
-	bench("detectPii — 100KB benign (false-positive scan cost)", () => {
-		detectPii(cleanDoc);
+	test("detectPii — 100KB benign (false-positive scan cost)", async ({
+		bench,
+	}) => {
+		await bench("detectPii — 100KB benign (false-positive scan cost)", () => {
+			detectPii(cleanDoc);
+		}).run();
 	});
-	bench("detectPii — 50KB secret-dense", () => {
-		detectPii(denseDoc);
+	test("detectPii — 50KB secret-dense", async ({ bench }) => {
+		await bench("detectPii — 50KB secret-dense", () => {
+			detectPii(denseDoc);
+		}).run();
 	});
-	bench("substituteText — 50KB secret-dense (ingress)", () => {
-		new SecretSwapSession().substituteText(denseDoc);
+	test("substituteText — 50KB secret-dense (ingress)", async ({ bench }) => {
+		await bench("substituteText — 50KB secret-dense (ingress)", () => {
+			new SecretSwapSession().substituteText(denseDoc);
+		}).run();
 	});
-	bench("substitute + restore round-trip — 50KB secret-dense", () => {
-		const session = new SecretSwapSession();
-		session.restoreText(session.substituteText(denseDoc), {
-			failOnUnresolved: true,
-		});
+	test("substitute + restore round-trip — 50KB secret-dense", async ({
+		bench,
+	}) => {
+		await bench("substitute + restore round-trip — 50KB secret-dense", () => {
+			const session = new SecretSwapSession();
+			session.restoreText(session.substituteText(denseDoc), {
+				failOnUnresolved: true,
+			});
+		}).run();
 	});
 });
