@@ -102,11 +102,10 @@ Integration findings and validation: [review](REVIEW.md).
 
 ## Monorepo validation
 
-Install once at the repository root with `bun install`. The root
-[benchmark workflow](../../.github/workflows/benchmarks.yml) runs shared Python
-and orchestrator checks, inventory validation, and deterministic runtime smoke
-checks. Its optional live framework job requires an explicit manual selection
-and an OpenAI secret; there is no scheduled paid-model run.
+Install once at the repository root with `bun install`. Repository validation
+uses the canonical full E2E lane. The separate benchmark unit/smoke workflow
+has been retired; benchmark campaigns remain explicit research commands and
+do not establish product E2E acceptance.
 
 From the monorepo root:
 
