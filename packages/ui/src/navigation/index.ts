@@ -17,7 +17,6 @@ import {
   Monitor,
   Phone,
   Radio,
-  ScrollText,
   Settings,
   UserRound,
   Wallet,
@@ -310,12 +309,6 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     tabs: ["stream"],
     icon: Radio,
     description: "Live streaming controls",
-  },
-  {
-    label: "Pendant",
-    tabs: ["pendant-transcript"],
-    icon: ScrollText,
-    description: "Realtime transcript from the omi pendant",
   },
   {
     // One consolidated surface — workflows, triggers, and scheduled items share
@@ -644,8 +637,6 @@ export function titleForTab(tab: Tab): string {
       return "Background";
     case "stream":
       return "Stream";
-    case "pendant-transcript":
-      return "Pendant Transcript";
     default:
       // Dynamic plugin tabs — capitalize the tab ID as a fallback title.
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");

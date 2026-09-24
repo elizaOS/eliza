@@ -2,8 +2,7 @@
 
 > **Linux Restore is unavailable.** The shipped helper in `native/` is a
 > fail-closed identity-retention foundation only; it is not installed or wired
-> to the server or UI. See `docs/linux-restore-helper.md` for the security
-> boundary and the evidence required before destructive behavior can be added.
+> to the server or UI.
 
 Electrobun-targeted microapp for preparing bootable elizaOS USB installers.
 

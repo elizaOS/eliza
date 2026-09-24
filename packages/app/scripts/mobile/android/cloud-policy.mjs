@@ -509,7 +509,6 @@ export const ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES = Object.freeze({
 });
 
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
-  ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
   ["@capacitor/device", "capacitor-device"],

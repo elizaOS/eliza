@@ -51,7 +51,7 @@ function serviceNamesOf(
 }
 
 describe("createElizaPlugin — structure & service wiring", () => {
-  it("registers the knowledge-graph and pendant tables for SQL migration", () => {
+  it("registers the knowledge-graph tables for SQL migration", () => {
     const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
     expect(Object.keys(plugin.schema ?? {})).toEqual(
       expect.arrayContaining([
@@ -61,9 +61,6 @@ describe("createElizaPlugin — structure & service wiring", () => {
         "lifeRelationshipsV2",
         "lifeRelationshipAuditEvents",
         "coreRelationshipsSourceRecords",
-        "pendantSessions",
-        "pendantSessionSegments",
-        "pendantSessionInsightRefs",
       ]),
     );
   });

@@ -50,9 +50,7 @@ const LIVE_PROVIDER_NAMES = [
   "groq",
   "openai",
   "anthropic",
-  "google",
   "openrouter",
-  "cli",
 ] as const satisfies readonly LiveProviderName[];
 
 const MAX_TURN_TIMEOUT_MS = 2_147_483_647;
@@ -618,7 +616,7 @@ export async function runCli(
   }
   if (configuredProviders.length === 0 && !deterministicModelEnabled) {
     process.stderr.write(
-      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.\n",
+      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY,\n  or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.\n",
     );
     return 2;
   }

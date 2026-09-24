@@ -635,6 +635,13 @@ export type CreateLifeOpsCalendarEventResponse =
 
 export interface LifeOpsNextCalendarEventContext {
   event: LifeOpsCalendarEvent | null;
+  /** A fresh source is not an exhaustive agenda: this result selects one event. */
+  readScope: {
+    selection: "next_event";
+    timeMin: string;
+    timeMax: string;
+    exhaustive: false;
+  };
   calendarFeedState: LifeOpsCalendarFeedState;
   calendarSources: LifeOpsCalendarSourceHealth[];
   startsAt: string | null;

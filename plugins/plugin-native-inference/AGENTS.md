@@ -145,8 +145,7 @@ the staged libraries and model artifacts by hand.
 Browser callers must use the llama or OCR entrypoints, never the host barrel.
 Do not re-export host modules from browser entrypoints. Preserve the existing
 WebSocket authentication, iOS IPC ownership, filesystem sandbox, and teardown
-contracts documented in [mobile bridge](docs/mobile-bridge.md),
-[Capacitor llama](docs/capacitor-llama.md), and [OCR](docs/mlkit-text.md).
+contracts in the existing implementations.
 
 `android/` is the Capacitor-discovered ML Kit library. `android-bridge/` retains
 the separately integrated computer-use native fragment; do not add its services

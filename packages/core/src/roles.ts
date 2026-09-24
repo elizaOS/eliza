@@ -445,7 +445,7 @@ export function deterministicOwnerEntityId(agentId: string): UUID {
 
 /**
  * The single owner-entity derivation shared by the client-chat write path, the
- * pendant and personal-assistant routes, LifeOps reads and the scheduler, the
+ * personal-assistant routes, LifeOps reads and the scheduler, the
  * outbound owner target, and connector ownership metadata: the configured
  * canonical owner (`ELIZA_ADMIN_ENTITY_ID` / owner contacts) when it is a
  * UUID, otherwise {@link deterministicOwnerEntityId}. Surfaces that derive the

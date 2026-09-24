@@ -14,11 +14,11 @@
     "usb-installer"
   ],
   "scripts": {
-    "build": "turbo run build",
+    "build": "bun run --cwd setup build && bun run --cwd usb-installer build",
     "typecheck": "tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json",
-    "lint": "turbo run lint:check",
-    "format": "turbo run format",
-    "test": "turbo run test",
+    "lint": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check",
+    "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
+    "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test",
     "test:release": "node --test scripts/__tests__/*.test.mjs && bun test scripts/__tests__/*.test.ts",
     "verify:layout": "node scripts/verify-os-repository-layout.mjs",
     "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",

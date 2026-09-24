@@ -28,6 +28,7 @@ const runtimeModeMock = vi.hoisted(() => ({
 }));
 
 const clientMock = vi.hoisted(() => ({
+  onReconnect: vi.fn(() => () => {}),
   getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   getModelsConfig: vi.fn(),
   getConfig: vi.fn(),
@@ -138,6 +139,20 @@ afterEach(() => {
 });
 
 describe("useHomeModelStatus", () => {
+  it("releases the composer after a transient routing failure without remounting", async () => {
+    clientMock.getModelsConfig
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue({ activeChat: { provider: "cerebras" } });
+    const { result } = renderHook(() => useHomeModelStatus());
+    await waitFor(() => expect(result.current.blocksSend).toBe(true));
+    expect(result.current.kind).toBe("error");
+    await waitFor(() => expect(result.current.blocksSend).toBe(false), {
+      timeout: 2_500,
+    });
+    expect(result.current.kind).toBe("not-required");
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+  });
+
   it.each(["loading", "cloud", "remote"] as const)(
     "does not poll local inference while runtime mode is %s",
     async (mode) => {

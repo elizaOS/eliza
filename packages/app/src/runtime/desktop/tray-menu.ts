@@ -101,12 +101,6 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     labelKey: "desktop.views.stream",
     path: "/stream",
   },
-  {
-    id: "pendant-transcript",
-    label: "Pendant transcript",
-    labelKey: "desktop.views.pendant-transcript",
-    path: "/pendant/transcript",
-  },
 ] as const;
 
 /** Prefix for tray item ids that open a view in its own desktop window. */

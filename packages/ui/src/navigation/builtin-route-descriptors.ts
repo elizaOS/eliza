@@ -157,10 +157,6 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     },
   },
   stream: { path: "/stream", layout: CONTENT_LAYOUT },
-  "pendant-transcript": {
-    path: "/pendant/transcript",
-    layout: CONTENT_LAYOUT,
-  },
   apps: {
     path: "/apps",
     layout: IMMERSIVE_LAYOUT,

@@ -36,7 +36,7 @@ function withApp(node: React.ReactElement) {
   );
 }
 
-describe("MessageContent slash-command bolding", () => {
+describe("MessageContent slash-prefixed literal text", () => {
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);

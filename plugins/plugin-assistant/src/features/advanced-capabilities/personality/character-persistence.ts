@@ -41,7 +41,9 @@ export interface PersistCharacterResult {
 }
 
 export interface CharacterPersistenceServiceLike {
-  persistCharacter(params?: PersistCharacterParams): Promise<PersistCharacterResult>;
+  persistCharacter(
+    params?: PersistCharacterParams,
+  ): Promise<PersistCharacterResult>;
 }
 
 export function isCharacterPersistenceService(

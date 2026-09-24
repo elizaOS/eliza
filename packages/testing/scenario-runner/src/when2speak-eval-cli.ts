@@ -83,9 +83,7 @@ const liveProviders = new Set<LiveProviderName>([
   "groq",
   "openai",
   "anthropic",
-  "google",
   "openrouter",
-  "cli",
 ]);
 if (
   providerText !== undefined &&

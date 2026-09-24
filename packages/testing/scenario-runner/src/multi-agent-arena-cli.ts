@@ -121,7 +121,6 @@ async function main(): Promise<void> {
   const report = await runMultiAgentArena({
     seats,
     turns,
-    preferredProvider: "cli",
     maxPeerRounds: autonomousLighthouse ? 6 : lighthouse ? 2 : 1,
     runId,
     ...(lighthouse

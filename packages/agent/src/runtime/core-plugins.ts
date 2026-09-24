@@ -389,7 +389,6 @@ export const BLOCKING_CORE_PLUGINS: readonly string[] = [
  *   - shell           — shell service + shell-history provider
  *   - coding-tools    — FILE/SHELL/WORKTREE actions + available-tools provider
  *   - agent-skills    — USE_SKILL action + enabled-skills provider
- *   - commands        — slash-command provider + command registry
  *   - browser         — browser actions + bridge routes
  * The genuinely on-demand connector/feature plugins that have NO boot
  * obligation (e.g. plugin-video — service-only, reached via getService(VIDEO);

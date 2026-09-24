@@ -338,8 +338,7 @@ export interface AppRunActionResult {
 }
 
 /**
- * Runtime service type under which `@elizaos/plugin-app-manager` registers its
- * app-run reader. Consumers (e.g. the agent's hosted-app session gate) query
+ * Runtime service type for an optional host-provided app-run reader. Consumers (e.g. the agent's hosted-app session gate) query
  * `runtime.getService(APP_SESSION_SERVICE_TYPE)` instead of statically importing
  * the plugin, keeping the host→plugin dependency direction correct.
  */

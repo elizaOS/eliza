@@ -9,7 +9,6 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
-    implementation project(':capacitor-community-bluetooth-le')
     implementation project(':capacitor-app')
     implementation project(':capacitor-background-runner')
     implementation project(':capacitor-barcode-scanner')

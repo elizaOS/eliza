@@ -118,8 +118,6 @@ describe("stubElizaCore", () => {
 
     expect(evaluated).toBe("fixture reply");
   });
-
-
 });
 
 describe("stubNodeBuiltins", () => {

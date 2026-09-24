@@ -4911,6 +4911,7 @@ function calendarNextEventReadReceipt(
     event?.id ?? null,
   ]);
   const version = calendarEffectId("calendar-next-event-version-v1", [
+    JSON.stringify(context.readScope),
     context.calendarFeedState,
     event?.externalId ?? null,
     event?.status ?? null,
@@ -5464,9 +5465,7 @@ const calendarAction: CalendarHandlerAction = {
         const fallback = formatNextEventContext(context);
         return respond({
           success: true,
-          text: await renderReply("next_event", fallback, {
-            event: context,
-          }),
+          text: await renderReply("next_event", fallback),
           effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });
@@ -6643,9 +6642,7 @@ const calendarAction: CalendarHandlerAction = {
           const fallback = `I couldn't find a clear trip window for ${tripWindowIntent.location} in your upcoming calendar.`;
           return respond({
             success: true,
-            text: await renderReply("trip_window_not_found", fallback, {
-              location: tripWindowIntent.location,
-            }),
+            text: await renderReply("trip_window_not_found", fallback),
             effectReceipt: calendarFeedReadReceipt({
               feed,
               events: [],
@@ -6667,10 +6664,7 @@ const calendarAction: CalendarHandlerAction = {
         );
         return respond({
           success: true,
-          text: await renderReply("trip_window_results", fallback, {
-            location: tripWindowIntent.location,
-            events: itineraryEvents,
-          }),
+          text: await renderReply("trip_window_results", fallback),
           effectReceipt: calendarFeedReadReceipt({
             feed,
             events: itineraryEvents,
@@ -6754,9 +6748,6 @@ const calendarAction: CalendarHandlerAction = {
               return respond({
                 success: true,
                 text: await renderReply("search_results", fallback, {
-                  query: userReferenceLogView(queryFallback),
-                  queries: [],
-                  events: filteredEvents,
                   label,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
@@ -6798,7 +6789,6 @@ const calendarAction: CalendarHandlerAction = {
                 success: true,
                 text: await renderReply("feed_results", fallback, {
                   label,
-                  events: feed.events,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
                   feed,
@@ -6819,7 +6809,6 @@ const calendarAction: CalendarHandlerAction = {
               success: true,
               text: await renderReply("feed_results", fallback, {
                 label,
-                events: feed.events,
               }),
               effectReceipt: calendarFeedReadReceipt({
                 feed,
@@ -6928,9 +6917,6 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: await renderReply("search_results", fallback, {
-            query: userReferenceLogView(query),
-            queries: queryViews,
-            events: filteredEvents,
             label,
           }),
           effectReceipt: calendarFeedReadReceipt({
@@ -6953,7 +6939,6 @@ const calendarAction: CalendarHandlerAction = {
         success: true,
         text: await renderReply("feed_results", fallback, {
           label,
-          events: feed.events,
         }),
         effectReceipt: calendarFeedReadReceipt({
           feed,
@@ -6983,6 +6968,9 @@ const calendarAction: CalendarHandlerAction = {
         // swallowed "mode must be one of ..." surfaced only as
         // CALENDAR_SERVICE_400).
         runtime.reportError("calendar:action", error, {
+          // The action owns this clarification; keep diagnostics without
+          // escalating repeated missing guest details into a second reply.
+          diagnosticOnly: error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7026,9 +7014,6 @@ const calendarAction: CalendarHandlerAction = {
                 error.code === "CALENDAR_READ_DATE_CONFLICT"))
               ? { coachingFailure: true }
               : {}),
-            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
-              ? { requiresInput: true, missing: ["guest email address"] }
-              : {}),
             actionName: "CALENDAR",
             subaction,
             error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7036,6 +7021,7 @@ const calendarAction: CalendarHandlerAction = {
               ? {
                   requiresInput: true,
                   awaitingUserInput: true,
+                  retryable: false,
                   missing: ["guest email address"],
                 }
               : {}),

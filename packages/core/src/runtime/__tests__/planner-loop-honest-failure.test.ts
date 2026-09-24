@@ -41,6 +41,51 @@ function loopComposedInstructionText(
 
 describe("honest failed-turn replies (#17948)", () => {
 	it.each([
+		"I couldn't save it as a recurring event. Your local calendar only handles one-off events, and the Google Calendar connection that supports repeats is currently disconnected.\n\nI can either add a single Birch QA check for Friday 9:30 to 9:45 am, or you can reconnect Google Calendar and I'll set up the weekly recurring event.",
+		"Tried to set that up but hit a snag: your local calendar only handles one-off events. Repeating events need a connected calendar provider, and Google Calendar is currently disconnected.\n\nTwo options:\n1. Reconnect Google Calendar and I'll set up the weekly 9:30 AM Birch QA check starting Fri Sep 25.\n2. I can add a single event for this Friday 9:30 to 9:45 am, and you re-enroll it weekly after we get the connection back.\n\nWhich do you want?",
+	])(
+		"preserves a failed Calendar reply offering user-owned reconnection: %s",
+		async (reply) => {
+			const useModel = vi.fn().mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "calendar-create",
+						name: "CALENDAR_CREATE_EVENT",
+						arguments: { title: "Birch QA check" },
+					},
+				],
+			});
+			const executeToolCall = vi.fn(async () => ({
+				success: false,
+				error: "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+				modelReplyRequired: true,
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: false,
+				decision: "FINISH" as const,
+				messageToUser: reply,
+			}));
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: { id: "calendar-failure" },
+				tools: [
+					{
+						name: "CALENDAR_CREATE_EVENT",
+						description: "Create calendar event",
+					},
+				],
+				executeToolCall,
+				evaluate,
+			});
+			expect(result.finalMessage).toBe(reply);
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it.each([
 		"Got it — the charger and water are for the train trip. I recorded the correction and left the note unchanged.",
 		"Okay — the first attempt failed, but I recorded the correction on the retry and left the note unchanged.",
 	])("preserves a completed failure-aware model reply: %s", async (reply) => {

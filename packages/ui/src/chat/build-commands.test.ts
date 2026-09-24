@@ -1,5 +1,5 @@
 /**
- * Unit coverage for slash-command list assembly from the view registry, gated by
+ * Unit coverage for command-palette list assembly from the view registry, gated by
  * enabled view kinds. Pure functions, no live agent.
  */
 import type { EnabledViewKinds } from "@elizaos/core";

@@ -585,8 +585,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("relationships", { viewKind: "system" }),
     entry("memories", { viewKind: "system" }),
     entry("stream"),
-    // Builtin tab with no declared kind — curation must still force preview.
-    entry("pendant-transcript", { builtin: true, label: "Pendant Transcript" }),
     entry("settings", { viewKind: "system" }),
     // Native-OS (AOSP fork only).
     entry("phone", { builtin: true }),
@@ -628,7 +626,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "documents",
       "memories",
       "stream",
-      "pendant-transcript",
       "trajectories",
       "database",
       "runtime",
@@ -662,7 +659,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("forces stream/pendant to preview while relationships stays inside Character", () => {
+  it("forces stream to preview while relationships stays inside Character", () => {
     // Preview on, developer off: the preview surfaces return while developer
     // tools remain hidden and relationships stays inside Character.
     const previewOnly = ids(
@@ -672,9 +669,7 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["stream", "pendant-transcript"]) {
-      expect(previewOnly).toContain(id);
-    }
+    expect(previewOnly).toContain("stream");
     expect(previewOnly).not.toContain("trajectories");
     expect(previewOnly).not.toContain("relationships");
 
@@ -689,9 +684,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     );
     // relationships is a Character section, never a tile — even developer-on.
     expect(developerOnly).not.toContain("relationships");
-    for (const id of ["stream", "pendant-transcript"]) {
-      expect(developerOnly).not.toContain(id);
-    }
+    expect(developerOnly).not.toContain("stream");
   });
 
   it("hides Stream when its build feature is disabled without hiding other preview apps", () => {
@@ -704,7 +697,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       }),
     );
     expect(page).not.toContain("stream");
-    expect(page).toContain("pendant-transcript");
     expect(page).toContain("trajectories");
   });
 

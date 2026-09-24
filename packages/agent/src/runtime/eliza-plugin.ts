@@ -52,7 +52,6 @@ import {
   registerMediaGcWorker,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
-import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -77,7 +76,6 @@ import { LocalFileStorageService } from "../services/file-storage.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
-import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -122,7 +120,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     // migrates the runtime data model whenever the agent runs.
     schema: {
       ...knowledgeGraphSchema,
-      ...pendantSessionSchema,
     },
 
     services: [
@@ -199,7 +196,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
-      ...pendantSessionRoutes,
     ],
 
     actions: [

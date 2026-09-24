@@ -1,10 +1,4 @@
-/**
- * Regression tests for surrogate-safe truncation in SaveCommandModal preview
- * and useActivityEvents proactive message summary. Both production formatters
- * are imported directly so reverting either to `.slice(0, N)` makes the suite
- * red — see the explicit naive-slice comparison tests that prove the old code
- * emits lone surrogates and length overflow.
- */
+/** Exercises Unicode-safe proactive activity previews with deterministic text fixtures. */
 
 import { describe, expect, it } from "vitest";
 import { formatProactiveMessageSummary } from "../../hooks/useActivityEvents";

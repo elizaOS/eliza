@@ -1053,9 +1053,7 @@ export async function runWhen2SpeakEval(options: {
     "largeModel" in runtimeResult.providerConfig
       ? runtimeResult.providerConfig.largeModel
       : "deterministic";
-  const backend =
-    runtimeResult.providerConfig.env.ELIZA_CHAT_VIA_CLI ??
-    runtimeResult.providerName;
+  const backend = runtimeResult.providerName;
   // Hash the requested personality, not the runtime-owned character object:
   // provider and plugin assembly may append model-specific runtime metadata.
   const characterSha256 = timingCharacterSha256(
@@ -1173,23 +1171,6 @@ export async function runWhen2SpeakEval(options: {
         example,
         runtimeProfile,
       );
-      if (
-        runtimeResult.providerName === "cli" &&
-        evaluation.observation.provider !== "cli-inference"
-      ) {
-        throw new ElizaError(
-          `Timing row ${example.row} routed Stage 1 through an unexpected provider`,
-          {
-            code: "TIMING_STAGE1_PROVIDER_DRIFT",
-            context: {
-              row: example.row,
-              requestedProvider: runtimeResult.providerName,
-              requestedModel,
-              actualProvider: evaluation.observation.provider,
-            },
-          },
-        );
-      }
       predictions.push({
         row: example.row,
         gold: example.label,

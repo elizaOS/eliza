@@ -1,7 +1,7 @@
 /**
  * Pure parsers that turn untrusted stream/WS payloads into the typed shapes the
  * chat reducer consumes (agent status, startup diagnostics, conversation
- * messages, custom-action params, slash-command input). No React, no I/O.
+ * messages and custom-action params). No React, no I/O.
  */
 import type {
   AgentStartupDiagnostics,

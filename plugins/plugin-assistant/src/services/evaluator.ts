@@ -776,11 +776,10 @@ export class EvaluatorService extends BaseService {
   }
 
   /** Both built-in reducers must own the replacement. Legacy/custom runtimes and
-   * voice/mobile keep their existing validation path. */
+   * group voice/mobile keep their existing validation path. */
   ownsDeferredFacts(message: Memory): boolean {
     return (
       !isMobilePlatform() &&
-      message.content.channelType !== ChannelType.VOICE_DM &&
       message.content.channelType !== ChannelType.VOICE_GROUP &&
       ["factMemory", "relationships"].every((name) =>
         this.runtime.evaluators.some(
@@ -2311,7 +2310,7 @@ export async function runPostTurnEvaluators(
   state?: State,
   options: EvaluatorRunOptions = {},
 ): Promise<EvaluatorRunResult | null> {
-  // Realtime voice and mobile local inference both require the room to admit the
+  // Group voice and mobile local inference both require the room to admit the
   // next utterance immediately after the visible reply. Post-turn reflection is
   // optional model work, but the host deliberately drains room-state tasks before
   // releasing that room. Running reflection here therefore serializes the next
@@ -2321,7 +2320,6 @@ export async function runPostTurnEvaluators(
   // this post-delivery reflection call is skipped.
   if (
     isMobilePlatform() ||
-    message.content.channelType === ChannelType.VOICE_DM ||
     message.content.channelType === ChannelType.VOICE_GROUP
   ) {
     return null;

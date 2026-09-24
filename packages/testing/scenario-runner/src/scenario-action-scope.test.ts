@@ -55,7 +55,7 @@ describe("foreignScenarioActionNames", () => {
     actions: [],
     plugins: [
       plugin("coding-tools", ["FILE", "SHELL", "WORKTREE"]),
-      plugin("app-control", ["APP", "VIEWS"]),
+      plugin("fixture-navigation", ["APP", "VIEWS"]),
       plugin("bootstrap", ["REPLY", "IGNORE"]),
     ],
   } as unknown as Parameters<typeof foreignScenarioActionNames>[0];
@@ -64,7 +64,7 @@ describe("foreignScenarioActionNames", () => {
     const hidden = foreignScenarioActionNames(
       runtime,
       scenarioDeclaring("coding", ["@elizaos/plugin-coding-tools"]),
-      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-app-control"],
+      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-fixture-navigation"],
     );
     expect([...hidden].sort()).toEqual(["APP", "VIEWS"]);
   });
@@ -74,13 +74,13 @@ describe("foreignScenarioActionNames", () => {
       actions: [],
       plugins: [
         plugin("coding-tools", ["FILE"]),
-        plugin("app-control", ["FILE", "APP"]),
+        plugin("fixture-navigation", ["FILE", "APP"]),
       ],
     } as unknown as Parameters<typeof foreignScenarioActionNames>[0];
     const hidden = foreignScenarioActionNames(
       shared,
       scenarioDeclaring("coding", ["@elizaos/plugin-coding-tools"]),
-      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-app-control"],
+      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-fixture-navigation"],
     );
     expect([...hidden].sort()).toEqual(["APP"]);
   });
@@ -93,8 +93,8 @@ describe("foreignScenarioActionNames", () => {
     const hidden = foreignScenarioActionNames(
       runtime,
       scenarioDeclaring("coding", ["@elizaos/plugin-coding-tools"]),
-      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-app-control"],
-      // Only APP exists because a scenario declared app-control; VIEWS is a
+      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-fixture-navigation"],
+      // Only APP exists because a scenario declared fixture-navigation; VIEWS is a
       // baseline action the runtime carries either way.
       ["APP"],
     );
@@ -117,14 +117,14 @@ describe("enterScenarioActionScope", () => {
       actions: [action("FILE"), action("APP"), action("REPLY")],
       plugins: [
         plugin("coding-tools", ["FILE"]),
-        plugin("app-control", ["APP"]),
+        plugin("fixture-navigation", ["APP"]),
       ],
     } as unknown as Parameters<typeof enterScenarioActionScope>[0];
 
     const scope = enterScenarioActionScope(
       runtime,
       scenarioDeclaring("coding", ["@elizaos/plugin-coding-tools"]),
-      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-app-control"],
+      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-fixture-navigation"],
     );
     expect(runtime.actions.map((entry) => entry.name)).toEqual([
       "FILE",
@@ -189,7 +189,7 @@ describe("two scenarios sharing one runtime", () => {
     callPlanner: (prompt: string, toolNames: string[]) => Promise<unknown>;
   } {
     const codingTools = plugin("coding-tools", ["FILE"]);
-    const appControl = plugin("app-control", ["APP"]);
+    const appControl = plugin("fixture-navigation", ["APP"]);
     const deterministic = createDeterministicModelPlugin();
     const runtime = {
       actions: [...(codingTools.actions ?? []), ...(appControl.actions ?? [])],
@@ -278,7 +278,7 @@ describe("two scenarios sharing one runtime", () => {
     const { runtime, callPlanner } = createSharedRuntime();
     const seen: string[][] = [];
     const batch = [
-      "@elizaos/plugin-app-control",
+      "@elizaos/plugin-fixture-navigation",
       "@elizaos/plugin-coding-tools",
     ];
     const options = {
@@ -290,8 +290,8 @@ describe("two scenarios sharing one runtime", () => {
 
     const first = await runScenario(
       observingScenario(
-        "peer-app-control",
-        ["@elizaos/plugin-app-control"],
+        "peer-fixture-navigation",
+        ["@elizaos/plugin-fixture-navigation"],
         ["APP"],
         seen,
         callPlanner,

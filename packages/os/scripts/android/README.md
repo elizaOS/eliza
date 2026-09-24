@@ -57,8 +57,7 @@ names are exported by the validator. Any changed release field invalidates
 qualification and signatures.
 
 Physical qualification explicitly includes encrypted recovery, recovery slot
-identity after OTA and the matched kernel/vendor module set; see the
-[hardware matrix](../../android/docs/hardware-validation.md).
+identity after OTA and the matched kernel/vendor module set.
 During execution, firmware and current-slot probes must remain equal to the
 qualified state through bootloader/fastbootd transitions. After activation the
 installer verifies the target slot before recording activation or rebooting.
@@ -163,8 +162,7 @@ Post-boot health uses the authenticated NDJSON abstract socket
 `eliza_local_agent_v1`, through a temporary serial-bound ADB forward. The
 private token file is passed to the probe over stdin; no device TCP health
 listener is required. A failed probe or forward cleanup is a verification
-failure. See the [Pixel readiness review](../../android/docs/pixel11-readiness-2026-09-23.md)
-for the remaining physical qualification gates.
+failure.
 
 ## Concurrent or interrupted installation
 

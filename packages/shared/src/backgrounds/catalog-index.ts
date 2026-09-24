@@ -6,9 +6,6 @@
  *  - `@elizaos/ui` (`state/ui-preferences.ts`) imports this index and attaches
  *    the concrete render sources (gradient data URLs / shader preset ids) to
  *    build `BACKGROUND_CATALOG` for the gallery + the apply channel.
- *  - `@elizaos/plugin-app-control` (the `BACKGROUND` action) imports this index
- *    to MATCH a user's request ("use the misty-forest background") to a catalog
- *    id, then names that id in the `background:apply` payload (`catalogId`).
  *
  * Crucially this index carries NO render source — no GLSL text, no image bytes,
  * no URL. It is pure metadata (id / label / description / mood / palette /

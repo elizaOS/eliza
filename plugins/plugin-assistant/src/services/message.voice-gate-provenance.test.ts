@@ -193,32 +193,35 @@ describe("voice-gate provenance end to end (#14873)", () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(["how did the build go?", "/settings model", "/commands"])("delivers the model reply for %s without a second voice call", async (text) => {
-    const replyText = `The build finished clean, 981 tests green. probe-${v4()}`;
-    const deliveries = await runTurn(
-      makeMessage(text),
-      vi.fn(async () => stage1DirectReply(replyText)),
-    );
+  it.each(["how did the build go?", "/settings model", "/commands"])(
+    "delivers the model reply for %s without a second voice call",
+    async (text) => {
+      const replyText = `The build finished clean, 981 tests green. probe-${v4()}`;
+      const deliveries = await runTurn(
+        makeMessage(text),
+        vi.fn(async () => stage1DirectReply(replyText)),
+      );
 
-    // The pipeline marked the model's own reply as already-voiced.
-    expect(deliveries).toHaveLength(1);
-    expect(deliveries[0].text).toBe(replyText);
-    expect(deliveries[0].agentVoiced).toBe(true);
+      // The pipeline marked the model's own reply as already-voiced.
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0].text).toBe(replyText);
+      expect(deliveries[0].agentVoiced).toBe(true);
 
-    // At the transport chokepoint the gate short-circuits: the reply is
-    // delivered verbatim and useModel is NEVER called — this is the
-    // ~771ms-per-turn TEXT_SMALL that used to sit between reply generation
-    // and delivery.
-    const gateModel = vi.fn(async () => {
-      throw new Error("voice gate must not re-voice a genuine model reply");
-    });
-    const { runtime, target, sent } = makeTransportRuntime(gateModel);
-    await runtime.sendMessageToTarget(target, deliveries[0]);
+      // At the transport chokepoint the gate short-circuits: the reply is
+      // delivered verbatim and useModel is NEVER called — this is the
+      // ~771ms-per-turn TEXT_SMALL that used to sit between reply generation
+      // and delivery.
+      const gateModel = vi.fn(async () => {
+        throw new Error("voice gate must not re-voice a genuine model reply");
+      });
+      const { runtime, target, sent } = makeTransportRuntime(gateModel);
+      await runtime.sendMessageToTarget(target, deliveries[0]);
 
-    expect(gateModel).not.toHaveBeenCalled();
-    expect(sent).toHaveLength(1);
-    expect(sent[0].text).toBe(replyText);
-  });
+      expect(gateModel).not.toHaveBeenCalled();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].text).toBe(replyText);
+    },
+  );
 
   it("still voices a synthetic transient-failure template through the gate", async () => {
     // Every model call fails with a generic transient error, so the pipeline

@@ -74,7 +74,7 @@ if (
     "--runtime-profile must be classifier-isolated or production-composed",
   );
 }
-const provider = option("provider") ?? "cli";
+const provider = option("provider") ?? "openai";
 const shardCount = positiveInteger("shard-count", 8);
 const workers = positiveInteger("workers", Math.min(4, shardCount));
 const maxAttempts = positiveInteger("max-attempts", 20);

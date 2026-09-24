@@ -171,12 +171,7 @@ vi.mock("./hooks", () => ({
     <>{children}</>
   ),
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => false,
   useDocumentVisibility: () => true,
   useRenderGuard: vi.fn(),

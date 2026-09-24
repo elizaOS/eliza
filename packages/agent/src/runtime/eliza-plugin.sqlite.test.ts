@@ -7,11 +7,10 @@ import { AgentRuntime, type UUID } from "@elizaos/core";
 import { KnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { expect, it, vi } from "vitest";
-import { createPendantSessionRepository } from "../services/pendant-session/repository.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 
-it("initializes the selected native host and persists graph and pendant state in its existing database", async () => {
+it("initializes the selected native host and persists graph state in its existing database", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-sqlite-host-"));
   vi.stubEnv("ELIZA_DATABASE_PROVIDER", "sqlite");
   vi.stubEnv("ELIZA_STATE_DIR", directory);
@@ -47,26 +46,6 @@ it("initializes the selected native host and persists graph and pendant state in
     expect(await graph.getEntityStore().get("self")).toMatchObject({
       entityId: "self",
     });
-    const repository = createPendantSessionRepository(runtime);
-    await repository.create({
-      schemaVersion: 1,
-      session: {
-        id: "session",
-        ownerId: "synthetic-owner",
-        agentId,
-        startedAt: "2026-09-23T12:00:00.000Z",
-        endedAt: null,
-        state: "active",
-        processingLocation: "cloud",
-        captureLease: null,
-        revision: 0,
-      },
-      segments: [],
-      insightRefs: [],
-    });
-    expect(
-      await repository.loadLatest({ ownerId: "synthetic-owner", agentId }),
-    ).toMatchObject({ session: { id: "session" } });
     expect(() =>
       preparePluginForSelectedDatabase({
         name: "unported",

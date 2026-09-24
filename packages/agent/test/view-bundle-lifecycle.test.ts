@@ -1,4 +1,3 @@
-import { closeRuntimeViewRegistry } from "../src/api/view-installations.ts";
 /**
  * View bundle lifecycle tests.
  *
@@ -11,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { closeRuntimeViewRegistry } from "../src/api/view-installations.ts";
 import { getView, listViews } from "../src/api/views-registry.js";
 import { installRuntimePluginLifecycle } from "../src/runtime/plugin-lifecycle.js";
 import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
@@ -22,7 +22,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-native-messages/src/plugin.ts",
   "plugins/plugin-native-phone/src/plugin.ts",
   "plugins/plugin-wallet/src/ui/plugin.ts",
-  "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-agent-orchestrator/src/ui/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
 ] as const;

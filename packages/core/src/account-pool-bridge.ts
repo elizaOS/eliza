@@ -4,8 +4,7 @@
  *
  * The account pool and credential store live in `@elizaos/app`; the
  * plugins that must select a credentialed account
- * (`@elizaos/plugin-anthropic`, `@elizaos/plugin-agent-orchestrator`,
- * `@elizaos/plugin-cli-inference`) depend only on `@elizaos/core` and cannot
+ * (`@elizaos/plugin-anthropic`, `@elizaos/plugin-agent-orchestrator`) depend only on `@elizaos/core` and cannot
  * import app. `runtime.getService(...)` is not viable either — these
  * consumers run at spawn/token-resolve time without a runtime handle. So
  * app publishes a narrow contract on a `globalThis` symbol and the

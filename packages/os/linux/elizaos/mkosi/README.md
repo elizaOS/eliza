@@ -5,8 +5,6 @@ It builds a persistent GPT disk image for `x86-64`, `arm64`, or `riscv64`.
 There is no Cage kiosk, live-build hook reuse, amnesic mode, Tor profile, or
 hybrid-ISO wrapping in this tree.
 
-The product and release architecture is recorded in
-[`../../docs/mkosi-v1-architecture.md`](../../docs/mkosi-v1-architecture.md).
 
 ## Build contract
 

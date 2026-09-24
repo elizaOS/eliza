@@ -18,7 +18,8 @@
       ],
       "@elizaos/plugin-workflow": [
         "../../../../plugins/plugin-workflow/src/index.ts"
-      ]
+      ],
+      "@elizaos/cloud-sdk": ["../../sdk/src/index.ts"]
     }
   },
   "include": ["src"]

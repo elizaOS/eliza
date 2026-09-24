@@ -38,7 +38,6 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   automations: "system",
   browser: "system",
   stream: "system",
-  "pendant-transcript": "system",
   apps: "system",
   views: "system",
   character: "system",

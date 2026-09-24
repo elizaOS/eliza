@@ -677,6 +677,7 @@ export function createVoiceSessionClient(
         if (state.phase === "complete") setState(loopToListening(state));
         break;
       case "navigate_view":
+      case "reply_complete":
       case "stt_partial":
       case "stt_eager_eot":
         break;

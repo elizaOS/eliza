@@ -245,7 +245,6 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
     expect(deployStep.run).toContain('--secrets-file "$WORKER_SECRETS_FILE"');
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
-    expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
   });
 
   test("deploy Worker passes the same fail-closed runtime realtime opt-in as secrets", () => {

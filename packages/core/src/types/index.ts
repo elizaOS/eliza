@@ -22,7 +22,7 @@ export * from "./channel-config";
 export * from "./chat-pre-handler";
 export * from "./coding";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
-// concrete registry lives in @elizaos/plugin-commands and re-exports these.
+// Runtime command-service implementations share these public contracts.
 export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)

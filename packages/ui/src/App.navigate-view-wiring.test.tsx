@@ -435,12 +435,7 @@ vi.mock("./hooks", () => ({
   ),
   useOptionalBugReport: () => null,
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
@@ -1891,12 +1886,6 @@ describe("App navigate-view event wiring", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/commands")) {
-          return new Response(JSON.stringify({ commands: [] }), {
-            headers: { "Content-Type": "application/json" },
-            status: 200,
-          });
-        }
         if (url.includes("/api/custom-actions")) {
           return new Response(JSON.stringify({ actions: [] }), {
             headers: { "Content-Type": "application/json" },
@@ -1937,12 +1926,6 @@ describe("App navigate-view event wiring", () => {
     let viewNavigationAttempts = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/commands")) {
-        return new Response(JSON.stringify({ commands: [] }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
       if (url.includes("/api/custom-actions")) {
         return new Response(JSON.stringify({ actions: [] }), {
           headers: { "Content-Type": "application/json" },

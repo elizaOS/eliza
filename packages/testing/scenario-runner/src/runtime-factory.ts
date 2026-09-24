@@ -793,18 +793,6 @@ export function resolveScenarioProviderConfig(
   return selectLiveProvider(options.preferredProvider);
 }
 
-/** Force explicit CLI scenario runs onto the CLI plugin's supported text planner. */
-export function configureExplicitCliScenarioPlanner(
-  preferredProvider: LiveProviderName | undefined,
-  providerConfig: RuntimeFactoryResult["providerConfig"],
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  if (preferredProvider !== "cli" || providerConfig.name !== "cli") return;
-
-  env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
-  providerConfig.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
-}
-
 /**
  * Live lane: `prepareMockedTestEnvironment` boots the wire-level LLM mocks and
  * exports their base-URL overrides (`ELIZA_MOCK_OPENAI_BASE` /
@@ -863,13 +851,9 @@ export async function createScenarioRuntime(
   const providerConfig = resolveScenarioProviderConfig(options);
   if (!providerConfig) {
     throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
+      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
     );
   }
-  configureExplicitCliScenarioPlanner(
-    options?.preferredProvider,
-    providerConfig,
-  );
   if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
     assertScenarioLiveProviderPreflight(
       options?.preferredProvider,
@@ -1080,31 +1064,6 @@ export async function createScenarioRuntime(
     }
     selectedProviderPlugin = providerPlugin;
     await runtime.registerPlugin(providerPlugin);
-
-    if (providerConfig.name === "cli") {
-      // @elizaos/plugin-cli-inference intentionally registers large-tier
-      // handlers only (TEXT_LARGE / TEXT_MEGA / RESPONSE_HANDLER, plus
-      // ACTION_PLANNER in text-planner mode). Core's MODEL_FALLBACK_CHAINS has
-      // no TEXT_SMALL -> TEXT_LARGE edge, so the small-tier triage calls made
-      // throughout the scenario path (should-respond, extraction, evaluators)
-      // would find no handler at all. Bridge TEXT_SMALL to TEXT_LARGE: the
-      // same real subscription-served model answers, just slower. TEXT_NANO
-      // and TEXT_MEDIUM already fall back to TEXT_SMALL via core's chains.
-      const cliSmallTierBridge: Plugin = {
-        name: "scenario-runner-cli-small-tier-bridge",
-        description:
-          "Routes TEXT_SMALL to TEXT_LARGE when the large-tier-only " +
-          "CLI-subscription provider serves the scenario runtime.",
-        models: {
-          TEXT_SMALL: async (bridgeRuntime, params) =>
-            bridgeRuntime.useModel(ModelType.TEXT_LARGE, params),
-        },
-      };
-      await runtime.registerPlugin(cliSmallTierBridge);
-      logger.info(
-        "[scenario-runner] Registered TEXT_SMALL→TEXT_LARGE bridge (cli provider registers large-tier handlers only)",
-      );
-    }
   }
 
   if (executionProfile === "simulated") {

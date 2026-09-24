@@ -194,7 +194,7 @@ async function main(): Promise<void> {
     "..",
   );
   const sizes = parseSizes(argumentValue("sizes"));
-  const provider = argumentValue("provider") ?? "cli";
+  const provider = argumentValue("provider") ?? "openai";
   const outputRoot = path.resolve(
     packageRoot,
     argumentValue("output-dir") ?? "../../../reports/memory-horizon",

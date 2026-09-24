@@ -225,7 +225,12 @@ describe("direct-text builtin schema descriptions", () => {
     ).toBe(replaced);
   });
 
-  it.each([ChannelType.DM, ChannelType.GROUP, ChannelType.VOICE_DM])(
+  it.each([
+    ChannelType.DM,
+    ChannelType.GROUP,
+    ChannelType.VOICE_DM,
+    ChannelType.VOICE_GROUP,
+  ])(
     "uses the correct schema in the production %s pipeline",
     async (channelType) => {
       const args = fixture(channelType);
@@ -236,7 +241,9 @@ describe("direct-text builtin schema descriptions", () => {
       const [schema] = requestSchemas(args.runtime);
       expect(schema).toBeDefined();
       const expected =
-        channelType === ChannelType.DM ? expectedCompact(canonical) : canonical;
+        channelType === ChannelType.VOICE_GROUP
+          ? canonical
+          : expectedCompact(canonical);
       for (const name of [...removed, ...Object.keys(shortened)])
         expect(properties(schema)[name]).toEqual(properties(expected)[name]);
       expect(canonical).toEqual(before);

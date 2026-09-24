@@ -6324,6 +6324,15 @@ export function ChatOverlay({
                               {visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
+                              {controller.realtimeVoice?.progressText &&
+                              responding &&
+                              turnStatus &&
+                              !(
+                                visibleMessages.at(-1)?.role === "assistant" &&
+                                !lastContent.trim()
+                              ) ? (
+                                <TurnStatus status={turnStatus} />
+                              ) : null}
                             </MessageScrollerContent>
                           </MessageScrollerViewport>
                         </motion.div>

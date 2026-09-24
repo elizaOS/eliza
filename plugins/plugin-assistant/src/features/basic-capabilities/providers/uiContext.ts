@@ -72,7 +72,7 @@ export const uiContextProvider: Provider = {
         : null,
       `active_contexts: ${activeContexts.join(", ") || "general"}`,
       "view_capabilities is context, not an invocation request.",
-      "Only view identity/capabilities are supplied, not displayed content or current record values. View/subview IDs are routing identifiers, not necessarily titles; read titles with get-text. For displayed text, balances, selections or current settings, first inspect the focused view via VIEWS get-text/list-elements or a relevant domain read action. Never infer displayed values from routes or configuration diagnostics.",
+      "Current-turn view identity can answer which view is open now; historical navigation receipts establish earlier delivery. Only view identity/capabilities are supplied, not displayed content or current record values. View/subview IDs are routing identifiers, not necessarily titles; read titles with get-text. For displayed text, balances, selections or current settings, first inspect the focused view via VIEWS get-text/list-elements or a relevant domain read action. Never infer displayed values from routes or configuration diagnostics.",
       "Open views with registered VIEWS_SHOW, otherwise VIEWS; opening is not a record operation. Use note/event actions only for requested record reads/writes, preferring available child actions over umbrellas. Use VIEWS for layout or capabilities without domain actions. Claim effects only from successful results.",
     ].filter((line): line is string => line !== null);
 

@@ -11,7 +11,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   tasks: "/apps/tasks",
   browser: "/browser",
   stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
   apps: "/apps",
   views: "/views",
   character: "/character",

@@ -9,9 +9,8 @@
  *
  *   - the pure gate decisions (`protectedAgentProbesEnabled`,
  *     `shouldProbeExistingLocalInstall`) that govern every gated call site, and
- *   - real hook behavior for the protected `GET /api/runtime/mode` and the
- *     `GET /api/commands` + `/api/custom-actions` catalog fetches — asserted by
- *     spying on the actual network functions the hooks call.
+ *   - real hook behavior for protected `GET /api/runtime/mode` requests,
+ *     observed at the network boundary.
  *
  * The gate stays inert off the Cloud origin (localhost/self-hosted/desktop),
  * so probes fire there exactly as before.
@@ -24,22 +23,6 @@ vi.mock("../api/runtime-mode-client", () => ({
   fetchRuntimeModeSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
-const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
-  () => ({
-    listCommands: vi.fn(),
-    listCustomActions: vi.fn(),
-    getModelsCatalog: vi.fn(),
-  }),
-);
-
-vi.mock("../api", () => ({
-  client: {
-    getBaseUrl: vi.fn(() => "http://localhost:2138"),
-    listCommands: (surface?: string) => listCommands(surface),
-    listCustomActions: () => listCustomActions(),
-    getModelsCatalog: () => getModelsCatalog(),
-  },
-}));
 vi.mock("../config/boot-config-react.hooks", () => ({
   useBootConfig: (): Record<string, never> => ({}),
 }));
@@ -127,11 +110,6 @@ beforeEach(() => {
   __resetAuthStatusForTests();
   __resetRuntimeModeCacheForTests();
   runtimeModeMock.mockClear().mockResolvedValue(null);
-  listCommands.mockReset().mockResolvedValue([]);
-  listCustomActions.mockReset().mockResolvedValue([]);
-  getModelsCatalog
-    .mockReset()
-    .mockResolvedValue({ catalog: { providers: {} } });
   window.localStorage.clear();
 });
 

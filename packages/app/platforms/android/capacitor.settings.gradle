@@ -13,8 +13,6 @@ String resolveNodePackageDir(String packageName) {
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File(resolveNodePackageDir('@capacitor/android'), 'capacitor')
 
-include ':capacitor-community-bluetooth-le'
-project(':capacitor-community-bluetooth-le').projectDir = new File(resolveNodePackageDir('@capacitor-community/bluetooth-le'), 'android')
 
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File(resolveNodePackageDir('@capacitor/app'), 'android')

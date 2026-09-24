@@ -999,7 +999,7 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Registers the `/start` handler, the universal slash-command handlers, and
+   * Registers the `/start` handler and
    * the task-board command on a freshly created Telegraf instance. Called
    * exactly once per bot (see {@link TelegramAccountRuntime.wiring}).
    */

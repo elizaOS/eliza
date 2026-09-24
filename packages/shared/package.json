@@ -395,16 +395,6 @@
       "import": "./dist/contracts/index.js",
       "default": "./dist/contracts/index.js"
     },
-    "./contracts/pendant-session-sync": {
-      "types": "./dist/contracts/pendant-session-sync.d.ts",
-      "eliza-source": {
-        "types": "./src/contracts/pendant-session-sync.ts",
-        "import": "./src/contracts/pendant-session-sync.ts",
-        "default": "./src/contracts/pendant-session-sync.ts"
-      },
-      "import": "./dist/contracts/pendant-session-sync.js",
-      "default": "./dist/contracts/pendant-session-sync.js"
-    },
     "./contracts/remote-agent-request": {
       "types": "./dist/contracts/remote-agent-request.d.ts",
       "eliza-source": {
@@ -840,6 +830,16 @@
       },
       "import": "./dist/i18n/keyword-matching-core.js",
       "default": "./dist/i18n/keyword-matching-core.js"
+    },
+    "./conversation-chat-marker": {
+      "types": "./dist/conversation-chat-marker.d.ts",
+      "eliza-source": {
+        "types": "./src/conversation-chat-marker.ts",
+        "import": "./src/conversation-chat-marker.ts",
+        "default": "./src/conversation-chat-marker.ts"
+      },
+      "import": "./dist/conversation-chat-marker.js",
+      "default": "./dist/conversation-chat-marker.js"
     }
   },
   "publishConfig": {

@@ -71,6 +71,7 @@ describe("v5 evaluator skeleton", () => {
 			expect(result.messageToUser).toBeUndefined();
 			expect(result.decision).toBe("CONTINUE");
 			expect(evaluatorSchema.required).not.toContain("messageToUser");
+			expect(result.protocolFailure).not.toBe(true);
 		},
 	);
 
@@ -2096,5 +2097,106 @@ describe("provider-owned evaluator output boundaries", () => {
 			code: "EVALUATOR_OUTPUT_INCOMPLETE",
 		});
 		expect(useModel).toHaveBeenCalledTimes(1);
+	});
+});
+
+// Same-call semantic classification must not publish a change without proof,
+// including wording not recognized by the legacy English phrase detector.
+describe("semantic completion claim proof", () => {
+	it.each([
+		"Done. QA routing check is tomorrow at 4:30 PM, with description and location cleared.",
+		"Listo. La cita quedó reprogramada para mañana a las 16:30.",
+		"C’est réglé, le rendez-vous est déplacé à demain.",
+	])("withholds unsupported completed-change claims: %s", async (reply) => {
+		const messageToUser = vi.fn();
+		const copyToClipboard = vi.fn();
+		const useModel = vi.fn(async () =>
+			JSON.stringify({
+				thought: "The model claims a completed change.",
+				success: true,
+				decision: "FINISH",
+				replyEffectStatus: "applied",
+				messageToUser: reply,
+				effectReceiptIds: [],
+				copyToClipboard: { title: "Result", content: reply },
+			}),
+		);
+		const context = { id: "no-committed-write", events: [] };
+		const result = await runEvaluator({
+			runtime: { useModel },
+			context,
+			trajectory: {
+				context,
+				steps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+			effects: { messageToUser, copyToClipboard },
+		});
+		expect(result.protocolFailure).not.toBe(true);
+		expect(result).toMatchObject({ success: false, decision: "CONTINUE" });
+		expect(result.messageToUser).toBeUndefined();
+		expect(messageToUser).not.toHaveBeenCalled();
+		expect(copyToClipboard).not.toHaveBeenCalled();
+		expect(useModel).toHaveBeenCalledOnce();
+		expect(useModel.mock.calls[0][1].responseSchema.required).toContain(
+			"replyEffectStatus",
+		);
+	});
+
+	it("delivers a semantically classified change with an active committed receipt", async () => {
+		const messageToUser = vi.fn();
+		const context = { id: "committed-write", events: [] };
+		const reply = "The appointment is moved.";
+		const result = await runEvaluator({
+			runtime: {
+				useModel: async () =>
+					JSON.stringify({
+						thought: "The current receipt proves the change.",
+						success: true,
+						decision: "FINISH",
+						replyEffectStatus: "applied",
+						messageToUser: reply,
+						effectReceiptIds: ["write-1"],
+					}),
+			},
+			context,
+			trajectory: {
+				context,
+				steps: [
+					{
+						iteration: 1,
+						result: {
+							success: true,
+							effectReceipts: [
+								{
+									receiptId: "write-1",
+									operation: "calendar.event.update",
+									resource: { kind: "calendar.event", id: "event-1" },
+									artifacts: [],
+									idempotency: { key: "update-1", replayed: false },
+									observedAt: "2026-09-24T10:00:00Z",
+									outcome: "applied",
+									commit: {
+										kind: "durable",
+										id: "write-1",
+										committedAt: "2026-09-24T10:00:00Z",
+									},
+								},
+							],
+						},
+					},
+				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+			effects: { messageToUser },
+		});
+		expect(result).toMatchObject({
+			success: true,
+			decision: "FINISH",
+			replyEffectStatus: "applied",
+		});
+		expect(messageToUser).toHaveBeenCalledWith(reply);
 	});
 });

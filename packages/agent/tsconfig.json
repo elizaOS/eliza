@@ -18,6 +18,9 @@
       "@elizaos/plugin-assistant": [
         "../../plugins/plugin-assistant/src/index.ts"
       ],
+      "@elizaos/plugin-assistant/character-persistence": [
+        "../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/character-persistence.ts"
+      ],
       "@elizaos/plugin-assistant/actions/generate-media": [
         "../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts"
       ],

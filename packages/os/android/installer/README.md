@@ -76,8 +76,6 @@ node scripts/android/verify-installed-release.mjs \
 Omitting `--execute` is dry-run. The older `validate-post-flash.sh` remains a
 legacy diagnostic helper; its results cannot authorize v2 release promotion.
 
-[Supported devices](docs/supported-devices.md) and
-[recovery guidance](docs/recovery-rollback.md) describe remaining qualification.
 
 ## Tests
 

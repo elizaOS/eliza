@@ -98,7 +98,6 @@ export type {
   CloudContainerDefaults,
   CloudInferenceMode,
   CloudServiceToggles,
-  CommandsConfig,
   ConfigFileSnapshot,
   ConfigValidationIssue,
   ConnectorConfig,

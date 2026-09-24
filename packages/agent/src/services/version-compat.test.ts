@@ -49,26 +49,6 @@ afterEach(() => {
   }
 });
 
-describe("AI_PROVIDER_PLUGINS", () => {
-  it("lists the known AI provider package names in declaration order", () => {
-    expect([...AI_PROVIDER_PLUGINS]).toEqual([
-      "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-openai",
-      "@elizaos/plugin-openrouter",
-      "@elizaos/plugin-zerollama",
-      "@elizaos/plugin-google-genai",
-      "@elizaos/plugin-groq",
-      "@elizaos/plugin-xai",
-      "@elizaos/plugin-zai",
-      "@elizaos/plugin-elizacloud",
-      "@elizaos/plugin-codex-cli",
-      "@elizaos/plugin-cli-inference",
-      "@elizaos/plugin-nearai",
-      "@elizaos/plugin-vercel-ai-gateway",
-    ]);
-  });
-});
-
 describe("parseSemver", () => {
   it("parses a stable release as sorting after any pre-release", () => {
     expect(parseSemver("2.0.0")).toEqual([2, 0, 0, Number.POSITIVE_INFINITY]);
@@ -154,7 +134,6 @@ describe("diagnoseNoAIProvider", () => {
 
   it("returns null when a loaded name is a known AI provider alias", () => {
     expect(diagnoseNoAIProvider(["elizaOSCloud"], [])).toBeNull();
-    expect(diagnoseNoAIProvider(["codex-cli"], [])).toBeNull();
   });
 
   it("returns null for each listed AI provider package when it is the only loaded name", () => {

@@ -162,12 +162,7 @@ vi.mock("./hooks/useActivityEvents", () => ({
 vi.mock("./hooks", () => ({
   BugReportProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => false,
   useRenderGuard: vi.fn(),
 }));

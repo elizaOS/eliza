@@ -25,7 +25,6 @@ src/helpers/
                        `stack` fixture and the per-test `seededUser`/`authenticatedPage`
   wallet-login.ts      loginWithTestWallet / loginAsSeededUser — real SIWE handshake
   provisioning.ts, monetization.ts, seed-pricing.ts  flow helpers
-docs/                  coverage write-ups and live-operation runbooks
 ```
 
 Specs import `{ test, expect }` from `src/helpers/test-fixtures`, not from

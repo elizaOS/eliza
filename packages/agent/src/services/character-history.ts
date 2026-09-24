@@ -14,8 +14,8 @@ import {
 } from "@elizaos/core";
 
 import type {
-  PersistableCharacter as RuntimeCharacterLike,
   CharacterPersistenceSource as CharacterHistorySource,
+  PersistableCharacter as RuntimeCharacterLike,
 } from "@elizaos/plugin-assistant/character-persistence";
 
 export const CHARACTER_HISTORY_TABLE = "character_modifications";
@@ -199,8 +199,8 @@ export function createHistoryWalkContext(): HistoryWalkContext {
 }
 
 export type {
-  PersistableCharacter as RuntimeCharacterLike,
   CharacterPersistenceSource as CharacterHistorySource,
+  PersistableCharacter as RuntimeCharacterLike,
 } from "@elizaos/plugin-assistant/character-persistence";
 
 export type CharacterHistoryValue =

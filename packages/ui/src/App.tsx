@@ -55,7 +55,6 @@ import {
   LazyLiveMeetingPageView,
   LazyLogsView,
   LazyMemoryViewerView,
-  LazyPendantTranscriptView,
   LazyPluginsPageView,
   LazyRuntimeView,
   LazySettingsView,
@@ -1609,7 +1608,6 @@ function buildStaticTabRenderers(): Record<
     chat: () => <HomeScreenMount initialSection="apps" />,
     browser: wrapOverlayAware(<LazyBrowserWorkspaceView />),
     stream: wrap(<LazyStreamView />),
-    "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
     tasks: wrapOverlayAware(
       <ShellViewAgentSurface viewId="projects">
         <LazyTasksPageView />

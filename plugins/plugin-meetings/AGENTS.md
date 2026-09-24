@@ -131,10 +131,7 @@ sandbox, so mobile users get meeting transcripts via a cloud-hosted agent instea
 **Meet needs a real X server** for humanized XTEST admission clicks, so the
 recommended server topology is **headed Chromium under Xvfb**
 (`ELIZA_MEETINGS_HEADLESS=false` + `DISPLAY=:99`), not pure headless (which is
-best-effort for Meet, reliable for Teams/Zoom). Full deployment matrix — local
-desktop, Linux server / Eliza Cloud container (Xvfb + PulseAudio + apt packages +
-Dockerfile), and why mobile is unsupported — is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+best-effort for Meet, reliable for Teams/Zoom).
 
 ## Commands
 

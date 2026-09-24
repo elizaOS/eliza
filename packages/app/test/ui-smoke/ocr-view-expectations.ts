@@ -90,14 +90,6 @@ export const VIEW_OCR_POLICIES = {
   "builtin-stream": expected({
     requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
   }),
-  "builtin-pendant-transcript": expected({
-    requireAll: ["Pendant Transcript"],
-    requireAny: [
-      "No transcript segments yet",
-      "Local offline cache",
-      "Connect",
-    ],
-  }),
   "builtin-apps": expected({
     requireAll: ["Apps"],
     requireAny: [

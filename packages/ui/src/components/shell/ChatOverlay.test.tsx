@@ -3613,6 +3613,63 @@ describe("ChatOverlay", () => {
       expect(screen.queryByTestId("typing-dots")).toBeNull();
     });
 
+    it("shows transient voice progress and replaces it with the saved final reply", () => {
+      const { rerender } = render(
+        <ChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            messages: [
+              { id: "u", role: "user", content: "read my note", createdAt: 1 },
+            ],
+            turnStatus: { kind: "speaking", label: "Checking your note." },
+            realtimeVoice: {
+              enabled: true,
+              active: true,
+              connecting: false,
+              paused: false,
+              microphoneMuted: false,
+              status: "speaking",
+              error: null,
+              progressText: "Checking your note.",
+              toggleMicrophoneMute: vi.fn(),
+            },
+          } as Partial<ShellController>)}
+        />,
+      );
+      openSheetToFull();
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Checking your note.",
+      );
+      const progressRegion = screen
+        .getByTestId("turn-status-label")
+        .closest('[role="status"]');
+      expect(progressRegion).not.toBeNull();
+      expect(
+        progressRegion?.parentElement?.closest('[role="status"]'),
+      ).toBeNull();
+      rerender(
+        <ChatOverlay
+          controller={makeController({
+            phase: "summoned",
+            responding: false,
+            turnStatus: null,
+            messages: [
+              { id: "u", role: "user", content: "read my note", createdAt: 1 },
+              {
+                id: "a",
+                role: "assistant",
+                content: "Your note says hello.",
+                createdAt: 2,
+              },
+            ],
+          } as Partial<ShellController>)}
+        />,
+      );
+      expect(screen.queryByText("Checking your note.")).toBeNull();
+      expect(screen.getByText("Your note says hello.")).toBeTruthy();
+    });
+
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {
       render(
         <ChatOverlay

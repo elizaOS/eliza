@@ -49,7 +49,6 @@ function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-
 test("discovers implicit, explicit, compact, and multiple typecheck projects", () => {
   const packageDir = path.join(repoRoot, "packages", "example");
   assert.deepEqual(discoverTypecheckProjects(packageDir, "tsc --noEmit"), [
@@ -125,7 +124,12 @@ test("models explicit and dependency-graph Turbo builds before typecheck", () =>
   };
   assert.deepEqual(
     [...builtBeforeTypecheck("@elizaos/owner", manifests, turbo)].sort(),
-    ["@elizaos/direct", "@elizaos/explicit", "@elizaos/host", "@elizaos/transitive"],
+    [
+      "@elizaos/direct",
+      "@elizaos/explicit",
+      "@elizaos/host",
+      "@elizaos/transitive",
+    ],
   );
 });
 
@@ -292,4 +296,3 @@ test("rejects an ambient workspace shim that shadows a source mapping", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-

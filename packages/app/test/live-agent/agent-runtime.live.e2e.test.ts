@@ -385,11 +385,7 @@ describe("Agent Runtime E2E", () => {
     path.join(os.tmpdir(), "eliza-e2e-workspace-"),
   );
 
-  const corePluginNames = [
-    "@elizaos/plugin-agent-skills",
-    "@elizaos/plugin-workflow",
-    // NOTE: @elizaos/plugin-commands is excluded — commented out as "not yet ready" in core-plugins.ts
-  ];
+  const corePluginNames = ["@elizaos/plugin-workflow"];
 
   // ─── Setup ──────────────────────────────────────────────────────────────
 

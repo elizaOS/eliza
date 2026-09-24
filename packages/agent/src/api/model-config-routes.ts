@@ -15,7 +15,7 @@
  * without a half-applied config. Coding targets return without restart:
  * sub-agent spawns re-read the config env on every spawn. A coding write may
  * also be a defaultBackend-only body (no `model`), persisting just
- * ELIZA_DEFAULT_AGENT_TYPE — the seam the `/backend` slash command drives.
+ * ELIZA_DEFAULT_AGENT_TYPE — the application backend selection seam.
  * When a touched key
  * already carried a different process-env value that the config did not put
  * there (systemd service.env, shell export), the response lists it in

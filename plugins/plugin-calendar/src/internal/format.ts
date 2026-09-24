@@ -140,7 +140,7 @@ export function formatNextEventContext(
   context: LifeOpsNextCalendarEventContext,
 ): string {
   if (!context.event) {
-    return "No upcoming events on your calendar.";
+    return "No upcoming event was found in the checked calendar window.";
   }
   const lines = [
     `**Next event: ${context.event.title}** (${formatEventTime(context.event)})`,

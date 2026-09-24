@@ -1,22 +1,76 @@
 /**
- * Unit tests for ElizaCharacterPersistenceService and character sync into config.
+ * Verifies host character persistence through the assistant port, with real
+ * temporary config files and deterministic database/history collaborators.
  */
 
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { getCharacterPersistenceService } from "@elizaos/plugin-assistant/character-persistence";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.js";
 import {
-  CHARACTER_PERSISTENCE_SERVICE,
   ElizaCharacterPersistenceService,
   syncCharacterIntoConfig,
 } from "./character-persistence.js";
 
 describe("character-persistence", () => {
-  it("exports valid service constants", () => {
-    expect(CHARACTER_PERSISTENCE_SERVICE).toBe("eliza_character_persistence");
-    expect(ElizaCharacterPersistenceService.serviceType).toBe(
-      "eliza_character_persistence",
-    );
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("resolves the host through the assistant port and persists all three sinks", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "character-persistence-"));
+    const configPath = join(directory, "eliza.json");
+    vi.stubEnv("ELIZA_STATE_DIR", directory);
+    vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+    vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+    const updateAgent = vi.fn().mockResolvedValue(true);
+    const createMemory = vi.fn().mockResolvedValue("history-id");
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: { name: "Before" },
+      updateAgent,
+      createMemory,
+      getService: (name: string) =>
+        name === ElizaCharacterPersistenceService.serviceType ? service : null,
+    } as unknown as IAgentRuntime;
+    const service = await ElizaCharacterPersistenceService.start(runtime);
+    try {
+      const port = getCharacterPersistenceService(runtime);
+      expect(port).not.toBeNull();
+      const result = await port?.persistCharacter({
+        character: { name: "After", system: "Preserve complete instructions." },
+        previousCharacter: runtime.character,
+        source: "restore",
+      });
+      expect(result).toEqual({ success: true });
+      const config = JSON.parse(await readFile(configPath, "utf8"));
+      expect(config.agents.list[0].name).toBe("After");
+      expect(config.ui.assistant.name).toBe("After");
+      expect(updateAgent).toHaveBeenCalledWith(runtime.agentId, {
+        name: "After",
+        metadata: {
+          character: {
+            name: "After",
+            system: "Preserve complete instructions.",
+          },
+        },
+      });
+      expect(createMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            action: "character_restored",
+            historySource: "restore",
+            before: { name: "Before" },
+            after: { name: "After", system: "Preserve complete instructions." },
+          }),
+        }),
+        "character_modifications",
+      );
+    } finally {
+      await service.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("syncs character properties into ElizaConfig", () => {

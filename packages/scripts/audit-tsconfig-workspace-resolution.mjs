@@ -172,7 +172,14 @@ function taskDependencies(turbo, taskName) {
   );
 }
 
-function buildClosure(packageName, manifestsByName, turbo, output = new Set(), task = "build", visited = new Set()) {
+function buildClosure(
+  packageName,
+  manifestsByName,
+  turbo,
+  output = new Set(),
+  task = "build",
+  visited = new Set(),
+) {
   const taskId = `${packageName}#${task}`;
   if (visited.has(taskId)) return output;
   visited.add(taskId);

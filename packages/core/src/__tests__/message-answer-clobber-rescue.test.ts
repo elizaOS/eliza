@@ -471,7 +471,7 @@ describe("answer-clobber rescue", () => {
 		expect(finalText ?? "").not.toBe(PROGRESS_ACK);
 	});
 
-	it("does not double-deliver when an action already delivered the preserved text", async () => {
+	it("keeps action callback prose internal and returns the preserved answer once", async () => {
 		const delivered: string[] = [];
 		const callback: HandlerCallback = async (content) => {
 			if (typeof content.text === "string" && content.text.length > 0) {
@@ -508,9 +508,8 @@ describe("answer-clobber rescue", () => {
 						toolCalls: [{ id: "call-1", name: "ANSWER_LOOKUP", arguments: {} }],
 					},
 				},
-				// The evaluator echoes the text the action already delivered — the
-				// classic redundant-second-bubble shape the echo suppression exists
-				// for. The preserved-answer fallback must not defeat it.
+				// The evaluator may repeat the action text, but only its terminal
+				// reply may be published; the action callback remains internal.
 				{
 					expectModelType: String(ModelType.RESPONSE_HANDLER),
 					body: JSON.stringify({
@@ -535,10 +534,10 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText } = await runTurn({ runtime, callback });
 
-		// The action draft remains internal; the one returned final answer is
-		// the delivery boundary's payload, without an earlier duplicate bubble.
 		expect(delivered).toEqual([]);
 		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
+		await callback({ text: finalText });
+		expect(delivered).toEqual([SUBSTANTIVE_ANSWER]);
 	});
 
 	it("surfaces the preserved answer when the required-tool miss budget exhausts", async () => {

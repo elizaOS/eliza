@@ -153,3 +153,5 @@ The ownership, adapter, variant, and exception rules for shared UI live in
 [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
 `bun run --cwd packages/ui audit:design-system` before submitting changes to
 tokens, controls, or reusable UI patterns.
+
+Realtime voice acknowledgements use turn-scoped transient progress frames and the existing chat status display. They never become saved assistant replies, and clear on final response, interruption, new turn or session teardown. Frames from another trace cannot overwrite the current acknowledgement.

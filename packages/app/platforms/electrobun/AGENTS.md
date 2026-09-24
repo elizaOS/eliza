@@ -27,7 +27,6 @@ src/
 assets/                       branded icons and generated brand data
 entitlements/                 macOS signing capabilities and rationale
 scripts/                      preload, signing, packaging, and smoke helpers
-docs/                         desktop architecture and audit records
 electrobun.config.ts          packaging configuration
 ```
 

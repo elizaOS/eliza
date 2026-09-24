@@ -723,30 +723,41 @@ export const lifeOpsProvider: Provider = {
         );
       }
 
+      const instructions = [
+        "## Owner Operations",
+        // Per-action routing ("Use OWNER_TODOS for…") is not repeated here: every
+        // LifeOps tool on the planner surface already carries that guidance in its
+        // own description, and repeating ~17 lines of it cost 11.5K chars in every
+        // planner and evaluator call (live 2026-09-05). Only the cross-cutting
+        // rules that no single tool description can express stay below.
+        "The LifeOps tool descriptions on this turn's surface say which action owns which request; pick the best-fit one instead of staying in advice-only chat.",
+        "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
+        "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
+        "For third-party availability requests, minimize to free/busy windows or ask the owner to confirm sharing. Never volunteer event titles, medical details, home addresses, locations, attendees, or stored private facts to someone who only asked when the owner is free.",
+        "Stable owner-only profile details and reusable travel-preference checklists are extracted automatically by evaluators. Do not use a planner action for goals, todos, reminders, temporary plans, or live task state.",
+        "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
+        "When the owner reports missing a reminder, step, or habit (once or repeatedly): acknowledge neutrally in one short clause with no shame, blame, streak, or discipline framing; offer ONE smaller version of the missed step (a few minutes, a partial batch) instead of re-proposing the full original task; and in that repair flow ASK before creating, rescheduling, or re-arming anything — never silently create a reminder or claim one was set.",
+        "When the owner gives a clear, unambiguous reminder ask with a date or deadline ('remind me to renew the registration by the 20th'), save it right away with a sensible plain default time (a day or two before a deadline, or the morning it is due) and confirm briefly — do not interrogate for exact times or add scaffolding, check-ins, or extra structure the owner did not ask for.",
+        "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
+        "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
+        "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
+        "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
+        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
+        "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
+      ];
+      const ownerContext = [
+        ...summarizeOwnerProfile(ownerProfile),
+        ...summarizeOwnerTimingFacts(ownerFacts),
+      ];
       return {
+        discoveryText: [
+          ...instructions,
+          ...ownerContext,
+          "Complete owner operations, counts, current items, and connector details are available through the lifeops provider reference. Read that reference when those details are needed; omitted details are not empty or unavailable.",
+        ].join("\n"),
         text: [
-          "## Owner Operations",
-          // Per-action routing ("Use OWNER_TODOS for…") is not repeated here: every
-          // LifeOps tool on the planner surface already carries that guidance in its
-          // own description, and repeating ~17 lines of it cost 11.5K chars in every
-          // planner and evaluator call (live 2026-09-05). Only the cross-cutting
-          // rules that no single tool description can express stay below.
-          "The LifeOps tool descriptions on this turn's surface say which action owns which request; pick the best-fit one instead of staying in advice-only chat.",
-          "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
-          "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
-          "For third-party availability requests, minimize to free/busy windows or ask the owner to confirm sharing. Never volunteer event titles, medical details, home addresses, locations, attendees, or stored private facts to someone who only asked when the owner is free.",
-          "Stable owner-only profile details and reusable travel-preference checklists are extracted automatically by evaluators. Do not use a planner action for goals, todos, reminders, temporary plans, or live task state.",
-          "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
-          "When the owner reports missing a reminder, step, or habit (once or repeatedly): acknowledge neutrally in one short clause with no shame, blame, streak, or discipline framing; offer ONE smaller version of the missed step (a few minutes, a partial batch) instead of re-proposing the full original task; and in that repair flow ASK before creating, rescheduling, or re-arming anything — never silently create a reminder or claim one was set.",
-          "When the owner gives a clear, unambiguous reminder ask with a date or deadline ('remind me to renew the registration by the 20th'), save it right away with a sensible plain default time (a day or two before a deadline, or the morning it is due) and confirm briefly — do not interrogate for exact times or add scaffolding, check-ins, or extra structure the owner did not ask for.",
-          "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
-          "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
-          "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
-          "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
-          "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
-          "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
-          ...summarizeOwnerProfile(ownerProfile),
-          ...summarizeOwnerTimingFacts(ownerFacts),
+          ...instructions,
+          ...ownerContext,
           formatCount(
             "Owner open occurrences",
             overview.owner.summary.activeOccurrenceCount,

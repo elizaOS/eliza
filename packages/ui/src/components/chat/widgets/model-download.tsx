@@ -23,6 +23,7 @@ import { getElizaApiToken } from "../../../utils/eliza-globals";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
+import { observeModelRoute } from "../../local-inference/model-route-recovery";
 import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
 
@@ -161,49 +162,39 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       return;
     }
 
-    let cancelled = false;
+    const recovery = observeModelRoute(
+      async (signal) => {
+        const modelConfig = await client.getModelsConfig({ signal });
+        if (signal.aborted) return null;
+        if (modelConfig.activeChat) {
+          setState(SETTLED_NOT_REQUIRED);
+          return null;
+        }
 
-    const refresh = async () => {
-      let modelConfig: Awaited<ReturnType<typeof client.getModelsConfig>>;
-      try {
-        modelConfig = await client.getModelsConfig();
-      } catch {
-        // error-policy:J4 A failed routing probe is distinct from both a local
-        // download and a healthy external route; expose that unavailable state.
-        if (!cancelled) setState(ROUTING_STATUS_ERROR);
-        return;
-      }
-      if (cancelled) return;
-      // Runtime placement and inference placement are independent. A local
-      // runtime backed by Cerebras (or another external chat route) must not
-      // advertise the dormant on-device text slot during every page refresh.
-      if (modelConfig.activeChat) {
-        setState(SETTLED_NOT_REQUIRED);
-        return;
-      }
-
-      try {
-        const hub = await withTimeout(
-          client.getLocalInferenceHub(),
-          HUB_TIMEOUT_MS,
-        );
-        if (cancelled) return;
-        setState({
-          status: deriveHomeModelStatus(hub.textReadiness),
-          rows: rowsFromReadiness(hub.textReadiness.slots),
-          loading: false,
-        });
-      } catch {
-        // error-policy:J4 settle (keep last-good status, drop the loading
-        // flag) so the tile
-        // resolves to not-required/null instead of spinning. A hung native
-        // bridge or a transient error must never leave a permanent "Loading…".
-        if (cancelled) return;
-        setState((prev) => (prev.loading ? { ...prev, loading: false } : prev));
-      }
-    };
-
-    void refresh();
+        try {
+          const hub = await withTimeout(
+            client.getLocalInferenceHub(),
+            HUB_TIMEOUT_MS,
+          );
+          if (signal.aborted) return null;
+          setState({
+            status: deriveHomeModelStatus(hub.textReadiness),
+            rows: rowsFromReadiness(hub.textReadiness.slots),
+            loading: false,
+          });
+        } catch {
+          // error-policy:J4 Keep the last readiness state when the local hub
+          // is unavailable; stream events and reconnect can request it again.
+          if (!signal.aborted) {
+            setState((prev) =>
+              prev.loading ? { ...prev, loading: false } : prev,
+            );
+          }
+        }
+        return null;
+      },
+      () => setState(ROUTING_STATUS_ERROR),
+    );
 
     const url = appendTokenParam(
       resolveApiUrl("/api/local-inference/downloads/stream"),
@@ -219,14 +210,14 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       es.onmessage = () => {
         if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = setTimeout(
-          () => void refresh(),
+          recovery.refresh,
           STREAM_REFETCH_DEBOUNCE_MS,
         );
       };
     }
 
     return () => {
-      cancelled = true;
+      recovery.close();
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       es?.close();
     };

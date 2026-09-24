@@ -2,9 +2,7 @@
 
 The accepted v1 product is a persistent Debian 13 GNOME workstation assembled
 by mkosi for x86_64, arm64, and riscv64. Tails, amnesia, Tor Privacy Mode, Cage,
-and the legacy live-ISO path are not release surfaces. The normative
-architecture and qualification gates are documented in
-[`docs/mkosi-v1-architecture.md`](./docs/mkosi-v1-architecture.md).
+and the legacy live-ISO path are not release surfaces.
 
 This directory owns the elizaOS Debian live image and its release boundary.
 The canonical build is [`elizaos/`](./elizaos/): Debian trixie, GNOME, the

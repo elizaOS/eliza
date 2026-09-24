@@ -31,6 +31,4 @@ bun run --cwd plugins/plugin-native-inference lint:check
 bun run --cwd plugins/plugin-native-inference test
 ```
 
-See [the package guide](AGENTS.md), [mobile bridge contracts](docs/mobile-bridge.md),
-[Capacitor adapter contracts](docs/capacitor-llama.md), and
-[OCR contracts](docs/mlkit-text.md) for activation, ownership, and verification.
+See [the package guide](AGENTS.md) for activation, ownership, and verification.

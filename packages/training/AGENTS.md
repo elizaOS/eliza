@@ -326,8 +326,6 @@ shipped bundle.
 ## 10. Files to read before making changes
 
 - `packages/training/README.md` — pipeline overview.
-- `packages/training/docs/FINETUNING_PIPELINE.md` — finetuning pipeline
-  reference.
 - `packages/training/scripts/cloud/README.md` — cloud training
   operational reference (Vast, Nebius dispatch).
 - `packages/training/scripts/quantization/README.md` — recipe-level

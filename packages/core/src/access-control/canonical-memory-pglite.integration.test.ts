@@ -11,7 +11,7 @@ import {
 	createTestRuntime,
 	type TestRuntimeResult,
 } from "@elizaos/testing/pglite-runtime";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMessageMemory } from "../memory";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -31,9 +31,10 @@ const OWNER_DM_ROOM = "66666666-6666-6666-6666-666666666666" as UUID;
 const GROUP_ROOM = "77777777-7777-7777-7777-777777777777" as UUID;
 const WORLD = "88888888-8888-8888-8888-888888888888" as UUID;
 
-function vector(seed: number): number[] {
+function vector(seed: number, tilt = 0): number[] {
 	const embedding = Array(384).fill(0);
 	embedding[0] = seed;
+	embedding[1] = tilt;
 	return embedding;
 }
 
@@ -210,7 +211,7 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 				accountId: "telegram-main",
 				platformMessageId: "telegram-message-9",
 				text: "Telegram says the launch code is soliza-beta.",
-				embedding: vector(0.95),
+				embedding: vector(0.95, 0.2),
 			}),
 			"messages",
 		);
@@ -302,6 +303,67 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		} finally {
 			runtime.searchMemories = searchMemories;
 		}
+		const search = vi.spyOn(runtime, "searchMemories");
+		const projected = await searchCanonicalConversationMemories({
+			runtime,
+			deliveryMessage: ownerTurn,
+			embedding: vector(1),
+			query: "launch code",
+			source: "telegram",
+			count: 1,
+			includeEmbedding: false,
+			excludeRoomIds: [OWNER_DM_ROOM],
+			matchThreshold: 0,
+		});
+		expect(projected.items.map((item) => item.memory.content.text)).toEqual([
+			"Telegram says the launch code is soliza-beta.",
+		]);
+		expect(
+			projected.items.every((item) => item.memory.embedding === undefined),
+		).toBe(true);
+		expect(search.mock.calls.length).toBeGreaterThan(1);
+		for (const [request] of search.mock.calls)
+			expect(request).toMatchObject({
+				includeEmbedding: false,
+				excludeRoomIds: [OWNER_DM_ROOM],
+				accessContext: expect.any(Object),
+			});
+		search.mockRestore();
+		const excluded = await searchCanonicalConversationMemories({
+			runtime,
+			deliveryMessage: ownerTurn,
+			embedding: vector(1),
+			count: 1,
+			matchThreshold: 0,
+			includeEmbedding: false,
+			excludeRoomIds: [DISCORD_ROOM],
+		});
+		expect(excluded.items.map((item) => item.memory.roomId)).toEqual([
+			TELEGRAM_ROOM,
+		]);
+		const actualSearch = runtime.searchMemories.bind(runtime);
+		const legacySearch = vi
+			.spyOn(runtime, "searchMemories")
+			.mockImplementation(({ excludeRoomIds, ...params }) =>
+				actualSearch(params),
+			);
+		try {
+			const legacyResult = await searchCanonicalConversationMemories({
+				runtime,
+				deliveryMessage: ownerTurn,
+				embedding: vector(1),
+				count: 1,
+				matchThreshold: 0,
+				includeEmbedding: false,
+				excludeRoomIds: [DISCORD_ROOM],
+			});
+			expect(legacyResult.items.map((item) => item.memory.roomId)).toEqual([
+				TELEGRAM_ROOM,
+			]);
+			expect(legacySearch.mock.calls.length).toBeGreaterThan(1);
+		} finally {
+			legacySearch.mockRestore();
+		}
 
 		await testRuntime.cleanup();
 		testRuntime = await createTestRuntime({
@@ -387,6 +449,27 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		expect(deniedRecall.candidateWindowComplete).toBe(true);
 		expect(ownerExclusiveDisclosureWasUsed(groupTurn)).toBe(false);
 		expect(ownerExclusiveSuppressionNote(groupTurn)).toBeUndefined();
+		const search = vi.spyOn(runtime, "searchMemories");
+		const excludedOwnRoom = await searchCanonicalConversationMemories({
+			runtime,
+			deliveryMessage: groupTurn,
+			embedding: vector(1),
+			count: 1,
+			includeEmbedding: false,
+			excludeRoomIds: [GROUP_ROOM],
+		});
+		expect(excludedOwnRoom.items).toEqual([]);
+		expect(excludedOwnRoom.withheld).toEqual([]);
+		expect(excludedOwnRoom.availability).toBe("complete");
+		expect(search).toHaveBeenCalledWith(
+			expect.objectContaining({
+				roomId: GROUP_ROOM,
+				excludeRoomIds: [GROUP_ROOM],
+				includeEmbedding: false,
+				accessContext: expect.any(Object),
+			}),
+		);
+		search.mockRestore();
 	});
 
 	it("does not taint egress for same-room-only owner-private searches", async () => {

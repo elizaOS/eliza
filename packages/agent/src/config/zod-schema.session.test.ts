@@ -1,12 +1,11 @@
 /**
- * SessionSchema, MessagesSchema, CommandsSchema, and SessionSendPolicySchema
+ * SessionSchema, MessagesSchema, and SessionSendPolicySchema
  * are the parse-time contracts for session scoping, inbound queue/debounce,
  * ack/TTS, and built-in command toggles. Every field is optional; unknown keys
  * fail closed because the objects are strict. Deterministic, no live services.
  */
 import { describe, expect, it } from "vitest";
 import {
-  CommandsSchema,
   MessagesSchema,
   SessionSchema,
   SessionSendPolicySchema,
@@ -369,76 +368,5 @@ describe("MessagesSchema ack reactions and tts", () => {
     expectFail(MessagesSchema, { removeAckAfterReply: "yes" });
     expectFail(MessagesSchema, { tts: { auto: "sometimes" } });
     expectFail(MessagesSchema, { tts: { extra: true } });
-  });
-});
-
-describe("CommandsSchema", () => {
-  const defaults = { native: "auto", nativeSkills: "auto" };
-
-  it("applies native/nativeSkills auto defaults for omission and empty object", () => {
-    expectOk(CommandsSchema, undefined, defaults);
-    expectOk(CommandsSchema, {}, defaults);
-    expectOk(CommandsSchema, { text: true }, { ...defaults, text: true });
-  });
-
-  it("accepts boolean and auto native settings without replacing an explicit false", () => {
-    expectOk(
-      CommandsSchema,
-      { native: true, nativeSkills: false },
-      {
-        native: true,
-        nativeSkills: false,
-      },
-    );
-    expectOk(
-      CommandsSchema,
-      { native: "auto", nativeSkills: "auto" },
-      defaults,
-    );
-  });
-
-  it("accepts bashForegroundMs bounds 0 and 30000 and boolean command toggles", () => {
-    expectOk(
-      CommandsSchema,
-      {
-        text: false,
-        bash: true,
-        bashForegroundMs: 0,
-        config: true,
-        debug: false,
-        restart: true,
-        useAccessGroups: false,
-      },
-      {
-        ...defaults,
-        text: false,
-        bash: true,
-        bashForegroundMs: 0,
-        config: true,
-        debug: false,
-        restart: true,
-        useAccessGroups: false,
-      },
-    );
-    expectOk(
-      CommandsSchema,
-      { bashForegroundMs: 30_000 },
-      {
-        ...defaults,
-        bashForegroundMs: 30_000,
-      },
-    );
-  });
-
-  it("rejects overflow past 30000, unknown native values, and extra keys", () => {
-    expectFail(CommandsSchema, { bashForegroundMs: -1 });
-    expectFail(CommandsSchema, { bashForegroundMs: 30_001 });
-    expectFail(CommandsSchema, { bashForegroundMs: 1.5 });
-    expectFail(CommandsSchema, { native: "manual" });
-    expectFail(CommandsSchema, { nativeSkills: "always" });
-    expectFail(CommandsSchema, { extra: true });
-    expectFail(CommandsSchema, { text: "yes" });
-    expectFail(CommandsSchema, null);
-    expectFail(CommandsSchema, []);
   });
 });

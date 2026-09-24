@@ -31,9 +31,7 @@ import {
 export const PROACTIVE_INTERACTION_SOURCE = "proactive-interaction";
 
 /** Any interaction the decider reacts to (#8792). */
-export type InteractionPayload =
-  | ViewSwitchedPayload
-  | ShortcutFiredPayload;
+export type InteractionPayload = ViewSwitchedPayload | ShortcutFiredPayload;
 
 /**
  * Runtime setting key for the user-facing "Proactive suggestions" control

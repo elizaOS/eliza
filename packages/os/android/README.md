@@ -161,10 +161,7 @@ Android 17 r1, GrapheneOS `adevtool`, GrapheneOS `vendor_state`, and Google's
 A9 factory image for generation and the declared rollback archive. The
 first bring-up deliberately uses the stock `spacecraft` kernel, modules, DTB,
 and DTBO extracted by `adevtool`. Reconfirm the phone's actual firmware and
-rollback constraints before flashing. See the
-[September 4 upstream audit](docs/pixel11-upstream-audit-2026-09-04.md) for new
-GrapheneOS kernel work, QPR2 Beta 4 controls and the corrected super-partition
-contract; these developments do not establish a booted elizaOS image.
+rollback constraints before flashing.
 
 Use the dedicated Linux x86_64 builder specified in
 [`docs/grizzly-build-handoff.md`](docs/grizzly-build-handoff.md); the production

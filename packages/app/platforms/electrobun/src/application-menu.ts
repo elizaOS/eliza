@@ -132,11 +132,6 @@ const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
 	{ id: "background", label: "Background", path: "/background" },
 	{ id: "files", label: "Files", path: "/apps/files" },
 	{ id: "stream", label: "Stream", path: "/stream" },
-	{
-		id: "pendant-transcript",
-		label: "Pendant transcript",
-		path: "/pendant/transcript",
-	},
 ] as const;
 
 export function getViewMenuEntries(): readonly ViewMenuEntry[] {

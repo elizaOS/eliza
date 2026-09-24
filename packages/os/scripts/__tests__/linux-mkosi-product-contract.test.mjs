@@ -1,3 +1,4 @@
+/** Validates Linux image build and release contracts against repository inputs. */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -12,29 +13,6 @@ const repositoryRoot = new URL("../../", import.meta.url);
 async function read(relativePath) {
   return readFile(new URL(relativePath, repositoryRoot), "utf8");
 }
-
-test("canonical Linux documentation declares the mkosi persistent workstation", async () => {
-  const [readme, architecture] = await Promise.all([
-    read("linux/README.md"),
-    read("linux/docs/mkosi-v1-architecture.md"),
-  ]);
-
-  assert.match(readme, /accepted v1 product is a[\s\S]*mkosi/);
-  assert.match(readme, /Tails, amnesia, Tor Privacy Mode, Cage/);
-  assert.match(
-    architecture,
-    /persistent Debian 13 workstation assembled by mkosi/,
-  );
-  assert.match(
-    architecture,
-    /install-alongside flows for[\s\S]*Windows, macOS, and Linux/,
-  );
-  assert.match(architecture, /arbitrary-root `exec` method/);
-  assert.match(
-    architecture,
-    /phone or web session may act as an authenticated remote/,
-  );
-});
 
 test("local mkosi front door builds a pinned multiarch tool container", async () => {
   const [

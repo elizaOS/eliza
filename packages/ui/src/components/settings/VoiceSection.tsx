@@ -18,7 +18,6 @@ import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { PendantSettingsCard } from "./PendantSettingsCard";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
@@ -201,8 +200,6 @@ export function VoiceSection({
             compact
           />
         </SettingsGroup>
-
-        <PendantSettingsCard />
 
         <SettingsGroup
           title={t("voicesection.chatGroupTitle", {

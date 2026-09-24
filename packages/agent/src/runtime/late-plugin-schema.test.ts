@@ -9,12 +9,7 @@ import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import type { UUID } from "@elizaos/core";
-import {
-  AgentRuntime,
-  createCharacter,
-  type JsonValue,
-  stringToUuid,
-} from "@elizaos/core";
+import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
@@ -108,15 +103,8 @@ class PGliteMigrationAdapter extends PgliteDatabaseAdapter {
   }
 
   override async runPluginMigrations(
-    plugins: Array<{
-      name: string;
-      schema?: Record<string, JsonValue | object>;
-    }> = [],
-    options?: {
-      verbose?: boolean;
-      force?: boolean;
-      dryRun?: boolean;
-    },
+    plugins: Parameters<PgliteDatabaseAdapter["runPluginMigrations"]>[0] = [],
+    options?: Parameters<PgliteDatabaseAdapter["runPluginMigrations"]>[1],
   ): Promise<void> {
     this.activeMigrations += 1;
     this.migrationBatches.push(plugins.map((plugin) => plugin.name));
@@ -175,6 +163,9 @@ describe("late plugin schema ordering", () => {
       schema: sqlSchema,
     });
     await runtime.initialize();
+    adapter.transactionCalls = 0;
+    adapter.maxConcurrentTransactions = 0;
+    adapter.transactionReceiverWasAdapterDb = true;
     installRuntimePluginLifecycle(runtime);
     return { runtime, adapter };
   }
