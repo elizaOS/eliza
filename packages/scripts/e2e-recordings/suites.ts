@@ -77,7 +77,7 @@ export const UI_E2E_COVERED_BY_APP = [
     configDir: "packages/app",
     coveredBy: "app",
     reason:
-      "App-core owns the app API/dev stack used by packages/app Playwright; its standalone Playwright config is not runnable because the package has no storybook script/e2e dir.",
+      "App browser coverage runs through the dedicated packages/app Playwright configurations and UI smoke suites.",
   },
   {
     name: "plugin-views",
