@@ -890,7 +890,12 @@ function createAppPluginSourceAliases() {
     if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
-    const sourceEntry = ["src/index.ts", "src/index.tsx", "index.ts"]
+    const sourceEntry = [
+      "src/browser.ts",
+      "src/index.ts",
+      "src/index.tsx",
+      "index.ts",
+    ]
       .map((relativePath) => path.join(pkgDir, relativePath))
       .find((candidate) => fs.existsSync(candidate));
     if (!sourceEntry) {

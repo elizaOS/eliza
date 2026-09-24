@@ -62,7 +62,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Web fallback returns metered=null / isExpensive=false so callers downgrade to ask.",
+      "browser": "Web fallback returns unknown cost hints unless Data Saver supplies a restrictive true hint.",
       "node": "Server-side consumers read the bridge through the runtime probe; no Capacitor required."
     }
   }

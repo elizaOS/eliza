@@ -16,7 +16,10 @@ export * from "./actions";
 export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
 export * from "./boot-env";
 export * from "./capabilities";
-export * from "./capability-selection";
+export * from "./capability-selection/account-selection";
+export * from "./capability-selection/evaluation";
+export * from "./capability-selection/evaluation-corpus";
+export * from "./capability-selection/retrieval";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -41,7 +44,7 @@ export {
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
 	SECRET_KEY_ALIASES,
-} from "./constants";
+} from "./constants/secrets";
 
 export * from "./contracts/computer-use";
 
@@ -111,7 +114,30 @@ export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
-export * from "./network";
+export {
+	fetchWithSsrfGuard,
+	type GuardedFetchOptions,
+	type GuardedFetchResult,
+	type PinnedLookupFetchLike,
+	type PinnedLookupFetchParams,
+} from "./network/fetch-guard.js";
+export { nodeLookupFn, nodePinnedFetch } from "./network/node-pinned-fetch.js";
+export {
+	assertPublicHostname,
+	createPinnedLookup,
+	isBlockedHostname,
+	isLoopbackHost,
+	isPrivateIpAddress,
+	type LookupFn,
+	normalizeHostLike,
+	normalizeIpForPolicy,
+	type PinnedHostname,
+	type PinnedLookup,
+	resolvePinnedHostname,
+	resolvePinnedHostnameWithPolicy,
+	SsrfBlockedError,
+	type SsrfPolicy,
+} from "./network/ssrf.js";
 export {
 	resolveFallbackOwnerEntityId,
 	resolveOwnerEntityId,
@@ -204,7 +230,8 @@ export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
 export * from "./name-tokens.js";
-export * from "./retrieval/index.js";
+export * from "./retrieval/rerank.js";
+export * from "./retrieval/search.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
@@ -400,7 +427,18 @@ export {
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
 export * from "./sensitive-request-policy";
-export * from "./sensitive-requests";
+export {
+	createSensitiveRequestDispatchRegistry,
+	type DeliveryResult,
+	type DeliveryTarget,
+	type DispatchSensitiveRequest,
+	SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
+	type SensitiveRequestDeliveryAdapter,
+	type SensitiveRequestDispatchRegistry,
+	SensitiveRequestDispatchRegistryService,
+	type SensitiveRequestPaymentContextDescriptor,
+	type SensitiveRequestWithPaymentContext,
+} from "./sensitive-requests/dispatch-registry";
 export * from "./services";
 export * from "./services/agent-event-bridge";
 export * from "./services/agentEvent";
@@ -496,11 +534,65 @@ export {
 	type TrajectoryUsageTotalsRecord,
 } from "./services/trajectory-types.ts";
 export * from "./services/triggerScheduling";
+export {
+	createSendPolicyProvider,
+	createSessionProvider,
+	createSessionSkillsProvider,
+	extractSessionContext,
+	getSessionProviders,
+} from "./sessions/provider.js";
 // Export sessions utilities
-export * from "./sessions";
+export {
+	buildAcpSessionKey,
+	buildAgentMainSessionKey,
+	buildAgentPeerSessionKey,
+	buildAgentSessionKey,
+	buildGroupHistoryKey,
+	buildSubagentSessionKey,
+	DEFAULT_ACCOUNT_ID,
+	DEFAULT_AGENT_ID,
+	DEFAULT_MAIN_KEY,
+	isAcpSessionKey,
+	isSubagentSessionKey,
+	normalizeAccountId,
+	normalizeAgentId,
+	normalizeMainKey,
+	type ParsedAgentSessionKey,
+	parseAgentSessionKey,
+	resolveAgentIdFromSessionKey,
+	resolveThreadParentSessionKey,
+	resolveThreadSessionKeys,
+	sanitizeAgentId,
+	toAgentRequestSessionKey,
+	toAgentStoreSessionKey,
+} from "./sessions/session-key.js";
+export {
+	createSessionEntry,
+	DEFAULT_IDLE_MINUTES,
+	DEFAULT_RESET_TRIGGER,
+	DEFAULT_RESET_TRIGGERS,
+	type GroupKeyResolution,
+	isValidSessionEntry,
+	mergeSessionEntry,
+	type SessionChatType,
+	type SessionDeliveryContext,
+	type SessionEntry,
+	type SessionResolution,
+	type SessionStore,
+} from "./sessions/types.js";
 export * from "./settings";
 export * from "./streaming-context";
-export * from "./target-sources";
+export {
+	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+	createTargetSourceRegistry,
+	type TargetEntry,
+	type TargetEnumerationContext,
+	type TargetGroup,
+	type TargetSource,
+	type TargetSourceLogger,
+	type TargetSourceRegistry,
+	TargetSourceRegistryService,
+} from "./target-sources/registry";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export * from "./tunnel-service";
@@ -577,9 +669,23 @@ export {
 	writeJsonAtomic,
 	writeJsonAtomicSync,
 } from "./utils/atomic-json.ts";
+export type { BatchItemOutcome } from "./utils/batch-queue/batch-processor.js";
+export { BatchProcessor } from "./utils/batch-queue/batch-processor.js";
+export {
+	BatchQueue,
+	type BatchQueueOptions,
+	type DrainStats,
+} from "./utils/batch-queue/index.js";
+export {
+	PriorityQueue,
+	type PriorityQueueOptions,
+	type PriorityQueueStats,
+	type QueuePriority,
+} from "./utils/batch-queue/priority-queue.js";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
-export { BatchProcessor, TaskDrain } from "./utils/batch-queue.ts";
+export type { TaskDrainOptions } from "./utils/batch-queue/task-drain.js";
+export { TaskDrain } from "./utils/batch-queue/task-drain.js";
 export * from "./utils/boolean";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
@@ -691,4 +797,5 @@ export * from "./utils/well-formed";
 // agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
 export * from "./utils/workspace-folder-config";
 // Export validation utilities
-export * from "./validation";
+export * from "./validation/keywords";
+export * from "./validation/secrets";

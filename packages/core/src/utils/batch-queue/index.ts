@@ -6,7 +6,7 @@
  * repeat-task CRUD.
  *
  * **Rationale:** avoid parallel one-off queue + drain + retry implementations as features grow;
- * see the longer “why not just three lines?” note on the package re-export in `../batch-queue.ts`.
+ * The same queue, retry, and drain implementation serves all runtime consumers.
  */
 
 import type { IAgentRuntime } from "../../types/runtime.js";
