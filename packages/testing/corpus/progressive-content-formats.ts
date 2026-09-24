@@ -366,7 +366,9 @@ function buildDocx(): Uint8Array {
       ),
       "word/document.xml": strToU8(document),
     },
-    { level: 6, mtime: new Date("2026-01-01T00:00:00.000Z") },
+    // ZIP stores local DOS clock fields, not a timezone-aware instant. Use the
+    // same wall-clock value in every timezone so archive bytes stay identical.
+    { level: 6, mtime: new Date(2026, 0, 1, 0, 0, 0) },
   );
 }
 

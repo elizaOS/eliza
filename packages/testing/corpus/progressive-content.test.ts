@@ -3,6 +3,7 @@
  * as a deterministic checksum, coordinate, authorization, and scale oracle.
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -71,6 +72,29 @@ function signManifest(
 }
 
 describe("progressive content corpus", () => {
+  it("generates identical format fixture bytes across timezones", () => {
+    const moduleUrl = new URL(
+      "./progressive-content-formats.ts",
+      import.meta.url,
+    ).href;
+    const script = `import { generateProgressiveFormatFixtures } from ${JSON.stringify(moduleUrl)};
+      console.log(JSON.stringify(await generateProgressiveFormatFixtures({
+        rootSeed: "progressive-test-seed", publish: async () => {}
+      })));`;
+    const results = ["UTC", "America/Los_Angeles", "Asia/Tokyo"].map((TZ) =>
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "-e", script],
+        {
+          env: { ...process.env, TZ },
+          encoding: "utf8",
+        },
+      ),
+    );
+    expect(results[1]).toBe(results[0]);
+    expect(results[2]).toBe(results[0]);
+  });
+
   it("derives family-stable identifiers without cross-family perturbation", () => {
     expect(progressiveContentObjectId("seed", "file", 3)).toBe(
       progressiveContentObjectId("seed", "file", 3),
@@ -102,10 +126,10 @@ describe("progressive content corpus", () => {
     expect(first.objects).toHaveLength(20);
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
-    // Frozen before the native-fill optimization: generator bytes and identities
-    // must remain compatible with existing published corpus manifests.
+    // Canonical UTC-wall-clock ZIP timestamps keep this manifest identical
+    // across timezones as well as generator chunk-size optimizations.
     expect(first.manifestSha256).toBe(
-      "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
+      "a850a08942b3fc011f2845386b22292c8178a1713c675c2cbdf2fbf691567d1e",
     );
     expect(new Set(first.objects.map((object) => object.family))).toEqual(
       new Set([
