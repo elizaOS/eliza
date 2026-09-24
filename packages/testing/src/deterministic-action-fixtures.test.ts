@@ -50,6 +50,61 @@ describe("deterministic current request matching", () => {
       ),
     ).toBe(false);
   });
+  it("matches attachment framing from the real renderer without accepting extra request text", () => {
+    const content = {
+      text: input,
+      source: "client_chat",
+      channelType: "DM",
+      attachments: [{ id: "note-1", text: "Complete note" }],
+    };
+    const original = structuredClone(content);
+    const rendered = renderContextObject({
+      id: "turn",
+      events: [
+        {
+          id: "current",
+          type: "message",
+          message: {
+            role: "user",
+            content,
+            metadata: { renderAsDialogue: true, speakerName: "user" },
+          },
+        },
+      ],
+    });
+    const wire = buildStageChatMessages({
+      contextSegments: rendered.promptSegments,
+      stageLabel: "stage1",
+      instructions: "Decide",
+      dynamicBlocks: [],
+      stepMessages: [],
+    });
+    const current = String(
+      wire.find((message) => message.role === "user")?.content,
+    );
+    expect(matchesScenarioInput(input)(current)).toBe(true);
+    expect(content).toEqual(original);
+    expect(current).toContain("Complete note");
+    expect(
+      matchesScenarioInput(input)(
+        current.replace(input, `${input} Also delete files.`),
+      ),
+    ).toBe(false);
+    for (const suffix of [
+      "{}",
+      "[null]",
+      '["text"]',
+      "[{}] extra instructions",
+      "[malformed",
+    ]) {
+      expect(
+        matchesScenarioInput(input)(
+          `# Current message\nuser: ${input}\n\nattachments: ${suffix}`,
+        ),
+      ).toBe(false);
+    }
+  });
+
   it("matches the exact request emitted by the real context renderer", () => {
     const wire = segmentBlock({
       label: "message:user",

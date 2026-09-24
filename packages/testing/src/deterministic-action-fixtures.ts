@@ -234,7 +234,30 @@ function extractScenarioInput(value: string): string | null {
   // Only the canonical current-message block admits the renderer's default
   // speaker prefix. Unframed text and arbitrary colon prefixes stay exact.
   if (dialogue && candidate.startsWith("user: ")) {
-    const text = candidate.slice("user: ".length);
+    let text = candidate.slice("user: ".length);
+    const attachmentsIndex = text.lastIndexOf("\n\nattachments: ");
+    if (attachmentsIndex !== -1) {
+      const attachmentJson = text.slice(
+        attachmentsIndex + "\n\nattachments: ".length,
+      );
+      try {
+        const attachments: unknown = JSON.parse(attachmentJson);
+        if (
+          !Array.isArray(attachments) ||
+          attachments.some(
+            (attachment) =>
+              attachment === null ||
+              typeof attachment !== "object" ||
+              Array.isArray(attachment),
+          )
+        )
+          return null;
+      } catch {
+        // error-policy:J3 Invalid attachment framing cannot match a request fixture.
+        return null;
+      }
+      text = text.slice(0, attachmentsIndex);
+    }
     return extractExternalContent(text) ?? text;
   }
   const externalContent = extractExternalContent(candidate);
