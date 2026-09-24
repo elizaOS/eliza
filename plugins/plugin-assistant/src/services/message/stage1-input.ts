@@ -21,11 +21,8 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { composePrompt } from "../../text/template-rendering.js";
-import { type OptimizedPromptTask } from "../optimized-prompt.ts";
-import {
-  listAvailableContextsForRole,
-  resolveStage1SenderRole,
-} from "./addressing.js";
+import type { OptimizedPromptTask } from "../optimized-prompt.ts";
+import { resolveStage1SenderRole } from "./addressing.js";
 import {
   buildCurrentTurnBoundary,
   createV5MessageContextObject,

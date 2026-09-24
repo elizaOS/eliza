@@ -159,10 +159,16 @@ function renderMessageContent(event: ContextMessageEvent): string {
 		!Array.isArray(content.metadata)
 	) {
 		for (const [key, value] of Object.entries(content.metadata)) {
+			// Only runtime routing annotations are omitted; arbitrary authored
+			// metadata remains source evidence for the model.
 			if (
-				key === "selectedValue" ||
-				key === "selectedValues" ||
-				key === "parentMessageId"
+				![
+					"injectionRisk",
+					"viewClientId",
+					"uiView",
+					"uiViewPath",
+					"uiTimeZone",
+				].includes(key)
 			)
 				lines.push(`${key}: ${renderEvidenceValue(value)}`);
 		}
@@ -171,6 +177,19 @@ function renderMessageContent(event: ContextMessageEvent): string {
 		for (const attachment of content.attachments) {
 			lines.push(`# Attachment\n${renderEvidenceValue(attachment)}`);
 		}
+	}
+	for (const [key, value] of Object.entries(content)) {
+		if (
+			![
+				"text",
+				"metadata",
+				"attachments",
+				"source",
+				"channelType",
+				"chatIdempotency",
+			].includes(key)
+		)
+			lines.push(`${key}: ${renderEvidenceValue(value)}`);
 	}
 	return lines.join("\n\n");
 }

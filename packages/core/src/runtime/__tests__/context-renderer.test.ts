@@ -50,7 +50,11 @@ describe("context renderer", () => {
 					type: "message",
 					message: {
 						role: "user",
-						content: { text: "exact", metadata: { sentinel: "MESSAGE_META" } },
+						content: {
+							text: "exact",
+							structuredAnswer: { original: "FULL_ANSWER" },
+							metadata: { sentinel: "MESSAGE_META" },
+						},
 						metadata: { renderAsDialogue: true },
 					},
 				},
@@ -68,7 +72,8 @@ describe("context renderer", () => {
 		const serialized = JSON.stringify(
 			renderContextObject(context).promptSegments,
 		);
-		expect(serialized).not.toContain("MESSAGE_META");
+		expect(serialized).toContain("MESSAGE_META");
+		expect(serialized).toContain("FULL_ANSWER");
 		expect(JSON.stringify(renderContextObject(context).messages)).toContain(
 			"MESSAGE_META",
 		);

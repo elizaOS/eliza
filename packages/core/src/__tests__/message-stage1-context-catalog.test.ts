@@ -216,6 +216,7 @@ describe("client-chat model context preserves executor transport state", () => {
 			expect(wire).not.toContain("transport-fingerprint");
 			expect(wire).not.toContain("target-client-tab");
 			expect(wire).not.toContain("uiTimeZone");
+			expect(wire).toContain("complete plugin evidence");
 			const executor = __buildV5ExecutorContextForTests({
 				message,
 				state: makeState(),

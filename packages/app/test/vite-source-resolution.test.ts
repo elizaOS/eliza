@@ -172,14 +172,14 @@ describe("workspace package resolution", () => {
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/shared/browser-contracts",
+            "@elizaos/core/views/view-interact-protocol",
             path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
           normalizePath(
             path.resolve(
               appRoot,
-              "../shared/scripts/browser-contracts-entry.ts",
+              "../core/src/views/view-interact-protocol.ts",
             ),
           ),
         );

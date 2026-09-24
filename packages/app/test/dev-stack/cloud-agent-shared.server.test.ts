@@ -144,7 +144,9 @@ describe("startCloudAgent HTTP handlers", () => {
   it.each(["Ω", "€", "😀"])(
     "preserves complete restored state when %s spans request chunks",
     async (codePoint) => {
-      const { startCloudAgent } = await import("../../deploy/cloud-agent-shared");
+      const { startCloudAgent } = await import(
+        "../../deploy/cloud-agent-shared"
+      );
       startCloudAgent({ port: 0, bridgePort: 0, bridgeSecret: "secret" });
       await waitForEchoRuntime(capturedServers[0]);
       const bridge = capturedServers[1];

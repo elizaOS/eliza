@@ -92,11 +92,11 @@ it("loads complete template helpers from the owning distributions in native Node
 
 for (const mode of ["source", "published"]) {
   it(`renders complete authored templates in the ${mode} browser graph`, async () => {
-    const root = fileURLToPath(new URL("..", import.meta.url));
+    const root = fileURLToPath(new URL("../..", import.meta.url));
     const result = await build({
       stdin: {
-        contents: `import { composePrompt } from '@elizaos/shared/text/template-rendering';
-          import { assertMcpJsonSchemaBudget } from './${mode === "source" ? "src/mcp/schema-budget.ts" : "dist/mcp/schema-budget.js"}';
+        contents: `import { composePrompt } from '@elizaos/plugin-assistant/text/template-rendering';
+          import { assertMcpJsonSchemaBudget } from '../plugin-mcp/${mode === "source" ? "src/protocol-utils/schema-budget.ts" : "dist/protocol-utils/schema-budget.js"}';
           const cyclic = {}; cyclic.self = cyclic;
           let schemaError;
           try { assertMcpJsonSchemaBudget(cyclic); } catch (error) { schemaError = error.code; }
@@ -121,22 +121,19 @@ for (const mode of ["source", "published"]) {
         {
           name: "renderer-runtime-boundary",
           setup(builder) {
-            builder.onResolve({ filter: /^@elizaos\/core(?:\/|$)/ }, () => {
+            builder.onResolve({ filter: /^@elizaos\/core$/ }, () => {
               throw new Error(
                 "Node runtime barrel reached the browser template graph",
               );
             });
             if (mode === "source") {
               builder.onResolve(
-                { filter: /^@elizaos\/shared\/text\/template-rendering$/ },
+                {
+                  filter:
+                    /^@elizaos\/plugin-assistant\/text\/template-rendering$/,
+                },
                 () => ({
                   path: `${root}/src/text/template-rendering.ts`,
-                }),
-              );
-              builder.onResolve(
-                { filter: /^@elizaos\/shared\/browser-contracts$/ },
-                () => ({
-                  path: `${root}/scripts/browser-contracts-entry.ts`,
                 }),
               );
             }

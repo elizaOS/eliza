@@ -56,10 +56,10 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-import { type LogEntry } from "@elizaos/core/api/agent-api-types";
-import {
-  type ReadJsonBodyOptions,
-  type RouteRequestContext,
+import type { LogEntry } from "@elizaos/core/api/agent-api-types";
+import type {
+  ReadJsonBodyOptions,
+  RouteRequestContext,
 } from "@elizaos/core/api/route-helpers";
 import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import {
@@ -82,8 +82,8 @@ import {
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
 import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
-import { type ElizaConfig } from "../config/config.ts";
-import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import type { ElizaConfig } from "../config/config.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
@@ -144,7 +144,7 @@ import {
   isAuthorized,
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
-import { type ChatImageAttachment } from "./server-types.ts";
+import type { ChatImageAttachment } from "./server-types.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 

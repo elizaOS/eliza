@@ -18,23 +18,23 @@
  * what a connector would actually post to the channel.
  */
 
-import { type CharacterFailureTemplates } from "@elizaos/core/contracts/first-run-options";
+import type { CharacterFailureTemplates } from "@elizaos/core/contracts/first-run-options";
 import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { type Room } from "../../../../packages/core/src/types/environment.ts";
-import { type Memory } from "../../../../packages/core/src/types/memory.ts";
+import type { Room } from "../../../../packages/core/src/types/environment.ts";
+import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import {
   asUUID,
   ChannelType,
   type Content,
   type UUID,
 } from "../../../../packages/core/src/types/primitives.ts";
-import { type IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import { type State } from "../../../../packages/core/src/types/state.ts";
+import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
+import type { State } from "../../../../packages/core/src/types/state.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import {
   DefaultMessageService,

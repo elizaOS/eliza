@@ -62,7 +62,7 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
   type ChatFailureKind,
   type ChatTerminalFailure,
@@ -103,9 +103,9 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import { type ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   deleteConversationMemories,
   deleteConversationMessage,
@@ -184,7 +184,7 @@ import {
   resolveAppUserName,
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
-import { type ConversationMeta } from "./server-types.ts";
+import type { ConversationMeta } from "./server-types.ts";
 import {
   importSharedTodoCutover,
   type SharedTodoImportReceipt,
