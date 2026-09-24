@@ -55,6 +55,23 @@ export class LocalVoiceRuntimeIdentityError extends Error {
   }
 }
 
+/** Startup is pending while the runtime or its first UI conversation is not ready. */
+export class LocalVoiceRuntimePendingError extends LocalVoiceRuntimeIdentityError {}
+
+/** Wait for normal startup; invalid identities and malformed responses still fail. */
+export async function waitForLocalVoiceRuntimeIdentity(
+  options: ResolveLocalVoiceRuntimeIdentityOptions,
+): Promise<LocalVoiceRuntimeIdentity> {
+  for (;;) {
+    try {
+      return await resolveLocalVoiceRuntimeIdentity(options);
+    } catch (error) {
+      if (!(error instanceof LocalVoiceRuntimePendingError)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
 export function resolveCanonicalLoopbackRuntimeOrigin(raw: string): string {
   let parsed: URL;
   try {
@@ -114,8 +131,16 @@ export async function resolveLocalVoiceRuntimeIdentity(
       fetchImpl,
     ),
   );
-  if (health.ready !== true || health.canRespond !== true) {
+  if (
+    typeof health.ready !== "boolean" ||
+    typeof health.canRespond !== "boolean"
+  ) {
     throw new LocalVoiceRuntimeIdentityError(
+      "local runtime health must declare boolean readiness",
+    );
+  }
+  if (health.ready !== true || health.canRespond !== true) {
+    throw new LocalVoiceRuntimePendingError(
       "local runtime is not ready to respond",
     );
   }
@@ -286,6 +311,11 @@ function readConversations(value: unknown): RuntimeConversation[] {
       ),
     });
   });
+  if (body.conversations.length > 0 && parsed.length === 0) {
+    throw new LocalVoiceRuntimeIdentityError(
+      "local conversations contain no readable records",
+    );
+  }
   return parsed;
 }
 
@@ -330,7 +360,7 @@ function selectConversationId(
     (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
   );
   if (candidates.length === 0) {
-    throw new LocalVoiceRuntimeIdentityError(
+    throw new LocalVoiceRuntimePendingError(
       "local runtime has no conversation for the running agent",
     );
   }
