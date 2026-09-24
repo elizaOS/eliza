@@ -10,6 +10,7 @@ import type {
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/common";
+import type { ViewCapability } from "@elizaos/core";
 import type { OverlayApp } from "@elizaos/shared/apps/overlay-app-api";
 import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
@@ -87,6 +88,13 @@ export interface AppShellPageRegistration {
    * only when `surface.capabilities` also grants `wallpaper`.
    */
   surface?: SurfaceManifest;
+  /** Shares the plugin view's typed authority catalog with the bundled renderer. */
+  capabilities?: readonly ViewCapability[];
+  /** Dispatches declared semantic operations while the owning page is mounted. */
+  interact?: (
+    capability: string,
+    params?: Record<string, unknown>,
+  ) => Promise<unknown>;
   /**
    * Screen background policy for this page. Defaults to `"opaque"`. Superseded
    * by `surface.background` when a manifest is declared.

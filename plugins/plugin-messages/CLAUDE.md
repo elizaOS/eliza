@@ -4,7 +4,7 @@ Android SMS overlay plugin for elizaOS — provides an SMS inbox and compose sur
 
 ## Purpose / role
 
-Adds a Messages GUI view to elizaOS on Android. It lets an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaOS app metadata and self-registers its bundled page through `src/register.ts`.
+Adds a Messages GUI view to elizaOS on Android. ADMIN callers may let the agent read SMS threads; sending messages and changing the default SMS role require direct human interaction. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaOS app metadata and self-registers its bundled page through `src/register.ts`.
 
 ## Plugin surface
 
@@ -12,7 +12,7 @@ This plugin registers **views only** — no actions, providers, evaluators, serv
 
 | View ID | Label | View type | Component export | Path |
 |---|---|---|---|---|
-| `messages` | Messages | `gui` | `MessagesView` | `/messages` |
+| `messages` | Messages | `gui`, ADMIN-gated | `MessagesView` | `/messages` |
 
 The view bundle path points to `dist/views/bundle.js` (built by `build:views`).
 
@@ -47,9 +47,9 @@ src/
 
 | Capability | Params | Returns |
 |---|---|---|
-| `list-threads` | `{ limit?: number }` | Thread list + `ownsSmsRole`, `smsRoleHolder` |
-| `send-sms` | `{ address: string, body: string }` | `{ sent, address, bodyLength }` |
-| `request-sms-role` | — | `{ requested, ownsSmsRole, smsRoleHolder }` |
+| `list-threads` | — | Agent-authorized complete thread list + `ownsSmsRole`, `smsRoleHolder`; rejects if the 500-message bridge boundary is reached |
+| `send-sms` | `{ address: string, body: string }` | Human-only `{ sent, address, bodyLength }` |
+| `request-sms-role` | — | Human-only `{ requested, ownsSmsRole, smsRoleHolder }` |
 
 ## Commands
 
@@ -95,12 +95,20 @@ import messagesPlugin from "@elizaos/plugin-messages";
 
 ## Conventions / gotchas
 
-- **Android-only.** Package metadata marks the view app as `androidOnly: true`, and the plugin view declaration sets `nativeOs: true`. The renderer side-effect module is declared with `elizaos.appRegister: "register"` and guards registration to the ElizaOS fork.
+- **Android-only.** Package metadata marks the view app as `androidOnly: true`, and the plugin view declaration sets `nativeOs: true`. The renderer side-effect module is declared with `elizaos.appRegister: "register"` and guards registration to the elizaOS fork.
 - **View bundle is separate from the library bundle.** `build:js` (tsup) produces `dist/index.js` for the npm package. `build:views` (vite) produces `dist/views/bundle.js` which is loaded at runtime by the plugin view system. Both must be built for a full build.
 - **Capacitor bridge in tests.** `vitest.config.ts` aliases `@elizaos/capacitor-messages` → `plugins/plugin-native-messages/src/index.ts` and `@elizaos/capacitor-system` → `plugins/plugin-native-system/src/index.ts`. Tests mock both via `vi.mock`.
-- **SMS role vs bridge mode.** The UI shows two modes: "Default SMS app" (owns the role, full inbox) and "Android SMS bridge" (read-only via the capacitor bridge, no role held). Agents can request the role via the interact handler.
-- **Interact state.** Agent-driven tests should use the explicit interact handler
-  and view snapshot seams instead of parsing renderer-specific DOM.
+- **SMS role vs bridge mode.** The UI shows two modes: "Default SMS app" (owns the role, full inbox) and "Android SMS bridge" (read-only via the capacitor bridge, no role held). Role changes require direct human interaction.
+- **Interact authority.** The view requires `ADMIN` and intentionally omits the
+  generic `agent-surface` grant. Agents may dispatch only `list-threads`;
+  `send-sms`, `request-sms-role`, and generic renderer state, element, focus,
+  fill, and click attempts are human-only and rejected before mounted-view
+  dispatch. Direct renderer calls remain the human UI path.
+- **Complete reads.** `list-threads` always requests the native maximum and
+  rejects with a typed incomplete-read error if 500 rows are returned. The
+  bridge has no continuation token, so a bounded prefix is never presented to
+  the planner as complete history. Failure to read Android SMS-role status is
+  likewise a typed failure, not fabricated `ownsSmsRole: false` state.
 - **Cross-view recipient handoff.** `MessagesView` consumes a one-shot `{ recipient }` payload via `consumeNavigateViewPayload("messages")` from `@elizaos/ui/app-navigate-view` on mount, opening the composer with the "To" field pre-seeded. Callers dispatch `eliza:navigate:view` with `{ viewId: "messages", viewPath: "/messages", payload: { recipient } }`; the shared UI module must stay generic and contain no Messages-specific pending state.
 - **Spatial view.** `MessagesSpatialView` is a presentational component retained for future modality adapters. It is purely presentational (a snapshot + action callback in, spatial primitives out) and does not import Capacitor runtime code.
 

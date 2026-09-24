@@ -10,6 +10,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { contactsProvider } from "./providers/contacts";
+import { CONTACTS_VIEW_CAPABILITIES } from "./view-capabilities";
 
 const CONTACTS_APP_NAME = "@elizaos/plugin-contacts";
 
@@ -29,10 +30,8 @@ export const appContactsPlugin: Plugin = {
       path: "/contacts",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
+      capabilities: CONTACTS_VIEW_CAPABILITIES,
+      roleGate: { minRole: "ADMIN" },
       componentExport: "ContactsView",
       tags: ["contacts", "android", "address-book"],
       responseContext: { primaryContext: "contacts" },

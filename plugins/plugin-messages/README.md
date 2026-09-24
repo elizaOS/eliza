@@ -5,7 +5,7 @@ Android SMS plugin for elizaOS. Adds an SMS inbox, thread viewer, and compose su
 ## What it does
 
 - Reads SMS threads and message history from the Android SMS store via the native capacitor bridge.
-- Lets users and agents compose and send text messages.
+- Lets users compose and send text messages; mutation capabilities require direct human interaction.
 - Surfaces the Android default SMS role status and prompts to request it when not held.
 - Registers one GUI view for the SMS inbox, thread viewer, and compose surface.
 
@@ -30,28 +30,31 @@ const runtime = new AgentRuntime({
 
 | Path | Description |
 |---|---|
-| `/messages` | Full SMS inbox and composer overlay |
+| `/messages` | ADMIN-gated SMS inbox and composer overlay |
 
 ## Android SMS role
 
-Reading and sending SMS requires Android to grant the default SMS role (`android.app.role.SMS`) to the elizaOS app. When the role is not held, the UI shows a "Set default SMS" banner. The role can also be requested programmatically through the view `interact()` API.
+Reading and sending SMS requires Android to grant the default SMS role (`android.app.role.SMS`) to the elizaOS app. When the role is not held, the UI shows a "Set default SMS" banner. Sending SMS and requesting the role are human-only view capabilities.
 
-## Agent Automation
+## View interaction contract
 
-The view-bundle `interact()` function exposes programmatic capabilities:
+The view bundle exposes one planner-authorized read. Its mutation handlers are
+for the trusted human UI host and are not available to planner dispatch:
 
 ```ts
 import { interact } from "@elizaos/plugin-messages/components/messages-interact";
 
 // List threads
-const { threads, ownsSmsRole } = await interact("list-threads", { limit: 50 });
+const { threads, ownsSmsRole } = await interact("list-threads");
 
-// Send an SMS
+// Trusted human UI host only; planner dispatch rejects these capabilities.
 await interact("send-sms", { address: "+15550100", body: "Hello" });
 
 // Request the default SMS role
 await interact("request-sms-role");
 ```
+
+Planner dispatch requires an `ADMIN` caller. Only `list-threads` is agent-authorized; it rejects rather than returning a possibly incomplete 500-message prefix or fabricated SMS-role state. `send-sms`, `request-sms-role`, and generic renderer state, element, focus, fill, and click operations are denied before mounted-view dispatch.
 
 ## Dependencies
 
@@ -67,3 +70,5 @@ bun run --cwd plugins/plugin-messages build
 ```
 
 This runs `build:js` (tsup library bundle), `build:views` (vite view bundle at `dist/views/bundle.js`), and `build:types` (TypeScript declarations).
+
+The app-shell registration and the remote view bundle use the same semantic capability catalog. Both renderer paths enforce human-only declarations before invoking an interaction handler; named agent reads do not grant generic DOM control.

@@ -19,7 +19,7 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
   future provider/action migration.
 
 **Views** (registered in `plugin.ts` under `plugin.views`)
-- `phone` — one shipped GUI declaration (`modalities: ["gui"]`, componentExport `PhoneView`), mounted at `/phone`. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`. The address book is the separate Contacts view; a "Contacts" control links to it via the `eliza:navigate:view` bus.
+- `phone` — one ADMIN-gated GUI declaration (`modalities: ["gui"]`, componentExport `PhoneView`), mounted at `/phone`. `phone-state` is the only agent-authorized capability and is complete-or-error. Call placement, dialer opening, transcript persistence, and generic agent fill/click require direct human interaction. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`.
 
 **App nav tab** (registered under `plugin.app.navTabs`)
 - `phone-companion` — Mounts `PhoneCompanionApp` at `/phone-companion`; declared for hosts that do not side-effect-import `register-companion-page.ts`.
@@ -109,6 +109,13 @@ The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` 
 - **VOICE_CALL is host-adapted.** Do not add a second phone action here unless
   the PA-hosted owner gating, approval queue flow, recipient policy, and Twilio
   dispatch move with parity tests.
+- **View authority.** The native Phone view and call-log provider require
+  `ADMIN`. The view intentionally omits `agent-surface`, so generic
+  renderer state, element, focus, fill, and click operations cannot bypass the
+  semantic contract. `phone-state` is the only planner-authorized capability;
+  it requests the native signed 32-bit maximum (`2,147,483,647`) and rejects if
+  the bridge returns exactly that many rows or native phone status is
+  unavailable.
 - **Contacts live in their own view.** The Phone view has no contacts pane — it links to the separate `@elizaos/plugin-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/capacitor-contacts` dependency here.
 - **Cross-view number handoff.** The Phone view consumes a one-shot `{ number }` payload via `consumeNavigateViewPayload("phone")` from `@elizaos/ui/app-navigate-view` on mount, pre-seeding the dialer. Callers dispatch `eliza:navigate:view` with `{ viewId: "phone", viewPath: "/phone", payload: { number } }`; the shared UI module must stay generic and contain no Phone-specific pending state.
 - **`ElizaIntentWeb` does not simulate success.** The web fallback for the iOS native bridge explicitly returns `paired: false` and throws on `scheduleAlarm` — intentional, to prevent dev builds from appearing to work without a simulator.

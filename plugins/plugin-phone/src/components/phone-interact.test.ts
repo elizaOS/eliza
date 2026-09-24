@@ -97,7 +97,9 @@ describe("phone view capability bridge", () => {
         },
       ],
     });
-    expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith({ limit: 2 });
+    expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith({
+      limit: 2_147_483_647,
+    });
 
     await expect(
       interact("place-call", { number: "+1 (555) 333-4444" }),
@@ -133,7 +135,7 @@ describe("phone view capability bridge", () => {
     });
   });
 
-  it("sanitizes hostile state params before calling the native bridge", async () => {
+  it("uses the native maximum, sanitizes filters, and rejects an incomplete result", async () => {
     mockBridge();
 
     await expect(
@@ -143,7 +145,7 @@ describe("phone view capability bridge", () => {
       }),
     ).resolves.toMatchObject({ status: sampleStatus });
     expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
-      limit: 50,
+      limit: 2_147_483_647,
     });
 
     await interact("phone-state", {
@@ -151,13 +153,30 @@ describe("phone view capability bridge", () => {
       number: "+1 (555) 123-4567?x=<script>",
     });
     expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
-      limit: 1,
+      limit: 2_147_483_647,
       number: "+15551234567",
     });
 
     await interact("phone-state", { limit: 10_000 });
     expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
-      limit: 200,
+      limit: 2_147_483_647,
+    });
+
+    phoneBridge.listRecentCalls.mockResolvedValue({
+      calls: Object.assign([], { length: 2_147_483_647 }),
+    });
+    await expect(interact("phone-state")).rejects.toMatchObject({
+      code: "NATIVE_PHONE_STATE_READ_INCOMPLETE",
+      context: { limit: 2_147_483_647 },
+    });
+  });
+
+  it("rejects with a typed error when phone status is unavailable", async () => {
+    mockBridge();
+    phoneBridge.getStatus.mockRejectedValue(new Error("telecom unavailable"));
+
+    await expect(interact("phone-state")).rejects.toMatchObject({
+      code: "NATIVE_PHONE_STATUS_UNAVAILABLE",
     });
   });
 

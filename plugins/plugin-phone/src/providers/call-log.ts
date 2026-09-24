@@ -15,6 +15,9 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+
+const COMPLETE_CALL_LOG_READ_LIMIT = 2_147_483_647;
 
 interface PhoneCallLogEntry {
   id: string;
@@ -39,12 +42,23 @@ export const phoneCallLogProvider: Provider = {
   cacheStable: false,
 
   get: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const { calls } = await Phone.listRecentCalls();
+      const { calls } = await Phone.listRecentCalls({
+        limit: COMPLETE_CALL_LOG_READ_LIMIT,
+      });
+      if (calls.length === COMPLETE_CALL_LOG_READ_LIMIT) {
+        throw new ElizaError(
+          "Phone call-log provider reached the native bridge boundary; refusing potentially incomplete planner context.",
+          {
+            code: "NATIVE_PHONE_PROVIDER_INCOMPLETE",
+            context: { limit: COMPLETE_CALL_LOG_READ_LIMIT },
+          },
+        );
+      }
       const entries: PhoneCallLogEntry[] = calls.map(
         (call: CallLogEntry): PhoneCallLogEntry => ({
           id: call.id,
@@ -75,8 +89,11 @@ export const phoneCallLogProvider: Provider = {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // error-policy:J4 a native call-log failure is explicit planner context,
+      // not a successful empty history, and is observable to the owner.
+      runtime.reportError?.("phoneCallLog.provider", error);
       return {
-        text: "",
+        text: JSON.stringify({ phone_call_log: { error: message } }),
         values: {
           callLogAvailable: false,
           callLogCount: 0,

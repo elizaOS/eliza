@@ -21,7 +21,7 @@ The plugin is **Android-only**. On other platforms the overlay app is not regist
 | Surface | Name | What it does |
 |---------|------|-------------|
 | Provider | `androidContacts` | Injects the complete read-only address book into the planner for `contacts` and `messaging` conversation contexts. Requires ADMIN role session. |
-| App-shell page (UI) | Contacts | Full-screen address-book UI: list, detail, create, import vCard. |
+| App-shell page (UI) | Contacts | ADMIN-gated address-book UI. Agents may invoke only the complete-or-error `list-contacts` read; create/import and generic renderer state, element, focus, fill, and click operations require direct human interaction. |
 
 Note: live dialling is not part of this plugin. Placing a call remains in the Phone app (`PLACE_CALL` action).
 
@@ -59,4 +59,6 @@ These are requested by `@elizaos/capacitor-contacts` at runtime.
 
 - **Android only.** The native Contacts API is not available on iOS, web, or desktop.
 - **Read-mostly.** The native layer does not expose contact update or delete. The detail view is read-only; create and import (vCard) are the only write operations.
-- **Prompt integrity.** The `androidContacts` provider does not request a result limit; it preserves the complete address book for planner context.
+- **Prompt integrity.** Planner-facing reads request the native maximum and reject when the result reaches that boundary, because the bridge has no continuation contract. A potentially truncated contact list is never returned as complete context.
+
+The app-shell registration and the remote view bundle use the same semantic capability catalog. Both renderer paths enforce human-only declarations before invoking an interaction handler; named agent reads do not grant generic DOM control.
