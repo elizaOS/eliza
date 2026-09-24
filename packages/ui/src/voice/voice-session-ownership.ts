@@ -9,7 +9,6 @@ export class VoiceSessionOwnershipError extends ElizaError {
     cause?: unknown,
   ) {
     super(message, { code, cause, severity: "ephemeral" });
-    this.name = "VoiceSessionOwnershipError";
   }
 }
 
