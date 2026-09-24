@@ -552,110 +552,135 @@ describe("source-bound completion relevance", () => {
 		);
 	});
 
-	it("restores all original sources once without tools or effects when the evaluator requests them", async () => {
-		const context = withSelection(historyContext());
-		const stored = trajectory(context);
-		const before = JSON.stringify(stored);
-		const messages: ChatMessage[][] = [];
-		const recorded = new Map<string, RecordedStage>();
-		const recorder: TrajectoryRecorder = {
-			startTrajectory: () => "context-restore",
-			recordStage: async (_id, stage) => {
-				recorded.set(stage.stageId, stage);
-			},
-			endTrajectory: async () => undefined,
-			load: async () => null,
-			list: async () => [],
-		};
-		const effect = vi.fn();
-		const useModel = vi.fn(
-			async (_type: string, params: { messages?: ChatMessage[] }) => {
-				messages.push(params.messages ?? []);
-				expect(effect).not.toHaveBeenCalled();
-				return messages.length === 1
-					? JSON.stringify({
-							thought: "Need the omitted source before checking history.",
-							success: false,
-							decision: "CONTINUE",
-							contextRequest: "full",
-						})
-					: JSON.stringify({
-							thought: "Original sources show the calendar read is pending.",
-							success: false,
-							decision: "CONTINUE",
-						});
-			},
-		);
-		await runEvaluator({
-			runtime: { useModel },
-			context,
-			trajectory: stored,
-			recorder,
-			trajectoryId: "context-restore",
-			effects: { messageToUser: effect, copyToClipboard: effect },
-		});
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(recorded.size).toBe(2);
-		expect(
-			[...recorded.values()].map((stage) => stage.model?.messages),
-		).toEqual(messages);
-		expect([...recorded.keys()][0]).toContain("-attempt-0");
-		expect(JSON.stringify(messages[0])).not.toContain(
-			"Old completed unrelated weather request.",
-		);
-		expect(JSON.stringify(messages[1])).toContain(
-			"Old completed unrelated weather request.",
-		);
-		for (const input of messages) {
-			expect(JSON.stringify(input)).toContain("Do not send any email");
-			expect(JSON.stringify(input)).toContain("read-note");
-			expect(JSON.stringify(input)).toContain("exact");
-		}
-		expect(effect).not.toHaveBeenCalled();
-		expect(
-			JSON.stringify({ ...stored, modelBaseContext: stored.context }),
-		).toBe(before);
-		expect(
-			stored.modelBaseContext?.metadata?.completionContext,
-		).toBeUndefined();
-	});
+	it.each([false, true])(
+		"restores original sources without tools or effects with conflicting draft=%s",
+		async (conflictingDraft) => {
+			const context = withSelection(historyContext());
+			const stored = trajectory(context);
+			const before = JSON.stringify(stored);
+			const messages: ChatMessage[][] = [];
+			const recorded = new Map<string, RecordedStage>();
+			const recorder: TrajectoryRecorder = {
+				startTrajectory: () => "context-restore",
+				recordStage: async (_id, stage) => {
+					recorded.set(stage.stageId, stage);
+				},
+				endTrajectory: async () => undefined,
+				load: async () => null,
+				list: async () => [],
+			};
+			const effect = vi.fn();
+			const useModel = vi.fn(
+				async (_type: string, params: { messages?: ChatMessage[] }) => {
+					messages.push(params.messages ?? []);
+					expect(effect).not.toHaveBeenCalled();
+					return messages.length === 1
+						? JSON.stringify({
+								thought: "Need the omitted source before checking history.",
+								success: false,
+								decision: "CONTINUE",
+								contextRequest: "full",
+								...(conflictingDraft
+									? {
+											success: true,
+											decision: "FINISH",
+											messageToUser:
+												"Unverified draft must never be delivered.",
+											copyToClipboard: {
+												title: "Draft",
+												content: "Must not be copied.",
+											},
+										}
+									: {}),
+							})
+						: JSON.stringify({
+								thought: "Original sources show the calendar read is pending.",
+								success: false,
+								decision: "CONTINUE",
+							});
+				},
+			);
+			await runEvaluator({
+				runtime: { useModel },
+				context,
+				trajectory: stored,
+				recorder,
+				trajectoryId: "context-restore",
+				effects: { messageToUser: effect, copyToClipboard: effect },
+			});
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(recorded.size).toBe(2);
+			expect(
+				[...recorded.values()].map((stage) => stage.model?.messages),
+			).toEqual(messages);
+			expect([...recorded.keys()][0]).toContain("-attempt-0");
+			expect(JSON.stringify(messages[0])).not.toContain(
+				"Old completed unrelated weather request.",
+			);
+			expect(JSON.stringify(messages[1])).toContain(
+				"Old completed unrelated weather request.",
+			);
+			for (const input of messages) {
+				expect(JSON.stringify(input)).toContain("Do not send any email");
+				expect(JSON.stringify(input)).toContain("read-note");
+				expect(JSON.stringify(input)).toContain("exact");
+			}
+			expect(effect).not.toHaveBeenCalled();
+			expect(
+				JSON.stringify({ ...stored, modelBaseContext: stored.context }),
+			).toBe(before);
+			expect(
+				stored.modelBaseContext?.metadata?.completionContext,
+			).toBeUndefined();
+		},
+	);
 
-	it("cannot loop repeated full-context requests or deliver an intermediate reply", async () => {
-		const context = withSelection(historyContext());
-		const recorded = new Map<string, RecordedStage>();
-		const recorder: TrajectoryRecorder = {
-			startTrajectory: () => "repeated-context-restore",
-			recordStage: async (_id, stage) => {
-				recorded.set(stage.stageId, stage);
-			},
-			endTrajectory: async () => undefined,
-			load: async () => null,
-			list: async () => [],
-		};
-		const useModel = vi.fn(async () =>
-			JSON.stringify({
-				thought: "Need full history.",
-				success: false,
-				decision: "CONTINUE",
-				contextRequest: "full",
-			}),
-		);
-		const effect = vi.fn();
-		const output = await runEvaluator({
-			runtime: { useModel },
-			context,
-			trajectory: trajectory(context),
-			recorder,
-			trajectoryId: "repeated-context-restore",
-			effects: { messageToUser: effect },
-		});
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(recorded.size).toBe(2);
-		expect([...recorded.keys()][0]).toContain("-attempt-0");
-		expect([...recorded.keys()][1]).not.toContain("-attempt-");
-		expect(output.protocolFailure).toBe(true);
-		expect(effect).not.toHaveBeenCalled();
-	});
+	it.each([false, true])(
+		"cannot loop repeated context requests or deliver conflicting draft=%s",
+		async (conflictingDraft) => {
+			const context = withSelection(historyContext());
+			const recorded = new Map<string, RecordedStage>();
+			const recorder: TrajectoryRecorder = {
+				startTrajectory: () => "repeated-context-restore",
+				recordStage: async (_id, stage) => {
+					recorded.set(stage.stageId, stage);
+				},
+				endTrajectory: async () => undefined,
+				load: async () => null,
+				list: async () => [],
+			};
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					thought: "Need full history.",
+					success: false,
+					decision: "CONTINUE",
+					contextRequest: "full",
+					...(conflictingDraft
+						? {
+								success: true,
+								decision: "FINISH",
+								messageToUser: "Must not be delivered.",
+							}
+						: {}),
+				}),
+			);
+			const effect = vi.fn();
+			const output = await runEvaluator({
+				runtime: { useModel },
+				context,
+				trajectory: trajectory(context),
+				recorder,
+				trajectoryId: "repeated-context-restore",
+				effects: { messageToUser: effect },
+			});
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(recorded.size).toBe(2);
+			expect([...recorded.keys()][0]).toContain("-attempt-0");
+			expect([...recorded.keys()][1]).not.toContain("-attempt-");
+			expect(output.protocolFailure).toBe(true);
+			expect(effect).not.toHaveBeenCalled();
+		},
+	);
 
 	it("rejects non-object selectors rather than manufacturing an empty selection", () => {
 		for (const input of [null, false, [], "h1", 1])
