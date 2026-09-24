@@ -20,6 +20,25 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
+test("root tooling does not add application sources to every task's cache hash", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "packages/scripts/run-turbo.ts",
+      "run",
+      "build",
+      "--filter=@elizaos/core",
+      "--dry=json",
+    ],
+    { cwd: root, encoding: "utf8", timeout: 30_000 },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    JSON.parse(result.stdout).globalCacheInputs.hashOfInternalDependencies,
+    "",
+  );
+});
+
 for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
   test(`${task}: install refreshes stale distributions and restores cached outputs`, () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "eliza-install-build-"));

@@ -7,14 +7,6 @@
       "dependencies": {
         "@electric-sql/pglite": "^0.4.5",
         "@electric-sql/pglite-socket": "0.1.6",
-        "@elizaos/cloud-routing": "workspace:*",
-        "@elizaos/plugin-agent-orchestrator": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-elizacloud": "workspace:*",
-        "@elizaos/plugin-local-inference": "workspace:*",
-        "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-sql": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@openai/codex": "^0.133.0",
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -42,11 +34,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
         "@capacitor/core": "8.4.0",
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-native-inference": "workspace:*",
-        "@elizaos/plugin-personal-assistant": "workspace:*",
-        "@elizaos/testing": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
         "@playwright/test": "^1.63.0",
         "@testing-library/react": "^16.3.3",
@@ -817,6 +804,18 @@
         "vitest": "^5.0.1",
       },
     },
+    "packages/cloud/scripts": {
+      "name": "@elizaos/cloud-tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/auth": "workspace:*",
+        "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/testing": "workspace:*",
+      },
+    },
     "packages/cloud/sdk": {
       "name": "@elizaos/cloud-sdk",
       "version": "2.0.3-beta.7",
@@ -1099,6 +1098,20 @@
         "turbo": "^2.9.16",
         "typescript": "^6.0.3",
         "vitest": "4.1.5",
+      },
+    },
+    "packages/scripts": {
+      "name": "@elizaos/repository-tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/auth": "workspace:*",
+        "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/plugin-personal-assistant": "workspace:*",
+        "@elizaos/testing": "workspace:*",
+        "@elizaos/ui": "workspace:*",
       },
     },
     "packages/testing": {
@@ -3568,6 +3581,8 @@
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/cloud/test-mocks"],
 
+    "@elizaos/cloud-tools": ["@elizaos/cloud-tools@workspace:packages/cloud/scripts"],
+
     "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud/services/coding-remote-runner"],
 
     "@elizaos/config": ["@elizaos/config@1.7.2", "", {}, "sha512-faNs1IcEecGivEmzcr/dKAgfoK//Z1jo+X8Mj9d3qpgx9xBoGII2EZSaRc5qatTQVuZsrJjZL0qxFFJ6ztCWbQ=="],
@@ -3711,6 +3726,8 @@
     "@elizaos/plugin-x": ["@elizaos/plugin-x@workspace:plugins/plugin-x"],
 
     "@elizaos/recall-bench": ["@elizaos/recall-bench@workspace:packages/benchmarks/suites/recall-bench"],
+
+    "@elizaos/repository-tools": ["@elizaos/repository-tools@workspace:packages/scripts"],
 
     "@elizaos/searchbench": ["@elizaos/searchbench@workspace:packages/benchmarks/suites/searchbench"],
 
