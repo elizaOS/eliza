@@ -1,3 +1,4 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 /**
  * Registry Client for Eliza.
  *
@@ -91,6 +92,7 @@ let registryRefreshPromise: Promise<Map<string, RegistryPluginInfo>> | null =
  * that snapshot (or stamp a fresh TTL over it) once it finally resolves.
  */
 let registryGeneration = 0;
+let registryDiscoveryScope: string | null = null;
 
 const LOCAL_FALLBACK_CACHE_TTL_MS = 5 * 60_000;
 
@@ -134,16 +136,17 @@ function cacheFilePath(): string {
   return path.join(resolveStateDir(), "cache", "registry.json");
 }
 
-async function readFileCache(): Promise<Map<
-  string,
-  RegistryPluginInfo
-> | null> {
+async function readFileCache(
+  discoveryScope: string,
+): Promise<Map<string, RegistryPluginInfo> | null> {
   try {
     const raw = await fs.readFile(cacheFilePath(), "utf-8");
     const parsed = JSON.parse(raw) as {
+      discoveryScope?: string;
       fetchedAt: number;
       plugins: Array<[string, RegistryPluginInfo]>;
     };
+    if (parsed.discoveryScope !== discoveryScope) return null;
     if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
       return null;
     if (!isRegistryCacheFresh(parsed.fetchedAt, CACHE_TTL_MS)) return null;
@@ -155,12 +158,14 @@ async function readFileCache(): Promise<Map<
 
 async function writeFileCache(
   plugins: Map<string, RegistryPluginInfo>,
+  discoveryScope: string,
 ): Promise<void> {
   const filePath = cacheFilePath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(
     filePath,
     JSON.stringify({
+      discoveryScope,
       fetchedAt: Date.now(),
       plugins: [...plugins.entries()],
     }),
@@ -168,10 +173,13 @@ async function writeFileCache(
   );
 }
 
-function persistFileCache(plugins: Map<string, RegistryPluginInfo>): void {
+function persistFileCache(
+  plugins: Map<string, RegistryPluginInfo>,
+  discoveryScope: string,
+): void {
   // error-policy:J6 The registry file is a derived cache; persistence failure
   // is warned while the complete in-memory network snapshot remains usable.
-  const write = writeFileCache(plugins).catch((err) => {
+  const write = writeFileCache(plugins, discoveryScope).catch((err) => {
     logger.warn(`[registry-client] Cache write failed: ${String(err)}`);
   });
   registryFileWritePromise = write;
@@ -268,9 +276,24 @@ export function isDefaultEndpoint(url: string): boolean {
 // Public API
 // ---------------------------------------------------------------------------
 
+function bindRegistryDiscoveryScope(): string {
+  const discoveryScope = JSON.stringify([
+    resolveStateDir(),
+    ...resolveWorkspaceRootsForDiscovery(),
+  ]);
+  if (registryDiscoveryScope !== discoveryScope) {
+    registryDiscoveryScope = discoveryScope;
+    invalidateRegistryCaches();
+    registryRefreshPromise = null;
+  }
+
+  return discoveryScope;
+}
+
 async function loadRegistryPlugins(
   skipFileCache: boolean,
 ): Promise<Map<string, RegistryPluginInfo>> {
+  const discoveryScope = bindRegistryDiscoveryScope();
   if (
     memoryCache &&
     isRegistryCacheFresh(
@@ -291,7 +314,7 @@ async function loadRegistryPlugins(
   const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
     if (!skipFileCache) {
       const fileReadGeneration = registryGeneration;
-      const fromFile = await readFileCache();
+      const fromFile = await readFileCache(discoveryScope);
       if (fromFile) {
         await applyLocalWorkspaceApps(fromFile);
         await applyNodeModulePlugins(fromFile);
@@ -340,7 +363,7 @@ async function loadRegistryPlugins(
       ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
     };
     if (!usedLocalFallback) {
-      persistFileCache(plugins);
+      persistFileCache(plugins, discoveryScope);
     }
 
     return plugins;
@@ -404,6 +427,7 @@ async function removeRegistryFileCache(): Promise<void> {
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
+  bindRegistryDiscoveryScope();
   if (registryRefreshPromise) return registryRefreshPromise;
 
   const refresh = (async () => {

@@ -27,6 +27,7 @@ import {
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import type { AppPackageRouteContext } from "@elizaos/shared/api/route-helpers";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
 export type {
@@ -107,20 +108,6 @@ function uniquePaths(paths: string[]): string[] {
   return ordered;
 }
 
-function resolveWorkspaceRoots(): string[] {
-  const envRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
-  if (envRoot) {
-    return uniquePaths([envRoot]);
-  }
-
-  const cwd = process.cwd();
-  return uniquePaths([
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "..", ".."),
-  ]);
-}
-
 function packageNameToDirName(packageName: string): string {
   return packageName.replace(/^@[^/]+\//, "");
 }
@@ -170,7 +157,7 @@ async function resolveWorkspacePackageDirs(
   const dirName = packageNameToDirName(packageName);
   const candidateDirs: string[] = [];
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     candidateDirs.push(
       path.join(workspaceRoot, "plugins", dirName),
       path.join(workspaceRoot, "packages", dirName),
