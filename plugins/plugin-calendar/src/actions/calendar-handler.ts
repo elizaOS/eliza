@@ -1165,6 +1165,8 @@ export function rejectedArgumentForCalendarServiceError(
   switch (code) {
     case "CALENDAR_TARGET_SELECTOR_INVALID":
       return "target";
+    case "CALENDAR_ATTENDEE_ARGUMENT_INVALID":
+      return "details.attendees";
     case "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED":
       return "details.notifyAttendees";
     case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
@@ -1180,6 +1182,7 @@ function buildCalendarServiceErrorFallback(
 ): string {
   if (
     error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
     error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
     error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
   ) {
@@ -4626,6 +4629,15 @@ function calendarAttendeeIdentityRequired(): CalendarServiceError {
   );
 }
 
+/** Malformed generated arguments can be repaired without inventing a user clarification. */
+function calendarAttendeeArgumentInvalid(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. The generated details.attendees arguments are malformed: each attendee needs a valid email address. Correct the arguments using the original user request. Do not invent guests or put dates, times, or time zones into email fields. If the user requested a guest whose address is missing, ask for that address; if no guest was requested, use no attendees. Never silently drop a user-requested guest.",
+    "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+  );
+}
+
 /** Every proposed attendee needs explicit address evidence before creating an event. */
 export function userAuthorizedCalendarAttendees(
   attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
@@ -4661,7 +4673,7 @@ export function normalizeCalendarAttendees(
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
   if (!attendees) {
-    if (details?.attendees != null) throw calendarAttendeeIdentityRequired();
+    if (details?.attendees != null) throw calendarAttendeeArgumentInvalid();
     return undefined;
   }
   const normalized = attendees.map(
@@ -4669,7 +4681,7 @@ export function normalizeCalendarAttendees(
       if (typeof attendee === "string") {
         const email = attendee.trim();
         if (!attendeeEmailAccepted(email))
-          throw calendarAttendeeIdentityRequired();
+          throw calendarAttendeeArgumentInvalid();
         return { email };
       }
       if (
@@ -4677,14 +4689,14 @@ export function normalizeCalendarAttendees(
         typeof attendee !== "object" ||
         Array.isArray(attendee)
       ) {
-        throw calendarAttendeeIdentityRequired();
+        throw calendarAttendeeArgumentInvalid();
       }
       const record = attendee as Record<string, unknown>;
       if (
         typeof record.email !== "string" ||
         !attendeeEmailAccepted(record.email.trim())
       ) {
-        throw calendarAttendeeIdentityRequired();
+        throw calendarAttendeeArgumentInvalid();
       }
       return {
         email: record.email.trim(),
@@ -5472,6 +5484,8 @@ const calendarAction: CalendarHandlerAction = {
       }
 
       if (subaction === "create_event") {
+        // Reject malformed generated arguments before any lookup or model extraction.
+        normalizeCalendarAttendees(details);
         const calendarContext = await loadCreateEventCalendarContext(
           service,
           details,
@@ -6970,7 +6984,9 @@ const calendarAction: CalendarHandlerAction = {
         runtime.reportError("calendar:action", error, {
           // The action owns this clarification; keep diagnostics without
           // escalating repeated missing guest details into a second reply.
-          diagnosticOnly: error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+          diagnosticOnly:
+            error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7006,6 +7022,7 @@ const calendarAction: CalendarHandlerAction = {
             // This typed preflight rejection performed no read or effect. Keep
             // its receipt and evaluation while allowing a corrected plan to finish.
             ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
             (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
               explicitSubaction === "search_events" &&
               searchQueries.length === 0) ||
@@ -7041,6 +7058,7 @@ const calendarAction: CalendarHandlerAction = {
             retryable: error.status >= 500,
             acceptance:
               error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
+              error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
               error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
               (subaction === "create_event" ||
                 subaction === "update_event" ||

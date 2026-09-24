@@ -350,6 +350,78 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("coaches malformed generated attendee arguments and permits a corrected solo event", async () => {
+    const extract = vi.fn(async ({ actionType }: { actionType: string }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: "2050-09-18T15:00:00-04:00",
+              endAt: "2050-09-18T15:15:00-04:00",
+              timeZone: "America/New_York",
+            },
+          }
+        : null,
+    );
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: extract,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const message = {
+      id: "00000000-0000-0000-0000-000000000309",
+      entityId: "00000000-0000-0000-0000-000000000102",
+      roomId: "00000000-0000-0000-0000-000000000103",
+      createdAt: Date.parse("2050-09-15T22:00:00.000Z"),
+      content: {
+        text: "Create a calendar event called Latency comparison September 18 at 3 PM New York time for 15 minutes.",
+      },
+    } as Memory;
+    const parameters = {
+      subaction: "create_event",
+      title: "Latency comparison",
+      details: {
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        timeZone: "America/New_York",
+        start: "2050-09-18T15:00:00",
+        end: "2050-09-18T15:15:00",
+        durationMinutes: 15,
+        attendees: [{ email: "11:15:00" }, { email: "America/Los_Angeles" }],
+      },
+    };
+    const rejected = await action.handler(runtime, message, undefined, {
+      parameters,
+    });
+    expect(extract).not.toHaveBeenCalled();
+    expect(rejected).toMatchObject({
+      success: false,
+      data: {
+        error: "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+        coachingFailure: true,
+        invalidParameterNames: ["details.attendees"],
+      },
+    });
+    expect(rejected?.data?.awaitingUserInput).not.toBe(true);
+    expect(rejected?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { acceptance: "rejected" },
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
+    const corrected = await action.handler(runtime, message, undefined, {
+      parameters: {
+        ...parameters,
+        details: { ...parameters.details, attendees: [] },
+      },
+    });
+    expect(corrected?.success, JSON.stringify(corrected)).toBe(true);
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(1);
+  });
+
   it("rejects an unverified proposed guest before creating an event", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
