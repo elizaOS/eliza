@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-import os
 import re
 import time
 import uuid
@@ -33,26 +32,6 @@ _PYAUTOGUI_FENCE_RE = re.compile(
 )
 _TERMINAL_ACTION_RE = re.compile(r"\b(WAIT|DONE|FAIL)\b")
 _CLICK_ACTION_RE = re.compile(r"^CLICK\(\s*(\d+)\s*,\s*(\d+)\s*\)$", re.IGNORECASE)
-
-
-def _resize_screenshot_b64(raw: bytes, max_dimension: int = 1280) -> str:
-    """Resize screenshot bytes for token efficiency. Mirrors the helper in
-    ``mm_agents.eliza_agent``."""
-    try:
-        from io import BytesIO
-
-        from PIL import Image
-
-        img = Image.open(BytesIO(raw))
-        if max(img.size) > max_dimension:
-            ratio = max_dimension / float(max(img.size))
-            new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-            img = img.resize(new_size, Image.LANCZOS)
-        buf = BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
-    except Exception:
-        return base64.b64encode(raw).decode("ascii")
 
 
 def _parse_actions(response_text: str, params: dict[str, Any]) -> list[str]:
@@ -137,8 +116,8 @@ class ElizaBridgeOSWorldAgent:
         temperature: float = 0.5,
         action_space: str = "pyautogui",
         observation_type: str = "screenshot_a11y_tree",
-        max_trajectory_length: int = 5,
-        a11y_tree_max_tokens: int = 500,
+        max_trajectory_length: int = 0,
+        a11y_tree_max_tokens: int = 0,
         max_steps: int = 15,
         client_password: str = "password",
         screen_width: int = 1920,
@@ -146,6 +125,8 @@ class ElizaBridgeOSWorldAgent:
         client: Optional[ElizaClient] = None,
         **_unused: Any,
     ) -> None:
+        if max_trajectory_length or a11y_tree_max_tokens:
+            raise ValueError("OSWorld requires complete history and accessibility observations; truncation limits must be zero")
         self.platform = platform
         self.model = model
         self.max_tokens = max_tokens
@@ -175,27 +156,20 @@ class ElizaBridgeOSWorldAgent:
         if self._initialized:
             return
         self._client.wait_until_ready(timeout=120)
-        try:
-            self._client.reset(task_id=self._task_id, benchmark="osworld")
-        except Exception as exc:
-            logger.debug("Eliza reset failed (continuing): %s", exc)
+        self._client.reset(task_id=self._task_id, benchmark="osworld")
         self._initialized = True
 
     def predict(self, instruction: str, obs: dict[str, Any]) -> Tuple[str, List[str]]:
         """Synchronous OSWorld entry point — drives the async bridge call."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self._async_predict(instruction, obs)
-                    )
-                    return future.result(timeout=300)
-            return loop.run_until_complete(self._async_predict(instruction, obs))
+            asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self._async_predict(instruction, obs))
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(asyncio.run, self._async_predict(instruction, obs))
+            return future.result(timeout=300)
 
     async def _async_predict(
         self, instruction: str, obs: dict[str, Any]
@@ -207,37 +181,27 @@ class ElizaBridgeOSWorldAgent:
         screenshot_b64: str | None = None
         a11y_tree: str | None = None
 
-        inline_screenshot = (
-            os.environ.get("OSWORLD_INLINE_SCREENSHOT", "").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
-        if inline_screenshot and self.observation_type in (
-            "screenshot",
-            "screenshot_a11y_tree",
-            "som",
-        ):
+        if self.observation_type in ("screenshot", "screenshot_a11y_tree", "som"):
             raw = obs.get("screenshot")
             if isinstance(raw, bytes):
-                screenshot_b64 = _resize_screenshot_b64(raw, max_dimension=1280)
-            elif isinstance(raw, str):
+                screenshot_b64 = base64.b64encode(raw).decode("ascii")
+            elif isinstance(raw, str) and raw:
                 screenshot_b64 = raw
+            else:
+                raise ValueError("OSWorld visual observation requires screenshot bytes")
 
         if self.observation_type in ("a11y_tree", "screenshot_a11y_tree"):
             tree_raw = obs.get("accessibility_tree")
             if isinstance(tree_raw, str):
                 a11y_tree = tree_raw
-                if self.a11y_tree_max_tokens:
-                    max_chars = self.a11y_tree_max_tokens * 4
-                    if len(a11y_tree) > max_chars:
-                        a11y_tree = a11y_tree[:max_chars] + "\n[... truncated ...]"
 
         self.observations.append(
             {"screenshot": screenshot_b64, "accessibility_tree": a11y_tree}
         )
 
         # ---- Build prompt + context ----
-        history_actions = self.actions[-self.max_trajectory_length :]
-        history_thoughts = self.thoughts[-self.max_trajectory_length :]
+        history_actions = list(self.actions)
+        history_thoughts = list(self.thoughts)
 
         prompt = (
             "You are an OSWorld agent controlling a desktop VM via "
@@ -296,7 +260,7 @@ class ElizaBridgeOSWorldAgent:
                 self.step_idx,
                 exc,
             )
-            response_text = f"Error: {exc}"
+            raise
 
         if not actions:
             actions = ["WAIT"]
@@ -330,7 +294,4 @@ class ElizaBridgeOSWorldAgent:
         self.observations.clear()
         self.step_idx = 0
         self._task_id = str(uuid.uuid4())
-        try:
-            self._client.reset(task_id=self._task_id, benchmark="osworld")
-        except Exception as exc:
-            logger.debug("Eliza reset failed (continuing): %s", exc)
+        self._client.reset(task_id=self._task_id, benchmark="osworld")

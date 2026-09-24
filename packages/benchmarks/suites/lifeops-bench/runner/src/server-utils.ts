@@ -90,6 +90,7 @@ export interface BenchmarkOutboxEntry {
  */
 export interface BenchmarkLlmCallUsage {
   modelType: string;
+  model?: string;
   provider?: string;
   source?: string;
   promptTokens: number;
@@ -391,6 +392,11 @@ export function normalizeBenchmarkModelUsage(
 
   return {
     modelType,
+    ...(typeof payload.model === "string" && payload.model.trim()
+      ? { model: payload.model.trim() }
+      : typeof payload.modelName === "string" && payload.modelName.trim()
+        ? { model: payload.modelName.trim() }
+        : {}),
     ...(provider ? { provider } : {}),
     ...(typeof payload.source === "string" && payload.source.trim().length > 0
       ? { source: payload.source.trim() }
