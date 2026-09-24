@@ -15,8 +15,9 @@ bun run --cwd plugins/plugin-native-location build  # build
 bun run --cwd plugins/plugin-native-location test   # tests
 ```
 
-Android uses Google fused location when Play Services is available and Android
-`LocationManager` on AOSP. The emulator suite injects known coordinates and checks
+Android uses framework `LocationManager` providers without requiring Google Play
+Services. Pending fixes and watches are cancelled on teardown, and cached ages
+use the monotonic clock. The emulator suite injects known coordinates and checks
 reads, watch cancellation, and timeouts without silently skipping missing fixes:
 
 ```bash

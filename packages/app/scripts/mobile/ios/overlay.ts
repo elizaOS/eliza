@@ -9,7 +9,6 @@ import {
   syncPlatformTemplateFiles,
 } from "../build-tools.ts";
 import { APP, appDir, platformsDir } from "../context.ts";
-import { isTruthyEnv } from "../environment.ts";
 import { assertIosHealthKitBuildAuthority } from "../ios-healthkit-authority.ts";
 import {
   mergeIosInfoPlist,
@@ -183,15 +182,11 @@ export function generatePodfile() {
   const includeFullBunEngine = shouldIncludeIosFullBunEngine();
   const includeCompatBunRuntime =
     !includeFullBunEngine && process.env.ELIZA_IOS_RUNTIME_MODE === "local";
-  const includeMobileAgentBridge =
-    !appStoreBuild &&
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE);
   const customPods = resolveIosCustomPods({
     includeLlama,
     includeCompatBunRuntime,
     includeFullBunEngine,
     appStoreBuild,
-    includeMobileAgentBridge,
   });
   if (!includeLlama) {
     console.log(
@@ -204,11 +199,6 @@ export function generatePodfile() {
     );
   } else if (includeFullBunEngine) {
     console.log("[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod");
-  }
-  if (appStoreBuild) {
-    console.log(
-      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge",
-    );
   }
   const deploymentTarget = resolveIosDeploymentTarget();
   if (includeFullBunEngine) {

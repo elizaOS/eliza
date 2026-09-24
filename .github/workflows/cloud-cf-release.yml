@@ -3302,7 +3302,7 @@ jobs:
         with:
           setup-python: "true"
           bun-version: "1.4.2"
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"

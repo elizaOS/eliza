@@ -1,7 +1,8 @@
 /**
  * Provides device-bound Android credential storage to the Capacitor renderer.
  * Values are allowlisted, AES-GCM encrypted with a non-exportable Keystore key,
- * and atomically persisted outside Android Backup.
+ * and atomically persisted outside Android Backup. Bridge instances in the app
+ * process share admission for key creation and ciphertext operations.
  */
 package ai.eliza.plugins.securestore
 
@@ -24,7 +25,9 @@ import javax.crypto.spec.GCMParameterSpec
 
 @CapacitorPlugin(name = "ElizaSecureStore")
 class SecureStorePlugin : Plugin() {
-    private val lock = Any()
+    private companion object {
+        val lock = Any()
+    }
     private val keyAlias = "ai.elizaos.secure-store.v1"
     private val maximumValueBytes = 256 * 1024
     private val allowedKeys = setOf(
@@ -48,6 +51,7 @@ class SecureStorePlugin : Plugin() {
                 })
             }
         } catch (_: Exception) {
+            // error-policy:J1 expose a sanitized native failure, never credential-bearing exception text.
             call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }
     }
@@ -58,13 +62,14 @@ class SecureStorePlugin : Plugin() {
         val value = call.getString("value")
         val valueBytes = value?.toByteArray(Charsets.UTF_8)
         if (value.isNullOrEmpty() || valueBytes == null || valueBytes.size > maximumValueBytes) {
-            call.resolve(errorResult("invalid_input", "Secure value is missing or too large."))
+            call.resolve(errorResult("invalid_input", "Secure value must be non-empty and at most $maximumValueBytes UTF-8 bytes."))
             return
         }
         try {
             synchronized(lock) { writeValue(key, valueBytes) }
             call.resolve(JSObject().apply { put("ok", true) })
         } catch (_: Exception) {
+            // error-policy:J1 native write errors cross the bridge without secret-bearing details.
             call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }
     }
@@ -75,9 +80,10 @@ class SecureStorePlugin : Plugin() {
         try {
             val deleted = synchronized(lock) {
                 val file = valueFile(key)
-                val existed = file.exists()
+                val artifacts = valueArtifacts(file)
+                val existed = artifacts.any { it.exists() }
                 AtomicFile(file).delete()
-                if (file.exists()) {
+                if (artifacts.any { it.exists() }) {
                     throw IllegalStateException("secure value deletion failed")
                 }
                 existed
@@ -87,6 +93,7 @@ class SecureStorePlugin : Plugin() {
                 put("deleted", deleted)
             })
         } catch (_: Exception) {
+            // error-policy:J1 failed deletion is reported explicitly without exposing stored values.
             call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }
     }
@@ -106,6 +113,7 @@ class SecureStorePlugin : Plugin() {
                 },
             )
         } catch (_: Exception) {
+            // error-policy:J1 Keystore admission failure becomes an explicit unavailable result.
             call.resolve(
                 errorResult("unavailable", "Android Keystore is unavailable on this device.").apply {
                     put("available", false)
@@ -162,14 +170,16 @@ class SecureStorePlugin : Plugin() {
             stream.write(Base64.encode(payload, Base64.NO_WRAP))
             atomicFile.finishWrite(stream)
         } catch (error: Exception) {
+            // error-policy:J2 restore the atomic write and preserve the original failure as cause.
             atomicFile.failWrite(stream)
-            throw error
+            throw IllegalStateException("Atomic secure value write failed", error)
         }
     }
 
     private fun readValue(key: String): String? {
         val file = valueFile(key)
-        if (!file.exists()) return null
+        // AtomicFile.openRead recovers the legacy backup even when the base is absent.
+        if (!file.exists() && !legacyBackup(file).exists()) return null
         val maximumCiphertextBytes = maximumValueBytes * 2
         val encoded = AtomicFile(file).openRead().use { stream ->
             val output = java.io.ByteArrayOutputStream()
@@ -196,6 +206,10 @@ class SecureStorePlugin : Plugin() {
         cipher.updateAAD(key.toByteArray(Charsets.UTF_8))
         return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
     }
+
+    private fun legacyBackup(file: File): File = File(file.path + ".bak")
+
+    private fun valueArtifacts(file: File): List<File> = listOf(file, legacyBackup(file), File(file.path + ".new"))
 
     private fun valueFile(key: String): File {
         val directory = File(context.noBackupFilesDir, "eliza-secure-store")

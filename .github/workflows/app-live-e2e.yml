@@ -115,7 +115,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -228,7 +228,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -376,7 +376,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -499,7 +499,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -688,7 +688,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -752,7 +752,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

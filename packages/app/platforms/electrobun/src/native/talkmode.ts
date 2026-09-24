@@ -1,16 +1,10 @@
 /**
- * TalkMode Native Module for Electrobun
- *
- * Provides text-to-speech via ElevenLabs API (fetch-based, works in Bun) or
- * the platform's system voice (say / espeak / PowerShell). Speech-to-text is
- * delegated to the renderer's Web Speech API: the native module forwards
- * audio chunks back through `talkmode:audioChunkPush` instead of running a
- * native ASR. The previous whisper.cpp pipeline has been removed (it
- * vendored a second GGML and is not part of the local-inference contract);
- * native ASR is delivered exclusively through the fused libelizainference
- * build.
+ * Owns native desktop speech synthesis and forwards renderer speech events.
+ * Each speech operation owns its process or stream; cancellation prevents stale
+ * completions from changing a newer operation's state.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { TalkModeConfig, TalkModeState } from "../rpc-schema";
 import type { SendToWebview } from "../types.js";
 import { diagnosticLog } from "./agent";
@@ -32,6 +26,7 @@ export class TalkModeManager {
 	private _speakProc: ReturnType<typeof Bun.spawn> | null = null;
 	/** AbortController for in-flight ElevenLabs fetch — aborted by stopSpeaking(). */
 	private _speakAbort: AbortController | null = null;
+	private speechGeneration = 0;
 
 	setSendToWebview(fn: SendToWebview): void {
 		this.sendToWebview = fn;
@@ -54,175 +49,201 @@ export class TalkModeManager {
 	}
 
 	async stop(): Promise<void> {
-		talkmodeLog(`stop state=${this.state}`);
-		this.setState("idle");
-		this.speaking = false;
+		await this.stopSpeaking();
 	}
 
 	async speak(options: {
 		text: string;
 		directive?: Record<string, unknown>;
 	}): Promise<void> {
+		this.cancelSpeech();
+		const generation = this.speechGeneration;
 		const apiKey = process.env.ELEVEN_LABS_API_KEY?.trim();
-		talkmodeLog(
-			`speak chars=${options.text.length} engine=${apiKey ? "elevenlabs" : "system"}`,
-		);
-		if (apiKey) {
-			await this._speakElevenLabs(options, apiKey);
-		} else {
-			// Default: system TTS (no API key required, works on all platforms)
-			await this._speakSystem(options.text);
-		}
-	}
-
-	/**
-	 * System TTS via platform-native voice synthesis.
-	 * Used when ELEVEN_LABS_API_KEY is not configured.
-	 * Audio plays directly through system speakers — no streaming to renderer.
-	 */
-	private async _speakSystem(text: string): Promise<void> {
+		const source = apiKey ? "elevenlabs" : "system";
 		this.speaking = true;
 		this.setState("speaking");
 		try {
-			let proc: ReturnType<typeof Bun.spawn>;
-			if (process.platform === "darwin") {
-				proc = Bun.spawn(["say", text], { stderr: "pipe" });
-			} else if (process.platform === "linux") {
-				proc = Bun.spawn(["espeak", text], { stderr: "pipe" });
+			if (apiKey) {
+				await this.speakElevenLabs(options, apiKey, generation);
 			} else {
-				// Windows: PowerShell speech synthesizer.
-				// Pass text via env var to avoid command-injection — never interpolate
-				// user-controlled strings into the -Command argument.
-				proc = Bun.spawn(
-					[
-						"powershell",
-						"-NoProfile",
-						"-Command",
-						"Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($env:ELIZA_TTS_TEXT)",
-					],
+				await this.speakSystem(options.text);
+			}
+			if (generation === this.speechGeneration) {
+				this.sendToWebview?.("talkmodeSpeakComplete");
+			}
+		} catch (cause) {
+			// error-policy:J2 Native failures reject the RPC with their cause; deliberate cancellation is observed by generation ownership.
+			if (generation !== this.speechGeneration) return;
+			const error =
+				cause instanceof ElizaError
+					? cause
+					: new ElizaError(
+							cause instanceof Error ? cause.message : String(cause),
+							{
+								code: "TTS_FAILED",
+								cause,
+								context: { source, platform: process.platform },
+							},
+						);
+			talkmodeLog(
+				`speech failed code=${error.code} source=${source}: ${error.message}`,
+			);
+			this.sendToWebview?.("talkmodeError", { source, message: error.message });
+			this.setState("error");
+			throw error;
+		} finally {
+			if (generation === this.speechGeneration) {
+				this._speakProc = null;
+				this._speakAbort = null;
+				this.speaking = false;
+				if (this.state !== "error") this.setState("idle");
+			}
+		}
+	}
+
+	private async speakSystem(text: string): Promise<void> {
+		let proc: ReturnType<typeof Bun.spawn>;
+		if (process.platform === "darwin") {
+			proc = Bun.spawn(["say", text], { stderr: "pipe" });
+		} else if (process.platform === "linux") {
+			const executable = Bun.which("espeak-ng") ?? Bun.which("espeak");
+			if (!executable) {
+				throw new ElizaError(
+					"Install espeak-ng to enable Linux system speech",
 					{
-						stderr: "pipe",
-						env: { ...process.env, ELIZA_TTS_TEXT: text },
+						code: "SYSTEM_TTS_UNAVAILABLE",
+						context: { platform: "linux" },
 					},
 				);
 			}
-			this._speakProc = proc;
-			await proc.exited;
-			this.sendToWebview?.("talkmodeSpeakComplete");
-		} catch (err) {
-			console.error("[TalkMode] System TTS error:", err);
-			this.setState("error");
-		} finally {
-			this._speakProc = null;
-			this.speaking = false;
-			if (this.state !== "error") {
-				this.setState("idle");
-			}
+			// Standard input preserves complete text, including leading option-like
+			// strings, without hitting the OS command-line argument size boundary.
+			proc = Bun.spawn([executable, "--stdin"], {
+				stdin: new Blob([text]),
+				stdout: "ignore",
+				stderr: "pipe",
+			});
+		} else if (process.platform === "win32") {
+			proc = Bun.spawn(
+				[
+					"powershell",
+					"-NoProfile",
+					"-Command",
+					"Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($env:ELIZA_TTS_TEXT)",
+				],
+				{ stderr: "pipe", env: { ...process.env, ELIZA_TTS_TEXT: text } },
+			);
+		} else {
+			throw new ElizaError("System speech is unavailable on this platform", {
+				code: "SYSTEM_TTS_UNAVAILABLE",
+				context: { platform: process.platform },
+			});
+		}
+		this._speakProc = proc;
+		if (!proc.stderr || typeof proc.stderr === "number") {
+			proc.kill();
+			throw new ElizaError("System speech diagnostic pipe is unavailable", {
+				code: "SYSTEM_TTS_PIPE_FAILED",
+			});
+		}
+		const [exitCode, diagnostic] = await Promise.all([
+			proc.exited,
+			new Response(proc.stderr).text(),
+		]);
+		if (exitCode !== 0) {
+			throw new ElizaError(`System speech exited with status ${exitCode}`, {
+				code: "SYSTEM_TTS_FAILED",
+				context: { platform: process.platform, exitCode, diagnostic },
+			});
 		}
 	}
 
-	/**
-	 * ElevenLabs TTS — used when ELEVEN_LABS_API_KEY is set.
-	 * Streams audio chunks to the renderer via talkmodeAudioChunkPush.
-	 * Model defaults to eleven_v3. Override via directive.modelId if needed.
-	 */
-	private async _speakElevenLabs(
+	private async speakElevenLabs(
 		options: { text: string; directive?: Record<string, unknown> },
 		apiKey: string,
+		generation: number,
 	): Promise<void> {
-		this.speaking = true;
-		this.setState("speaking");
-
 		const abort = new AbortController();
 		this._speakAbort = abort;
-
-		try {
-			const voiceId =
-				(options.directive?.voiceId as string) ??
-				this.config.voiceId ??
-				"21m00Tcm4TlvDq8ikWAM";
-
-			const resp = await fetch(
-				`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-				{
-					method: "POST",
-					signal: abort.signal,
-					headers: {
-						"xi-api-key": apiKey,
-						"Content-Type": "application/json",
+		const voiceId =
+			(options.directive?.voiceId as string) ??
+			this.config.voiceId ??
+			"21m00Tcm4TlvDq8ikWAM";
+		const resp = await fetch(
+			`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+			{
+				method: "POST",
+				signal: abort.signal,
+				headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+				body: JSON.stringify({
+					text: options.text,
+					model_id: (options.directive?.modelId as string) ?? "eleven_v3",
+					voice_settings: {
+						stability: (options.directive?.stability as number) ?? 0.5,
+						similarity_boost: (options.directive?.similarity as number) ?? 0.75,
 					},
-					body: JSON.stringify({
-						text: options.text,
-						model_id: (options.directive?.modelId as string) ?? "eleven_v3",
-						voice_settings: {
-							stability: (options.directive?.stability as number) ?? 0.5,
-							similarity_boost:
-								(options.directive?.similarity as number) ?? 0.75,
-						},
-					}),
+				}),
+			},
+		);
+		if (!resp.ok) {
+			await resp.body?.cancel();
+			throw new ElizaError(
+				`ElevenLabs API error: ${resp.status} ${resp.statusText}`,
+				{
+					code: "TTS_HTTP_FAILED",
+					context: { status: resp.status },
 				},
 			);
-
-			if (!resp.ok) {
-				const errorMsg = `ElevenLabs API error: ${resp.status} ${resp.statusText}`;
-				console.error(`[TalkMode] ${errorMsg}`);
-				this.sendToWebview?.("talkmodeError", {
-					source: "elevenlabs",
-					message: errorMsg,
-				});
-				this.setState("error");
-				return;
-			}
-
-			if (resp.body) {
-				const reader = resp.body.getReader();
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) break;
-					const base64 = Buffer.from(value).toString("base64");
-					this.sendToWebview?.("talkmodeAudioChunkPush", { data: base64 });
+		}
+		if (!resp.body)
+			throw new ElizaError("Speech response contained no audio", {
+				code: "TTS_AUDIO_MISSING",
+			});
+		const reader = resp.body.getReader();
+		let receivedAudio = false;
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (generation !== this.speechGeneration) {
+					await reader.cancel();
+					return;
 				}
-			}
-
-			this.sendToWebview?.("talkmodeSpeakComplete");
-		} catch (err) {
-			// AbortError is expected when stopSpeaking() cancels the fetch — not an error.
-			if (err instanceof Error && err.name === "AbortError") {
-				console.log("[TalkMode] ElevenLabs TTS aborted by stopSpeaking()");
-			} else {
-				const errorMsg = err instanceof Error ? err.message : String(err);
-				console.error("[TalkMode] ElevenLabs TTS error:", err);
-				this.sendToWebview?.("talkmodeError", {
-					source: "elevenlabs",
-					message: errorMsg,
+				if (done) break;
+				if (value.byteLength === 0) continue;
+				receivedAudio = true;
+				this.sendToWebview?.("talkmodeAudioChunkPush", {
+					data: Buffer.from(value).toString("base64"),
 				});
-				this.setState("error");
 			}
 		} finally {
-			this._speakAbort = null;
-			this.speaking = false;
-			if (this.state !== "error") {
-				this.setState("idle");
+			reader.releaseLock();
+		}
+		if (!receivedAudio)
+			throw new ElizaError("Speech response contained no audio", {
+				code: "TTS_AUDIO_MISSING",
+			});
+	}
+
+	private cancelSpeech(): void {
+		this.speechGeneration += 1;
+		const proc = this._speakProc;
+		this._speakProc = null;
+		if (proc) {
+			try {
+				proc.kill();
+			} catch (error) {
+				// error-policy:J6 Process teardown can race its exit; the speech promise still observes completion.
+				talkmodeLog(
+					`speech process cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			}
 		}
+		this._speakAbort?.abort();
+		this._speakAbort = null;
 	}
 
 	async stopSpeaking(): Promise<void> {
-		talkmodeLog("stopSpeaking");
-		// Kill in-flight system TTS process (say / espeak / PowerShell).
-		if (this._speakProc) {
-			try {
-				this._speakProc.kill();
-			} catch {
-				/* already exited */
-			}
-			this._speakProc = null;
-		}
-		// Abort in-flight ElevenLabs fetch/stream.
-		if (this._speakAbort) {
-			this._speakAbort.abort();
-			this._speakAbort = null;
-		}
+		this.cancelSpeech();
 		this.speaking = false;
 		this.setState("idle");
 	}
@@ -256,6 +277,7 @@ export class TalkModeManager {
 	}
 
 	dispose(): void {
+		this.cancelSpeech();
 		this.speaking = false;
 		this.state = "idle";
 		this.sendToWebview = null;

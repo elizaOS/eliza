@@ -118,14 +118,16 @@ jobs:
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: "34"
+          # API 35 includes a WebView with the multi-profile storage API tested below.
+          api-level: "35"
+          target: google_apis
           arch: x86_64
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
-          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 && node packages/app/scripts/android-native-agent.ts --serial emulator-5554 && node packages/app/scripts/android-e2e.ts --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-network-policy --network-transitions && node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 && node packages/app/scripts/android-native-agent.ts --serial emulator-5554 && node packages/app/scripts/android-e2e.ts --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
 
       - name: Upload Android native plugin results
         if: always()

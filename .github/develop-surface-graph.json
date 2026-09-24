@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-09-16.1",
+  "graphVersion": "2026-09-24.1",
   "evidenceTtlHours": 168,
   "reusePolicy": "current-run-only",
   "environment": {
@@ -69,18 +69,6 @@
         "plugins/plugin-discord"
       ],
       "inputs": ["packages/cloud/scripts/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "dev-smoke",
-      "workflow": ".github/workflows/dev-smoke.yml",
-      "workspacePatterns": [
-        "packages/agent",
-        "packages/app",
-        "packages/core",
-        "packages/ui"
-      ],
-      "inputs": ["packages/app/test/ui-smoke/**"],
       "dependsOn": ["canonical"]
     },
     {
