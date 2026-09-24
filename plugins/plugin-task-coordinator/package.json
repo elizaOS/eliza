@@ -36,7 +36,7 @@
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^1.0.0",
     "marked": "^18.0.13",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0"
   },
   "elizaos": {

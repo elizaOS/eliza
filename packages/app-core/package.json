@@ -317,7 +317,7 @@
   "devDependencies": {
     "@elizaos/plugin-app-control": "workspace:*",
     "@playwright/test": "^1.63.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
     "ai": "^6.0.23",

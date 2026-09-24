@@ -801,7 +801,7 @@
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
     "json5": "^2.2.3",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "yaml": "^2.8.2",
     "zod": "^4.6.5",
     "@elizaos/prompts": "workspace:*",
