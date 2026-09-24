@@ -24,6 +24,8 @@ const cacheMock = vi.hoisted(() => ({
   getCached: vi.fn(() => null),
   setCached: vi.fn(),
 }));
+const pollingMock = vi.hoisted(() => ({ tick: () => {} }));
+const bindingMock = vi.hoisted(() => ({ onQuery: (_query: string) => {} }));
 const detailRenderMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../agent-surface", () => ({
@@ -42,7 +44,9 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
 }));
 
 vi.mock("../../hooks/useDocumentVisibility", () => ({
-  useIntervalWhenDocumentVisible: () => undefined,
+  useIntervalWhenDocumentVisible: (callback: () => void) => {
+    pollingMock.tick = callback;
+  },
 }));
 
 vi.mock("../../hooks/useMediaQuery", () => ({
@@ -59,7 +63,11 @@ vi.mock("../../state", () => ({
 }));
 
 vi.mock("../../state/view-chat-binding", () => ({
-  useRegisterViewChatBinding: () => undefined,
+  useRegisterViewChatBinding: (binding: {
+    onQuery: (query: string) => void;
+  }) => {
+    bindingMock.onQuery = binding.onQuery;
+  },
 }));
 
 vi.mock("../views/ShellViewAgentSurface", () => ({
@@ -131,6 +139,31 @@ describe("TrajectoriesView header lifecycle", () => {
     );
     await waitFor(() => expect(screen.getByText("— tokens")).toBeTruthy());
     expect(screen.queryByText("0 tokens")).toBeNull();
+  });
+
+  it("preserves mobile selection through rerender, unchanged query, and list polling", async () => {
+    const rendered = render(<TrajectoriesView />);
+    await screen.findByText("1 recorded run");
+    fireEvent.click(screen.getByRole("button", { name: /15 tokens/ }));
+    expect(screen.getByTestId("trajectory-detail").textContent).toBe("run-1");
+    rendered.rerender(<TrajectoriesView />);
+    await act(async () => {
+      bindingMock.onQuery("");
+      pollingMock.tick();
+    });
+    await waitFor(() =>
+      expect(clientMock.getTrajectories).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByTestId("trajectory-detail").textContent).toBe("run-1");
+    expect(
+      screen
+        .getByTestId("trajectory-detail")
+        .closest("main")
+        ?.classList.contains("hidden"),
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Back to activity" }),
+    ).toBeTruthy();
   });
 
   it("returns from a mobile run detail to the activity list", async () => {
