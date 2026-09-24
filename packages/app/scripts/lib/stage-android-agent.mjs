@@ -1156,16 +1156,30 @@ export function stageSeccompShimForAbi({
 
   let changes = 0;
 
-  // Detect whether the existing `<ldName>` is the Alpine loader (which
-  // we need to relocate to .real) or our wrapper (already in place from
-  // a prior run). The wrapper is a tiny static binary (~30 KB on
-  // x86_64-linux-musl); the Alpine loader is ~600 KB. A size check is
-  // good enough as a discriminator and avoids shelling out to readelf.
-  const ALPINE_LOADER_MIN_BYTES = 200 * 1024;
-  const stagedLoaderExists = fs.existsSync(stagedLoader);
-  const stagedLoaderIsAlpine =
-    stagedLoaderExists &&
-    fs.statSync(stagedLoader).size >= ALPINE_LOADER_MIN_BYTES;
+  // The musl loader is ET_DYN; our static wrapper is ET_EXEC. Debug symbols
+  // can make the wrapper larger than musl, so byte size cannot identify it.
+  let stagedLoaderIsAlpine = false;
+  if (fs.existsSync(stagedLoader)) {
+    const header = fs.readFileSync(stagedLoader);
+    if (
+      header.length < 18 ||
+      header.readUInt32BE(0) !== 0x7f454c46 ||
+      header[4] !== 2 ||
+      (header[5] !== 1 && header[5] !== 2)
+    ) {
+      throw new Error(
+        `[stage-android-agent] Invalid ELF loader: ${stagedLoader}`,
+      );
+    }
+    const elfType =
+      header[5] === 1 ? header.readUInt16LE(16) : header.readUInt16BE(16);
+    if (elfType !== 2 && elfType !== 3) {
+      throw new Error(
+        `[stage-android-agent] Unsupported ELF loader type ${elfType}: ${stagedLoader}`,
+      );
+    }
+    stagedLoaderIsAlpine = elfType === 3;
+  }
 
   if (stagedLoaderIsAlpine) {
     // Move the Alpine loader to .real so the wrapper can exec it. Use
