@@ -11,7 +11,6 @@
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/testing": ["./src/index.ts"],
-      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
@@ -195,12 +194,6 @@
       ],
       "@elizaos/plugin-google-workspace/*": [
         "../../plugins/plugin-google-workspace/src/*"
-      ],
-      "@elizaos/plugin-anthropic/endpoint-config": [
-        "../../plugins/plugin-anthropic/utils/config.ts"
-      ],
-      "@elizaos/plugin-openai/endpoint-config": [
-        "../../plugins/plugin-openai/utils/config.ts"
       ],
       "@elizaos/plugin-google-workspace/package.json": [
         "../../plugins/plugin-google-workspace/package.json"
