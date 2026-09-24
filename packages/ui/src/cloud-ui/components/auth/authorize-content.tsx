@@ -3,12 +3,12 @@
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
+import type { LoginProviders } from "@elizaos/auth";
 import {
   APP_DELEGATION_SCOPE_LABELS,
   APP_DELEGATION_SCOPES,
   type AppDelegationScope,
 } from "@elizaos/cloud-sdk/app-delegation";
-import type { LoginProviders } from "@elizaos/auth";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
