@@ -8,8 +8,9 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/cloud/test-mocks typecheck  # static validation
+bun run --cwd packages/cloud/test-mocks test       # local protocol and subprocess tests
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
 
-No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.
+The required server test lane runs this package’s local protocol and subprocess tests.

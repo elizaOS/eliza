@@ -333,7 +333,8 @@
         "@elizaos/core#build",
         "@elizaos/agent#build",
         "@elizaos/shared#build",
-        "@elizaos/ui#build"
+        "@elizaos/ui#build",
+        "@elizaos/plugin-health#build"
       ],
       "env": [
         "LOG_LEVEL",
