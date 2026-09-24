@@ -18,7 +18,10 @@ import {
   targetReferenceLogView,
   userRequestMessageText,
 } from "../params.js";
-import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
+import {
+  findAsyncCodingDelegationActionName,
+  preflightCodingDispatch,
+} from "./scaffold-env.js";
 import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views-platform.js";
@@ -358,6 +361,13 @@ export async function runViewsEdit({
   ).trim();
   if (!intent) {
     const text = `What change should I make to ${view.label}?`;
+    await callback?.({ text });
+    return { success: false, text };
+  }
+
+  const preflight = await preflightCodingDispatch(runtime);
+  if (!preflight.ok) {
+    const text = `I can't edit ${view.label} yet. ${preflight.guidance.join(" ")}`;
     await callback?.({ text });
     return { success: false, text };
   }

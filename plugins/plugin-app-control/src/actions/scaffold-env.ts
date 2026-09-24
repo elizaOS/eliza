@@ -17,8 +17,8 @@
  *    this plugin so packaged builds always ship it);
  *  - new plugins can land in `<stateDir>/plugins` when the repo root has no
  *    plugins/ dir (registered via load-from-directory like any external dir);
- *  - `preflightCodingDispatch` verifies the orchestrator action and a coding
- *    CLI are available BEFORE scaffolding, returning setup guidance instead of
+ *  - `preflightCodingDispatch` verifies plugin verification, the orchestrator
+ *    action and a coding CLI BEFORE scaffolding, returning guidance instead of
  *    a dead-end error text.
  */
 
@@ -281,7 +281,7 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 
 /**
  * Verify the pieces a create/edit dispatch silently depends on BEFORE any
- * scaffolding happens: the agent-orchestrator create-task action and a coding
+ * scaffolding happens: plugin verification, coding delegation and a coding
  * CLI backend. Returns setup guidance for whatever is missing so the action
  * can answer with next steps instead of scaffolding into a dead end.
  */
@@ -290,6 +290,17 @@ export async function preflightCodingDispatch(
   options: CodingDispatchPreflightOptions = {},
 ): Promise<CodingDispatchPreflight> {
   const guidance: string[] = [];
+
+  const verification = runtime.getService("app-verification");
+  if (
+    !verification ||
+    !("verifyPlugin" in verification) ||
+    typeof verification.verifyPlugin !== "function"
+  ) {
+    guidance.push(
+      "Plugin verification is unavailable in this runtime. Source changes cannot be completed until that service is available.",
+    );
+  }
 
   const hasCreateTask = Boolean(
     findAsyncCodingDelegationActionName(runtime.actions),
