@@ -206,6 +206,7 @@
       const savedCalls = await call("listRecentCalls", {
         number: fixture.number,
       });
+      window.nativePhoneEvidence = savedCalls;
       assert(
         savedCalls.calls[0].agentTranscript === transcript.trim(),
         "complete persisted transcript must round trip",
