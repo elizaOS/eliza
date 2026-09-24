@@ -1,13 +1,12 @@
-import type { RouteHandlerResult } from "@elizaos/shared";
+import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
 import {
   buildLegacyShim,
   capturedToResult,
   type DispatchRouteArgs,
 } from "./dispatch-route.ts";
-import type { RouteKernel } from "./route-kernel.ts";
+import { type RouteKernel } from "./route-kernel.ts";
 
 const kernels = new WeakMap<object, RouteKernel>();
-
 /** Register the already-created server kernel for a local runtime. */
 export function registerInProcessApi(
   runtime: object,
@@ -18,7 +17,6 @@ export function registerInProcessApi(
     if (kernels.get(runtime) === kernel) kernels.delete(runtime);
   };
 }
-
 /** Use the full server routing and authentication boundary without a TCP listener. */
 export async function dispatchApiRoute(
   args: DispatchRouteArgs,

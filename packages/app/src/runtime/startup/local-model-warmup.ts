@@ -3,6 +3,7 @@
  * readiness. Expensive model work is serialized per process and remains an
  * optimization; the model handlers retain ownership of first-use failures.
  */
+
 import { createRequire } from "node:module";
 import {
   configureLocalEmbeddingPlugin,
@@ -16,25 +17,21 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "../startup-overlay.js";
 import { shouldWarmupVoice, warmVoiceModels } from "../voice-warmup.js";
-
 export type EmbeddingProgressCallback = (
   phase: EmbeddingWarmupPhase,
   detail?: string,
 ) => void;
-
 let localInferenceRuntime:
   | typeof import("@elizaos/plugin-local-inference/runtime")
   | undefined;
 let warmupInFlight: Promise<void> | null = null;
-
 const requireFromHost = createRequire(import.meta.url);
-
 async function getLocalInferenceRuntime() {
   // Resolve only this optional entry before executing it. A missing dependency
   // thrown inside an installed plugin is a real startup failure, not absence.
@@ -58,13 +55,11 @@ async function getLocalInferenceRuntime() {
   );
   return localInferenceRuntime;
 }
-
 function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
   const raw =
     process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP?.trim().toLowerCase();
   return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
 }
-
 function startLocalEmbeddingWarmup(
   onProgress?: EmbeddingProgressCallback,
 ): void {
@@ -76,7 +71,6 @@ function startLocalEmbeddingWarmup(
     );
   });
 }
-
 /** Starts eager warmup only when the operator has disabled default deferral. */
 export function prepareLocalEmbeddingWarmup(
   onProgress?: EmbeddingProgressCallback,
@@ -87,7 +81,6 @@ export function prepareLocalEmbeddingWarmup(
   }
   startLocalEmbeddingWarmup(onProgress);
 }
-
 /** Starts the default deferred warmup and reports whether policy allowed it. */
 export function startDeferredLocalEmbeddingWarmup(
   onProgress?: EmbeddingProgressCallback,
@@ -97,12 +90,10 @@ export function startDeferredLocalEmbeddingWarmup(
   startLocalEmbeddingWarmup(onProgress);
   return true;
 }
-
 /** Sets the SQL provisioning width without overriding an explicit model width. */
 export function ensureDefaultEmbeddingDimension(): void {
   process.env.EMBEDDING_DIMENSION ??= "384";
 }
-
 async function warmupEmbeddingModel(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
@@ -112,7 +103,6 @@ async function warmupEmbeddingModel(
   });
   return warmupInFlight;
 }
-
 async function warmupEmbeddingModelImpl(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
@@ -122,7 +112,6 @@ async function warmupEmbeddingModelImpl(
     );
     return;
   }
-
   const localInference = await getLocalInferenceRuntime();
   if (!localInference) return;
   if (!localInference.shouldWarmupLocalEmbeddingModel()) {
@@ -131,16 +120,13 @@ async function warmupEmbeddingModelImpl(
     );
     return;
   }
-
   const config = loadEffectiveElizaConfig();
   await configureLocalEmbeddingPlugin({} as Plugin, config);
-
   const preset = localInference.detectEmbeddingPreset();
   const modelsDir = process.env.MODELS_DIR ?? localInference.DEFAULT_MODELS_DIR;
   let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
   let modelRepo =
     process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
-
   if (
     !localInference.isEmbeddingWarmupReuseDisabled() &&
     !localInference.embeddingGgufFilePresent(modelsDir, model)
@@ -164,12 +150,10 @@ async function warmupEmbeddingModelImpl(
       modelRepo = reuse.modelRepo;
     }
   }
-
   logger.info(
     `[eliza] Local embedding warmup: ${model} (hardware tier preset: ${preset.label}). ` +
       "This file is for TEXT_EMBEDDING / memory only (not your conversation model).",
   );
-
   const progressCallback: EmbeddingProgressCallback = (phase, detail) => {
     updateStartupEmbeddingProgress(phase, detail);
     if (phase === "downloading") {
@@ -181,7 +165,6 @@ async function warmupEmbeddingModelImpl(
     }
     onProgress?.(phase, detail);
   };
-
   try {
     await localInference.ensureModel(
       modelsDir,
@@ -198,7 +181,6 @@ async function warmupEmbeddingModelImpl(
     );
   }
 }
-
 function isExplicitDesktopCloudOnlyRuntime(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -209,7 +191,6 @@ function isExplicitDesktopCloudOnlyRuntime(
     isTruthyEnvValue(env.ELIZA_DESKTOP_CLOUD_ONLY)
   );
 }
-
 /** Warms local voice handlers after the runtime is ready when policy permits. */
 export async function startDeferredVoiceWarmup(
   runtime: AgentRuntime,

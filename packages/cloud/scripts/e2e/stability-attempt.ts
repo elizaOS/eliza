@@ -10,7 +10,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+import { canonicalJsonString } from "@elizaos/core/canonical-json";
 import cloudStabilityScenario from "../../e2e/scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../../e2e/src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../../e2e/src/stability/cloud-stability-runner.ts";

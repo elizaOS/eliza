@@ -6,7 +6,7 @@
  *
  * This is the runtime half of the contract. The preset half (which strings the
  * shipped `eliza` persona supplies) lives in
- * `packages/shared/src/character-presets.failure-templates.test.ts`, and the
+ * `packages/core/src/character-presets.failure-templates.test.ts`, and the
  * preset -> Character wiring in
  * `packages/agent/src/runtime/build-character-config.failure-templates.test.ts`.
  * The three are bound at compile time by the `CharacterFailureTemplates`
@@ -18,23 +18,23 @@
  * what a connector would actually post to the channel.
  */
 
-import type { CharacterFailureTemplates } from "@elizaos/shared";
+import { type CharacterFailureTemplates } from "@elizaos/core/contracts/first-run-options";
 import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import type { Room } from "../../../../packages/core/src/types/environment.ts";
-import type { Memory } from "../../../../packages/core/src/types/memory.ts";
+import { type Room } from "../../../../packages/core/src/types/environment.ts";
+import { type Memory } from "../../../../packages/core/src/types/memory.ts";
 import {
   asUUID,
   ChannelType,
   type Content,
   type UUID,
 } from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../packages/core/src/types/state.ts";
+import { type IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
+import { type State } from "../../../../packages/core/src/types/state.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import {
   DefaultMessageService,
@@ -45,7 +45,6 @@ const AGENT = "00000000-0000-0000-0000-00000000002a" as UUID;
 const ENTITY = "00000000-0000-0000-0000-00000000002b" as UUID;
 const ROOM = "00000000-0000-0000-0000-00000000002c" as UUID;
 const RUN_ID = "00000000-0000-0000-0000-00000000002d" as UUID;
-
 /**
  * Distinctive sentinels — typed by the shared contract, so renaming a key in
  * `CharacterFailureTemplates` fails this file's compile instead of quietly
@@ -60,7 +59,6 @@ const TEMPLATES = {
   rateLimitedReply: "sentinel: my provider is throttling me.",
   transientFailureReply: "sentinel: something broke on my end.",
 } satisfies Required<CharacterFailureTemplates>;
-
 /** The error shape plugin-elizacloud throws when Eliza Cloud returns 402. */
 function creditExhaustionError(): Error {
   return Object.assign(new Error("Insufficient credits."), {
@@ -68,22 +66,18 @@ function creditExhaustionError(): Error {
     error: { code: "insufficient_credits", message: "Insufficient credits." },
   });
 }
-
 function rateLimitError(): Error {
   return Object.assign(new Error("Rate limit exceeded. Try again shortly."), {
     status: 429,
     error: { code: "rate_limit_exceeded" },
   });
 }
-
 function authError(): Error {
   return Object.assign(new Error("Invalid API key"), { status: 401 });
 }
-
 function transientError(): Error {
   return new Error("socket hang up");
 }
-
 function missingCapabilityError(): Error {
   return new TrajectoryLimitExceeded({
     kind: "unavailable_tool_calls",
@@ -91,7 +85,6 @@ function missingCapabilityError(): Error {
     observed: 4,
   });
 }
-
 function plannerExhaustionError(): Error {
   return new TrajectoryLimitExceeded({
     kind: "required_tool_misses",
@@ -99,7 +92,6 @@ function plannerExhaustionError(): Error {
     observed: 4,
   });
 }
-
 function makeMessage(overrides: Partial<Content> = {}): Memory {
   return {
     id: asUUID(v4()),
@@ -116,15 +108,12 @@ function makeMessage(overrides: Partial<Content> = {}): Memory {
     createdAt: Date.now(),
   };
 }
-
 function makeState(): State {
   return { values: {}, data: {}, text: "" };
 }
-
 function makeRoom(): Room {
   return { id: ROOM, source: "discord", type: ChannelType.GROUP } as Room;
 }
-
 /**
  * @param failure  rejection thrown by every model slot.
  * @param options.hasModelProvider  false => `getModel` resolves nothing, which
@@ -194,7 +183,6 @@ function makeFailingRuntime(
     ],
   });
 }
-
 async function runTurn(
   failure: Error,
   options: {
@@ -217,7 +205,6 @@ async function runTurn(
     .map((content) => (typeof content.text === "string" ? content.text : ""))
     .filter((text) => text.trim().length > 0);
 }
-
 /**
  * Each row is one failure classification, its triggering error, and the
  * template key the runtime must read for it. Driving all seven off one table
@@ -270,9 +257,10 @@ const CASES = [
   kind: string;
   key: keyof CharacterFailureTemplates;
   error: () => Error;
-  options: { hasModelProvider?: boolean };
+  options: {
+    hasModelProvider?: boolean;
+  };
 }>;
-
 describe("character failure templates on the connector delivery path", () => {
   beforeEach(() => {
     vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
@@ -280,28 +268,23 @@ describe("character failure templates on the connector delivery path", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
-
   for (const testCase of CASES) {
     it(`renders character.templates.${testCase.key} on ${testCase.kind}`, async () => {
       const visibleTexts = await runTurn(testCase.error(), {
         ...testCase.options,
         templates: TEMPLATES,
       });
-
       expect(visibleTexts).toHaveLength(1);
       expect(visibleTexts[0]).toBe(TEMPLATES[testCase.key]);
     });
-
     it(`falls back to the framework default for ${testCase.kind} when the character sets no template`, async () => {
       const visibleTexts = await runTurn(testCase.error(), testCase.options);
-
       expect(visibleTexts).toHaveLength(1);
       // The default must still be the framework's, i.e. the override is a
       // real override and not the only code path.
       expect(visibleTexts[0]).not.toBe(TEMPLATES[testCase.key]);
       expect(visibleTexts[0].length).toBeGreaterThan(0);
     });
-
     it(`does not leak other template keys into ${testCase.kind}`, async () => {
       // Only the key matching this failure kind may be selected — a
       // mis-wired branch that reads e.g. transientFailureReply for every
@@ -313,13 +296,11 @@ describe("character failure templates on the connector delivery path", () => {
         ...testCase.options,
         templates: TEMPLATES,
       });
-
       for (const key of otherKeys) {
         expect(visibleTexts[0]).not.toBe(TEMPLATES[key]);
       }
     });
   }
-
   it("never uses transientFailureReply for a missing capability", async () => {
     // Permanent gap: only the dedicated key or the built-in capability
     // copy may ship. Legacy transient voice ("try again") must not leak.
@@ -328,7 +309,6 @@ describe("character failure templates on the connector delivery path", () => {
         transientFailureReply: TEMPLATES.transientFailureReply,
       },
     });
-
     expect(visibleTexts).toHaveLength(1);
     expect(visibleTexts[0]).not.toBe(TEMPLATES.transientFailureReply);
     expect(visibleTexts[0]?.toLowerCase()).not.toMatch(
@@ -336,17 +316,14 @@ describe("character failure templates on the connector delivery path", () => {
     );
     expect(visibleTexts[0]?.toLowerCase()).toMatch(/capability|can't|cannot/);
   });
-
   it("keeps the character voice for planner exhaustion through transientFailureReply compatibility", async () => {
     const visibleTexts = await runTurn(plannerExhaustionError(), {
       templates: {
         transientFailureReply: TEMPLATES.transientFailureReply,
       },
     });
-
     expect(visibleTexts).toEqual([TEMPLATES.transientFailureReply]);
   });
-
   it("keeps the framework insufficient-credits default reachable", async () => {
     // Guards the fallback expression itself: if `|| INSUFFICIENT_CREDITS_REPLY`
     // were dropped, the no-template case above would still pass on any
@@ -354,7 +331,6 @@ describe("character failure templates on the connector delivery path", () => {
     const visibleTexts = await runTurn(creditExhaustionError());
     expect(visibleTexts[0]).toBe(INSUFFICIENT_CREDITS_REPLY);
   });
-
   it("accepts a ({ state }) => string callback template", async () => {
     // JSON characters can only carry strings, but in-process characters may
     // supply a callback; the runtime resolves both.
@@ -371,7 +347,6 @@ describe("character failure templates on the connector delivery path", () => {
         return [];
       },
     );
-
     expect(deliveries.map((content) => content.text)).toContain(
       "sentinel: callback rate limit reply.",
     );

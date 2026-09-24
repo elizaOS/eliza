@@ -8,16 +8,21 @@
 
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import {
 	createOllamaModelHandlers,
 	detectInferenceProviders,
 	SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
 import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing.js";
 import { AgentRuntime } from "../../src/runtime";
-import type { Character, Memory, Plugin, UUID } from "../../src/types";
-import { ChannelType } from "../../src/types";
+import {
+	ChannelType,
+	type Character,
+	type Memory,
+	type Plugin,
+	type UUID,
+} from "../../src/types";
 import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {
@@ -36,7 +41,6 @@ const TEST_CHARACTER: Character = {
 	secrets: {},
 	settings: {},
 };
-
 /**
  * Resolve the correct model-provider plugin.
  *
@@ -74,7 +78,6 @@ async function importWorkspacePlugin(
 		}
 	}
 }
-
 async function resolveProviderPlugin(
 	providerName: string,
 ): Promise<Plugin | null> {
@@ -109,7 +112,6 @@ async function resolveProviderPlugin(
 			return null;
 	}
 }
-
 /** Tiny JSON body parser. */
 function readBody(req: http.IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -119,7 +121,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 		req.on("error", reject);
 	});
 }
-
 function applyProviderSettings(
 	runtime: AgentRuntime,
 	providerName: string,
@@ -134,7 +135,6 @@ function applyProviderSettings(
 				explicitElizaProvider?.toLowerCase() === "cerebras" ||
 				/^csk-/i.test(openAiKey || cerebrasKey) ||
 				/(^|\.)cerebras\.ai(\/|$)/i.test(explicitBase ?? "");
-
 			runtime.setSetting(
 				"OPENAI_API_KEY",
 				openAiKey || (isCerebras ? cerebrasKey : ""),
@@ -209,14 +209,11 @@ function applyProviderSettings(
 			break;
 	}
 }
-
 export default async function globalSetup(): Promise<void> {
 	process.env.ELIZA_PLAYWRIGHT_E2E = "1";
-
 	// Load repo-local credentials before provider detection so Playwright e2e
 	// behaves the same way as the rest of the workspace.
 	loadEnvFile();
-
 	// ── 1. Detect inference provider ───────────────────────────────────────
 	const detection = await detectInferenceProviders();
 	if (!detection.hasProvider || !detection.primaryProvider) {
@@ -227,23 +224,18 @@ export default async function globalSetup(): Promise<void> {
 		process.env.__E2E_SKIP__ = "1";
 		return;
 	}
-
 	const provider = detection.primaryProvider;
 	console.log(`\n[e2e] Using provider: ${provider.name}\n`);
-
 	// ── 2. Load provider plugin ────────────────────────────────────────────
 	const providerPlugin = await resolveProviderPlugin(provider.name);
-
 	// ── 3. Create runtime ──────────────────────────────────────────────────
 	const agentId = uuidv4() as UUID;
 	const plugins: Plugin[] = [createAssistantPlugin()];
 	if (providerPlugin) {
 		plugins.push(providerPlugin);
 	}
-
 	const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
 	await adapter.init();
-
 	const runtime = new AgentRuntime({
 		agentId,
 		character: { ...TEST_CHARACTER, id: agentId },
@@ -252,9 +244,7 @@ export default async function globalSetup(): Promise<void> {
 		checkShouldRespond: false, // always respond in tests
 		logLevel: "warn",
 	});
-
 	applyProviderSettings(runtime, provider.name);
-
 	// For Ollama without a plugin package, register model handlers directly.
 	if (provider.name === "ollama" && !providerPlugin) {
 		const handlers = createOllamaModelHandlers();
@@ -271,10 +261,8 @@ export default async function globalSetup(): Promise<void> {
 			}
 		}
 	}
-
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
-
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
 	await runtime.createWorld({ id: worldId, name: "e2e-world", agentId });
@@ -287,7 +275,6 @@ export default async function globalSetup(): Promise<void> {
 		worldId,
 	});
 	await runtime.ensureParticipantInRoom(agentId, roomId);
-
 	const testEntityId = uuidv4() as UUID;
 	await runtime.createEntity({
 		id: testEntityId,
@@ -295,11 +282,9 @@ export default async function globalSetup(): Promise<void> {
 		agentId,
 	});
 	await runtime.ensureParticipantInRoom(testEntityId, roomId);
-
 	// ── 5. Start HTTP server ───────────────────────────────────────────────
 	const server = http.createServer(async (req, res) => {
 		res.setHeader("Content-Type", "application/json");
-
 		try {
 			// POST /chat — drives the FULL agent message pipeline via
 			// runtime.messageService.handleMessage so providers, evaluators, and
@@ -311,13 +296,11 @@ export default async function globalSetup(): Promise<void> {
 					roomId?: string;
 					entityId?: string;
 				};
-
 				if (!body.text || typeof body.text !== "string" || !body.text.trim()) {
 					res.writeHead(400);
 					res.end(JSON.stringify({ error: "text is required" }));
 					return;
 				}
-
 				if (!runtime.messageService) {
 					res.writeHead(500);
 					res.end(
@@ -325,10 +308,8 @@ export default async function globalSetup(): Promise<void> {
 					);
 					return;
 				}
-
 				const chatRoomId = (body.roomId as UUID) ?? roomId;
 				const chatEntityId = (body.entityId as UUID) ?? testEntityId;
-
 				const message: Memory = {
 					id: uuidv4() as UUID,
 					entityId: chatEntityId,
@@ -339,7 +320,6 @@ export default async function globalSetup(): Promise<void> {
 					},
 					createdAt: Date.now(),
 				};
-
 				let responseText = "";
 				const callback = async (content: { text: string }) => {
 					if (typeof content?.text === "string") {
@@ -347,9 +327,7 @@ export default async function globalSetup(): Promise<void> {
 					}
 					return [];
 				};
-
 				await runtime.messageService.handleMessage(runtime, message, callback);
-
 				res.writeHead(200);
 				res.end(
 					JSON.stringify({
@@ -360,7 +338,6 @@ export default async function globalSetup(): Promise<void> {
 				);
 				return;
 			}
-
 			// fallback
 			res.writeHead(404);
 			res.end(JSON.stringify({ error: "not found" }));
@@ -374,7 +351,6 @@ export default async function globalSetup(): Promise<void> {
 			);
 		}
 	});
-
 	// Bind port 0 so the kernel assigns a free port at bind time; the socket is
 	// never probed and released, so concurrent suites cannot steal it (#18359).
 	await new Promise<void>((resolve) => {
@@ -389,7 +365,6 @@ export default async function globalSetup(): Promise<void> {
 	// re-evaluates in each worker and reads it as `use.baseURL`.
 	process.env.CORE_E2E_BASE_URL = baseURL;
 	console.log(`[e2e] Test server listening on ${baseURL}`);
-
 	// Store for teardown
 	(globalThis as Record<string, unknown>).__e2eServer = server;
 	(globalThis as Record<string, unknown>).__e2eRuntime = runtime;

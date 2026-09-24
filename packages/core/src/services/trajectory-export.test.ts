@@ -4,8 +4,8 @@
  * built from both persisted `stepsJson` and inline `steps`.
  */
 
-import { trajectoryToPlaintext } from "@elizaos/shared/activity-plaintext";
 import { describe, expect, it } from "vitest";
+import { trajectoryToPlaintext } from "../activity-plaintext.js";
 import {
 	iterateTrajectoryLlmCalls,
 	resolveJsonShape,

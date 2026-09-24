@@ -3,12 +3,10 @@
  * Browser login, management navigation, and API transport deliberately use
  * different hosts, with production and staging aliases resolved here.
  */
-
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 export const DEFAULT_DIRECT_CLOUD_BASE_URL =
   ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin;
 export const DEFAULT_DIRECT_CLOUD_APP_BASE_URL =
@@ -21,7 +19,6 @@ export const STAGING_DIRECT_CLOUD_APP_BASE_URL =
   ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
 export const STAGING_DIRECT_CLOUD_API_BASE_URL =
   ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
-
 /**
  * The app origin that pairs with a resolved canonical API origin. Sign-in has
  * to land on the app for the environment the session was minted against — a
@@ -33,7 +30,6 @@ export function directCloudAppBaseForApi(apiBaseUrl: string): string {
     ? STAGING_DIRECT_CLOUD_APP_BASE_URL
     : DEFAULT_DIRECT_CLOUD_APP_BASE_URL;
 }
-
 export const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["api.eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
@@ -60,7 +56,6 @@ export const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
     (hostname) => [hostname, STAGING_DIRECT_CLOUD_API_BASE_URL] as const,
   ),
 ]);
-
 const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
   ["api.eliza.app", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["eliza.app", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -87,7 +82,6 @@ const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
     (hostname) => [hostname, STAGING_DIRECT_CLOUD_BASE_URL] as const,
   ),
 ]);
-
 const DIRECT_ELIZA_CLOUD_APP_BY_HOST = new Map([
   ["api.eliza.app", DEFAULT_DIRECT_CLOUD_APP_BASE_URL],
   ["eliza.app", DEFAULT_DIRECT_CLOUD_APP_BASE_URL],
@@ -114,14 +108,12 @@ const DIRECT_ELIZA_CLOUD_APP_BY_HOST = new Map([
     (hostname) => [hostname, STAGING_DIRECT_CLOUD_APP_BASE_URL] as const,
   ),
 ]);
-
 /** Removes one trailing slash run with a single scan and allocation. */
 export function stripTrailingSlashes(value: string): string {
   let end = value.length;
   while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
   return end === value.length ? value : value.slice(0, end);
 }
-
 export function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = stripTrailingSlashes(cloudBase);
   try {
@@ -133,7 +125,6 @@ export function resolveDirectCloudWebBase(cloudBase: string): string {
     return normalized;
   }
 }
-
 /** Resolve the browser origin that owns authenticated Cloud management. */
 export function resolveDirectCloudAppBase(cloudBase: string): string {
   const normalized = stripTrailingSlashes(cloudBase);
@@ -146,7 +137,6 @@ export function resolveDirectCloudAppBase(cloudBase: string): string {
     return normalized;
   }
 }
-
 export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   const normalized = stripTrailingSlashes(cloudBase);
   try {
@@ -158,7 +148,6 @@ export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
     return normalized;
   }
 }
-
 /**
  * Resolve the fixed API authority used by store-distributed Cloud shells.
  * Unlike the general resolver above, an unknown or malformed configured host

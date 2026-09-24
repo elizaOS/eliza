@@ -9,11 +9,11 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/core/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { WARM_POOL_ORG_ID } from "../../db/schemas/agent-sandboxes";
-import type { DockerNode } from "../../db/schemas/docker-nodes";
+import { type DockerNode } from "../../db/schemas/docker-nodes";
 import { isAgentTokenSigningConfigured, mintAgentToken } from "../auth/agent-token";
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
@@ -106,21 +106,19 @@ import {
 } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
-import type {
-  SandboxCreateConfig,
-  SandboxDeletionLocator,
-  SandboxDeletionStopOutcome,
-  SandboxExactRestoreCreateConfig,
-  SandboxExactRestoreTarget,
-  SandboxHandle,
-  SandboxHealthContext,
-  SandboxHealthOutcome,
-  SandboxProvider,
-  SandboxReplacementCleanupLocator,
-} from "./sandbox-provider-types";
 import {
   assertContainerBackedExecutionTier,
   assertSandboxReplacementAttemptId,
+  type SandboxCreateConfig,
+  type SandboxDeletionLocator,
+  type SandboxDeletionStopOutcome,
+  type SandboxExactRestoreCreateConfig,
+  type SandboxExactRestoreTarget,
+  type SandboxHandle,
+  type SandboxHealthContext,
+  type SandboxHealthOutcome,
+  type SandboxProvider,
+  type SandboxReplacementCleanupLocator,
   SandboxReplacementCleanupUnresolvedError,
   SandboxReplacementCreateSettlementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
@@ -130,11 +128,9 @@ import {
   type StewardTenantCredentials,
 } from "./steward-tenant-config";
 import { tailnetPathMonitor } from "./tailnet-path-monitor";
-
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
 // ---------------------------------------------------------------------------
-
 /** Typed metadata returned by DockerSandboxProvider in SandboxHandle.metadata */
 export interface DockerSandboxMetadata {
   provider: "docker";
@@ -189,11 +185,9 @@ export interface DockerSandboxMetadata {
    *  swap; rolled-back paths must leave it untouched. */
   previousVpnNodeId?: string;
 }
-
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
-
 interface ContainerMeta {
   nodeId: string;
   hostname: string;
@@ -213,26 +207,20 @@ interface ContainerMeta {
   sshUser: string;
   hostKeyFingerprint?: string;
 }
-
 type TeardownContainerMeta = Omit<ContainerMeta, "bridgePort" | "webUiPort">;
-
 interface RemoteCompletionTracker {
   readonly causes: unknown[];
 }
-
 type DockerNodeConnection = Pick<
   DockerNode,
   "node_id" | "hostname" | "ssh_port" | "ssh_user" | "host_key_fingerprint"
 >;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 const DOCKER_IMAGE_OVERRIDE = containersEnv.defaultAgentImageOverride();
 const DOCKER_NETWORK = containersEnv.dockerNetwork();
 let hasWarnedMissingStewardTenantApiKey = false;
-
 const DEFAULT_AGENT_PORT = containersEnv.agentPort();
 const DEFAULT_BRIDGE_PORT = containersEnv.agentBridgePort();
 const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
@@ -246,14 +234,13 @@ const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
-const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
+const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30000;
 const REPLACEMENT_VPN_MAX_RECOVERABLE_REGISTRATIONS = 32;
 // Converge window for an id-verified container whose attempt label drifted
 // from the fence record (#18032): the immutable Docker id plus a matching
 // deterministic name identify the fenced target beyond doubt, but a young
 // container is still retained in case a concurrent lifecycle op is mid-write.
 const REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS = 60 * 60 * 1000;
-
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
     super("[docker-sandbox] Failed to persist replacement placement", {
@@ -262,7 +249,6 @@ class ReplacementPlacementPersistenceError extends Error {
     this.name = "ReplacementPlacementPersistenceError";
   }
 }
-
 /** Keeps the durable cleanup intent on the happens-before side of Docker create. */
 export async function createDockerContainerAfterReplacementIntent<T>({
   persistIntent,
@@ -276,21 +262,17 @@ export async function createDockerContainerAfterReplacementIntent<T>({
   }
   return createContainer();
 }
-
 function optionalLocatorString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
-
 function optionalLocatorNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
 function isCanonicalNodeAuthorityUuid(value: string | null | undefined): value is string {
   return Boolean(
     value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value),
   );
 }
-
 function exactRestoreContainerName(agentId: string, restoreAttemptId: string): string {
   validateAgentId(agentId);
   assertSandboxReplacementAttemptId(restoreAttemptId);
@@ -298,13 +280,11 @@ function exactRestoreContainerName(agentId: string, restoreAttemptId: string): s
   validateContainerName(containerName);
   return containerName;
 }
-
 function exactRestoreVolumePath(agentId: string, restoreAttemptId: string): string {
   const volumePath = deriveRestoreStagingVolumePathV1(agentId, restoreAttemptId);
   validateVolumePath(volumePath);
   return volumePath;
 }
-
 function exactRestoreVolumePathFromCleanupLocator(
   locator: SandboxReplacementCleanupLocator,
 ): string | undefined {
@@ -322,7 +302,6 @@ function exactRestoreVolumePathFromCleanupLocator(
   const agentId = locator.containerName.slice(prefix.length, -suffix.length);
   return exactRestoreVolumePath(agentId, restoreAttemptId);
 }
-
 function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExactRestoreTarget {
   if (
     !target ||
@@ -352,7 +331,6 @@ function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExa
     platform: target.platform,
   });
 }
-
 function freezeExactRestoreConfig(
   exactRestore: SandboxExactRestoreCreateConfig,
 ): SandboxExactRestoreCreateConfig {
@@ -401,7 +379,6 @@ function freezeExactRestoreConfig(
     quarantine: true,
   });
 }
-
 function isExactRestoreContainerName(value: string): boolean {
   const match = /^agent-restore-([0-9a-f-]{36})-([0-9a-f-]{36})$/.exec(value);
   if (!match) return false;
@@ -412,7 +389,6 @@ function isExactRestoreContainerName(value: string): boolean {
     return false;
   }
 }
-
 export function buildExactRestoreBootFencedCommand(
   expectedNodeIncarnation: string,
   exactCommand: string,
@@ -423,7 +399,6 @@ export function buildExactRestoreBootFencedCommand(
     exactCommand,
   ].join("; ");
 }
-
 /** Boot-fence and isolate every exact Docker CLI call from ambient client state. */
 export function buildExactRestoreDockerBootFencedCommand(
   expectedNodeIncarnation: string,
@@ -456,17 +431,14 @@ export function buildExactRestoreDockerBootFencedCommand(
   ].join("; ");
   return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
 }
-
 function buildExactRestoreAnonymousPullCommand(
   imageReference: string,
   platform: "linux/amd64" | "linux/arm64",
 ): string {
   return ["docker pull", ...dockerPlatformFlag(platform), shellQuote(imageReference)].join(" ");
 }
-
 const EXACT_RESTORE_MANIFEST_DESCRIPTOR_MINIMUM_API_MINOR = 48;
 const CONTAINERD_SNAPSHOTTER_DRIVER = "io.containerd.snapshotter.v1";
-
 function assertExactRestoreManifestProofCapability(
   proof: string,
   nodeId: string,
@@ -524,7 +496,6 @@ function assertExactRestoreManifestProofCapability(
     );
   }
 }
-
 function buildExactRestorePreseedProofCommand(volumePath: string): string {
   validateVolumePath(volumePath);
   const elizaPath = `${volumePath}/eliza`;
@@ -542,7 +513,6 @@ function buildExactRestorePreseedProofCommand(volumePath: string): string {
     `test "$vault_length" = '${AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES}'`,
   ].join("; ");
 }
-
 function extractExactRestoreDockerContainerId(output: string): string {
   const lines = output
     .split(/\r?\n/)
@@ -556,7 +526,6 @@ function extractExactRestoreDockerContainerId(output: string): string {
   }
   return lines[0]!;
 }
-
 const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_KEYS = new Set([
   "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
   "AGENT_SERVER_SHARED_SECRET",
@@ -570,7 +539,6 @@ const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_KEYS = new Set([
   "SANDBOX_ROUTE_AGENT_ID",
   "SANDBOX_SERVER_NAME",
 ]);
-
 const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_PREFIXES = [
   "AGENT_ROUTER_",
   "ELIZA_STEWARD_",
@@ -579,7 +547,6 @@ const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_PREFIXES = [
   "TAILSCALE_",
   "TS_",
 ] as const;
-
 function exactRestoreEnvironment(
   environmentVars: Readonly<Record<string, string>>,
 ): Record<string, string> {
@@ -599,7 +566,6 @@ function exactRestoreEnvironment(
   }
   return filtered;
 }
-
 function isCanonicalReplacementContainerName(value: string): boolean {
   if (isExactRestoreContainerName(value)) return true;
   if (!value.startsWith("agent-")) return false;
@@ -610,7 +576,6 @@ function isCanonicalReplacementContainerName(value: string): boolean {
     return false;
   }
 }
-
 function replacementCleanupLocatorFromHandle(
   handle: SandboxHandle,
 ): SandboxReplacementCleanupLocator | null {
@@ -647,18 +612,15 @@ function replacementCleanupLocatorFromHandle(
       typeof metadata.allocationCounted === "boolean" ? metadata.allocationCounted : null,
   };
 }
-
 function dockerContainerIdsMatch(expected: string, actual: string): boolean {
   if (!/^[a-f0-9]{12,64}$/i.test(expected) || !/^[a-f0-9]{12,64}$/i.test(actual)) {
     return false;
   }
   return expected.startsWith(actual) || actual.startsWith(expected);
 }
-
 function isCanonicalDockerContainerId(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{12,64}$/.test(value);
 }
-
 function isCanonicalReplacementLocatorCore(
   locator: SandboxReplacementCleanupLocator,
   expectedReplacementAttemptId?: string,
@@ -668,7 +630,6 @@ function isCanonicalReplacementLocatorCore(
   const vpnNodeId = locator.vpnNodeId ?? null;
   const previousVpnNodeId = locator.previousVpnNodeId ?? null;
   const containerId = locator.containerId ?? null;
-
   return (
     locator.sandboxId.trim().length > 0 &&
     locator.sandboxId === locator.containerName &&
@@ -688,10 +649,12 @@ function isCanonicalReplacementLocatorCore(
     (vpnNodeId === null || vpnNodeId !== previousVpnNodeId)
   );
 }
-
 function isCanonicalExactReplacementLocator(
   locator: SandboxReplacementCleanupLocator,
-  expected?: { readonly containerName?: string; readonly replacementAttemptId?: string },
+  expected?: {
+    readonly containerName?: string;
+    readonly replacementAttemptId?: string;
+  },
 ): boolean {
   const vpnNodeName = locator.vpnNodeName ?? null;
   const vpnRegistrationStartedAt = locator.vpnRegistrationStartedAt ?? null;
@@ -701,7 +664,6 @@ function isCanonicalExactReplacementLocator(
   const hasVpnRegistrationPair = vpnNodeName !== null && vpnRegistrationStartedAt !== null;
   const restoreAttemptId = locator.restoreAttemptId ?? null;
   const isRestoreLocator = restoreAttemptId !== null;
-
   return (
     isCanonicalReplacementLocatorCore(locator, expected?.replacementAttemptId) &&
     isCanonicalReplacementContainerName(locator.containerName) &&
@@ -714,7 +676,7 @@ function isCanonicalExactReplacementLocator(
     typeof locator.nodeSshPort === "number" &&
     Number.isSafeInteger(locator.nodeSshPort) &&
     locator.nodeSshPort >= 1 &&
-    locator.nodeSshPort <= 65_535 &&
+    locator.nodeSshPort <= 65535 &&
     Boolean(locator.nodeSshUser?.trim()) &&
     Boolean(locator.nodeHostKeyFingerprint?.trim()) &&
     (isRestoreLocator
@@ -726,7 +688,6 @@ function isCanonicalExactReplacementLocator(
       (containerId !== null && hasVpnRegistrationPair && vpnNodeId !== previousVpnNodeId))
   );
 }
-
 function assertCanonicalRestoreLocatorIdentity(
   locator: SandboxReplacementCleanupLocator,
   restoreAttemptId: string,
@@ -749,22 +710,17 @@ function assertCanonicalRestoreLocatorIdentity(
     (locator.vpnRegistrationStartedAt ?? null) === null
   );
 }
-
 /** Default SSH port when not specified by DB node record. */
 const DEFAULT_SSH_PORT = 22;
-
 /** Default SSH user when not specified by DB node record. */
 const DEFAULT_SSH_USERNAME = containersEnv.sshUser();
-
 function resolveStewardHostUrl(): string {
   return resolveServerStewardApiUrlFromEnv(getCloudAwareEnv());
 }
-
 function resolveStewardContainerEnvUrl(): string {
   const env = getCloudAwareEnv();
   return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
 }
-
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
 const STEWARD_REFRESH_SERVICE_TOKEN_FILE = "/tmp/eliza-steward-refresh-service-token";
 const STEWARD_REFRESH_AUTH_HEADER_FILE = "/tmp/eliza-steward-refresh-authorization.header";
@@ -774,23 +730,28 @@ const STEWARD_SSH_STDIN_FRAME_VERSION = "ELIZA_STEWARD_SSH_STDIN_V1";
 const STEWARD_SSH_STDIN_FRAME_END = "ELIZA_STEWARD_SSH_STDIN_END";
 const MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES = 256 * 1024;
 const MAX_STEWARD_SSH_STDIN_BASE64_BYTES = Math.ceil(MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES / 3) * 4;
-
 type StewardSshStdinPurpose = "steward-agent-delete" | "steward-agent-register";
-
 /** A static remote command paired with sensitive bytes transported only on stdin. */
 export interface StewardSshStdinRequest {
   command: string;
   input: string;
 }
-
 type ManagedElizaRuntimeConfigTarget =
-  | { kind: "container"; containerName: string }
-  | { kind: "host-volume"; volumePath: string };
-
+  | {
+      kind: "container";
+      containerName: string;
+    }
+  | {
+      kind: "host-volume";
+      volumePath: string;
+    };
 function buildAtomicStdinFileWriteScript(
   directory: string,
   destination: string,
-  options: { mode?: "0600" | "0644"; preserveExistingMetadata?: boolean } = {},
+  options: {
+    mode?: "0600" | "0644";
+    preserveExistingMetadata?: boolean;
+  } = {},
 ): string {
   const mode = options.mode ?? "0600";
   const prepareTemporaryFile = options.preserveExistingMetadata
@@ -817,7 +778,6 @@ function buildAtomicStdinFileWriteScript(
     "trap - EXIT HUP INT TERM",
   ].join("; ");
 }
-
 function serializeManagedElizaRuntimeConfig(allEnv: Record<string, string | undefined>): string {
   const serialized = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
   const payloadBytes = Buffer.byteLength(serialized, "utf8");
@@ -826,7 +786,6 @@ function serializeManagedElizaRuntimeConfig(allEnv: Record<string, string | unde
   }
   return serialized;
 }
-
 function buildManagedElizaRuntimeConfigWriteRequest(
   target: ManagedElizaRuntimeConfigTarget,
   allEnv: Record<string, string | undefined>,
@@ -842,7 +801,6 @@ function buildManagedElizaRuntimeConfigWriteRequest(
       input,
     };
   }
-
   const writeScript = buildAtomicStdinFileWriteScript("/root/.eliza", "/root/.eliza/eliza.json", {
     mode: "0644",
     preserveExistingMetadata: true,
@@ -852,7 +810,6 @@ function buildManagedElizaRuntimeConfigWriteRequest(
     input,
   };
 }
-
 /** Write secret-bearing managed runtime config through SSH stdin, never command argv. */
 export async function writeManagedElizaRuntimeConfig(
   ssh: DockerSSHClient,
@@ -862,11 +819,9 @@ export async function writeManagedElizaRuntimeConfig(
   const request = buildManagedElizaRuntimeConfigWriteRequest(target, allEnv);
   await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
 }
-
 function stewardSshStdinFrameHeader(purpose: StewardSshStdinPurpose): string {
   return `${STEWARD_SSH_STDIN_FRAME_VERSION}:${purpose}`;
 }
-
 function encodeStewardSshStdinFrame(purpose: StewardSshStdinPurpose, payload: string): string {
   const payloadBytes = Buffer.byteLength(payload, "utf8");
   if (payloadBytes === 0 || payloadBytes > MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES) {
@@ -878,7 +833,6 @@ function encodeStewardSshStdinFrame(purpose: StewardSshStdinPurpose, payload: st
   const encoded = Buffer.from(payload, "utf8").toString("base64");
   return `${stewardSshStdinFrameHeader(purpose)}\n${encoded}\n${STEWARD_SSH_STDIN_FRAME_END}\n`;
 }
-
 /**
  * Build an operation-specific Python command which validates a bounded,
  * versioned stdin frame before parsing its JSON payload. Invalid input produces
@@ -931,14 +885,12 @@ except Exception:
 ${operationBody}`;
   return `python3 -c ${shellQuote(parser)}`;
 }
-
 export function resolveDockerSandboxImage(
   dockerImage?: string,
   operatorOverride = DOCKER_IMAGE_OVERRIDE,
 ): string {
   return dockerImage || operatorOverride || "ghcr.io/elizaos/eliza:latest";
 }
-
 export function buildManagedElizaRuntimeConfig(
   allEnv: Record<string, string | undefined>,
 ): Record<string, unknown> {
@@ -951,7 +903,6 @@ export function buildManagedElizaRuntimeConfig(
     Boolean(allEnv.EMBEDDING_BASE_URL?.trim() || allEnv.EMBEDDING_API_KEY?.trim());
   const localEmbeddingProvider =
     cloudEmbeddingsDisabled && allEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS === "1";
-
   return {
     logging: { level: "info" },
     deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
@@ -998,11 +949,9 @@ export function buildManagedElizaRuntimeConfig(
     },
   };
 }
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
-
 function resolveElizaCloudPublicUrl(): string {
   const env = getCloudAwareEnv();
   const candidates = [
@@ -1017,7 +966,6 @@ function resolveElizaCloudPublicUrl(): string {
   }
   return "https://api.eliza.app/api";
 }
-
 function resolveStewardRefreshUrl(): string {
   const env = getCloudAwareEnv();
   if (typeof env.STEWARD_REFRESH_URL === "string" && env.STEWARD_REFRESH_URL.trim()) {
@@ -1025,7 +973,6 @@ function resolveStewardRefreshUrl(): string {
   }
   return `${resolveElizaCloudPublicUrl()}/v1/agent-tokens`;
 }
-
 function resolveStewardRefreshServiceToken(): string {
   const env = getCloudAwareEnv();
   for (const candidate of [env.ELIZA_CLOUD_SERVICE_TOKEN, env.AGENT_TOKEN_SERVICE_TOKEN]) {
@@ -1033,7 +980,6 @@ function resolveStewardRefreshServiceToken(): string {
   }
   return "";
 }
-
 /**
  * Strip secret-bearing fields from a persisted character before it is injected
  * into the container as ELIZA_AGENT_CHARACTER_JSON. The container receives the
@@ -1066,7 +1012,6 @@ function redactCharacterSecrets(character: Record<string, unknown>): Record<stri
   }
   return clone;
 }
-
 /**
  * Resolve the AGENT_SERVER_SHARED_SECRET to inject into a provisioned
  * container so it can validate the X-Server-Token the cloud gateways attach to
@@ -1091,7 +1036,6 @@ function resolveServerSharedSecretEnv(
   }
   return {};
 }
-
 function resolveStewardElizaPluginPackage(): string {
   const env = getCloudAwareEnv();
   return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
@@ -1099,7 +1043,6 @@ function resolveStewardElizaPluginPackage(): string {
     ? env.STEWARD_ELIZA_PLUGIN_PACKAGE.trim()
     : "@stwd/eliza-plugin";
 }
-
 function shouldInstallStewardPlugin(
   agentId: string,
   environmentVars: Record<string, string>,
@@ -1111,7 +1054,6 @@ function shouldInstallStewardPlugin(
     env.STEWARD_ENABLE_TRADE_PLUGIN === "true"
   );
 }
-
 type HeadscaleRouteEnv = Partial<
   Record<
     | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK"
@@ -1124,7 +1066,6 @@ type HeadscaleRouteEnv = Partial<
     string | undefined
   >
 >;
-
 function currentHeadscaleRouteEnv(): HeadscaleRouteEnv {
   const cloudEnv = getCloudAwareEnv();
   return {
@@ -1137,23 +1078,19 @@ function currentHeadscaleRouteEnv(): HeadscaleRouteEnv {
     HEADSCALE_PUBLIC_URL: cloudEnv.HEADSCALE_PUBLIC_URL,
   };
 }
-
 function isBridgeHostFallbackEnabled(env: HeadscaleRouteEnv): boolean {
   return (
     env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
     env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
   );
 }
-
 function hasConfiguredValue(value: string | undefined): boolean {
   return Boolean(value?.trim());
 }
-
 function isCloudDeploymentEnvironment(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase();
   return normalized === "production" || normalized === "staging";
 }
-
 export function requiresHeadscaleRoute(
   env: HeadscaleRouteEnv = (() => {
     // Bind once: calling getCloudAwareEnv() per-key creates a fresh Proxy
@@ -1172,7 +1109,6 @@ export function requiresHeadscaleRoute(
     isCloudDeploymentEnvironment(env.ENVIRONMENT)
   );
 }
-
 /**
  * Whether the sandbox should actively enroll in the Headscale/tailnet VPN
  * (inject TS_AUTHKEY, add the tun device + NET_ADMIN cap, and wait for a
@@ -1190,14 +1126,12 @@ export function requiresHeadscaleRoute(
 export function headscaleVpnEnabled(env: HeadscaleRouteEnv): boolean {
   return hasConfiguredValue(env.HEADSCALE_API_KEY) && !isBridgeHostFallbackEnabled(env);
 }
-
 export function shouldCleanupHeadscaleVpn(
   env: HeadscaleRouteEnv,
   registeredNodeName: string | undefined,
 ): registeredNodeName is string {
   return headscaleVpnEnabled(env) && hasConfiguredValue(registeredNodeName);
 }
-
 function validateStewardRefreshServiceToken(serviceToken: string): void {
   const payloadBytes = Buffer.byteLength(serviceToken, "utf8");
   if (
@@ -1208,7 +1142,6 @@ function validateStewardRefreshServiceToken(serviceToken: string): void {
     throw new Error("[docker-sandbox] Invalid Steward refresh service token stdin payload");
   }
 }
-
 /** Build the credential-free in-container loop; exported for exact shell syntax proof. */
 export function buildStewardRefreshLoopScript(agentId: string): string {
   return [
@@ -1243,7 +1176,6 @@ export function buildStewardRefreshLoopScript(agentId: string): string {
     "done",
   ].join("\n");
 }
-
 function buildStewardRefreshRequest(
   containerName: string,
   agentId: string,
@@ -1254,25 +1186,17 @@ function buildStewardRefreshRequest(
     "/tmp",
     STEWARD_REFRESH_SERVICE_TOKEN_FILE,
   );
-  const cleanupScript = `rm -f ${shellQuote(STEWARD_REFRESH_SERVICE_TOKEN_FILE)} ${shellQuote(
-    STEWARD_REFRESH_AUTH_HEADER_FILE,
-  )}`;
+  const cleanupScript = `rm -f ${shellQuote(STEWARD_REFRESH_SERVICE_TOKEN_FILE)} ${shellQuote(STEWARD_REFRESH_AUTH_HEADER_FILE)}`;
   const refreshScript = buildStewardRefreshLoopScript(agentId);
-
   return {
     command: [
       "set -eu",
       `docker exec -i ${shellQuote(containerName)} sh -c ${shellQuote(tokenWriteScript)}`,
-      `if ! docker exec -d ${shellQuote(containerName)} sh -lc ${shellQuote(
-        refreshScript,
-      )}; then docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
-        cleanupScript,
-      )} >/dev/null 2>&1 || true; exit 1; fi`,
+      `if ! docker exec -d ${shellQuote(containerName)} sh -lc ${shellQuote(refreshScript)}; then docker exec ${shellQuote(containerName)} sh -c ${shellQuote(cleanupScript)} >/dev/null 2>&1 || true; exit 1; fi`,
     ].join("; "),
     input: serviceToken,
   };
 }
-
 /** Start Steward refresh with its service token transported only through SSH stdin. */
 export async function startStewardRefreshSidecar(
   ssh: DockerSSHClient,
@@ -1283,7 +1207,6 @@ export async function startStewardRefreshSidecar(
   const request = buildStewardRefreshRequest(containerName, agentId, serviceToken);
   await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
 }
-
 function buildStewardPluginInstallCommand(containerName: string): string {
   const pluginPackage = resolveStewardElizaPluginPackage();
   const installScript = [
@@ -1293,7 +1216,6 @@ function buildStewardPluginInstallCommand(containerName: string): string {
   ].join("; ");
   return `docker exec ${shellQuote(containerName)} sh -lc ${shellQuote(installScript)}`;
 }
-
 /**
  * When USE_STEWARD_PROXY=true, route LLM and EVM RPC calls through the
  * Steward proxy reachable from the container at host.docker.internal:8080
@@ -1312,10 +1234,8 @@ export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Reco
     ETHEREUM_RPC_URL: "https://eth.llamarpc.com",
   };
 }
-
 /** Health-check polling: interval between retries (ms). */
-const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
-
+const HEALTH_CHECK_POLL_INTERVAL_MS = 3000;
 /**
  * Headscale can publish the peer before the local tailscaled status snapshot
  * exposes its assigned IPv4. Registration discovery already spent the bounded
@@ -1324,17 +1244,15 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  * mismatch.
  */
 const HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS = 130;
-const HEADSCALE_DOCKER_BINDING_TIMEOUT_MS = 130_000;
-const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1_000;
-
+const HEADSCALE_DOCKER_BINDING_TIMEOUT_MS = 130000;
+const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1000;
 /**
  * Health-check polling: total timeout (ms). A cold dedicated agent (first image
  * pull + agent boot + ~20 plugins loading) can take up to ~5 min before
  * `/api/health` answers over the tailnet; 180s lost that race and failed the
  * provision even though the agent came up. 6 min gives slow cold boots room.
  */
-export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
-
+export const HEALTH_CHECK_TIMEOUT_MS = 360000;
 /**
  * Budget for the node-side SSH fallback probe that runs after the tailnet
  * poll has already burned the full HEALTH_CHECK_TIMEOUT_MS. Short on purpose:
@@ -1342,8 +1260,7 @@ export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
  * health has settled — the fallback only needs to survive a couple of SSH
  * round-trips, not a cold boot.
  */
-const HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS = 30_000;
-
+const HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS = 30000;
 /**
  * When the whole SSH-probe budget was spent WITHOUT ever reaching the container
  * (every attempt failed at the SSH transport layer — connect/exec/stream error
@@ -1354,30 +1271,27 @@ const HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS = 30_000;
  * only sees transport failures after this, the outcome is reported as
  * `transport_unresolved` (retryable), not `not_ready` (terminal).
  */
-const HEALTH_CHECK_TRANSPORT_RETRY_WINDOW_MS = 20_000;
-const HEALTH_CHECK_TRANSPORT_RETRY_BASE_MS = 1_000;
-const HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS = 5_000;
-
+const HEALTH_CHECK_TRANSPORT_RETRY_WINDOW_MS = 20000;
+const HEALTH_CHECK_TRANSPORT_RETRY_BASE_MS = 1000;
+const HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS = 5000;
 /** SSH command timeout for docker pull (can be slow on first pull). */
-export const PULL_TIMEOUT_MS = 300_000; // 5 min
-
+export const PULL_TIMEOUT_MS = 300000; // 5 min
 /** SSH command timeout for docker run / stop / rm. */
-const DOCKER_CMD_TIMEOUT_MS = 60_000;
-
+const DOCKER_CMD_TIMEOUT_MS = 60000;
 /** Bound each inline probe so transport loss cannot replace the 180s VPN budget. */
-const MESH_JOIN_PROBE_TIMEOUT_MS = 5_000;
+const MESH_JOIN_PROBE_TIMEOUT_MS = 5000;
 /** One reconnect-backed observation after Headscale exhausts its full budget. */
-const MESH_JOIN_FINAL_PROBE_TIMEOUT_MS = 20_000;
-
+const MESH_JOIN_FINAL_PROBE_TIMEOUT_MS = 20000;
 export type DockerMeshJoinProbeVerdict =
-  | { readonly status: "pending" }
+  | {
+      readonly status: "pending";
+    }
   | {
       readonly status: "terminal";
       readonly reason: "auth_required" | "container_exited";
       readonly containerState: string | null;
       readonly exitCode: number | null;
     };
-
 export interface DockerMeshJoinObservation {
   readonly containerState: string | null;
   readonly exitCode: number | null;
@@ -1402,7 +1316,6 @@ export interface DockerMeshJoinObservation {
   readonly tailscaleUpFailed: boolean;
   readonly agentStarted: boolean;
 }
-
 const DOCKER_CONTAINER_STATES = new Set([
   "created",
   "running",
@@ -1421,7 +1334,6 @@ const TAILSCALE_BACKEND_STATES = new Set([
   "Stopped",
 ]);
 const MESH_PROBE_SECTION = "__eliza_mesh_probe_section__=";
-
 function meshProbeSection(output: string, name: string, next: string): string {
   const startMarker = `${MESH_PROBE_SECTION}${name}`;
   const endMarker = `${MESH_PROBE_SECTION}${next}`;
@@ -1431,7 +1343,6 @@ function meshProbeSection(output: string, name: string, next: string): string {
   const end = output.indexOf(endMarker, contentStart);
   return output.slice(contentStart, end < 0 ? output.length : end).trim();
 }
-
 /** Converts raw exact-candidate output into closed, privacy-safe mesh facts. */
 export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoinObservation {
   const stateMatch = /^state=(\S+) exit=(-?\d+)$/m.exec(output);
@@ -1445,7 +1356,6 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
   const logs = meshProbeSection(output, "logs", "daemonlog");
   const daemonLog = meshProbeSection(output, "daemonlog", "network");
   const network = meshProbeSection(output, "network", "end");
-
   let statusQuery: "success" | "error" = "error";
   let backendState: string | null = null;
   let machineAuthorized: boolean | null = null;
@@ -1471,7 +1381,6 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
   } catch {
     // error-policy:J3 Raw CLI output becomes an explicit closed query failure.
   }
-
   return {
     containerState,
     exitCode: Number.isSafeInteger(exitCode) ? exitCode : null,
@@ -1503,7 +1412,6 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
       /starting (?:eliza|agent)|server (?:started|listening)|agent runtime started/i.test(logs),
   };
 }
-
 /** Encodes only closed observation fields for durable job diagnosis. */
 export function formatDockerMeshJoinObservation(observation: DockerMeshJoinObservation): string {
   const value = (input: string | number | boolean | null): string =>
@@ -1533,14 +1441,12 @@ export function formatDockerMeshJoinObservation(observation: DockerMeshJoinObser
     `agent_started=${observation.agentStarted}`,
   ].join(",");
 }
-
 const ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES: readonly string[] = [
   "[docker-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
   "[cloud-agent-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
   "[docker-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
   "[cloud-agent-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
 ];
-
 function hasEntrypointMeshAuthTerminalEvidence(output: string): boolean {
   return output
     .toLowerCase()
@@ -1549,7 +1455,6 @@ function hasEntrypointMeshAuthTerminalEvidence(output: string): boolean {
       ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES.some((prefix) => line.startsWith(prefix)),
     );
 }
-
 /**
  * Classify the bounded, secret-free Docker evidence collected while Headscale
  * registration is pending. Early admission deliberately accepts only the
@@ -1573,7 +1478,6 @@ export function classifyDockerMeshJoinProbe(output: string): DockerMeshJoinProbe
   }
   return { status: "pending" };
 }
-
 /**
  * Retains every precise mesh failure behind the required-ingress verdict. The
  * first cause is also the native `cause` so durable job diagnostics can walk
@@ -1586,7 +1490,6 @@ export function requiredHeadscaleIngressFailure(
   if (causes.length === 0) return new Error(message);
   return new AggregateError([...causes], message, { cause: causes[0] });
 }
-
 export async function probeDockerMeshJoinTerminalFailure(
   ssh: Pick<DockerSSHClient, "exec">,
   containerId: string,
@@ -1647,7 +1550,6 @@ export async function probeDockerMeshJoinTerminalFailure(
     );
     return null;
   }
-
   observe?.(classifyDockerMeshJoinObservation(output));
   const verdict = classifyDockerMeshJoinProbe(output);
   if (verdict.status === "pending") return null;
@@ -1665,7 +1567,6 @@ export async function probeDockerMeshJoinTerminalFailure(
     },
   );
 }
-
 /**
  * Dedicated, tighter SSH timeout for the stop/rm calls on the delete path.
  * `docker stop` uses its own `-t 10` grace, so 25s caps the whole stop path
@@ -1673,17 +1574,14 @@ export async function probeDockerMeshJoinTerminalFailure(
  * the 60s generic timeout is what stops one wedged delete from holding the
  * cycle (and the DB advisory lock) open across the full minute.
  */
-const STOP_CMD_TIMEOUT_MS = 25_000;
-const TEARDOWN_ABSENCE_PROBE_TIMEOUT_MS = 12_000;
-const TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS = 25_000;
-
+const STOP_CMD_TIMEOUT_MS = 25000;
+const TEARDOWN_ABSENCE_PROBE_TIMEOUT_MS = 12000;
+const TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS = 25000;
 /** Cap on best-effort Headscale VPN cleanup during sandbox teardown. */
-const HEADSCALE_CLEANUP_TIMEOUT_MS = 15_000;
-
+const HEADSCALE_CLEANUP_TIMEOUT_MS = 15000;
 /** Autoscaled node readiness polling. */
 const AUTOSCALED_NODE_READY_TIMEOUT_MS = 4 * 60 * 1000;
-const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
-
+const AUTOSCALED_NODE_READY_POLL_MS = 10000;
 function getDockerHealthCmd(port: string, path = "/api/health"): string {
   if (!/^\d+$/.test(port)) {
     throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
@@ -1695,7 +1593,6 @@ function getDockerHealthCmd(port: string, path = "/api/health"): string {
   // Use curl with -o /dev/null and check status code to accept either.
   return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
 }
-
 export function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
@@ -1711,7 +1608,6 @@ export function resolveContainerPort(config: SandboxCreateConfig): string {
   }
   return requested;
 }
-
 /** Resolved sandbox self-registration backend (the provider-side mirror of the
  * sandbox-side `buildSandboxRegistryFromEnv`). */
 export interface SandboxRegistryResolution {
@@ -1726,7 +1622,6 @@ export interface SandboxRegistryResolution {
   /** Non-null when `url` has an unexpected scheme (registration may fail). */
   schemeWarning: string | null;
 }
-
 /**
  * Resolve the sandbox registry backend from the provider environment. Pure
  * mirror of the inline logic the provisioner used to carry, exported so the
@@ -1752,16 +1647,13 @@ export function resolveSandboxRegistryEnv(
       : null;
   return { url, token, isTcp, canSelfRegister, schemeWarning };
 }
-
 function extractStewardToken(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error("[docker-sandbox] Steward token endpoint returned an empty response");
   }
-
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-
     // Steward API may return { token: "..." } or { data: { token: "..." } }.
     // Keep one fallback for agentToken in case an older Steward build uses
     // that field name.
@@ -1771,14 +1663,12 @@ function extractStewardToken(raw: string): string {
       (typeof parsed.data === "object" && parsed.data !== null
         ? (parsed.data as Record<string, unknown>).token
         : undefined);
-
     if (typeof candidate === "string" && candidate.trim()) {
       return candidate.trim();
     }
   } catch {
     // Some Steward builds may return the token as plain text.
   }
-
   // Sanity check: reject responses that look like HTML error pages or are
   // unreasonably long (e.g. a full HTML document instead of a token).
   if (trimmed.length > 2048) {
@@ -1796,24 +1686,20 @@ function extractStewardToken(raw: string): string {
       "[docker-sandbox] Steward token response contains whitespace — likely not a valid token",
     );
   }
-
   logger.warn(
     "[docker-sandbox] Steward token response was plain text instead of JSON; accepting legacy fallback",
   );
   return trimmed;
 }
-
 function warnMissingStewardTenantApiKey(apiKey?: string) {
   if (apiKey || hasWarnedMissingStewardTenantApiKey) {
     return;
   }
-
   hasWarnedMissingStewardTenantApiKey = true;
   logger.warn(
     "[docker-sandbox] STEWARD_TENANT_API_KEY is not set; Steward registration will run without tenant API key auth",
   );
 }
-
 function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
   const env = getCloudAwareEnv();
   const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
@@ -1825,7 +1711,6 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
     .find((secret) => secret.length > 0);
   return fromList ?? apiKey?.trim() ?? undefined;
 }
-
 function resolveStewardPlatformKey(): string | undefined {
   const env = getCloudAwareEnv();
   const single = env.STEWARD_PLATFORM_KEY?.trim();
@@ -1835,12 +1720,10 @@ function resolveStewardPlatformKey(): string | undefined {
     .find((k) => k.length > 0);
   return fromList || undefined;
 }
-
 function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
   const base = `/platform/tenants/${encodeURIComponent(tenantId)}/agents`;
   return agentId ? `${base}/${encodeURIComponent(agentId)}` : base;
 }
-
 // Best-effort DELETE against Steward's platform agent endpoint for
 // deletion paths (failed container create, missing Headscale registration).
 // Uses the platform-key path so the daemon authenticates as a platform
@@ -1873,7 +1756,6 @@ export async function buildSignedDeleteAgentRequest(
     });
     Object.assign(headers, signed);
   }
-
   const operationBody = `import urllib.error
 import urllib.request
 
@@ -1924,7 +1806,6 @@ except Exception:
     # this fixed diagnostic; never reflect response bodies, headers, or input.
     print("[docker-sandbox] Steward agent delete request failed", file=sys.stderr)
     raise SystemExit(69)`;
-
   return {
     command: buildStewardFramedPythonCommand("steward-agent-delete", operationBody),
     input: encodeStewardSshStdinFrame(
@@ -1933,7 +1814,6 @@ except Exception:
     ),
   };
 }
-
 export async function deregisterAgentWithSteward(
   ssh: DockerSSHClient,
   agentId: string,
@@ -1942,7 +1822,6 @@ export async function deregisterAgentWithSteward(
   const request = await buildSignedDeleteAgentRequest(agentId, stewardTenant);
   await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
 }
-
 async function buildStewardSignedHeaders(params: {
   method: string;
   path: string;
@@ -1974,7 +1853,6 @@ async function buildStewardSignedHeaders(params: {
   });
   return out;
 }
-
 export async function buildRegisterAgentWithStewardRequest(
   agentId: string,
   agentName: string,
@@ -2022,7 +1900,6 @@ export async function buildRegisterAgentWithStewardRequest(
           ...(platformKey === undefined ? {} : { platformKey }),
           signingSecret,
         });
-
   const commonHeaders = {
     "Content-Type": "application/json",
     "User-Agent": "eliza-cloud-provisioner/1.0",
@@ -2130,7 +2007,6 @@ try:
     print(body.decode("utf-8"))
 except UnicodeDecodeError:
     raise SystemExit("Steward token response was not UTF-8")`;
-
   return {
     command: buildStewardFramedPythonCommand("steward-agent-register", operationBody),
     input: encodeStewardSshStdinFrame(
@@ -2147,7 +2023,6 @@ except UnicodeDecodeError:
     ),
   };
 }
-
 export async function registerAgentWithSteward(
   ssh: DockerSSHClient,
   agentId: string,
@@ -2159,16 +2034,13 @@ export async function registerAgentWithSteward(
   const rawToken = await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
   return extractStewardToken(rawToken);
 }
-
 // ---------------------------------------------------------------------------
 // DockerSandboxProvider
 // ---------------------------------------------------------------------------
-
 export class DockerSandboxProvider implements SandboxProvider {
   readonly computeFundingCapability = "host-lease-v1" as const;
   readonly replacementCreateSettlementCapability = "exact-success" as const;
   readonly exactRestoreCreateCapability = "stopped-quarantine-v1" as const;
-
   /**
    * In-memory container metadata cache.
    * On Workers/serverless this cache is per-request and starts empty — the DB
@@ -2179,7 +2051,6 @@ export class DockerSandboxProvider implements SandboxProvider {
   private readonly replacementVpnSettleDelay: (milliseconds: number) => Promise<void>;
   private readonly headscaleDockerBindingDelay: (milliseconds: number) => Promise<void>;
   private readonly now: () => number;
-
   constructor(options?: {
     replacementVpnSettleDelay?: (milliseconds: number) => Promise<void>;
     headscaleDockerBindingDelay?: (milliseconds: number) => Promise<void>;
@@ -2193,11 +2064,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.now = options?.now ?? Date.now;
   }
-
   // ------------------------------------------------------------------
   // create
   // ------------------------------------------------------------------
-
   /**
    * Create a sandbox container with automatic retry on port-collision TOCTOU races.
    *
@@ -2270,7 +2139,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         },
       );
     }
-
     // Customer runtime must enter through committed funding, including image
     // replacements. Reject before node selection, autoscale or SSH effects.
     // Exact restore returned above with a stopped, network-isolated candidate;
@@ -2284,7 +2152,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         context: { agentId: config.agentId, organizationId: config.organizationId },
       });
     }
-
     // Freeze one attempt identity at the public boundary. It is one-shot: an
     // exact cleanup tombstones this id remotely, so any later retry is a new
     // caller-owned invocation rather than a replay behind durable authority.
@@ -2529,7 +2396,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (!persistReplacementSettlement) {
       return handle;
     }
-
     let locator: SandboxReplacementCleanupLocator;
     try {
       locator = exactReplacementLocator(handle, "final");
@@ -2552,7 +2418,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         ),
       );
     }
-
     try {
       // Re-read the immutable placement record on primary immediately before
       // reporting provider success. The consumer's settlement transaction is
@@ -2563,7 +2428,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       // error-policy:J2 retain the exact successful handle behind its locator.
       throw new SandboxReplacementCleanupUnresolvedError(locator, authorityError);
     }
-
     if (persistReplacementSettlement) {
       const settlement = Object.freeze({
         replacementAttemptId,
@@ -2584,10 +2448,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         });
       }
     }
-
     return handle;
   }
-
   private async resolveExactRestoreTarget(target: SandboxExactRestoreTarget): Promise<DockerNode> {
     const node = await dockerNodesRepository.findByIdOnPrimary(target.nodeRecordId);
     if (!node) {
@@ -2597,7 +2459,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     const drifted = [
       ["nodeRecordId", node.id, target.nodeRecordId],
       ["nodeId", node.node_id, target.nodeId],
@@ -2615,7 +2476,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     const configuredEnvironment = containersEnv.environment();
     const targetEnvironment =
       typeof node.metadata.environment === "string" ? node.metadata.environment : null;
@@ -2631,7 +2491,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     const targetArchitecture = inferNodeArchitectureFromMetadata(node.metadata);
     const expectedArchitecture =
       target.platform === "linux/amd64"
@@ -2654,7 +2513,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         },
       );
     }
-
     const capacityProvisional =
       node.metadata.capacityProvisional === true || node.metadata.capacityProvisional === "true";
     if (
@@ -2676,12 +2534,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     if (
       !node.hostname.trim() ||
       !Number.isSafeInteger(node.ssh_port) ||
       node.ssh_port < 1 ||
-      node.ssh_port > 65_535 ||
+      node.ssh_port > 65535 ||
       !node.ssh_user.trim() ||
       !node.host_key_fingerprint?.trim()
     ) {
@@ -2691,10 +2548,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     return node;
   }
-
   private assertExactRestoreHostAuthorityStable(
     expected: DockerNode,
     actual: DockerNode,
@@ -2718,7 +2573,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
     }
   }
-
   private async createExactRestore(
     config: SandboxCreateConfig,
     exactRestore: SandboxExactRestoreCreateConfig,
@@ -2766,7 +2620,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     const containerName = exactRestoreContainerName(config.agentId, exactRestore.restoreAttemptId);
     const volumePath = exactRestoreVolumePath(config.agentId, exactRestore.restoreAttemptId);
     const containerPort = resolveContainerPort(config);
@@ -2836,7 +2689,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       allocationCounted: true,
       replacementSecretCleanupVersion: 1,
     });
-
     if (containersEnv.registryToken() || containersEnv.registryTokenFile()) {
       throw new ElizaError(
         "Exact restore cannot use the legacy registry credential command transport",
@@ -2847,10 +2699,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         },
       );
     }
-
     const started = Object.freeze({ replacementAttemptId });
     await config.onReplacementCreateAttemptStarted(started);
-
     let exactSsh: DockerSSHClient | null = null;
     try {
       try {
@@ -2860,7 +2710,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         // was lost, but no provider-side remote effect has started yet.
         throw new ReplacementPlacementPersistenceError(cause);
       }
-
       // Re-read primary authority after the awaited intent verifier and before
       // constructing an SSH client. Discovery, autoscale, and seed fallback are
       // deliberately absent from this exact branch.
@@ -2876,7 +2725,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         buildExactRestoreBootFencedCommand(exactRestore.target.nodeIncarnation, command);
       const exactDockerRemoteCommand = (command: string): string =>
         buildExactRestoreDockerBootFencedCommand(exactRestore.target.nodeIncarnation, command);
-
       const manifestProofCapability = await ssh.exec(
         exactDockerRemoteCommand(
           [
@@ -2891,12 +2739,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         exactRestore.target.nodeId,
         replacementAttemptId,
       );
-
       await ssh.exec(
         exactRemoteCommand(buildExactRestorePreseedProofCommand(volumePath)),
         DOCKER_CMD_TIMEOUT_MS,
       );
-
       await ssh.exec(
         exactDockerRemoteCommand(
           buildExactRestoreAnonymousPullCommand(
@@ -2906,7 +2752,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         ),
         PULL_TIMEOUT_MS,
       );
-
       const allEnv = exactRestoreEnvironment(
         applyRemoteDockerRuntimeMode({
           ...config.environmentVars,
@@ -3008,7 +2853,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         // durable locator when created-enrichment persistence is ambiguous.
         throw new SandboxReplacementCleanupUnresolvedError(locatorFor(containerId), cause);
       }
-
       const inspectFormat =
         "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.Digest}}|{{.ImageManifestDescriptor.Platform.OS}}/{{.ImageManifestDescriptor.Platform.Architecture}}";
       const proof = await ssh.exec(
@@ -3045,7 +2889,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           severity: "fatal",
         });
       }
-
       // `.Image` is only the config-image ID. Multiple manifests can share it,
       // and RepoDigests can consequently contain the expected child even when
       // a different manifest created the container. Docker's container-bound
@@ -3069,7 +2912,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           },
         );
       }
-
       const imageInspectFormat = "{{.Id}}|{{.Os}}/{{.Architecture}}|{{json .RepoDigests}}";
       const imageProof = await ssh.exec(
         exactDockerRemoteCommand(
@@ -3107,7 +2949,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           severity: "fatal",
         });
       }
-
       const settlementNode = await this.resolveExactRestoreTarget(exactRestore.target);
       this.assertExactRestoreHostAuthorityStable(node, settlementNode, exactRestore.target);
       const settlement = Object.freeze({
@@ -3141,14 +2982,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       await exactSsh?.disconnect();
     }
   }
-
   private async createWithRetries(
     config: SandboxCreateConfig,
     remoteCompletionTracker?: RemoteCompletionTracker,
   ): Promise<SandboxHandle> {
     const MAX_ATTEMPTS = 3;
     let lastError: Error | undefined;
-
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         return await this._createOnce(config, remoteCompletionTracker);
@@ -3165,26 +3004,21 @@ export class DockerSandboxProvider implements SandboxProvider {
           lastError.message.includes("unique constraint") ||
           lastError.message.includes("already in use") ||
           lastError.message.includes("port is already allocated");
-
         if (!isPortCollision || attempt === MAX_ATTEMPTS) {
           throw lastError;
         }
-
         const containerName = getContainerName(config.agentId);
         logger.warn(
           `[docker-sandbox] Port collision on attempt ${attempt}/${MAX_ATTEMPTS} for ${containerName}; prior candidate absence is proven, retrying...`,
         );
-
         // Jitter: 200–800ms to desynchronise concurrent callers
         const jitterMs = 200 + Math.floor(Math.random() * 600);
         await new Promise((resolve) => setTimeout(resolve, jitterMs));
       }
     }
-
     // Unreachable, but satisfies the compiler
     throw lastError ?? new Error("[docker-sandbox] create exhausted all retry attempts");
   }
-
   /**
    * Create a single sandbox container (no retry).
    *
@@ -3201,7 +3035,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       config;
     assertSandboxReplacementAttemptId(config.replacementAttemptId);
     const replacementAttemptId = config.replacementAttemptId;
-
     // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
     // overrides are not accidentally shadowed by the generic Eliza default.
@@ -3210,7 +3043,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const platformFlags = dockerPlatformFlag(imagePlatform);
     const containerPort = resolveContainerPort(config);
     const healthCheckPath = config.container?.healthCheckPath ?? "/api/health";
-
     // 1. Input validation
     validateAgentName(agentName);
     validateAgentId(agentId);
@@ -3221,7 +3053,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       validateEnvValue(key, value);
     }
     const providerManagesCapacity = !config.onReplacementCreateIntent;
-
     const env = currentHeadscaleRouteEnv();
     // Pass the same snapshot to requiresHeadscaleRoute so that both the
     // HEADSCALE_API_KEY presence check and the route-required decision read
@@ -3238,7 +3069,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
       throw new Error(errorMessage);
     }
-
     // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
@@ -3264,7 +3094,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         remoteCompletionTracker,
       );
     }
-
     if (remoteCompletionTracker) {
       const selectedNodeId = dbNode?.node_id ?? null;
       const selectedRecordId = dbNode?.id ?? null;
@@ -3290,15 +3119,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
-
     let nodeId: string;
     let hostname: string;
     let sshPort = DEFAULT_SSH_PORT;
     let sshUser = DEFAULT_SSH_USERNAME;
-
     // host_key_fingerprint from DB node (null for env-var fallback, TOFU applies)
     let hostKeyFingerprint: string | undefined;
-
     if (dbNode) {
       nodeId = dbNode.node_id;
       hostname = dbNode.hostname;
@@ -3327,7 +3153,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           },
         );
       }
-
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
       // Operators should register nodes via POST /admin/docker-nodes for production use.
@@ -3352,7 +3177,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Env-var fallback node ${nodeId}: using SSH defaults (port ${sshPort}, user ${sshUser}, no fingerprint)`,
       );
     }
-
     // Freeze the database record and SSH authority used for this invocation.
     // Logical node_id is operator-facing and reusable; it is not sufficient to
     // recover a candidate after delete/recreate or host-tuple mutation.
@@ -3368,11 +3192,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...nodePlacementMetadata,
       ...(remoteCompletionTracker ? { replacementSecretCleanupVersion: 1 as const } : {}),
     };
-
     logger.info(
       `[docker-sandbox] Creating container for agent ${agentId} on node ${nodeId} (${hostname})`,
     );
-
     // 3. Allocate ports (check DB for existing assignments to avoid collisions)
     const usedPorts = await getUsedDockerHostPorts(nodeId);
     const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
@@ -3393,7 +3215,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const markRemoteCompletionUnresolved = (cause: unknown): void => {
       remoteCompletionTracker?.causes.push(cause);
     };
-
     const currentCleanupLocator = (): SandboxReplacementCleanupLocator => ({
       sandboxId: containerName,
       nodeId,
@@ -3407,7 +3228,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       vpnRegistrationStartedAt,
       allocationCounted: Boolean(dbNode),
     });
-
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -3420,7 +3240,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const stewardTenant: StewardTenantCredentials = organizationId
       ? await ensureStewardTenant(organizationId)
       : await resolveStewardTenantCredentials({ organizationId });
-
     // 4. Optionally prepare Headscale VPN
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars.
     if (headscaleEnabled) {
@@ -3457,11 +3276,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         // Continue without VPN — not a critical failure
       }
     }
-
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
     const stewardContainerUrl = resolveStewardContainerEnvUrl();
     const proxyEnv = buildStewardProxyEnv();
-
     // Propagate the orchestrator's KMS configuration into the container so
     // field-level encryption (per-agent DB) uses the same backend + root
     // key on both ends. Without this the container's resolveKmsBackend() falls
@@ -3490,7 +3307,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
       }
     }
-
     const baseEnv: Record<string, string> = {
       ...kmsEnv,
       ...environmentVars,
@@ -3537,7 +3353,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       // simply leaves the X-Server-Token path disabled in the container.
       ...resolveServerSharedSecretEnv(environmentVars),
     };
-
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
     // then create/start the container. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
@@ -3550,14 +3365,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       host_key_fingerprint: hostKeyFingerprint ?? null,
     };
     let stewardRegistrationCreated = false;
-
     try {
       // Ensure volume directory exists
       await ssh.exec(
         `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
-
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -3577,7 +3390,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           `[docker-sandbox] Image pull failed on ${nodeId} (will use cached): ${pullErr instanceof Error ? pullErr.message : String(pullErr)}`,
         );
       }
-
       // Steward's current control plane verifies Eliza-minted agent JWTs from
       // the public cloud JWKS. Its retired platform agent-registration/token
       // routes now return 404, so a configured signer is the canonical path
@@ -3604,7 +3416,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
         stewardRegistrationCreated = true;
       }
-
       // Pass a registry backend through to the sandbox so it can self-register
       // `agent:<id>:server` + `server:<name>:url` keys that gateway-discord /
       // gateway-webhook resolve for inbound platform messages. The sandbox runs
@@ -3629,14 +3440,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       } else if (schemeWarning) {
         logger.warn(`[docker-sandbox] ${schemeWarning}`);
       }
-
       const stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
-
       const keylessOpenAIEnv = buildKeylessOpenAIContainerEnv({
         stewardApiUrl: stewardContainerUrl,
         stewardAuthToken: stewardJwt || stewardAgentToken,
       });
-
       const allEnv: Record<string, string> = applyRemoteDockerRuntimeMode({
         ...baseEnv,
         ...(stewardAgentToken ? { STEWARD_AGENT_TOKEN: stewardAgentToken } : {}),
@@ -3690,12 +3498,10 @@ export class DockerSandboxProvider implements SandboxProvider {
             }
           : {}),
       });
-
       // The persisted vault value is appended to the stdin-backed env file on
       // the Docker host; never retain the caller's override in the generic env
       // map where it could accidentally return to command construction.
       delete allEnv.ELIZA_VAULT_PASSPHRASE;
-
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays
       // consistent across caller-supplied and provider-generated values.
@@ -3703,7 +3509,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         validateEnvKey(key);
         validateEnvValue(key, value);
       }
-
       const envTransport = buildDockerContainerEnvTransport(allEnv);
       const secretEnvPath = remoteCompletionTracker
         ? getReplacementControlSecretEnvPath(replacementAttemptId)
@@ -3711,7 +3516,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       const vaultPassphrasePath = remoteCompletionTracker
         ? getReplacementControlVaultPassphrasePath(replacementAttemptId)
         : getVolumeVaultPassphrasePath(volumePath);
-
       const dockerCreateCmd = [
         "docker create",
         ...platformFlags,
@@ -3776,13 +3580,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           ? { exactReplacement: { containerName, replacementAttemptId } }
           : {}),
       });
-
       // Self-heal nodes missing the shared bridge network (Robot cores never
       // run the cloud-init bootstrap; the network can also be pruned away).
       // Without this, `docker create --network` below fails with an opaque
       // "network not found" and the provision retries forever.
       await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
-
       // A VPN candidate cannot register before Docker starts this container.
       // Arm the correlation window beside create, after successful Headscale
       // preparation has identified any preserved node.
@@ -3871,7 +3673,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         } satisfies DockerSandboxMetadata,
       };
       await config.onReplacementCreated?.(createdHandle);
-
       // Pre-seed the cloud runtime config on the HOST side of the
       // `${volumePath}/eliza:/root/.eliza` mount BEFORE starting the container,
       // so the agent's loadElizaConfig() at early boot already sees
@@ -3888,12 +3689,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       } catch (preSeedErr) {
         markRemoteCompletionUnresolved(preSeedErr);
         logger.warn(
-          `[docker-sandbox] Failed to pre-seed eliza.json (post-start write will retry): ${
-            preSeedErr instanceof Error ? preSeedErr.message : String(preSeedErr)
-          }`,
+          `[docker-sandbox] Failed to pre-seed eliza.json (post-start write will retry): ${preSeedErr instanceof Error ? preSeedErr.message : String(preSeedErr)}`,
         );
       }
-
       if (config.startFundedContainer) {
         await config.startFundedContainer(createdHandle);
       } else {
@@ -3902,7 +3700,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
-
       if (shouldInstallStewardPlugin(agentId, environmentVars)) {
         try {
           await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
@@ -3914,7 +3711,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         }
       }
-
       if (stewardJwt && stewardRefreshServiceToken) {
         try {
           await startStewardRefreshSidecar(ssh, containerName, agentId, stewardRefreshServiceToken);
@@ -3926,7 +3722,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         }
       }
-
       // Write ~/.eliza/eliza.json so the runtime sees cloud config even if
       // it bypasses env vars. Best-effort: a failure here is logged but
       // does not abort provisioning — the env vars on the container still
@@ -3967,7 +3762,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         }
       }
-
       if (err instanceof SandboxReplacementCleanupUnresolvedError) {
         throw err;
       }
@@ -3978,7 +3772,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (replacementIntentPersisted) {
         throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, err);
       }
-
       try {
         await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
       } catch (cleanupError) {
@@ -3989,7 +3782,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
         throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, cleanupError);
       }
-
       // Releasing capacity is safe only after the exact candidate and its known
       // VPN identity are absent. An unresolved cleanup retains the allocation
       // and escapes above with a durable locator.
@@ -4005,7 +3797,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         { cause: err },
       );
     }
-
     const meta: ContainerMeta = {
       nodeId,
       hostname,
@@ -4025,7 +3816,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     // The container exists on the node — clear its breaker history so a
     // recovered node is not one stale timeout away from re-quarantine.
     clearPlacementCommandFailures(nodeId);
-
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
@@ -4168,7 +3958,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (registration && remoteCompletionTracker) {
           const rename = (
             registration as unknown as {
-              rename?: { outcome?: unknown; cause?: unknown };
+              rename?: {
+                outcome?: unknown;
+                cause?: unknown;
+              };
             }
           ).rename;
           switch (rename?.outcome) {
@@ -4319,7 +4112,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
       }
     }
-
     if (headscaleRouteRequired && !headscaleIp) {
       const errorMessage =
         "Headscale routing is required, but the sandbox did not register a headscale_ip. " +
@@ -4370,16 +4162,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       throw new Error(errorMessage);
     }
-
     // 10. Return handle with strongly-typed metadata
     const targetHost = headscaleIp || hostname;
-
     // Probe ghcr.io for the image's current digest so the fleet-upgrade
     // reconciler can detect when the tag has been republished. Returns null
     // on bare image names or registry errors — both are treated as
     // "unknown, leave alone" by the reconciler.
     const imageDigest = await resolveImageDigest(resolvedImage);
-
     const metadata: DockerSandboxMetadata = {
       provider: "docker",
       nodeId,
@@ -4404,7 +4193,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       allocationCounted: Boolean(dbNode),
       previousVpnNodeId,
     };
-
     // Over the headscale mesh the agent-router and the daemon's runtime calls
     // reach the CONTAINER directly at its tailnet IP, where only the container-
     // internal port is bound (the app binds 0.0.0.0:${containerPort}).
@@ -4416,7 +4204,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const containerPortNum = Number.parseInt(containerPort, 10);
     const bridgeUrlPort = headscaleIp ? containerPortNum : bridgePort;
     const webUiUrlPort = headscaleIp ? containerPortNum : webUiPort;
-
     const handle: SandboxHandle = {
       sandboxId: containerName,
       bridgeUrl: `http://${targetHost}:${bridgeUrlPort}`,
@@ -4425,7 +4212,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
     return handle;
   }
-
   private async provisionAutoscaledNodeForAgent(
     {
       image,
@@ -4448,7 +4234,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
       return null;
     }
-
     try {
       logger.info("[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node", {
         image,
@@ -4465,7 +4250,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           registrationSecret: env.CONTAINERS_BOOTSTRAP_SECRET,
         },
       );
-
       const deadline = Date.now() + AUTOSCALED_NODE_READY_TIMEOUT_MS;
       while (Date.now() < deadline) {
         const node = await dockerNodesRepository.findByNodeId(provisioned.nodeId);
@@ -4484,7 +4268,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
         await new Promise((resolve) => setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS));
       }
-
       logger.warn("[docker-sandbox] Autoscaled Docker node did not become ready before timeout", {
         nodeId: provisioned.nodeId,
         hostname: provisioned.hostname,
@@ -4507,11 +4290,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       return null;
     }
   }
-
   // ------------------------------------------------------------------
   // stop
   // ------------------------------------------------------------------
-
   /**
    * Stop and remove a container on a specific node using explicit node info.
    * Used by the fleet-upgrade handler to tear down the old container AFTER
@@ -4533,7 +4314,6 @@ export class DockerSandboxProvider implements SandboxProvider {
   ): Promise<void> {
     await this.stopOnSpecificNodeWithPolicy(node, containerName, gracefulSeconds, true, true);
   }
-
   async stopOnSpecificNodeForReplacement(
     nodeId: string,
     containerName: string,
@@ -4559,7 +4339,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
     await this.retireReplacementCandidateOnNode(locator, node);
   }
-
   private async resolveReplacementCleanupNode(
     locator: SandboxReplacementCleanupLocator,
   ): Promise<DockerNodeConnection> {
@@ -4587,9 +4366,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       return legacyNode;
     }
-
     assertSandboxReplacementAttemptId(locator.replacementAttemptId);
-
     const nodeRecordId = locator.nodeRecordId;
     if (
       !isCanonicalExactReplacementLocator(locator) ||
@@ -4601,7 +4378,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         severity: "fatal",
       });
     }
-
     const node = await dockerNodesRepository.findByIdOnPrimary(nodeRecordId);
     if (!node) {
       throw new ElizaError("Exact replacement cleanup node record is no longer registered", {
@@ -4636,7 +4412,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
     return node;
   }
-
   private async stopOnSpecificNodeWithPolicy(
     node: DockerNodeConnection,
     containerName: string,
@@ -4690,7 +4465,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
-
     // Replacement cleanup needs positive `docker rm` evidence: a successful
     // stop leaves a restartable container behind. The permissive post-cutover
     // path keeps its historical best-effort policy, while durable replacement
@@ -4716,7 +4490,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         return;
       }
     }
-
     if (releaseCapacity) {
       await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
         // error-policy:J6 best-effort teardown — remote absence is already proven,
@@ -4727,7 +4500,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
     }
   }
-
   private async retireReplacementCandidateOnNode(
     locator: SandboxReplacementCleanupLocator,
     node: DockerNodeConnection,
@@ -5040,7 +4812,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
   }
-
   private async resolveReplacementContainerForCleanup(
     locator: SandboxReplacementCleanupLocator,
     node: DockerNodeConnection,
@@ -5102,7 +4873,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       throw error;
     }
-
     const lines = output
       .trim()
       .split(/\r?\n/)
@@ -5216,7 +4986,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
     return containerId;
   }
-
   private async retireReplacementVpnByRegistration(
     locator: SandboxReplacementCleanupLocator,
   ): Promise<void> {
@@ -5244,7 +5013,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] VPN registration window remains open for ${locator.containerName} until ${new Date(registrationDeadline).toISOString()}`,
       );
     }
-
     let consecutiveEmptyObservations = 0;
     for (let observation = 0; observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS; observation += 1) {
       const nodes = await withTimeout(
@@ -5280,7 +5048,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           createdAt <= registrationDeadline
         );
       });
-
       if (candidates.length > REPLACEMENT_VPN_MAX_RECOVERABLE_REGISTRATIONS) {
         throw new Error(
           `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName}: matching registration count exceeds the cleanup bound`,
@@ -5302,33 +5069,28 @@ export class DockerSandboxProvider implements SandboxProvider {
       } else {
         consecutiveEmptyObservations += 1;
       }
-
       if (observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS - 1) {
         await this.replacementVpnSettleDelay(REPLACEMENT_VPN_SETTLE_INTERVAL_MS);
       }
     }
-
     if (consecutiveEmptyObservations < 2) {
       throw new Error(
         `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
       );
     }
   }
-
   async stopObservedRuntime(
     sandboxId: string,
     identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
   ) {
     await this.stopWithPolicy(sandboxId, false, false, undefined, identity);
   }
-
   async observeRuntime(
     input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
   ) {
     const { observeDockerRuntime } = await import("./docker-runtime-observation");
     return observeDockerRuntime(input);
   }
-
   async stopForDeletion(
     sandboxId: string,
     locator?: SandboxDeletionLocator,
@@ -5340,7 +5102,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     // workload no longer consumes compute (#17185).
     return this.stopWithPolicy(sandboxId, true, false, locator);
   }
-
   /**
    * Replacement teardown cannot use the delete path's unreachable-node
    * abandonment policy. The old container may resume when its node returns, so
@@ -5348,14 +5109,15 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   async stopForReplacement(
     sandboxId: string,
-    options?: { readonly releaseCapacity?: false },
+    options?: {
+      readonly releaseCapacity?: false;
+    },
   ): Promise<void> {
     // Legacy callers retain provider-owned slot release. Paid sleep opts out:
     // its database transaction recounts remaining workloads so a retry after
     // physical removal cannot decrement a live sibling's allocation.
     await this.stopWithPolicy(sandboxId, false, options?.releaseCapacity !== false);
   }
-
   private async stopWithPolicy(
     sandboxId: string,
     allowUnreachableAbandon: boolean,
@@ -5366,7 +5128,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const meta = deletionLocator
       ? await this.teardownMetaFromDeletionLocator(sandboxId, deletionLocator)
       : await this.resolveContainerForTeardown(sandboxId);
-
     if (
       expectedRuntime &&
       (meta.agentId !== expectedRuntime.agentId ||
@@ -5383,7 +5144,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info(
       `[docker-sandbox] Stopping container ${meta.containerName} on ${meta.nodeId} (${meta.hostname})`,
     );
-
     // Teardown gets an isolated session. A timed-out command can leave an SSH
     // connection alive while its channel is poisoned; keeping that connection
     // in the shared pool made every agent_delete retry inherit the same broken
@@ -5394,7 +5154,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       meta.hostKeyFingerprint,
       meta.sshUser,
     );
-
     // Track both attempts so we can fail loudly if neither call landed.
     // Historically these errors were swallowed independently, which let
     // the caller think a delete succeeded while the container kept
@@ -5404,7 +5163,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     let stopErr: unknown;
     let rmErr: unknown;
     let exactAbsenceProven = false;
-
     try {
       // Deletion retries commonly arrive after an earlier attempt removed the
       // container but failed in a later database/credential phase. Prove that
@@ -5442,13 +5200,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           failureKind: classifyDockerSshProbeError(probeError),
         });
       }
-
       if (exactAbsenceProven) {
         logger.info(
           `[docker-sandbox] Container ${meta.containerName} proven absent before delete mutation`,
         );
       }
-
       try {
         // Graceful stop with 10s timeout, then force-remove.
         if (!exactAbsenceProven) {
@@ -5483,7 +5239,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           });
         }
       }
-
       try {
         if (!exactAbsenceProven) {
           await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, STOP_CMD_TIMEOUT_MS);
@@ -5509,7 +5264,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         });
       });
     }
-
     const stopCommandTimedOut =
       stopErr !== undefined && isDockerSshCommandTimeoutError(stopErr, "docker");
     const rmCommandTimedOut =
@@ -5528,7 +5282,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const stopFailureKind =
       stopErr !== undefined ? classifyDockerSshProbeError(stopErr) : undefined;
     const rmFailureKind = rmErr !== undefined ? classifyDockerSshProbeError(rmErr) : undefined;
-
     if (stopErr && rmErr) {
       logger.warn("[docker-sandbox] Docker teardown recovery decision", {
         nodeId: meta.nodeId,
@@ -5544,7 +5297,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         rmFailureKind,
       });
     }
-
     // One exact Docker-command timeout proves that SSH reached the node but the
     // daemon failed to answer. A pair of transport failures can also be a
     // poisoned SSH session, so the isolated recovery connection re-probes
@@ -5646,7 +5398,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         });
       }
     }
-
     let outcome: SandboxDeletionStopOutcome = { kind: "not-running-proven" };
     if (stopErr && rmErr) {
       const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
@@ -5693,7 +5444,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
-
     // Capacity release is per-operation, not unconditional. A teardown whose
     // caller owns a durable generation passes `releaseCapacity: false` and
     // hands the slot back itself, because this path is retryable and treats
@@ -5708,7 +5458,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       });
     }
-
     // Deletes Headscale VPN registration only for containers that were
     // actually enrolled. Fallback-mode containers can run with HEADSCALE_API_KEY
     // configured but without TS_HOSTNAME; deleting by bare agent id can remove a
@@ -5743,16 +5492,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
-
     // Remove from in-memory registry
     this.containers.delete(meta.containerName);
     return outcome;
   }
-
   // ------------------------------------------------------------------
   // checkHealth
   // ------------------------------------------------------------------
-
   /**
    * Poll the agent's health endpoint over the headscale tailnet — the real
    * ingress the agent-router uses. The daemon is a member of the mesh, so it
@@ -5774,12 +5520,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info(
       `[docker-sandbox] Polling tailnet health for ${meta.containerName} at ${healthUrl} (timeout: ${HEALTH_CHECK_TIMEOUT_MS / 1000}s)`,
     );
-
     while (Date.now() < deadline) {
       try {
         const res = await fetch(healthUrl, {
           method: "GET",
-          signal: AbortSignal.timeout(5_000),
+          signal: AbortSignal.timeout(5000),
         });
         if ([200, 301, 302, 401].includes(res.status)) {
           logger.info(
@@ -5799,14 +5544,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           `[docker-sandbox] Tailnet health probe failed for ${meta.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       await new Promise((resolve) =>
         setTimeout(resolve, Math.min(HEALTH_CHECK_POLL_INTERVAL_MS, remaining)),
       );
     }
-
     logger.warn(
       `[docker-sandbox] Tailnet health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} (${healthUrl})`,
     );
@@ -5819,12 +5562,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     });
     return false;
   }
-
   /** Resolve only the candidate handle; canonical placement may still name its predecessor. */
   private candidateHealthPlacement(handle: SandboxHandle): ContainerMeta {
     const meta = handle.metadata;
     const validPort = (value: unknown): value is number =>
-      typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65_535;
+      typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65535;
     if (
       !meta ||
       meta.provider !== "docker" ||
@@ -5869,11 +5611,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostKeyFingerprint: meta.nodeHostKeyFingerprint,
     };
   }
-
   async checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean> {
     return (await this.checkHealthDetailed(handle, context)).ready;
   }
-
   /**
    * Readiness probe that distinguishes a genuine `not_ready` from a
    * `transport_unresolved` exhaustion so callers can treat a probe that never
@@ -5889,7 +5629,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         ? this.candidateHealthPlacement(handle)
         : await this.resolveContainer(handle.sandboxId);
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
-
     // When the agent is reachable over the headscale mesh, validate THAT
     // ingress first: the agent-router and the post-create runtime calls reach
     // the agent over the tailnet, and the daemon is itself on the mesh. The SSH
@@ -5917,10 +5656,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
       return nodeHealth.ready ? { ready: false, verdict: "ingress_unresolved" } : nodeHealth;
     }
-
     return this.pollSshDockerHealth(meta, deadline, context);
   }
-
   /**
    * Node-side health: SSH to the docker node and pass when either the
    * host-published ports answer or docker reports the container healthy. This
@@ -5940,7 +5677,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info(
       `[docker-sandbox] Polling Docker health for ${current.containerName} on ${current.nodeId} (${current.hostname}) (timeout: ${Math.round(budgetMs / 1000)}s)`,
     );
-
     // Track whether THIS probe window ever actually reached the container. Every
     // failure of a single iteration is classified transport-vs-remote (see
     // classifyDockerSshProbeError): if the whole budget is spent and NOTHING
@@ -5948,7 +5684,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     // verdict is `transport_unresolved` (retryable) — NOT `not_ready`, which
     // would falsely condemn a container the probe never even reached.
     let reachedContainer = false;
-
     const runOneProbe = async (): Promise<"ready" | "not_ready" | "transport"> => {
       // Established probes follow committed placement changes. A pre-cutover
       // candidate must retain its captured node while the predecessor is canonical.
@@ -5968,15 +5703,13 @@ export class DockerSandboxProvider implements SandboxProvider {
           `done; exit 1`,
         ].join(" "),
       )}`;
-
       // A single iteration is `transport` ONLY when BOTH sub-probes fail at the
       // SSH transport layer; if either one reaches the container (host probe
       // exits non-zero = curl ran, or the inspect returns a status), we reached
       // it and the iteration is `not_ready`, not `transport`.
       let iterationReached = false;
-
       try {
-        await ssh.exec(hostProbeCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS));
+        await ssh.exec(hostProbeCmd, Math.min(10000, HEALTH_CHECK_TIMEOUT_MS));
         logger.info(
           `[docker-sandbox] Host HTTP probe passed for ${current.containerName} on ${current.nodeId}`,
         );
@@ -5988,22 +5721,19 @@ export class DockerSandboxProvider implements SandboxProvider {
           `[docker-sandbox] Host HTTP probe failed (${kind}) for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-
       try {
         const status = (
-          await ssh.exec(inspectCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS))
+          await ssh.exec(inspectCmd, Math.min(10000, HEALTH_CHECK_TIMEOUT_MS))
         ).trim();
         // The inspect returned a status string — we reached the container,
         // whatever the value.
         iterationReached = true;
-
         if (status === "healthy") {
           logger.info(
             `[docker-sandbox] Docker health check passed for ${current.containerName}: ${status}`,
           );
           return "ready";
         }
-
         logger.debug(
           `[docker-sandbox] Docker health for ${current.containerName} is ${status || "unknown"}, retrying...`,
         );
@@ -6014,15 +5744,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           `[docker-sandbox] Docker health inspect failed (${kind}) for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-
       if (iterationReached) reachedContainer = true;
       return iterationReached ? "not_ready" : "transport";
     };
-
     while (Date.now() < deadline) {
       const outcome = await runOneProbe();
       if (outcome === "ready") return { ready: true, verdict: "ready" };
-
       // Wait before retrying (but don't overshoot the deadline)
       const remaining = deadline - Date.now();
       if (remaining > HEALTH_CHECK_POLL_INTERVAL_MS) {
@@ -6034,7 +5761,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         break;
       }
     }
-
     // The main budget is spent. If we NEVER reached the container, the whole
     // window was transport failures — do NOT condemn the container yet. Retry
     // over a short extra window with capped backoff; a flapping SSH pool or a
@@ -6057,7 +5783,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         await new Promise((resolve) => setTimeout(resolve, Math.min(backoff, remaining)));
         backoff = Math.min(backoff * 2, HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS);
       }
-
       if (!reachedContainer) {
         logger.warn(
           `[docker-sandbox] Health probe for ${current.containerName} on ${current.hostname} remained transport-unresolved — reporting retryable (NOT marking the container failed)`,
@@ -6065,7 +5790,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         return { ready: false, verdict: "transport_unresolved" };
       }
     }
-
     logger.warn(
       `[docker-sandbox] Docker health check timed out after ${Math.round(budgetMs / 1000)}s for ${current.containerName} on ${current.hostname}`,
     );
@@ -6098,7 +5822,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId: current.nodeId,
         diagnostics,
       });
-
       // Promote a distinct auth_expired signal when the diagnostics show the
       // container is crash-looping specifically on expired mesh auth. This is
       // observability-only here (the verdict below stays not_ready so existing
@@ -6133,22 +5856,17 @@ export class DockerSandboxProvider implements SandboxProvider {
     // genuine not-ready verdict (terminal), not a transport false-negative.
     return { ready: false, verdict: "not_ready" };
   }
-
   // ------------------------------------------------------------------
   // runCommand
   // ------------------------------------------------------------------
-
   async runCommand(sandboxId: string, cmd: string, args?: string[]): Promise<string> {
     const meta = await this.resolveContainer(sandboxId);
-
     // Shell-escape each argument to prevent command injection
     const escapedArgs = args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
     const fullCmd = escapedArgs ? `${shellQuote(cmd)} ${escapedArgs}` : shellQuote(cmd);
-
     logger.info(
       `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ")}`,
     );
-
     const ssh = DockerSSHClient.getClient(
       meta.hostname,
       meta.sshPort,
@@ -6159,10 +5877,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       `docker exec ${shellQuote(meta.containerName)} ${fullCmd}`,
       DOCKER_CMD_TIMEOUT_MS,
     );
-
     return output;
   }
-
   /**
    * SSH `docker logs --tail N <container>` on the assigned core and
    * return the combined stdout/stderr. Used by the `agent_logs` job
@@ -6172,9 +5888,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   async fetchLogs(sandboxId: string, tail: number): Promise<string> {
     const meta = await this.resolveContainer(sandboxId);
-
     const safeTail = Math.max(1, Math.min(Math.floor(tail), 5000));
-
     const ssh = DockerSSHClient.getClient(
       meta.hostname,
       meta.sshPort,
@@ -6189,11 +5903,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       DOCKER_CMD_TIMEOUT_MS,
     );
   }
-
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
-
   /**
    * Resolve a sandboxId to its container metadata.
    *
@@ -6206,15 +5918,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Fast path: already tracked in memory
     const tracked = this.containers.get(sandboxId);
     if (tracked) return tracked;
-
     const meta = await this.hydrateContainerFromDb(sandboxId);
     if (meta) return meta;
-
     throw new Error(
       `[docker-sandbox] Container "${sandboxId}" not found in memory or DB. Cannot resolve target node.`,
     );
   }
-
   /**
    * Resolve only the durable authority needed to stop a container. Failed
    * provisions can persist node and container identity before bridge/web ports
@@ -6224,7 +5933,6 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async resolveContainerForTeardown(sandboxId: string): Promise<TeardownContainerMeta> {
     const tracked = this.containers.get(sandboxId);
     if (tracked) return tracked;
-
     // Destructive identity must use the same primary authority as the deletion
     // generation that immediately preceded it. A lagging or unavailable read
     // endpoint must not strand teardown after the primary accepted ownership.
@@ -6237,7 +5945,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info("[docker-sandbox] Teardown sandbox authority resolved", {
       agentId: sandbox.id,
     });
-
     const dbNode = await dockerNodesRepository.findByNodeIdOnPrimary(sandbox.node_id);
     if (!dbNode) {
       throw new Error(
@@ -6250,7 +5957,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info("[docker-sandbox] Teardown node authority resolved", {
       agentId: sandbox.id,
     });
-
     return {
       nodeId: sandbox.node_id,
       hostname: dbNode.hostname,
@@ -6261,7 +5967,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostKeyFingerprint: dbNode.host_key_fingerprint ?? undefined,
     };
   }
-
   /** Uses lifecycle-locked authority without reopening a competing DB lookup. */
   private async teardownMetaFromDeletionLocator(
     sandboxId: string,
@@ -6308,7 +6013,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       typeof sshPort !== "number" ||
       !Number.isSafeInteger(sshPort) ||
       sshPort < 1 ||
-      sshPort > 65_535
+      sshPort > 65535
     ) {
       throw new ElizaError("Deletion requires complete, valid SSH authority", {
         code: "SANDBOX_DELETION_SSH_AUTHORITY_INVALID",
@@ -6339,7 +6044,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...trackedRegistration,
     };
   }
-
   /**
    * Read the container's node placement straight from the DB (agent_sandboxes
    * row + its docker_nodes record), bypassing the in-memory fast path, and
@@ -6349,7 +6053,6 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async hydrateContainerFromDb(sandboxId: string): Promise<ContainerMeta | null> {
     const sandbox = await agentSandboxesRepository.findBySandboxId(sandboxId);
     if (!sandbox || !sandbox.node_id || !sandbox.container_name) return null;
-
     const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
     if (!dbNode) {
       throw new Error(
@@ -6359,13 +6062,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (!dbNode.hostname) {
       throw new Error(`[docker-sandbox] Docker node "${sandbox.node_id}" is missing hostname`);
     }
-
     if (!sandbox.bridge_port || !sandbox.web_ui_port) {
       throw new Error(
         `[docker-sandbox] Missing port data for "${sandboxId}": bridge=${sandbox.bridge_port}, webUi=${sandbox.web_ui_port}`,
       );
     }
-
     const meta: ContainerMeta = {
       nodeId: sandbox.node_id,
       hostname: dbNode.hostname,
@@ -6377,7 +6078,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       sshUser: dbNode.ssh_user ?? DEFAULT_SSH_USERNAME,
       hostKeyFingerprint: dbNode.host_key_fingerprint ?? undefined,
     };
-
     // Docker handles use the container name as sandboxId, so the refreshed row
     // updates the same cache key used by create, teardown, and runCommand.
     this.containers.set(sandboxId, meta);
@@ -6386,7 +6086,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     );
     return meta;
   }
-
   /**
    * Re-read the container's current node from the DB during a long health poll.
    * A concurrent placement-affecting job (upgrade + resume + provision-retry can
@@ -6408,7 +6107,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
       return previous;
     }
-
     if (!fresh) return previous;
     if (fresh.nodeId !== previous.nodeId || fresh.hostname !== previous.hostname) {
       logger.info(

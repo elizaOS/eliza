@@ -19,7 +19,7 @@ import { elizaLogger, logger } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];

@@ -5,8 +5,8 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { normalizeEntityConnectorAccountId } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { normalizeEntityConnectorAccountId } from "@elizaos/shared";
 import { z } from "zod";
 import {
   type AccountHandoffRecord,
@@ -22,7 +22,6 @@ const platforms: Record<Destination["channel"], readonly string[]> = {
   telegram: ["telegram"],
   discord: ["discord"],
 };
-
 export class AccountHandoffRecipients {
   private readonly store: AccountHandoffStore;
   constructor(
@@ -31,7 +30,6 @@ export class AccountHandoffRecipients {
   ) {
     this.store = new AccountHandoffStore(runtime, ownerEntityId);
   }
-
   async capture(
     operationId: string,
     expectedRevision: number,
@@ -77,7 +75,6 @@ export class AccountHandoffRecipients {
       bindings,
     });
   }
-
   async resolve(
     destinations: Destination[],
     recipientEntityIds: string[],
@@ -120,7 +117,6 @@ export class AccountHandoffRecipients {
     }
     return bindings;
   }
-
   async verify(operationId: string, expectedRevision: number): Promise<void> {
     const record = await this.requireRecord(operationId, expectedRevision);
     const parsed = handoffRecipientBindingsSchema.safeParse(
@@ -167,7 +163,6 @@ export class AccountHandoffRecipients {
         throw this.changed();
     }
   }
-
   private graph() {
     const graph = resolveKnowledgeGraphService(this.runtime);
     if (!graph)
@@ -177,14 +172,12 @@ export class AccountHandoffRecipients {
       );
     return graph.getEntityStore(this.runtime.agentId);
   }
-
   private async requireRecord(operationId: string, expectedRevision: number) {
     const record = await this.store.read(operationId);
     if (!record) throw this.changed();
     if (record.revision !== expectedRevision) throw this.changed();
     return record;
   }
-
   private sameHandle(
     channel: Destination["channel"],
     left: string,
@@ -194,7 +187,6 @@ export class AccountHandoffRecipients {
       ? left.toLowerCase() === right.toLowerCase()
       : left === right;
   }
-
   private changed(): ElizaError {
     return new ElizaError(
       "A reviewed recipient identity changed or is not verified for the selected channel and account. Refresh the saved handoff review.",

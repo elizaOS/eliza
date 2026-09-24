@@ -11,7 +11,8 @@
  */
 
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import type { Entity, Relationship } from "@elizaos/shared";
+import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

@@ -5,16 +5,16 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   assertCarveOutProjectionComplete,
   type CarveOutDatabase,
   type CarveOutSqlExecutor,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/shared";
-import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
-import { drizzle } from "drizzle-orm/pglite";
-import { afterEach, describe, expect, it } from "vitest";
+} from "./database-utils/carve-out-migration.js";
+import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "./database-utils/raw-sql.js";
 
 let database: PGlite | undefined;
 

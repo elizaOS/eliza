@@ -6,7 +6,11 @@
  */
 
 import { logger, toWellFormedUnicode } from "@elizaos/core";
-import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/shared";
+import {
+  type EvmChainBalance,
+  type EvmNft,
+  type EvmTokenBalance,
+} from "@elizaos/core/contracts/wallet-types";
 import {
   computeValueUsd,
   type DexTokenMeta,

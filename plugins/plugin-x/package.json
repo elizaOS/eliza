@@ -49,7 +49,7 @@
     "twitter-api-v2": "^1.23.2",
     "twitter-text": "3.1.0",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -60,7 +60,8 @@
     "dotenv": "^17.2.3",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "build": "tsup",
@@ -693,7 +694,6 @@
     }
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   }
 }

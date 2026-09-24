@@ -8,12 +8,14 @@
  */
 
 import {
+  type ModelOption,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/core/contracts/first-run-options";
+import {
   buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  type ModelOption,
   normalizeServiceRoutingConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import { useCallback, useMemo, useState } from "react";
 import { client, type FirstRunOptions } from "../../api";
 import { useTimeout } from "../../hooks/useTimeout";
@@ -23,7 +25,6 @@ import {
   DEFAULT_ACTION_PLANNER_MODEL,
   DEFAULT_RESPONSE_HANDLER_MODEL,
 } from "./cloud-model-schema";
-
 export interface CloudModelConfig {
   modelOptions: FirstRunOptions["models"] | null;
   setModelOptions: (options: FirstRunOptions["models"]) => void;
@@ -34,12 +35,14 @@ export interface CloudModelConfig {
   cloudModelSchema: CloudModelSchema | null;
   largeModelOptions: ModelOption[];
   currentLargeModel: string;
-  modelValues: { values: Record<string, unknown>; setKeys: Set<string> };
+  modelValues: {
+    values: Record<string, unknown>;
+    setKeys: Set<string>;
+  };
   modelSaving: boolean;
   modelSaveSuccess: boolean;
   handleModelFieldChange: (key: string, value: unknown) => void;
 }
-
 function readConfigString(
   source: Record<string, unknown> | null | undefined,
   key: string,
@@ -47,13 +50,11 @@ function readConfigString(
   const value = source?.[key];
   return typeof value === "string" ? value : "";
 }
-
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
 }
-
 export function useCloudModelConfig(
   onSaveError: (prefix: string, err: unknown) => void,
 ): CloudModelConfig {
@@ -73,11 +74,9 @@ export function useCloudModelConfig(
   );
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
-
   const setModelOptions = useCallback((options: FirstRunOptions["models"]) => {
     setModelOptionsState(options);
   }, []);
-
   const initializeFromConfig = useCallback(
     (cfg: Record<string, unknown>, elizaCloudEnabledCfg: boolean) => {
       const models = asRecord(cfg.models);
@@ -87,7 +86,6 @@ export function useCloudModelConfig(
         : "";
       const vars = asRecord(asRecord(cfg.env)?.vars);
       const envFor = (key: string) => readConfigString(vars, key);
-
       setCurrentNanoModel(
         readConfigString(models, "nano") ||
           llmText?.nanoModel ||
@@ -127,12 +125,10 @@ export function useCloudModelConfig(
     },
     [],
   );
-
   const cloudModelSchema = useMemo(
     () => (modelOptions ? buildCloudModelSchema(modelOptions) : null),
     [modelOptions],
   );
-
   const modelValues = useMemo(() => {
     const values: Record<string, unknown> = {};
     const setKeys = new Set<string>();
@@ -159,7 +155,6 @@ export function useCloudModelConfig(
     currentResponseHandlerModel,
     currentSmallModel,
   ]);
-
   const handleModelFieldChange = useCallback(
     (key: string, value: unknown) => {
       const val = String(value);
@@ -174,7 +169,6 @@ export function useCloudModelConfig(
         actionPlanner:
           key === "actionPlanner" ? val : currentActionPlannerModel,
       };
-
       if (key === "nano") setCurrentNanoModel(val);
       if (key === "small") setCurrentSmallModel(val);
       if (key === "medium") setCurrentMediumModel(val);
@@ -182,7 +176,6 @@ export function useCloudModelConfig(
       if (key === "mega") setCurrentMegaModel(val);
       if (key === "responseHandler") setCurrentResponseHandlerModel(val);
       if (key === "actionPlanner") setCurrentActionPlannerModel(val);
-
       void (async () => {
         setModelSaving(true);
         try {
@@ -249,7 +242,6 @@ export function useCloudModelConfig(
       setTimeout,
     ],
   );
-
   return {
     modelOptions,
     setModelOptions,

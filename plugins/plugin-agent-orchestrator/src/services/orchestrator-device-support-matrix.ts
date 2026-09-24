@@ -18,7 +18,7 @@ import {
   CODING_AGENT_BACKEND_PROVIDERS,
   CODING_AGENT_BACKENDS,
   type CodingAgentBackend,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import {
   classifyTerminalSupport,
   type OrchestratorTerminalSupport,

@@ -13,33 +13,31 @@
  * propagating store failures so they can return a retryable 503 instead of a
  * credential-invalidating 401. No failure ever authenticates the request.
  */
-
 import type http from "node:http";
 import {
-  isLoopbackBindHost,
   isLoopbackRemoteAddress,
   proxyClientHeaderBlocksLocalTrust,
+} from "@elizaos/agent/api/loopback-trust";
+import {
+  isLoopbackBindHost,
   type RuntimeEnvRecord,
-} from "@elizaos/shared";
-import type {
-  AuthIdentityRow,
-  AuthRepository,
-  AuthSessionRow,
+} from "@elizaos/core/runtime-env";
+import {
+  type AuthIdentityRow,
+  type AuthRepository,
+  type AuthSessionRow,
 } from "../../services/auth-store";
 import { findActiveSession, parseSessionCookie } from "./sessions.js";
 import { getProvidedApiToken } from "./tokens.js";
-
 export type AuthContextSource =
   | "cookie"
   | "bearer-session"
   | "bearer-bootstrap";
-
 export interface ResolvedAuthContext {
   session: AuthSessionRow | null;
   identity: AuthIdentityRow | null;
   source: AuthContextSource;
 }
-
 export interface EnsureSessionOptions {
   store: AuthRepository;
   env?: RuntimeEnvRecord;
@@ -57,14 +55,11 @@ export interface EnsureSessionOptions {
    */
   storeFailureMode?: "deny" | "throw";
 }
-
 export const DESKTOP_LOOPBACK_SESSION_SCOPE = "desktop:loopback";
-
 function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0]?.trim() || null;
   return value?.trim() || null;
 }
-
 function sessionAllowedForRequest(
   session: AuthSessionRow,
   req: Pick<http.IncomingMessage, "headers" | "socket">,
@@ -75,7 +70,6 @@ function sessionAllowedForRequest(
   const host = firstHeaderValue(req.headers.host);
   return host !== null && isLoopbackBindHost(host);
 }
-
 /**
  * Resolve the request to a session + identity if possible. Returns null on
  * any failure path; never throws on bad input. The caller is responsible
@@ -93,7 +87,6 @@ export async function ensureSessionForRequest(
     if (options.storeFailureMode === "throw") throw error;
     return null;
   };
-
   // 1. cookie session
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
@@ -113,7 +106,6 @@ export async function ensureSessionForRequest(
     // CI tools that pin a bearer alongside a stale cookie. Failure to find
     // a bearer below ends the request.
   }
-
   // 2. bearer header
   const bearer = getProvidedApiToken(req);
   if (bearer) {
@@ -130,7 +122,6 @@ export async function ensureSessionForRequest(
       }
       return null;
     }
-
     // 2b. bootstrap bearer — caller exchanges via dedicated route. We do
     // not verify here (verification consumes the jti), only signal that a
     // bearer is present so the route handler can decide.
@@ -142,6 +133,5 @@ export async function ensureSessionForRequest(
       };
     }
   }
-
   return null;
 }

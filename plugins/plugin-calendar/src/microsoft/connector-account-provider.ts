@@ -32,7 +32,7 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type { LifeOpsMicrosoftCapability } from "@elizaos/shared";
+import { type LifeOpsMicrosoftCapability } from "@elizaos/core/contracts/personal-assistant";
 import { MICROSOFT_CALENDAR_PROVIDER } from "./accounts.js";
 
 const MICROSOFT_LOGIN_ROOT = "https://login.microsoftonline.com";

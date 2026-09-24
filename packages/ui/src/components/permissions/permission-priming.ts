@@ -2,11 +2,11 @@
  * Declares the platform-specific permission priming sets, rationale copy, and
  * persisted shown-state for the onboarding soft-ask flow.
  */
-import type { PermissionId } from "@elizaos/shared";
+
+import type { PermissionId } from "@elizaos/core/contracts/permissions";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
-
 /**
  * Permission-priming logic for the post-login onboarding modal.
  *
@@ -23,9 +23,7 @@ import { shellLocalStorage } from "../../surface-realm-channel";
  * user taps "Enable" on a card. Priming a permission here does NOT request it —
  * it only decides that a rationale card is worth showing.
  */
-
 export type PrimingPlatform = "ios" | "android" | "desktop" | "web";
-
 export interface PrimingPermissionCopy {
   /** Icon key (matches SYSTEM_PERMISSIONS `icon` keys in permission-types). */
   icon: string;
@@ -36,7 +34,6 @@ export interface PrimingPermissionCopy {
   rationaleKey: string;
   rationale: string;
 }
-
 /**
  * Value-proposition copy for every permission we ever prime. Keyed by
  * PermissionId. First-person, benefit-led — this is what earns the "Enable"
@@ -86,7 +83,6 @@ export const PRIMING_COPY: Partial<
       "Enable the camera so you can capture photos and video for me to look at.",
   },
 };
-
 /**
  * Explicit per-platform, ordered priming sets. Highest-value first (voice).
  *
@@ -106,7 +102,6 @@ const PRIMING_SETS: Record<PrimingPlatform, readonly PermissionId[]> = {
   desktop: ["microphone", "notifications", "location"],
   web: [],
 };
-
 export interface ResolvePrimingOptions {
   /** Override the detected platform (tests / Settings). */
   platform?: PrimingPlatform;
@@ -116,7 +111,6 @@ export interface ResolvePrimingOptions {
    */
   only?: readonly PermissionId[];
 }
-
 /**
  * The ordered list of permissions to prime for the current platform. Only ids
  * that have both a platform-set entry (or explicit `only`) AND rationale copy
@@ -140,10 +134,8 @@ export function resolvePrimingSet(
   }
   return supported;
 }
-
 /** localStorage key for the shown-once flag. */
 export const PERMISSION_PRIMING_STORAGE_KEY = "eliza:permissions-primed";
-
 /**
  * True once the priming modal has run to completion (granted, skipped, or
  * dismissed). Storage access can throw in locked-down webviews — a throw means
@@ -159,7 +151,6 @@ export function hasPrimedPermissions(): boolean {
     return false;
   }
 }
-
 /** Record that priming has been shown so it does not reappear on next launch. */
 export function markPermissionsPrimed(): void {
   try {
@@ -169,7 +160,6 @@ export function markPermissionsPrimed(): void {
     // benign degradation, not a failure worth surfacing.
   }
 }
-
 /** Clear the flag so the priming modal can be re-triggered (Settings entry). */
 export function resetPermissionPriming(): void {
   try {

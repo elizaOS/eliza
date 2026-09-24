@@ -15,7 +15,6 @@
  * started from. Otherwise the result is discarded in favour of the current
  * stored state (a concurrent logout or re-login wins).
  */
-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,7 +26,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import type { SubscriptionCredentialSource } from "@elizaos/shared";
+import { type SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
@@ -63,16 +62,13 @@ import {
 } from "./types.ts";
 
 const DEFAULT_ACCOUNT_ID = "default";
-
 /** Buffer before expiry to trigger refresh (5 minutes) */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-
 /** Stable failure categories for callers that manage account-pool health. */
 export type AccessTokenFailureKind =
   | "auth"
   | "transient"
   | "insufficient-lifetime";
-
 /** Typed token resolution result for callers that cannot treat every failure as reauthentication. */
 export type AccessTokenOutcome =
   | {
@@ -88,24 +84,29 @@ export type AccessTokenOutcome =
       expiresAt?: number;
       minRemainingMs?: number;
     };
-
 /** Freshness requested by a token consumer before it starts work. */
 export interface GetAccessTokenOptions {
   minRemainingMs?: number;
   /** Required only when an expired credential must be refreshed on disk. */
   storagePolicy?: AccountStoragePolicy;
 }
-
 /** Selects the typed token result instead of the legacy nullable return. */
 export interface GetAccessTokenOutcomeOptions extends GetAccessTokenOptions {
   outcome: true;
 }
-
 function tokenFailure(
   kind: AccessTokenFailureKind,
   message: string,
-  extra: { expiresAt?: number; minRemainingMs?: number } = {},
-): Extract<AccessTokenOutcome, { ok: false }> {
+  extra: {
+    expiresAt?: number;
+    minRemainingMs?: number;
+  } = {},
+): Extract<
+  AccessTokenOutcome,
+  {
+    ok: false;
+  }
+> {
   return {
     ok: false,
     kind,
@@ -116,7 +117,6 @@ function tokenFailure(
       : {}),
   };
 }
-
 function classifyRefreshError(err: unknown): AccessTokenFailureKind {
   const message = err instanceof Error ? err.message : String(err);
   if (
@@ -135,7 +135,6 @@ function classifyRefreshError(err: unknown): AccessTokenFailureKind {
   }
   return "transient";
 }
-
 function recordToStored(record: AccountCredentialRecord): StoredCredentials {
   return {
     provider: record.providerId,
@@ -144,7 +143,6 @@ function recordToStored(record: AccountCredentialRecord): StoredCredentials {
     updatedAt: record.updatedAt,
   };
 }
-
 /**
  * Save credentials for a provider account.
  *
@@ -184,7 +182,6 @@ export function saveCredentials(
   };
   return saveAccount(record, storagePolicy);
 }
-
 /**
  * Load stored credentials for a provider account.
  * Returns `null` when no account is configured for the given id.
@@ -198,7 +195,6 @@ export function loadCredentials(
   if (!record) return null;
   return recordToStored(record);
 }
-
 /**
  * Delete stored credentials for a provider account.
  */
@@ -209,14 +205,12 @@ export function deleteCredentials(
 ): void {
   deleteAccount(provider, accountId, storagePolicy);
 }
-
 export function preflightProviderCredentialDeletion(
   providers: readonly AccountCredentialProvider[],
   storagePolicy: AccountStoragePolicy,
 ): AccountDeletionPlan {
   return preflightProviderAccountDeletions(providers, storagePolicy);
 }
-
 /**
  * Delete every stored credential account for a provider.
  */
@@ -227,7 +221,6 @@ export function deleteProviderCredentials(
   const plan = preflightProviderCredentialDeletion([provider], storagePolicy);
   return commitAccountDeletions(plan);
 }
-
 /**
  * Check if credentials exist and are not expired.
  */
@@ -240,7 +233,6 @@ export function hasValidCredentials(
   if (!record) return false;
   return record.credentials.expires > Date.now();
 }
-
 /**
  * List all accounts configured for a provider.
  */
@@ -250,7 +242,6 @@ export function listProviderAccounts(
 ): AccountCredentialRecord[] {
   return listAccounts(provider, storagePolicy);
 }
-
 /**
  * Get a valid access token, refreshing if needed.
  *
@@ -299,7 +290,6 @@ export async function getAccessToken(
       ? raw
       : REFRESH_BUFFER_MS;
   const requestedWidenedLifetime = effectiveBufferMs > REFRESH_BUFFER_MS;
-
   if (!isSubscriptionProvider(provider)) {
     const direct = loadAccount(provider, accountId, opts?.storagePolicy);
     if (!direct) {
@@ -321,12 +311,10 @@ export async function getAccessToken(
       refreshed: false,
     });
   }
-
   const initial = loadCredentials(provider, accountId, opts?.storagePolicy);
   if (!initial) {
     return finish(tokenFailure("auth", "No credential is stored"));
   }
-
   if (initial.credentials.expires > Date.now() + effectiveBufferMs) {
     return finish({
       ok: true,
@@ -335,7 +323,6 @@ export async function getAccessToken(
       refreshed: false,
     });
   }
-
   if (isCodingPlanKeySubscriptionProvider(provider)) {
     if (initial.credentials.expires > Date.now() && !requestedWidenedLifetime) {
       return finish({
@@ -360,7 +347,6 @@ export async function getAccessToken(
           }),
     );
   }
-
   if (
     isExternalCliSubscriptionProvider(provider) ||
     isUnavailableSubscriptionProvider(provider)
@@ -375,7 +361,6 @@ export async function getAccessToken(
       ),
     );
   }
-
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
@@ -392,7 +377,6 @@ export async function getAccessToken(
         refreshed: false,
       });
     }
-
     // Refused BEFORE the grant is spent, not after. Anthropic and Codex rotate
     // refresh tokens on use (one-time-use), so throwing after the refresh would
     // discard the rotated token while the stored one is already consumed — every
@@ -408,7 +392,6 @@ export async function getAccessToken(
         },
       );
     }
-
     logger.info(
       `[auth] Refreshing ${provider} token for account "${accountId}"...`,
     );
@@ -442,7 +425,6 @@ export async function getAccessToken(
         ),
       );
     }
-
     // The grant was spent outside the storage lock. Commit only if the record
     // is still the one the refresh started from; a logout or re-login that
     // landed meanwhile owns the account now and the refresh result is dropped.
@@ -506,7 +488,6 @@ export async function getAccessToken(
     });
   });
 }
-
 function readConfiguredAnthropicSetupToken(): string | null {
   const namespace = getElizaNamespace();
   const explicitConfig = resolveAliasedEnvValue("ELIZA_CONFIG_PATH")?.trim();
@@ -529,8 +510,7 @@ function readConfiguredAnthropicSetupToken(): string | null {
   }
 }
 
-export type { SubscriptionCredentialSource } from "@elizaos/shared";
-
+export { type SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
 /**
  * Per-account subscription status row used by the dashboard / API.
  *
@@ -553,13 +533,12 @@ export interface SubscriptionAccountStatus {
   loginHint?: string;
   billingMode?: "subscription-coding-plan" | "subscription-coding-cli";
 }
-
-function subscriptionStatusMetadata(
-  provider: SubscriptionProvider,
-): Pick<
+function subscriptionStatusMetadata(provider: SubscriptionProvider): Pick<
   SubscriptionAccountStatus,
   "available" | "allowedClient" | "loginHint" | "billingMode"
-> & { availabilityReason?: string } {
+> & {
+  availabilityReason?: string;
+} {
   const metadata = SUBSCRIPTION_PROVIDER_METADATA[provider];
   return {
     available: metadata.availability !== "unavailable",
@@ -571,7 +550,6 @@ function subscriptionStatusMetadata(
       : {}),
   };
 }
-
 /**
  * Whether a vendor's registered subscription-auth descriptor discovers a
  * *configured* external credential right now (a CLI login on disk, a tool on
@@ -587,11 +565,9 @@ function hasConfiguredExternalCredential(
   const rows = Array.isArray(discovered) ? discovered : [discovered];
   return rows.some((row) => row.configured);
 }
-
 export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
   ensureBuiltinSubscriptionAuthProviders();
   const rows: SubscriptionAccountStatus[] = [];
-
   for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
     const metadata = subscriptionStatusMetadata(provider);
     const accounts = listProviderAccounts(provider);
@@ -611,7 +587,6 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
             : "app",
       });
     }
-
     // Read the Claude Code OAuth blob exactly once per provider —
     // `readClaudeCodeOAuthBlob()` shells out to `security` on macOS
     // and calling it twice doubled the cost of every status poll.
@@ -627,7 +602,6 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
         importedClaudeAuth = readConfiguredAnthropicSetupToken();
         if (importedClaudeAuth) claudeSource = "setup-token";
       }
-
       if (importedClaudeAuth) {
         const blobExpiresAt = claudeBlob?.expiresAt ?? null;
         const blobValid = claudeBlob
@@ -653,7 +627,6 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
         });
       }
     }
-
     // Credentials this vendor manages outside eliza's own account store (a
     // Codex/Gemini CLI login, an unavailable-provider notice) are contributed
     // by the vendor's registered subscription-auth descriptor, so host `auth/`
@@ -678,10 +651,8 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
       }
     }
   }
-
   return rows;
 }
-
 /**
  * Parsed Claude Code OAuth credential blob.
  */
@@ -691,11 +662,9 @@ interface ClaudeCodeCredentialBlob {
   expiresAt: number | null;
   source: string;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
 /**
  * Read and validate local Claude Code credential metadata for status and discovery.
  * Persisted access tokens may be expired while the CLI refreshes its own login;
@@ -766,7 +735,6 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
       return null;
     }
   };
-
   // 1. Try ~/.claude/.credentials.json
   const credPath = path.join(os.homedir(), ".claude", ".credentials.json");
   try {
@@ -782,16 +750,18 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
       `[auth] Claude Code credential file unavailable: ${String(error)}`,
     );
   }
-
   return null;
 }
-
 interface SubscriptionCredentialConfig {
   agents?: {
-    defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
+    defaults?: {
+      subscriptionProvider?: string;
+      model?: {
+        primary?: string;
+      };
+    };
   };
 }
-
 function isSubscriptionCredentialApplicationDisabled(): boolean {
   const disabled =
     process.env.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS?.trim().toLowerCase();
@@ -802,7 +772,6 @@ function isSubscriptionCredentialApplicationDisabled(): boolean {
     disabled === "on"
   );
 }
-
 /**
  * Local-only, synchronous part of subscription credential application.
  *
@@ -824,9 +793,7 @@ export function applySubscriptionCredentialsLocal(
     );
     return;
   }
-
   ensureBuiltinSubscriptionAuthProviders();
-
   // ── Anthropic subscription ──────────────────────────────────────────
   //
   // Anthropic subscription tokens (sk-ant-oat*) are restricted to the
@@ -846,7 +813,6 @@ export function applySubscriptionCredentialsLocal(
         "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
     );
   }
-
   // ── OpenAI Codex subscription ────────────────────────────────────────
   //
   // Codex subscriptions power the Codex CLI-backed provider and task-agent
@@ -869,7 +835,6 @@ export function applySubscriptionCredentialsLocal(
       );
     }
   }
-
   const geminiAccounts = listProviderAccounts("gemini-cli");
   if (
     geminiAccounts.length > 0 ||
@@ -880,7 +845,6 @@ export function applySubscriptionCredentialsLocal(
         "Not applied to GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.",
     );
   }
-
   for (const provider of ["zai-coding", "kimi-coding"] as const) {
     const accounts = listProviderAccounts(provider);
     if (accounts.length === 0) continue;
@@ -892,7 +856,6 @@ export function applySubscriptionCredentialsLocal(
         `Not applied to ${envName}.`,
     );
   }
-
   // Auto-set model.primary only for subscription providers that have a runtime
   // model-provider plugin. CLI-only subscriptions should not point the runtime
   // at direct API-key plugins.
@@ -900,7 +863,6 @@ export function applySubscriptionCredentialsLocal(
     const defaults = config.agents.defaults;
     const provider =
       defaults.subscriptionProvider as keyof typeof SUBSCRIPTION_PROVIDER_MAP;
-
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
       const runtimeApplicable = provider === "openai-codex";
@@ -920,7 +882,6 @@ export function applySubscriptionCredentialsLocal(
     }
   }
 }
-
 /**
  * Apply subscription credentials to the environment.
  * Called at startup to make credentials available to elizaOS plugins.
@@ -945,7 +906,6 @@ export async function applySubscriptionCredentials(
   applySubscriptionCredentialsLocal(config);
   await applySubscriptionCredentialsDeferred();
 }
-
 /**
  * Discover locally stored Claude Code credentials for startup diagnostics.
  *
@@ -956,7 +916,6 @@ export async function applySubscriptionCredentials(
 export async function applySubscriptionCredentialsDeferred(): Promise<void> {
   if (isSubscriptionCredentialApplicationDisabled()) return;
   if (listProviderAccounts("anthropic-subscription").length > 0) return;
-
   if (readClaudeCodeOAuthBlob()) {
     logger.info(
       "[auth] Detected local Claude Code CLI credentials. The CLI manages refresh. " +

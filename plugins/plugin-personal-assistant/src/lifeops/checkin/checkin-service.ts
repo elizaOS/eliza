@@ -5,21 +5,22 @@
  * scheduled tasks routed through the shared runner, not on prompt-text matching.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type IAgentRuntime,
   logger,
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarFeed,
+} from "@elizaos/core/contracts/calendar";
+import {
   type GetLifeOpsGmailTriageRequest,
   type GetLifeOpsInboxRequest,
   LIFEOPS_OCCURRENCE_STATES,
   type LifeOpsCadence,
-  type LifeOpsCalendarFeed,
   type LifeOpsGmailTriageFeed,
   type LifeOpsInbox,
   type LifeOpsOccurrence,
@@ -27,7 +28,8 @@ import {
   type LifeOpsXDm,
   type LifeOpsXFeedItem,
   type LifeOpsXFeedType,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import {
   computeMissedOccurrenceStreak,
@@ -41,20 +43,19 @@ import {
   sortBriefingItems,
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
-import type {
-  CheckinBriefingSection,
-  CheckinKind,
-  CheckinReport,
-  EscalationLevel,
-  HabitSummary,
-  MeetingEntry,
-  OverdueTodo,
-  RecentWin,
-  RecordAcknowledgementRequest,
-  RunCheckinRequest,
-  SleepRecap,
+import {
+  type CheckinBriefingSection,
+  type CheckinKind,
+  type CheckinReport,
+  type EscalationLevel,
+  type HabitSummary,
+  type MeetingEntry,
+  type OverdueTodo,
+  type RecentWin,
+  type RecordAcknowledgementRequest,
+  type RunCheckinRequest,
+  type SleepRecap,
 } from "./types.js";
-
 /**
  * Check-in engine (T9f). Assembles morning/night reports from existing LifeOps data
  * and tracks acknowledgement state for tone escalation.
@@ -65,18 +66,14 @@ import type {
  * `CheckinReport.collectorErrors.<field>` so callers can distinguish empty
  * data from an unavailable source.
  */
-
 export const CHECKIN_REPORTS_TABLE = "app_lifeops.life_checkin_reports";
-
 export function getCheckinSummaryTrajectoryPurpose(
   kind: CheckinKind,
 ): "morning_brief" | "health_checkin" {
   return kind === "morning" ? "morning_brief" : "health_checkin";
 }
-
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-
 export interface CheckinSourceService {
   getInbox?(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
   getGmailTriage?(
@@ -89,25 +86,32 @@ export interface CheckinSourceService {
     request?: GetLifeOpsCalendarFeedRequest,
     now?: Date,
   ): Promise<LifeOpsCalendarFeed>;
-  syncXDms?(opts?: { limit?: number }): Promise<{ synced: number }>;
+  syncXDms?(opts?: { limit?: number }): Promise<{
+    synced: number;
+  }>;
   getXDms?(opts?: {
     conversationId?: string;
     limit?: number;
   }): Promise<LifeOpsXDm[]>;
   syncXFeed?(
     feedType: LifeOpsXFeedType,
-    opts?: { limit?: number; query?: string },
-  ): Promise<{ synced: number }>;
+    opts?: {
+      limit?: number;
+      query?: string;
+    },
+  ): Promise<{
+    synced: number;
+  }>;
   getXFeedItems?(
     feedType: LifeOpsXFeedType,
-    opts?: { limit?: number },
+    opts?: {
+      limit?: number;
+    },
   ): Promise<LifeOpsXFeedItem[]>;
 }
-
 export interface CheckinServiceOptions {
   readonly sources?: CheckinSourceService;
 }
-
 // Single-shot logging for graceful-degradation paths.
 const loggedMissingSources = new Set<string>();
 function logMissingOnce(key: string, message: string): void {
@@ -115,7 +119,6 @@ function logMissingOnce(key: string, message: string): void {
   loggedMissingSources.add(key);
   logger.info(`[CheckinService] ${message}`);
 }
-
 /**
  * Format a `medianBedtimeLocalHour` (in [12, 36)) as a local HH:MM string.
  * Hours >= 24 wrap into the next day, e.g. 24.5 → "00:30". Returns null when
@@ -134,7 +137,6 @@ function formatBedtimeHour(hour: number | null): string | null {
   const normMm = mm === 60 ? 0 : mm;
   return `${String(normHh).padStart(2, "0")}:${String(normMm).padStart(2, "0")}`;
 }
-
 function formatDurationMinutes(durationMin: number | null): string | null {
   if (
     durationMin === null ||
@@ -149,7 +151,6 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   if (minutes === 0) return `${hours}h`;
   return `${hours}h${minutes}m`;
 }
-
 function formatPromptScalar(value: unknown): string {
   if (value === null || value === undefined) {
     return "null";
@@ -161,7 +162,6 @@ function formatPromptScalar(value: unknown): string {
     value instanceof Date ? value.toISOString() : String(value).trim();
   return text.replace(/\s+/g, " ").trim();
 }
-
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
@@ -175,7 +175,6 @@ function formatCheckinReportForPrompt(
     return value;
   });
 }
-
 /**
  * Build the LLM prompt for a check-in summary. Exported for direct unit
  * testing of prompt content (especially the night-only sleep recap section).
@@ -196,7 +195,6 @@ export function buildCheckinSummaryPrompt(
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
     "Use short sections or tight bullets. No markdown table. No emojis.",
   ];
-
   if (report.kind === "night" && report.sleepRecap) {
     const recap = report.sleepRecap;
     const bedtime = formatBedtimeHour(recap.medianBedtimeLocalHour);
@@ -217,7 +215,6 @@ export function buildCheckinSummaryPrompt(
       'Include a short "Sleep recap" section in the summary using these numbers when present. If `regularityClass` is `irregular` or `very_irregular`, suggest one concrete step toward consistency. If it is `insufficient_data`, say so plainly and skip recommendations.',
     );
   }
-
   lines.push(
     "",
     "Report JSON:",
@@ -227,19 +224,21 @@ export function buildCheckinSummaryPrompt(
   );
   return lines.join("\n");
 }
-
 function newReportId(): string {
-  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
-    .crypto;
+  const maybeCrypto = (
+    globalThis as {
+      crypto?: {
+        randomUUID?: () => string;
+      };
+    }
+  ).crypto;
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
-
 export function clip(text: string, maxLength = 220): string {
   void maxLength;
   return toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
 }
-
 function parseMs(value: string | null | undefined): number | null {
   if (!value) {
     return null;
@@ -247,7 +246,6 @@ function parseMs(value: string | null | undefined): number | null {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
 }
-
 function toBoolean(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -258,7 +256,6 @@ function toBoolean(value: unknown): boolean {
   const text = toText(value).toLowerCase();
   return text === "true" || text === "1" || text === "yes";
 }
-
 function summarizeCount(
   count: number,
   singular: string,
@@ -266,11 +263,14 @@ function summarizeCount(
 ): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
-
 function localDayWindow(
   date: Date,
   timezone: string,
-): { start: Date; end: Date; key: string } {
+): {
+  start: Date;
+  end: Date;
+  key: string;
+} {
   const parts = getZonedDateParts(date, timezone);
   const start = buildUtcDateFromLocalParts(timezone, {
     year: parts.year,
@@ -294,7 +294,6 @@ function localDayWindow(
     key: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
   };
 }
-
 function unavailableSection(
   key: CheckinBriefingSection["key"],
   title: string,
@@ -308,12 +307,10 @@ function unavailableSection(
     error: message,
   };
 }
-
 interface CollectorResult<T> {
   readonly rows: T[];
   readonly error: string | null;
 }
-
 type HabitCollectorRow = {
   definition_id: unknown;
   definition_title: unknown;
@@ -325,18 +322,15 @@ type HabitCollectorRow = {
   occurrence_updated_at: unknown;
   occurrence_progress_total: unknown;
 };
-
 export type HabitOccurrence = {
   state: LifeOpsOccurrenceState;
   dueAtMs: number;
   updatedAtMs: number;
   progressTotal: number;
 };
-
 const LIFEOPS_OCCURRENCE_STATE_SET: ReadonlySet<string> = new Set(
   LIFEOPS_OCCURRENCE_STATES,
 );
-
 function parseHabitOccurrenceState(
   value: unknown,
 ): LifeOpsOccurrenceState | null {
@@ -345,7 +339,6 @@ function parseHabitOccurrenceState(
     ? (state as LifeOpsOccurrenceState)
     : null;
 }
-
 function asFiniteMs(value: string | null | undefined): number | null {
   if (typeof value !== "string") {
     return null;
@@ -353,7 +346,6 @@ function asFiniteMs(value: string | null | undefined): number | null {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
-
 function resolvePausedUntil(
   metadata: Record<string, unknown>,
   now: Date,
@@ -372,7 +364,6 @@ function resolvePausedUntil(
   }
   return new Date(pauseUntilMs).toISOString();
 }
-
 /**
  * Projects one definition's occurrences into the client-facing `HabitSummary`.
  * For `count_per_day` cadences the summary carries the server-derived quota
@@ -438,12 +429,13 @@ export function buildHabitSummary(args: {
         : null,
   };
 }
-
 async function collectHabitSummaries(
   runtime: IAgentRuntime,
   now: Date,
 ): Promise<
-  CollectorResult<HabitSummary> & { pausedDefinitionIds: Set<string> }
+  CollectorResult<HabitSummary> & {
+    pausedDefinitionIds: Set<string>;
+  }
 > {
   const agentId = String(runtime.agentId);
   try {
@@ -463,7 +455,6 @@ async function collectHabitSummaries(
     if (definitionRows.length === 0) {
       return { rows: [], error: null, pausedDefinitionIds: new Set() };
     }
-
     const occurrencesRows = await executeRawSql(
       runtime,
       `SELECT definition_id,
@@ -479,7 +470,6 @@ async function collectHabitSummaries(
           AND definition_id IN (${definitionRows.map((row) => sqlQuote(toText(row.definition_id))).join(", ")})
         ORDER BY definition_id ASC, due_at ASC, updated_at ASC`,
     );
-
     const occurrencesByDefinitionId = new Map<string, HabitOccurrence[]>();
     for (const row of occurrencesRows as HabitCollectorRow[]) {
       const definitionId = toText(row.definition_id);
@@ -513,7 +503,6 @@ async function collectHabitSummaries(
         occurrencesByDefinitionId.set(definitionId, [nextOccurrence]);
       }
     }
-
     const summaries: HabitSummary[] = [];
     const pausedDefinitionIds = new Set<string>();
     for (const row of definitionRows as HabitCollectorRow[]) {
@@ -541,7 +530,6 @@ async function collectHabitSummaries(
       }
       summaries.push(summary);
     }
-
     return { rows: summaries, error: null, pausedDefinitionIds };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -552,7 +540,6 @@ async function collectHabitSummaries(
     return { rows: [], error: message, pausedDefinitionIds: new Set() };
   }
 }
-
 async function collectOverdueTodos(
   runtime: IAgentRuntime,
   now: Date,
@@ -601,7 +588,6 @@ async function collectOverdueTodos(
     return { rows: [], error: message };
   }
 }
-
 async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
@@ -638,7 +624,6 @@ async function collectTodaysMeetings(
     return { rows: [], error: message };
   }
 }
-
 async function collectCompletedWins(
   runtime: IAgentRuntime,
   kind: CheckinKind,
@@ -684,14 +669,12 @@ async function collectCompletedWins(
     return { rows: [], error: message };
   }
 }
-
 function clampEscalation(count: number): EscalationLevel {
   if (count <= 0) return 0;
   if (count === 1) return 1;
   if (count === 2) return 2;
   return 3;
 }
-
 function resolveHabitEscalationLevel(
   summaries: readonly HabitSummary[],
 ): EscalationLevel {
@@ -701,7 +684,6 @@ function resolveHabitEscalationLevel(
   );
   return clampEscalation(maxMissedStreak);
 }
-
 async function collectXDmSection(
   source: CheckinSourceService | undefined,
 ): Promise<CheckinBriefingSection> {
@@ -752,7 +734,6 @@ async function collectXDmSection(
     return unavailableSection("x_dms", "X DMs", message);
   }
 }
-
 async function collectXFeedSection(
   source: CheckinSourceService | undefined,
   key: Extract<CheckinBriefingSection["key"], "x_timeline" | "x_mentions">,
@@ -772,7 +753,9 @@ async function collectXFeedSection(
     const items = sortBriefingItems(
       feedItems.map((feedItem) => {
         const raw = (feedItem.metadata.raw ?? {}) as {
-          referenced_tweets?: Array<{ type?: string }>;
+          referenced_tweets?: Array<{
+            type?: string;
+          }>;
           public_metrics?: Record<string, number>;
         };
         const referenceTypes = (raw.referenced_tweets ?? [])
@@ -824,7 +807,6 @@ async function collectXFeedSection(
     return unavailableSection(key, title, message);
   }
 }
-
 async function collectInboxSection(
   source: CheckinSourceService | undefined,
 ): Promise<CheckinBriefingSection> {
@@ -880,7 +862,6 @@ async function collectInboxSection(
     return unavailableSection("inbox", "Inbox", message);
   }
 }
-
 async function collectGmailSection(
   source: CheckinSourceService | undefined,
   now: Date,
@@ -909,9 +890,7 @@ async function collectGmailSection(
           sourcePriority: message.triageScore,
         });
         return {
-          title: `${message.from || "Unknown"}${
-            message.subject ? `: ${message.subject}` : ""
-          }`,
+          title: `${message.from || "Unknown"}${message.subject ? `: ${message.subject}` : ""}`,
           detail: clip(message.snippet || message.triageReason),
           occurredAt: message.receivedAt,
           href: message.htmlLink,
@@ -933,7 +912,6 @@ async function collectGmailSection(
     return unavailableSection("gmail", "Gmail", message);
   }
 }
-
 async function collectCalendarChangeSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -988,9 +966,7 @@ async function collectCalendarChangeSection(
         });
         return {
           title,
-          detail: `${toText(row.start_at)} - ${toText(row.end_at)}${
-            status ? ` (${status})` : ""
-          }`,
+          detail: `${toText(row.start_at)} - ${toText(row.end_at)}${status ? ` (${status})` : ""}`,
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
           reason,
@@ -1018,7 +994,6 @@ async function collectCalendarChangeSection(
     );
   }
 }
-
 async function collectGitHubSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1090,9 +1065,7 @@ async function collectGitHubSection(
         engagement,
       });
       return {
-        title: `GitHub activity: ${
-          toText(row.display_name) || toText(row.identifier)
-        }`,
+        title: `GitHub activity: ${toText(row.display_name) || toText(row.identifier)}`,
         detail: `${Number.isFinite(minutes) && minutes > 0 ? minutes : 0}m active`,
         occurredAt: toText(row.start_at) || null,
         href: null,
@@ -1117,7 +1090,6 @@ async function collectGitHubSection(
     return unavailableSection("github", "GitHub", message);
   }
 }
-
 async function collectContactSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1167,9 +1139,7 @@ async function collectContactSection(
         const occurredAt = toText(row.occurred_at) || null;
         const ranked = buildBriefingSignals({ occurredAt });
         return {
-          title: `${nameFor(row) || "Unknown"} (${
-            toText(row.channel) || "unknown"
-          })`,
+          title: `${nameFor(row) || "Unknown"} (${toText(row.channel) || "unknown"})`,
           detail: clip(toText(row.summary) || toText(row.direction)),
           occurredAt,
           href: null,
@@ -1198,7 +1168,6 @@ async function collectContactSection(
     );
   }
 }
-
 async function collectPromiseSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1247,7 +1216,6 @@ async function collectPromiseSection(
     );
   }
 }
-
 async function collectBriefingSections(args: {
   runtime: IAgentRuntime;
   source: CheckinSourceService | undefined;
@@ -1271,25 +1239,21 @@ async function collectBriefingSections(args: {
     collectPromiseSection(args.runtime, args.now),
   ]);
 }
-
 export class CheckinService {
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly options: CheckinServiceOptions = {},
   ) {}
-
   async runMorningCheckin(
     request: RunCheckinRequest = {},
   ): Promise<CheckinReport> {
     return this.runCheckin("morning", request);
   }
-
   async runNightCheckin(
     request: RunCheckinRequest = {},
   ): Promise<CheckinReport> {
     return this.runCheckin("night", request);
   }
-
   async getEscalationLevel(now: Date = new Date()): Promise<EscalationLevel> {
     const agentId = String(this.runtime.agentId);
     const windowStartMs = now.getTime() - ACK_WINDOW_MS;
@@ -1308,7 +1272,6 @@ export class CheckinService {
         : Number.parseInt(toText(countRaw), 10);
     return clampEscalation(Number.isFinite(count) ? count : 0);
   }
-
   async hasCheckinForLocalDay(args: {
     kind: CheckinKind;
     now: Date;
@@ -1328,7 +1291,6 @@ export class CheckinService {
     );
     return rows.length > 0;
   }
-
   async recordCheckinAcknowledgement(
     request: RecordAcknowledgementRequest,
   ): Promise<void> {
@@ -1347,7 +1309,6 @@ export class CheckinService {
           AND agent_id = ${sqlQuote(agentId)}`,
     );
   }
-
   private async runCheckin(
     kind: CheckinKind,
     request: RunCheckinRequest,
@@ -1408,14 +1369,12 @@ export class CheckinService {
     }
     return report;
   }
-
   public async persistCheckinReport(
     report: CheckinReport,
     now = new Date(report.generatedAt),
   ): Promise<void> {
     await this.persistReport(report, now);
   }
-
   private fallbackSummary(report: Omit<CheckinReport, "summaryText">): string {
     const prefix =
       report.kind === "morning" ? "Morning check-in" : "Night check-in";
@@ -1430,7 +1389,6 @@ export class CheckinService {
       .join(" ");
     return `${prefix}: ${summarizeCount(report.overdueTodos.length, "overdue todo")}, ${summarizeCount(report.todaysMeetings.length, "meeting")} today, ${summarizeCount(report.yesterdaysWins.length, winsLabel, winsLabel)}, and ${summarizeCount(report.habitSummaries.length, "tracked habit")}. ${sourceLine}`.trim();
   }
-
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
@@ -1457,7 +1415,6 @@ export class CheckinService {
       return fallback;
     }
   }
-
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
     const payload = JSON.stringify({

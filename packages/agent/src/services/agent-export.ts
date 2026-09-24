@@ -42,7 +42,7 @@ import {
   canonicalJsonString,
   isCanonicalJsonArray,
   readCanonicalArrayLength,
-} from "@elizaos/shared/canonical-json";
+} from "@elizaos/core/canonical-json";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,

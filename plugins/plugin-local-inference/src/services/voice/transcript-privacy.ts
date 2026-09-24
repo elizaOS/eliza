@@ -3,43 +3,41 @@
  * HTTP routes and semantic actions delegate here so retention transitions,
  * grant requirements, and content-addressed byte deletion stay identical.
  */
-
 import {
 	ElizaError,
 	type IFileStorageService,
 	ServiceType,
 	type UUID,
 } from "@elizaos/core";
-import type {
-	Transcript,
-	TranscriptCaptureSharingState,
-} from "@elizaos/shared";
-import { transcriptCapturePrivacyState } from "@elizaos/shared";
+import {
+	type Transcript,
+	type TranscriptCaptureSharingState,
+	transcriptCapturePrivacyState,
+} from "@elizaos/core/transcripts";
 import type { TranscriptServiceRuntime } from "./transcript-service.js";
 import { TranscriptStore } from "./transcript-store.js";
 
 const STORED_AUDIO_URL = /^\/api\/media\/([a-f0-9]{64}\.[a-z0-9]+)$/i;
-
 function sourceAudioFileName(transcript: Transcript): string | null {
 	const direct = transcript.audioUrl?.match(STORED_AUDIO_URL)?.[1];
 	if (direct) return direct;
 	const retention = transcript.metadata?.retention;
 	if (!retention || typeof retention !== "object") return null;
-	const pending = (retention as { sourceAudioFileName?: unknown })
-		.sourceAudioFileName;
+	const pending = (
+		retention as {
+			sourceAudioFileName?: unknown;
+		}
+	).sourceAudioFileName;
 	return typeof pending === "string" &&
 		STORED_AUDIO_URL.test(`/api/media/${pending}`)
 		? pending
 		: null;
 }
-
 export class TranscriptPrivacyService {
 	private readonly store: TranscriptStore;
-
 	constructor(private readonly runtime: TranscriptServiceRuntime) {
 		this.store = new TranscriptStore(runtime);
 	}
-
 	/** Persist per-artifact visibility, requiring real grants for wider transcript access. */
 	async updateArtifactSharing(
 		transcriptId: UUID,
@@ -60,7 +58,11 @@ export class TranscriptPrivacyService {
 		) {
 			const grants = (
 				(row.metadata as Record<string, unknown> | undefined)?.share as
-					| { grants?: Array<{ mode?: unknown }> }
+					| {
+							grants?: Array<{
+								mode?: unknown;
+							}>;
+					  }
 					| undefined
 			)?.grants;
 			const requiredMode =
@@ -77,7 +79,6 @@ export class TranscriptPrivacyService {
 		}
 		return this.store.updateArtifactSharing({ transcriptId, sharing });
 	}
-
 	/** Delete source bytes after durably withholding the transcript capability. */
 	async deleteSourceAudio(transcriptId: UUID): Promise<Transcript> {
 		const transcript = await this.store.get(transcriptId);

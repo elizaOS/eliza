@@ -3,7 +3,7 @@ import {
   groupResponsePrecedencePolicy,
   navigationReplyPolicy,
   registerResponsePolicy,
-} from "../../prompts/response-policy.js";
+} from "../../prompts/response-policy.ts";
 
 export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 

@@ -5,7 +5,7 @@
  */
 
 import { getLocalServerUrl, type IAgentRuntime } from "@elizaos/core";
-import { MediaFetchError, readResponseWithLimit } from "@elizaos/shared/media";
+import { MediaFetchError, readResponseWithLimit } from "@elizaos/core/media";
 import type { VisionImageInput } from "./types.js";
 
 export const VISION_IMAGE_MAX_BYTES = 20 * 1024 * 1024;

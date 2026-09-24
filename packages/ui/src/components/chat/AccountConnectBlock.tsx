@@ -11,7 +11,7 @@
  * `AccountList`; it never duplicates that UI.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { useMemo, useState } from "react";
 import type { AccountConnectRequest } from "../../api/client-types-chat";
 import { useAccounts } from "../../hooks/useAccounts";
@@ -82,7 +82,6 @@ function providerLabel(
       return providerId;
   }
 }
-
 export function AccountConnectBlock({
   request,
 }: {
@@ -92,7 +91,6 @@ export function AccountConnectBlock({
   const accounts = useAccounts();
   const [openProvider, setOpenProvider] =
     useState<LinkedAccountProviderId | null>(null);
-
   const countByProvider = useMemo(() => {
     const map = new Map<LinkedAccountProviderId, number>();
     for (const p of accounts.data?.providers ?? []) {
@@ -100,7 +98,6 @@ export function AccountConnectBlock({
     }
     return map;
   }, [accounts.data]);
-
   return (
     <Card
       variant="insetPadded"

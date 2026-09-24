@@ -31,8 +31,8 @@
  */
 
 import { ModelType } from "@elizaos/core";
-import { _resetBuildVariantForTests } from "@elizaos/shared/platform/build-variant";
-import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
+import { _resetBuildVariantForTests } from "@elizaos/core/platform/build-variant";
+import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
 import {
   afterEach,
   beforeEach,

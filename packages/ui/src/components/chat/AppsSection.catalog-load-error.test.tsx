@@ -8,7 +8,7 @@
 // the section still degrades to running/favorited apps. State + catalog-loader
 // mocked; logger spied.
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

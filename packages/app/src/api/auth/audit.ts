@@ -14,20 +14,17 @@
  * `metadata` before either write, so a misconfigured caller can't smuggle a
  * bearer token into an audit row.
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
-import type { AuthRepository } from "../../services/auth-store";
+import { type RuntimeEnvRecord } from "@elizaos/core/runtime-env";
+import { type AuthRepository } from "../../services/auth-store";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
-
 export const AUDIT_LOG_FILENAME = "audit.log";
 export const AUDIT_LOG_ROTATE_FILENAME = "audit.log.1";
 export const AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024;
 export const AUDIT_REDACTION_RE = /[A-Za-z0-9_-]{20,}/;
-
 export interface AuditEventInput {
   actorIdentityId: string | null;
   ip: string | null;
@@ -36,20 +33,17 @@ export interface AuditEventInput {
   outcome: "success" | "failure";
   metadata?: Record<string, string | number | boolean>;
 }
-
 export interface AuditEmitterOptions {
   store: AuthRepository;
   env?: RuntimeEnvRecord;
   now?: () => number;
 }
-
 function truncateUserAgent(value: string | null): string | null {
   if (!value) return null;
   return value.length > 200
     ? truncateWellFormed(toWellFormedUnicode(value), 200)
     : value;
 }
-
 /**
  * Replace token-shaped runs in `metadata` with the literal `<redacted>` string.
  *
@@ -68,13 +62,11 @@ export function redactMetadata(
   }
   return out;
 }
-
 export function resolveAuditLogPath(
   env: RuntimeEnvRecord = process.env,
 ): string {
   return path.join(resolveElizaStateDir(env), "auth", AUDIT_LOG_FILENAME);
 }
-
 export function resolveAuditLogRotatedPath(
   env: RuntimeEnvRecord = process.env,
 ): string {
@@ -84,7 +76,6 @@ export function resolveAuditLogRotatedPath(
     AUDIT_LOG_ROTATE_FILENAME,
   );
 }
-
 async function rotateIfNeeded(filePath: string): Promise<void> {
   let size: number;
   try {
@@ -100,7 +91,6 @@ async function rotateIfNeeded(filePath: string): Promise<void> {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   });
 }
-
 interface JsonLine {
   id: string;
   ts: number;
@@ -111,7 +101,6 @@ interface JsonLine {
   outcome: "success" | "failure";
   metadata: Record<string, string | number | boolean>;
 }
-
 async function appendJsonLine(filePath: string, line: JsonLine): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   await rotateIfNeeded(filePath);
@@ -120,7 +109,6 @@ async function appendJsonLine(filePath: string, line: JsonLine): Promise<void> {
     mode: 0o600,
   });
 }
-
 /**
  * Append an audit event to the database AND the JSONL log.
  *
@@ -137,7 +125,6 @@ export async function appendAuditEvent(
   const id = crypto.randomUUID();
   const safeMetadata = redactMetadata(input.metadata ?? {});
   const userAgent = truncateUserAgent(input.userAgent);
-
   const filePath = resolveAuditLogPath(env);
   const line: JsonLine = {
     id,
@@ -149,7 +136,6 @@ export async function appendAuditEvent(
     outcome: input.outcome,
     metadata: safeMetadata,
   };
-
   let firstError: unknown = null;
   const fileWrite = appendJsonLine(filePath, line).catch((err) => {
     if (firstError === null) firstError = err;
@@ -168,7 +154,6 @@ export async function appendAuditEvent(
     .catch((err) => {
       if (firstError === null) firstError = err;
     });
-
   await Promise.all([fileWrite, dbWrite]);
   if (firstError !== null) throw firstError;
 }

@@ -10,8 +10,6 @@
     "noEmit": false,
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../packages/ui/dist/*"]
     }

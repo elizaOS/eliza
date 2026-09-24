@@ -1,14 +1,16 @@
 // Complete node:crypto shim for the Storybook browser catalog. Vite
 // externalizes node builtins; core feature/secrets modules pulled via the
-// @elizaos/shared barrel touch crypto at load. These paths never run during a
+// @elizaos/core barrel touch crypto at load. These paths never run during a
 // story render. Key functions get browser-backed/benign behaviour; the rest are
 // throwing shims so every static named import resolves.
-
-const webcrypto = (globalThis as { crypto?: Crypto }).crypto;
+const webcrypto = (
+  globalThis as {
+    crypto?: Crypto;
+  }
+).crypto;
 const notAvailable = (name: string) => {
   throw new Error(`node:crypto browser shim cannot ${name} in Storybook`);
 };
-
 class HashLike {
   update() {
     return this;
@@ -17,10 +19,8 @@ class HashLike {
     return "";
   }
 }
-
 export const constants = {};
 export { webcrypto };
-
 export const createHash = () => new HashLike();
 export const createHmac = () => new HashLike();
 export const randomBytes = (size = 0) =>
@@ -34,10 +34,8 @@ export const timingSafeEqual = (a: ArrayLike<number>, b: ArrayLike<number>) => {
   for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
   return d === 0;
 };
-
 export const getRandomValues = <T extends ArrayBufferView | null>(buf: T): T =>
   (webcrypto?.getRandomValues?.(buf as never) as T) ?? buf;
-
 export const Certificate = (..._args: unknown[]) => notAvailable("Certificate");
 export const Cipheriv = (..._args: unknown[]) => notAvailable("Cipheriv");
 export const Decipheriv = (..._args: unknown[]) => notAvailable("Decipheriv");
@@ -118,7 +116,6 @@ export const setEngine = (..._args: unknown[]) => notAvailable("setEngine");
 export const setFips = (..._args: unknown[]) => notAvailable("setFips");
 export const sign = (..._args: unknown[]) => notAvailable("sign");
 export const verify = (..._args: unknown[]) => notAvailable("verify");
-
 export default {
   Certificate,
   Cipheriv,

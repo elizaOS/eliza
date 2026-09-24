@@ -10,7 +10,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { migrateGoalTables } from "@elizaos/plugin-goals";
 import { migrateInboxTables } from "@elizaos/plugin-inbox";
 import { migrateReminderTables } from "@elizaos/plugin-reminders";
-import { type CarveOutDatabase, runCarveOutMigration } from "@elizaos/shared";
+import {
+  type CarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { afterEach, describe, expect, it } from "vitest";
 
 const domains = [

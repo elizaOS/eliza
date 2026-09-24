@@ -45,17 +45,16 @@
  * - No need to maintain exhaustive type lists
  */
 
-import type { JsonValue } from "@elizaos/core";
+import { type JsonValue } from "@elizaos/core";
 import {
   isSafeUntrustedRegexPattern,
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
-} from "@elizaos/shared";
+} from "@elizaos/core/config/config-catalog";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
-import type { ControlType, FormControl, TypeHandler } from "./types";
-
+import { type ControlType, type FormControl, type TypeHandler } from "./types";
 /**
  * Validation result.
  *
@@ -68,11 +67,9 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
-
 // ============================================================================
 // TYPE HANDLER REGISTRY
 // ============================================================================
-
 /**
  * Global registry for custom type handlers.
  *
@@ -82,7 +79,6 @@ export interface ValidationResult {
  * - Easy to mock in tests (clearTypeHandlers)
  */
 const typeHandlers: Map<string, TypeHandler> = new Map();
-
 /**
  * Register a custom type handler.
  *
@@ -105,7 +101,6 @@ const typeHandlers: Map<string, TypeHandler> = new Map();
 export function registerTypeHandler(type: string, handler: TypeHandler): void {
   typeHandlers.set(type, handler);
 }
-
 /**
  * Get a type handler.
  *
@@ -125,7 +120,6 @@ export function getTypeHandler(
   if (controlType && !controlType.builtin) return controlType;
   return typeHandlers.get(type) ?? controlType;
 }
-
 /**
  * Clear all type handlers.
  *
@@ -137,11 +131,9 @@ export function getTypeHandler(
 export function clearTypeHandlers(): void {
   typeHandlers.clear();
 }
-
 // ============================================================================
 // FIELD VALIDATION
 // ============================================================================
-
 /**
  * Validate a value against a control's validation rules.
  *
@@ -175,13 +167,11 @@ export function validateField(
       };
     }
   }
-
   // Empty optional fields are valid
   // WHY: No need to validate undefined/null/empty for optional fields
   if (value === undefined || value === null || value === "") {
     return { valid: true };
   }
-
   // Check custom type handler first
   // WHY: Allows overriding built-in types or adding new ones
   const handler = getTypeHandler(control.type, controlType);
@@ -195,7 +185,6 @@ export function validateField(
     if (controlType && !controlType.builtin)
       return validateText(value, control);
   }
-
   // Type-specific validation
   // WHY switch: Clear separation of validation logic per type
   switch (control.type) {
@@ -217,17 +206,15 @@ export function validateField(
       return validateText(value, control);
   }
 }
-
 /**
  * Caps and dialect for `FormControl.pattern` come from the shared
- * agent-authored-regex policy in `@elizaos/shared`, the same gate the config
+ * agent-authored-regex policy in `@elizaos/core`, the same gate the config
  * and UI renderers use. Re-exported here so form code and its tests have one
  * name for them and one source of truth for the numbers.
  */
 export const MAX_CONTROL_PATTERN_LENGTH = MAX_UNTRUSTED_REGEX_PATTERN_LENGTH;
 export const MAX_CONTROL_PATTERN_INPUT_LENGTH =
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH;
-
 /**
  * Test a caller-supplied form control pattern against a value.
  *
@@ -248,8 +235,13 @@ export function testControlPattern(
   pattern: string,
   value: string,
 ):
-  | { ok: true }
-  | { ok: false; reason: "unsupported" | "mismatch" | "too-long" } {
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: "unsupported" | "mismatch" | "too-long";
+    } {
   if (typeof pattern !== "string" || pattern.length === 0) {
     return { ok: false, reason: "unsupported" };
   }
@@ -266,7 +258,6 @@ export function testControlPattern(
     ? { ok: true }
     : { ok: false, reason: "mismatch" };
 }
-
 /**
  * Validate text field.
  *
@@ -277,7 +268,6 @@ function validateText(
   control: FormControl,
 ): ValidationResult {
   const strValue = String(value);
-
   // Pattern validation. Untrusted pattern text never reaches a bare
   // `new RegExp(...).test(...)`; see testControlPattern.
   if (control.pattern) {
@@ -289,7 +279,6 @@ function validateText(
       };
     }
   }
-
   // Length validation
   // WHY separate minLength/maxLength: min/max used for numeric values too
   if (control.minLength !== undefined && strValue.length < control.minLength) {
@@ -298,14 +287,12 @@ function validateText(
       error: `${control.label || control.key} must be at least ${control.minLength} characters`,
     };
   }
-
   if (control.maxLength !== undefined && strValue.length > control.maxLength) {
     return {
       valid: false,
       error: `${control.label || control.key} must be at most ${control.maxLength} characters`,
     };
   }
-
   // Enum validation
   // WHY enum: Simple allowed-values without full select options
   if (control.enum && control.enum.length > 0) {
@@ -316,10 +303,8 @@ function validateText(
       };
     }
   }
-
   return { valid: true };
 }
-
 /**
  * Validate email field.
  *
@@ -333,18 +318,15 @@ function validateEmail(
   control: FormControl,
 ): ValidationResult {
   const rawValue = String(value);
-
   if (!strictEmailValid(rawValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid email address`,
     };
   }
-
   // Also apply text validation (pattern, length)
   return validateText(value, control);
 }
-
 /**
  * Strictly parse a string as a number, rejecting trailing garbage.
  *
@@ -365,7 +347,6 @@ function validateEmail(
  * input returns NaN so callers treat it as an invalid number.
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
-
 function parseStrictNumber(input: string): number {
   const cleaned = input.replace(/[,$]/g, "").trim();
   if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
@@ -373,7 +354,6 @@ function parseStrictNumber(input: string): number {
   }
   return Number(cleaned);
 }
-
 /**
  * Validate number field.
  *
@@ -388,14 +368,12 @@ function validateNumber(
   // trailing garbage ("50abc", "0x10") must be rejected, not coerced.
   const numValue =
     typeof value === "number" ? value : parseStrictNumber(String(value));
-
   if (!Number.isFinite(numValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a number`,
     };
   }
-
   // Min/max validation
   if (control.min !== undefined && numValue < control.min) {
     return {
@@ -403,17 +381,14 @@ function validateNumber(
       error: `${control.label || control.key} must be at least ${control.min}`,
     };
   }
-
   if (control.max !== undefined && numValue > control.max) {
     return {
       valid: false,
       error: `${control.label || control.key} must be at most ${control.max}`,
     };
   }
-
   return { valid: true };
 }
-
 /**
  * Validate boolean field.
  *
@@ -429,19 +404,15 @@ function validateBoolean(
   if (typeof value === "boolean") {
     return { valid: true };
   }
-
   // Accept common boolean-like strings
   const strValue = String(value).toLowerCase();
   const truthy = ["true", "yes", "1", "on"];
   const falsy = ["false", "no", "0", "off"];
-
   if (truthy.includes(strValue) || falsy.includes(strValue)) {
     return { valid: true };
   }
-
   return { valid: false, error: "Must be true or false" };
 }
-
 /**
  * Validate date field.
  *
@@ -460,7 +431,6 @@ function validateDate(
     };
   }
   const timestamp = new Date(`${iso}T00:00:00.000Z`).getTime();
-
   // Min/max as timestamps
   // WHY: Form definition can set date ranges (e.g., dates after today only)
   if (control.min !== undefined && timestamp < control.min) {
@@ -469,17 +439,14 @@ function validateDate(
       error: `${control.label || control.key} is too early`,
     };
   }
-
   if (control.max !== undefined && timestamp > control.max) {
     return {
       valid: false,
       error: `${control.label || control.key} is too late`,
     };
   }
-
   return { valid: true };
 }
-
 /**
  * Validate select field.
  *
@@ -497,20 +464,16 @@ function validateSelect(
     // No options defined - treat as text
     return { valid: true };
   }
-
   const strValue = String(value);
   const validValues = options.map((opt) => opt.value);
-
   if (!validValues.includes(strValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be one of the available options`,
     };
   }
-
   return { valid: true };
 }
-
 /**
  * Validate file field (validates metadata, not content).
  *
@@ -526,10 +489,8 @@ function validateFile(
   if (!control.file) {
     return { valid: true };
   }
-
   // Value should be an array of file metadata
   const files = Array.isArray(value) ? value : [value];
-
   // Check max files
   if (control.file.maxFiles && files.length > control.file.maxFiles) {
     return {
@@ -537,12 +498,12 @@ function validateFile(
       error: `Maximum ${control.file.maxFiles} files allowed`,
     };
   }
-
   for (const file of files) {
     if (!file || typeof file !== "object") continue;
-
-    const fileObj = file as { size?: number; mimeType?: string };
-
+    const fileObj = file as {
+      size?: number;
+      mimeType?: string;
+    };
     // Check file size
     if (
       control.file.maxSize &&
@@ -554,7 +515,6 @@ function validateFile(
         error: `File size exceeds maximum of ${formatBytes(control.file.maxSize)}`,
       };
     }
-
     // Check accepted MIME types
     if (control.file.accept && fileObj.mimeType) {
       const { mimeType } = fileObj;
@@ -569,10 +529,8 @@ function validateFile(
       }
     }
   }
-
   return { valid: true };
 }
-
 /**
  * Check if a MIME type matches a pattern.
  *
@@ -593,7 +551,6 @@ export function matchesMimeType(mimeType: string, pattern: string): boolean {
   }
   return mimeType === pattern;
 }
-
 /**
  * Format bytes to human-readable string.
  *
@@ -606,11 +563,9 @@ function formatBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
-
 // ============================================================================
 // VALUE PARSING
 // ============================================================================
-
 /**
  * Parse a string value to the appropriate type based on control type.
  *
@@ -640,7 +595,6 @@ export function parseValue(
   ) {
     return handler.parse(value);
   }
-
   switch (control.type) {
     case "number": {
       // Strict parse so garbage-suffixed input is not coerced to a
@@ -658,12 +612,10 @@ export function parseValue(
       // invalid when validateNumber re-parses it, forcing the re-ask.
       return Number.isFinite(parsed) ? parsed : value;
     }
-
     case "boolean": {
       const lower = value.toLowerCase();
       return ["true", "yes", "1", "on"].includes(lower);
     }
-
     case "date": {
       return parseCalendarDate(value) ?? value;
     }
@@ -672,11 +624,9 @@ export function parseValue(
       return value;
   }
 }
-
 // ============================================================================
 // VALUE FORMATTING
 // ============================================================================
-
 /**
  * Format a value for display.
  *
@@ -696,7 +646,6 @@ export function formatValue(
   controlType?: ControlType,
 ): string {
   if (value === undefined || value === null) return "";
-
   // Sensitive fields should be masked
   // WHY: Passwords, tokens shouldn't be echoed back to user
   if (control.sensitive) {
@@ -706,22 +655,17 @@ export function formatValue(
     }
     return "****";
   }
-
   const handler = getTypeHandler(control.type, controlType);
   if (handler?.format) return handler.format(value);
-
   switch (control.type) {
     case "number":
       // Use locale formatting for numbers
       return typeof value === "number" ? value.toLocaleString() : String(value);
-
     case "boolean":
       // Human-friendly boolean display
       return value ? "Yes" : "No";
-
     case "date":
       return formatCalendarDate(String(value)) ?? String(value);
-
     case "select":
       // Show option label instead of value
       // WHY: User sees "United States" not "US"
@@ -732,16 +676,27 @@ export function formatValue(
         if (option) return option.label;
       }
       return String(value);
-
     case "file":
       // Show file names
       if (Array.isArray(value)) {
         return value
-          .map((f) => (f as { name?: string }).name || "file")
+          .map(
+            (f) =>
+              (
+                f as {
+                  name?: string;
+                }
+              ).name || "file",
+          )
           .join(", ");
       }
-      return (value as { name?: string }).name || "file";
-
+      return (
+        (
+          value as {
+            name?: string;
+          }
+        ).name || "file"
+      );
     default:
       return String(value);
   }

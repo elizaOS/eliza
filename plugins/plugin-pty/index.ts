@@ -3,10 +3,9 @@
  * It registers the `PTY_SERVICE` bridge and authenticated spawn/list/stop routes that connect the existing xterm UI and WebSocket path to real interactive CLI processes.
  */
 
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { ptyRoutes } from "./routes/pty-routes";
 import { PtyService } from "./services/pty-service";
-
 export const ptyPlugin: Plugin = {
   name: "pty",
   description:
@@ -17,9 +16,7 @@ export const ptyPlugin: Plugin = {
     await runtime.getService<PtyService>(PtyService.serviceType)?.stop();
   },
 };
-
 export default ptyPlugin;
-
 export {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,

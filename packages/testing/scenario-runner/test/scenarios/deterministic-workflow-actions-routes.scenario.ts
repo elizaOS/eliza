@@ -3,16 +3,17 @@
  * action routing, and the canonical HTTP read surfaces.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import type {
-  CapturedAction,
-  RuntimeWithScenarioModelFixtures,
-  ScenarioContext,
-  ScenarioTurnExecution,
+import { type IAgentRuntime } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import {
+  type CapturedAction,
+  type RuntimeWithScenarioModelFixtures,
+  type ScenarioContext,
+  type ScenarioTurnExecution,
+  scenario,
+  strictActionRouteFixtures,
 } from "@elizaos/testing";
-import { scenario, strictActionRouteFixtures } from "@elizaos/testing";
 import workflowPlugin, {
   workflowRoutePlugin,
 } from "../../../../../plugins/plugin-workflow/src/index.ts";
@@ -22,20 +23,18 @@ import {
   WORKFLOW_SERVICE_TYPE,
   type WorkflowService,
 } from "../../../../../plugins/plugin-workflow/src/services/index.ts";
-import type { WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
+import { type WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../../plugins/plugin-workflow/src/utils/context.ts";
 import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
 const WORKFLOW_CRUD_STRESS_COUNT = 50;
-
 const workflowExecutionParameters = {
   action: "executions",
   workflowId: WORKFLOW_ID,
   limit: 1,
 };
-
 const strictWorkflowRoutes = [
   {
     actionName: "WORKFLOW",
@@ -45,13 +44,10 @@ const strictWorkflowRoutes = [
     messageToUser: `Fetched 1 executions for workflow ${WORKFLOW_ID}.`,
   },
 ];
-
 const workflowModelFixtures = strictActionRouteFixtures(
   strictWorkflowRoutes[0],
 );
-
 type JsonRecord = Record<string, unknown>;
-
 type RuntimeWithWorkflowScenario = IAgentRuntime & {
   db?: unknown;
   getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
@@ -64,11 +60,9 @@ type RuntimeWithWorkflowScenario = IAgentRuntime & {
     __scenarioWorkflowRoute?: boolean;
   }>;
 };
-
 let seededExecutionId: string | null = null;
 let seededTagId: string | null = null;
 let scenarioRuntime: RuntimeWithWorkflowScenario | null = null;
-
 const workflowDefinition: WorkflowDefinition = {
   id: WORKFLOW_ID,
   name: WORKFLOW_NAME,
@@ -85,11 +79,9 @@ export default smithers(() => <Workflow name="Scenario keyless workflow" />);`,
   steps: [],
   widgets: [],
 };
-
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
@@ -102,7 +94,6 @@ function stableStringify(value: unknown): string {
   }
   return JSON.stringify(value) ?? String(value);
 }
-
 function readPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -114,7 +105,6 @@ function readPath(value: unknown, path: string): unknown {
   }
   return current;
 }
-
 function expectEqual(
   actual: unknown,
   expected: unknown,
@@ -126,7 +116,6 @@ function expectEqual(
     ? undefined
     : `expected ${label}=${expectedJson}, saw ${actualJson}`;
 }
-
 function firstAction(
   execution: ScenarioTurnExecution,
   actionName: string,
@@ -139,11 +128,9 @@ function firstAction(
     `expected ${actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`
   );
 }
-
 function actionParameters(action: CapturedAction): JsonRecord {
   return isRecord(action.parameters) ? action.parameters : {};
 }
-
 function expectWorkflowActionOptions(
   action: CapturedAction,
 ): string | undefined {
@@ -170,12 +157,10 @@ function expectWorkflowActionOptions(
   }
   return `expected WORKFLOW handler parameters to include ${stableStringify(workflowExecutionParameters)}, saw ${stableStringify(actual)}`;
 }
-
 function seededItem(execution: unknown): JsonRecord | null {
   const input = readPath(execution, "input");
   return isRecord(input) ? input : null;
 }
-
 function expectSeededExecution(execution: unknown): string | undefined {
   for (const [path, expected] of Object.entries({
     workflowId: WORKFLOW_ID,
@@ -207,7 +192,6 @@ function expectSeededExecution(execution: unknown): string | undefined {
   }
   return undefined;
 }
-
 async function ensureWorkflowPlugin(
   runtime: RuntimeWithWorkflowScenario,
 ): Promise<void> {
@@ -235,7 +219,6 @@ async function ensureWorkflowPlugin(
     });
   }
 }
-
 async function workflowServices(runtime: RuntimeWithWorkflowScenario): Promise<{
   embedded: EmbeddedWorkflowService;
   service: WorkflowService;
@@ -254,7 +237,6 @@ async function workflowServices(runtime: RuntimeWithWorkflowScenario): Promise<{
   if (!service) throw new Error("WorkflowService was not registered");
   return { embedded, service };
 }
-
 async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithWorkflowScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
@@ -318,7 +300,6 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     return err instanceof Error ? err.message : String(err);
   }
 }
-
 function expectWorkflowAction(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -355,7 +336,6 @@ function expectWorkflowAction(
   }
   return undefined;
 }
-
 function expectWorkflowRoute(
   status: number,
   body: unknown,
@@ -374,7 +354,6 @@ function expectWorkflowRoute(
   }
   return undefined;
 }
-
 function expectExecutionsRoute(
   status: number,
   body: unknown,
@@ -386,7 +365,6 @@ function expectExecutionsRoute(
   }
   return expectSeededExecution(executions[0]);
 }
-
 async function finalWorkflowCheck(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
@@ -416,7 +394,6 @@ async function finalWorkflowCheck(
   await embedded.deleteWorkflow(WORKFLOW_ID);
   return undefined;
 }
-
 export default scenario({
   id: "deterministic-workflow-actions-routes",
   lane: "pr-deterministic",

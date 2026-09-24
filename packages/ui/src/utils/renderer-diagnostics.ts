@@ -4,7 +4,7 @@
  * captures can connect user-visible errors to their originating operation.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 
 export const RENDERER_DIAGNOSTIC_EVENT = "eliza:renderer-diagnostic";
 

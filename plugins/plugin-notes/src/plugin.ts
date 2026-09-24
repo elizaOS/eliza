@@ -8,7 +8,7 @@ import {
   type ContextDefinition,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -35,7 +35,6 @@ const NOTES_CONTEXT: ContextDefinition = {
   cacheScope: "agent",
   roleGate: { minRole: "OWNER" },
 };
-
 export const notesPlugin: Plugin = {
   name: "@elizaos/plugin-notes",
   description:
@@ -109,5 +108,4 @@ export const notesPlugin: Plugin = {
     await runtime.getService<NotesService>(NotesService.serviceType)?.stop();
   },
 };
-
 export default notesPlugin;

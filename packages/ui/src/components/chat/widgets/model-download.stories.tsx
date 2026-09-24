@@ -8,7 +8,7 @@
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/local-inference";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import {
@@ -30,7 +30,6 @@ import { ModelDownloadWidget } from "./model-download";
 // the download stream. Each story installs its own fetch payload + a null
 // EventSource (the on-device native-IPC fallback) so the render is deterministic
 // for the story gate.
-
 function makeSlot(
   overrides: Partial<LocalInferenceSlotReadiness>,
 ): LocalInferenceSlotReadiness {
@@ -62,7 +61,6 @@ function makeSlot(
     ...overrides,
   };
 }
-
 function makeHub(textLarge: LocalInferenceSlotReadiness): ModelHubSnapshot {
   const small = makeSlot({
     slot: "TEXT_SMALL",
@@ -94,7 +92,6 @@ function makeHub(textLarge: LocalInferenceSlotReadiness): ModelHubSnapshot {
     },
   };
 }
-
 /** Install a window.fetch that answers the hub route with `snapshot`. */
 function withHub(snapshot: ModelHubSnapshot): Decorator {
   return (Story) => {
@@ -117,7 +114,11 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
     });
     // On-device native-IPC fallback: no EventSource → the widget drives off the
     // single hub fetch. Undefining it keeps the story render deterministic.
-    (window as { EventSource?: unknown }).EventSource = undefined;
+    (
+      window as {
+        EventSource?: unknown;
+      }
+    ).EventSource = undefined;
     window.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
       const url =
         typeof input === "string"
@@ -138,13 +139,17 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
     // own iframe page, so a delayed restore cannot leak across stories.
     setTimeout(() => {
       window.fetch = originalFetch;
-      (window as { EventSource?: unknown }).EventSource = originalEventSource;
+      (
+        window as {
+          EventSource?: unknown;
+        }
+      ).EventSource = originalEventSource;
       __setAuthStatusForTests({ phase: "loading" });
-    }, 4_000);
+    }, 4000);
     return (
       <MockAppProvider value={{ plugins: [], conversations: [] }}>
         {/* The hub fetch gates on `useIsAuthenticated()` (#11084); seed the
-            authenticated session or the widget stays dormant and self-hides. */}
+                authenticated session or the widget stays dormant and self-hides. */}
         <WithAuthenticatedSession>
           <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
             <Story />
@@ -154,17 +159,14 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
     );
   };
 }
-
 const meta = {
   title: "Shell/Home Widgets/Model Download",
   component: ModelDownloadWidget,
   parameters: { layout: "centered" },
   args: { slot: "home", spanClassName: "col-span-2 row-span-1" },
 } satisfies Meta<typeof ModelDownloadWidget>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 /** Downloading — the primary state: model name + percent + ETA. */
 export const Downloading: Story = {
   decorators: [
@@ -177,8 +179,8 @@ export const Downloading: Story = {
             receivedBytes: 63,
             totalBytes: 100,
             percent: 63,
-            bytesPerSec: 5_000_000,
-            etaMs: 180_000,
+            bytesPerSec: 5000000,
+            etaMs: 180000,
             updatedAt: null,
             errors: [],
           },
@@ -195,7 +197,6 @@ export const Downloading: Story = {
     assert(card.textContent?.includes("63%"), "shows the download percent");
   },
 };
-
 /** Loading — downloaded to disk, awaiting runtime activation. */
 export const Loading: Story = {
   decorators: [
@@ -217,7 +218,6 @@ export const Loading: Story = {
     assert(card.textContent?.includes("Loading"), "shows the loading state");
   },
 };
-
 /** Queued — assigned but not yet downloading. */
 export const Queued: Story = {
   decorators: [withHub(makeHub(makeSlot({ state: "missing" })))],
@@ -229,7 +229,6 @@ export const Queued: Story = {
     assert(card.textContent?.includes("Queued"), "shows the queued state");
   },
 };
-
 /** Download failed — surfaces a Retry affordance (whole-card retry). */
 export const DownloadFailed: Story = {
   decorators: [
@@ -256,7 +255,6 @@ export const DownloadFailed: Story = {
     assert(card.textContent?.includes("Retry"), "shows the retry badge");
   },
 };
-
 /**
  * Not required — no local text slot assigned (cloud/remote runtime). The widget
  * renders nothing; the gate asserts the card never appears.

@@ -5,18 +5,18 @@ export type {
   SyntheticControlResponse,
   SyntheticManifest,
   SyntheticResetReceipt,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 export {
   SyntheticControlClient,
   SyntheticControlProtocolError,
   SyntheticControlSession,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 
 import {
   SyntheticControlClient,
   SyntheticControlSession,
   type SyntheticManifest,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 
 export interface OpenScenarioSyntheticWorldOptions {
   controlUrl: string;

@@ -44,8 +44,6 @@
 				"../../../../plugins/plugin-native-secure-store/src/*"
 			],
 			"@elizaos/core": ["../../../core/src/index.ts"],
-			"@elizaos/shared": ["../../../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../../../shared/src/*"],
 			"@elizaos/plugin-elizacloud": [
 				"../../../../plugins/plugin-elizacloud/src/index.node.ts"
 			],
@@ -120,7 +118,10 @@
 				"../../../../plugins/plugin-native-inference/src/index.ts"
 			],
 			"@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
-			"@elizaos/plugin-video": ["../../../../plugins/plugin-video/src/index.ts"]
+			"@elizaos/plugin-video": [
+				"../../../../plugins/plugin-video/src/index.ts"
+			],
+			"@elizaos/core/*": ["../../../core/src/*"]
 		}
 	},
 	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],

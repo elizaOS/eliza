@@ -165,6 +165,16 @@
         "import": "./src/app-billing-membership.ts",
         "default": "./src/app-billing-membership.ts"
       }
+    },
+    "./browser-contracts/account-lifecycle": {
+      "types": "./dist/browser-contracts/account-lifecycle.d.ts",
+      "eliza-source": {
+        "types": "./src/browser-contracts/account-lifecycle.ts",
+        "import": "./src/browser-contracts/account-lifecycle.ts",
+        "default": "./src/browser-contracts/account-lifecycle.ts"
+      },
+      "import": "./dist/browser-contracts/account-lifecycle.js",
+      "default": "./dist/browser-contracts/account-lifecycle.js"
     }
   },
   "elizaos": {

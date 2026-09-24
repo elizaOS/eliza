@@ -5,12 +5,12 @@
  * real. No production helper is replaced with a mock of itself.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  RelationshipSource,
-  RelationshipState,
-  RelationshipStatus,
-} from "@elizaos/shared";
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type RelationshipSource,
+  type RelationshipState,
+  type RelationshipStatus,
+} from "@elizaos/core/knowledge-graph/relationship-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RelationshipStore } from "../relationship-store.ts";
 
@@ -18,11 +18,13 @@ interface GraphTables {
   relationships: Map<string, Record<string, unknown>>;
   audits: Array<Record<string, unknown>>;
 }
-
 function extractSql(query: unknown): string {
   if (typeof query === "string") return query;
   if (!query || typeof query !== "object") return "";
-  const rec = query as { queryChunks?: unknown; __sql?: string };
+  const rec = query as {
+    queryChunks?: unknown;
+    __sql?: string;
+  };
   if (typeof rec.__sql === "string") return rec.__sql;
   const chunks = rec.queryChunks;
   if (!Array.isArray(chunks)) return "";
@@ -32,7 +34,11 @@ function extractSql(query: unknown): string {
       if (!chunk || typeof chunk !== "object" || !("value" in chunk)) {
         return "";
       }
-      const value = (chunk as { value: unknown }).value;
+      const value = (
+        chunk as {
+          value: unknown;
+        }
+      ).value;
       if (typeof value === "string") return value;
       if (Array.isArray(value)) {
         return value.map((part) => String(part)).join("");
@@ -41,7 +47,6 @@ function extractSql(query: unknown): string {
     })
     .join("");
 }
-
 function splitSqlList(inner: string): string[] {
   const values: string[] = [];
   let buf = "";
@@ -75,7 +80,6 @@ function splitSqlList(inner: string): string[] {
   if (buf.trim().length > 0) values.push(buf.trim());
   return values;
 }
-
 function decodeSqlValue(raw: string): unknown {
   const trimmed = raw.trim();
   if (trimmed === "NULL") return null;
@@ -87,7 +91,6 @@ function decodeSqlValue(raw: string): unknown {
   }
   return trimmed;
 }
-
 function splitAndClauses(whereSql: string): string[] {
   const parts: string[] = [];
   let buf = "";
@@ -129,7 +132,6 @@ function splitAndClauses(whereSql: string): string[] {
   if (buf.trim().length > 0) parts.push(buf.trim());
   return parts;
 }
-
 function rowMatches(row: Record<string, unknown>, whereSql: string): boolean {
   for (const cond of splitAndClauses(whereSql)) {
     const inMatch = cond.match(/^(\w+)\s+IN\s*\(([\s\S]*)\)$/i);
@@ -144,7 +146,6 @@ function rowMatches(row: Record<string, unknown>, whereSql: string): boolean {
   }
   return true;
 }
-
 function parseAssignments(setSql: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const assign of splitSqlList(setSql)) {
@@ -153,7 +154,6 @@ function parseAssignments(setSql: string): Record<string, unknown> {
   }
   return out;
 }
-
 const UPSERT_UPDATE_COLUMNS = [
   "from_entity_id",
   "to_entity_id",
@@ -170,13 +170,13 @@ const UPSERT_UPDATE_COLUMNS = [
   "status",
   "updated_at",
 ] as const;
-
 function executeSql(
   sqlText: string,
   tables: GraphTables,
-): { rows: Array<Record<string, unknown>> } {
+): {
+  rows: Array<Record<string, unknown>>;
+} {
   const trimmed = sqlText.trim();
-
   const insertRel = trimmed.match(
     /^INSERT\s+INTO\s+app_lifeops\.life_relationships_v2\s*\(([\s\S]+?)\)\s*VALUES\s*\(([\s\S]+?)\)\s*(ON\s+CONFLICT[\s\S]*)?$/i,
   );
@@ -200,7 +200,6 @@ function executeSql(
     tables.relationships.set(id, incoming);
     return { rows: [] };
   }
-
   const insertAudit = trimmed.match(
     /^INSERT\s+INTO\s+app_lifeops\.life_relationship_audit_events\s*\(([\s\S]+?)\)\s*VALUES\s*\(([\s\S]+?)\)$/i,
   );
@@ -214,7 +213,6 @@ function executeSql(
     tables.audits.push(row);
     return { rows: [] };
   }
-
   const selectRel = trimmed.match(
     /^SELECT\s+\*\s+FROM\s+app_lifeops\.life_relationships_v2\s+WHERE\s+([\s\S]+?)(?:\s+ORDER\s+BY\s+updated_at\s+DESC)?(?:\s+LIMIT\s+(\d+))?\s*$/i,
   );
@@ -232,7 +230,6 @@ function executeSql(
     }
     return { rows: result };
   }
-
   const selectAudit = trimmed.match(
     /^SELECT\s+\*\s+FROM\s+app_lifeops\.life_relationship_audit_events\s+WHERE\s+([\s\S]+?)\s+ORDER\s+BY\s+created_at\s+ASC\s*$/i,
   );
@@ -242,7 +239,6 @@ function executeSql(
       .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
     return { rows: result };
   }
-
   const updateRel = trimmed.match(
     /^UPDATE\s+app_lifeops\.life_relationships_v2\s+SET\s+([\s\S]+?)\s+WHERE\s+([\s\S]+)$/i,
   );
@@ -254,14 +250,11 @@ function executeSql(
     }
     return { rows: [] };
   }
-
   throw new Error(`unsupported SQL in relationship-store test: ${trimmed}`);
 }
-
 function createTables(): GraphTables {
   return { relationships: new Map(), audits: [] };
 }
-
 function createRuntime(agentId: string, tables: GraphTables): IAgentRuntime {
   return {
     agentId,
@@ -273,7 +266,6 @@ function createRuntime(agentId: string, tables: GraphTables): IAgentRuntime {
     },
   } as unknown as IAgentRuntime;
 }
-
 function edgeInput(
   overrides: {
     relationshipId?: string;
@@ -303,17 +295,14 @@ function edgeInput(
     ...(overrides.status ? { status: overrides.status } : {}),
   };
 }
-
 describe("RelationshipStore", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
   });
-
   afterEach(() => {
     vi.useRealTimers();
   });
-
   it("returns null for a missing relationship id", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -321,7 +310,6 @@ describe("RelationshipStore", () => {
     );
     await expect(store.get("rel_missing")).resolves.toBeNull();
   });
-
   it("creates an edge with a generated rel_ id and omits empty metadata", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -339,7 +327,6 @@ describe("RelationshipStore", () => {
     expect(created.createdAt).toBe("2026-06-01T12:00:00.000Z");
     expect(created.updatedAt).toBe("2026-06-01T12:00:00.000Z");
   });
-
   it("round-trips populated state, evidence, metadata, and sentiment", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -379,7 +366,6 @@ describe("RelationshipStore", () => {
     });
     await expect(store.get("rel_full")).resolves.toEqual(created);
   });
-
   it("preserves createdAt and status on conflict, and omits zero interactionCount", async () => {
     const tables = createTables();
     const store = new RelationshipStore(
@@ -411,7 +397,6 @@ describe("RelationshipStore", () => {
     expect(updated.state.interactionCount).toBeUndefined();
     expect(updated.state.sentimentTrend).toBeUndefined();
   });
-
   it("keeps an existing retired status when the upsert omits status", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -425,7 +410,6 @@ describe("RelationshipStore", () => {
     );
     expect(updated.status).toBe("retired");
   });
-
   it("throws when the inserted row cannot be read back", async () => {
     const runtime = {
       adapter: {
@@ -439,7 +423,6 @@ describe("RelationshipStore", () => {
       /failed to read back upserted relationship/,
     );
   });
-
   it("scopes reads to the store agentId", async () => {
     const tables = createTables();
     const storeA = new RelationshipStore(
@@ -457,19 +440,16 @@ describe("RelationshipStore", () => {
       relationshipId: "rel_shared",
     });
   });
-
   it("lists the empty set, a single element, and DESC updated_at order", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
       "agent-1",
     );
     await expect(store.list()).resolves.toEqual([]);
-
     await store.upsert(edgeInput({ relationshipId: "rel_old" }));
     const single = await store.list();
     expect(single).toHaveLength(1);
     expect(single[0]?.relationshipId).toBe("rel_old");
-
     vi.setSystemTime(new Date("2026-06-01T12:00:02.000Z"));
     await store.upsert(
       edgeInput({ relationshipId: "rel_new", toEntityId: "to-c" }),
@@ -479,7 +459,6 @@ describe("RelationshipStore", () => {
       "rel_old",
     ]);
   });
-
   it("excludes retired edges unless includeRetired is set", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -490,10 +469,8 @@ describe("RelationshipStore", () => {
       edgeInput({ relationshipId: "rel_gone", toEntityId: "to-x" }),
     );
     await store.retire("rel_gone", "no longer relevant");
-
     const active = await store.list();
     expect(active.map((rel) => rel.relationshipId)).toEqual(["rel_live"]);
-
     const all = await store.list({ includeRetired: true });
     expect(all.map((rel) => rel.relationshipId).sort()).toEqual([
       "rel_gone",
@@ -504,7 +481,6 @@ describe("RelationshipStore", () => {
     expect(retired?.retiredAt).toBe("2026-06-01T12:00:00.000Z");
     expect(retired?.retiredReason).toBe("no longer relevant");
   });
-
   it("filters by from, to, type string, type array, and quoted identifiers", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -535,7 +511,6 @@ describe("RelationshipStore", () => {
         type: "knows",
       }),
     );
-
     expect(
       (await store.list({ fromEntityId: "o'reilly" })).map(
         (rel) => rel.relationshipId,
@@ -556,7 +531,6 @@ describe("RelationshipStore", () => {
     ).toEqual(["rel_other", "rel_quote"]);
     expect(await store.list({ type: "" })).toHaveLength(3);
   });
-
   it("applies a finite integer limit in SQL and ignores non-finite limits", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -571,7 +545,6 @@ describe("RelationshipStore", () => {
     await store.upsert(
       edgeInput({ relationshipId: "rel_c", toEntityId: "to-d" }),
     );
-
     expect(
       (await store.list({ limit: 1 })).map((rel) => rel.relationshipId),
     ).toEqual(["rel_c"]);
@@ -584,7 +557,6 @@ describe("RelationshipStore", () => {
       3,
     );
   });
-
   it("matches metadata in memory after the SQL limit, including omitted empty metadata", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -608,7 +580,6 @@ describe("RelationshipStore", () => {
     await store.upsert(
       edgeInput({ relationshipId: "rel_empty", toEntityId: "to-d" }),
     );
-
     expect(
       (await store.list({ metadataMatch: { role: "keep" } })).map(
         (rel) => rel.relationshipId,
@@ -629,7 +600,6 @@ describe("RelationshipStore", () => {
       ),
     ).toEqual(["rel_skip", "rel_keep"]);
   });
-
   it("filters cadence-overdue edges, including the invalid-asOf empty-queue path", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -673,7 +643,6 @@ describe("RelationshipStore", () => {
         state: { lastInteractionAt: "not-a-date" },
       }),
     );
-
     const asOf = "2026-06-01T12:00:00.000Z";
     expect(
       (await store.list({ cadenceOverdueAsOf: asOf }))
@@ -682,7 +651,6 @@ describe("RelationshipStore", () => {
     ).toEqual(["rel_never", "rel_overdue"]);
     expect(await store.list({ cadenceOverdueAsOf: "not-a-date" })).toEqual([]);
   });
-
   it("creates a new edge on observe with extraction source and copied evidence", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -706,7 +674,6 @@ describe("RelationshipStore", () => {
       interactionCount: 1,
     });
   });
-
   it("strengthens an active match: unique evidence, max confidence, bumped count", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -741,7 +708,6 @@ describe("RelationshipStore", () => {
     expect(updated.state.lastInteractionAt).toBe("2026-06-01T13:00:00.000Z");
     expect(updated.state.lastObservedAt).toBe("2026-06-01T13:00:00.000Z");
     expect(updated.state.sentimentTrend).toBe("neutral");
-
     const lower = await store.observe({
       fromEntityId: "from-a",
       toEntityId: "to-b",
@@ -756,7 +722,6 @@ describe("RelationshipStore", () => {
     expect(lower.evidence).toEqual(["a", "b", "c", "d"]);
     expect(lower.state.interactionCount).toBe(4);
   });
-
   it("logs observe-on-retired without flipping status or timestamps", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -766,7 +731,6 @@ describe("RelationshipStore", () => {
     await store.retire("rel_dead", "ended");
     const retired = await store.get("rel_dead");
     if (!retired) throw new Error("expected retired edge");
-
     vi.setSystemTime(new Date("2026-06-01T15:00:00.000Z"));
     const observed = await store.observe({
       fromEntityId: "from-a",
@@ -779,7 +743,6 @@ describe("RelationshipStore", () => {
     expect(observed.status).toBe("retired");
     expect(observed.evidence).toEqual([]);
     expect(observed.updatedAt).toBe("2026-06-01T12:00:00.000Z");
-
     const events = await store.listAuditEvents("rel_dead");
     expect(events.map((event) => event.kind)).toEqual([
       "retire",
@@ -792,7 +755,6 @@ describe("RelationshipStore", () => {
     });
     expect(events[0]?.id).toMatch(/^raud_/);
   });
-
   it("prefers the active edge when a retired triple also exists", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -807,7 +769,6 @@ describe("RelationshipStore", () => {
         confidence: 0.2,
       }),
     );
-
     const observed = await store.observe({
       fromEntityId: "from-a",
       toEntityId: "to-b",
@@ -820,7 +781,6 @@ describe("RelationshipStore", () => {
     expect(observed.evidence).toEqual(["live", "new"]);
     expect((await store.get("rel_old"))?.status).toBe("retired");
   });
-
   it("throws when retiring a missing id and returns no audit rows for it", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
@@ -831,7 +791,6 @@ describe("RelationshipStore", () => {
     );
     await expect(store.listAuditEvents("rel_missing")).resolves.toEqual([]);
   });
-
   it("throws when the runtime database adapter is unavailable", async () => {
     const store = new RelationshipStore(
       { adapter: {} } as unknown as IAgentRuntime,

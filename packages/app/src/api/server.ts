@@ -53,8 +53,8 @@ import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { resolveLinkedAccountsInConfig } from "@elizaos/core/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -82,7 +82,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/shared/elizacloud/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -148,10 +148,10 @@ async function getLocalInferenceRoutes() {
 }
 
 import {
-  ensureRuntimeSqlCompatibility,
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/core/settings-debug";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -195,7 +195,10 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
-import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
+import {
+  clearCloudSecrets,
+  getCloudSecret,
+} from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
@@ -207,7 +210,7 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 import {
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/shared/elizacloud/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------

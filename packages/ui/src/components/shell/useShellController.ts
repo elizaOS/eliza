@@ -14,11 +14,11 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 
-import type { TranscriptSegment } from "@elizaos/shared";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import * as React from "react";
 import type {
   ChatTurnStatus,
@@ -97,8 +97,7 @@ import {
   type ConversationNavDirection,
   resolveAdjacentConversationId,
 } from "./conversation-nav";
-import type { ShellAuthGate } from "./shell-auth-gate";
-import { deriveShellPhase } from "./shell-auth-gate";
+import { deriveShellPhase, type ShellAuthGate } from "./shell-auth-gate";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellAuthGate } from "./useShellAuthGate";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
@@ -114,8 +113,7 @@ export {
 
 /** Upper bound (ms) the conversation-switch / clear loading spinner may show
  *  before it is force-cleared — see `runWithConversationLoading`. */
-const CONVERSATION_LOADING_MAX_MS = 12_000;
-
+const CONVERSATION_LOADING_MAX_MS = 12000;
 /**
  * Grace window (ms) after a capture starts during which an APP_PAUSE is treated
  * as the iOS getUserMedia permission-dialog focus-steal (a transient
@@ -126,14 +124,12 @@ const CONVERSATION_LOADING_MAX_MS = 12_000;
  * transcribe surface is unrecoverable crickets.
  */
 const SHELL_CAPTURE_PAUSE_GRACE_MS = 1500;
-
 /** How a voice capture turn is consumed when it produces a final transcript.
  *  `"transcription"` records long-form: finals accumulate into ONE recording
  *  session (not per-utterance chat bubbles) and the agent stays quiet until an
  *  exit phrase, at which point the session becomes a Transcript record + a chat
  *  link-widget. */
 export type CaptureIntent = "converse" | "dictate" | "transcription" | "ptt";
-
 export interface ShellController {
   phase: ShellPhase;
   /** Cloud-only auth gate. Local-runtime builds stay `{ gated: false }`. */
@@ -319,7 +315,6 @@ export interface ShellController {
    */
   bootProgressSignal?: string;
 }
-
 /**
  * Bridges the shell foundation (HomePill + AssistantOverlay + ChatSurface) to
  * the real agent message flow exposed by {@link useApp}. Replaces the v1
@@ -342,8 +337,16 @@ function isMicPermissionDenialError(err: unknown): boolean {
     typeof err === "object" &&
     err !== null &&
     "name" in err &&
-    typeof (err as { name: unknown }).name === "string"
-      ? (err as { name: string }).name
+    typeof (
+      err as {
+        name: unknown;
+      }
+    ).name === "string"
+      ? (
+          err as {
+            name: string;
+          }
+        ).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
   if (name === "SpeechRecognitionError") return false;
@@ -355,14 +358,21 @@ function isMicPermissionDenialError(err: unknown): boolean {
     haystack.includes("not-allowed")
   );
 }
-
 export function describeCaptureFailure(err: unknown): string {
   const name =
     typeof err === "object" &&
     err !== null &&
     "name" in err &&
-    typeof (err as { name: unknown }).name === "string"
-      ? (err as { name: string }).name
+    typeof (
+      err as {
+        name: unknown;
+      }
+    ).name === "string"
+      ? (
+          err as {
+            name: string;
+          }
+        ).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
   if (name === "SpeechRecognitionError") {
@@ -399,7 +409,6 @@ export function describeCaptureFailure(err: unknown): string {
   }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
-
 /**
  * Silence is a normal outcome for an open microphone, not an actionable
  * failure. Keep true permission, device, transport, and provider failures
@@ -442,9 +451,13 @@ export function isNoSpeechCaptureFailure(err: unknown): boolean {
     normalized.includes("speech timeout")
   );
 }
-
 function describeRealtimeVoiceFailure(
-  outcome: Exclude<RealtimeVoiceStartOutcome, { kind: "live" }>,
+  outcome: Exclude<
+    RealtimeVoiceStartOutcome,
+    {
+      kind: "live";
+    }
+  >,
   surfacedError: string | null,
 ): string {
   if (outcome.kind === "error") {
@@ -465,7 +478,6 @@ function describeRealtimeVoiceFailure(
   }
   return "Cartesia voice is not ready yet. Tap Talk to retry.";
 }
-
 /** Shallow equality for two optional string lists (topic-change detection). */
 function sameStringList(a?: string[], b?: string[]): boolean {
   if (a === b) return true;
@@ -476,14 +488,12 @@ function sameStringList(a?: string[], b?: string[]): boolean {
   }
   return true;
 }
-
 function readAppliedContinuousMode(value: unknown): VoiceContinuousMode | null {
   return typeof value === "string" &&
     VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
     ? (value as VoiceContinuousMode)
     : null;
 }
-
 // Granular shallow selection instead of useApp() so the shell controller only
 // re-renders when one of the exact fields it reads changes — not on every one of
 // the ~300 AppContext fields. typecheck enforces completeness: any `s.x` used
@@ -510,7 +520,6 @@ const selectShellController = (s: AppContextValue) => ({
   setState: s.setState,
   handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
 });
-
 export function useShellController(): ShellController {
   const {
     tab,
@@ -598,7 +607,6 @@ export function useShellController(): ShellController {
   const activeConversationIdRef = React.useRef(activeConversationId);
   conversationsRef.current = conversations;
   activeConversationIdRef.current = activeConversationId;
-
   const handleRealtimeVoiceServerEvent = React.useCallback(
     (event: ServerControlFrame) => {
       if (event.t === "navigate_view") {
@@ -645,7 +653,6 @@ export function useShellController(): ShellController {
     },
     [],
   );
-
   // The persistent shell is the mounted /chat surface, so it owns the one
   // realtime session. The build flag advertises the capability, but only a
   // resolved Dedicated identity plus a healthy conversation-bound probe may
@@ -709,7 +716,6 @@ export function useShellController(): ShellController {
       resolve: (conversationId: string | null) => void;
     }>(),
   );
-
   const ensureActiveConversationForVoice = React.useCallback(async () => {
     // Startup can publish a provisional id before discovering the saved real
     // history. Text and voice must both wait for that selection to settle.
@@ -725,7 +731,6 @@ export function useShellController(): ShellController {
       });
     });
   }, [ensureActiveConversation]);
-
   // A restored id must also reach the realtime hook's committed render before
   // mint/start reads it. A different committed selection cancels this gesture.
   React.useEffect(() => {
@@ -737,7 +742,6 @@ export function useShellController(): ShellController {
       );
     }
   }, [activeConversationId]);
-
   React.useEffect(
     () => () => {
       for (const waiter of conversationIdentityWaitersRef.current) {
@@ -747,7 +751,6 @@ export function useShellController(): ShellController {
     },
     [],
   );
-
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => {
     if (isElectrobunRuntime()) {
@@ -769,7 +772,6 @@ export function useShellController(): ShellController {
     goHome();
     setTab("chat");
   }, [setTab]);
-
   // True while a clear or conversation switch is fetching the next thread, so
   // the overlay can show an in-thread spinner instead of an empty sheet. Cache
   // hits paint synchronously inside handleSelectConversation; the overlay only
@@ -777,7 +779,6 @@ export function useShellController(): ShellController {
   const [conversationLoading, setConversationLoading] = React.useState(false);
   const conversationLoadingSeqRef = React.useRef(0);
   const conversationTransitionBusyRef = React.useRef(false);
-
   // Stop any in-flight assistant speech across a conversation change. `voiceOutput`
   // is defined far below (after the conversation-switch handlers), so mirror its
   // `stopSpeaking` into a ref the clear/switch handlers can call at gesture time
@@ -794,7 +795,6 @@ export function useShellController(): ShellController {
   // (which re-call startCapture every ~250ms) don't spam the toast; cleared on
   // the next successful start so a later failure re-notifies.
   const captureFailureNoticedRef = React.useRef(false);
-
   const runWithConversationLoading = React.useCallback(
     (task: () => Promise<unknown>) => {
       const seq = conversationLoadingSeqRef.current + 1;
@@ -827,7 +827,6 @@ export function useShellController(): ShellController {
     },
     [],
   );
-
   // Clear the chat: drop the current conversation and start a fresh, greeted one
   // (handleNewConversation resets draft state + creates a new conversation with a
   // bootstrap greeting; an empty draft we just left is pruned, a non-empty
@@ -840,7 +839,6 @@ export function useShellController(): ShellController {
     setLastTurnVoice(false);
     runWithConversationLoading(handleNewConversation);
   }, [handleNewConversation, runWithConversationLoading]);
-
   // Switch conversations behind a loading flag so an uncached swipe shows the
   // spinner; a cached one resolves within the same tick (thread already painted).
   // A switch must not leave the previous thread's spoken reply playing into the
@@ -854,7 +852,6 @@ export function useShellController(): ShellController {
     },
     [handleSelectConversation, runWithConversationLoading],
   );
-
   const selectAdjacentConversation = React.useCallback(
     (direction: ConversationNavDirection) => {
       if (conversationTransitionBusyRef.current) {
@@ -871,7 +868,6 @@ export function useShellController(): ShellController {
     },
     [selectConversation],
   );
-
   // Horizontal-swipe navigation between conversations (#8929). Computed by the
   // pure `buildConversationNav` helper (unit-tested) so the index-walk and
   // boundary logic stay verifiable independent of this AppContext-bound hook.
@@ -894,7 +890,6 @@ export function useShellController(): ShellController {
     selectConversation,
     selectAdjacentConversation,
   ]);
-
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
   // mounts early (isShellPaintable) while the agent warms up; the composer stays
@@ -1003,7 +998,6 @@ export function useShellController(): ShellController {
     },
     [],
   );
-
   // Transcription mode accumulates utterances into ONE recording session (not N
   // chat bubbles); on exit the segments become a Transcript record + a chat
   // link-widget, delivered through this sink.
@@ -1050,7 +1044,6 @@ export function useShellController(): ShellController {
       session.buildAudioWav(),
     );
   }, []);
-
   // Identity-preserving projection: reuse the previously-mapped ShellMessage for
   // any turn whose content/failureKind/reasoning is unchanged, so the React.memo
   // on each ThreadLine short-circuits. Without this, every streamed token (which
@@ -1126,11 +1119,13 @@ export function useShellController(): ShellController {
     shellMessageCacheRef.current = next;
     return out;
   }, [conversationMessages]);
-
   // The agent's most recent reply, for the always-on shouldRespond echo guard
   // (suppress a voice turn that's just the agent's own TTS heard back). A ref so
   // the per-capture commit closure reads the live value.
-  const latestAgentReply = React.useMemo<{ text: string; at: number }>(() => {
+  const latestAgentReply = React.useMemo<{
+    text: string;
+    at: number;
+  }>(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const m = messages[i];
       if (m.role === "assistant" && m.content.trim()) {
@@ -1141,7 +1136,6 @@ export function useShellController(): ShellController {
   }, [messages]);
   const latestAgentReplyRef = React.useRef(latestAgentReply);
   latestAgentReplyRef.current = latestAgentReply;
-
   // When a wake-triggered inline reply was sent during transcription, fold the
   // agent's answer into the transcript record (speaker-labeled) so the parallel
   // chat is captured, then clear the one-shot flag (#9880).
@@ -1156,7 +1150,6 @@ export function useShellController(): ShellController {
       speakerLabel: wakeCharacterNameRef.current,
     });
   }, [latestAgentReply, chatSending]);
-
   const send = React.useCallback(
     (
       text: string,
@@ -1194,7 +1187,6 @@ export function useShellController(): ShellController {
     },
     [sendActionMessage],
   );
-
   const stopCaptureAndDrain = React.useCallback(
     async (options?: { immediateUiReset?: boolean }) => {
       const handle = captureRef.current;
@@ -1225,7 +1217,7 @@ export function useShellController(): ShellController {
           await handle.stop();
         } catch {
           /* stop is best-effort from UI controls; transcribe failures surface
-             through onStateChange("error") */
+                   through onStateChange("error") */
         } finally {
           handle.dispose();
           if (options?.immediateUiReset) setSttPending(false);
@@ -1237,14 +1229,12 @@ export function useShellController(): ShellController {
     },
     [],
   );
-
   const stopCapture = React.useCallback(
     (options?: { immediateUiReset?: boolean }) => {
       void stopCaptureAndDrain(options);
     },
     [stopCaptureAndDrain],
   );
-
   // Hold-to-talk cancel (#20483): drop the capture WITHOUT the stop() drain, so
   // no STT round-trip runs and nothing is transcribed or sent. dispose() runs
   // the recorder's cancel() — it releases the MediaStream tracks and closes the
@@ -1268,7 +1258,6 @@ export function useShellController(): ShellController {
     setSttPending(false);
     setTranscript("");
   }, []);
-
   // Discard an in-flight capture on app suspend WITHOUT transcribing (#voice-V1).
   // When iOS backgrounds the PWA mid-capture the `ScriptProcessorNode` stalls,
   // so `handle.stop()` (the drain path) would trigger a doomed STT round-trip on
@@ -1314,7 +1303,6 @@ export function useShellController(): ShellController {
     setRecording(false);
     setTranscript("");
   }, []);
-
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
       // Cloud-only, signed out: refuse capture. User-initiated paths call
@@ -1656,7 +1644,6 @@ export function useShellController(): ShellController {
       setActionNotice,
     ],
   );
-
   // Proactive microphone-permission recheck. Reads the OS grant via
   // `navigator.permissions.query({ name: "microphone" })` without opening the
   // mic, mirrors it into `micPermission`, and — when the grant has been revoked
@@ -1701,7 +1688,6 @@ export function useShellController(): ShellController {
       }
       return state;
     }, [setActionNotice]);
-
   // Engage-time surfacing of a known-denied grant: rolls hands-free back to
   // rest and shows the actionable "re-enable mic" notice (once per grant epoch)
   // instead of opening a mic getUserMedia would reject.
@@ -1715,7 +1701,6 @@ export function useShellController(): ShellController {
       );
     }
   }, [setActionNotice]);
-
   // Engage-time mic-permission gate for the user-tap path. Returns a
   // decision the caller acts on: whether to proceed to open the mic.
   //
@@ -1758,7 +1743,6 @@ export function useShellController(): ShellController {
     },
     [recheckMicPermission, surfaceMicDeniedAtEngage],
   );
-
   const toggleRecording = React.useCallback(() => {
     if (authGate.gated) {
       recoverGatedCapture();
@@ -1782,9 +1766,7 @@ export function useShellController(): ShellController {
     startCapture,
     stopCapture,
   ]);
-
   React.useEffect(() => () => stopCapture(), [stopCapture]);
-
   // Restore a persisted "always-on" continuous-chat mode on boot: engage the
   // hands-free re-listen LOOP (not a one-shot capture) so always-on survives a
   // reload as a real setting — the same state a mic tap produces. Audio output
@@ -1849,7 +1831,6 @@ export function useShellController(): ShellController {
     realtimeVoiceOwnsMedia,
     authGate.gated,
   ]);
-
   // Populate the mic-permission state once on mount so a shell surface can
   // render the correct mic affordance immediately — independent of always-on.
   // This does not toast on denial (no notice on a passive boot probe): it only
@@ -1864,7 +1845,6 @@ export function useShellController(): ShellController {
       micPermissionRef.current = state;
     });
   }, []);
-
   const open = React.useCallback(() => {
     if (authGate.phase === "needs-auth") {
       requestSignIn();
@@ -1880,11 +1860,9 @@ export function useShellController(): ShellController {
     stopRealtimeVoiceRef.current();
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
-
   const toggleAgentVoiceMute = React.useCallback(() => {
     setState("chatAgentVoiceMuted", !chatAgentVoiceMuted);
   }, [chatAgentVoiceMuted, setState]);
-
   const voiceOutput = useShellVoiceOutput({
     conversationMessages: Array.isArray(conversationMessages)
       ? conversationMessages
@@ -1905,7 +1883,6 @@ export function useShellController(): ShellController {
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.
   stopSpeakingRef.current = voiceOutput.stopSpeaking;
   asrProviderRef.current = voiceOutput.asrProvider;
-
   // `recording` (push-to-talk press or continuous capture) wins over an
   // in-flight response so the pill shows the red "listening" pulse the instant
   // the mic opens, even while the previous turn is still streaming (barge-in).
@@ -1933,7 +1910,6 @@ export function useShellController(): ShellController {
     (realtimeVoice.active || realtimeVoice.connecting);
   const responding =
     chatSending || voiceOutput.speaking || realtimeVoiceResponding;
-
   // The rich status (#8813): what the agent is *doing*, distinct from the coarse
   // `responding` boolean. Voice playback wins (the server can't see local TTS).
   // Otherwise prefer the live server phase while a text turn is in flight; if no
@@ -1973,7 +1949,6 @@ export function useShellController(): ShellController {
     chatSending,
     chatFirstTokenReceived,
   ]);
-
   // Opening the popup is independent of runtime readiness. The composer can
   // already queue/send while the server warms, so keeping an opened shell in
   // `booting` would make AssistantOverlay discard it even though `isOpen` is
@@ -1988,7 +1963,6 @@ export function useShellController(): ShellController {
     isOpen,
     authGate: authGate.phase,
   });
-
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still
   // waking: the agent process advancing its lifecycle (`state`) / opening its
@@ -2006,7 +1980,6 @@ export function useShellController(): ShellController {
       `${agentStatus?.resumeProgress?.status ?? ""}:` +
       `${agentStatus?.resumeProgress?.jobId ?? ""}:` +
       `${agentStatus?.resumeProgress?.observedAt ?? ""}`;
-
   // History half of the "no LLM/model provider configured" signal. The server
   // stamps an assistant turn with `failureKind: "no_provider"` when it tried to
   // answer but no provider plugin is wired. Derived from the LATEST assistant
@@ -2021,7 +1994,6 @@ export function useShellController(): ShellController {
     }
     return false;
   }, [messages]);
-
   // AUTHORITATIVE "no provider configured" signal = history stamp AND live
   // server truth. The stamp is persisted in conversation history, so on its own
   // a stale no_provider turn would hijack every later app launch / conversation
@@ -2037,7 +2009,6 @@ export function useShellController(): ShellController {
   // no-provider gate.
   const noProviderConfigured =
     latestAssistantNoProvider && agentStatus?.canRespond === false;
-
   // On the false→true edge, route the user straight to Settings — where the
   // model provider is configured — instead of leaving them staring at a chat
   // that can never answer. The in-transcript no-provider gate remains the error
@@ -2055,12 +2026,10 @@ export function useShellController(): ShellController {
     noProviderNavigatedRef.current = true;
     openSettings();
   }, [noProviderConfigured, openSettings]);
-
   // Live mirror of whether the agent is speaking, for the converse commit
   // closure's echo guard (it reads at send time, after this render).
   const speakingRef = React.useRef(false);
   speakingRef.current = voiceOutput.speaking || realtimeVoice.agentSpeaking;
-
   // The composer's stop control halts the turn — the spoken reply always, and
   // text generation ONLY while it's actually streaming. During pure TTS playback
   // `handleChatStop` must not fire: it's the broad chat-stop that also tears down
@@ -2072,7 +2041,6 @@ export function useShellController(): ShellController {
     }
     voiceOutput.stopSpeaking();
   }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);
-
   const stopRealtimeVoice = React.useCallback(() => {
     realtimeVoiceWantedRef.current = false;
     realtimeVoiceWasActiveRef.current = false;
@@ -2083,7 +2051,6 @@ export function useShellController(): ShellController {
     void realtimeVoiceRef.current.stop();
     voiceOutput.stopSpeaking();
   }, [stopCapture, voiceOutput.stopSpeaking]);
-
   const startRealtimeVoice = React.useCallback(async () => {
     if (authGateRef.current.gated) return;
     if (!realtimeVoiceCanStart) return;
@@ -2096,7 +2063,6 @@ export function useShellController(): ShellController {
       return;
     }
     setRealtimeVoiceBatchFallback(false);
-
     const prior = loadContinuousChatMode();
     if (prior !== "always-on") priorContinuousModeRef.current = prior;
     saveContinuousChatMode("always-on");
@@ -2107,7 +2073,6 @@ export function useShellController(): ShellController {
     handsFreeRef.current = true;
     setIsOpen(true);
     if (captureRef.current) stopCapture();
-
     const conversationId = await ensureActiveConversationForVoice();
     if (authGateRef.current.gated || !realtimeVoiceWantedRef.current) return;
     if (!conversationId) {
@@ -2121,7 +2086,6 @@ export function useShellController(): ShellController {
       setActionNotice(message, "error", 6000);
       return;
     }
-
     if (authGateRef.current.gated) return;
     const outcome = await realtimeVoiceRef.current.start();
     if (!realtimeVoiceWantedRef.current) {
@@ -2129,7 +2093,6 @@ export function useShellController(): ShellController {
       return;
     }
     if (outcome.kind === "live") return;
-
     const message = describeRealtimeVoiceFailure(
       outcome,
       realtimeVoiceRef.current.error?.message || null,
@@ -2156,14 +2119,12 @@ export function useShellController(): ShellController {
     void startRealtimeVoice();
   };
   stopRealtimeVoiceRef.current = stopRealtimeVoice;
-
   // Identity loss ends the current realtime intent; it must not silently
   // reopen the microphone through a different transcription provider. A
   // recovered identity becomes selectable only when all media owners are idle.
   React.useEffect(() => {
     const wasEnabled = realtimeVoiceWasEnabledRef.current;
     realtimeVoiceWasEnabledRef.current = realtimeVoiceEnabled;
-
     if (wasEnabled && !realtimeVoiceEnabled) {
       const shouldContinue =
         realtimeVoiceWantedRef.current ||
@@ -2180,7 +2141,6 @@ export function useShellController(): ShellController {
         setActionNotice(message, "error", 6000);
       }
     }
-
     if (!realtimeVoiceEnabled || !realtimeVoiceBatchFallback) return;
     if (
       authGate.gated ||
@@ -2195,7 +2155,6 @@ export function useShellController(): ShellController {
     ) {
       return;
     }
-
     setRealtimeVoiceBatchFallback(false);
   }, [
     authGate.gated,
@@ -2211,7 +2170,6 @@ export function useShellController(): ShellController {
     setActionNotice,
     voiceOutput.speaking,
   ]);
-
   const stopRecording = React.useCallback(() => {
     if (
       realtimeVoiceWantedRef.current ||
@@ -2225,7 +2183,6 @@ export function useShellController(): ShellController {
     // finger lifts — the STT drain continues in the background (#20483).
     stopCapture({ immediateUiReset: true });
   }, [stopCapture, stopRealtimeVoice]);
-
   // A LIVE Talk session that dies past the client's reconnect budget (network
   // outage longer than the recovery window, terminal server error) must park
   // Talk visibly OFF: restore the persisted mode, clear hands-free, and
@@ -2256,7 +2213,6 @@ export function useShellController(): ShellController {
     realtimeVoice.connecting,
     setActionNotice,
   ]);
-
   // Persisted always-on remains one setting across providers. Once the
   // conversation-bound probe is eligible, Cartesia reclaims an idle Talk loop;
   // a negative probe leaves the batch restoration path authoritative.
@@ -2268,7 +2224,6 @@ export function useShellController(): ShellController {
     priorContinuousModeRef.current = "off";
     startRealtimeVoiceRef.current();
   }, [chatSending, ready, realtimeVoice.connecting, realtimeVoiceSelected]);
-
   // Tap-to-talk: toggle a hands-free conversation. Enabling unlocks audio (the
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
   // both the mic and any in-flight reply.
@@ -2339,7 +2294,6 @@ export function useShellController(): ShellController {
     startRealtimeVoice,
     stopRealtimeVoice,
   ]);
-
   useViewEvent(
     VOICE_SETTINGS_APPLY_EVENT,
     React.useCallback(
@@ -2349,7 +2303,6 @@ export function useShellController(): ShellController {
         if (!continuous) return;
         if (authGateRef.current.gated) return;
         saveContinuousChatMode(continuous);
-
         if (continuous === "always-on") {
           if (handsFreeRef.current) return;
           priorContinuousModeRef.current = "off";
@@ -2363,7 +2316,6 @@ export function useShellController(): ShellController {
           if (!responding) startCapture("converse");
           return;
         }
-
         priorContinuousModeRef.current = continuous;
         if (!handsFreeRef.current) return;
         if (realtimeVoiceSelected) {
@@ -2384,7 +2336,6 @@ export function useShellController(): ShellController {
       ],
     ),
   );
-
   // "Hey eliza" wake word: a native detection arms a bounded listening window
   // that opens the mic and closes once the agent has responded (or after an idle
   // timeout if nothing is said). Implemented as a temporary hands-free engage —
@@ -2429,7 +2380,6 @@ export function useShellController(): ShellController {
       if (captureRef.current) stopCapture();
     }, [realtimeVoiceSelected, stopCapture]),
   });
-
   // Toggle transcription mode (long-form, record-only — the agent never replies
   // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and
   // the composer keeps working; enabling it just pauses the hands-free REPLY
@@ -2496,7 +2446,6 @@ export function useShellController(): ShellController {
     realtimeVoiceSelected,
     recoverGatedCapture,
   ]);
-
   // The mic button while transcribing: turn the mic (and thus transcript) fully
   // OFF. Distinct from `toggleTranscriptionMode`'s off-path, which leaves the
   // mic listening — "turning off the mic turns off transcript" (mic = parent).
@@ -2515,7 +2464,6 @@ export function useShellController(): ShellController {
   // Keep the forward ref current so the converse capture loop (defined above)
   // can flip into transcription on a spoken start phrase.
   toggleTranscriptionModeRef.current = toggleTranscriptionMode;
-
   // A server-side agent action (START/STOP_TRANSCRIPTION) reaches the shell as a
   // window `voice-control` event (the agent-event bus → client bridge); flip
   // transcription to match. Idempotent — "start" while already transcribing (or
@@ -2535,7 +2483,6 @@ export function useShellController(): ShellController {
     return () =>
       window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
   }, []);
-
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form
   // recording continues. Mirrors the hands-free loop but re-opens in
@@ -2568,7 +2515,6 @@ export function useShellController(): ShellController {
     voiceOutput.speaking,
     startCapture,
   ]);
-
   // Typing pauses always-on: when a draft appears while the hands-free mic is
   // live, stop the capture so it doesn't transcribe the room over the keyboard.
   // handsFree stays true, so the re-listen loop resumes once the draft clears.
@@ -2577,7 +2523,6 @@ export function useShellController(): ShellController {
       stopCapture();
     }
   }, [composerHasDraft, handsFree, stopCapture]);
-
   // Hands-free loop: once a spoken reply finishes (and nothing is recording or
   // mid-send), re-open the mic so the conversation continues without a tap. The
   // 250ms debounce + live re-check via handsFreeRef guard against double-start.
@@ -2612,7 +2557,6 @@ export function useShellController(): ShellController {
     startCapture,
     realtimeVoiceOwnsMedia,
   ]);
-
   // ── App suspend / resume: keep voice capture from getting stuck (#voice-V1) ──
   //
   // On the installed iOS PWA, backgrounding the app suspends the WebAudio graph:
@@ -2677,14 +2621,12 @@ export function useShellController(): ShellController {
     voiceOutput.speaking,
     realtimeVoiceOwnsMedia,
   ]);
-
   const waveformMode =
     phase === "listening"
       ? "listening"
       : phase === "responding"
         ? "responding"
         : "idle";
-
   let realtimeVoiceErrorMessage = realtimeVoiceBoundaryError;
   if (
     !realtimeVoiceErrorMessage &&
@@ -2705,7 +2647,6 @@ export function useShellController(): ShellController {
     }
     voiceOutput.unlockAudio();
   }, [realtimeVoiceOwnsMedia, voiceOutput.unlockAudio]);
-
   // Accept input while the agent is still booting; pre-ready sends queue (see
   // `send`) and flush on ready. Send stays enabled mid-response: typing + sending
   // again queues another message into the room (Option A — serialized turns), so
@@ -2716,7 +2657,6 @@ export function useShellController(): ShellController {
   // missing/loading local model must still submit the send. The server returns a
   // failureKind gate ("Connect a provider") that the transcript renders.
   const canSend = agentStatus?.state !== "stopped";
-
   // VISION button: a tap sends a screen-vision turn so the agent runs its
   // plugin-vision screen-capture action (server-side capture + analysis). The
   // transient `visionCapturing` flag pulses the button until the turn is in
@@ -2732,7 +2672,6 @@ export function useShellController(): ShellController {
   React.useEffect(() => {
     if (visionCapturing && responding) setVisionCapturing(false);
   }, [visionCapturing, responding]);
-
   // The auth boundary is terminal for the whole voice loop, not just the
   // in-flight capture: hands-free and transcription state must fall too, or the
   // re-listen loop / transcript-resume path silently reopens the mic the moment
@@ -2754,7 +2693,6 @@ export function useShellController(): ShellController {
     if (authGate.phase === "needs-auth" && isOpen) setIsOpen(false);
     stopRealtimeVoiceRef.current();
   }, [authGate.gated, authGate.phase, cancelCapture, isOpen]);
-
   const startRecording = React.useCallback(
     (intent?: CaptureIntent) => {
       if (authGate.gated) {
@@ -2765,7 +2703,6 @@ export function useShellController(): ShellController {
     },
     [authGate.gated, recoverGatedCapture, startCapture],
   );
-
   return {
     phase,
     authGate,

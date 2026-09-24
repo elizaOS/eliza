@@ -1,6 +1,6 @@
 /** Verifies inbox priority scorer failure handling at the model boundary. */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsInboxMessage } from "@elizaos/shared";
+import { type LifeOpsInboxMessage } from "@elizaos/core/contracts/personal-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   INBOX_PRIORITY_FLAGS_UNBOUNDED,

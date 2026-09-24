@@ -10,10 +10,10 @@ import {
   getEmbeddingVectorSpace,
   ModelType,
 } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { initializeTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { prepareBgeEmbeddingInput } from "./model-catalog/bge-input.js";
 
 it("preserves the admitted tail and rejects incompatible encoder responses", async () => {
   vi.stubEnv("ELIZA_DEVICE_BRIDGE_ENABLED", "1");

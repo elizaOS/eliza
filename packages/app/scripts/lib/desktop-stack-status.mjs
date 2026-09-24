@@ -8,7 +8,7 @@
  */
 
 import { createConnection } from "node:net";
-import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
+import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
 
 const DEFAULT_UI_PORT = 2138;
 const CONNECT_TIMEOUT_MS = 800;

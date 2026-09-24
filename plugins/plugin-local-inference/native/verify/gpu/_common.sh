@@ -44,7 +44,7 @@ Validates the host GPU matches the expected card (${EXPECTED_SHORT_NAME})
 and that the buun-llama-cpp fork has the per-profile kernels available.
 
 Reads per-bundle deployment recommendations from:
-  packages/shared/src/local-inference-gpu/profiles/${PROFILE_ID}.yaml
+  plugins/plugin-native-inference/src/model-gpu/profiles/${PROFILE_ID}.yaml
 
 Environment:
   ELIZA_GPU_BENCH=1                 enable the llama-bench TPS smoke
@@ -78,7 +78,7 @@ fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || echo "$HERE/../../../../..")"
 VERIFY_DIR="$(cd "$HERE/.." && pwd)"
-YAML_PATH="$REPO_ROOT/packages/shared/src/local-inference-gpu/profiles/${PROFILE_ID}.yaml"
+YAML_PATH="$REPO_ROOT/plugins/plugin-native-inference/src/model-gpu/profiles/${PROFILE_ID}.yaml"
 
 REPORT_DIR="${ELIZA_GPU_REPORT_DIR:-$VERIFY_DIR/evidence/gpu/$PROFILE_ID}"
 TIMESTAMP="$(date -u '+%Y%m%dT%H%M%SZ')"
@@ -97,10 +97,10 @@ if (( DRY_RUN == 1 )); then
     echo "[verify-${PROFILE_ID}] --dry-run mode: validating YAML + reading expected kernels…"
 fi
 
-# Parse the YAML once. We resolve `yaml` from the shared package's
+# Parse the YAML once. We resolve `yaml` from the native-inference package's
 # node_modules so the script works regardless of caller cwd. If that
 # fails the YAML may still be malformed — fatal in either case.
-SHARED_PKG_DIR="$REPO_ROOT/packages/shared"
+GPU_OWNER_DIR="$REPO_ROOT/plugins/plugin-native-inference"
 NODE_SCRIPT='import { readFileSync } from "node:fs";
 import YAML from "yaml";
 const yaml = YAML.parse(readFileSync(process.env.YAML_PATH, "utf8"));
@@ -114,9 +114,9 @@ process.stdout.write([
   yaml.verify_recipe.smoke_bundle,
   yaml.verify_recipe.tolerance_pct,
 ].join(" "));'
-PARSED_LINE="$( (cd "$SHARED_PKG_DIR" && YAML_PATH="$YAML_PATH" node --input-type=module -e "$NODE_SCRIPT") 2>/dev/null || true )"
+PARSED_LINE="$( (cd "$GPU_OWNER_DIR" && YAML_PATH="$YAML_PATH" node --input-type=module -e "$NODE_SCRIPT") 2>/dev/null || true )"
 read -r PARSED_GPU_ID PARSED_ARCH PARSED_CMAKE_FLAGS PARSED_KERNELS PARSED_SMOKE_BUNDLE PARSED_TOLERANCE <<< "$PARSED_LINE"
-[[ -n "${PARSED_GPU_ID:-}" ]] || abort 4 "failed to parse $YAML_PATH (yaml dep missing? run 'bun install' in packages/shared)"
+[[ -n "${PARSED_GPU_ID:-}" ]] || abort 4 "failed to parse $YAML_PATH (yaml dep missing? run 'bun install' in plugins/plugin-native-inference)"
 [[ "$PARSED_GPU_ID" == "$PROFILE_ID" ]] || abort 4 "YAML gpu_id mismatch: $PARSED_GPU_ID vs $PROFILE_ID"
 [[ "$PARSED_ARCH" == "$EXPECTED_CUDA_ARCH" ]] || abort 4 "YAML cuda_arch mismatch: $PARSED_ARCH vs $EXPECTED_CUDA_ARCH"
 echo "[verify-${PROFILE_ID}] yaml ok: arch=$PARSED_ARCH smoke=$PARSED_SMOKE_BUNDLE tol=${PARSED_TOLERANCE}%"

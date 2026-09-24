@@ -16,26 +16,21 @@
  *    propagates the outcome to children and flips the parent's state to
  *    `failed` so observers see one consistent terminal state per branch.
  */
-
-import type { TaskExecutionProfile } from "@elizaos/shared";
-
+import { type TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
 // ---------------------------------------------------------------------------
 // ScheduledTask schema (frozen)
 // ---------------------------------------------------------------------------
-
 export type TerminalState =
   | "completed"
   | "skipped"
   | "expired"
   | "failed"
   | "dismissed";
-
 export type ScheduledTaskStatus =
   | TerminalState
   | "scheduled"
   | "fired"
   | "acknowledged";
-
 export type ScheduledTaskKind =
   | "reminder"
   | "checkin"
@@ -45,27 +40,23 @@ export type ScheduledTaskKind =
   | "watcher"
   | "output"
   | "custom";
-
 /**
  * Host execution profiles ({@link TaskExecutionProfile}) are the canonical
  * contract shared with the host-capability probe in `@elizaos/app`, so
- * they live in `@elizaos/shared` and are re-exported here for the
+ * they live in `@elizaos/core` and are re-exported here for the
  * runner and existing `@elizaos/plugin-scheduling` consumers.
  */
-export type { TaskExecutionProfile } from "@elizaos/shared";
 export {
   DEFAULT_TASK_EXECUTION_PROFILE,
   TASK_EXECUTION_PROFILES,
-} from "@elizaos/shared";
-
+  type TaskExecutionProfile,
+} from "@elizaos/core/contracts/scheduled-task-execution";
 export type ScheduledTaskPriority = "low" | "medium" | "high";
-
 export type ScheduledTaskSource =
   | "default_pack"
   | "user_chat"
   | "first_run"
   | "plugin";
-
 export interface ScheduledTaskContextRequest {
   includeOwnerFacts?: (
     | "preferredName"
@@ -94,7 +85,6 @@ export interface ScheduledTaskContextRequest {
   };
   includeEventPayload?: boolean;
 }
-
 /**
  * Push-fired kinds (never wall-clock due; `isScheduledTaskDue` reports them
  * not-due and `next_fire_at` stays NULL):
@@ -107,27 +97,52 @@ export interface ScheduledTaskContextRequest {
  *  - `manual` — fired only by an explicit `fire()` call.
  */
 export type ScheduledTaskTrigger =
-  | { kind: "once"; atIso: string }
-  | { kind: "cron"; expression: string; tz: string }
-  | { kind: "interval"; everyMinutes: number; from?: string; until?: string }
-  | { kind: "relative_to_anchor"; anchorKey: string; offsetMinutes: number }
-  | { kind: "during_window"; windowKey: string }
-  | { kind: "event"; eventKind: string; filter?: EventFilter }
-  | { kind: "manual" }
-  | { kind: "after_task"; taskId: string; outcome: TerminalState };
-
+  | {
+      kind: "once";
+      atIso: string;
+    }
+  | {
+      kind: "cron";
+      expression: string;
+      tz: string;
+    }
+  | {
+      kind: "interval";
+      everyMinutes: number;
+      from?: string;
+      until?: string;
+    }
+  | {
+      kind: "relative_to_anchor";
+      anchorKey: string;
+      offsetMinutes: number;
+    }
+  | {
+      kind: "during_window";
+      windowKey: string;
+    }
+  | {
+      kind: "event";
+      eventKind: string;
+      filter?: EventFilter;
+    }
+  | {
+      kind: "manual";
+    }
+  | {
+      kind: "after_task";
+      taskId: string;
+      outcome: TerminalState;
+    };
 export type GateCompose = "all" | "any" | "first_deny";
-
 export interface ScheduledTaskGateRef {
   kind: string;
   params?: GateParams;
 }
-
 export interface ScheduledTaskShouldFire {
   compose?: GateCompose;
   gates: ScheduledTaskGateRef[];
 }
-
 export interface ScheduledTaskCompletionCheck {
   kind: string;
   params?: CompletionCheckParams;
@@ -141,7 +156,6 @@ export interface ScheduledTaskCompletionCheck {
    */
   followupAfterMinutes?: number;
 }
-
 /**
  * Default `completionCheck.followupAfterMinutes` for approval-kind tasks
  * when the curator did not set one explicitly. Approvals stale fast; a
@@ -149,25 +163,21 @@ export interface ScheduledTaskCompletionCheck {
  * to repeat it on every approval definition.
  */
 export const APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES = 60;
-
 export interface EscalationStep {
   delayMinutes: number;
   channelKey: string;
   intensity?: "soft" | "normal" | "urgent";
 }
-
 export interface ScheduledTaskEscalation {
   ladderKey?: string;
   steps?: EscalationStep[];
 }
-
 export type ScheduledTaskOutputDestination =
   | "in_app_card"
   | "channel"
   | "apple_notes"
   | "gmail_draft"
   | "memory";
-
 export interface ScheduledTaskOutput {
   destination: ScheduledTaskOutputDestination;
   target?: string;
@@ -182,7 +192,6 @@ export interface ScheduledTaskOutput {
     title?: string;
   };
 }
-
 /** Context material resolved from a task's structural `contextRequest`. */
 export interface ScheduledTaskResolvedContext {
   ownerFacts?: Partial<
@@ -225,7 +234,10 @@ export interface ScheduledTaskResolvedContext {
       outcome: TerminalState;
       consecutive: number;
     }>;
-    notable: Array<{ taskId: string; observation: string }>;
+    notable: Array<{
+      taskId: string;
+      observation: string;
+    }>;
   };
   eventPayload?: unknown;
   activityPacing?: {
@@ -235,15 +247,12 @@ export interface ScheduledTaskResolvedContext {
   };
   recentConversation?: string[];
 }
-
 export type ScheduledTaskMetadata = Record<string, unknown>;
-
 export interface ScheduledTaskPipeline {
   onComplete?: ScheduledTaskRef[];
   onSkip?: ScheduledTaskRef[];
   onFail?: ScheduledTaskRef[];
 }
-
 export type ScheduledTaskSubjectKind =
   | "entity"
   | "relationship"
@@ -251,12 +260,10 @@ export type ScheduledTaskSubjectKind =
   | "document"
   | "calendar_event"
   | "self";
-
 export interface ScheduledTaskSubject {
   kind: ScheduledTaskSubjectKind;
   id: string;
 }
-
 export interface ScheduledTaskState {
   status: ScheduledTaskStatus;
   firedAt?: string;
@@ -267,7 +274,6 @@ export interface ScheduledTaskState {
   pipelineParentId?: string;
   lastDecisionLog?: string;
 }
-
 export interface ScheduledTask {
   taskId: string;
   kind: ScheduledTaskKind;
@@ -305,14 +311,12 @@ export interface ScheduledTask {
    */
   executionProfile?: TaskExecutionProfile;
 }
-
 /**
  * The "input shape" accepted by `runner.schedule()` — the full task minus the
  * server-managed `taskId` and `state` (the runner generates both). Consumers
  * (seed packs, the SCHEDULED_TASKS action, the REST route) build this shape.
  */
 export type ScheduledTaskInput = Omit<ScheduledTask, "taskId" | "state">;
-
 /**
  * Keys `apply("edit")` refuses outright, checked with `Object.hasOwn` before
  * anything merges onto the task.
@@ -330,16 +334,13 @@ export const SCHEDULED_TASK_EDIT_READONLY_KEYS = [
   "state",
   "__proto__",
 ] as const;
-
 export type ScheduledTaskRef = string | ScheduledTask;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
 export type GateParams = unknown; // typed via TaskGateRegistry per kind
 export type CompletionCheckParams = unknown; // typed via CompletionCheckRegistry per kind
-
 // ---------------------------------------------------------------------------
 // §1.2 Runner verbs (frozen)
 // ---------------------------------------------------------------------------
-
 export type ScheduledTaskVerb =
   | "snooze"
   | "skip"
@@ -349,10 +350,8 @@ export type ScheduledTaskVerb =
   | "acknowledge"
   | "edit"
   | "reopen";
-
 /** Lifecycle mutations whose user acknowledgement can bind to a durable log. */
 export type ScheduledTaskReceiptVerb = "snooze" | "complete" | "dismiss";
-
 export interface ScheduledTaskFilter {
   kind?: ScheduledTaskKind;
   status?: ScheduledTaskStatus | ScheduledTaskStatus[];
@@ -361,14 +360,12 @@ export interface ScheduledTaskFilter {
   firedSince?: string;
   ownerVisibleOnly?: boolean;
 }
-
 /** Durable outcome for one scheduling request, including replay authority. */
 export interface ScheduledTaskScheduleResult {
   task: ScheduledTask;
   commit: ScheduledTaskLogEntry;
   replayed: boolean;
 }
-
 /** Durable outcome for one receipt-keyed task mutation. */
 export interface ScheduledTaskApplyResult {
   task: ScheduledTask;
@@ -376,14 +373,12 @@ export interface ScheduledTaskApplyResult {
   idempotencyKey: string;
   replayed: boolean;
 }
-
 /** Durable, non-mutating intent marker used to fence a multi-task mutation. */
 export interface ScheduledTaskApplyIntentResult {
   task: ScheduledTask;
   idempotencyKey: string;
   replayed: boolean;
 }
-
 export interface ScheduledTaskRunner {
   scheduleWithResult(
     task: Omit<ScheduledTask, "taskId" | "state">,
@@ -427,20 +422,28 @@ export interface ScheduledTaskRunner {
   ): Promise<ScheduledTaskApplyIntentResult>;
   pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
-
 // ---------------------------------------------------------------------------
 // §1.3 Gate / completion-check registries (frozen)
 // ---------------------------------------------------------------------------
-
 export type GateDecision =
-  | { kind: "allow" }
-  | { kind: "deny"; reason: string }
+  | {
+      kind: "allow";
+    }
+  | {
+      kind: "deny";
+      reason: string;
+    }
   | {
       kind: "defer";
-      until: { offsetMinutes: number } | { atIso: string };
+      until:
+        | {
+            offsetMinutes: number;
+          }
+        | {
+            atIso: string;
+          };
       reason: string;
     };
-
 /**
  * Owner facts the gates / completion-checks read — the minimal surface every
  * owner-fact consumer agrees to.
@@ -449,9 +452,19 @@ export interface OwnerFactsView {
   preferredName?: string;
   timezone?: string;
   locale?: string;
-  morningWindow?: { start?: string; end?: string };
-  eveningWindow?: { start?: string; end?: string };
-  quietHours?: { start: string; end: string; tz: string };
+  morningWindow?: {
+    start?: string;
+    end?: string;
+  };
+  eveningWindow?: {
+    start?: string;
+    end?: string;
+  };
+  quietHours?: {
+    start: string;
+    end: string;
+    tz: string;
+  };
   travelActive?: boolean;
   personalBaseline?: {
     sampleCount?: number;
@@ -467,7 +480,6 @@ export interface OwnerFactsView {
   /** Learned chronotype from the owner's mid-sleep point (MCTQ-style terciles). */
   chronotype?: "early" | "intermediate" | "late";
 }
-
 /**
  * Activity-signal subscriber surface. The runner consumes only the read
  * side — completion-checks (`subject_updated`, `health_signal_observed`)
@@ -481,7 +493,6 @@ export interface ActivitySignalBusView {
     subject?: ScheduledTaskSubject;
   }): boolean | Promise<boolean>;
 }
-
 /**
  * Subject-resolution surface — the minimum the runner needs to know about a
  * subject to evaluate a completion-check.
@@ -492,7 +503,6 @@ export interface SubjectStoreView {
     sinceIso: string;
   }): boolean | Promise<boolean>;
 }
-
 /**
  * Global-pause surface (`GlobalPauseStore`). The runner consults it pre-fire;
  * tasks with `respectsGlobalPause: true` skip with `reason = "global_pause"`.
@@ -505,7 +515,6 @@ export interface GlobalPauseView {
     reason?: string;
   }>;
 }
-
 export interface GateEvaluationContext {
   task: ScheduledTask;
   nowIso: string;
@@ -513,7 +522,6 @@ export interface GateEvaluationContext {
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
 }
-
 export interface CompletionCheckContext {
   task: ScheduledTask;
   nowIso: string;
@@ -523,9 +531,10 @@ export interface CompletionCheckContext {
   /** Whether the user explicitly acknowledged this fire (for `user_acknowledged`). */
   acknowledged: boolean;
   /** Whether the user replied (any inbound) since the most recent fire. */
-  repliedSinceFiredAt?: { atIso: string };
+  repliedSinceFiredAt?: {
+    atIso: string;
+  };
 }
-
 export interface TaskGateContribution {
   kind: string;
   paramsSchema?: unknown;
@@ -534,7 +543,6 @@ export interface TaskGateContribution {
     context: GateEvaluationContext,
   ): GateDecision | Promise<GateDecision>;
 }
-
 export interface CompletionCheckContribution {
   kind: string;
   paramsSchema?: unknown;
@@ -543,11 +551,9 @@ export interface CompletionCheckContribution {
     context: CompletionCheckContext,
   ): boolean | Promise<boolean>;
 }
-
 // ---------------------------------------------------------------------------
 // §1.4 Anchor + consolidation registries (frozen)
 // ---------------------------------------------------------------------------
-
 /**
  * Input to an anchor resolver. `nowIso` is the reference instant, not
  * necessarily the wall clock: a resolver answers with the anchor instant for
@@ -561,19 +567,24 @@ export interface AnchorContext {
   nowIso: string;
   ownerFacts: OwnerFactsView;
 }
-
 export interface AnchorContribution {
   /** The host atomically consumes persisted admission instead of comparing firedAt. */
   consumption?: "host_claim";
   anchorKey: string;
-  describe: { label: string; provider: string };
-  resolve(
-    context: AnchorContext,
-  ): { atIso: string } | null | Promise<{ atIso: string } | null>;
+  describe: {
+    label: string;
+    provider: string;
+  };
+  resolve(context: AnchorContext):
+    | {
+        atIso: string;
+      }
+    | null
+    | Promise<{
+        atIso: string;
+      } | null>;
 }
-
 export type AnchorConsolidationMode = "merge" | "sequential" | "parallel";
-
 export interface AnchorConsolidationPolicy {
   anchorKey: string;
   mode: AnchorConsolidationMode;
@@ -581,11 +592,9 @@ export interface AnchorConsolidationPolicy {
   maxBatchSize?: number;
   sortBy?: "priority_desc" | "fired_at_asc";
 }
-
 // ---------------------------------------------------------------------------
 // State-log row
 // ---------------------------------------------------------------------------
-
 export type ScheduledTaskLogTransition =
   | "scheduled"
   | "fire_attempt"
@@ -614,7 +623,6 @@ export type ScheduledTaskLogTransition =
    * `{ attempt, maxAttempts, retryAfterMinutes, nextAttemptAtIso }`.
    */
   | "dispatch_retried";
-
 export interface ScheduledTaskLogEntry {
   logId: string;
   taskId: string;

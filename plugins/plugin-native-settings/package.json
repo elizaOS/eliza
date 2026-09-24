@@ -38,7 +38,6 @@
   "dependencies": {
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },

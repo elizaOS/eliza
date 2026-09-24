@@ -91,7 +91,6 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "git-workspace-service": "0.4.5"
   },
   "dependencies": {
@@ -103,20 +102,19 @@
     "smol-toml": "^1.8.0",
     "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^1.0.0",
     "marked": "^18.0.13",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/node": "^25.2.3",
     "bun-types": "1.4.2",
@@ -128,7 +126,8 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "playwright": "^1.63.0",
     "tsup": "^8.5.1",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

@@ -28,7 +28,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { parseInteractionBlocks } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID } from "../src/lifeops/resource-capacity/types.js";
 import { googleHandoffFixture } from "./helpers/handoff-google.js";

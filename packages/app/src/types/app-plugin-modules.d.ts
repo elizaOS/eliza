@@ -2,7 +2,7 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import type { CodingAgentTasksPanelProps } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 import type { sanitizeCompletionRelay as SanitizeCompletionRelay } from "../../../../plugins/plugin-agent-orchestrator/src/services/transcript-sanitizer";

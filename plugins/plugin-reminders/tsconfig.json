@@ -21,10 +21,11 @@
       "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-sql/database-utils/carve-out-migration": [
+        "../plugin-sql/src/database-utils/carve-out-migration.ts"
+      ]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],

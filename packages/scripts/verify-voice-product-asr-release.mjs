@@ -8,7 +8,7 @@ import {
   compareVoiceModelSemver,
   VOICE_MODEL_VERSIONS,
   voiceModelAssetUrl,
-} from "../shared/src/local-inference/voice-models.ts";
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const IMMUTABLE_REVISION_PATTERN = /^[0-9a-f]{40}$/;

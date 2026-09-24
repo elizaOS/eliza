@@ -34,7 +34,7 @@ import {
   sanitizeOutboundTextWithLiterals,
   stripReasoningBlocks,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import { v4 } from "uuid";
 import { PASSIVE_TURN_ACTIONS } from "./action-ownership.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";

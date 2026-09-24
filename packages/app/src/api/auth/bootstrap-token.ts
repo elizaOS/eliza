@@ -12,18 +12,16 @@
  * `{ ok: false, reason }` and the caller MUST refuse the request.
  */
 
-import type { RuntimeEnvRecord } from "@elizaos/shared";
+import { type RuntimeEnvRecord } from "@elizaos/core/runtime-env";
 import { createLocalJWKSet, jwtVerify } from "jose";
-import type { AuthRepository } from "../../services/auth-store";
+import { type AuthRepository } from "../../services/auth-store";
 import {
   type JwksDocument,
   readCachedJwks,
   writeCachedJwks,
 } from "../../services/cloud-jwks-store";
-
 export const BOOTSTRAP_TOKEN_ALG = "RS256";
 export const BOOTSTRAP_TOKEN_SCOPE = "bootstrap";
-
 export interface BootstrapTokenClaims {
   iss: string;
   sub: string;
@@ -33,11 +31,15 @@ export interface BootstrapTokenClaims {
   exp: number;
   jti: string;
 }
-
 export type VerifyBootstrapResult =
-  | { ok: true; claims: BootstrapTokenClaims }
-  | { ok: false; reason: VerifyBootstrapFailureReason };
-
+  | {
+      ok: true;
+      claims: BootstrapTokenClaims;
+    }
+  | {
+      ok: false;
+      reason: VerifyBootstrapFailureReason;
+    };
 export type VerifyBootstrapFailureReason =
   | "missing_issuer_env"
   | "missing_container_env"
@@ -52,14 +54,12 @@ export type VerifyBootstrapFailureReason =
   | "expired"
   | "replay"
   | "store_error";
-
 interface VerifyOptions {
   env?: RuntimeEnvRecord;
   authStore: AuthRepository;
   fetchImpl?: typeof fetch;
   now?: () => number;
 }
-
 interface RawClaims {
   iss?: unknown;
   sub?: unknown;
@@ -70,20 +70,21 @@ interface RawClaims {
   jti?: unknown;
   [otherProperty: string]: unknown;
 }
-
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
-
-function shapeClaims(
-  payload: RawClaims,
-):
-  | { ok: true; claims: BootstrapTokenClaims }
-  | { ok: false; reason: VerifyBootstrapFailureReason } {
+function shapeClaims(payload: RawClaims):
+  | {
+      ok: true;
+      claims: BootstrapTokenClaims;
+    }
+  | {
+      ok: false;
+      reason: VerifyBootstrapFailureReason;
+    } {
   if (
     !isNonEmptyString(payload.iss) ||
     !isNonEmptyString(payload.sub) ||
@@ -110,7 +111,6 @@ function shapeClaims(
     },
   };
 }
-
 async function loadJwks(
   issuer: string,
   options: VerifyOptions,
@@ -127,7 +127,9 @@ async function loadJwks(
   if (!response.ok) return null;
   const body: unknown = await response.json();
   if (!body || typeof body !== "object") return null;
-  const candidate = body as { keys?: unknown };
+  const candidate = body as {
+    keys?: unknown;
+  };
   if (!Array.isArray(candidate.keys)) return null;
   const document: JwksDocument = {
     keys: candidate.keys as JwksDocument["keys"],
@@ -135,7 +137,6 @@ async function loadJwks(
   await writeCachedJwks(issuer, document, { env, now });
   return document;
 }
-
 /**
  * Verify a bootstrap token.
  *
@@ -156,7 +157,6 @@ export async function verifyBootstrapToken(
   if (!token || typeof token !== "string" || token.length < 8) {
     return { ok: false, reason: "missing_token" };
   }
-
   let jwks: JwksDocument | null;
   try {
     jwks = await loadJwks(issuer, options);
@@ -166,12 +166,10 @@ export async function verifyBootstrapToken(
   if (!jwks || jwks.keys.length === 0) {
     return { ok: false, reason: "jwks_fetch_failed" };
   }
-
   // jose's local JWKS resolver enforces the algorithm we restrict to via
   // `algorithms`. We pin RS256 explicitly — anything else (notably HS256
   // signed with a leaked secret) MUST be rejected.
   const localJwks = createLocalJWKSet({ keys: jwks.keys });
-
   let payload: RawClaims;
   try {
     const verified = await jwtVerify(token, localJwks, {
@@ -180,10 +178,18 @@ export async function verifyBootstrapToken(
     });
     payload = verified.payload as RawClaims;
   } catch (err) {
-    const code = (err as { code?: string }).code;
+    const code = (
+      err as {
+        code?: string;
+      }
+    ).code;
     if (code === "ERR_JWT_EXPIRED") return { ok: false, reason: "expired" };
     if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
-      const claim = (err as { claim?: string }).claim;
+      const claim = (
+        err as {
+          claim?: string;
+        }
+      ).claim;
       if (claim === "iss") return { ok: false, reason: "issuer_mismatch" };
       return { ok: false, reason: "claims_invalid" };
     }
@@ -195,22 +201,18 @@ export async function verifyBootstrapToken(
     }
     return { ok: false, reason: "signature_invalid" };
   }
-
   const shape = shapeClaims(payload);
   if (!shape.ok) return shape;
   const claims = shape.claims;
-
   if (claims.iss !== issuer) return { ok: false, reason: "issuer_mismatch" };
   if (claims.containerId !== expectedContainerId) {
     return { ok: false, reason: "container_mismatch" };
   }
-
   const now = options.now?.() ?? Date.now();
   // Defence in depth: jose already rejects expired tokens, but an attacker
   // who controls the signing key could mint with an excessive `exp` we still
   // refuse to honour beyond reason.
   if (claims.exp * 1000 <= now) return { ok: false, reason: "expired" };
-
   let unseen: boolean;
   try {
     unseen = await options.authStore.recordJtiSeen(claims.jti, now);
@@ -218,6 +220,5 @@ export async function verifyBootstrapToken(
     return { ok: false, reason: "store_error" };
   }
   if (!unseen) return { ok: false, reason: "replay" };
-
   return { ok: true, claims };
 }

@@ -25,7 +25,7 @@ import {
   VaultDecryptionError,
 } from "@elizaos/auth/vault";
 import { logger } from "@elizaos/core";
-import type { WalletChain } from "@elizaos/shared";
+import { type WalletChain } from "@elizaos/core/contracts/wallet-types";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 

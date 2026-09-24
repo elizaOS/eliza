@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 /**
  * Post-install patches for third-party/runtime packaging issues.
  *
@@ -19,15 +28,6 @@
  * docs/retired-patches.md — do not add new memorial comments in this
  * file.
  */
-import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -53,20 +53,17 @@ const cleanupHelperScript = resolve(
   "scripts",
   "rm-path-recursive.mjs",
 );
-
 function removePathRecursive(targetPath) {
   execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
     cwd: root,
     stdio: "inherit",
   });
 }
-
 // ---------------------------------------------------------------------------
 // Bust stale Bun cache entries for @elizaos packages.
 // See warnStaleBunCache() in lib/patch-bun-exports.mjs for details.
 // ---------------------------------------------------------------------------
 warnStaleBunCache(root);
-
 // ---------------------------------------------------------------------------
 // Bun auto-installs @types/* packages into node_modules/.bun/ and can resolve
 // them at runtime instead of the real packages. The .d.ts files use
@@ -98,7 +95,6 @@ warnStaleBunCache(root);
     );
   }
 }
-
 // @noble/hashes only exports subpaths with explicit ".js" suffixes (for
 // example "./sha3.js"), but ethers imports "@noble/hashes/sha3". Add
 // extensionless aliases so Bun resolves the published package at runtime.
@@ -120,9 +116,8 @@ pruneNestedElizaPluginCoreCopies(root);
 try {
   patchAutonomousElizaCharacterPresets(root);
 } catch {
-  // Source file may not exist (moved to @elizaos/shared).
+  // Source file may not exist (moved to @elizaos/core).
 }
-
 function uniqueResolvedPaths(paths) {
   return [...new Set(paths.map((candidate) => resolve(candidate)))];
 }
@@ -131,7 +126,6 @@ function collectInstalledPackageDirs(
   { includeGlobalBunCache = false } = {},
 ) {
   const searchDirs = [resolve(root, `node_modules/${packageName}`)];
-
   const bunCacheDir = resolve(root, "node_modules/.bun");
   if (existsSync(bunCacheDir)) {
     const bunEntryPrefix = `${packageName.replace("/", "+")}@`;
@@ -145,7 +139,6 @@ function collectInstalledPackageDirs(
       }
     } catch {}
   }
-
   if (includeGlobalBunCache && process.env.HOME) {
     const globalBunCacheDir = resolve(
       process.env.HOME,
@@ -179,10 +172,8 @@ function collectInstalledPackageDirs(
       }
     }
   }
-
   return uniqueResolvedPaths(searchDirs);
 }
-
 // ---------------------------------------------------------------------------
 // @elizaos/plugin-openrouter — this repo uses workspace:* during local
 // development, but the last known-good published tarball remains 2.0.0-alpha.10.
@@ -199,7 +190,6 @@ function collectInstalledPackageDirs(
 // run: bun build node_modules/@elizaos/plugin-openrouter/dist/node/index.node.js --target=bun
 // Docs: docs/plugin-resolution-and-node-path.md (Pinned: @elizaos/plugin-openrouter)
 // ---------------------------------------------------------------------------
-
 /**
  * Patch bigint-buffer optional native binding warning noise.
  *
@@ -224,7 +214,6 @@ function patchBigintBufferNativeFallbackNoise() {
       }
     } catch {}
   }
-
   const globalBunCacheDir =
     process.env.HOME &&
     existsSync(resolve(process.env.HOME, ".bun", "install", "cache"))
@@ -239,12 +228,10 @@ function patchBigintBufferNativeFallbackNoise() {
       }
     } catch {}
   }
-
   const oldSnippet =
     "console.warn('bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)');";
   const newSnippet =
     "if (process.env.ELIZA_DEBUG_BIGINT_BINDINGS === \"1\") {\n        console.warn('bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)');\n    }";
-
   let patched = 0;
   for (const dir of uniqueResolvedPaths(searchDirs)) {
     for (const relPath of relPaths) {
@@ -260,7 +247,6 @@ function patchBigintBufferNativeFallbackNoise() {
       );
     }
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] bigint-buffer: patched ${patched} native fallback warning path(s).`,
@@ -268,7 +254,6 @@ function patchBigintBufferNativeFallbackNoise() {
   }
 }
 patchBigintBufferNativeFallbackNoise();
-
 /**
  * Force Baileys to reuse the repo root sharp package.
  *
@@ -284,11 +269,9 @@ function patchBaileysNestedSharpCopies() {
   if (!existsSync(bunCacheDir) || !existsSync(rootSharp)) {
     return;
   }
-
   const rootSharpRealPath = realpathSync(rootSharp);
   const linkType = process.platform === "win32" ? "junction" : "dir";
   let patched = 0;
-
   try {
     for (const entry of readdirSync(bunCacheDir)) {
       if (!entry.startsWith("@whiskeysockets+baileys@")) continue;
@@ -305,7 +288,6 @@ function patchBaileysNestedSharpCopies() {
       `[patch-deps] Failed to normalize Baileys sharp dependency: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] Baileys: normalized ${patched} nested sharp path(s) to the root sharp package.`,
@@ -313,7 +295,6 @@ function patchBaileysNestedSharpCopies() {
   }
 }
 patchBaileysNestedSharpCopies();
-
 /**
  * Normalize stale Bun sharp store aliases to the canonical root sharp version.
  *
@@ -328,7 +309,6 @@ function patchLegacySharpStoreAliases() {
   if (!existsSync(bunCacheDir)) {
     return;
   }
-
   const linkType = process.platform === "win32" ? "junction" : "dir";
   const aliasPairs = [
     ["sharp@0.33.5", "sharp@0.34.5"],
@@ -338,17 +318,14 @@ function patchLegacySharpStoreAliases() {
       "@img+sharp-libvips-darwin-arm64@1.2.4",
     ],
   ];
-
   let patched = 0;
   for (const [staleEntry, canonicalEntry] of aliasPairs) {
     const stalePath = resolve(bunCacheDir, staleEntry);
     const canonicalPath = resolve(bunCacheDir, canonicalEntry);
     if (!existsSync(stalePath) || !existsSync(canonicalPath)) continue;
-
     const canonicalRealPath = realpathSync(canonicalPath);
     const staleRealPath = realpathSync(stalePath);
     if (staleRealPath === canonicalRealPath) continue;
-
     removePathRecursive(stalePath);
     symlinkSync(canonicalRealPath, stalePath, linkType);
     patched++;
@@ -356,7 +333,6 @@ function patchLegacySharpStoreAliases() {
       `[patch-deps] Aliased stale sharp store entry ${staleEntry} -> ${canonicalRealPath}`,
     );
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] sharp: normalized ${patched} stale Bun store alias(es) to the canonical sharp version.`,
@@ -364,7 +340,6 @@ function patchLegacySharpStoreAliases() {
   }
 }
 patchLegacySharpStoreAliases();
-
 /**
  * Keep jsdom from eagerly requiring node-canvas on startup.
  *
@@ -392,16 +367,13 @@ function patchJsdomCanvasAutoload() {
 } else {
   exports.Canvas = null;
 }`;
-
   let patched = 0;
   for (const dir of searchDirs) {
     for (const relPath of relPaths) {
       const target = resolve(dir, relPath);
       if (!existsSync(target)) continue;
-
       const src = readFileSync(target, "utf8");
       if (!src.includes(oldSnippet)) continue;
-
       writeFileSync(target, src.replace(oldSnippet, newSnippet), "utf8");
       patched++;
       console.log(
@@ -409,7 +381,6 @@ function patchJsdomCanvasAutoload() {
       );
     }
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] jsdom: patched ${patched} eager canvas autoload path(s).`,
@@ -417,7 +388,6 @@ function patchJsdomCanvasAutoload() {
   }
 }
 patchJsdomCanvasAutoload();
-
 /**
  * Vite caches prebundled dependencies under node_modules/.vite. When patch-deps
  * rewrites installed @elizaos packages, that cache can keep serving the old
@@ -433,7 +403,6 @@ for (const viteCacheDir of [
   removePathRecursive(viteCacheDir);
   console.log(`[patch-deps] Cleared Vite optimize cache: ${viteCacheDir}`);
 }
-
 /**
  * Patch llama-cpp-capacitor Gradle syntax for Gradle 9 / AGP 9 compatibility.
  *
@@ -460,12 +429,10 @@ function patchLlamaCppCapacitorGradle() {
   const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
     includeGlobalBunCache: true,
   });
-
   let patched = 0;
   for (const dir of searchDirs) {
     const target = resolve(dir, relPath);
     if (!existsSync(target)) continue;
-
     let src = readFileSync(target, "utf8");
     let changed = false;
     for (const [before, after] of replacements) {
@@ -473,7 +440,6 @@ function patchLlamaCppCapacitorGradle() {
       src = src.replaceAll(before, after);
       changed = true;
     }
-
     if (!changed) continue;
     writeFileSync(target, src, "utf8");
     patched++;
@@ -481,7 +447,6 @@ function patchLlamaCppCapacitorGradle() {
       `[patch-deps] Applied llama-cpp-capacitor Gradle compatibility patch: ${target}`,
     );
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] llama-cpp-capacitor: patched ${patched} Gradle file(s).`,
@@ -489,7 +454,6 @@ function patchLlamaCppCapacitorGradle() {
   }
 }
 patchLlamaCppCapacitorGradle();
-
 /**
  * Patch llama-cpp-capacitor's Android embedding JNI for Capacitor 8.
  *
@@ -536,12 +500,10 @@ function patchLlamaCppCapacitorAndroidEmbeddingParams() {
   const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
     includeGlobalBunCache: true,
   });
-
   let patched = 0;
   for (const dir of searchDirs) {
     const target = resolve(dir, relPath);
     if (!existsSync(target)) continue;
-
     let src = readFileSync(target, "utf8");
     if (!src.includes(oldSnippet)) continue;
     src = src.replace(oldSnippet, newSnippet);
@@ -551,7 +513,6 @@ function patchLlamaCppCapacitorAndroidEmbeddingParams() {
       `[patch-deps] Applied llama-cpp-capacitor Android embedding JNI patch: ${target}`,
     );
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] llama-cpp-capacitor: patched ${patched} Android embedding JNI path(s).`,
@@ -559,7 +520,6 @@ function patchLlamaCppCapacitorAndroidEmbeddingParams() {
   }
 }
 patchLlamaCppCapacitorAndroidEmbeddingParams();
-
 /**
  * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.
  *
@@ -587,10 +547,8 @@ function patchCssstyleColorCompat() {
       }
     } catch {}
   }
-
   const needle = 'require("@asamuzakjp/css-color")';
   const replacement = 'require("@elizaos/css-color-cjs")';
-
   let patched = 0;
   for (const dir of searchDirs) {
     const target = resolve(dir, relPath);
@@ -602,7 +560,6 @@ function patchCssstyleColorCompat() {
     patched++;
     console.log(`[patch-deps] Applied cssstyle color compat fix: ${target}`);
   }
-
   if (patched > 0) {
     console.log(
       `[patch-deps] cssstyle: fixed ${patched} parser require path(s).`,

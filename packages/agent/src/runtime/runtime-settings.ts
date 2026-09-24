@@ -13,8 +13,8 @@ import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   resolveServiceRoutingInConfig,
-  type ServiceRouteConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
+import { type ServiceRouteConfig } from "@elizaos/core/contracts/service-routing";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,

@@ -41,7 +41,7 @@
  * through fakes — not stubs of the client itself.
  */
 
-import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/shared";
+import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/core/voice";
 import type { VoiceContinuousStatus } from "./voice-chat-types";
 import {
   type MicAudioContextLike,
@@ -77,7 +77,6 @@ import {
   toContinuousStatus,
   type VoiceSessionMachineState,
 } from "./voice-session-state";
-
 /** Minimal WebSocket surface the client drives (native or fake). */
 export interface VoiceWebSocketLike {
   binaryType: string;
@@ -94,7 +93,6 @@ export interface VoiceWebSocketLike {
   ): void;
   addEventListener(type: "error", listener: () => void): void;
 }
-
 function isVoiceWebSocketLike(value: unknown): value is VoiceWebSocketLike {
   return (
     typeof value === "object" &&
@@ -105,7 +103,6 @@ function isVoiceWebSocketLike(value: unknown): value is VoiceWebSocketLike {
     typeof Reflect.get(value, "addEventListener") === "function"
   );
 }
-
 function closeInvalidNativeWebSocket(socket: unknown): void {
   if ((typeof socket !== "object" && typeof socket !== "function") || !socket) {
     return;
@@ -118,7 +115,6 @@ function closeInvalidNativeWebSocket(socket: unknown): void {
     void ignoredError;
   }
 }
-
 function openNativeVoiceWebSocket(url: string): VoiceWebSocketLike {
   const ctor: unknown = globalThis.WebSocket;
   if (typeof ctor !== "function") {
@@ -131,16 +127,13 @@ function openNativeVoiceWebSocket(url: string): VoiceWebSocketLike {
   }
   return socket;
 }
-
 export type VoiceWebSocketFactory = (url: string) => VoiceWebSocketLike;
-
 /** A client playout trace mark, carrying the server-issued traceId. */
 export interface VoiceTraceMark {
   name: string;
   traceId: string | null;
   atMs: number;
 }
-
 export interface VoiceSessionClientOptions {
   /** Read current renderer state, not the snapshot from session creation. */
   getUiContext?: () => VoiceUiContext;
@@ -152,7 +145,6 @@ export interface VoiceSessionClientOptions {
    * consumed nonce is never replayed.
    */
   getConsentNonce: () => Promise<string | null>;
-
   /**
    * Injectable mint fetch. Defaults to the voice-session control-plane fetch,
    * lazily imported so this module's static graph stays lean. A caller in a
@@ -169,12 +161,10 @@ export interface VoiceSessionClientOptions {
   createMicAudioContext?: () => MicAudioContextLike;
   /** Injectable playback AudioContext factory (tests). */
   createPlaybackAudioContext?: () => PlaybackAudioContextLike;
-
   /** Preferred uplink codec (default pcm16). */
   uplinkCodec?: VoiceSessionCodec;
   /** Preferred downlink codec (default pcm16). */
   downlinkCodec?: VoiceSessionCodec;
-
   /** Fired on every state change with the new machine state + unified status. */
   onState?: (
     state: VoiceSessionMachineState,
@@ -194,7 +184,6 @@ export interface VoiceSessionClientOptions {
   onError?: (error: Error) => void;
   /** Monotonic clock for trace marks (tests inject). */
   now?: () => number;
-
   /**
    * Max reconnect (re-mint) attempts per outage before giving up. Default 5.
    * A revoked/expired token cannot reconnect — reconnect ALWAYS re-mints a
@@ -241,9 +230,7 @@ export interface VoiceSessionClientOptions {
   /** Backoff base for pre-live retries. Attempt n waits base * n. */
   preLiveRetryDelayMs?: number;
 }
-
 type ConnectionPhase = "idle" | "connecting" | "open" | "closing" | "closed";
-
 export interface VoiceSessionClient {
   /** Current machine state (immutable snapshot). */
   readonly state: VoiceSessionMachineState;
@@ -262,11 +249,9 @@ export interface VoiceSessionClient {
   /** Send a clean `bye` and tear everything down. */
   stop(): Promise<void>;
 }
-
 function nowDefault(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
-
 /**
  * Server error codes for which re-minting is pointless or would defeat the
  * server's intent: a fresh session would hit the same quota gate, and a
@@ -276,7 +261,6 @@ const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "quota_exhausted",
   "revoked",
 ]);
-
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
 function parseExpiresAtMs(value: number | string | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -288,7 +272,6 @@ function parseExpiresAtMs(value: number | string | undefined): number | null {
   }
   return null;
 }
-
 export function createVoiceSessionClient(
   options: VoiceSessionClientOptions,
 ): VoiceSessionClient {
@@ -310,14 +293,13 @@ export function createVoiceSessionClient(
   const reconnectBackoffMs = Math.max(0, options.reconnectBackoffMs ?? 1000);
   const reconnectBudgetResetMs = Math.max(
     0,
-    options.reconnectBudgetResetMs ?? 30_000,
+    options.reconnectBudgetResetMs ?? 30000,
   );
-  const rotationLeadMs = Math.max(0, options.rotationLeadMs ?? 10_000);
+  const rotationLeadMs = Math.max(0, options.rotationLeadMs ?? 10000);
   const rotationRecheckMs = Math.max(1, options.rotationRecheckMs ?? 1000);
   const epochNow = options.epochNow ?? Date.now;
   const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
   const preLiveRetryDelayMs = Math.max(0, options.preLiveRetryDelayMs ?? 500);
-
   let state: VoiceSessionMachineState = { ...INITIAL_VOICE_SESSION_STATE };
   let connPhase: ConnectionPhase = "idle";
   let ws: VoiceWebSocketLike | null = null;
@@ -343,17 +325,19 @@ export function createVoiceSessionClient(
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
-  let playbackEnd: Extract<ServerControlFrame, { t: "speaking_end" }> | null =
-    null;
+  let playbackEnd: Extract<
+    ServerControlFrame,
+    {
+      t: "speaking_end";
+    }
+  > | null = null;
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
-
   const setState = (next: VoiceSessionMachineState): void => {
     state = next;
     mic?.setMuted(microphoneMuted || state.phase === "speaking");
     options.onState?.(state, toContinuousStatus(state.phase));
   };
-
   const mark = (name: string, traceId: string | null): void => {
     try {
       options.onTraceMark?.({ name, traceId, atMs: now() });
@@ -362,11 +346,9 @@ export function createVoiceSessionClient(
       void ignoredError;
     }
   };
-
   const emitError = (error: Error): void => {
     options.onError?.(error);
   };
-
   const emitPlaybackUnlockState = (required: boolean): void => {
     try {
       options.onPlaybackUnlockChange?.(required);
@@ -375,27 +357,22 @@ export function createVoiceSessionClient(
       void ignoredError;
     }
   };
-
   const notifyPlaybackUnlockState = (): void => {
     emitPlaybackUnlockState(playback?.needsUnlock ?? false);
   };
-
   const isLifecycleCurrent = (generation: number): boolean =>
     !disposed && lifecycleGeneration === generation;
-
   const assertLifecycleCurrent = (generation: number): void => {
     if (!isLifecycleCurrent(generation)) {
       throw new VoiceSessionLifecycleCancelledError();
     }
   };
-
   const waitForRetry = async (attempt: number, generation: number) => {
     await new Promise<void>((resolve) =>
       setTimeout(resolve, preLiveRetryDelayMs * attempt),
     );
     assertLifecycleCurrent(generation);
   };
-
   const waitForReconnectBackoff = async (
     attempt: number,
     generation: number,
@@ -406,14 +383,12 @@ export function createVoiceSessionClient(
     await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
     assertLifecycleCurrent(generation);
   };
-
   const clearRotationTimer = (): void => {
     if (rotationTimer !== null) {
       clearTimeout(rotationTimer);
       rotationTimer = null;
     }
   };
-
   async function mintOnce(
     generation: number,
   ): Promise<VoiceSessionMintResponse> {
@@ -433,7 +408,6 @@ export function createVoiceSessionClient(
         "could not obtain realtime voice consent",
       );
     }
-
     let res: Response;
     try {
       res = await doFetch(mintPath, {
@@ -460,7 +434,9 @@ export function createVoiceSessionClient(
     if (!res.ok) {
       let code: string | undefined;
       try {
-        const body = (await res.json()) as { code?: unknown };
+        const body = (await res.json()) as {
+          code?: unknown;
+        };
         if (typeof body.code === "string") code = body.code;
       } catch {
         // The body is diagnostic only; status still drives fallback.
@@ -480,7 +456,6 @@ export function createVoiceSessionClient(
     }
     return json;
   }
-
   async function mint(generation: number): Promise<VoiceSessionMintResponse> {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= preLiveMaxAttempts; attempt += 1) {
@@ -500,7 +475,6 @@ export function createVoiceSessionClient(
     }
     throw lastError ?? new Error("voice session mint failed");
   }
-
   function sendControl(frame: Parameters<typeof encodeClientControl>[0]): void {
     if (!ws || connPhase !== "open") return;
     try {
@@ -510,7 +484,6 @@ export function createVoiceSessionClient(
       void ignoredError;
     }
   }
-
   function sendUplinkAudio(bytes: Uint8Array): void {
     if (!ws || connPhase !== "open") return;
     try {
@@ -544,7 +517,6 @@ export function createVoiceSessionClient(
       void ignoredError;
     }
   }
-
   function handleServerFrame(
     data: unknown,
     generation: number,
@@ -567,7 +539,6 @@ export function createVoiceSessionClient(
       mark("downlink_audio", state.traceId);
       return;
     }
-
     // Text control frame.
     const raw = typeof data === "string" ? data : null;
     if (raw === null) {
@@ -583,14 +554,12 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
-
     // End-of-generation is not end-of-playback: keep the mic closed and the
     // speaking state visible until the device consumes the last audio frame.
     if (event.t !== "speaking_end") setState(applyServerEvent(state, event));
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     options.onServerEvent?.(event);
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
-
     switch (event.t) {
       case "ready":
         uiContextSupported = event.uiContext === true;
@@ -680,7 +649,6 @@ export function createVoiceSessionClient(
         break;
     }
   }
-
   async function startCapture(
     generation: number,
     socket: VoiceWebSocketLike,
@@ -745,7 +713,6 @@ export function createVoiceSessionClient(
       if (captureAbort === captureController) captureAbort = null;
     }
   }
-
   async function openConnection(
     minted: VoiceSessionMintResponse,
     generation: number,
@@ -756,14 +723,12 @@ export function createVoiceSessionClient(
     if (!uplink || !downlink) {
       throw new VoiceSessionMintError(-1, "no compatible codec offered");
     }
-
     connPhase = "connecting";
     uiContextSupported = false;
     lastUiContext = undefined;
     const socket = wsFactory(minted.wsUrl);
     socket.binaryType = "arraybuffer";
     ws = socket;
-
     socket.addEventListener("open", () => {
       if (!isLifecycleCurrent(generation) || ws !== socket) {
         try {
@@ -795,11 +760,9 @@ export function createVoiceSessionClient(
       }
       mark("hello_sent", null);
     });
-
     socket.addEventListener("message", (event) => {
       handleServerFrame(event.data, generation, socket);
     });
-
     socket.addEventListener("close", () => {
       if (!isLifecycleCurrent(generation) || ws !== socket) return;
       if (connPhase === "closing" || intentionalClose) {
@@ -812,17 +775,14 @@ export function createVoiceSessionClient(
       // and the live microphone must never remain attached to a dead socket.
       requestRecovery("ws_close", generation, socket);
     });
-
     socket.addEventListener("error", () => {
       if (!isLifecycleCurrent(generation) || ws !== socket) return;
       // The close handler follows an error and drives reconnect; nothing to do
       // here beyond a trace mark.
       mark("ws_error", state.traceId);
     });
-
     scheduleRotation(minted, generation);
   }
-
   /**
    * Arm the proactive pre-expiry rotation for the freshly-opened connection.
    * The server hard-severs at the bootstrap token's exp; rotating first — at an
@@ -844,7 +804,6 @@ export function createVoiceSessionClient(
       attemptRotation(generation);
     }, delayMs);
   }
-
   function attemptRotation(generation: number): void {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     // A reactive recovery already owns the transport; it re-mints anyway.
@@ -871,17 +830,18 @@ export function createVoiceSessionClient(
       cleanBye: true,
     });
   }
-
   function requestRecovery(
     reason: string,
     generation: number,
     socket: VoiceWebSocketLike,
-    recoveryOptions?: { budgeted?: boolean; cleanBye?: boolean },
+    recoveryOptions?: {
+      budgeted?: boolean;
+      cleanBye?: boolean;
+    },
   ): void {
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
       return;
     }
-
     // Detach first. A fatal server frame commonly causes the same socket to
     // emit `close`; its later callback then fails the identity check and cannot
     // consume a second reconnect attempt.
@@ -916,7 +876,6 @@ export function createVoiceSessionClient(
       if (recoveryPromise === pending) recoveryPromise = null;
     });
   }
-
   async function handleTransportLoss(
     reason: string,
     generation: number,
@@ -934,7 +893,6 @@ export function createVoiceSessionClient(
     playback?.flush();
     await teardownMic();
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
-
     // Budget refill: a session that stayed healthy long enough since its last
     // recovery earns a fresh budget, so a long conversation tolerates
     // well-separated drops (and 120s server rotations) indefinitely, while a
@@ -947,7 +905,6 @@ export function createVoiceSessionClient(
       reconnectsUsed = 0;
     }
     lastLiveAtMs = null;
-
     const reconnectCap = everLiveThisLifecycle
       ? maxReconnects
       : preLiveMaxReconnects;
@@ -1009,7 +966,6 @@ export function createVoiceSessionClient(
       }
     }
   }
-
   async function teardownMic(): Promise<void> {
     const pendingCapture = captureAbort;
     captureAbort = null;
@@ -1020,7 +976,6 @@ export function createVoiceSessionClient(
     // error-policy:J6 best-effort mic release after ownership is detached.
     await currentMic?.stop().catch(() => {});
   }
-
   async function stop(): Promise<void> {
     disposed = true;
     intentionalClose = true;
@@ -1072,16 +1027,13 @@ export function createVoiceSessionClient(
       setState({ ...INITIAL_VOICE_SESSION_STATE });
     }
   }
-
   return {
     get state() {
       return state;
     },
-
     get needsPlaybackUnlock() {
       return playback?.needsUnlock ?? false;
     },
-
     async start() {
       if (connPhase !== "idle" && connPhase !== "closed") return;
       const generation = ++lifecycleGeneration;
@@ -1164,7 +1116,6 @@ export function createVoiceSessionClient(
         await stop();
       }
     },
-
     bargeIn() {
       if (disposed) return;
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
@@ -1175,18 +1126,15 @@ export function createVoiceSessionClient(
       sendControl({ t: "barge_in" });
       mark("barge_in_sent", state.traceId);
     },
-
     get microphoneMuted() {
       return microphoneMuted;
     },
-
     setMicrophoneMuted(muted) {
       if (disposed || microphoneMuted === muted) return;
       microphoneMuted = muted;
       mic?.setMuted(muted || state.phase === "speaking");
       mark(muted ? "mic_muted" : "mic_unmuted", state.traceId);
     },
-
     async unlockPlayback() {
       const generation = lifecycleGeneration;
       const currentPlayback = playback;
@@ -1202,18 +1150,15 @@ export function createVoiceSessionClient(
         state.traceId,
       );
     },
-
     stop,
   };
 }
-
 class VoiceSessionLifecycleCancelledError extends Error {
   constructor() {
     super("voice session lifecycle superseded");
     this.name = "VoiceSessionLifecycleCancelledError";
   }
 }
-
 /** Consent acquisition failed; the caller should fall back to batch voice. */
 export class VoiceSessionConsentError extends Error {
   constructor(message: string, options?: unknown) {
@@ -1221,7 +1166,6 @@ export class VoiceSessionConsentError extends Error {
     this.name = "VoiceSessionConsentError";
   }
 }
-
 /** A mint failure the caller can branch on (404 = flag off → batch fallback). */
 export class VoiceSessionMintError extends Error {
   constructor(
@@ -1236,12 +1180,10 @@ export class VoiceSessionMintError extends Error {
     );
     this.name = "VoiceSessionMintError";
   }
-
   /** True for an actual feature-off 404, not the post-create visibility race. */
   get isFeatureDisabled(): boolean {
     return this.status === 404 && this.code !== "agent_not_found";
   }
-
   /** Safe bounded retries before the realtime transport owns the mic. */
   get isTransient(): boolean {
     return (

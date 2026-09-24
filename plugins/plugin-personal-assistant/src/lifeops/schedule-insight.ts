@@ -4,7 +4,20 @@
  * historical activity and sleep episodes, producing the schedule insight that
  * relative-time scheduling and check-ins consume.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  LIFEOPS_CIRCADIAN_STATES,
+  type LifeOpsActivitySignal,
+  type LifeOpsCircadianState,
+  type LifeOpsDayBoundary,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleMealInsight,
+  type LifeOpsScheduleMealLabel,
+  type LifeOpsSleepCycle,
+  type LifeOpsUnclearReason,
+} from "@elizaos/core/contracts/personal-assistant";
+import { roundConfidence } from "@elizaos/core/lifeops-normalize/time-util";
 import {
   type CircadianScorerResult,
   computeAwakeProbability,
@@ -23,54 +36,39 @@ import {
   scoreCircadianRules,
   WAKE_CONFIRM_WINDOW_MS,
 } from "@elizaos/plugin-health";
-import {
-  LIFEOPS_CIRCADIAN_STATES,
-  type LifeOpsActivitySignal,
-  type LifeOpsCircadianState,
-  type LifeOpsDayBoundary,
-  type LifeOpsScheduleInsight,
-  type LifeOpsScheduleMealInsight,
-  type LifeOpsScheduleMealLabel,
-  type LifeOpsSleepCycle,
-  type LifeOpsUnclearReason,
-  roundConfidence,
-} from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
-import type {
-  LifeOpsCircadianStateRow,
-  LifeOpsRepository,
-  LifeOpsScheduleInsightRecord,
+import {
+  type LifeOpsCircadianStateRow,
+  type LifeOpsRepository,
+  type LifeOpsScheduleInsightRecord,
 } from "./repository.js";
 import { getZonedDateParts } from "./time.js";
 
-const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
-const SIGNAL_ACTIVITY_PAD_MS = 3 * 60 * 1_000;
-const MERGE_ACTIVITY_GAP_MS = 5 * 60 * 1_000;
-const MEAL_GAP_MIN_MS = 15 * 60 * 1_000;
-const MEAL_GAP_MAX_MS = 90 * 60 * 1_000;
+const LOOKBACK_MS = 72 * 60 * 60 * 1000;
+const SIGNAL_ACTIVITY_PAD_MS = 3 * 60 * 1000;
+const MERGE_ACTIVITY_GAP_MS = 5 * 60 * 1000;
+const MEAL_GAP_MIN_MS = 15 * 60 * 1000;
+const MEAL_GAP_MAX_MS = 90 * 60 * 1000;
 // An activate event with no follow-up event within this window is treated as
 // an implicit deactivate. This stops a single lingering frontmost app from
 // masking hours of system sleep — macOS does not fire NSWorkspace deactivate
 // on sleep, lock, or screen off, so we bound the window explicitly.
-const ACTIVITY_EVENT_MAX_WINDOW_MS = 20 * 60 * 1_000;
-
+const ACTIVITY_EVENT_MAX_WINDOW_MS = 20 * 60 * 1000;
 type MealCandidate = {
   label: LifeOpsScheduleMealLabel;
   detectedAtMs: number;
   confidence: number;
   source: "activity_gap" | "expected_window" | "health";
 };
-
 export type LifeOpsScheduleActivityWindowInspection = {
   startAt: string;
   endAt: string;
   durationMinutes: number;
   source: LifeOpsActivityWindow["source"];
 };
-
 export type LifeOpsScheduleSleepEpisodeInspection = {
   startAt: string;
   endAt: string | null;
@@ -79,7 +77,6 @@ export type LifeOpsScheduleSleepEpisodeInspection = {
   confidence: number;
   source: LifeOpsSleepEpisode["source"];
 };
-
 export type LifeOpsScheduleInspection = {
   insight: LifeOpsScheduleInsightRecord;
   windows: LifeOpsScheduleActivityWindowInspection[];
@@ -94,7 +91,6 @@ export type LifeOpsScheduleInspection = {
     activityEventCount: number;
   };
 };
-
 /**
  * Lightweight read-only summary for UI consumers. Reads cached `life_*`
  * tables; never re-runs inspection probes. The scheduler tick is the sole
@@ -104,35 +100,29 @@ export type LifeOpsScheduleSummary = {
   insight: LifeOpsScheduleInsightRecord | null;
   sleepEpisodes: LifeOpsScheduleSleepEpisodeInspection[];
 };
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
 function toIso(ms: number | null): string | null {
   if (ms === null || !Number.isFinite(ms)) {
     return null;
   }
   return new Date(ms).toISOString();
 }
-
 function toDurationMinutes(
   startMs: number,
   endMs: number | null,
   nowMs: number,
 ): number {
-  return Math.round(intervalDurationMs(startMs, endMs, nowMs) / 60_000);
+  return Math.round(intervalDurationMs(startMs, endMs, nowMs) / 60000);
 }
-
 function localHour(ms: number, timezone: string): number {
   const parts = getZonedDateParts(new Date(ms), timezone);
   return parts.hour + parts.minute / 60;
 }
-
 function normalizeSleepHour(hour: number): number {
   return hour < 12 ? hour + 24 : hour;
 }
-
 function intervalDurationMs(
   startMs: number,
   endMs: number | null,
@@ -141,7 +131,6 @@ function intervalDurationMs(
   const safeEndMs = endMs ?? nowMs;
   return Math.max(0, safeEndMs - startMs);
 }
-
 function firstActiveAfterWake(
   windows: LifeOpsActivityWindow[],
   wakeAtMs: number | null,
@@ -164,7 +153,6 @@ function firstActiveAfterWake(
   );
   return spansWake ? wakeAtMs : null;
 }
-
 function windowsFromActivityEvents(
   events: Awaited<ReturnType<typeof listActivityEvents>>,
   nowMs: number,
@@ -205,7 +193,6 @@ function windowsFromActivityEvents(
   }
   return windows;
 }
-
 function windowsFromScreenTimeSessions(
   sessions: Awaited<
     ReturnType<LifeOpsRepository["listScreenTimeSessionsOverlapping"]>
@@ -234,7 +221,6 @@ function windowsFromScreenTimeSessions(
   }
   return windows;
 }
-
 function windowsFromSignals(
   signals: LifeOpsActivitySignal[],
   nowMs: number,
@@ -261,7 +247,6 @@ function windowsFromSignals(
   }
   return windows;
 }
-
 export function mergeActivityWindows(
   windows: LifeOpsActivityWindow[],
 ): LifeOpsActivityWindow[] {
@@ -294,14 +279,12 @@ export function mergeActivityWindows(
   }
   return merged;
 }
-
 export function inferMealCandidates(args: {
   windows: LifeOpsActivityWindow[];
   wakeAtMs: number | null;
   timezone: string;
 }): LifeOpsScheduleMealInsight[] {
   const bestByLabel = new Map<LifeOpsScheduleMealLabel, MealCandidate>();
-
   for (let index = 0; index < args.windows.length - 1; index += 1) {
     const current = args.windows[index];
     const next = args.windows[index + 1];
@@ -317,26 +300,23 @@ export function inferMealCandidates(args: {
     if (args.wakeAtMs !== null && gapEndMs <= args.wakeAtMs) {
       continue;
     }
-
     const midpointMs = gapStartMs + Math.floor(gapMs / 2);
-    const durationMinutes = gapMs / 60_000;
+    const durationMinutes = gapMs / 60000;
     const hour = localHour(midpointMs, args.timezone);
     const minutesSinceWake =
-      args.wakeAtMs !== null ? (midpointMs - args.wakeAtMs) / 60_000 : null;
+      args.wakeAtMs !== null ? (midpointMs - args.wakeAtMs) / 60000 : null;
     const continuityBonus =
-      current.endMs - current.startMs >= 10 * 60 * 1_000 &&
-      next.endMs - next.startMs >= 10 * 60 * 1_000
+      current.endMs - current.startMs >= 10 * 60 * 1000 &&
+      next.endMs - next.startMs >= 10 * 60 * 1000
         ? 0.15
         : 0;
     const durationScore =
       0.2 + clamp(1 - Math.abs(durationMinutes - 35) / 45, 0, 1) * 0.25;
-
     const scores: Record<LifeOpsScheduleMealLabel, number> = {
       breakfast: durationScore + continuityBonus,
       lunch: durationScore + continuityBonus,
       dinner: durationScore + continuityBonus,
     };
-
     if (hour >= 5 && hour < 11) {
       scores.breakfast += 0.28;
     }
@@ -357,7 +337,6 @@ export function inferMealCandidates(args: {
         scores.dinner += 0.2;
       }
     }
-
     const winner = (
       Object.entries(scores) as Array<[LifeOpsScheduleMealLabel, number]>
     )
@@ -384,7 +363,6 @@ export function inferMealCandidates(args: {
       });
     }
   }
-
   return [...bestByLabel.values()]
     .sort((left, right) => {
       const leftDetected = Number.isFinite(left.detectedAtMs)
@@ -403,7 +381,6 @@ export function inferMealCandidates(args: {
       source: candidate.source,
     }));
 }
-
 function predictNextMeal(args: {
   meals: LifeOpsScheduleMealInsight[];
   wakeAtMs: number | null;
@@ -421,11 +398,10 @@ function predictNextMeal(args: {
   const latestMealMs =
     latestMeal !== undefined ? Date.parse(latestMeal.detectedAt) : Number.NaN;
   const minutesSinceWake =
-    args.wakeAtMs !== null ? (args.nowMs - args.wakeAtMs) / 60_000 : null;
+    args.wakeAtMs !== null ? (args.nowMs - args.wakeAtMs) / 60000 : null;
   const minutesSinceMeal = Number.isFinite(latestMealMs)
-    ? (args.nowMs - latestMealMs) / 60_000
+    ? (args.nowMs - latestMealMs) / 60000
     : null;
-
   const buildWindow = (
     label: LifeOpsScheduleMealLabel,
     startMs: number,
@@ -437,7 +413,6 @@ function predictNextMeal(args: {
     nextMealWindowEndAt: new Date(endMs).toISOString(),
     nextMealConfidence: roundConfidence(confidence),
   });
-
   if (
     !mealSet.has("breakfast") &&
     args.wakeAtMs !== null &&
@@ -447,8 +422,8 @@ function predictNextMeal(args: {
   ) {
     return buildWindow(
       "breakfast",
-      Math.max(args.nowMs, args.wakeAtMs + 20 * 60_000),
-      args.wakeAtMs + 4 * 60 * 60 * 1_000,
+      Math.max(args.nowMs, args.wakeAtMs + 20 * 60000),
+      args.wakeAtMs + 4 * 60 * 60 * 1000,
       0.6,
     );
   }
@@ -460,7 +435,7 @@ function predictNextMeal(args: {
     return buildWindow(
       "lunch",
       args.nowMs,
-      args.nowMs + 2 * 60 * 60 * 1_000,
+      args.nowMs + 2 * 60 * 60 * 1000,
       0.55,
     );
   }
@@ -472,7 +447,7 @@ function predictNextMeal(args: {
     return buildWindow(
       "dinner",
       args.nowMs,
-      args.nowMs + 3 * 60 * 60 * 1_000,
+      args.nowMs + 3 * 60 * 60 * 1000,
       0.52,
     );
   }
@@ -483,12 +458,11 @@ function predictNextMeal(args: {
     nextMealConfidence: 0,
   };
 }
-
 const RULE_STATE_MIN_WEIGHT = 0.7;
-
-function deriveRuleState(
-  scorer: CircadianScorerResult,
-): { circadianState: LifeOpsCircadianState; stateConfidence: number } | null {
+function deriveRuleState(scorer: CircadianScorerResult): {
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+} | null {
   let bestState: LifeOpsCircadianState | null = null;
   let bestWeight = 0;
   for (const state of LIFEOPS_CIRCADIAN_STATES) {
@@ -507,7 +481,6 @@ function deriveRuleState(
     stateConfidence: roundConfidence(Math.min(bestWeight, 0.95)),
   };
 }
-
 /**
  * Enforces the stability-window policy from `sleep-wake-spec.md` section 4:
  *
@@ -527,7 +500,10 @@ export function enforceStabilityWindow(args: {
     stateConfidence: number;
     uncertaintyReason: LifeOpsUnclearReason | null;
   };
-  prior: { circadianState: LifeOpsCircadianState; enteredAtMs: number } | null;
+  prior: {
+    circadianState: LifeOpsCircadianState;
+    enteredAtMs: number;
+  } | null;
   hasManualOverride: boolean;
   nowMs: number;
 }): {
@@ -538,15 +514,12 @@ export function enforceStabilityWindow(args: {
   if (args.hasManualOverride || !args.prior) return args.incoming;
   if (args.prior.circadianState === args.incoming.circadianState)
     return args.incoming;
-
   const dwellMs = args.nowMs - args.prior.enteredAtMs;
   const from = args.prior.circadianState;
   const to = args.incoming.circadianState;
-
   if ((from === "sleeping" || from === "napping") && to === "waking") {
     return args.incoming;
   }
-
   let required = MIN_STABILITY_WINDOW_MS;
   if (from === "waking" && to === "awake") required = WAKE_CONFIRM_WINDOW_MS;
   if (
@@ -556,20 +529,17 @@ export function enforceStabilityWindow(args: {
     required = SLEEP_ONSET_WINDOW_MS;
   }
   if (dwellMs >= required) return args.incoming;
-
   return {
     circadianState: from,
     stateConfidence: Math.min(args.incoming.stateConfidence, 0.6),
     uncertaintyReason: "stale_state",
   };
 }
-
 interface CircadianDecision {
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
 }
-
 interface CircadianDecisionInputs {
   nowMs: number;
   timezone: string;
@@ -583,7 +553,6 @@ interface CircadianDecisionInputs {
   windowCount: number;
   scorer: CircadianScorerResult;
 }
-
 /**
  * Ordered decision table. Returns the first matching state plus a flag that
  * tells the stability-window layer whether to bypass the dwell check (only
@@ -604,10 +573,8 @@ function decideCircadianState(args: CircadianDecisionInputs): {
       hasManualOverride: true,
     };
   }
-
   const ruleState = deriveRuleState(args.scorer);
   const { sleepCycle, awakeProbability: ap } = args;
-
   if (sleepCycle.isProbablySleeping || ap.pAsleep >= 0.65) {
     return {
       decision: {
@@ -625,8 +592,7 @@ function decideCircadianState(args: CircadianDecisionInputs): {
       hasManualOverride: false,
     };
   }
-
-  if (args.wakeAtMs !== null && args.nowMs - args.wakeAtMs <= 90 * 60 * 1_000) {
+  if (args.wakeAtMs !== null && args.nowMs - args.wakeAtMs <= 90 * 60 * 1000) {
     return {
       decision: {
         circadianState: "waking",
@@ -636,7 +602,6 @@ function decideCircadianState(args: CircadianDecisionInputs): {
       hasManualOverride: false,
     };
   }
-
   const nowHour = normalizeSleepHour(localHour(args.nowMs, args.timezone));
   const bedtimeHour = args.baseline?.medianBedtimeLocalHour ?? null;
   if (
@@ -653,10 +618,9 @@ function decideCircadianState(args: CircadianDecisionInputs): {
       hasManualOverride: false,
     };
   }
-
   const recentlyActive =
     args.lastActiveAtMs !== null &&
-    args.nowMs - args.lastActiveAtMs <= 2 * 60 * 60 * 1_000;
+    args.nowMs - args.lastActiveAtMs <= 2 * 60 * 60 * 1000;
   if (ap.pAwake >= 0.65 || recentlyActive) {
     return {
       decision: {
@@ -667,14 +631,12 @@ function decideCircadianState(args: CircadianDecisionInputs): {
       hasManualOverride: false,
     };
   }
-
   if (ruleState) {
     return {
       decision: { ...ruleState, uncertaintyReason: null },
       hasManualOverride: false,
     };
   }
-
   const uncertaintyReason: LifeOpsUnclearReason =
     args.signalCount === 0 && args.windowCount === 0
       ? "no_signals"
@@ -690,7 +652,6 @@ function decideCircadianState(args: CircadianDecisionInputs): {
     hasManualOverride: false,
   };
 }
-
 /**
  * Pick the decision-table result then run it through the stability-window
  * hysteresis against the persisted prior state row.
@@ -711,7 +672,6 @@ function deriveCircadianState(
     nowMs: args.nowMs,
   });
 }
-
 function toHistoricalSleepEpisodes(
   episodes: readonly LifeOpsSleepEpisode[],
 ): SleepRegularityEpisodeLike[] {
@@ -721,12 +681,11 @@ function toHistoricalSleepEpisodes(
     cycleType:
       episode.endMs !== null &&
       intervalDurationMs(episode.startMs, episode.endMs, episode.endMs) <
-        4 * 60 * 60 * 1_000
+        4 * 60 * 60 * 1000
         ? "nap"
         : "unknown",
   }));
 }
-
 /**
  * Translate a persisted `life_circadian_states` row into the
  * `deriveCircadianState` prior-state shape, applying the stale-state downgrade
@@ -734,8 +693,7 @@ function toHistoricalSleepEpisodes(
  * {@link STALE_CIRCADIAN_STATE_MS} (default 6h) or already `unclear`, skip the
  * stability-window check entirely so a stale process doesn't pin the state.
  */
-export const STALE_CIRCADIAN_STATE_MS = 6 * 60 * 60 * 1_000;
-
+export const STALE_CIRCADIAN_STATE_MS = 6 * 60 * 60 * 1000;
 export function resolvePriorStateForDerivation(
   row: LifeOpsCircadianStateRow | null,
   nowMs: number,
@@ -755,7 +713,6 @@ export function resolvePriorStateForDerivation(
   if (ageMs >= STALE_CIRCADIAN_STATE_MS) return null;
   return { circadianState: row.circadianState, enteredAtMs };
 }
-
 export function inferLifeOpsScheduleInsight(args: {
   nowMs: number;
   timezone: string;
@@ -768,7 +725,6 @@ export function inferLifeOpsScheduleInsight(args: {
 }): LifeOpsScheduleInsight {
   return analyzeLifeOpsScheduleInsight(args).insight;
 }
-
 function analyzeLifeOpsScheduleInsight(args: {
   nowMs: number;
   timezone: string;
@@ -817,7 +773,6 @@ function analyzeLifeOpsScheduleInsight(args: {
     nowMs: args.nowMs,
     timezone: args.timezone,
   });
-
   const historicalEpisodes =
     args.historicalSleepEpisodes ??
     toHistoricalSleepEpisodes(sleepResolution.sleepEpisodes);
@@ -869,7 +824,6 @@ function analyzeLifeOpsScheduleInsight(args: {
       scorer: scorerResult,
       priorState: args.priorState ?? null,
     });
-
   const sleepStatus = sleepCycle.sleepStatus;
   const effectiveDayKey = dayBoundary.effectiveDayKey;
   const wakeAt = sleepCycle.lastSleepEndedAt;
@@ -892,7 +846,6 @@ function analyzeLifeOpsScheduleInsight(args: {
       firstActiveAt: toIso(firstActiveAtMs),
     },
   });
-
   const circadianRuleFirings = [...scorerResult.firings].sort((left, right) => {
     const leftWeight = Number.isFinite(left.weight) ? left.weight : 0;
     const rightWeight = Number.isFinite(right.weight) ? right.weight : 0;
@@ -939,7 +892,6 @@ function analyzeLifeOpsScheduleInsight(args: {
     meals,
   };
 }
-
 export async function inspectLifeOpsSchedule(args: {
   runtime: IAgentRuntime;
   repository: LifeOpsRepository;
@@ -974,7 +926,6 @@ export async function inspectLifeOpsSchedule(args: {
     ),
     listActivityEvents(args.runtime, args.agentId, sinceAt),
   ]);
-
   const windows = [
     ...windowsFromActivityEvents(activityEvents, nowMs),
     ...windowsFromScreenTimeSessions(sessions, nowMs),
@@ -1021,7 +972,6 @@ export async function inspectLifeOpsSchedule(args: {
     updatedAt: untilAt,
   };
   await args.repository.upsertScheduleInsight(record);
-
   return {
     insight: record,
     windows: analysis.mergedWindows.map((window) => ({
@@ -1049,13 +999,11 @@ export async function inspectLifeOpsSchedule(args: {
     },
   };
 }
-
 export const __internal = {
   windowsFromActivityEvents,
   firstActiveAfterWake,
   ACTIVITY_EVENT_MAX_WINDOW_MS,
 };
-
 /**
  * Lightweight read that only touches cached tables. Safe to call at UI
  * cadence (every minute or on panel mount) without re-running probes.
@@ -1075,7 +1023,7 @@ export async function readScheduleSummary(args: {
   const now = args.now ?? new Date();
   const nowMs = now.getTime();
   const sevenDaysAgoIso = new Date(
-    nowMs - 7 * 24 * 60 * 60 * 1_000,
+    nowMs - 7 * 24 * 60 * 60 * 1000,
   ).toISOString();
   const [mergedState, episodes] = await Promise.all([
     args.repository.getScheduleMergedState(
@@ -1114,7 +1062,6 @@ export async function readScheduleSummary(args: {
     }),
   };
 }
-
 export async function refreshLifeOpsScheduleInsight(args: {
   runtime: IAgentRuntime;
   repository: LifeOpsRepository;

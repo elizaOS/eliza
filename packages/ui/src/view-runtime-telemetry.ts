@@ -15,7 +15,7 @@
  * evict) and `ViewLifecycleController` (on crash). Dev/test-gated by the caller.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import type { FrameBudgetSummary } from "./hooks/frame-budget";
 import type { ResourceCountersSnapshot } from "./perf/resource-counters";
 import type { ViewLifecyclePhase } from "./state/view-lifecycle-types";

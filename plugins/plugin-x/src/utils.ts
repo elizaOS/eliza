@@ -18,7 +18,7 @@ import {
 import {
   DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   fetchRemoteMedia,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import twitterText from "twitter-text";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";

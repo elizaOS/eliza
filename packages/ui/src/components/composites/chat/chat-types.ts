@@ -4,8 +4,7 @@
  * voice-speaker types. The single source these sibling components import their
  * types from so their contracts stay in sync.
  */
-
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -14,9 +13,7 @@ import type {
   MessageAttachment,
 } from "../../../api/client-types-chat";
 import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
-
 export type ChatVariant = "default" | "game-modal";
-
 export interface ChatLabelSet {
   actions?: string;
   agentStarting?: string;
@@ -69,7 +66,6 @@ export interface ChatLabelSet {
   toBeginChatting?: string;
   voiceInput?: string;
 }
-
 export interface ChatAttachmentItem {
   alt: string;
   id: string;
@@ -78,13 +74,11 @@ export interface ChatAttachmentItem {
   /** Attachment kind — drives the preview tile (image thumbnail vs file chip). */
   kind?: "image" | "audio" | "video" | "document";
 }
-
 export interface ChatMessageReaction {
   emoji: string;
   count: number;
   users?: string[];
 }
-
 /**
  * Voice speaker attribution metadata attached to a chat message. Populated
  * when the user message was captured via voice and R2's speaker-id pipeline
@@ -100,7 +94,6 @@ export interface ChatVoiceSpeaker {
   /** True when this speaker has the OWNER role on the device. */
   isOwner?: boolean;
 }
-
 export interface ChatMessageData {
   avatarUrl?: string;
   /** Stable UI row identity across optimistic-to-durable id reconciliation. */
@@ -144,7 +137,6 @@ export interface ChatMessageData {
   /** Validated personal-workspace setup receipt rendered by the chat body. */
   capabilityHandoff?: CapabilityHandoffRequest;
 }
-
 /**
  * Volatile per-row values ChatMessage forwards to `renderContent` so the body
  * closure can stay referentially stable (identity changes in `renderContent`
@@ -156,9 +148,7 @@ export interface ChatMessageRenderContext {
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
 }
-
 export interface ChatMessageLabels extends ChatLabelSet {}
-
 export interface ChatConversationSummary {
   avatarUrl?: string;
   id: string;
@@ -175,5 +165,4 @@ export interface ChatConversationSummary {
    */
   source?: string;
 }
-
 export interface ChatConversationLabels extends ChatLabelSet {}

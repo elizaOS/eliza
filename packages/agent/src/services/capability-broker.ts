@@ -29,9 +29,9 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 import {
   type DistributionProfile,
-  type RuntimeExecutionMode,
   resolveDistributionProfile,
-} from "@elizaos/shared";
+} from "@elizaos/core/config/distribution-profile";
+import { type RuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
 import { resolveStateDir } from "../config/paths.ts";
 
 export type CapabilityKind =

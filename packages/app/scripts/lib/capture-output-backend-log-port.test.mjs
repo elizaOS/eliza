@@ -31,7 +31,7 @@ describe("resolveBackendLogPort (#13624)", () => {
   });
 
   it("prefers ELIZA_API_PORT over ELIZA_PORT (first-wins precedence)", () => {
-    // Mirrors DESKTOP_API_PORT_KEYS order in packages/shared/src/runtime-env.ts.
+    // Mirrors DESKTOP_API_PORT_KEYS order in packages/core/src/runtime-env.ts.
     expect(
       resolveBackendLogPort({ ELIZA_API_PORT: "41337", ELIZA_PORT: "38080" }),
     ).toBe(41337);

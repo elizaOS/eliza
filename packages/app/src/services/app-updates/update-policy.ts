@@ -15,10 +15,12 @@
  * render these DTO fields, they do not recompute them.
  */
 import { Capacitor } from "@capacitor/core";
-import type { AgentUpdateAuthority, AgentUpdateStatus } from "@elizaos/shared";
-import { isElizaOS } from "@elizaos/shared";
+import {
+  type AgentUpdateAuthority,
+  type AgentUpdateStatus,
+} from "@elizaos/core/contracts/update-status";
+import { isElizaOS } from "@elizaos/core/platform/eliza-os";
 import { type BuildVariant, getBuildVariant } from "@elizaos/ui/build-variant";
-
 export type AppUpdatePlatform = "desktop" | "ios" | "android" | "web";
 export type AppDistributionChannel =
   | "desktop-direct"
@@ -30,27 +32,23 @@ export type AppDistributionChannel =
   | "android-aosp"
   | "web";
 export type AppUpdateAuthority = "github" | "store" | "aosp-image" | "web";
-
 export interface NativeAppInfo {
   name?: string;
   id?: string;
   version?: string;
   build?: string;
 }
-
 type CapacitorAppModule = {
   App: {
     getInfo: () => Promise<NativeAppInfo>;
   };
 };
-
 export interface AppUpdatePolicyInput {
   platform: AppUpdatePlatform;
   native: boolean;
   buildVariant: BuildVariant;
   elizaOS: boolean;
 }
-
 export interface AppUpdatePolicy {
   channel: AppDistributionChannel;
   authority: AppUpdateAuthority;
@@ -61,7 +59,6 @@ export interface AppUpdatePolicy {
   detail: string;
   actionLabel: string | null;
 }
-
 export interface ApplicationUpdateSnapshot extends AppUpdatePolicy {
   appName: string;
   appId: string | null;
@@ -70,9 +67,7 @@ export interface ApplicationUpdateSnapshot extends AppUpdatePolicy {
   platform: AppUpdatePlatform;
   buildVariant: BuildVariant;
 }
-
 export type AgentUpdateUiStatus = "current" | "update-available" | "error";
-
 export interface ConnectedAgentUpdateSnapshot {
   authority: AgentUpdateAuthority;
   authorityLabel: string;
@@ -90,7 +85,6 @@ export interface ConnectedAgentUpdateSnapshot {
   canAutoUpdate: boolean;
   actionLabel: string | null;
 }
-
 export function resolveAppUpdatePolicy(
   input: AppUpdatePolicyInput,
 ): AppUpdatePolicy {
@@ -119,7 +113,6 @@ export function resolveAppUpdatePolicy(
       actionLabel: "Check / Download Update",
     };
   }
-
   if (input.platform === "ios") {
     if (input.buildVariant === "store") {
       return {
@@ -146,7 +139,6 @@ export function resolveAppUpdatePolicy(
       actionLabel: null,
     };
   }
-
   if (input.platform === "android") {
     if (input.elizaOS) {
       return {
@@ -186,7 +178,6 @@ export function resolveAppUpdatePolicy(
       actionLabel: null,
     };
   }
-
   return {
     channel: "web",
     authority: "web",
@@ -198,7 +189,6 @@ export function resolveAppUpdatePolicy(
     actionLabel: null,
   };
 }
-
 function resolveAgentAuthority(
   installMethod: string,
 ): Pick<
@@ -264,19 +254,16 @@ function resolveAgentAuthority(
       };
   }
 }
-
 export function mapAgentUpdateStatusToSnapshot(
   status: AgentUpdateStatus | null | undefined,
 ): ConnectedAgentUpdateSnapshot | null {
   if (!status) return null;
-
   const authority = resolveAgentAuthority(status.installMethod);
   const uiStatus: AgentUpdateUiStatus = status.error
     ? "error"
     : status.updateAvailable
       ? "update-available"
       : "current";
-
   return {
     ...authority,
     installMethod: status.installMethod,
@@ -299,7 +286,6 @@ export function mapAgentUpdateStatusToSnapshot(
     actionLabel: null,
   };
 }
-
 export async function readNativeAppInfo(): Promise<NativeAppInfo | null> {
   if (!Capacitor.isNativePlatform()) return null;
   try {
@@ -312,13 +298,11 @@ export async function readNativeAppInfo(): Promise<NativeAppInfo | null> {
     return null;
   }
 }
-
 function currentPlatform(): AppUpdatePlatform {
   const platform = Capacitor.getPlatform();
   if (platform === "ios" || platform === "android") return platform;
   return "web";
 }
-
 export async function getApplicationUpdateSnapshot(options?: {
   desktop?: boolean;
   appName?: string;
@@ -335,7 +319,6 @@ export async function getApplicationUpdateSnapshot(options?: {
     buildVariant,
     elizaOS: isElizaOS(),
   });
-
   return {
     ...policy,
     appName: options?.appName ?? nativeInfo?.name ?? "Eliza",

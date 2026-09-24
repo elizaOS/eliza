@@ -4,18 +4,20 @@
  */
 
 import type {
-  AllPermissionsState,
   FirstRunConnectorConfig as ConnectorConfig,
   FirstRunOptions,
+  SubscriptionStatusResponse,
+} from "@elizaos/core/contracts/first-run-options";
+import type {
+  AllPermissionsState,
   PermissionId,
   PermissionState,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/permissions";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/core/settings-debug";
 import {
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,
@@ -34,15 +36,6 @@ import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
-import { waitForFirstRunActivation } from "./first-run-activation";
-import "./client-agent-accounts";
-
-export * from "./client-agent-accounts";
-
-import "./client-agent-consumer-keys";
-
-export * from "./client-agent-consumer-keys";
-
 import {
   type ConnectorAccountActionResult,
   type ConnectorAccountAuditEventsQuery,
@@ -61,92 +54,96 @@ import {
 } from "./client-agent-connector-accounts";
 import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
-import type {
-  AgentAutomationMode,
-  AgentAutomationModeResponse,
-  AgentBootProgress,
-  AgentEventsResponse,
-  AgentSelfStatusSnapshot,
-  AgentStatus,
-  AppConfigResponse,
-  CharacterData,
-  CharacterHistoryResponse,
-  CodingAgentAddAgentInput,
-  CodingAgentCreatePlanRevisionInput,
-  CodingAgentCreateTaskInput,
-  CodingAgentForkTaskInput,
-  CodingAgentOrchestratorStatus,
-  CodingAgentRerunFromEventInput,
-  CodingAgentRestartTaskInput,
-  CodingAgentRestartWithEditedPlanInput,
-  CodingAgentRetryTurnInput,
-  CodingAgentScratchWorkspace,
-  CodingAgentStatus,
-  CodingAgentTaskEventRecord,
-  CodingAgentTaskMessageRecord,
-  CodingAgentTaskPage,
-  CodingAgentTaskPlanRevisionRecord,
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-  CodingAgentTaskTimelineItem,
-  CodingAgentUpdateTaskInput,
-  CodingAgentValidateTaskInput,
-  ConfigSchemaResponse,
-  CorePluginsResponse,
-  CreateTriggerRequest,
-  ExperienceGraphResponse,
-  ExperienceListQuery,
-  ExperienceListResponse,
-  ExperienceMaintenanceResult,
-  ExperienceRecord,
-  ExperienceUpdateInput,
-  LaunchSnapshot,
-  LogsFilter,
-  LogsResponse,
-  ModelCatalog,
-  ModelsConfigResponse,
-  ModelsConfigWriteRequest,
-  ModelsConfigWriteResult,
-  OrchestratorAccountOverview,
-  OrchestratorAccountReadiness,
-  OrchestratorRoomRosterOverview,
-  PluginInfo,
-  PluginMutationResult,
-  ProjectListResponse,
-  ProjectSummary,
-  ProviderModelRecord,
-  RawAcpSession,
-  RelationshipsActivityResponse,
-  RelationshipsGraphQuery,
-  RelationshipsGraphSnapshot,
-  RelationshipsGraphStats,
-  RelationshipsMergeCandidate,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
-  RuntimeDebugSnapshot,
-  SecretInfo,
-  SecurityAuditFilter,
-  SecurityAuditResponse,
-  SecurityAuditStreamEvent,
-  TradePermissionMode,
-  TradePermissionModeResponse,
-  TriggerEventDispatchResponse,
-  TriggerHealthSnapshot,
-  TriggerLastStatus,
-  TriggerRunRecord,
-  TriggerSummary,
-  UpdateStatus,
-  UpdateTriggerRequest,
-} from "./client-types";
 import {
+  type AgentAutomationMode,
+  type AgentAutomationModeResponse,
+  type AgentBootProgress,
+  type AgentEventsResponse,
+  type AgentSelfStatusSnapshot,
+  type AgentStatus,
   ApiError,
+  type AppConfigResponse,
+  type CharacterData,
+  type CharacterHistoryResponse,
+  type CodingAgentAddAgentInput,
+  type CodingAgentCreatePlanRevisionInput,
+  type CodingAgentCreateTaskInput,
+  type CodingAgentForkTaskInput,
+  type CodingAgentOrchestratorStatus,
+  type CodingAgentRerunFromEventInput,
+  type CodingAgentRestartTaskInput,
+  type CodingAgentRestartWithEditedPlanInput,
+  type CodingAgentRetryTurnInput,
+  type CodingAgentScratchWorkspace,
+  type CodingAgentStatus,
+  type CodingAgentTaskEventRecord,
+  type CodingAgentTaskMessageRecord,
+  type CodingAgentTaskPage,
+  type CodingAgentTaskPlanRevisionRecord,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  type CodingAgentTaskTimelineItem,
+  type CodingAgentUpdateTaskInput,
+  type CodingAgentValidateTaskInput,
+  type ConfigSchemaResponse,
+  type CorePluginsResponse,
+  type CreateTriggerRequest,
+  type ExperienceGraphResponse,
+  type ExperienceListQuery,
+  type ExperienceListResponse,
+  type ExperienceMaintenanceResult,
+  type ExperienceRecord,
+  type ExperienceUpdateInput,
+  type LaunchSnapshot,
+  type LogsFilter,
+  type LogsResponse,
+  type ModelCatalog,
+  type ModelsConfigResponse,
+  type ModelsConfigWriteRequest,
+  type ModelsConfigWriteResult,
   mapAcpSessionsToCodingAgentSessions,
   mapTaskThreadsToCodingAgentSessions,
+  type OrchestratorAccountOverview,
+  type OrchestratorAccountReadiness,
+  type OrchestratorRoomRosterOverview,
+  type PluginInfo,
+  type PluginMutationResult,
+  type ProjectListResponse,
+  type ProjectSummary,
+  type ProviderModelRecord,
+  type RawAcpSession,
+  type RelationshipsActivityResponse,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsMergeCandidate,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonSummary,
+  type RuntimeDebugSnapshot,
+  type SecretInfo,
+  type SecurityAuditFilter,
+  type SecurityAuditResponse,
+  type SecurityAuditStreamEvent,
+  type TradePermissionMode,
+  type TradePermissionModeResponse,
+  type TriggerEventDispatchResponse,
+  type TriggerHealthSnapshot,
+  type TriggerLastStatus,
+  type TriggerRunRecord,
+  type TriggerSummary,
+  type UpdateStatus,
+  type UpdateTriggerRequest,
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
+import { waitForFirstRunActivation } from "./first-run-activation";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
+import "./client-agent-accounts";
+
+export * from "./client-agent-accounts";
+
+import "./client-agent-consumer-keys";
 
 export {
   CONNECTOR_SERVER_ROLE_TO_UI_ROLE,
@@ -165,11 +162,11 @@ export {
   type ConnectorAccountUpdateInput,
   normalizeConnectorAccountRecord,
 } from "./client-agent-connector-accounts";
+export * from "./client-agent-consumer-keys";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
-
 function clientSettingsDebug(): boolean {
   let viteEnv: Record<string, unknown> | undefined;
   try {
@@ -182,7 +179,6 @@ function clientSettingsDebug(): boolean {
     env: typeof process !== "undefined" ? process.env : undefined,
   });
 }
-
 function isTradePermissionMode(value: string): value is TradePermissionMode {
   return (
     value === "user-sign-only" ||
@@ -191,9 +187,7 @@ function isTradePermissionMode(value: string): value is TradePermissionMode {
     value === "disabled"
   );
 }
-
 const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking" as const;
-
 function getNativeWebsiteBlockerPluginIfAvailable() {
   const plugin = getWebsiteBlockerPlugin();
   return typeof plugin.getStatus === "function" &&
@@ -205,7 +199,6 @@ function getNativeWebsiteBlockerPluginIfAvailable() {
     ? plugin
     : null;
 }
-
 function getNativeAppBlockerPluginIfAvailable() {
   const plugin = getAppBlockerPlugin();
   return typeof plugin.getStatus === "function" &&
@@ -218,7 +211,6 @@ function getNativeAppBlockerPluginIfAvailable() {
     ? plugin
     : null;
 }
-
 function mapWebsiteBlockerPermissionResult(
   permission: WebsiteBlockerPermissionResult,
 ): PermissionState {
@@ -231,7 +223,6 @@ function mapWebsiteBlockerPermissionResult(
     platform: currentClientPlatform(),
   };
 }
-
 function mapWebsiteBlockerStatusToPermission(
   status: WebsiteBlockerStatusResult,
 ): PermissionState {
@@ -246,7 +237,6 @@ function mapWebsiteBlockerStatusToPermission(
     platform: currentClientPlatform(),
   };
 }
-
 function currentClientPlatform(): "darwin" | "win32" | "linux" {
   if (typeof navigator !== "undefined") {
     const ua = navigator.userAgent.toLowerCase();
@@ -255,7 +245,6 @@ function currentClientPlatform(): "darwin" | "win32" | "linux" {
   }
   return "linux";
 }
-
 function logSettingsClient(
   phase: string,
   detail: Record<string, unknown>,
@@ -266,10 +255,8 @@ function logSettingsClient(
     sanitizeForSettingsDebug(detail),
   );
 }
-
-const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
-const DESKTOP_STATUS_RPC_TIMEOUT_MS = 1_500;
-
+const SETTINGS_MUTATION_TIMEOUT_MS = 30000;
+const DESKTOP_STATUS_RPC_TIMEOUT_MS = 1500;
 async function getDesktopStatusRpc<T>(
   baseUrl: string,
   rpcMethod: string,
@@ -290,10 +277,13 @@ async function getDesktopStatusRpc<T>(
   });
   return outcome.status === "ok" && outcome.value ? outcome.value : null;
 }
-
 async function invokeLocalDesktopAgentRpc<T>(
   baseUrl: string,
-  options: { rpcMethod: string; ipcChannel: string; params?: unknown },
+  options: {
+    rpcMethod: string;
+    ipcChannel: string;
+    params?: unknown;
+  },
 ): Promise<T | null> {
   if (
     !isDesktopLocalApiBaseUrl(baseUrl) ||
@@ -304,11 +294,9 @@ async function invokeLocalDesktopAgentRpc<T>(
   }
   return invokeDesktopBridgeRequest<T>(options);
 }
-
 // ---------------------------------------------------------------------------
 // Bootstrap exchange types
 // ---------------------------------------------------------------------------
-
 /** Successful response from POST /api/auth/bootstrap/exchange. */
 export interface BootstrapExchangeSuccess {
   ok: true;
@@ -316,7 +304,6 @@ export interface BootstrapExchangeSuccess {
   expiresAt: number;
   identityId: string;
 }
-
 /** Failure response from POST /api/auth/bootstrap/exchange. */
 export interface BootstrapExchangeFailure {
   ok: false;
@@ -324,21 +311,17 @@ export interface BootstrapExchangeFailure {
   error: string;
   reason?: string;
 }
-
 export type BootstrapExchangeResult =
   | BootstrapExchangeSuccess
   | BootstrapExchangeFailure;
-
 // ---------------------------------------------------------------------------
 // Connector account routes — UI-facing connector multi-account management.
 // Connector config still uses `/api/connectors`; account inventory lives under
 // `/api/connectors/:provider/accounts`.
 // ---------------------------------------------------------------------------
-
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-
 declare module "./client-base" {
   interface ElizaClient {
     getStatus(): Promise<AgentStatus>;
@@ -351,13 +334,16 @@ declare module "./client-base" {
       maxObjectEntries?: number;
       maxStringLength?: number;
     }): Promise<RuntimeDebugSnapshot>;
-    setAutomationMode(
-      mode: "connectors-only" | "full",
-    ): Promise<{ mode: string }>;
-    setTradeMode(
-      mode: string,
-    ): Promise<{ ok: boolean; tradePermissionMode: string }>;
-    runTerminalCommand(command: string): Promise<{ ok: boolean }>;
+    setAutomationMode(mode: "connectors-only" | "full"): Promise<{
+      mode: string;
+    }>;
+    setTradeMode(mode: string): Promise<{
+      ok: boolean;
+      tradePermissionMode: string;
+    }>;
+    runTerminalCommand(command: string): Promise<{
+      ok: boolean;
+    }>;
     getFirstRunStatus(): Promise<{
       complete: boolean;
       cloudProvisioned?: boolean;
@@ -392,23 +378,36 @@ declare module "./client-base" {
       instanceId?: string;
     }>;
     postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
-    pair(code: string): Promise<{ token: string; instanceId: string }>;
+    pair(code: string): Promise<{
+      token: string;
+      instanceId: string;
+    }>;
     getFirstRunOptions(): Promise<FirstRunOptions>;
     submitFirstRun(data: Record<string, unknown>): Promise<void>;
-    startAnthropicLogin(): Promise<{ authUrl: string }>;
+    startAnthropicLogin(): Promise<{
+      authUrl: string;
+    }>;
     exchangeAnthropicCode(code: string): Promise<{
       success: boolean;
       expiresAt?: string;
       error?: string;
     }>;
-    submitAnthropicSetupToken(token: string): Promise<{ success: boolean }>;
+    submitAnthropicSetupToken(token: string): Promise<{
+      success: boolean;
+    }>;
     getSubscriptionStatus(): Promise<SubscriptionStatusResponse>;
-    deleteSubscription(provider: string): Promise<{ success: boolean }>;
+    deleteSubscription(provider: string): Promise<{
+      success: boolean;
+    }>;
     switchProvider(
       provider: string,
       apiKey?: string,
       primaryModel?: string,
-    ): Promise<{ success: boolean; provider: string; restarting: boolean }>;
+    ): Promise<{
+      success: boolean;
+      provider: string;
+      restarting: boolean;
+    }>;
     startOpenAILogin(): Promise<{
       authUrl: string;
       state: string;
@@ -428,7 +427,9 @@ declare module "./client-base" {
     restartAgent(): Promise<AgentStatus>;
     restartAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     resetAgent(): Promise<void>;
-    restart(): Promise<{ ok: boolean }>;
+    restart(): Promise<{
+      ok: boolean;
+    }>;
     getConfig(): Promise<AppConfigResponse>;
     getConfigSchema(): Promise<ConfigSchemaResponse>;
     updateConfig(
@@ -440,14 +441,19 @@ declare module "./client-base" {
     saveConnector(
       name: string,
       config: ConnectorConfig,
-    ): Promise<{ connectors: Record<string, ConnectorConfig> }>;
-    deleteConnector(
-      name: string,
-    ): Promise<{ connectors: Record<string, ConnectorConfig> }>;
+    ): Promise<{
+      connectors: Record<string, ConnectorConfig>;
+    }>;
+    deleteConnector(name: string): Promise<{
+      connectors: Record<string, ConnectorConfig>;
+    }>;
     listConnectorAccounts(
       provider: string,
       connectorId?: string,
-      options?: { timeoutMs?: number; signal?: AbortSignal },
+      options?: {
+        timeoutMs?: number;
+        signal?: AbortSignal;
+      },
     ): Promise<ConnectorAccountsListResponse>;
     addConnectorAccount(
       provider: string,
@@ -489,16 +495,24 @@ declare module "./client-base" {
       provider: string,
       query?: ConnectorAccountAuditEventsQuery,
     ): Promise<ConnectorAccountAuditEventsResponse>;
-    getTriggers(): Promise<{ triggers: TriggerSummary[] }>;
-    getTrigger(id: string): Promise<{ trigger: TriggerSummary }>;
-    createTrigger(
-      request: CreateTriggerRequest,
-    ): Promise<{ trigger: TriggerSummary }>;
+    getTriggers(): Promise<{
+      triggers: TriggerSummary[];
+    }>;
+    getTrigger(id: string): Promise<{
+      trigger: TriggerSummary;
+    }>;
+    createTrigger(request: CreateTriggerRequest): Promise<{
+      trigger: TriggerSummary;
+    }>;
     updateTrigger(
       id: string,
       request: UpdateTriggerRequest,
-    ): Promise<{ trigger: TriggerSummary }>;
-    deleteTrigger(id: string): Promise<{ ok: boolean }>;
+    ): Promise<{
+      trigger: TriggerSummary;
+    }>;
+    deleteTrigger(id: string): Promise<{
+      ok: boolean;
+    }>;
     runTriggerNow(id: string): Promise<{
       ok: boolean;
       result: {
@@ -508,13 +522,17 @@ declare module "./client-base" {
       };
       trigger?: TriggerSummary;
     }>;
-    getTriggerRuns(id: string): Promise<{ runs: TriggerRunRecord[] }>;
+    getTriggerRuns(id: string): Promise<{
+      runs: TriggerRunRecord[];
+    }>;
     emitTriggerEvent(
       eventKind: string,
       payload?: Record<string, unknown>,
     ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
-    getPlugins(): Promise<{ plugins: PluginInfo[] }>;
+    getPlugins(): Promise<{
+      plugins: PluginInfo[];
+    }>;
     fetchModels(
       provider: string,
       refresh?: boolean,
@@ -540,10 +558,13 @@ declare module "./client-base" {
       id: string,
       config: Record<string, unknown>,
     ): Promise<PluginMutationResult>;
-    getSecrets(): Promise<{ secrets: SecretInfo[] }>;
-    updateSecrets(
-      secrets: Record<string, string>,
-    ): Promise<{ ok: boolean; updated: string[] }>;
+    getSecrets(): Promise<{
+      secrets: SecretInfo[];
+    }>;
+    updateSecrets(secrets: Record<string, string>): Promise<{
+      ok: boolean;
+      updated: string[];
+    }>;
     /**
      * Tunnel a single owner-submitted credential value to a blocked coding
      * sub-agent via the parent runtime's one-shot CredentialTunnelService.
@@ -596,22 +617,29 @@ declare module "./client-base" {
       offset?: number,
     ): Promise<RelationshipsActivityResponse>;
     getRelationshipsCandidates(): Promise<RelationshipsMergeCandidate[]>;
-    acceptRelationshipsCandidate(
-      candidateId: string,
-    ): Promise<{ id: string; status: string }>;
-    rejectRelationshipsCandidate(
-      candidateId: string,
-    ): Promise<{ id: string; status: string }>;
+    acceptRelationshipsCandidate(candidateId: string): Promise<{
+      id: string;
+      status: string;
+    }>;
+    rejectRelationshipsCandidate(candidateId: string): Promise<{
+      id: string;
+      status: string;
+    }>;
     proposeRelationshipsLink(
       sourceEntityId: string,
       targetEntityId: string,
       evidence?: Record<string, unknown>,
-    ): Promise<{ id: string; status: string }>;
+    ): Promise<{
+      id: string;
+      status: string;
+    }>;
     getCharacter(): Promise<{
       character: CharacterData;
       agentName: string;
     }>;
-    getRandomName(): Promise<{ name: string }>;
+    getRandomName(): Promise<{
+      name: string;
+    }>;
     generateCharacterField(
       field: string,
       context: {
@@ -619,14 +647,22 @@ declare module "./client-base" {
         system?: string;
         bio?: string;
         topics?: string[];
-        style?: { all?: string[]; chat?: string[]; post?: string[] };
+        style?: {
+          all?: string[];
+          chat?: string[];
+          post?: string[];
+        };
         postExamples?: string[];
       },
       mode?: "append" | "replace",
-    ): Promise<{ generated: string }>;
-    updateCharacter(
-      character: CharacterData,
-    ): Promise<{ ok: boolean; character: CharacterData; agentName: string }>;
+    ): Promise<{
+      generated: string;
+    }>;
+    updateCharacter(character: CharacterData): Promise<{
+      ok: boolean;
+      character: CharacterData;
+      agentName: string;
+    }>;
     listCharacterHistory(options?: {
       limit?: number;
       offset?: number;
@@ -634,23 +670,31 @@ declare module "./client-base" {
     listExperiences(
       options?: ExperienceListQuery,
     ): Promise<ExperienceListResponse>;
-    getExperienceGraph(
-      options?: ExperienceListQuery,
-    ): Promise<{ graph: ExperienceGraphResponse }>;
+    getExperienceGraph(options?: ExperienceListQuery): Promise<{
+      graph: ExperienceGraphResponse;
+    }>;
     runExperienceMaintenance(options?: {
       deleteDuplicates?: boolean;
       limit?: number;
-    }): Promise<{ result: ExperienceMaintenanceResult }>;
-    getExperience(id: string): Promise<{ experience: ExperienceRecord }>;
+    }): Promise<{
+      result: ExperienceMaintenanceResult;
+    }>;
+    getExperience(id: string): Promise<{
+      experience: ExperienceRecord;
+    }>;
     updateExperience(
       id: string,
       data: ExperienceUpdateInput,
-    ): Promise<{ experience: ExperienceRecord }>;
-    deleteExperience(id: string): Promise<{ ok: boolean }>;
+    ): Promise<{
+      experience: ExperienceRecord;
+    }>;
+    deleteExperience(id: string): Promise<{
+      ok: boolean;
+    }>;
     getUpdateStatus(force?: boolean): Promise<UpdateStatus>;
-    setUpdateChannel(
-      channel: "stable" | "beta" | "nightly",
-    ): Promise<{ channel: string }>;
+    setUpdateChannel(channel: "stable" | "beta" | "nightly"): Promise<{
+      channel: string;
+    }>;
     getAgentAutomationMode(): Promise<AgentAutomationModeResponse>;
     setAgentAutomationMode(
       mode: AgentAutomationMode,
@@ -744,7 +788,9 @@ declare module "./client-base" {
     getAppBlockerStatus(): Promise<AppBlockerStatusResult>;
     checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
     requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
-    getInstalledAppsToBlock(): Promise<{ apps: AppBlockerInstalledApp[] }>;
+    getInstalledAppsToBlock(): Promise<{
+      apps: AppBlockerInstalledApp[];
+    }>;
     selectAppBlockerApps(): Promise<{
       apps: AppBlockerInstalledApp[];
       cancelled: boolean;
@@ -822,7 +868,10 @@ declare module "./client-base" {
     ): Promise<CodingAgentTaskThreadDetail | null>;
     listOrchestratorTaskPlanRevisions(
       taskId: string,
-      options?: { cursor?: string; limit?: number },
+      options?: {
+        cursor?: string;
+        limit?: number;
+      },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskPlanRevisionRecord>>;
     createOrchestratorTaskPlanRevision(
       taskId: string,
@@ -830,7 +879,10 @@ declare module "./client-base" {
     ): Promise<CodingAgentTaskPlanRevisionRecord | null>;
     listOrchestratorTaskMessages(
       taskId: string,
-      options?: { cursor?: string; limit?: number },
+      options?: {
+        cursor?: string;
+        limit?: number;
+      },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskMessageRecord>>;
     postOrchestratorTaskMessage(
       taskId: string,
@@ -838,11 +890,17 @@ declare module "./client-base" {
     ): Promise<boolean>;
     listOrchestratorTaskEvents(
       taskId: string,
-      options?: { cursor?: string; limit?: number },
+      options?: {
+        cursor?: string;
+        limit?: number;
+      },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskEventRecord>>;
     listOrchestratorTaskTimeline(
       taskId: string,
-      options?: { cursor?: string; limit?: number },
+      options?: {
+        cursor?: string;
+        limit?: number;
+      },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskTimelineItem>>;
     /**
      * Subscribe to a task's live change stream (SSE). Invokes `onChange` each
@@ -869,7 +927,9 @@ declare module "./client-base" {
       sessionId: string,
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
-    spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
+    spawnShellSession(workdir?: string): Promise<{
+      sessionId: string;
+    }>;
     /**
      * Spawn an interactive PTY session (a real CLI in the web terminal) via
      * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
@@ -888,7 +948,9 @@ declare module "./client-base" {
       baseUrl?: string;
       cols?: number;
       rows?: number;
-    }): Promise<{ sessionId: string }>;
+    }): Promise<{
+      sessionId: string;
+    }>;
     /** Kill an interactive PTY session (DELETE /api/pty/sessions/:id). */
     stopPtySession(sessionId: string): Promise<boolean>;
     subscribePtyOutput(sessionId: string): void;
@@ -905,7 +967,10 @@ declare module "./client-base" {
       message?: string;
       destination?: string;
     }>;
-    streamGoOffline(): Promise<{ ok: boolean; live: boolean }>;
+    streamGoOffline(): Promise<{
+      ok: boolean;
+      live: boolean;
+    }>;
     streamStatus(): Promise<{
       ok: boolean;
       running: boolean;
@@ -916,21 +981,40 @@ declare module "./client-base" {
       muted: boolean;
       audioSource: string;
       inputMode: string | null;
-      destination?: { id: string; name: string } | null;
+      destination?: {
+        id: string;
+        name: string;
+      } | null;
     }>;
     getStreamingDestinations(): Promise<{
       ok: boolean;
-      destinations: Array<{ id: string; name: string }>;
+      destinations: Array<{
+        id: string;
+        name: string;
+      }>;
     }>;
     setActiveDestination(destinationId: string): Promise<{
       ok: boolean;
-      destination?: { id: string; name: string };
+      destination?: {
+        id: string;
+        name: string;
+      };
     }>;
-    setStreamVolume(
-      volume: number,
-    ): Promise<{ ok: boolean; volume: number; muted: boolean }>;
-    muteStream(): Promise<{ ok: boolean; muted: boolean; volume: number }>;
-    unmuteStream(): Promise<{ ok: boolean; muted: boolean; volume: number }>;
+    setStreamVolume(volume: number): Promise<{
+      ok: boolean;
+      volume: number;
+      muted: boolean;
+    }>;
+    muteStream(): Promise<{
+      ok: boolean;
+      muted: boolean;
+      volume: number;
+    }>;
+    unmuteStream(): Promise<{
+      ok: boolean;
+      muted: boolean;
+      volume: number;
+    }>;
     getStreamVoice(): Promise<{
       ok: boolean;
       enabled: boolean;
@@ -947,38 +1031,63 @@ declare module "./client-base" {
       provider?: string;
     }): Promise<{
       ok: boolean;
-      voice: { enabled: boolean; autoSpeak: boolean };
+      voice: {
+        enabled: boolean;
+        autoSpeak: boolean;
+      };
     }>;
-    streamVoiceSpeak(text: string): Promise<{ ok: boolean; speaking: boolean }>;
-    getOverlayLayout(
-      destinationId?: string | null,
-    ): Promise<{ ok: boolean; layout: unknown; destinationId?: string }>;
+    streamVoiceSpeak(text: string): Promise<{
+      ok: boolean;
+      speaking: boolean;
+    }>;
+    getOverlayLayout(destinationId?: string | null): Promise<{
+      ok: boolean;
+      layout: unknown;
+      destinationId?: string;
+    }>;
     saveOverlayLayout(
       layout: unknown,
       destinationId?: string | null,
-    ): Promise<{ ok: boolean; layout: unknown; destinationId?: string }>;
+    ): Promise<{
+      ok: boolean;
+      layout: unknown;
+      destinationId?: string;
+    }>;
     getStreamSource(): Promise<{
-      source: { type: string; url?: string };
+      source: {
+        type: string;
+        url?: string;
+      };
     }>;
     setStreamSource(
       sourceType: string,
       customUrl?: string,
-    ): Promise<{ ok: boolean; source: { type: string; url?: string } }>;
+    ): Promise<{
+      ok: boolean;
+      source: {
+        type: string;
+        url?: string;
+      };
+    }>;
     getStreamSettings(): Promise<{
       ok: boolean;
-      settings: { theme?: string; avatarIndex?: number };
+      settings: {
+        theme?: string;
+        avatarIndex?: number;
+      };
     }>;
     saveStreamSettings(settings: {
       theme?: string;
       avatarIndex?: number;
-    }): Promise<{ ok: boolean; settings: unknown }>;
+    }): Promise<{
+      ok: boolean;
+      settings: unknown;
+    }>;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Cloud resume-progress (#14040 sub-defect 2)
 // ---------------------------------------------------------------------------
-
 /**
  * Map the cloud dedicated-agent-proxy's `202` resume body
  * (`{success:true,data:{status:"starting",jobId,retryAfterMs,alreadyInProgress}}`)
@@ -990,7 +1099,11 @@ function parseResumeProgress(
   body: unknown,
 ): AgentStatus["resumeProgress"] | undefined {
   if (!body || typeof body !== "object") return undefined;
-  const data = (body as { data?: unknown }).data;
+  const data = (
+    body as {
+      data?: unknown;
+    }
+  ).data;
   const src = (data && typeof data === "object" ? data : body) as Record<
     string,
     unknown
@@ -1008,7 +1121,6 @@ function parseResumeProgress(
       : undefined;
   return { status, jobId, retryAfterMs, alreadyInProgress };
 }
-
 /**
  * Fetch `/api/status` as a readiness poll, surfacing an in-flight cloud resume
  * (`202`) as an explicit progress {@link AgentStatus} instead of blocking on
@@ -1040,7 +1152,6 @@ function map202ToResumeProgressStatus(body: unknown): AgentStatus {
     resumeProgress,
   };
 }
-
 async function fetchStatusWithResumeProgress(
   client: ElizaClient,
 ): Promise<AgentStatus> {
@@ -1090,7 +1201,6 @@ async function fetchStatusWithResumeProgress(
     throw err;
   }
 }
-
 /**
  * True when an `/api/status` failure is the cloud shared-runtime resolver's
  * `404 Not a shared-runtime agent` — the honest signal that the bound agent is
@@ -1102,7 +1212,6 @@ function isSharedResolverMissForDedicatedAgent(err: unknown): boolean {
   if (!isApiError(err) || err.status !== 404) return false;
   return /not a shared-runtime agent/i.test(err.message);
 }
-
 function cloudRestRunningStatus(): AgentStatus {
   return {
     state: "running",
@@ -1115,11 +1224,9 @@ function cloudRestRunningStatus(): AgentStatus {
     startedAt: undefined,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-
 ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
   // A shared-runtime cloud agent is provisioned and running cloud-side with no
   // agent server, so /api/status 404s and the readiness poll would wedge on
@@ -1198,7 +1305,6 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
   // (#14040 sub-defect 2).
   return fetchStatusWithResumeProgress(this);
 };
-
 ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
   try {
     return await getDesktopStatusRpc<AgentBootProgress>(
@@ -1211,7 +1317,6 @@ ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
     return null;
   }
 };
-
 ElizaClient.prototype.getLaunchProgress = async function (this: ElizaClient) {
   try {
     return await getDesktopStatusRpc<LaunchSnapshot>(
@@ -1224,7 +1329,6 @@ ElizaClient.prototype.getLaunchProgress = async function (this: ElizaClient) {
     return null;
   }
 };
-
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
   try {
     const viaRpc = await getDesktopStatusRpc<AgentSelfStatusSnapshot>(
@@ -1237,7 +1341,6 @@ ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
   }
   return this.fetch("/api/agent/self-status");
 };
-
 ElizaClient.prototype.getRuntimeSnapshot = async function (
   this: ElizaClient,
   opts?,
@@ -1266,7 +1369,6 @@ ElizaClient.prototype.getRuntimeSnapshot = async function (
   const qs = params.toString();
   return this.fetch(`/api/runtime${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.setAutomationMode = async function (
   this: ElizaClient,
   mode,
@@ -1290,7 +1392,6 @@ ElizaClient.prototype.setAutomationMode = async function (
     body: JSON.stringify({ mode }),
   });
 };
-
 ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
   if (isTradePermissionMode(mode)) {
     try {
@@ -1318,7 +1419,6 @@ ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
     body: JSON.stringify({ mode }),
   });
 };
-
 ElizaClient.prototype.runTerminalCommand = async function (
   this: ElizaClient,
   command,
@@ -1328,7 +1428,6 @@ ElizaClient.prototype.runTerminalCommand = async function (
     body: JSON.stringify({ command }),
   });
 };
-
 ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
   // A shared-runtime cloud agent is provisioned on our behalf, so first-run is
   // complete by definition AND its REST adapter has no /api/first-run* surface.
@@ -1358,17 +1457,14 @@ ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
   }
   return this.fetch("/api/first-run/status");
 };
-
 ElizaClient.prototype.getWalletKeys = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/keys");
 };
-
 ElizaClient.prototype.getWalletOsStoreStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/wallet/os-store");
 };
-
 ElizaClient.prototype.postWalletOsStoreAction = async function (
   this: ElizaClient,
   action,
@@ -1378,7 +1474,6 @@ ElizaClient.prototype.postWalletOsStoreAction = async function (
     body: JSON.stringify({ action }),
   });
 };
-
 ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. Throws AgentNotReadyError when the
   // agent has no port yet — we catch and fall through to HTTP so the
@@ -1402,7 +1497,6 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-
   const maxRetries = 3;
   const baseBackoffMs = 1000;
   let lastErr: unknown;
@@ -1410,7 +1504,11 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
     try {
       return await this.fetch("/api/auth/status");
     } catch (err: unknown) {
-      const status = (err as Error & { status?: number })?.status;
+      const status = (
+        err as Error & {
+          status?: number;
+        }
+      )?.status;
       if (status === 401) {
         return { required: true, pairingEnabled: false, expiresAt: null };
       }
@@ -1425,7 +1523,6 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   }
   throw lastErr;
 };
-
 ElizaClient.prototype.postBootstrapExchange = async function (
   this: ElizaClient,
   token: string,
@@ -1445,7 +1542,6 @@ ElizaClient.prototype.postBootstrapExchange = async function (
     },
     { allowNonOk: true },
   );
-
   if (
     typeof body.sessionId === "string" &&
     typeof body.expiresAt === "number" &&
@@ -1458,7 +1554,6 @@ ElizaClient.prototype.postBootstrapExchange = async function (
       identityId: body.identityId,
     };
   }
-
   // Map reason to an HTTP status bucket for the UI layer.
   const reason = body.reason;
   const status: 400 | 401 | 429 | 503 =
@@ -1478,7 +1573,6 @@ ElizaClient.prototype.postBootstrapExchange = async function (
     reason,
   };
 };
-
 ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
   const status = await this.getAuthStatus();
   const instanceId = status.instanceId;
@@ -1491,14 +1585,13 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
       message: "Pairing target is not ready yet.",
     });
   }
-
-  const res = await this.fetch<{ token: string; instanceId: string }>(
-    "/api/auth/pair",
-    {
-      method: "POST",
-      body: JSON.stringify({ code, instanceId }),
-    },
-  );
+  const res = await this.fetch<{
+    token: string;
+    instanceId: string;
+  }>("/api/auth/pair", {
+    method: "POST",
+    body: JSON.stringify({ code, instanceId }),
+  });
   if (res.instanceId !== instanceId) {
     throw new ApiError({
       kind: "http",
@@ -1510,7 +1603,6 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
   }
   return res;
 };
-
 ElizaClient.prototype.getFirstRunOptions = async function (this: ElizaClient) {
   try {
     const viaRpc = await invokeLocalDesktopAgentRpc<FirstRunOptions>(
@@ -1526,7 +1618,6 @@ ElizaClient.prototype.getFirstRunOptions = async function (this: ElizaClient) {
   }
   return this.fetch("/api/first-run/options");
 };
-
 ElizaClient.prototype.submitFirstRun = async function (
   this: ElizaClient,
   data,
@@ -1540,11 +1631,9 @@ ElizaClient.prototype.submitFirstRun = async function (
     this.fetch(`/api/first-run/activation/${encodeURIComponent(id)}`),
   );
 };
-
 ElizaClient.prototype.startAnthropicLogin = async function (this: ElizaClient) {
   return this.fetch("/api/subscription/anthropic/start", { method: "POST" });
 };
-
 ElizaClient.prototype.exchangeAnthropicCode = async function (
   this: ElizaClient,
   code,
@@ -1555,7 +1644,6 @@ ElizaClient.prototype.exchangeAnthropicCode = async function (
     body: JSON.stringify({ code }),
   });
 };
-
 ElizaClient.prototype.submitAnthropicSetupToken = async function (
   this: ElizaClient,
   token,
@@ -1566,7 +1654,6 @@ ElizaClient.prototype.submitAnthropicSetupToken = async function (
     body: JSON.stringify({ token }),
   });
 };
-
 ElizaClient.prototype.getSubscriptionStatus = async function (
   this: ElizaClient,
 ) {
@@ -1584,7 +1671,6 @@ ElizaClient.prototype.getSubscriptionStatus = async function (
   }
   return this.fetch<SubscriptionStatusResponse>("/api/subscription/status");
 };
-
 ElizaClient.prototype.deleteSubscription = async function (
   this: ElizaClient,
   provider,
@@ -1593,7 +1679,6 @@ ElizaClient.prototype.deleteSubscription = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.switchProvider = async function (
   this: ElizaClient,
   provider,
@@ -1616,18 +1701,20 @@ ElizaClient.prototype.switchProvider = async function (
       ...(apiKey ? { apiKey } : {}),
       ...(primaryModel ? { primaryModel } : {}),
     }),
-  })) as { success: boolean; provider: string; restarting: boolean };
+  })) as {
+    success: boolean;
+    provider: string;
+    restarting: boolean;
+  };
   logSettingsClient("POST /api/provider/switch ← ok", {
     baseUrl: this.getBaseUrl(),
     result,
   });
   return result;
 };
-
 ElizaClient.prototype.startOpenAILogin = async function (this: ElizaClient) {
   return this.fetch("/api/subscription/openai/start", { method: "POST" });
 };
-
 ElizaClient.prototype.exchangeOpenAICode = async function (
   this: ElizaClient,
   code,
@@ -1638,7 +1725,6 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
     body: JSON.stringify({ code }),
   });
 };
-
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   const nativeAgent = await androidNativeAgentLifecycleForUrl(
     this.getBaseUrl(),
@@ -1646,12 +1732,13 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   if (nativeAgent?.start) {
     return (await nativeAgent.start()) as AgentStatus;
   }
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/start", {
+  const res = await this.fetch<{
+    status: AgentStatus;
+  }>("/api/agent/start", {
     method: "POST",
   });
   return res.status;
 };
-
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
   const nativeAgent = await androidNativeAgentLifecycleForUrl(
     this.getBaseUrl(),
@@ -1665,26 +1752,29 @@ ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
       startedAt: undefined,
     } as AgentStatus;
   }
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/stop", {
+  const res = await this.fetch<{
+    status: AgentStatus;
+  }>("/api/agent/stop", {
     method: "POST",
   });
   return res.status;
 };
-
 ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/pause", {
+  const res = await this.fetch<{
+    status: AgentStatus;
+  }>("/api/agent/pause", {
     method: "POST",
   });
   return res.status;
 };
-
 ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/resume", {
+  const res = await this.fetch<{
+    status: AgentStatus;
+  }>("/api/agent/resume", {
     method: "POST",
   });
   return res.status;
 };
-
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
   const nativeAgent = await androidNativeAgentLifecycleForUrl(
     this.getBaseUrl(),
@@ -1696,17 +1786,18 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
     return (await nativeAgent.start()) as AgentStatus;
   }
   try {
-    const res = await this.fetch<{ status: AgentStatus }>(
-      "/api/agent/restart",
-      {
-        method: "POST",
-      },
-    );
+    const res = await this.fetch<{
+      status: AgentStatus;
+    }>("/api/agent/restart", {
+      method: "POST",
+    });
     return res.status;
   } catch {
     // Back-compat for older runtimes that still expose only the process-level
     // restart endpoint.
-    await this.fetch<{ ok: boolean }>("/api/restart", { method: "POST" });
+    await this.fetch<{
+      ok: boolean;
+    }>("/api/restart", { method: "POST" });
     return {
       state: "restarting",
       agentName: "Eliza",
@@ -1716,7 +1807,6 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
     };
   }
 };
-
 ElizaClient.prototype.restartAndWait = async function (
   this: ElizaClient,
   maxWaitMs = 30000,
@@ -1741,15 +1831,12 @@ ElizaClient.prototype.restartAndWait = async function (
   }
   return this.getStatus();
 };
-
 ElizaClient.prototype.resetAgent = async function (this: ElizaClient) {
   await this.fetch("/api/agent/reset", { method: "POST" });
 };
-
 ElizaClient.prototype.restart = async function (this: ElizaClient) {
   return this.fetch("/api/restart", { method: "POST" });
 };
-
 ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   logSettingsClient("GET /api/config → start", {
     baseUrl: this.getBaseUrl(),
@@ -1783,7 +1870,6 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   });
   return r;
 };
-
 ElizaClient.prototype.getConfigSchema = async function (this: ElizaClient) {
   try {
     const viaRpc = await invokeLocalDesktopAgentRpc<ConfigSchemaResponse>(
@@ -1799,7 +1885,6 @@ ElizaClient.prototype.getConfigSchema = async function (this: ElizaClient) {
   }
   return this.fetch("/api/config/schema");
 };
-
 ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
   logSettingsClient("PUT /api/config → start", {
     baseUrl: this.getBaseUrl(),
@@ -1842,11 +1927,9 @@ ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
   });
   return out;
 };
-
 ElizaClient.prototype.getConnectors = async function (this: ElizaClient) {
   return this.fetch("/api/connectors");
 };
-
 ElizaClient.prototype.saveConnector = async function (
   this: ElizaClient,
   name,
@@ -1857,7 +1940,6 @@ ElizaClient.prototype.saveConnector = async function (
     body: JSON.stringify({ name, config }),
   });
 };
-
 ElizaClient.prototype.deleteConnector = async function (
   this: ElizaClient,
   name,
@@ -1866,7 +1948,6 @@ ElizaClient.prototype.deleteConnector = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.listConnectorAccounts = async function (
   this: ElizaClient,
   provider,
@@ -1887,7 +1968,6 @@ ElizaClient.prototype.listConnectorAccounts = async function (
     response,
   );
 };
-
 ElizaClient.prototype.addConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1903,7 +1983,6 @@ ElizaClient.prototype.addConnectorAccount = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.startConnectorAccountOAuth = async function (
   this: ElizaClient,
   provider,
@@ -1919,7 +1998,6 @@ ElizaClient.prototype.startConnectorAccountOAuth = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.patchConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1936,7 +2014,6 @@ ElizaClient.prototype.patchConnectorAccount = async function (
   );
   return normalizeConnectorAccountRecord(provider, connectorId, response);
 };
-
 ElizaClient.prototype.testConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1949,7 +2026,6 @@ ElizaClient.prototype.testConnectorAccount = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.refreshConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1962,7 +2038,6 @@ ElizaClient.prototype.refreshConnectorAccount = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.deleteConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1975,7 +2050,6 @@ ElizaClient.prototype.deleteConnectorAccount = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.makeDefaultConnectorAccount = async function (
   this: ElizaClient,
   provider,
@@ -1988,7 +2062,6 @@ ElizaClient.prototype.makeDefaultConnectorAccount = async function (
   );
   return normalizeConnectorAccountActionResult(provider, connectorId, response);
 };
-
 ElizaClient.prototype.listConnectorAccountAuditEvents = async function (
   this: ElizaClient,
   provider,
@@ -1998,17 +2071,14 @@ ElizaClient.prototype.listConnectorAccountAuditEvents = async function (
     connectorAccountAuditPath(provider, query),
   );
 };
-
 ElizaClient.prototype.getTriggers = async function (this: ElizaClient) {
   return workflowSurfaceClient(this).fetch("/api/triggers");
 };
-
 ElizaClient.prototype.getTrigger = async function (this: ElizaClient, id) {
   return workflowSurfaceClient(this).fetch(
     `/api/triggers/${encodeURIComponent(id)}`,
   );
 };
-
 ElizaClient.prototype.createTrigger = async function (
   this: ElizaClient,
   request,
@@ -2018,7 +2088,6 @@ ElizaClient.prototype.createTrigger = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.updateTrigger = async function (
   this: ElizaClient,
   id,
@@ -2032,7 +2101,6 @@ ElizaClient.prototype.updateTrigger = async function (
     },
   );
 };
-
 ElizaClient.prototype.deleteTrigger = async function (this: ElizaClient, id) {
   return workflowSurfaceClient(this).fetch(
     `/api/triggers/${encodeURIComponent(id)}`,
@@ -2041,7 +2109,6 @@ ElizaClient.prototype.deleteTrigger = async function (this: ElizaClient, id) {
     },
   );
 };
-
 ElizaClient.prototype.runTriggerNow = async function (this: ElizaClient, id) {
   return workflowSurfaceClient(this).fetch(
     `/api/triggers/${encodeURIComponent(id)}/execute`,
@@ -2050,13 +2117,11 @@ ElizaClient.prototype.runTriggerNow = async function (this: ElizaClient, id) {
     },
   );
 };
-
 ElizaClient.prototype.getTriggerRuns = async function (this: ElizaClient, id) {
   return workflowSurfaceClient(this).fetch(
     `/api/triggers/${encodeURIComponent(id)}/runs`,
   );
 };
-
 ElizaClient.prototype.emitTriggerEvent = async function (
   this: ElizaClient,
   eventKind,
@@ -2070,7 +2135,6 @@ ElizaClient.prototype.emitTriggerEvent = async function (
     },
   );
 };
-
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   try {
     const viaRpc = await invokeLocalDesktopAgentRpc<TriggerHealthSnapshot>(
@@ -2086,11 +2150,9 @@ ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   }
   return workflowSurfaceClient(this).fetch("/api/triggers/health");
 };
-
 ElizaClient.prototype.getPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/plugins");
 };
-
 ElizaClient.prototype.fetchModels = async function (
   this: ElizaClient,
   provider,
@@ -2100,7 +2162,6 @@ ElizaClient.prototype.fetchModels = async function (
   if (refresh) params.set("refresh", "true");
   return this.fetch(`/api/models?${params.toString()}`);
 };
-
 ElizaClient.prototype.getModelsCatalog = async function (
   this: ElizaClient,
   init,
@@ -2113,7 +2174,6 @@ ElizaClient.prototype.getModelsCatalog = async function (
     ? this.fetch("/api/models?catalogOnly=1")
     : this.fetch("/api/models?catalogOnly=1", init);
 };
-
 ElizaClient.prototype.getModelsConfig = async function (
   this: ElizaClient,
   init,
@@ -2122,7 +2182,6 @@ ElizaClient.prototype.getModelsConfig = async function (
     ? this.fetch("/api/models/config")
     : this.fetch("/api/models/config", init);
 };
-
 ElizaClient.prototype.updateModelsConfig = async function (
   this: ElizaClient,
   request,
@@ -2190,7 +2249,6 @@ ElizaClient.prototype.updateModelsConfig = async function (
     message: error ?? "Model config update failed",
   });
 };
-
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
   try {
     const viaRpc = await invokeLocalDesktopAgentRpc<CorePluginsResponse>(
@@ -2206,7 +2264,6 @@ ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
   }
   return this.fetch("/api/plugins/core");
 };
-
 ElizaClient.prototype.toggleCorePlugin = async function (
   this: ElizaClient,
   npmName,
@@ -2217,7 +2274,6 @@ ElizaClient.prototype.toggleCorePlugin = async function (
     body: JSON.stringify({ npmName, enabled }),
   });
 };
-
 ElizaClient.prototype.updatePlugin = async function (
   this: ElizaClient,
   id,
@@ -2243,11 +2299,9 @@ ElizaClient.prototype.updatePlugin = async function (
   });
   return result;
 };
-
 ElizaClient.prototype.getSecrets = async function (this: ElizaClient) {
   return this.fetch("/api/secrets");
 };
-
 ElizaClient.prototype.updateSecrets = async function (
   this: ElizaClient,
   secrets,
@@ -2264,14 +2318,16 @@ ElizaClient.prototype.updateSecrets = async function (
   const out = (await this.fetch("/api/secrets", {
     method: "PUT",
     body: JSON.stringify({ secrets }),
-  })) as { ok: boolean; updated: string[] };
+  })) as {
+    ok: boolean;
+    updated: string[];
+  };
   logSettingsClient("PUT /api/secrets ← ok", {
     baseUrl: this.getBaseUrl(),
     out,
   });
   return out;
 };
-
 ElizaClient.prototype.tunnelCredential = async function (
   this: ElizaClient,
   input,
@@ -2303,7 +2359,6 @@ ElizaClient.prototype.tunnelCredential = async function (
   });
   return out;
 };
-
 ElizaClient.prototype.testPluginConnection = async function (
   this: ElizaClient,
   id,
@@ -2312,7 +2367,6 @@ ElizaClient.prototype.testPluginConnection = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.getLogs = async function (this: ElizaClient, filter?) {
   const params = new URLSearchParams();
   if (filter?.source) params.set("source", filter.source);
@@ -2322,7 +2376,6 @@ ElizaClient.prototype.getLogs = async function (this: ElizaClient, filter?) {
   const qs = params.toString();
   return this.fetch(`/api/logs${qs ? `?${qs}` : ""}`);
 };
-
 // buildSecurityAuditParams is a private helper used only by agent audit methods
 function buildSecurityAuditParams(
   filter?: SecurityAuditFilter,
@@ -2342,19 +2395,22 @@ function buildSecurityAuditParams(
   if (includeStream) params.set("stream", "1");
   return params;
 }
-
 async function throwSecurityAuditResponseError(res: Response): Promise<never> {
   const body = (await res
     .json()
     .catch(() => ({ error: res.statusText }))) as Record<string, string> | null;
   const err = new Error(body?.error ?? `HTTP ${res.status}`);
-  (err as Error & { status?: number }).status = res.status;
+  (
+    err as Error & {
+      status?: number;
+    }
+  ).status = res.status;
   throw err;
 }
-
-function findSseEventBreak(
-  chunkBuffer: string,
-): { index: number; length: number } | null {
+function findSseEventBreak(chunkBuffer: string): {
+  index: number;
+  length: number;
+} | null {
   const lfBreak = chunkBuffer.indexOf("\n\n");
   const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
   if (lfBreak === -1 && crlfBreak === -1) return null;
@@ -2364,7 +2420,6 @@ function findSseEventBreak(
     ? { index: lfBreak, length: 2 }
     : { index: crlfBreak, length: 4 };
 }
-
 function parseSecurityAuditPayload(
   payload: string,
   onEvent: (event: SecurityAuditStreamEvent) => void,
@@ -2384,7 +2439,6 @@ function parseSecurityAuditPayload(
     });
   }
 }
-
 function consumeSecurityAuditEvent(
   rawEvent: string,
   onEvent: (event: SecurityAuditStreamEvent) => void,
@@ -2394,7 +2448,6 @@ function consumeSecurityAuditEvent(
     parseSecurityAuditPayload(line.slice(5).trim(), onEvent);
   }
 }
-
 async function readSecurityAuditStream(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: SecurityAuditStreamEvent) => void,
@@ -2402,7 +2455,6 @@ async function readSecurityAuditStream(
   const decoder = new TextDecoder();
   const reader = body.getReader();
   let buffer = "";
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -2415,10 +2467,8 @@ async function readSecurityAuditStream(
       eventBreak = findSseEventBreak(buffer);
     }
   }
-
   if (buffer.trim()) consumeSecurityAuditEvent(buffer, onEvent);
 }
-
 ElizaClient.prototype.getSecurityAudit = async function (
   this: ElizaClient,
   filter?,
@@ -2426,7 +2476,6 @@ ElizaClient.prototype.getSecurityAudit = async function (
   const qs = buildSecurityAuditParams(filter).toString();
   return this.fetch(`/api/security/audit${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.streamSecurityAudit = async function (
   this: ElizaClient,
   onEvent,
@@ -2436,7 +2485,6 @@ ElizaClient.prototype.streamSecurityAudit = async function (
   if (!this.apiAvailable) {
     throw new Error("API not available (no HTTP origin)");
   }
-
   const token = this.apiToken;
   const qs = buildSecurityAuditParams(filter, true).toString();
   const res = await this.rawRequest(
@@ -2451,18 +2499,14 @@ ElizaClient.prototype.streamSecurityAudit = async function (
     },
     { allowNonOk: true },
   );
-
   if (!res.ok) {
     await throwSecurityAuditResponseError(res);
   }
-
   if (!res.body) {
     throw new Error("Streaming not supported by this browser");
   }
-
   await readSecurityAuditStream(res.body, onEvent);
 };
-
 ElizaClient.prototype.getAgentEvents = async function (
   this: ElizaClient,
   opts?,
@@ -2476,7 +2520,6 @@ ElizaClient.prototype.getAgentEvents = async function (
   const qs = params.toString();
   return this.fetch(`/api/agent/events${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.getRelationshipsGraph = async function (
   this: ElizaClient,
   query,
@@ -2490,12 +2533,11 @@ ElizaClient.prototype.getRelationshipsGraph = async function (
   if (typeof query?.offset === "number")
     params.set("offset", String(query.offset));
   const qs = params.toString();
-  const response = await this.fetch<{ data: RelationshipsGraphSnapshot }>(
-    `/api/relationships/graph${qs ? `?${qs}` : ""}`,
-  );
+  const response = await this.fetch<{
+    data: RelationshipsGraphSnapshot;
+  }>(`/api/relationships/graph${qs ? `?${qs}` : ""}`);
   return response.data;
 };
-
 ElizaClient.prototype.getRelationshipsPeople = async function (
   this: ElizaClient,
   query,
@@ -2518,17 +2560,15 @@ ElizaClient.prototype.getRelationshipsPeople = async function (
     stats: response.stats,
   };
 };
-
 ElizaClient.prototype.getRelationshipsPerson = async function (
   this: ElizaClient,
   id,
 ) {
-  const response = await this.fetch<{ data: RelationshipsPersonDetail }>(
-    `/api/relationships/people/${encodeURIComponent(id)}`,
-  );
+  const response = await this.fetch<{
+    data: RelationshipsPersonDetail;
+  }>(`/api/relationships/people/${encodeURIComponent(id)}`);
   return response.data;
 };
-
 ElizaClient.prototype.getRelationshipsActivity = async function (
   this: ElizaClient,
   limit?,
@@ -2542,58 +2582,65 @@ ElizaClient.prototype.getRelationshipsActivity = async function (
     `/api/relationships/activity${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.getRelationshipsCandidates = async function (
   this: ElizaClient,
 ) {
-  const response = await this.fetch<{ data: RelationshipsMergeCandidate[] }>(
-    "/api/relationships/candidates",
-  );
+  const response = await this.fetch<{
+    data: RelationshipsMergeCandidate[];
+  }>("/api/relationships/candidates");
   return response.data;
 };
-
 ElizaClient.prototype.acceptRelationshipsCandidate = async function (
   this: ElizaClient,
   candidateId,
 ) {
-  const response = await this.fetch<{ data: { id: string; status: string } }>(
+  const response = await this.fetch<{
+    data: {
+      id: string;
+      status: string;
+    };
+  }>(
     `/api/relationships/candidates/${encodeURIComponent(candidateId)}/accept`,
     { method: "POST" },
   );
   return response.data;
 };
-
 ElizaClient.prototype.rejectRelationshipsCandidate = async function (
   this: ElizaClient,
   candidateId,
 ) {
-  const response = await this.fetch<{ data: { id: string; status: string } }>(
+  const response = await this.fetch<{
+    data: {
+      id: string;
+      status: string;
+    };
+  }>(
     `/api/relationships/candidates/${encodeURIComponent(candidateId)}/reject`,
     { method: "POST" },
   );
   return response.data;
 };
-
 ElizaClient.prototype.proposeRelationshipsLink = async function (
   this: ElizaClient,
   sourceEntityId,
   targetEntityId,
   evidence,
 ) {
-  const response = await this.fetch<{ data: { id: string; status: string } }>(
-    `/api/relationships/people/${encodeURIComponent(sourceEntityId)}/link`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        targetEntityId,
-        evidence: evidence ?? {},
-      }),
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  const response = await this.fetch<{
+    data: {
+      id: string;
+      status: string;
+    };
+  }>(`/api/relationships/people/${encodeURIComponent(sourceEntityId)}/link`, {
+    method: "POST",
+    body: JSON.stringify({
+      targetEntityId,
+      evidence: evidence ?? {},
+    }),
+    headers: { "Content-Type": "application/json" },
+  });
   return response.data;
 };
-
 ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
   // RPC composer forwards the `/api/character` body verbatim, so the
   // wire shape is `{ character, agentName }` — bun-side just types it
@@ -2610,11 +2657,9 @@ ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
   }
   return this.fetch("/api/character");
 };
-
 ElizaClient.prototype.getRandomName = async function (this: ElizaClient) {
   return this.fetch("/api/character/random-name");
 };
-
 ElizaClient.prototype.generateCharacterField = async function (
   this: ElizaClient,
   field,
@@ -2626,7 +2671,6 @@ ElizaClient.prototype.generateCharacterField = async function (
     body: JSON.stringify({ field, context, mode }),
   });
 };
-
 ElizaClient.prototype.updateCharacter = async function (
   this: ElizaClient,
   character,
@@ -2636,7 +2680,6 @@ ElizaClient.prototype.updateCharacter = async function (
     body: JSON.stringify(character),
   });
 };
-
 ElizaClient.prototype.listCharacterHistory = async function (
   this: ElizaClient,
   options,
@@ -2651,7 +2694,6 @@ ElizaClient.prototype.listCharacterHistory = async function (
   const qs = params.toString();
   return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`);
 };
-
 function appendMultiQueryParam(
   params: URLSearchParams,
   key: string,
@@ -2670,7 +2712,6 @@ function appendMultiQueryParam(
     params.append(key, value.trim());
   }
 }
-
 function appendTrimmedQueryParam(
   params: URLSearchParams,
   key: string,
@@ -2679,7 +2720,6 @@ function appendTrimmedQueryParam(
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (trimmed) params.set(key, trimmed);
 }
-
 function appendNumberQueryParam(
   params: URLSearchParams,
   key: string,
@@ -2687,7 +2727,6 @@ function appendNumberQueryParam(
 ): void {
   if (typeof value === "number") params.set(key, String(value));
 }
-
 function appendBooleanQueryParam(
   params: URLSearchParams,
   key: string,
@@ -2695,7 +2734,6 @@ function appendBooleanQueryParam(
 ): void {
   if (typeof value === "boolean") params.set(key, String(value));
 }
-
 function appendExperienceScalarParams(
   params: URLSearchParams,
   options: ExperienceListQuery | undefined,
@@ -2709,7 +2747,6 @@ function appendExperienceScalarParams(
   appendNumberQueryParam(params, "minImportance", options?.minImportance);
   appendBooleanQueryParam(params, "includeRelated", options?.includeRelated);
 }
-
 function appendExperienceCollectionParams(
   params: URLSearchParams,
   options: ExperienceListQuery | undefined,
@@ -2724,7 +2761,6 @@ function appendExperienceCollectionParams(
       params.append("tag", tag);
     });
 }
-
 function buildExperienceQueryParams(
   options: ExperienceListQuery | undefined,
   includeOffset: boolean,
@@ -2734,7 +2770,6 @@ function buildExperienceQueryParams(
   appendExperienceCollectionParams(params, options);
   return params;
 }
-
 ElizaClient.prototype.listExperiences = async function (
   this: ElizaClient,
   options,
@@ -2750,55 +2785,48 @@ ElizaClient.prototype.listExperiences = async function (
     total: response.total,
   };
 };
-
 ElizaClient.prototype.getExperienceGraph = async function (
   this: ElizaClient,
   options,
 ) {
   const params = buildExperienceQueryParams(options, false);
   const qs = params.toString();
-  const response = await this.fetch<{ data: ExperienceGraphResponse }>(
-    `/api/character/experiences/graph${qs ? `?${qs}` : ""}`,
-  );
+  const response = await this.fetch<{
+    data: ExperienceGraphResponse;
+  }>(`/api/character/experiences/graph${qs ? `?${qs}` : ""}`);
   return { graph: response.data };
 };
-
 ElizaClient.prototype.runExperienceMaintenance = async function (
   this: ElizaClient,
   options,
 ) {
-  const response = await this.fetch<{ data: ExperienceMaintenanceResult }>(
-    "/api/character/experiences/maintenance",
-    {
-      method: "POST",
-      body: JSON.stringify(options ?? {}),
-    },
-  );
+  const response = await this.fetch<{
+    data: ExperienceMaintenanceResult;
+  }>("/api/character/experiences/maintenance", {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
   return { result: response.data };
 };
-
 ElizaClient.prototype.getExperience = async function (this: ElizaClient, id) {
-  const response = await this.fetch<{ data: ExperienceRecord }>(
-    `/api/character/experiences/${encodeURIComponent(id)}`,
-  );
+  const response = await this.fetch<{
+    data: ExperienceRecord;
+  }>(`/api/character/experiences/${encodeURIComponent(id)}`);
   return { experience: response.data };
 };
-
 ElizaClient.prototype.updateExperience = async function (
   this: ElizaClient,
   id,
   data,
 ) {
-  const response = await this.fetch<{ data: ExperienceRecord }>(
-    `/api/character/experiences/${encodeURIComponent(id)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    },
-  );
+  const response = await this.fetch<{
+    data: ExperienceRecord;
+  }>(`/api/character/experiences/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
   return { experience: response.data };
 };
-
 ElizaClient.prototype.deleteExperience = async function (
   this: ElizaClient,
   id,
@@ -2807,7 +2835,6 @@ ElizaClient.prototype.deleteExperience = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.getUpdateStatus = async function (
   this: ElizaClient,
   force = false,
@@ -2827,7 +2854,6 @@ ElizaClient.prototype.getUpdateStatus = async function (
   }
   return this.fetch(`/api/update/status${force ? "?force=true" : ""}`);
 };
-
 ElizaClient.prototype.setUpdateChannel = async function (
   this: ElizaClient,
   channel,
@@ -2837,7 +2863,6 @@ ElizaClient.prototype.setUpdateChannel = async function (
     body: JSON.stringify({ channel }),
   });
 };
-
 ElizaClient.prototype.getAgentAutomationMode = async function (
   this: ElizaClient,
 ) {
@@ -2856,7 +2881,6 @@ ElizaClient.prototype.getAgentAutomationMode = async function (
   }
   return this.fetch("/api/permissions/automation-mode");
 };
-
 ElizaClient.prototype.setAgentAutomationMode = async function (
   this: ElizaClient,
   mode,
@@ -2880,7 +2904,6 @@ ElizaClient.prototype.setAgentAutomationMode = async function (
     body: JSON.stringify({ mode }),
   });
 };
-
 ElizaClient.prototype.getTradePermissionMode = async function (
   this: ElizaClient,
 ) {
@@ -2899,7 +2922,6 @@ ElizaClient.prototype.getTradePermissionMode = async function (
   }
   return this.fetch("/api/permissions/trade-mode");
 };
-
 ElizaClient.prototype.setTradePermissionMode = async function (
   this: ElizaClient,
   mode,
@@ -2923,14 +2945,12 @@ ElizaClient.prototype.setTradePermissionMode = async function (
     body: JSON.stringify({ mode }),
   });
 };
-
 ElizaClient.prototype.getPermissions = async function (this: ElizaClient) {
   const permissions = await this.fetch<AllPermissionsState>("/api/permissions");
   const plugin = getNativeWebsiteBlockerPluginIfAvailable();
   if (!plugin) {
     return permissions;
   }
-
   const permission = mapWebsiteBlockerStatusToPermission(
     await plugin.getStatus(),
   );
@@ -2939,7 +2959,6 @@ ElizaClient.prototype.getPermissions = async function (this: ElizaClient) {
     [WEBSITE_BLOCKING_PERMISSION_ID]: permission,
   };
 };
-
 ElizaClient.prototype.getPermission = async function (this: ElizaClient, id) {
   if (id === WEBSITE_BLOCKING_PERMISSION_ID) {
     const plugin = getNativeWebsiteBlockerPluginIfAvailable();
@@ -2949,7 +2968,6 @@ ElizaClient.prototype.getPermission = async function (this: ElizaClient, id) {
   }
   return this.fetch(`/api/permissions/${id}`);
 };
-
 ElizaClient.prototype.requestPermission = async function (
   this: ElizaClient,
   id,
@@ -2964,7 +2982,6 @@ ElizaClient.prototype.requestPermission = async function (
   }
   return this.fetch(`/api/permissions/${id}/request`, { method: "POST" });
 };
-
 ElizaClient.prototype.openPermissionSettings = async function (
   this: ElizaClient,
   id,
@@ -2980,7 +2997,6 @@ ElizaClient.prototype.openPermissionSettings = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.refreshPermissions = async function (this: ElizaClient) {
   const permissions = await this.fetch<AllPermissionsState>(
     "/api/permissions/refresh",
@@ -2992,7 +3008,6 @@ ElizaClient.prototype.refreshPermissions = async function (this: ElizaClient) {
   if (!plugin) {
     return permissions;
   }
-
   const permission = mapWebsiteBlockerStatusToPermission(
     await plugin.getStatus(),
   );
@@ -3001,7 +3016,6 @@ ElizaClient.prototype.refreshPermissions = async function (this: ElizaClient) {
     [WEBSITE_BLOCKING_PERMISSION_ID]: permission,
   };
 };
-
 ElizaClient.prototype.setShellEnabled = async function (
   this: ElizaClient,
   enabled,
@@ -3011,14 +3025,12 @@ ElizaClient.prototype.setShellEnabled = async function (
     body: JSON.stringify({ enabled }),
   });
 };
-
 ElizaClient.prototype.isShellEnabled = async function (this: ElizaClient) {
-  const result = await this.fetch<{ enabled: boolean }>(
-    "/api/permissions/shell",
-  );
+  const result = await this.fetch<{
+    enabled: boolean;
+  }>("/api/permissions/shell");
   return result.enabled;
 };
-
 ElizaClient.prototype.getWebsiteBlockerStatus = async function (
   this: ElizaClient,
 ) {
@@ -3028,7 +3040,6 @@ ElizaClient.prototype.getWebsiteBlockerStatus = async function (
   }
   return this.fetch("/api/website-blocker");
 };
-
 ElizaClient.prototype.startWebsiteBlock = async function (
   this: ElizaClient,
   options,
@@ -3042,7 +3053,6 @@ ElizaClient.prototype.startWebsiteBlock = async function (
     body: JSON.stringify(options),
   });
 };
-
 ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
   const plugin = getNativeWebsiteBlockerPluginIfAvailable();
   if (plugin) {
@@ -3052,7 +3062,6 @@ ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.getAppBlockerStatus = async function (this: ElizaClient) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
@@ -3070,7 +3079,6 @@ ElizaClient.prototype.getAppBlockerStatus = async function (this: ElizaClient) {
     reason: "App blocking is only available on iPhone and Android builds.",
   } satisfies AppBlockerStatusResult;
 };
-
 ElizaClient.prototype.checkAppBlockerPermissions = async function (
   this: ElizaClient,
 ) {
@@ -3084,7 +3092,6 @@ ElizaClient.prototype.checkAppBlockerPermissions = async function (
     reason: "App blocking is only available on iPhone and Android builds.",
   } satisfies AppBlockerPermissionResult;
 };
-
 ElizaClient.prototype.requestAppBlockerPermissions = async function (
   this: ElizaClient,
 ) {
@@ -3098,7 +3105,6 @@ ElizaClient.prototype.requestAppBlockerPermissions = async function (
     reason: "App blocking is only available on iPhone and Android builds.",
   } satisfies AppBlockerPermissionResult;
 };
-
 ElizaClient.prototype.getInstalledAppsToBlock = async function (
   this: ElizaClient,
 ) {
@@ -3108,7 +3114,6 @@ ElizaClient.prototype.getInstalledAppsToBlock = async function (
   }
   return { apps: [] as AppBlockerInstalledApp[] };
 };
-
 ElizaClient.prototype.selectAppBlockerApps = async function (
   this: ElizaClient,
 ) {
@@ -3121,7 +3126,6 @@ ElizaClient.prototype.selectAppBlockerApps = async function (
     cancelled: true,
   };
 };
-
 ElizaClient.prototype.startAppBlock = async function (
   this: ElizaClient,
   options,
@@ -3137,7 +3141,6 @@ ElizaClient.prototype.startAppBlock = async function (
     error: "App blocking is only available on iPhone and Android builds.",
   };
 };
-
 ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
@@ -3148,7 +3151,6 @@ ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
     error: "App blocking is only available on iPhone and Android builds.",
   };
 };
-
 ElizaClient.prototype.getCodingAgentStatus = async function (
   this: ElizaClient,
 ) {
@@ -3158,7 +3160,6 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
       this.getOrchestratorStatus(),
       this.listCodingAgentTaskThreads({ limit: 20 }),
     ]);
-
   const acpSessions =
     acpResult.status === "fulfilled" && Array.isArray(acpResult.value)
       ? acpResult.value
@@ -3172,11 +3173,9 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
     orchestratorStatusResult.status === "fulfilled"
       ? orchestratorStatusResult.value
       : null;
-
   if (!acpSessions && !taskThreads && !orchestratorStatus) {
     return null;
   }
-
   const acpTasks = acpSessions
     ? mapAcpSessionsToCodingAgentSessions(acpSessions).filter(
         (task) => !TERMINAL_STATUSES.has(task.status),
@@ -3188,12 +3187,10 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
       )
     : [];
   const tasks = [...acpTasks, ...taskThreadSessions];
-
   const taskThreadCount =
     typeof orchestratorStatus?.taskCount === "number"
       ? orchestratorStatus.taskCount
       : (taskThreads?.length ?? 0);
-
   return {
     supervisionLevel: acpSessions ? "acp" : "orchestrator",
     taskCount: tasks.length,
@@ -3203,7 +3200,6 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
     taskThreads: taskThreads ?? [],
   } satisfies CodingAgentStatus;
 };
-
 ElizaClient.prototype.listCodingAgentTaskThreads = async function (
   this: ElizaClient,
   options,
@@ -3217,12 +3213,11 @@ ElizaClient.prototype.listCodingAgentTaskThreads = async function (
     params.set("limit", String(options.limit));
   }
   const qs = params.toString();
-  const res = await this.fetch<{ tasks: CodingAgentTaskThread[] }>(
-    `/api/orchestrator/tasks${qs ? `?${qs}` : ""}`,
-  );
+  const res = await this.fetch<{
+    tasks: CodingAgentTaskThread[];
+  }>(`/api/orchestrator/tasks${qs ? `?${qs}` : ""}`);
   return res.tasks;
 };
-
 ElizaClient.prototype.getCodingAgentTaskThread = async function (
   this: ElizaClient,
   threadId,
@@ -3241,7 +3236,6 @@ ElizaClient.prototype.getCodingAgentTaskThread = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.archiveCodingAgentTaskThread = async function (
   this: ElizaClient,
   threadId,
@@ -3252,7 +3246,6 @@ ElizaClient.prototype.archiveCodingAgentTaskThread = async function (
   );
   return true;
 };
-
 ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
   this: ElizaClient,
   threadId,
@@ -3263,12 +3256,10 @@ ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
   );
   return true;
 };
-
 // --- Project registry (#13776 item 5): list + switch the active project ----
 // The switcher reads the merged core registry through these; an absent registry
 // (mobile/web where the surface isn't hosted) resolves to an empty list so the
 // switcher renders its no-projects empty state instead of erroring.
-
 ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
   try {
     return await this.fetch<ProjectListResponse>("/api/projects");
@@ -3279,7 +3270,6 @@ ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
     throw error;
   }
 };
-
 ElizaClient.prototype.activateProject = async function (
   this: ElizaClient,
   projectId,
@@ -3289,24 +3279,20 @@ ElizaClient.prototype.activateProject = async function (
     { method: "POST" },
   );
 };
-
 // --- Orchestrator-native task operations (/api/orchestrator/*) -------------
 // The four methods above are the compatibility surface the legacy coding-agent
 // panel binds to. The methods below are the orchestrator workbench vocabulary.
 // A task that vanished resolves to null on detail reads so the rail can refresh.
-
 ElizaClient.prototype.getOrchestratorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch<CodingAgentOrchestratorStatus>("/api/orchestrator/status");
 };
-
 ElizaClient.prototype.getOrchestratorAccounts = async function (
   this: ElizaClient,
 ) {
   return this.fetch<OrchestratorAccountOverview>("/api/orchestrator/accounts");
 };
-
 ElizaClient.prototype.getOrchestratorAccountReadiness = async function (
   this: ElizaClient,
   opts,
@@ -3321,13 +3307,11 @@ ElizaClient.prototype.getOrchestratorAccountReadiness = async function (
     { allowNonOk: true },
   );
 };
-
 ElizaClient.prototype.getOrchestratorRooms = async function (
   this: ElizaClient,
 ) {
   return this.fetch<OrchestratorRoomRosterOverview>("/api/orchestrator/rooms");
 };
-
 ElizaClient.prototype.createOrchestratorTask = function (
   this: ElizaClient,
   input,
@@ -3338,7 +3322,6 @@ ElizaClient.prototype.createOrchestratorTask = function (
     headers: { "Content-Type": "application/json" },
   });
 };
-
 ElizaClient.prototype.pauseOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3353,7 +3336,6 @@ ElizaClient.prototype.pauseOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.resumeOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3368,18 +3350,17 @@ ElizaClient.prototype.resumeOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.deleteOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
 ) {
-  await this.fetch<{ deleted: boolean }>(
-    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}`,
-    { method: "DELETE" },
-  );
+  await this.fetch<{
+    deleted: boolean;
+  }>(`/api/orchestrator/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
   return true;
 };
-
 ElizaClient.prototype.forkOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3399,7 +3380,6 @@ ElizaClient.prototype.forkOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.updateOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3419,7 +3399,6 @@ ElizaClient.prototype.updateOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.validateOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3439,7 +3418,6 @@ ElizaClient.prototype.validateOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.addOrchestratorAgent = async function (
   this: ElizaClient,
   taskId,
@@ -3459,19 +3437,19 @@ ElizaClient.prototype.addOrchestratorAgent = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.stopOrchestratorAgent = async function (
   this: ElizaClient,
   taskId,
   sessionId,
 ) {
-  await this.fetch<{ stopped: boolean }>(
+  await this.fetch<{
+    stopped: boolean;
+  }>(
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(sessionId)}/stop`,
     { method: "POST" },
   );
   return true;
 };
-
 ElizaClient.prototype.retryOrchestratorTaskTurn = async function (
   this: ElizaClient,
   taskId,
@@ -3491,7 +3469,6 @@ ElizaClient.prototype.retryOrchestratorTaskTurn = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.rerunOrchestratorTaskFromEvent = async function (
   this: ElizaClient,
   taskId,
@@ -3511,7 +3488,6 @@ ElizaClient.prototype.rerunOrchestratorTaskFromEvent = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.restartOrchestratorTask = async function (
   this: ElizaClient,
   taskId,
@@ -3531,7 +3507,6 @@ ElizaClient.prototype.restartOrchestratorTask = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.restartOrchestratorTaskWithEditedPlan = async function (
   this: ElizaClient,
   taskId,
@@ -3551,7 +3526,6 @@ ElizaClient.prototype.restartOrchestratorTaskWithEditedPlan = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.listOrchestratorTaskPlanRevisions = function (
   this: ElizaClient,
   taskId,
@@ -3567,7 +3541,6 @@ ElizaClient.prototype.listOrchestratorTaskPlanRevisions = function (
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/plan-revisions${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.createOrchestratorTaskPlanRevision = async function (
   this: ElizaClient,
   taskId,
@@ -3587,7 +3560,6 @@ ElizaClient.prototype.createOrchestratorTaskPlanRevision = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.listOrchestratorTaskMessages = function (
   this: ElizaClient,
   taskId,
@@ -3603,7 +3575,6 @@ ElizaClient.prototype.listOrchestratorTaskMessages = function (
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.postOrchestratorTaskMessage = async function (
   this: ElizaClient,
   taskId,
@@ -3612,7 +3583,10 @@ ElizaClient.prototype.postOrchestratorTaskMessage = async function (
   const result = await this.fetch<{
     recorded: boolean;
     forwardedTo: string[];
-    failedTo?: Array<{ sessionId: string; error: string }>;
+    failedTo?: Array<{
+      sessionId: string;
+      error: string;
+    }>;
   }>(`/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages`, {
     method: "POST",
     body: JSON.stringify({ content }),
@@ -3620,7 +3594,6 @@ ElizaClient.prototype.postOrchestratorTaskMessage = async function (
   });
   return result.recorded && (result.failedTo?.length ?? 0) === 0;
 };
-
 ElizaClient.prototype.listOrchestratorTaskEvents = function (
   this: ElizaClient,
   taskId,
@@ -3636,7 +3609,6 @@ ElizaClient.prototype.listOrchestratorTaskEvents = function (
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/events${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.listOrchestratorTaskTimeline = function (
   this: ElizaClient,
   taskId,
@@ -3652,15 +3624,12 @@ ElizaClient.prototype.listOrchestratorTaskTimeline = function (
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/timeline${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.streamOrchestratorTask = function (
   this: ElizaClient,
   taskId,
   onChange,
 ) {
-  const url = `${this.baseUrl || ""}/api/orchestrator/tasks/${encodeURIComponent(
-    taskId,
-  )}/stream`;
+  const url = `${this.baseUrl || ""}/api/orchestrator/tasks/${encodeURIComponent(taskId)}/stream`;
   // On-device runtimes are addressed via the native IPC base, which
   // EventSource cannot open; skip the live stream (the caller still has its
   // initial fetch) rather than throwing a synchronous SecurityError.
@@ -3678,27 +3647,22 @@ ElizaClient.prototype.streamOrchestratorTask = function (
   };
   return () => source.close();
 };
-
 ElizaClient.prototype.pauseAllOrchestratorTasks = async function (
   this: ElizaClient,
 ) {
-  const res = await this.fetch<{ paused: number }>(
-    "/api/orchestrator/pause-all",
-    { method: "POST" },
-  );
+  const res = await this.fetch<{
+    paused: number;
+  }>("/api/orchestrator/pause-all", { method: "POST" });
   return res.paused;
 };
-
 ElizaClient.prototype.resumeAllOrchestratorTasks = async function (
   this: ElizaClient,
 ) {
-  const res = await this.fetch<{ resumed: number }>(
-    "/api/orchestrator/resume-all",
-    { method: "POST" },
-  );
+  const res = await this.fetch<{
+    resumed: number;
+  }>("/api/orchestrator/resume-all", { method: "POST" });
   return res.resumed;
 };
-
 ElizaClient.prototype.stopCodingAgent = async function (
   this: ElizaClient,
   sessionId,
@@ -3715,7 +3679,6 @@ ElizaClient.prototype.stopCodingAgent = async function (
     return false;
   }
 };
-
 ElizaClient.prototype.listCodingAgentScratchWorkspaces = async function (
   this: ElizaClient,
 ) {
@@ -3723,7 +3686,6 @@ ElizaClient.prototype.listCodingAgentScratchWorkspaces = async function (
     "/api/coding-agents/scratch",
   );
 };
-
 ElizaClient.prototype.keepCodingAgentScratchWorkspace = async function (
   this: ElizaClient,
   sessionId,
@@ -3740,7 +3702,6 @@ ElizaClient.prototype.keepCodingAgentScratchWorkspace = async function (
     return false;
   }
 };
-
 ElizaClient.prototype.deleteCodingAgentScratchWorkspace = async function (
   this: ElizaClient,
   sessionId,
@@ -3757,7 +3718,6 @@ ElizaClient.prototype.deleteCodingAgentScratchWorkspace = async function (
     return false;
   }
 };
-
 ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
   this: ElizaClient,
   sessionId,
@@ -3778,47 +3738,45 @@ ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
     return null;
   }
 };
-
 ElizaClient.prototype.spawnShellSession = async function (
   this: ElizaClient,
   workdir?: string,
 ) {
-  const res = await this.fetch<{ sessionId: string }>(
-    "/api/coding-agents/spawn",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        agentType: "shell",
-        ...(workdir ? { workdir } : {}),
-      }),
-    },
-  );
+  const res = await this.fetch<{
+    sessionId: string;
+  }>("/api/coding-agents/spawn", {
+    method: "POST",
+    body: JSON.stringify({
+      agentType: "shell",
+      ...(workdir ? { workdir } : {}),
+    }),
+  });
   return { sessionId: res.sessionId };
 };
-
 ElizaClient.prototype.spawnPtySession = async function (
   this: ElizaClient,
   options,
 ) {
-  const res = await this.fetch<{ session: { sessionId: string } }>(
-    "/api/pty/sessions",
-    {
-      method: "POST",
-      body: JSON.stringify(options ?? {}),
-    },
-  );
+  const res = await this.fetch<{
+    session: {
+      sessionId: string;
+    };
+  }>("/api/pty/sessions", {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
   return { sessionId: res.session.sessionId };
 };
-
 ElizaClient.prototype.stopPtySession = async function (
   this: ElizaClient,
   sessionId,
 ) {
   try {
-    await this.fetch<{ ok: boolean }>(
-      `/api/pty/sessions/${encodeURIComponent(sessionId)}`,
-      { method: "DELETE" },
-    );
+    await this.fetch<{
+      ok: boolean;
+    }>(`/api/pty/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    });
     return true;
   } catch {
     // error-policy:J1 boundary translation — the typed contract is an
@@ -3826,21 +3784,18 @@ ElizaClient.prototype.stopPtySession = async function (
     return false;
   }
 };
-
 ElizaClient.prototype.subscribePtyOutput = function (
   this: ElizaClient,
   sessionId,
 ) {
   this.sendWsMessage({ type: "pty-subscribe", sessionId });
 };
-
 ElizaClient.prototype.unsubscribePtyOutput = function (
   this: ElizaClient,
   sessionId,
 ) {
   this.sendWsMessage({ type: "pty-unsubscribe", sessionId });
 };
-
 /**
  * Max UTF-16 length of a single `pty-input` WS message the agent server
  * accepts (its per-message DoS cap — see `MAX_PTY_INPUT_MESSAGE_LENGTH` in
@@ -3849,7 +3804,6 @@ ElizaClient.prototype.unsubscribePtyOutput = function (
  * pasted stack trace/diff easily exceeds this.
  */
 export const MAX_PTY_INPUT_CHUNK_LENGTH = 4096;
-
 /**
  * Split PTY input into ordered chunks of at most `maxLength` UTF-16 units so
  * each fits under the server's per-message cap. Never splits a surrogate
@@ -3877,7 +3831,6 @@ export function chunkPtyInput(
   }
   return chunks;
 }
-
 ElizaClient.prototype.sendPtyInput = function (
   this: ElizaClient,
   sessionId,
@@ -3890,7 +3843,6 @@ ElizaClient.prototype.sendPtyInput = function (
     this.sendWsMessage({ type: "pty-input", sessionId, data: chunk });
   }
 };
-
 ElizaClient.prototype.resizePty = function (
   this: ElizaClient,
   sessionId,
@@ -3899,24 +3851,23 @@ ElizaClient.prototype.resizePty = function (
 ) {
   this.sendWsMessage({ type: "pty-resize", sessionId, cols, rows });
 };
-
 ElizaClient.prototype.getPtyBufferedOutput = async function (
   this: ElizaClient,
   sessionId,
 ) {
   try {
-    const res = await this.fetch<{ output: string }>(
-      `/api/pty/sessions/${encodeURIComponent(sessionId)}/buffered-output`,
-    );
+    const res = await this.fetch<{
+      output: string;
+    }>(`/api/pty/sessions/${encodeURIComponent(sessionId)}/buffered-output`);
     return res.output ?? "";
   } catch {
     // error-policy:J4 older coding-agent PTY sessions keep their buffer
     // behind the legacy route tried below.
   }
   try {
-    const res = await this.fetch<{ output: string }>(
-      `/api/coding-agents/${encodeURIComponent(sessionId)}/buffered-output`,
-    );
+    const res = await this.fetch<{
+      output: string;
+    }>(`/api/coding-agents/${encodeURIComponent(sessionId)}/buffered-output`);
     return res.output ?? "";
   } catch {
     // error-policy:J4 scrollback hydration only — an empty replay degrades
@@ -3924,25 +3875,20 @@ ElizaClient.prototype.getPtyBufferedOutput = async function (
     return "";
   }
 };
-
 ElizaClient.prototype.streamGoLive = async function (this: ElizaClient) {
   return this.fetch("/api/stream/live", { method: "POST" });
 };
-
 ElizaClient.prototype.streamGoOffline = async function (this: ElizaClient) {
   return this.fetch("/api/stream/offline", { method: "POST" });
 };
-
 ElizaClient.prototype.streamStatus = async function (this: ElizaClient) {
   return this.fetch("/api/stream/status");
 };
-
 ElizaClient.prototype.getStreamingDestinations = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/streaming/destinations");
 };
-
 ElizaClient.prototype.setActiveDestination = async function (
   this: ElizaClient,
   destinationId,
@@ -3952,7 +3898,6 @@ ElizaClient.prototype.setActiveDestination = async function (
     body: JSON.stringify({ destinationId }),
   });
 };
-
 ElizaClient.prototype.setStreamVolume = async function (
   this: ElizaClient,
   volume,
@@ -3962,19 +3907,15 @@ ElizaClient.prototype.setStreamVolume = async function (
     body: JSON.stringify({ volume }),
   });
 };
-
 ElizaClient.prototype.muteStream = async function (this: ElizaClient) {
   return this.fetch("/api/stream/mute", { method: "POST" });
 };
-
 ElizaClient.prototype.unmuteStream = async function (this: ElizaClient) {
   return this.fetch("/api/stream/unmute", { method: "POST" });
 };
-
 ElizaClient.prototype.getStreamVoice = async function (this: ElizaClient) {
   return this.fetch("/api/stream/voice");
 };
-
 ElizaClient.prototype.saveStreamVoice = async function (
   this: ElizaClient,
   settings,
@@ -3984,7 +3925,6 @@ ElizaClient.prototype.saveStreamVoice = async function (
     body: JSON.stringify(settings),
   });
 };
-
 ElizaClient.prototype.streamVoiceSpeak = async function (
   this: ElizaClient,
   text,
@@ -3994,7 +3934,6 @@ ElizaClient.prototype.streamVoiceSpeak = async function (
     body: JSON.stringify({ text }),
   });
 };
-
 ElizaClient.prototype.getOverlayLayout = async function (
   this: ElizaClient,
   destinationId?,
@@ -4004,7 +3943,6 @@ ElizaClient.prototype.getOverlayLayout = async function (
     : "";
   return this.fetch(`/api/stream/overlay-layout${qs}`);
 };
-
 ElizaClient.prototype.saveOverlayLayout = async function (
   this: ElizaClient,
   layout,
@@ -4018,11 +3956,9 @@ ElizaClient.prototype.saveOverlayLayout = async function (
     body: JSON.stringify({ layout }),
   });
 };
-
 ElizaClient.prototype.getStreamSource = async function (this: ElizaClient) {
   return this.fetch("/api/stream/source");
 };
-
 ElizaClient.prototype.setStreamSource = async function (
   this: ElizaClient,
   sourceType,
@@ -4033,11 +3969,9 @@ ElizaClient.prototype.setStreamSource = async function (
     body: JSON.stringify({ sourceType, customUrl }),
   });
 };
-
 ElizaClient.prototype.getStreamSettings = async function (this: ElizaClient) {
   return this.fetch("/api/stream/settings");
 };
-
 ElizaClient.prototype.saveStreamSettings = async function (
   this: ElizaClient,
   settings,

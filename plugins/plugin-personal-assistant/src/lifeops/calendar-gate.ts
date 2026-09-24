@@ -11,16 +11,16 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type LifeOpsAuditEvent,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsReminderPlan,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
   type CalendarHostGate,
   CalendarService,
 } from "@elizaos/plugin-calendar";
-import type {
-  LifeOpsAuditEvent,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsReminderPlan,
-} from "@elizaos/shared";
 import { resolveCalendarGuestAvailabilityGrants } from "./guest-availability-grants.js";
 import { LifeOpsService } from "./service.js";
 

@@ -10,13 +10,13 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import {
+  type HttpPlugin,
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+} from "@elizaos/core/api/http-plugin";
 import { computeIdentityPersonLinkRequestDigest } from "@elizaos/plugin-sql";
-import type {
-  HttpPlugin,
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";
 const VERIFY_PATH = "/api/identity/person-links/verify";
@@ -27,7 +27,6 @@ const ATTEST_FIELDS = new Set([
   "reason",
   "idempotencyKey",
 ]);
-
 function json(status: number, body: unknown): RouteHandlerResult {
   return {
     status,
@@ -35,13 +34,11 @@ function json(status: number, body: unknown): RouteHandlerResult {
     body,
   };
 }
-
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
-
 function requiredString(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -49,21 +46,19 @@ function requiredString(value: unknown, maxLength: number): string | null {
     ? normalized
     : null;
 }
-
 function expectedGeneration(value: unknown): number | null {
   return Number.isSafeInteger(value) && Number(value) >= 0
     ? Number(value)
     : null;
 }
-
 function queryValue(value: string | string[] | undefined): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
-
-function authenticatedActor(
-  ctx: RouteHandlerContext,
-):
-  | { principalId: UUID; role: IdentityPersonLinkActorRole }
+function authenticatedActor(ctx: RouteHandlerContext):
+  | {
+      principalId: UUID;
+      role: IdentityPersonLinkActorRole;
+    }
   | RouteHandlerResult {
   if (!ctx.accessContext) {
     return json(403, { error: "IDENTITY_PERSON_LINK_AUTHORITY_REQUIRED" });
@@ -74,7 +69,6 @@ function authenticatedActor(
   }
   return { principalId: ctx.accessContext.requesterEntityId, role };
 }
-
 function identityFailure(
   ctx: RouteHandlerContext,
   error: unknown,
@@ -98,7 +92,6 @@ function identityFailure(
   });
   return json(500, { error: "IDENTITY_PERSON_LINK_FAILED" });
 }
-
 async function attest(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   const body = record(ctx.body);
   if (!body || Object.keys(body).some((key) => !ATTEST_FIELDS.has(key))) {
@@ -147,7 +140,6 @@ async function attest(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
     return identityFailure(ctx, error);
   }
 }
-
 async function verify(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   const actor = authenticatedActor(ctx);
   if ("status" in actor) return actor;
@@ -175,7 +167,6 @@ async function verify(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
     return identityFailure(ctx, error);
   }
 }
-
 export const identityPersonLinkRoutes: readonly Route[] = [
   {
     name: "identity-person-link-attest",
@@ -192,7 +183,6 @@ export const identityPersonLinkRoutes: readonly Route[] = [
     routeHandler: verify,
   },
 ];
-
 /** Host-owned HTTP compatibility surface; SQL itself registers no routes. */
 export const identityHttpPlugin: HttpPlugin = {
   name: "identity-http",

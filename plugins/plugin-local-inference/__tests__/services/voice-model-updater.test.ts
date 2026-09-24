@@ -16,8 +16,8 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { VoiceModelVersion } from "@elizaos/shared";
-import { latestVoiceModelVersion } from "@elizaos/shared";
+import { type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { latestVoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import {
 	cloudCatalogSource,
 	downloadVoiceModel,

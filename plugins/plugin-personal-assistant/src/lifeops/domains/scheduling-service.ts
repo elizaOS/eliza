@@ -9,7 +9,7 @@ import {
   LIFEOPS_NEGOTIATION_STATES,
   type LifeOpsSchedulingNegotiation,
   type LifeOpsSchedulingProposal,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactEdgeId,

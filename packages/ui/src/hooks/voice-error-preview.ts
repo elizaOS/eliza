@@ -3,7 +3,7 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+} from "@elizaos/core/utils/unicode";
 
 export type VoiceErrorPreviewLimit = 80 | 120 | 200;
 

@@ -4,7 +4,7 @@ import {
   SyntheticControlClient,
   SyntheticControlSession,
   type SyntheticManifest,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 
 export interface OpenCloudSyntheticWorldOptions {
   controlUrl: string;

@@ -12,7 +12,7 @@ import {
   fetchRemoteMedia,
   MediaFetchError,
   readResponseWithLimit,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import { imageDescriptionTemplate } from "../../features/basic-capabilities/prompts.js";
 import {
   ATTACHMENT_FETCH_MAX_BYTES,

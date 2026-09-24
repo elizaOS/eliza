@@ -5,13 +5,15 @@
  */
 
 import "./lifeops-connections-fixture.css";
-import type {
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorGrant,
-  LifeOpsGoogleConnectorStatus,
-  PermissionStatus,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
+import { type PermissionStatus } from "@elizaos/core/contracts/permissions";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 import { createRoot } from "react-dom/client";
 import { FamilyDeletionPanel } from "../../src/components/family-operations/FamilyDeletionPanel.js";
 import { FamilyOperationsView } from "../../src/components/family-operations/FamilyOperationsView.js";
@@ -283,16 +285,17 @@ function snapshot(): LifeOpsConnectionsSnapshot {
   };
 }
 
-let syncControl: import("@elizaos/shared").LifeOpsLinkedCalendarControl = {
-  revision: 0,
-  paused: true,
-  destination: params.has("pending-sync")
-    ? { connectorAccountId: ACCOUNT_ID, providerCalendarId: "primary" }
-    : null,
-  pendingDispatch: params.has("pending-sync")
-    ? { linkId: "fixture-pending" }
-    : null,
-};
+let syncControl: import("@elizaos/core/contracts/calendar").LifeOpsLinkedCalendarControl =
+  {
+    revision: 0,
+    paused: true,
+    destination: params.has("pending-sync")
+      ? { connectorAccountId: ACCOUNT_ID, providerCalendarId: "primary" }
+      : null,
+    pendingDispatch: params.has("pending-sync")
+      ? { linkId: "fixture-pending" }
+      : null,
+  };
 const adapter: LifeOpsConnectionsAdapter = {
   async getLinkedCalendarControl() {
     return syncControl;

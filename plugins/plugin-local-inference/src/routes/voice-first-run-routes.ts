@@ -26,12 +26,15 @@
  * land under `$ELIZA_STATE_DIR/voice-profiles/audio/<profileId>/...`.
  * Otherwise nothing is written to disk except the centroid + variance.
  */
-
 import crypto from "node:crypto";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/core/api/http-helpers";
 import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime";
 import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings";
 import { VoiceProfileStore } from "../services/voice/profile-store";
@@ -45,7 +48,6 @@ import {
 	WESPEAKER_SAMPLE_RATE,
 } from "../services/voice/speaker/encoder";
 import { FusedSpeakerEncoder } from "../services/voice/speaker/encoder-fused";
-
 /** Verbatim first-run script (R2-speaker.md §6.2). */
 export interface FirstRunScriptStep {
 	id: string;
@@ -54,14 +56,13 @@ export interface FirstRunScriptStep {
 	expectedDurationMs: number;
 	requiresUserSpeech: boolean;
 }
-
 export const FIRST_RUN_SCRIPT: ReadonlyArray<FirstRunScriptStep> = [
 	{
 		id: "consent-1",
 		role: "consent",
 		prompt:
 			"Before we start, I'd like to record a short voice sample so I can recognize you when you talk to me. The recording stays on this device. Is that okay?",
-		expectedDurationMs: 4_000,
+		expectedDurationMs: 4000,
 		requiresUserSpeech: true,
 	},
 	{
@@ -69,42 +70,42 @@ export const FIRST_RUN_SCRIPT: ReadonlyArray<FirstRunScriptStep> = [
 		role: "consent",
 		prompt:
 			"One more — do you want me to also be able to imitate your voice for outgoing messages? You can change this any time.",
-		expectedDurationMs: 4_000,
+		expectedDurationMs: 4000,
 		requiresUserSpeech: true,
 	},
 	{
 		id: "calibration",
 		role: "calibration",
 		prompt: 'Please say "Hello, my name is" and then your full name.',
-		expectedDurationMs: 5_000,
+		expectedDurationMs: 5000,
 		requiresUserSpeech: true,
 	},
 	{
 		id: "phonetic-1",
 		role: "phonetic",
 		prompt: '"The quick brown fox jumps over the lazy dog."',
-		expectedDurationMs: 10_000,
+		expectedDurationMs: 10000,
 		requiresUserSpeech: true,
 	},
 	{
 		id: "phonetic-2",
 		role: "phonetic",
 		prompt: '"Pack my box with five dozen liquor jugs."',
-		expectedDurationMs: 10_000,
+		expectedDurationMs: 10000,
 		requiresUserSpeech: true,
 	},
 	{
 		id: "phonetic-3",
 		role: "phonetic",
 		prompt: '"How razorback-jumping frogs can level six piqued gymnasts."',
-		expectedDurationMs: 10_000,
+		expectedDurationMs: 10000,
 		requiresUserSpeech: true,
 	},
 	{
 		id: "prosody-1",
 		role: "prosody",
 		prompt: '"Did you remember to lock the back door?"',
-		expectedDurationMs: 7_500,
+		expectedDurationMs: 7500,
 		requiresUserSpeech: true,
 	},
 	{
@@ -112,7 +113,7 @@ export const FIRST_RUN_SCRIPT: ReadonlyArray<FirstRunScriptStep> = [
 		role: "prosody",
 		prompt:
 			'"I left the keys on the kitchen counter, near the coffee machine."',
-		expectedDurationMs: 7_500,
+		expectedDurationMs: 7500,
 		requiresUserSpeech: true,
 	},
 	{
@@ -120,7 +121,7 @@ export const FIRST_RUN_SCRIPT: ReadonlyArray<FirstRunScriptStep> = [
 		role: "quiet",
 		prompt:
 			'Now read this one as if someone next to you is sleeping: "Just checking in quickly — everything\'s fine, talk to you tomorrow."',
-		expectedDurationMs: 10_000,
+		expectedDurationMs: 10000,
 		requiresUserSpeech: true,
 	},
 	{
@@ -128,13 +129,11 @@ export const FIRST_RUN_SCRIPT: ReadonlyArray<FirstRunScriptStep> = [
 		role: "open",
 		prompt:
 			"Last one — tell me, in your own words, what you'd like me to help with most in the next few weeks.",
-		expectedDurationMs: 15_000,
+		expectedDurationMs: 15000,
 		requiresUserSpeech: true,
 	},
 ];
-
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-
 interface FirstRunSession {
 	id: string;
 	createdAt: number;
@@ -147,9 +146,7 @@ interface FirstRunSession {
 		synthesisAuthorized: boolean;
 	};
 }
-
 const sessions = new Map<string, FirstRunSession>();
-
 function pruneExpiredSessions(now: number): void {
 	for (const [id, session] of sessions.entries()) {
 		if (now - session.lastAccessedAt > SESSION_TIMEOUT_MS) {
@@ -157,7 +154,6 @@ function pruneExpiredSessions(now: number): void {
 		}
 	}
 }
-
 /**
  * Encoder factory. By default the route handlers load the WeSpeaker
  * ResNet34-LM speaker encoder through the fused `libelizainference`
@@ -165,17 +161,14 @@ function pruneExpiredSessions(now: number): void {
  * Tests inject a fake encoder via `setVoiceFirstRunEncoderFactory()`.
  */
 export type EncoderFactory = () => Promise<SpeakerEncoder>;
-
 let encoderFactoryOverride: EncoderFactory | null = null;
 let cachedEncoder: SpeakerEncoder | null = null;
-
 export function setVoiceFirstRunEncoderFactory(
 	factory: EncoderFactory | null,
 ): void {
 	encoderFactoryOverride = factory;
 	cachedEncoder = null;
 }
-
 async function loadEncoder(): Promise<SpeakerEncoder> {
 	if (cachedEncoder) return cachedEncoder;
 	if (encoderFactoryOverride) {
@@ -185,7 +178,6 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 	cachedEncoder = await loadFusedSpeakerEncoder();
 	return cachedEncoder;
 }
-
 /**
  * Load the fused speaker encoder. Resolves the fused `libelizainference`,
  * creates a context anchored at the voice-profiles dir, and probes the speaker
@@ -212,15 +204,12 @@ async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
 	const ctx = ffi.create(bundleRoot);
 	return FusedSpeakerEncoder.load({ ffi, ctx });
 }
-
 let profileStoreOverride: VoiceProfileStore | null = null;
-
 export function setVoiceFirstRunProfileStore(
 	store: VoiceProfileStore | null,
 ): void {
 	profileStoreOverride = store;
 }
-
 async function getProfileStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
 	const store = new VoiceProfileStore({
@@ -229,17 +218,14 @@ async function getProfileStore(): Promise<VoiceProfileStore> {
 	await store.init();
 	return store;
 }
-
 /** Settings-write hook. The runtime overrides this with `runtime.setSetting`. */
 type SettingsWriter = (key: string, value: string) => void | Promise<void>;
 let settingsWriter: SettingsWriter | null = null;
-
 export function setVoiceFirstRunSettingsWriter(
 	writer: SettingsWriter | null,
 ): void {
 	settingsWriter = writer;
 }
-
 function startSession(consent: FirstRunSession["consent"]): FirstRunSession {
 	const id = `obs_${crypto.randomUUID()}`;
 	const now = Date.now();
@@ -255,7 +241,6 @@ function startSession(consent: FirstRunSession["consent"]): FirstRunSession {
 	sessions.set(id, session);
 	return session;
 }
-
 function decodeFloat32(buf: Buffer): Float32Array {
 	if (buf.byteLength % 4 !== 0) {
 		throw new Error(
@@ -270,7 +255,6 @@ function decodeFloat32(buf: Buffer): Float32Array {
 	}
 	return out;
 }
-
 async function readBinaryBody(req: http.IncomingMessage): Promise<Buffer> {
 	const chunks: Buffer[] = [];
 	for await (const chunk of req) {
@@ -278,7 +262,6 @@ async function readBinaryBody(req: http.IncomingMessage): Promise<Buffer> {
 	}
 	return Buffer.concat(chunks);
 }
-
 /**
  * Mount-point: returns `true` if the request was handled, `false` if
  * the path is not one of the voice-first-run routes (so the caller
@@ -292,9 +275,7 @@ export async function handleVoiceFirstRunRoutes(
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
 	if (!pathname.startsWith("/api/voice/first-run/")) return false;
-
 	pruneExpiredSessions(Date.now());
-
 	if (method === "POST" && pathname === "/api/voice/first-run/profile/start") {
 		// Empty body is valid here (the consent flags default to a safe
 		// "attribution-yes / synthesis-no" pair). We read the body only when
@@ -330,7 +311,6 @@ export async function handleVoiceFirstRunRoutes(
 		});
 		return true;
 	}
-
 	if (method === "POST" && pathname === "/api/voice/first-run/profile/append") {
 		const sessionId = url.searchParams.get("id");
 		if (!sessionId) {
@@ -409,7 +389,6 @@ export async function handleVoiceFirstRunRoutes(
 		}
 		return true;
 	}
-
 	if (
 		method === "POST" &&
 		pathname === "/api/voice/first-run/profile/finalize"
@@ -471,7 +450,6 @@ export async function handleVoiceFirstRunRoutes(
 		});
 		return true;
 	}
-
 	if (method === "POST" && pathname === "/api/voice/first-run/complete") {
 		const body = await readJsonBody<Record<string, unknown>>(req, res);
 		if (!body) return true;
@@ -509,10 +487,8 @@ export async function handleVoiceFirstRunRoutes(
 		});
 		return true;
 	}
-
 	return false;
 }
-
 /** Test helper: clear in-memory sessions so a test starts clean. */
 export function __resetVoiceFirstRunSessions(): void {
 	sessions.clear();

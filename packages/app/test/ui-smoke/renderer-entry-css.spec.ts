@@ -57,10 +57,8 @@ test.beforeAll(async () => {
     ],
     resolve: {
       alias: {
-        "@elizaos/shared/elizacloud/domain-contract": path.join(
-          appRoot,
-          "../shared/src/elizacloud/domain-contract.ts",
-        ),
+        "../../../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts":
+          path.join(appRoot, "../shared/src/elizacloud/domain-contract.ts"),
       },
     },
     define: {

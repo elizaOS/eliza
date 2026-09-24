@@ -6,25 +6,19 @@
  * fields). No React — the editor imports these to normalize input and to seed
  * itself from `client.generateCustomAction`.
  */
-
-import type { CustomActionHandler } from "@elizaos/shared";
-
+import type { CustomActionHandler } from "@elizaos/core/contracts/config";
 /* ── Types ─────────────────────────────────────────────────────────── */
-
 export type HandlerType = "http" | "shell" | "code";
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-
 export interface ParamDef {
   name: string;
   description: string;
   required: boolean;
 }
-
 export interface HeaderRow {
   key: string;
   value: string;
 }
-
 export interface ParsedGeneration {
   name: string;
   description: string;
@@ -34,14 +28,10 @@ export interface ParsedGeneration {
   similes: string[];
   enabled: boolean;
 }
-
 /* ── Constants ─────────────────────────────────────────────────────── */
-
 export const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
 const METHODS_SET = new Set<string>(HTTP_METHODS);
-
 /* ── CSS class names ───────────────────────────────────────────────── */
-
 export const editorDialogContentClassName =
   "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 export const editorFieldLabelClassName = "text-xs text-muted";
@@ -51,15 +41,12 @@ export const editorTextareaClassName = `${editorInputClassName} resize-none`;
 export const editorMonoTextareaClassName = `${editorTextareaClassName} font-mono`;
 export const editorSectionCardClassName =
   "flex flex-col gap-3 rounded-sm border border-border/70 bg-bg/20 p-3";
-
 /* ── Normalization helpers ─────────────────────────────────────────── */
-
 export function toNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 }
-
 export function normalizeActionName(value: string): string {
   return value
     .trim()
@@ -68,11 +55,9 @@ export function normalizeActionName(value: string): string {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
-
 export function normalizeAlias(value: string): string {
   return normalizeActionName(value);
 }
-
 export function normalizeParamName(value: string): string {
   return value
     .trim()
@@ -80,14 +65,11 @@ export function normalizeParamName(value: string): string {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
-
 export function normalizeMethod(value: unknown): HttpMethod {
   const method = toNonEmptyString(value)?.toUpperCase();
   return method && METHODS_SET.has(method) ? (method as HttpMethod) : "GET";
 }
-
 /* ── Parsing helpers ───────────────────────────────────────────────── */
-
 export function parseHeaders(value: unknown): HeaderRow[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return [];
@@ -99,29 +81,22 @@ export function parseHeaders(value: unknown): HeaderRow[] {
     return [{ key: key.trim(), value: rawValue }];
   });
 }
-
 export function parseParameters(value: unknown): ParamDef[] {
   if (!Array.isArray(value)) return [];
-
   const seen = new Set<string>();
-
   return value
     .map((raw) => {
       if (!raw || typeof raw !== "object") return null;
-
       const candidate = raw as {
         name?: unknown;
         description?: unknown;
         required?: unknown;
       };
-
       const rawName = toNonEmptyString(candidate.name);
       if (!rawName) return null;
-
       const name = normalizeParamName(rawName);
       if (!name || seen.has(name.toLowerCase())) return null;
       seen.add(name.toLowerCase());
-
       return {
         name,
         description: toNonEmptyString(candidate.description) || name,
@@ -130,12 +105,9 @@ export function parseParameters(value: unknown): ParamDef[] {
     })
     .filter((param): param is ParamDef => param !== null);
 }
-
 export function parseSimiles(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-
   const seen = new Set<string>();
-
   return value
     .map((raw) => toNonEmptyString(raw) || "")
     .map((simile) => normalizeAlias(simile))
@@ -147,7 +119,6 @@ export function parseSimiles(value: unknown): string[] {
       return true;
     });
 }
-
 export function parseGeneratedAction(payload: unknown): {
   ok: boolean;
   action?: ParsedGeneration;
@@ -156,19 +127,15 @@ export function parseGeneratedAction(payload: unknown): {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return { ok: false, errors: ["Generation returned an invalid payload."] };
   }
-
   const raw = payload as Record<string, unknown>;
-
   const name = normalizeActionName(raw.name?.toString() ?? "");
   const description = toNonEmptyString(raw.description) ?? "";
-
   if (!name) {
     return {
       ok: false,
       errors: ["Generated action must include a name."],
     };
   }
-
   const handlerSource = raw.handler;
   if (
     !handlerSource ||
@@ -180,12 +147,22 @@ export function parseGeneratedAction(payload: unknown): {
       errors: ["Generated action must include a handler block."],
     };
   }
-
   const hTypeRaw =
-    toNonEmptyString((raw as { handlerType?: unknown }).handlerType) ??
-    toNonEmptyString((handlerSource as { type?: unknown }).type);
+    toNonEmptyString(
+      (
+        raw as {
+          handlerType?: unknown;
+        }
+      ).handlerType,
+    ) ??
+    toNonEmptyString(
+      (
+        handlerSource as {
+          type?: unknown;
+        }
+      ).type,
+    );
   const handlerType = hTypeRaw?.toLowerCase() as HandlerType | undefined;
-
   if (
     handlerType !== "http" &&
     handlerType !== "shell" &&
@@ -196,9 +173,7 @@ export function parseGeneratedAction(payload: unknown): {
       errors: ["Generated handler type must be http, shell, or code."],
     };
   }
-
   const params = parseParameters(raw.parameters);
-
   if (handlerType === "http") {
     const rawHttp = handlerSource as {
       method?: unknown;
@@ -208,7 +183,6 @@ export function parseGeneratedAction(payload: unknown): {
       methodType?: unknown;
       type?: unknown;
     };
-
     const url = toNonEmptyString(rawHttp.url);
     if (!url) {
       return {
@@ -216,7 +190,6 @@ export function parseGeneratedAction(payload: unknown): {
         errors: ["HTTP action requires a URL."],
       };
     }
-
     const handler: CustomActionHandler = {
       type: "http",
       method: normalizeMethod(rawHttp.method ?? rawHttp.methodType),
@@ -234,7 +207,6 @@ export function parseGeneratedAction(payload: unknown): {
         : undefined,
       bodyTemplate: toNonEmptyString(rawHttp.bodyTemplate),
     };
-
     return {
       ok: true,
       action: {
@@ -249,12 +221,10 @@ export function parseGeneratedAction(payload: unknown): {
       errors: [],
     };
   }
-
   if (handlerType === "shell") {
     const rawShell = handlerSource as {
       command?: unknown;
     };
-
     const command = toNonEmptyString(rawShell.command);
     if (!command) {
       return {
@@ -262,7 +232,6 @@ export function parseGeneratedAction(payload: unknown): {
         errors: ["Shell action requires a command template."],
       };
     }
-
     return {
       ok: true,
       action: {
@@ -280,21 +249,18 @@ export function parseGeneratedAction(payload: unknown): {
       errors: [],
     };
   }
-
   const rawCode = handlerSource as {
     code?: unknown;
     source?: unknown;
   };
   const code =
     toNonEmptyString(rawCode.code) ?? toNonEmptyString(rawCode.source);
-
   if (!code) {
     return {
       ok: false,
       errors: ["Code action requires a JavaScript code block."],
     };
   }
-
   return {
     ok: true,
     action: {
@@ -312,30 +278,24 @@ export function parseGeneratedAction(payload: unknown): {
     errors: [],
   };
 }
-
 export function parseSimilesInput(value: string): string[] {
   return value
     .split(",")
     .map((raw) => normalizeAlias(raw))
     .filter(Boolean);
 }
-
 export function validateParameters(items: ParamDef[]): string | null {
   const seen = new Set<string>();
-
   for (const parameter of items) {
     const normalized = normalizeParamName(parameter.name);
     if (!normalized) {
       return "Each parameter needs a non-empty name.";
     }
-
     if (seen.has(normalized.toLowerCase())) {
       return `Duplicate parameter name: ${normalized}`;
     }
-
     seen.add(normalized.toLowerCase());
     parameter.name = normalized;
   }
-
   return null;
 }

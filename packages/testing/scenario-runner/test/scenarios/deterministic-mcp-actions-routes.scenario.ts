@@ -2,27 +2,26 @@
  * Keyless catalog coverage for the plugin-mcp action and route surface. Runs on
  * the pr-deterministic lane under the model provider.
  */
+
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import type {
-  HttpPlugin as Plugin,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing";
 import {
+  type HttpPlugin as Plugin,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+import {
+  type CapturedAction,
   type DeterministicModelCall,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  type ScenarioContext,
+  type ScenarioTurnExecution,
   scenario,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
@@ -53,34 +52,27 @@ const listConnectionsInput = "Fetch deterministic MCP connections.";
 const scenarioDir = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(scenarioDir, "../fixtures/mcp-stdio-fixture.mjs");
 const fixtureSource = readFileSync(fixturePath, "utf8");
-
 type JsonRecord = Record<string, unknown>;
-
 const readResourceParameters = {
   action: "read_resource",
   serverName: MCP_SERVER_NAME,
   uri: RESOURCE_URI,
 };
-
 const callToolParameters = {
   action: "call_tool",
   serverName: MCP_SERVER_NAME,
   toolName: TOOL_NAME,
 };
-
 const parentListConnectionsParameters = {
   action: "list_connections",
 };
-
 const searchActionsParameters = {
   action: "search_actions",
   query: "echo",
 };
-
 const listConnectionsParameters = {
   action: "list_connections",
 };
-
 const strictMcpRoutes = [
   {
     actionName: "MCP_READ_RESOURCE",
@@ -121,7 +113,6 @@ const strictMcpRoutes = [
       "MCP op=list_connections is only available in the cloud runtime.",
   },
 ];
-
 function matchesUnsupportedMcpEvaluation(
   expectedInput: string,
   op: string,
@@ -228,7 +219,6 @@ function matchesUnsupportedMcpEvaluation(
     }
   };
 }
-
 function unsupportedMcpEvaluationFixture(input: string, op: string) {
   const text = `MCP op=${op} is only available in the cloud runtime.`;
   return {
@@ -243,11 +233,9 @@ function unsupportedMcpEvaluationFixture(input: string, op: string) {
     times: 1,
   };
 }
-
 function unsupportedMcpReply(op: string): string {
   return `I could not run ${op}: this MCP operation requires the cloud runtime.`;
 }
-
 function unsupportedMcpPostToolFixture(input: string, op: string) {
   const text = unsupportedMcpReply(op);
   return {
@@ -264,7 +252,6 @@ function unsupportedMcpPostToolFixture(input: string, op: string) {
     times: 1,
   };
 }
-
 type RuntimeWithMcpScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
@@ -275,25 +262,20 @@ type RuntimeWithMcpScenario = IAgentRuntime &
     };
     setSetting: (key: string, value: unknown, secret?: boolean) => void;
   };
-
 type RouteStatusBody = {
   ok?: unknown;
   servers?: unknown;
 };
-
 let scenarioRuntime: RuntimeWithMcpScenario | null = null;
 let scenarioMcpService: McpService | null = null;
 let restoreMcpGetService: (() => void) | null = null;
 let previousMcpEvaluators: RuntimeWithMcpScenario["evaluators"] | null = null;
-
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
 function toRecord(value: unknown): JsonRecord {
   return isRecord(value) ? value : {};
 }
-
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
@@ -306,7 +288,6 @@ function stableStringify(value: unknown): string {
   }
   return JSON.stringify(value) ?? String(value);
 }
-
 function readPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -318,7 +299,6 @@ function readPath(value: unknown, path: string): unknown {
   }
   return current;
 }
-
 function expectEqual(
   actual: unknown,
   expected: unknown,
@@ -330,11 +310,9 @@ function expectEqual(
     ? undefined
     : `expected ${label}=${expectedJson}, saw ${actualJson}`;
 }
-
 function actionParameters(action: CapturedAction): JsonRecord {
   return toRecord(action.parameters);
 }
-
 function expectActionParameters(
   action: CapturedAction,
   expectedParameters: JsonRecord,
@@ -347,7 +325,6 @@ function expectActionParameters(
     `${action.actionName} handler parameters`,
   );
 }
-
 function firstAction(
   execution: ScenarioTurnExecution,
   actionName: string,
@@ -360,7 +337,6 @@ function firstAction(
     `expected ${actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`
   );
 }
-
 function expectMcpReadResourceAction(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -371,7 +347,6 @@ function expectMcpReadResourceAction(
     readResourceParameters,
   );
   if (parametersFailure) return parametersFailure;
-
   const params = actionParameters(action);
   for (const [path, expected] of Object.entries({
     "parameters.action": "read_resource",
@@ -381,7 +356,6 @@ function expectMcpReadResourceAction(
     const failure = expectEqual(readPath(params, path), expected, path);
     if (failure) return failure;
   }
-
   if (action.result?.success !== true) {
     return `expected MCP_READ_RESOURCE result.success=true, saw ${stableStringify(action.result)}`;
   }
@@ -411,7 +385,6 @@ function expectMcpReadResourceAction(
   }
   return undefined;
 }
-
 function expectMcpCallToolAction(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -419,7 +392,6 @@ function expectMcpCallToolAction(
   if (typeof action === "string") return action;
   const parametersFailure = expectActionParameters(action, callToolParameters);
   if (parametersFailure) return parametersFailure;
-
   if (action.result?.success !== true) {
     return `expected MCP_CALL_TOOL result.success=true, saw ${stableStringify(action.result)}`;
   }
@@ -449,7 +421,6 @@ function expectMcpCallToolAction(
   }
   return undefined;
 }
-
 function expectUnsupportedMcpCloudOp(
   actionName: "MCP" | "MCP_SEARCH_ACTIONS" | "MCP_LIST_CONNECTIONS",
   op: "search_actions" | "list_connections",
@@ -486,7 +457,6 @@ function expectUnsupportedMcpCloudOp(
       : `expected ${actionName} response ${JSON.stringify(reply)}, saw ${JSON.stringify(execution.responseText)}`;
   };
 }
-
 function mcpConfig(): McpRouteConfig {
   return {
     mcp: {
@@ -495,24 +465,21 @@ function mcpConfig(): McpRouteConfig {
           type: "stdio",
           command: "node",
           args: [fixturePath],
-          timeoutInMillis: 5_000,
+          timeoutInMillis: 5000,
         },
       },
     },
   };
 }
-
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   if (res.headersSent) return;
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.end(JSON.stringify(data));
 }
-
 function error(res: http.ServerResponse, message: string, status = 500): void {
   json(res, { ok: false, error: message }, status);
 }
-
 async function readJsonBody<T extends object>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -534,11 +501,9 @@ async function readJsonBody<T extends object>(
     return null;
   }
 }
-
 function isBlockedObjectKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
 }
-
 function cloneWithoutBlockedObjectKeys<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((entry) => cloneWithoutBlockedObjectKeys(entry)) as T;
@@ -551,7 +516,6 @@ function cloneWithoutBlockedObjectKeys<T>(value: T): T {
   }
   return out as T;
 }
-
 function getMcpRouteRuntime(runtime: RuntimeWithMcpScenario) {
   return {
     getService(name: string): unknown {
@@ -559,7 +523,6 @@ function getMcpRouteRuntime(runtime: RuntimeWithMcpScenario) {
     },
   };
 }
-
 async function scenarioMcpRouteHandler(
   req: RouteRequest,
   res: RouteResponse,
@@ -606,7 +569,6 @@ async function scenarioMcpRouteHandler(
     error(res, `No MCP route handled ${method} ${url.pathname}`, 404);
   }
 }
-
 function registerMcpRoutes(runtime: RuntimeWithMcpScenario): void {
   registerHttpPluginRoutes(
     runtime,
@@ -622,7 +584,6 @@ function registerMcpRoutes(runtime: RuntimeWithMcpScenario): void {
     false,
   );
 }
-
 async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   const agentRuntime = ctx.runtime as IAgentRuntime | undefined;
   if (!agentRuntime) return "scenario runtime was not available";
@@ -633,7 +594,6 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   if (!fixtureSource.includes(RESOURCE_TEXT)) {
     return `MCP fixture source does not contain ${RESOURCE_TEXT}`;
   }
-
   runtime.setSetting("mcp", mcpConfig().mcp, false);
   const originalGetService = runtime.getService.bind(runtime);
   await originalGetService<McpService>(MCP_SERVICE_NAME)?.stop();
@@ -739,7 +699,6 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
     unsupportedMcpPostToolFixture(searchActionsInput, "search_actions"),
     unsupportedMcpPostToolFixture(listConnectionsInput, "list_connections"),
   );
-
   const registered = (runtime.plugins ?? []).some(
     (plugin) => plugin.name === mcpPlugin.name,
   );
@@ -758,7 +717,6 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   registerMcpRoutes(runtime);
   return undefined;
 }
-
 function expectMcpStatus(status: number, body: unknown): string | undefined {
   if (status !== 200) return `expected status 200, saw ${status}`;
   const response = body as RouteStatusBody;
@@ -787,7 +745,6 @@ function expectMcpStatus(status: number, body: unknown): string | undefined {
   }
   return undefined;
 }
-
 async function finalMcpCheck(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
@@ -811,7 +768,6 @@ async function finalMcpCheck(
   }
   return undefined;
 }
-
 export default scenario({
   id: "deterministic-mcp-actions-routes",
   lane: "pr-deterministic",

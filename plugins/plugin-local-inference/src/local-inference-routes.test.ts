@@ -11,7 +11,7 @@ import { PassThrough } from "node:stream";
 import {
 	readRoutingPreferences,
 	writeRoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function freshActiveState() {

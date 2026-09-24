@@ -15,17 +15,16 @@
  * projects the new knowledge-graph stores at position -4.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
-
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
 
 interface EntityProjection {
@@ -34,13 +33,11 @@ interface EntityProjection {
   preferredName: string;
   platforms: string[];
 }
-
 interface EdgeProjection {
   fromEntityId: string;
   toEntityId: string;
   type: string;
 }
-
 export const entityGraphProvider: Provider = {
   name: "ENTITY_GRAPH",
   description:
@@ -57,18 +54,15 @@ export const entityGraphProvider: Provider = {
     if (!service) {
       return { text: "", data: { entities: [], relationships: [] } };
     }
-
     try {
       const entityStore = service.getEntityStore();
       const relationshipStore = service.getRelationshipStore();
-
       const [entities, edges] = await Promise.all([
         entityStore.list({}),
         relationshipStore.list({
           fromEntityId: SELF_ENTITY_ID,
         }),
       ]);
-
       const entityProjections: EntityProjection[] = entities
         .filter((entity) => entity.entityId !== SELF_ENTITY_ID)
         .map((entity) => ({
@@ -79,17 +73,14 @@ export const entityGraphProvider: Provider = {
             new Set(entity.identities.map((identity) => identity.platform)),
           ),
         }));
-
       const edgeProjections: EdgeProjection[] = edges.map((edge) => ({
         fromEntityId: edge.fromEntityId,
         toEntityId: edge.toEntityId,
         type: edge.type,
       }));
-
       if (entityProjections.length === 0 && edgeProjections.length === 0) {
         return { text: "", data: { entities: [], relationships: [] } };
       }
-
       const nameById = new Map(
         entities.map((entity) => [entity.entityId, entity.preferredName]),
       );
@@ -111,7 +102,6 @@ export const entityGraphProvider: Provider = {
           lines.push(`- you -[${edge.type}]-> ${toName}`);
         }
       }
-
       return {
         text: lines.join("\n"),
         data: {
@@ -140,5 +130,4 @@ export const entityGraphProvider: Provider = {
     }
   },
 };
-
 export default entityGraphProvider;

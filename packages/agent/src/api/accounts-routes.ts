@@ -70,20 +70,22 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
+  type ProviderRuntimeCapability,
+  type ProviderRuntimeEligibility,
+} from "@elizaos/core/contracts/coding-agent-capabilities";
+import { resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
+import {
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
-  type ProviderRuntimeCapability,
-  type ProviderRuntimeEligibility,
-  resolveServiceRoutingInConfig,
   type ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import * as zod from "zod";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import {

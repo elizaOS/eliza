@@ -6,12 +6,6 @@
  * to `resolveAppAssetUrl` based on the host's app-shell capability flags, so
  * limited cloud-agent hosts don't request routes they can't serve.
  */
-
-import {
-  getAppHeroThemeKey,
-  resolveApiUrl,
-  resolveAppAssetUrl,
-} from "@elizaos/shared";
 import {
   Bot,
   Briefcase,
@@ -27,8 +21,9 @@ import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
+import { getAppHeroThemeKey } from "../../app-hero-art.js";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url.js";
 import type { AppIdentitySource } from "./app-identity";
-
 export function iconImageSource(
   icon: string | null | undefined,
 ): string | null {
@@ -43,7 +38,6 @@ export function iconImageSource(
   }
   return null;
 }
-
 /**
  * Convert a heroImage/icon src into a runtime-safe URL.
  *
@@ -69,7 +63,6 @@ export function resolveRuntimeImageUrl(value: string): string {
   // Static asset under apps/app/public/ — resolves to CDN base in releases.
   return resolveAppAssetUrl(value);
 }
-
 export function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
   switch (getAppHeroThemeKey(app)) {
     case "play":

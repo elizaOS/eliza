@@ -17,14 +17,17 @@ import {
   resolveStateDir as resolveCoreStateDir,
   Service,
 } from "@elizaos/core";
-import type {
-  IPermissionsRegistry,
-  PermissionId,
-  PermissionState,
-  Prober,
-} from "@elizaos/shared";
+import {
+  type IPermissionsRegistry,
+  type PermissionId,
+  type PermissionState,
+  type Prober,
+} from "@elizaos/core/contracts/permissions";
 
-export type { IPermissionsRegistry, Prober } from "@elizaos/shared";
+export {
+  type IPermissionsRegistry,
+  type Prober,
+} from "@elizaos/core/contracts/permissions";
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

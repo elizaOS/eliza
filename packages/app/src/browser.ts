@@ -2,28 +2,26 @@
  * Browser-safe surface of `@elizaos/app`, aliased in by browser bundlers in
  * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
  * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
- * `@elizaos/shared`, and provides inert stubs for the server-only helpers
+ * `@elizaos/core`, and provides inert stubs for the server-only helpers
  * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
  * against the same names without pulling in Node server modules.
  */
-// Registration-surface contracts live in @elizaos/shared (React-free canonical
+// Registration-surface contracts live in @elizaos/core (React-free canonical
 // home); import them from there rather than the React package.
 
-export type {
-  AppDetailExtensionProps,
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/shared";
-export {
-  registerDetailExtension,
-  registerOverlayApp,
-  resolveAppBranding,
-} from "@elizaos/shared";
+export { resolveAppBranding } from "@elizaos/core/config/app-config";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
   client,
 } from "@elizaos/ui/api";
+export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export {
+  type OverlayApp,
+  type OverlayAppContext,
+} from "@elizaos/ui/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
 export {
@@ -69,37 +67,30 @@ export {
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
-
 export type CompatRuntimeState = {
   current: unknown;
   pendingAgentName?: string | null;
   pendingRestartReasons?: string[];
 };
-
 export function sendJson(
   _res: unknown,
   _status: number,
   _body: unknown,
 ): void {}
-
 export function sendJsonError(
   _res: unknown,
   _status: number,
   _message: string,
 ): void {}
-
 export async function ensureRouteAuthorized(): Promise<boolean> {
   return false;
 }
-
 export async function ensureCompatApiAuthorized(): Promise<boolean> {
   return false;
 }
-
 export async function readCompatJsonBody(): Promise<unknown> {
   return null;
 }
-
 export function sharedVault(): never {
   throw new Error("sharedVault is server-only");
 }

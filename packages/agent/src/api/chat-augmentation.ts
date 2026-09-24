@@ -19,13 +19,13 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { buildAccessContext, toWellFormedUnicode } from "@elizaos/core";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import {
   aliasRecallQuery,
   type DocumentsServiceLike,
   embedRecallQuery,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
-import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import { getErrorMessage } from "./server-helpers.ts";
 

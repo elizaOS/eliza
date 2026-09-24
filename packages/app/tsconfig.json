@@ -46,7 +46,6 @@
         "../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/plugin-native-inference/host-bridge": [
         "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
@@ -103,7 +102,8 @@
       ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
-      ]
+      ],
+      "@elizaos/core/*": ["../core/src/*"]
     }
   }
 }

@@ -16,21 +16,19 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import type {
-  ApprovalAction,
-  ApprovalListFilter,
-  ApprovalQueue,
-  ApprovalRequest,
-  ApprovalRequestState,
-} from "@elizaos/plugin-assistant";
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
   APPROVAL_SERVICE,
+  type ApprovalAction,
+  type ApprovalListFilter,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  type ApprovalRequestState,
   type ApprovalService,
   PENDING_PROMPTS_SERVICE,
 } from "@elizaos/plugin-assistant";
-import type { RouteHelpers } from "@elizaos/shared";
 
 interface ApprovalRouteRuntime {
   agentId?: string;

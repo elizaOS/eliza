@@ -12,7 +12,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 function resolveDebugLogPath(): string | null {
   const raw = process.env.ELIZA_AOSP_LLAMA_DEBUG_LOG?.trim();

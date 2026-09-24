@@ -11,6 +11,12 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import type {
+  WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
+  WalletMarketPrediction,
+} from "../contracts.js";
 import {
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,
@@ -19,13 +25,7 @@ import {
   type CoinGeckoMarketRecord,
   POLYMARKET_MARKET_PROVIDER,
   parseCoinGeckoMarkets,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/shared";
-import type {
-  WalletMarketOverviewResponse,
-  WalletMarketOverviewSource,
-  WalletMarketPrediction,
-} from "../contracts.js";
+} from "../lib/market-overview.js";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";

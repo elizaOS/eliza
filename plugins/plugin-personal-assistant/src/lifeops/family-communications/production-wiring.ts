@@ -5,10 +5,9 @@
  * text to decide whether an event is safe for a child.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/core";
+import { hasRoleAccess, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   authenticatedHouseholdInboundIdentity,
   HouseholdInboundApprovalError,
@@ -25,9 +24,7 @@ import {
   familySha256,
   requireFamilyText,
 } from "./types.js";
-
 export const HOUSEHOLD_CHILD_WEEK_SOURCE_REF = "household:child-week";
-
 const EXPECTED_ACCESS_DENIAL_CODES = new Set([
   "HOUSEHOLD_ACCESS_DENIED",
   "HOUSEHOLD_GRANT_EXPIRED",
@@ -38,7 +35,6 @@ const EXPECTED_IDENTITY_DENIAL_CODES = new Set([
   "HOUSEHOLD_INBOUND_MISSING_IDENTITY",
   "HOUSEHOLD_INBOUND_UNAUTHORIZED",
 ]);
-
 export async function resolveAuthenticatedFamilyPrincipal(
   runtime: IAgentRuntime,
   message: Memory,
@@ -105,7 +101,6 @@ export async function resolveAuthenticatedFamilyPrincipal(
   }
   return principalEntityId;
 }
-
 function scheduleSourceRef(input: {
   state: "proposal" | "agreement";
   proposalId: string | null;
@@ -128,7 +123,6 @@ function scheduleSourceRef(input: {
   }
   return `household-schedule:${input.state}:${recordId}:v${version}`;
 }
-
 export async function resolveTrustedChildWeekItems(input: {
   runtime: IAgentRuntime;
   principalEntityId: string;

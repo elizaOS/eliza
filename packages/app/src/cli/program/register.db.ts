@@ -7,19 +7,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
-import type { Command } from "commander";
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
-
 function resolveDbDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "workspace", ".elizadb");
 }
-
 export function registerDbCommand(program: Command) {
   const db = program.command("db").description("Database management");
-
   db.command("reset")
     .description(
       "Delete the local agent database (will be re-created on next start)",
@@ -28,14 +25,12 @@ export function registerDbCommand(program: Command) {
     .action(async (opts: { yes: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const dbDir = resolveDbDir();
-
         if (!fs.existsSync(dbDir)) {
           console.log(
             `${theme.muted("→")} Database not found at ${dbDir} — nothing to reset.`,
           );
           return;
         }
-
         if (!opts.yes) {
           const { createInterface } = await import("node:readline");
           const rl = createInterface({
@@ -51,13 +46,11 @@ export function registerDbCommand(program: Command) {
               },
             );
           });
-
           if (!confirmed) {
             console.log(`${theme.muted("→")} Cancelled.`);
             return;
           }
         }
-
         fs.rmSync(dbDir, { recursive: true, force: true });
         console.log(`${theme.success("✓")} Database deleted: ${dbDir}`);
         console.log(

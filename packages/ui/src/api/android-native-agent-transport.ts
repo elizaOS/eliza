@@ -4,7 +4,7 @@
  * including native streaming. Selected when the API base is an Android local URL.
  */
 import { Capacitor } from "@capacitor/core";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { getBootConfig } from "../config/boot-config";
 import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token";
 import {

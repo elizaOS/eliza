@@ -36,7 +36,7 @@
  *
  * Scope: the WS base is set via the `__ELIZA_WS_BASE__` / `__ELIZAOS_WS_BASE__`
  * window globals that client-base's `getInjectedWsBase()` still reads directly.
- * The REST base is set via `setElizaApiBase()` (@elizaos/shared) — the boot
+ * The REST base is set via `setElizaApiBase()` (@elizaos/core) — the boot
  * config is the single source of truth `getElizaApiBase()` reads (a bespoke
  * `__ELIZA_API_BASE__` window global is NO LONGER read for the REST base), and
  * the setter also mirrors `__ELIZAOS_API_BASE__` for any legacy reader. It
@@ -51,7 +51,7 @@
  * the `client` singleton's `connectWs()` can run.
  */
 import { Capacitor } from "@capacitor/core";
-import { setElizaApiBase } from "@elizaos/shared";
+import { setElizaApiBase } from "@elizaos/core/utils/eliza-globals";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 
 declare global {
@@ -61,7 +61,6 @@ declare global {
     [key: `__${string}_WS_BASE__`]: unknown;
   }
 }
-
 const LOOPBACK_HOSTNAMES = new Set([
   "localhost",
   "127.0.0.1",
@@ -69,11 +68,9 @@ const LOOPBACK_HOSTNAMES = new Set([
   "[::1]",
   "0.0.0.0",
 ]);
-
 function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(hostname.toLowerCase());
 }
-
 function setInjectedGlobal(key: `__${string}_WS_BASE__`, value: string): void {
   try {
     window[key] = value;
@@ -81,7 +78,6 @@ function setInjectedGlobal(key: `__${string}_WS_BASE__`, value: string): void {
     // best-effort — never block boot
   }
 }
-
 /**
  * Same-origin realtime socket base for the current page:
  * `wss://<host>` on https, `ws://<host>` on http. client-base appends `/ws`
@@ -93,13 +89,11 @@ function sameOriginWsBase(): string {
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${loc.host}`;
 }
-
 /** Same-origin REST API base for the current page: `https://<host>`. */
 function sameOriginRestBase(): string {
   const loc = window.location;
   return `${loc.protocol}//${loc.host}`;
 }
-
 /**
  * Returns true only for the plain-web served context that should use a
  * same-origin API/socket (not desktop, not native, page on a real http/https
@@ -122,7 +116,6 @@ function isPlainWebSameOriginContext(): boolean {
   if (isLoopbackHostname(loc.hostname)) return false;
   return true;
 }
-
 function injectedWsBaseIsForeignLoopback(value: unknown): boolean {
   if (typeof value !== "string" || !value.trim()) return false;
   try {
@@ -139,7 +132,6 @@ function injectedWsBaseIsForeignLoopback(value: unknown): boolean {
     return false;
   }
 }
-
 /**
  * Repoint the dev-injected desktop-loopback API + WS bases at the current
  * (reverse-proxied) origin on the plain-web path so REST hits same-origin
@@ -152,7 +144,6 @@ export function repairWebSameOriginWsBase(): void {
     injectedWsBaseIsForeignLoopback(window.__ELIZA_WS_BASE__) ||
     injectedWsBaseIsForeignLoopback(window.__ELIZAOS_WS_BASE__);
   if (!anyForeign) return;
-
   // 1) WS base → same-origin wss://<host>.
   const wsTarget = sameOriginWsBase();
   setInjectedGlobal("__ELIZA_WS_BASE__", wsTarget);
@@ -169,7 +160,6 @@ export function repairWebSameOriginWsBase(): void {
   } catch {
     // best-effort
   }
-
   // 2) REST base → same-origin https://<host>, so the client's baseUrl is
   //    non-empty and connectWs()'s empty-baseUrl guard does not bail. The boot
   //    config is the single source of truth getElizaApiBase() reads, so this
@@ -184,5 +174,4 @@ export function repairWebSameOriginWsBase(): void {
     // best-effort — never block boot
   }
 }
-
 repairWebSameOriginWsBase();

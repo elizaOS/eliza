@@ -12,11 +12,10 @@
  * listening regardless of which view is active — "make the background blue"
  * works from anywhere, not only on the Background view.
  */
-
 import {
   BACKGROUND_APPLY_EVENT,
   type BackgroundApplyPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   catalogEntryToConfig,
@@ -37,7 +36,7 @@ import {
 export type {
   BackgroundApplyOp,
   BackgroundApplyPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
 export { BACKGROUND_APPLY_EVENT };
 
 /** Pull a Partial<ShaderUniformValues> out of an untrusted payload field. */
@@ -52,7 +51,6 @@ function readUniformPatch(
   }
   return Object.keys(patch).length > 0 ? patch : undefined;
 }
-
 export function useBackgroundApplyChannel(): void {
   const {
     backgroundConfig,
@@ -60,11 +58,9 @@ export function useBackgroundApplyChannel(): void {
     undoBackgroundConfig,
     redoBackgroundConfig,
   } = useBackgroundConfig();
-
   useViewEvent(BACKGROUND_APPLY_EVENT, (event) => {
     const payload = event.payload as BackgroundApplyPayload;
     const op = typeof payload.op === "string" ? payload.op : "set";
-
     if (op === "undo") {
       undoBackgroundConfig();
       return;
@@ -78,7 +74,6 @@ export function useBackgroundApplyChannel(): void {
       setBackgroundConfig(DEFAULT_BACKGROUND_CONFIG);
       return;
     }
-
     // op === "set": build a config from the payload. `setBackgroundConfig`
     // normalizes (bad hex → default, image-without-url → shader, bad shader →
     // color field), so a partial or malformed payload can never wedge the
@@ -91,7 +86,6 @@ export function useBackgroundApplyChannel(): void {
     const uniformPatch = readUniformPatch(payload.uniforms);
     const presetId =
       typeof payload.presetId === "string" ? payload.presetId : undefined;
-
     // ── Named catalog entry (#13538) ─────────────────────────────────────
     // The agent (or the gallery) can name a curated catalog entry. We resolve
     // it HERE, in the renderer, to a concrete config. Like `presetId`, the
@@ -122,13 +116,11 @@ export function useBackgroundApplyChannel(): void {
       // Unknown catalog name → ignore (confinement: never wedge the bg).
       return;
     }
-
     // Raw GLSL text in the payload is deliberately NOT accepted (#11088):
     // presets are the only source of shader code, so a crafted `source` field
     // (e.g. a bounded-for GPU bomb that would slip past the static gate) has
     // no path to the compiler. Payloads may only name a preset id.
     const wantsGlsl = payload.mode === "glsl" || Boolean(presetId);
-
     // ── Programmable GLSL shader (#10694) ────────────────────────────────
     if (wantsGlsl) {
       // A uniform-only tweak ("make it slower") when a shader is already live:
@@ -150,7 +142,6 @@ export function useBackgroundApplyChannel(): void {
         );
         return;
       }
-
       const preset = presetId ? getShaderPreset(presetId) : undefined;
       const source = preset?.source;
       if (source && isPlausibleFragmentSource(source)) {
@@ -166,7 +157,6 @@ export function useBackgroundApplyChannel(): void {
       // Unknown preset / implausible source → ignore (never wedge the bg).
       return;
     }
-
     const wantsImage = payload.mode === "image" || (!payload.mode && imageUrl);
     if (wantsImage && imageUrl) {
       setBackgroundConfig({

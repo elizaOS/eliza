@@ -17,24 +17,21 @@
  *     contents and only then proceed. The file is deleted as part of the
  *     successful path.
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isLoopbackBindHost,
-  readAliasedEnv,
   resolveApiBindHost,
-  theme,
-} from "@elizaos/shared";
-import type { Command } from "commander";
+} from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
-
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
-
 /**
  * Resolve the eliza state dir without importing service modules.
  * Mirrors the canonical `ELIZA_STATE_DIR` >
@@ -51,16 +48,16 @@ function resolveElizaStateDir(): string {
     process.cwd();
   return path.join(home, `.${namespace}`);
 }
-
 interface RuntimeAdapter {
   db?: unknown;
   initialize?: () => Promise<void>;
   close?: () => Promise<void>;
 }
-
 interface SqlPluginModule {
   createDatabaseAdapter: (
-    cfg: { dataDir: string },
+    cfg: {
+      dataDir: string;
+    },
     id: `${string}-${string}-${string}-${string}-${string}`,
   ) => unknown;
   DatabaseMigrationService: new () => {
@@ -70,7 +67,6 @@ interface SqlPluginModule {
   };
   plugin: unknown;
 }
-
 /**
  * Open a pglite-backed AuthStore against the configured state dir. Falls
  * back to throwing if the runtime adapter or schema isn't available — we
@@ -83,11 +79,9 @@ async function openAuthStoreFromCli(): Promise<{
   const sql = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   const { createDatabaseAdapter, DatabaseMigrationService, plugin } = sql;
   const { AuthStore } = await import("../../services/auth-store");
-
   const stateDir = resolveElizaStateDir();
   const dataDir = path.join(stateDir, "db");
   await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
-
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -101,7 +95,6 @@ async function openAuthStoreFromCli(): Promise<{
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([plugin]);
   await migrations.runAllPluginMigrations();
-
   return {
     store: new AuthStore(db),
     close: async () => {
@@ -113,7 +106,6 @@ async function openAuthStoreFromCli(): Promise<{
     },
   };
 }
-
 interface ProofChallengeOptions {
   proofPath: string;
   challenge: string;
@@ -122,7 +114,6 @@ interface ProofChallengeOptions {
   timeoutMs?: number;
   log?: (line: string) => void;
 }
-
 /**
  * Wait for the operator to write the challenge token into the proof file.
  * Returns true on match, false on timeout or read failure.
@@ -140,7 +131,6 @@ async function waitForProofMatch(
   }
   return false;
 }
-
 interface RunResetParams {
   log?: (line: string) => void;
   /** Override env for tests. */
@@ -160,13 +150,11 @@ interface RunResetParams {
   /** Test override for proof challenge timeout (ms). */
   proofTimeoutMs?: number;
 }
-
 export interface RunResetResult {
   ok: boolean;
   reason?: "not_loopback" | "proof_failed" | "store_error";
   message?: string;
 }
-
 /**
  * Test-callable entry point. Real CLI action wraps this in commander glue.
  */
@@ -183,11 +171,9 @@ export async function runElizaAuthReset(
       message: `refusing to run: ELIZA_API_BIND=${bind} is not a loopback address`,
     };
   }
-
   const challenge = params.challenge ?? crypto.randomBytes(32).toString("hex");
   const stateDir = resolveElizaStateDir();
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
-
   log(theme.heading("Eliza auth reset"));
   log(
     theme.muted("This revokes every active session. Identities and password"),
@@ -199,7 +185,6 @@ export async function runElizaAuthReset(
   log("");
   log(`  ${theme.command(challenge)}`);
   log("");
-
   const reader =
     params.proofReader ??
     (async () => {
@@ -210,7 +195,6 @@ export async function runElizaAuthReset(
         throw err;
       }
     });
-
   const matched = await waitForProofMatch({
     proofPath,
     challenge,
@@ -226,7 +210,6 @@ export async function runElizaAuthReset(
       message: "filesystem proof was not written within the timeout",
     };
   }
-
   let store = params.store;
   let cleanup: (() => Promise<void>) | undefined = params.cleanup;
   if (!store) {
@@ -234,7 +217,6 @@ export async function runElizaAuthReset(
     store = opened.store;
     cleanup = opened.close;
   }
-
   const now = Date.now();
   // Revoke every active session by walking owner identities. The schema
   // doesn't index sessions across identities so we iterate.
@@ -248,7 +230,6 @@ export async function runElizaAuthReset(
   for (const ident of machines) {
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
   }
-
   const { appendAuditEvent } = await import("../../api/auth/index");
   await appendAuditEvent(
     {
@@ -261,20 +242,15 @@ export async function runElizaAuthReset(
     },
     { store },
   );
-
   if (!params.skipProofCleanup) {
     await fs.rm(proofPath, { force: true });
   }
-
   if (cleanup) await cleanup();
-
   log("");
   log(theme.success(`auth reset complete — revoked ${revoked} session(s)`));
   return { ok: true };
 }
-
 const DEFAULT_CLOUD_API_BASE = "https://api.eliza.app";
-
 /**
  * Web host → API host for each Eliza Cloud deployment, mirroring the app's
  * `resolveDirectCloudAuthApiBase` (`ui/src/api/client-cloud.ts`).
@@ -301,7 +277,6 @@ const CLOUD_API_BASE_BY_WEB_HOST = new Map<string, string>([
   ["app-staging.elizacloud.ai", "api-staging.eliza.app"],
   ["api-staging.elizacloud.ai", "api-staging.eliza.app"],
 ]);
-
 /** @internal Exported for testing. */
 export function resolveCloudApiBase(input?: string): string {
   const raw = (
@@ -319,7 +294,6 @@ export function resolveCloudApiBase(input?: string): string {
     return raw.replace(/\/+$/, "");
   }
 }
-
 /**
  * Build the EIP-4361 (SIWE) message string the way viem's `createSiweMessage`
  * does, so the cloud's `verifyMessage` parses it. `ethers.Wallet.signMessage`
@@ -346,7 +320,6 @@ function buildSiweMessage(args: {
     ? `${head}\n${args.statement}\n${body}`
     : `${head}${body}`;
 }
-
 export interface DevWalletLoginResult {
   ok: boolean;
   apiKey?: string;
@@ -358,7 +331,6 @@ export interface DevWalletLoginResult {
   saveError?: string;
   message?: string;
 }
-
 interface DevWalletLoginParams {
   cloudApiBase?: string;
   /** Persist the minted key as ELIZAOS_CLOUD_API_KEY in the eliza config. Default true. */
@@ -369,7 +341,6 @@ interface DevWalletLoginParams {
   /** Test override for fetch. */
   fetchImpl?: typeof fetch;
 }
-
 /**
  * DEV/TEST cloud login with no browser/OAuth: generate an ephemeral Ethereum
  * wallet, sign the SIWE challenge, and exchange it for an Eliza Cloud API key.
@@ -382,7 +353,6 @@ export async function runDevWalletLogin(
   const log = params.log ?? ((line: string) => console.log(line));
   const doFetch = params.fetchImpl ?? fetch;
   const apiBase = resolveCloudApiBase(params.cloudApiBase);
-
   let ethers: typeof import("ethers");
   try {
     ethers = await import("ethers");
@@ -393,7 +363,6 @@ export async function runDevWalletLogin(
         "ethers is required for dev-login but could not be loaded. Install it or run from the workspace.",
     };
   }
-
   // 1. Nonce — the endpoint can 500/429 transiently under load, so retry.
   type NonceBody = {
     nonce: string;
@@ -432,7 +401,6 @@ export async function runDevWalletLogin(
       message: `SIWE nonce request failed at ${apiBase} (${lastNonceErr})`,
     };
   }
-
   // 2. Wallet + signed SIWE message
   const wallet = params.privateKey
     ? new ethers.Wallet(params.privateKey)
@@ -448,7 +416,6 @@ export async function runDevWalletLogin(
     issuedAt: new Date().toISOString(),
   });
   const signature = await wallet.signMessage(message);
-
   // 3. Verify → API key
   const verifyRes = await doFetch(`${apiBase}/api/auth/siwe/verify`, {
     method: "POST",
@@ -466,8 +433,12 @@ export async function runDevWalletLogin(
     apiKey?: string;
     address?: string;
     isNewAccount?: boolean;
-    organization?: { id?: string } | null;
-    user?: { organization_id?: string } | null;
+    organization?: {
+      id?: string;
+    } | null;
+    user?: {
+      organization_id?: string;
+    } | null;
   };
   const apiKey = verified.apiKey;
   if (!apiKey) {
@@ -475,7 +446,6 @@ export async function runDevWalletLogin(
   }
   const orgId =
     verified.organization?.id ?? verified.user?.organization_id ?? null;
-
   // 4. Persist (default) so the local agent routes to Eliza Cloud.
   let savedTo: string | null = null;
   let saveError: string | undefined;
@@ -519,7 +489,6 @@ export async function runDevWalletLogin(
       );
     }
   }
-
   return {
     ok: true,
     apiKey,
@@ -530,10 +499,8 @@ export async function runDevWalletLogin(
     ...(saveError !== undefined ? { saveError } : {}),
   };
 }
-
 export function registerAuthCommand(program: Command) {
   const auth = program.command("auth").description("Manage Eliza auth state");
-
   auth
     .command("reset")
     .description("Revoke all sessions (loopback only)")
@@ -546,7 +513,6 @@ export function registerAuthCommand(program: Command) {
         }
       });
     });
-
   auth
     .command("dev-login")
     .description(

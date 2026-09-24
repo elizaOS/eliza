@@ -2,16 +2,16 @@
  * Owns the dynamic settings-section registry shared by built-ins, hosts, and
  * plugins so the Settings view can render declared sections in one order.
  */
+
 import type { ViewKind } from "@elizaos/core";
-import { getUiRegistryStore } from "@elizaos/shared";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
+import { getUiRegistryStore } from "../../registry-host.js";
 import type {
   SettingsRuntimeCapabilities,
   SettingsRuntimeCapability,
 } from "./settings-runtime-capabilities";
 import type { SettingsSectionGroup } from "./settings-section-meta";
-
 /**
  * Pluggable settings-section registry.
  *
@@ -24,18 +24,15 @@ import type { SettingsSectionGroup } from "./settings-section-meta";
  * This is what makes settings modular: an app adds a section with one
  * `registerSettingsSection(...)` call at boot, no edits to the view.
  */
-
 export type SettingsSectionTone =
   | "ok"
   | "warn"
   | "muted"
   | "accent"
   | "neutral";
-
 /** Curated, token-safe medallion tints for the section icons. No blue. */
 export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
 export type SettingsSectionProminence = "primary" | "secondary";
-
 export interface SettingsSectionDef {
   /** Stable id — URL hash + agent-surface address. */
   id: string;
@@ -119,7 +116,6 @@ export interface SettingsSectionDef {
    */
   Component: ComponentType | LazyExoticComponent<ComponentType>;
 }
-
 /** Shared navigation policy for destinations that should stay one disclosure away. */
 export function settingsSectionIsSecondary(
   section: Pick<
@@ -134,14 +130,18 @@ export function settingsSectionIsSecondary(
     section.viewKind === "preview"
   );
 }
-
 /** Partition one registry-driven group without duplicating prominence policy. */
 export function partitionSettingsSections<
   T extends Pick<
     SettingsSectionDef,
     "developerOnly" | "prominence" | "viewKind"
   >,
->(sections: readonly T[]): { primary: T[]; secondary: T[] } {
+>(
+  sections: readonly T[],
+): {
+  primary: T[];
+  secondary: T[];
+} {
   const primary: T[] = [];
   const secondary: T[] = [];
   for (const section of sections) {
@@ -149,22 +149,18 @@ export function partitionSettingsSections<
   }
   return { primary, secondary };
 }
-
 interface SettingsSectionRegistryStore {
   entries: Map<string, SettingsSectionDef>;
   seq: number;
 }
-
 const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
 const registryListeners = new Set<() => void>();
-
 function getStore(): SettingsSectionRegistryStore {
   return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
     entries: new Map<string, SettingsSectionDef>(),
     seq: 0,
   }));
 }
-
 /**
  * Register (or replace) a settings section. Later registration with the same id
  * wins, so a host app can override a built-in section by re-registering its id.
@@ -176,29 +172,24 @@ export function registerSettingsSection(section: SettingsSectionDef): void {
   store.entries.set(section.id, { ...section, order });
   for (const listener of registryListeners) listener();
 }
-
 /** Monotonic snapshot used by React consumers of the dynamic registry. */
 export function getSettingsSectionRegistryVersion(): number {
   return getStore().seq;
 }
-
 /** Re-render subscribers after a host or lazy domain registers a section. */
 export function subscribeSettingsSections(listener: () => void): () => void {
   registryListeners.add(listener);
   return () => registryListeners.delete(listener);
 }
-
 /** All registered sections, sorted by `order` then registration sequence. */
 export function listSettingsSections(): SettingsSectionDef[] {
   return [...getStore().entries.values()].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
 }
-
 export function getSettingsSection(id: string): SettingsSectionDef | undefined {
   return getStore().entries.get(id);
 }
-
 /**
  * Every section the Settings view should render — built-ins plus any added by a
  * host app / plugin through {@link registerSettingsSection}. Alias of
@@ -209,7 +200,6 @@ export function getSettingsSection(id: string): SettingsSectionDef | undefined {
 export function getAllSettingsSections(): SettingsSectionDef[] {
   return listSettingsSections();
 }
-
 /** Pure capability gate shared by hub visibility and deep-link resolution. */
 export function settingsSectionIsAvailable(
   section: SettingsSectionDef,

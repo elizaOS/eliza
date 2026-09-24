@@ -10,13 +10,13 @@
  * recent extracted facts from runtime memory.
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import { PostRelationshipLinkRequestSchema } from "@elizaos/core/contracts/relationships-routes";
 import type {
   RelationshipsGraphQuery,
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
 } from "@elizaos/plugin-assistant";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
 import { decodePathComponent } from "./server-helpers.ts";
 
 const UUID_REGEX =

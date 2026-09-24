@@ -15,6 +15,8 @@ await build({
     "character-persistence": `${root}src/features/advanced-capabilities/personality/character-persistence.ts`,
     "actions/generate-media": `${root}src/features/advanced-capabilities/actions/generateMedia.ts`,
     "prompts/response-policy": `${root}src/prompts/response-policy.ts`,
+    "text/template-engine": `${root}src/text/template-engine.ts`,
+    "text/template-rendering": `${root}src/text/template-rendering.ts`,
   },
   outDir: `${root}dist`,
   tsconfig: `${root}tsconfig.build.json`,

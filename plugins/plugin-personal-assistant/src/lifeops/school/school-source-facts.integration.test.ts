@@ -2,17 +2,18 @@
  * Real-PGlite proof for immutable source facts, restart recovery, concurrent
  * reconciliation, child ambiguity, prompt-injection safety, and C/P/E/M edges.
  */
+
 import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+import { type AgentRuntime, type Memory } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -34,7 +35,6 @@ import {
 } from "./types.js";
 
 const OWNER_AGENT_ID = "self";
-
 function sourceArtifact(args: {
   kind: SourceArtifactInput["kind"];
   reference: string;
@@ -60,7 +60,6 @@ function sourceArtifact(args: {
     visibility: "child_scoped",
   };
 }
-
 function noticeExtraction(
   args: Partial<SchoolNoticeExtraction> & {
     noticeKey: string;
@@ -95,7 +94,6 @@ function noticeExtraction(
     cancelsNoticeKey: args.cancelsNoticeKey ?? null,
   };
 }
-
 function noticeInput(args: {
   artifact: SourceArtifactInput;
   extraction: SchoolNoticeExtraction;
@@ -117,7 +115,6 @@ function noticeInput(args: {
     responsibility: args.responsibility ?? null,
   };
 }
-
 function genericCandidate(args: {
   stableFactKey: string;
   domain: string;
@@ -142,14 +139,12 @@ function genericCandidate(args: {
     contradictsStableFactKeys: [],
   };
 }
-
 describe("school source facts — real PGlite", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
   let entityStore: EntityStore;
   let relationshipStore: RelationshipStore;
   let service: SchoolSourceFactService;
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime({
       characterName: "SchoolSourceFactsIntegration",
@@ -161,12 +156,10 @@ describe("school source facts — real PGlite", () => {
     relationshipStore = graph.getRelationshipStore(runtime.agentId);
     await entityStore.ensureSelf();
     service = SchoolSourceFactService.create(runtime);
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   async function person(args: {
     label: string;
     school?: string;
@@ -229,7 +222,6 @@ describe("school source facts — real PGlite", () => {
     }
     return entity.entityId;
   }
-
   async function approvalCount(): Promise<number> {
     const rows = await executeRawSql(
       runtime,
@@ -239,7 +231,6 @@ describe("school source facts — real PGlite", () => {
     );
     return toNumber(rows[0]?.count, Number.NaN);
   }
-
   it("G13 persists noisy cross-domain voice candidates separately without an external effect", async () => {
     const beforeApprovals = await approvalCount();
     const voice = sourceArtifact({
@@ -275,9 +266,7 @@ describe("school source facts — real PGlite", () => {
         value: { timing: "Friday" },
       }),
     ];
-
     const result = await service.captureCandidates(voice, candidates);
-
     expect(result.sourceFacts).toHaveLength(4);
     expect(result.sourceFacts.map((fact) => fact.domain).sort()).toEqual([
       "food",
@@ -292,7 +281,6 @@ describe("school source facts — real PGlite", () => {
     );
     expect(persisted.every((facts) => facts.length === 1)).toBe(true);
   });
-
   it("G14 asks when same-name children are ambiguous and never scopes the fact to both", async () => {
     const firstAlex = await person({
       label: "Alex",
@@ -313,7 +301,6 @@ describe("school source facts — real PGlite", () => {
       observedAt: "2027-03-02T18:00:00.000Z",
       content: "Alex field trip form due Friday.",
     });
-
     const ambiguous = await service.ingestSchoolNotice(
       noticeInput({
         artifact,
@@ -323,7 +310,6 @@ describe("school source facts — real PGlite", () => {
         }),
       }),
     );
-
     expect(ambiguous.childResolution.status).toBe("ambiguous");
     expect(ambiguous.sourceFact.subjectEntityIds).toEqual([]);
     expect(ambiguous.actionBundle.state).toBe("needs_clarification");
@@ -339,7 +325,6 @@ describe("school source facts — real PGlite", () => {
       type: "applies_to_child",
     });
     expect(ambiguousScopes).toEqual([]);
-
     const resolved = await service.ingestSchoolNotice(
       noticeInput({
         artifact,
@@ -357,7 +342,6 @@ describe("school source facts — real PGlite", () => {
         }),
       }),
     );
-
     expect(resolved.childResolution).toEqual(
       expect.objectContaining({
         status: "resolved",
@@ -372,7 +356,6 @@ describe("school source facts — real PGlite", () => {
     });
     expect(resolvedScopes.map((edge) => edge.toEntityId)).toEqual([secondAlex]);
   });
-
   it("G15 preserves an ICS revision and applies a newer authoritative correction with structural ownership", async () => {
     const childId = await person({
       label: `Jordan-${randomUUID()}`,
@@ -507,7 +490,6 @@ describe("school source facts — real PGlite", () => {
         }),
       }),
     );
-
     const facts = await service.listFacts(`school.notice:${noticeKey}`);
     expect(facts).toHaveLength(2);
     expect(facts.map((fact) => fact.id)).toEqual(
@@ -557,7 +539,6 @@ describe("school source facts — real PGlite", () => {
         approvalRequirement: "owner_approval",
       }),
     );
-
     const supersession = await relationshipStore.list({
       fromEntityId: corrected.sourceFact.id,
       toEntityId: first.sourceFact.id,
@@ -591,7 +572,6 @@ describe("school source facts — real PGlite", () => {
     );
     expect(phaseEdges.every((edges) => edges.length === 1)).toBe(true);
   });
-
   it("cancels an existing obligation without deleting its source history or executing its proposals", async () => {
     const childId = await person({
       label: `Cancellation-child-${randomUUID()}`,
@@ -656,7 +636,6 @@ describe("school source facts — real PGlite", () => {
         }),
       }),
     );
-
     expect(cancelled.noticeResolution.state).toBe("cancelled");
     expect(cancelled.actionBundle).toEqual(
       expect.objectContaining({
@@ -675,7 +654,6 @@ describe("school source facts — real PGlite", () => {
     ]);
     expect(await approvalCount()).toBe(beforeApprovals);
   });
-
   it("G22 treats source instructions as data and cannot authorize a send or purchase", async () => {
     const childId = await person({
       label: `Injection-child-${randomUUID()}`,
@@ -726,7 +704,6 @@ describe("school source facts — real PGlite", () => {
         }),
       }),
     );
-
     expect(result.actionBundle.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -752,7 +729,6 @@ describe("school source facts — real PGlite", () => {
       }),
     );
   });
-
   it("exposes only capture, ingest, and reconciliation as public source verbs", () => {
     const action = createSchoolSourceFactAction({
       authorize: async () => true,
@@ -774,7 +750,6 @@ describe("school source facts — real PGlite", () => {
     ]);
     expect(action.description).toContain("never sends, purchases, submits");
   });
-
   it("returns commit proof tied to real source-artifact and fact records", async () => {
     const content = `School action receipt ${randomUUID()}`;
     const reference = `action-receipt-${randomUUID()}`;
@@ -814,7 +789,6 @@ describe("school source facts — real PGlite", () => {
       undefined,
     );
     const receipt = result.effectReceipts?.[0];
-
     expect(receipt).toMatchObject({
       outcome: "applied",
       operation: "lifeops.school_source_candidates.capture",
@@ -843,7 +817,6 @@ describe("school source facts — real PGlite", () => {
       }),
     ]);
   });
-
   it("surfaces equal-authority concurrent contradictions instead of last-write-wins", async () => {
     const childId = await person({
       label: `Concurrent-child-${randomUUID()}`,
@@ -907,7 +880,6 @@ describe("school source facts — real PGlite", () => {
         }),
       ),
     ]);
-
     const reconciled = await service.reconcileNotice(noticeKey);
     expect(reconciled.resolution.state).toBe("conflicted");
     if (reconciled.resolution.state !== "conflicted") {
@@ -939,7 +911,6 @@ describe("school source facts — real PGlite", () => {
       expect.objectContaining({ id: reconciled.bundle.id }),
     ]);
   });
-
   it("converges duplicate evidence from independent sources without discarding provenance", async () => {
     const childId = await person({
       label: `Duplicate-child-${randomUUID()}`,
@@ -971,7 +942,6 @@ describe("school source facts — real PGlite", () => {
         },
       ],
     });
-
     await Promise.all([
       service.ingestSchoolNotice(
         noticeInput({
@@ -996,7 +966,6 @@ describe("school source facts — real PGlite", () => {
         }),
       ),
     ]);
-
     const reconciled = await service.reconcileNotice(noticeKey);
     expect(reconciled.resolution.state).toBe("active");
     if (reconciled.resolution.state !== "active") {
@@ -1011,7 +980,6 @@ describe("school source facts — real PGlite", () => {
       expect.objectContaining({ id: reconciled.bundle.id }),
     ]);
   });
-
   it("deduplicates an exact concurrent replay by immutable content identity", async () => {
     const artifact = sourceArtifact({
       kind: "voice",
@@ -1026,17 +994,14 @@ describe("school source facts — real PGlite", () => {
       factType: "form_due",
       value: { summary: "Band form due" },
     });
-
     const [first, second] = await Promise.all([
       service.captureCandidates(artifact, [candidate]),
       service.captureCandidates(artifact, [candidate]),
     ]);
-
     expect(first.artifact.id).toBe(second.artifact.id);
     expect(first.sourceFacts[0].id).toBe(second.sourceFacts[0].id);
     expect(await service.listFacts(stableFactKey)).toHaveLength(1);
   });
-
   it("fails fast on altered snapshot bytes and missing graph subjects", async () => {
     const invalidArtifact = sourceArtifact({
       kind: "document",
@@ -1057,7 +1022,6 @@ describe("school source facts — real PGlite", () => {
     ).rejects.toMatchObject({
       code: "SCHOOL_INVALID_CONTRACT",
     } satisfies Partial<SchoolSourceFactError>);
-
     await expect(
       service.captureCandidates(
         sourceArtifact({
@@ -1082,7 +1046,6 @@ describe("school source facts — real PGlite", () => {
       code: "SCHOOL_SUBJECT_NOT_FOUND",
     } satisfies Partial<SchoolSourceFactError>);
   });
-
   it("recovers source facts, correction state, and action bundles after a real PGlite runtime restart", async () => {
     const characterName = `SchoolRestart-${randomUUID()}`;
     // Restart persistence needs an on-disk store: the helper's default
@@ -1172,7 +1135,6 @@ describe("school source facts — real PGlite", () => {
       );
       const firstAgentId = firstRuntime.agentId;
       await firstRuntimeResult.cleanup();
-
       secondRuntimeResult = await createLifeOpsTestRuntime({
         characterName,
         pgliteDir,
@@ -1213,5 +1175,5 @@ describe("school source facts — real PGlite", () => {
         await firstRuntimeResult.cleanup();
       }
     }
-  }, 180_000);
+  }, 180000);
 });

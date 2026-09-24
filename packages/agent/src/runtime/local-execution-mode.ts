@@ -1,13 +1,12 @@
 /**
  * Re-export shim for the canonical runtime execution-mode resolvers.
  *
- * The shared package owns the source of truth (`@elizaos/shared`'s
+ * The shared package owns the source of truth (`@elizaos/core`'s
  * `config/runtime-mode.ts`) because it is the inward-most layer that both
  * `@elizaos/agent` and the plugins (`plugin-coding-tools`)
  * can depend on without creating a cycle. This file keeps the historical
  * import path stable for callers inside the agent package.
  */
-
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
@@ -16,4 +15,4 @@ export {
   resolveLocalExecutionMode,
   resolveRuntimeExecutionMode,
   shouldUseSandboxExecution,
-} from "@elizaos/shared";
+} from "@elizaos/core/config/runtime-mode";

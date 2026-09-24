@@ -9,7 +9,7 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import type { TriggerSummary } from "../triggers/types.ts";
 
 export interface WorkbenchTodoView {

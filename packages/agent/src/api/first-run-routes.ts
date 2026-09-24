@@ -22,27 +22,29 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import {
-  asRecord,
-  type DeploymentTargetConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
+} from "@elizaos/core/contracts/first-run-options";
+import { PostFirstRunRequestSchema } from "@elizaos/core/contracts/first-run-routes";
+import {
+  type DeploymentTargetConfig,
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-  PostFirstRunRequestSchema,
   type ServiceRoutingConfig,
-} from "@elizaos/shared";
-import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
+} from "@elizaos/core/contracts/service-routing";
+import { asRecord } from "@elizaos/core/type-guards";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
+import { prepareFirstRunConnectors } from "../first-run-config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { syncDirectProviderCredentials } from "./accounts-routes.ts";
 import {
@@ -279,7 +281,7 @@ export {
   type BlooioFirstRunResolution,
   type CanonicalBlooioConnectorConfig,
   resolveBlooioFirstRunConfig,
-} from "@elizaos/shared/first-run-config";
+} from "../first-run-config.js";
 
 function restoreProcessEnvironment(
   snapshot: NodeJS.ProcessEnv,

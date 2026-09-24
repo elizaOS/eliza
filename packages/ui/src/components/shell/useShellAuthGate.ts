@@ -11,7 +11,7 @@
 import {
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useSyncExternalStore } from "react";
 import { useBranding } from "../../config/branding";
 import { useAuthStatus } from "../../hooks/useAuthStatus";

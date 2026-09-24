@@ -3,15 +3,13 @@
  * It preserves stable message/tool ids and terminal phases while treating all
  * text and serialized tool detail as display payload only.
  */
-
-import { isRetryableChatFailureKind } from "@elizaos/shared";
+import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
 } from "../api";
 import { publishNativeTranscriptEvent } from "./transport";
-
 /** Whether retry can plausibly resolve a structured chat failure as-is. */
 export function isNativeChatFailureRetryable(
   failureKind: ChatFailureKind,
@@ -21,7 +19,6 @@ export function isNativeChatFailureRetryable(
     ? terminalFailure.transient
     : isRetryableChatFailureKind(failureKind);
 }
-
 function toolDetail(event: ChatToolCallEvent): string | undefined {
   if (event.phase === "error") return event.error;
   if (event.phase === "result" && event.result !== undefined) {
@@ -32,7 +29,6 @@ function toolDetail(event: ChatToolCallEvent): string | undefined {
   }
   return undefined;
 }
-
 export function publishNativeAgentText(options: {
   messageId: string;
   turnId?: string;
@@ -47,7 +43,6 @@ export function publishNativeAgentText(options: {
     ...(options.turnId === undefined ? {} : { turnId: options.turnId }),
   });
 }
-
 export function publishNativeToolState(
   event: ChatToolCallEvent,
   turnId?: string,
@@ -67,7 +62,6 @@ export function publishNativeToolState(
     ...(turnId === undefined ? {} : { turnId }),
   });
 }
-
 export interface NativeChatTranscriptTurnPublisher {
   publishUserFinal(text: string, at: number): void;
   publishAgentText(text: string, final?: boolean): void;
@@ -92,7 +86,6 @@ export interface NativeChatTranscriptTurnPublisher {
     accountConnect?: unknown;
   }): void;
 }
-
 /**
  * One logical VOICE_DM turn publisher shared by primary and replay transports.
  * Stable turn/message ids make replay snapshots replace the same rows, while
@@ -109,7 +102,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
   let cancelled = false;
   let terminalPublished = false;
   const publishedErrorCodes = new Set<string>();
-
   const publishUserFinal = (text: string, at: number): void => {
     if (!options.enabled || userPublished) return;
     userPublished = true;
@@ -120,7 +112,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
       at,
     });
   };
-
   const publishAgentSnapshot = (text: string, final = false): void => {
     if (!options.enabled || !text) return;
     if (agentFinal) return;
@@ -134,7 +125,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
       final,
     });
   };
-
   const publishError = (error: {
     code: string;
     retryable: boolean;
@@ -154,7 +144,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
       ...(error.message ? { message: error.message } : {}),
     });
   };
-
   const publishFailureKind = (
     failureKind: ChatFailureKind,
     message?: string,
@@ -170,7 +159,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
           : {}),
     });
   };
-
   const publishCancel = (reason: string): void => {
     if (!options.enabled || terminalPublished || cancelled) return;
     cancelled = true;
@@ -181,7 +169,6 @@ export function createNativeChatTranscriptTurnPublisher(options: {
       reason,
     });
   };
-
   return {
     publishUserFinal,
     publishAgentText: publishAgentSnapshot,

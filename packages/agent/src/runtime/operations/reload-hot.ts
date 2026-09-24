@@ -18,7 +18,7 @@
 import type { SecretsManager } from "@elizaos/auth/vault";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { formatErrorWithStack } from "@elizaos/shared";
+import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
 import { reconcileDirectTextModelSettings } from "../runtime-settings.ts";
 import type {
   OperationIntent,

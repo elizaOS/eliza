@@ -2,15 +2,14 @@
  * Barrel for the voice surface (@elizaos/ui/voice): capture, config, ASR/TTS
  * helpers, and the wake/turn logic.
  */
-
-export type { VoicePreset } from "@elizaos/shared";
 export {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
   VOICE_PROVIDERS,
-} from "@elizaos/shared";
+  type VoicePreset,
+} from "@elizaos/core/voice";
 export {
   type AecLoopControl,
   type AecLoopResult,

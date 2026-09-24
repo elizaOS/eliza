@@ -1,6 +1,6 @@
 /** Configure the benchmark provider from explicit Cerebras credentials. */
 import { elizaLogger } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 
 const KNOWN_CEREBRAS_BARE_MODELS = new Set([
   "gpt-oss-120b",

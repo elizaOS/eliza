@@ -5,7 +5,7 @@ import {
   parseSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
   TodoCutoverContractError,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/core/todo-cutover";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {

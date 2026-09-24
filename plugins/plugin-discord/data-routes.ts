@@ -14,12 +14,15 @@
  */
 
 import { buildSetupError, type IAgentRuntime } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
+import type {
+	Route,
+	RouteRequest,
+	RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
 import { isValidSnowflake } from "./types";
 
 // ── Discord types ───────────────────────────────────────────────────────
-
 interface DiscordLocalServiceLike {
 	getStatus(): Record<string, unknown>;
 	authorize(): Promise<Record<string, unknown>>;
@@ -28,7 +31,6 @@ interface DiscordLocalServiceLike {
 	listChannels(guildId: string): Promise<Array<Record<string, unknown>>>;
 	subscribeChannelMessages(channelIds: string[]): Promise<string[]>;
 }
-
 /**
  * Minimal interface for the connector-setup service exposed by the agent.
  * Plugins access it via `runtime.getService("connector-setup")`.
@@ -45,13 +47,11 @@ interface ConnectorSetupService {
 		roomId?: string;
 	}): boolean;
 }
-
 interface ConnectorConfig {
 	enabled?: boolean;
 	messageChannelIds?: string[];
 	[key: string]: unknown;
 }
-
 function isConnectorSetupService(
 	service: unknown,
 ): service is ConnectorSetupService {
@@ -65,7 +65,6 @@ function isConnectorSetupService(
 		typeof candidate.setOwnerContact === "function"
 	);
 }
-
 function isDiscordLocalServiceLike(
 	service: unknown,
 ): service is DiscordLocalServiceLike {
@@ -80,19 +79,16 @@ function isDiscordLocalServiceLike(
 		typeof candidate.subscribeChannelMessages === "function"
 	);
 }
-
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
 	const service = runtime.getService("connector-setup");
 	return isConnectorSetupService(service) ? service : null;
 }
-
 function resolveService(
 	runtime: IAgentRuntime,
 ): DiscordLocalServiceLike | null {
 	const raw = runtime.getService(DISCORD_LOCAL_SERVICE_NAME);
 	return isDiscordLocalServiceLike(raw) ? raw : null;
 }
-
 function getConnectorConfig(
 	setupService: ConnectorSetupService,
 ): ConnectorConfig {
@@ -103,16 +99,13 @@ function getConnectorConfig(
 			| Record<string, ConnectorConfig>
 			| undefined) ??
 		{};
-
 	const current = connectors.discordLocal;
 	if (current && typeof current === "object" && !Array.isArray(current)) {
 		return current as ConnectorConfig;
 	}
 	return {};
 }
-
 // ── GET /api/discord/guilds ─────────────────────────────────────────────
-
 async function handleGuilds(
 	_req: RouteRequest,
 	res: RouteResponse,
@@ -144,9 +137,7 @@ async function handleGuilds(
 			);
 	}
 }
-
 // ── GET /api/discord/channels ───────────────────────────────────────────
-
 async function handleChannels(
 	req: RouteRequest,
 	res: RouteResponse,
@@ -164,9 +155,12 @@ async function handleChannels(
 			);
 		return;
 	}
-
 	const url = new URL(
-		(req as { url?: string }).url ?? "/api/discord/channels",
+		(
+			req as {
+				url?: string;
+			}
+		).url ?? "/api/discord/channels",
 		"http://localhost",
 	);
 	const guildId = url.searchParams.get("guildId")?.trim() ?? "";
@@ -182,7 +176,6 @@ async function handleChannels(
 			);
 		return;
 	}
-
 	try {
 		const channels = await service.listChannels(guildId);
 		res.status(200).json({ channels, count: channels.length });
@@ -197,9 +190,7 @@ async function handleChannels(
 			);
 	}
 }
-
 // ── POST /api/discord/subscriptions ─────────────────────────────────────
-
 async function handleSubscriptions(
 	req: RouteRequest,
 	res: RouteResponse,
@@ -217,15 +208,16 @@ async function handleSubscriptions(
 			);
 		return;
 	}
-
-	const body = (req.body as { channelIds?: string[] } | null) ?? null;
+	const body =
+		(req.body as {
+			channelIds?: string[];
+		} | null) ?? null;
 	if (!body) {
 		res
 			.status(400)
 			.json(buildSetupError("bad_request", "request body is required"));
 		return;
 	}
-
 	const channelIds = Array.isArray(body.channelIds)
 		? Array.from(
 				new Set(
@@ -247,11 +239,9 @@ async function handleSubscriptions(
 			);
 		return;
 	}
-
 	try {
 		const subscribedChannelIds =
 			await service.subscribeChannelMessages(channelIds);
-
 		const setupService = getSetupService(runtime);
 		if (setupService) {
 			const connectorConfig = getConnectorConfig(setupService);
@@ -265,7 +255,6 @@ async function handleSubscriptions(
 					messageChannelIds: subscribedChannelIds,
 				};
 			});
-
 			// Auto-populate owner contact so LifeOps can deliver reminders
 			if (subscribedChannelIds.length > 0) {
 				setupService.setOwnerContact({
@@ -277,7 +266,6 @@ async function handleSubscriptions(
 				setupService.registerEscalationChannel("discord");
 			}
 		}
-
 		res.status(200).json({ subscribedChannelIds });
 	} catch (err) {
 		res
@@ -290,7 +278,6 @@ async function handleSubscriptions(
 			);
 	}
 }
-
 /**
  * Plugin routes for Discord local post-setup data fetches.
  *

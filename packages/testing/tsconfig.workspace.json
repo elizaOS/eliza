@@ -74,8 +74,6 @@
       ],
       "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../auth/src/vault/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
@@ -104,9 +102,6 @@
       ],
       "@elizaos/plugin-local-inference/runtime/*": [
         "../../plugins/plugin-local-inference/src/runtime/*"
-      ],
-      "@elizaos/shared/local-inference": [
-        "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
@@ -306,7 +301,13 @@
       "@elizaos/plugin-blocker/package.json": [
         "../../plugins/plugin-blocker/package.json"
       ],
-      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"]
+      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"],
+      "@elizaos/testing/synthetic-control": [
+        "./src/synthetic-control/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog": [
+        "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
+      ]
     }
   }
 }

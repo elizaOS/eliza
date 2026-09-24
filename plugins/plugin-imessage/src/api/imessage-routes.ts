@@ -3,12 +3,10 @@
  * and Contacts CRUD to hosts that still use raw Node request handlers. Service
  * access stays structural so the connector remains dynamically loadable.
  */
-
 import type http from "node:http";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core/api/route-helpers";
 import { z } from "zod";
 import { parseIMessageContactId } from "../contact-path.js";
-
 /**
  * Route helper options accepted by the host. This plugin depends on core, not
  * the agent package, so the route file stays usable without importing agent
@@ -24,7 +22,6 @@ export interface ReadJsonBodyOptions {
   nonObjectMessage?: string;
   parseErrorMessage?: string;
 }
-
 /**
  * Narrow structural type for the IMessageService methods we call from
  * this route file. Declared here rather than imported from the plugin
@@ -65,7 +62,10 @@ interface IMessageServiceLike {
       chatId: string;
       chatType: string;
       displayName?: string;
-      participants: Array<{ handle: string; isPhoneNumber: boolean }>;
+      participants: Array<{
+        handle: string;
+        isPhoneNumber: boolean;
+      }>;
     }>
   >;
   listAllContacts(): Promise<
@@ -74,30 +74,47 @@ interface IMessageServiceLike {
       name: string;
       firstName: string | null;
       lastName: string | null;
-      phones: Array<{ label: string | null; value: string }>;
-      emails: Array<{ label: string | null; value: string }>;
+      phones: Array<{
+        label: string | null;
+        value: string;
+      }>;
+      emails: Array<{
+        label: string | null;
+        value: string;
+      }>;
     }>
   >;
   addContact(input: {
     firstName?: string;
     lastName?: string;
-    phones?: Array<{ label?: string; value: string }>;
-    emails?: Array<{ label?: string; value: string }>;
+    phones?: Array<{
+      label?: string;
+      value: string;
+    }>;
+    emails?: Array<{
+      label?: string;
+      value: string;
+    }>;
   }): Promise<string | null>;
   updateContact(
     personId: string,
     patch: {
       firstName?: string;
       lastName?: string;
-      addPhones?: Array<{ label?: string; value: string }>;
+      addPhones?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removePhones?: string[];
-      addEmails?: Array<{ label?: string; value: string }>;
+      addEmails?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removeEmails?: string[];
     }
   ): Promise<boolean>;
   deleteContact(personId: string): Promise<boolean>;
 }
-
 export interface IMessageRouteState {
   /**
    * The running AgentRuntime (or a test runtime). Typed loosely as
@@ -111,7 +128,6 @@ export interface IMessageRouteState {
     getService(type: string): unknown;
   };
 }
-
 const IMESSAGE_SERVICE_NAME = "imessage";
 const MAX_BODY_BYTES = 256 * 1024; // Contacts payloads are tiny; cap aggressively.
 const DEFAULT_MESSAGES_LIMIT = 50;
@@ -123,7 +139,6 @@ const IMessageMessagesLimitSchema = z
   .transform(Number)
   .refine(Number.isSafeInteger)
   .transform((value) => Math.min(Math.max(1, value), MAX_MESSAGES_LIMIT));
-
 function parseMessagesLimit(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") {
     return DEFAULT_MESSAGES_LIMIT;
@@ -131,13 +146,11 @@ function parseMessagesLimit(raw: string | null): number | null {
   const parsed = IMessageMessagesLimitSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
-
 function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
   const raw = state.runtime.getService(IMESSAGE_SERVICE_NAME);
   return (raw as IMessageServiceLike | null | undefined) ?? null;
 }
-
 /**
  * Route handler entry point. Returns `true` when a route matched and
  * the response has been written; returns `false` so the caller can
@@ -153,9 +166,7 @@ export async function handleIMessageRoute(
   helpers: RouteHelpers
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/imessage")) return false;
-
   const meta: RouteRequestMeta = { req, res, method, pathname };
-
   // ── GET /api/imessage/status ──────────────────────────────────────
   if (method === "GET" && pathname === "/api/imessage/status") {
     const service = resolveService(state);
@@ -173,7 +184,6 @@ export async function handleIMessageRoute(
     });
     return true;
   }
-
   // ── GET /api/imessage/messages?limit=N ────────────────────────────
   if (method === "GET" && pathname === "/api/imessage/messages") {
     const service = resolveService(state);
@@ -199,7 +209,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // ── GET /api/imessage/chats ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/imessage/chats") {
     const service = resolveService(state);
@@ -219,7 +228,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // ── GET /api/imessage/contacts ────────────────────────────────────
   if (method === "GET" && pathname === "/api/imessage/contacts") {
     const service = resolveService(state);
@@ -239,7 +247,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // ── POST /api/imessage/contacts ───────────────────────────────────
   if (method === "POST" && pathname === "/api/imessage/contacts") {
     const service = resolveService(state);
@@ -250,16 +257,20 @@ export async function handleIMessageRoute(
     const body = await helpers.readJsonBody<{
       firstName?: string;
       lastName?: string;
-      phones?: Array<{ label?: string; value: string }>;
-      emails?: Array<{ label?: string; value: string }>;
+      phones?: Array<{
+        label?: string;
+        value: string;
+      }>;
+      emails?: Array<{
+        label?: string;
+        value: string;
+      }>;
     }>(req, res, { maxBytes: MAX_BODY_BYTES });
     if (!body) return true; // helpers.readJsonBody has already sent the error.
-
     if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
       helpers.error(res, "at least one of firstName, lastName, phones, or emails is required", 400);
       return true;
     }
-
     try {
       const id = await service.addContact({
         firstName: body.firstName,
@@ -285,7 +296,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // ── PATCH /api/imessage/contacts/:id ──────────────────────────────
   if (method === "PATCH" && pathname.startsWith("/api/imessage/contacts/")) {
     const parsedId = parseIMessageContactId(pathname);
@@ -308,13 +318,18 @@ export async function handleIMessageRoute(
     const body = await helpers.readJsonBody<{
       firstName?: string;
       lastName?: string;
-      addPhones?: Array<{ label?: string; value: string }>;
+      addPhones?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removePhones?: string[];
-      addEmails?: Array<{ label?: string; value: string }>;
+      addEmails?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removeEmails?: string[];
     }>(req, res, { maxBytes: MAX_BODY_BYTES });
     if (!body) return true;
-
     try {
       const ok = await service.updateContact(id, {
         firstName: body.firstName,
@@ -342,7 +357,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // ── DELETE /api/imessage/contacts/:id ─────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/imessage/contacts/")) {
     const parsedId = parseIMessageContactId(pathname);
@@ -382,7 +396,6 @@ export async function handleIMessageRoute(
     }
     return true;
   }
-
   // Path starts with /api/imessage but none of the above matched.
   void meta; // reserved for future telemetry spans
   return false;

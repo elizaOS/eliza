@@ -12,7 +12,7 @@ import {
   type MeetingJoinRequest,
   type MeetingSession,
   parseMeetingUrl,
-} from "@elizaos/shared";
+} from "@elizaos/core/meetings";
 import { Video } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -22,7 +22,6 @@ import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { SemanticForm } from "../ui/semantic-form";
 import { StatusDot } from "../ui/status-badge";
-
 export interface MeetingJoinBarProps {
   activeMeetings: MeetingSession[];
   onJoin(input: MeetingJoinRequest): void;
@@ -32,7 +31,6 @@ export interface MeetingJoinBarProps {
   error?: string | null;
   className?: string;
 }
-
 const SESSION_STATUS_LABEL: Record<MeetingSession["status"], string> = {
   requested: "Requested",
   joining: "Joining",
@@ -42,7 +40,6 @@ const SESSION_STATUS_LABEL: Record<MeetingSession["status"], string> = {
   ended: "Ended",
   failed: "Failed",
 };
-
 export function MeetingJoinBar({
   activeMeetings,
   onJoin,
@@ -81,7 +78,6 @@ export function MeetingJoinBar({
     group: "meeting-join",
     status: joining ? "joining" : parsed ? "ready" : "disabled",
   });
-
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!parsed || joining) return;
@@ -93,7 +89,6 @@ export function MeetingJoinBar({
     });
     setUrl("");
   };
-
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <SemanticForm

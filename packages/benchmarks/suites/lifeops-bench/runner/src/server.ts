@@ -22,8 +22,8 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { readAliasedEnv } from "@elizaos/shared";
 import dotenv from "dotenv";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
@@ -38,7 +38,7 @@ import {
   LifeOpsBenchHandler,
   type LifeOpsBenchTurnRecord,
 } from "./lifeops-bench-handler.js";
-import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
+import { type LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
   createBenchmarkPlugin,
@@ -115,16 +115,13 @@ const _loadedEnvPath = dotenvDisabled
 if (_loadedEnvPath) {
   elizaLogger.debug(`[bench] Loaded env from ${_loadedEnvPath}`);
 }
-
 // Cerebras auto-wiring. See `./cerebras-autowire.ts` for the rationale and
 // the rules under which `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` /
 // `CEREBRAS_MODEL` are promoted to OpenAI-compat env keys.
 autoWireCerebras();
-
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 const COMPACT_CONVERSATION_ACTION_NAME = "COMPACT_CONVERSATION";
-
 function normalizeBenchmarkTaskAgentEnv(): void {
   const benchmarkRequested = process.env.BENCHMARK_TASK_AGENT?.trim();
   const requested =
@@ -132,7 +129,6 @@ function normalizeBenchmarkTaskAgentEnv(): void {
     process.env.ELIZA_ACP_DEFAULT_AGENT?.trim() ||
     process.env.ELIZA_DEFAULT_AGENT_TYPE?.trim();
   if (!requested) return;
-
   const normalized = requested.toLowerCase().replace(/_/g, "-");
   const acpAgent =
     normalized === "elizaos" ||
@@ -149,7 +145,6 @@ function normalizeBenchmarkTaskAgentEnv(): void {
           : normalized === "open-code" || normalized === "open code"
             ? "opencode"
             : normalized;
-
   process.env.BENCHMARK_TASK_AGENT ??= requested;
   if (readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR") === undefined) {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
@@ -167,60 +162,48 @@ function normalizeBenchmarkTaskAgentEnv(): void {
     `[bench] Benchmark task-agent ${requested} mapped to ACP adapter ${acpAgent}`,
   );
 }
-
 normalizeBenchmarkTaskAgentEnv();
-
 function isLocaBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "loca_bench" || normalized === "loca-bench";
 }
-
 function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
-
 function _isTauBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "tau_bench" || normalized === "tau-bench";
 }
-
 function isTerminalBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "terminal-bench" || normalized === "terminal_bench";
 }
-
 function isSweBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "swe-bench" || normalized === "swe_bench";
 }
-
 function isVisualWebBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "visualwebbench" || normalized === "visual-web-bench";
 }
-
 function isWebShopBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "webshop" || normalized === "web-shop";
 }
-
 function isOsworldBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "osworld" || normalized === "os-world";
 }
-
 function isHermesNativeEnvProxyName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return (
     normalized === "hermes_native_env" || normalized === "hermes-native-env"
   );
 }
-
 function isWooBenchName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "woobench" || normalized === "woo-bench";
 }
-
 function isActionCallingBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return (
@@ -232,19 +215,16 @@ function isActionCallingBenchmarkName(benchmark: string): boolean {
     normalized === "tau-bench"
   );
 }
-
 function isVendingBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "vending-bench" || normalized === "vending_bench";
 }
-
 // ---------------------------------------------------------------------------
 // Boundary adapters: benchmark harnesses build OpenAI-shaped objects while
 // AgentRuntime consumes typed core contracts. These converters keep every
 // campaign request inside `runtime.useModel` without weakening the harness
 // input boundary.
 // ---------------------------------------------------------------------------
-
 const CHAT_MESSAGE_ROLES: ReadonlySet<ChatMessageRole> = new Set([
   "system",
   "developer",
@@ -252,14 +232,12 @@ const CHAT_MESSAGE_ROLES: ReadonlySet<ChatMessageRole> = new Set([
   "assistant",
   "tool",
 ]);
-
 function asChatMessageRole(value: unknown): ChatMessageRole {
   return typeof value === "string" &&
     CHAT_MESSAGE_ROLES.has(value as ChatMessageRole)
     ? (value as ChatMessageRole)
     : "user";
 }
-
 function wireToolCallToToolCall(value: unknown): ToolCall | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const call = value as Record<string, unknown>;
@@ -282,7 +260,6 @@ function wireToolCallToToolCall(value: unknown): ToolCall | null {
   const id = typeof call.id === "string" ? call.id : name;
   return { id, name, arguments: args };
 }
-
 /**
  * Convert OpenAI-wire chat messages into `ChatMessage[]` for `useModel`,
  * mapping snake_case tool fields (`tool_calls`/`tool_call_id`) onto the
@@ -309,7 +286,6 @@ function toChatMessages(wire: Array<Record<string, unknown>>): ChatMessage[] {
     return chatMessage;
   });
 }
-
 /**
  * Convert harness-supplied tool definitions (OpenAI `{ type, function: {...} }`
  * or flat `{ name, ... }`) into `ToolDefinition[]`. Entries without a usable
@@ -349,21 +325,18 @@ function toToolDefinitions(
   }
   return tools;
 }
-
 /** Narrow a benchmark-supplied tool-choice string to a `ToolChoice`. */
 function toToolChoice(value: string): ToolChoice {
   return value === "none" || value === "auto" || value === "required"
     ? value
     : "required";
 }
-
 function normalizeActionCallingNativeMessages(
   text: string,
   context: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
   return normalizeGenericToolMessages(context.messages, text);
 }
-
 function normalizeWooBenchNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -400,7 +373,6 @@ function normalizeWooBenchNativeMessages(
   messages.push({ role: "user", content: text });
   return messages;
 }
-
 function normalizeBfclNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -424,7 +396,6 @@ function normalizeBfclNativeMessages(
     },
   ];
 }
-
 function _normalizeTauNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -448,7 +419,6 @@ function _normalizeTauNativeMessages(
     },
   ];
 }
-
 function normalizeLocaNativeMessages(
   rawMessages: unknown,
 ): Array<Record<string, unknown>> {
@@ -465,7 +435,6 @@ function normalizeLocaNativeMessages(
         "source_data/files, then write the requested CSV files.",
     },
   ];
-
   for (const item of input) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const message = item as Record<string, unknown>;
@@ -495,7 +464,6 @@ function normalizeLocaNativeMessages(
       });
       continue;
     }
-
     if (role === "tool") {
       const toolCallId =
         typeof message.tool_call_id === "string"
@@ -522,7 +490,6 @@ function normalizeLocaNativeMessages(
       });
       continue;
     }
-
     normalized.push({
       role: role === "system" ? "system" : "user",
       content:
@@ -531,10 +498,8 @@ function normalizeLocaNativeMessages(
           : JSON.stringify(message.content ?? ""),
     });
   }
-
   return normalized;
 }
-
 function normalizeGenericToolMessages(
   rawMessages: unknown,
   fallbackText: string,
@@ -542,7 +507,6 @@ function normalizeGenericToolMessages(
   const input = Array.isArray(rawMessages) ? rawMessages : [];
   const toolNamesById = new Map<string, string>();
   const normalized: Array<Record<string, unknown>> = [];
-
   for (const item of input) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const message = item as Record<string, unknown>;
@@ -572,7 +536,6 @@ function normalizeGenericToolMessages(
       });
       continue;
     }
-
     if (role === "tool") {
       const toolCallId =
         typeof message.tool_call_id === "string"
@@ -599,7 +562,6 @@ function normalizeGenericToolMessages(
       });
       continue;
     }
-
     normalized.push({
       role: role === "system" ? "system" : "user",
       content:
@@ -608,13 +570,11 @@ function normalizeGenericToolMessages(
           : JSON.stringify(message.content ?? ""),
     });
   }
-
   if (normalized.length === 0) {
     normalized.push({ role: "user", content: fallbackText });
   }
   return normalized;
 }
-
 function normalizeLocaIncomingToolCall(
   raw: unknown,
 ): Record<string, unknown> | null {
@@ -648,17 +608,22 @@ function normalizeLocaIncomingToolCall(
     },
   };
 }
-
 function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
   id: string;
   type: "function";
-  function: { name: string; arguments: string };
+  function: {
+    name: string;
+    arguments: string;
+  };
 }> {
   if (!Array.isArray(rawToolCalls)) return [];
   const calls: Array<{
     id: string;
     type: "function";
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }> = [];
   for (const raw of rawToolCalls) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
@@ -694,10 +659,12 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
   }
   return calls;
 }
-
 function firstLocaBenchmarkActionFromToolCalls(
   toolCalls: Array<{
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }>,
 ): Record<string, unknown> | null {
   const first = toolCalls[0];
@@ -713,10 +680,12 @@ function firstLocaBenchmarkActionFromToolCalls(
     arguments: args,
   };
 }
-
 function firstWooBenchActionFromToolCalls(
   toolCalls: Array<{
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }>,
 ): Record<string, unknown> | null {
   const first = toolCalls[0];
@@ -737,10 +706,12 @@ function firstWooBenchActionFromToolCalls(
       : {};
   return { command, ...payload };
 }
-
 function bfclBenchmarkActionFromToolCalls(
   toolCalls: Array<{
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }>,
 ): Record<string, unknown> | null {
   if (toolCalls.length === 0) return null;
@@ -761,10 +732,12 @@ function bfclBenchmarkActionFromToolCalls(
     arguments: { calls },
   };
 }
-
 function webshopBenchmarkActionFromToolCalls(
   toolCalls: Array<{
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }>,
 ): Record<string, unknown> | null {
   for (const call of toolCalls) {
@@ -794,21 +767,17 @@ function webshopBenchmarkActionFromToolCalls(
   }
   return null;
 }
-
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
 // ---------------------------------------------------------------------------
-
 const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
 const configuredMaxBodyBytes = Number(process.env.ELIZA_BENCH_MAX_BODY_BYTES);
 const MAX_BODY_BYTES =
   Number.isFinite(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
     ? Math.floor(configuredMaxBodyBytes)
     : DEFAULT_MAX_BODY_BYTES;
-
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
-
 function buildLifeOpsBenchmarkContext(
   backend: LifeOpsFakeBackend,
   previousTurns: LifeOpsBenchTurnRecord[],
@@ -859,7 +828,6 @@ function buildLifeOpsBenchmarkContext(
     previousToolResults,
   };
 }
-
 function buildLifeOpsActionCallingMessages(params: {
   userText: string;
   lifeopsContext: Record<string, unknown>;
@@ -884,11 +852,13 @@ function buildLifeOpsActionCallingMessages(params: {
     },
   ];
 }
-
 function lifeOpsToolCallsFromNativeToolCalls(
   toolCalls: Array<{
     id: string;
-    function: { name: string; arguments: string };
+    function: {
+      name: string;
+      arguments: string;
+    };
   }>,
 ): Array<{
   id: string;
@@ -914,12 +884,14 @@ function lifeOpsToolCallsFromNativeToolCalls(
     };
   });
 }
-
 function shouldDropLifeOpsReadOnlyFollowupToolCalls(params: {
   userText: string;
   responseText: string;
   lifeopsContext: Record<string, unknown>;
-  toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>;
+  toolCalls: Array<{
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
 }): boolean {
   if (params.userText.trim() || !params.responseText.trim()) return false;
   if (params.toolCalls.length === 0) return false;
@@ -932,7 +904,6 @@ function shouldDropLifeOpsReadOnlyFollowupToolCalls(params: {
     );
   });
   if (!onlyReminderCreates) return false;
-
   const previousToolResults = params.lifeopsContext.previousToolResults;
   if (!Array.isArray(previousToolResults)) return false;
   return previousToolResults.some((entry) => {
@@ -955,7 +926,6 @@ function shouldDropLifeOpsReadOnlyFollowupToolCalls(params: {
     return subaction === "check_availability";
   });
 }
-
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
   try {
@@ -973,17 +943,14 @@ function isAllowedOrigin(origin: string | undefined): boolean {
     return false;
   }
 }
-
 function resolveAllowedOrigin(req: http.IncomingMessage): string {
   const origin = req.headers.origin;
   if (typeof origin === "string" && isAllowedOrigin(origin)) return origin;
   return "http://localhost";
 }
-
 function resolveBenchToken(): string | null {
   return BENCH_TOKEN;
 }
-
 function tokenMatches(expected: string, provided: string): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
@@ -995,7 +962,6 @@ function tokenMatches(expected: string, provided: string): boolean {
   }
   return crypto.timingSafeEqual(a, b);
 }
-
 function checkBenchAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1014,22 +980,18 @@ function checkBenchAuth(
     );
     return false;
   }
-
   const authHeader = req.headers.authorization;
   const provided =
     typeof authHeader === "string" && authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : "";
-
   if (!provided || !tokenMatches(expected, provided)) {
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Invalid or missing Bearer token" }));
     return false;
   }
-
   return true;
 }
-
 async function collectSessionDiagnostics(
   runtime: AgentRuntime,
   session: BenchmarkSession,
@@ -1038,7 +1000,6 @@ async function collectSessionDiagnostics(
   const rawLastCompactionAt = room?.metadata?.lastCompactionAt;
   const lastCompactionAt =
     typeof rawLastCompactionAt === "number" ? rawLastCompactionAt : null;
-
   const [allMessages, recentMessages, factsInRoom, factsForUser] =
     await Promise.all([
       runtime.getMemories({
@@ -1068,7 +1029,6 @@ async function collectSessionDiagnostics(
         unique: false,
       }),
     ]);
-
   const compactionSummaries = allMessages
     .filter((m) => m.content.source === "compaction")
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1078,17 +1038,27 @@ async function collectSessionDiagnostics(
       ? latestCompactionSummary.content.text
       : "";
   const summaryPreview = latestSummaryText.slice(0, 400);
-
   const providerNames = runtime.providers.map((provider) => provider.name);
   const evaluatorNames =
-    (runtime as { evaluators?: Array<{ name?: string }> }).evaluators
+    (
+      runtime as {
+        evaluators?: Array<{
+          name?: string;
+        }>;
+      }
+    ).evaluators
       ?.map((evaluator) => evaluator.name ?? "")
       .filter((name) => name.length > 0) ?? [];
   const actionNames =
-    (runtime as { actions?: Array<{ name?: string }> }).actions
+    (
+      runtime as {
+        actions?: Array<{
+          name?: string;
+        }>;
+      }
+    ).actions
       ?.map((action) => action.name?.toUpperCase() ?? "")
       .filter((name) => name.length > 0) ?? [];
-
   return {
     benchmark: session.benchmark,
     task_id: session.taskId,
@@ -1132,14 +1102,12 @@ async function collectSessionDiagnostics(
     actions: actionNames,
   };
 }
-
 export async function startBenchmarkServer() {
   const port = resolvePort();
   const lifecycleProfile = process.env.ELIZA_BENCH_LIFECYCLE_PROFILE === "1";
   elizaLogger.info(
     `[bench] Initializing eliza benchmark runtime on port ${port}...`,
   );
-
   // Force the v5 planner to require a structured tool call on every benchmark
   // turn (unless explicitly disabled). Without this, the planner often picks
   // `REPLY` and emits the answer as prose, which scores 0 against harnesses
@@ -1149,7 +1117,6 @@ export async function startBenchmarkServer() {
   // whose `content.source === "benchmark"` or whose `content.metadata.benchmark`
   // is set, so a co-resident chat process is unaffected.
   configureBenchmarkToolCallPolicy(lifecycleProfile);
-
   // ═══════════════════════════════════════════════════════════════════════════
   // PLUGIN LOADING — Use full CORE_PLUGINS to test with realistic context
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1158,11 +1125,9 @@ export async function startBenchmarkServer() {
   // the default actions, providers, evaluators, etc. If the agent can still
   // succeed with a crowded context, it demonstrates sufficient context handling.
   // ═══════════════════════════════════════════════════════════════════════════
-
   const plugins: Plugin[] = [createAssistantPlugin()];
   const loadedPlugins: string[] = [];
   const failedPlugins: string[] = [];
-
   // Plugins to skip in benchmark context — these require external auth or
   // interfere with benchmark operation
   const skipPlugins = new Set([
@@ -1180,7 +1145,6 @@ export async function startBenchmarkServer() {
   const subscriptionChatOnly =
     initialBenchProvider === "claude-subscription" &&
     process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1";
-
   // Local-inference stays enabled by default in benchmark mode so embedding,
   // memory, and retrieval behavior remain representative of the Eliza-1 stack.
   // A zero-vector stand-in is allowed only as an explicit diagnostic escape
@@ -1210,7 +1174,6 @@ export async function startBenchmarkServer() {
       "[bench] Cerebras benchmark mode: using @elizaos/plugin-openai's deterministic local TEXT_EMBEDDING fallback instead of @elizaos/plugin-local-inference without an active backend.",
     );
   }
-
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
   const corePluginsToLoadBase = lifecycleProfile
     ? ["@elizaos/plugin-sql"]
@@ -1246,7 +1209,6 @@ export async function startBenchmarkServer() {
       "[bench] Loading @elizaos/plugin-agent-orchestrator for benchmark task-agent routing",
     );
   }
-
   // Load all CORE_PLUGINS by default; smoke runs can opt into the minimal
   // required set so credential-free bridge checks start quickly.
   for (const pluginName of corePluginsToLoad) {
@@ -1280,7 +1242,6 @@ export async function startBenchmarkServer() {
       );
     }
   }
-
   elizaLogger.info(
     `[bench] Loaded ${loadedPlugins.length}/${corePluginsToLoad.length} core plugins`,
   );
@@ -1289,7 +1250,6 @@ export async function startBenchmarkServer() {
       `[bench] Unavailable plugins: ${failedPlugins.join(", ")}`,
     );
   }
-
   if (
     lifecycleProfile ||
     process.env.ELIZA_BENCH_SKIP_ELIZA_PLUGIN === "true"
@@ -1317,7 +1277,6 @@ export async function startBenchmarkServer() {
       );
     }
   }
-
   // Load benchmark plugin — provides benchmark provider + BENCHMARK_ACTION
   try {
     const benchmarkPlugin = createBenchmarkPlugin();
@@ -1336,7 +1295,6 @@ export async function startBenchmarkServer() {
       `[bench] Failed to load benchmark plugin: ${formatUnknownError(error)}`,
     );
   }
-
   // Register a zero-vector TEXT_EMBEDDING stand-in only when explicitly
   // requested. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
   // persisted memory; without ANY handler, those calls throw and abort the
@@ -1364,7 +1322,6 @@ export async function startBenchmarkServer() {
         "this run is not valid release evidence. Unset ELIZA_BENCH_ALLOW_STUB_EMBEDDING and ELIZA_BENCH_SKIP_EMBEDDING to use @elizaos/plugin-local-inference.",
     );
   }
-
   // Load LLM provider plugins based on environment.
   //
   // Multi-plugin guard: when both Groq and another OpenAI-compatible
@@ -1405,7 +1362,6 @@ export async function startBenchmarkServer() {
         `(cerebras=${_cerebrasIntent}, ELIZA_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
     );
   }
-
   // Load the OpenAI plugin when either:
   //   - OPENAI_API_KEY is set (and is not actually a Groq key, prefix `gsk_`), or
   //   - OPENAI_BASE_URL points at an OpenAI-compatible third-party endpoint
@@ -1475,7 +1431,6 @@ export async function startBenchmarkServer() {
         `TEXT_LARGE / TEXT_SMALL handlers will be missing — useModel() will throw.`,
     );
   }
-
   const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (openRouterApiKey && !subscriptionChatOnly) {
     process.env.OPENROUTER_API_KEY = openRouterApiKey;
@@ -1495,7 +1450,6 @@ export async function startBenchmarkServer() {
       "[bench] Skipping @elizaos/plugin-openrouter: Claude-subscription capability profile permits only the gateway-backed openai handler",
     );
   }
-
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (anthropicApiKey && !subscriptionChatOnly) {
     process.env.ANTHROPIC_API_KEY = anthropicApiKey;
@@ -1515,7 +1469,6 @@ export async function startBenchmarkServer() {
       "[bench] Skipping @elizaos/plugin-anthropic: Claude-subscription capability profile permits only the gateway-backed openai handler",
     );
   }
-
   // Load computer use plugin if enabled.
   if (process.env.COMPUTER_USE_ENABLED === "1" && !lifecycleProfile) {
     try {
@@ -1545,9 +1498,7 @@ export async function startBenchmarkServer() {
       "[bench] Skipping computer-use plugin for the lifecycle-scoped profile",
     );
   }
-
   const mockBenchmarkEnabled = process.env.ELIZA_BENCH_MOCK === "true";
-
   // Load mock plugin for testing. Mock runs are diagnostic only and must not be
   // treated as release evidence.
   if (mockBenchmarkEnabled && !lifecycleProfile) {
@@ -1568,7 +1519,6 @@ export async function startBenchmarkServer() {
       "Lifecycle profile cannot load the mock plugin; use the subscription gateway",
     );
   }
-
   // Build settings object from environment variables
   // These are needed by plugins like Groq that use runtime.getSetting()
   const settings: Record<string, string> = {
@@ -1603,7 +1553,6 @@ export async function startBenchmarkServer() {
       settings[key] = value;
     }
   }
-
   // Optional runtime setting passthrough for deterministic benchmark tuning.
   // Useful for forcing compaction behavior in context-stress scenarios.
   const runtimeSettingKeys = [
@@ -1668,7 +1617,6 @@ export async function startBenchmarkServer() {
       settings[key] = value;
     }
   }
-
   const runtime = new AgentRuntime({
     character: {
       name: "Kira",
@@ -1682,7 +1630,6 @@ export async function startBenchmarkServer() {
     },
     plugins,
   });
-
   await runtime.initialize();
   if (lifecycleProfile) {
     // This dedicated runtime retains basic-capabilities providers/services for
@@ -1748,16 +1695,23 @@ export async function startBenchmarkServer() {
       "[bench] Skipping @elizaos/plugin-local-inference runtime wiring because benchmark embedding skip is enabled",
     );
   }
-  const modelHandlers = (runtime as { models?: Map<string, unknown[]> }).models;
+  const modelHandlers = (
+    runtime as {
+      models?: Map<string, unknown[]>;
+    }
+  ).models;
   const modelHandlerSummary = Object.fromEntries(
     [...(modelHandlers?.entries() ?? [])].map(([modelType, handlers]) => [
       modelType,
-      (handlers as Array<{ provider?: string; priority?: number }>).map(
-        (handler) => ({
-          provider: handler.provider ?? "unknown",
-          priority: handler.priority ?? 0,
-        }),
-      ),
+      (
+        handlers as Array<{
+          provider?: string;
+          priority?: number;
+        }>
+      ).map((handler) => ({
+        provider: handler.provider ?? "unknown",
+        priority: handler.priority ?? 0,
+      })),
     ]),
   );
   elizaLogger.info(
@@ -1773,7 +1727,12 @@ export async function startBenchmarkServer() {
     }
     assertClaudeSubscriptionModelRegistry(
       modelHandlers as
-        | ReadonlyMap<string, readonly { provider?: string }[]>
+        | ReadonlyMap<
+            string,
+            readonly {
+              provider?: string;
+            }[]
+          >
         | undefined,
     );
     elizaLogger.info(
@@ -1783,7 +1742,6 @@ export async function startBenchmarkServer() {
   elizaLogger.info(
     `[bench] Runtime initialized — agent=${runtime.character.name}, plugins=${plugins.length}`,
   );
-
   // ── LLM usage capture ────────────────────────────────────────────────────
   // Plugins (currently @elizaos/plugin-openai, @elizaos/plugin-anthropic) emit
   // a MODEL_USED event for each LLM call with token usage and provider-side
@@ -1822,12 +1780,10 @@ export async function startBenchmarkServer() {
       `[bench] Could not register MODEL_USED listener: ${formatUnknownError(err)}`,
     );
   }
-
   const roomToSession = new Map<string, string>();
   const entityToSession = new Map<string, string>();
   const trajectoriesBySession = new Map<string, BenchmarkTrajectoryStep[]>();
   const outboxBySession = new Map<string, BenchmarkOutboxEntry[]>();
-
   const benchmarkTransport = {
     sendDirectMessage: async (targetEntityId: string, content: Content) => {
       const key = entityToSession.get(targetEntityId);
@@ -1862,7 +1818,6 @@ export async function startBenchmarkServer() {
       outboxBySession.set(key, current);
     },
   };
-
   const runtimeWithServiceOverride = runtime as {
     getService: (serviceType: string) => unknown;
   };
@@ -1874,14 +1829,11 @@ export async function startBenchmarkServer() {
     }
     return originalGetService(serviceType);
   };
-
   const sessions = new Map<string, BenchmarkSession>();
   let lastSessionKey: string | null = null;
-
   const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-  const SESSION_SWEEP_INTERVAL_MS = 60_000;
+  const SESSION_SWEEP_INTERVAL_MS = 60000;
   const sessionCreatedAt = new Map<string, number>();
-
   const evictStaleSessions = (): void => {
     const now = Date.now();
     for (const [key, createdAt] of sessionCreatedAt.entries()) {
@@ -1899,23 +1851,19 @@ export async function startBenchmarkServer() {
       }
     }
   };
-
   const sweepInterval = setInterval(
     evictStaleSessions,
     SESSION_SWEEP_INTERVAL_MS,
   );
   sweepInterval.unref();
-
   const registerSessionRefs = (session: BenchmarkSession): void => {
     const key = sessionKey(session);
     roomToSession.set(session.roomId, key);
     roomToSession.set(session.relayRoomId, key);
     entityToSession.set(session.userEntityId, key);
   };
-
   const getLastSession = (): BenchmarkSession | null =>
     lastSessionKey ? (sessions.get(lastSessionKey) ?? null) : null;
-
   const resolveSession = (
     taskId: string,
     benchmark: string,
@@ -1935,7 +1883,6 @@ export async function startBenchmarkServer() {
     lastSessionKey = key;
     return created;
   };
-
   // ────────────────────────────────────────────────────────────────────────
   // LifeOpsBench routes — runs Eliza's planner against an in-process fake
   // backend that mirrors the LifeWorld snapshot. See
@@ -1953,7 +1900,6 @@ export async function startBenchmarkServer() {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
-
       const lifeopsContext = buildLifeOpsBenchmarkContext(
         backend,
         previousTurns,
@@ -1964,7 +1910,6 @@ export async function startBenchmarkServer() {
         ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
         lifeops: lifeopsContext,
       });
-
       if (Array.isArray(toolManifest) && toolManifest.length > 0) {
         const modelUsageBuffer: BenchmarkLlmCallUsage[] = [];
         const modelTurn = await usageCapture.run(modelUsageBuffer, async () => {
@@ -2015,7 +1960,6 @@ export async function startBenchmarkServer() {
         });
         if (modelTurn) return modelTurn;
       }
-
       // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
       // world snapshot, tool manifest, and previous tool results. Duplicating
       // that JSON into the user message balloons Cerebras prompts and can leave
@@ -2023,7 +1967,6 @@ export async function startBenchmarkServer() {
       // itself to the user's benchmark instruction and let the provider carry
       // the structured context.
       const composedPrompt = userText.trim();
-
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
         content: {
@@ -2039,7 +1982,6 @@ export async function startBenchmarkServer() {
         roomId: session.roomId,
         createdAt: Date.now(),
       };
-
       const callbackTexts: string[] = [];
       const callback = async (content: Content) => {
         if (
@@ -2050,16 +1992,13 @@ export async function startBenchmarkServer() {
         }
         return [];
       };
-
       if (!runtime.messageService) {
         throw new Error("Runtime message service is not available");
       }
       const messageService = runtime.messageService;
-
       clearCapturedAction();
       setBenchmarkContext(benchmarkContext);
       const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-
       let result: MessageProcessingResult;
       try {
         result = await usageCapture.run(turnUsageBuffer, () =>
@@ -2068,7 +2007,6 @@ export async function startBenchmarkServer() {
       } finally {
         setBenchmarkContext(null);
       }
-
       const responseText =
         typeof result.responseContent?.text === "string"
           ? result.responseContent.text
@@ -2076,7 +2014,6 @@ export async function startBenchmarkServer() {
       const actions = coerceActions(result.responseContent?.actions);
       const params = coerceParams(result.responseContent?.params);
       const capturedAction = getCapturedAction();
-
       // Map captured Eliza actions into lifeops_bench tool calls.
       // Strategy: each action name in `actions` is treated as a tool name;
       // its arguments come from `params[actionName]` when present, otherwise
@@ -2088,7 +2025,6 @@ export async function startBenchmarkServer() {
         name: string;
         arguments: Record<string, unknown>;
       }> = [];
-
       // BENCHMARK_ACTION unwrap: when the planner picks BENCHMARK_ACTION, the
       // bench plugin captures the underlying tool name + arguments (tau-bench
       // shape: `{tool_name, arguments}`). Unwrap that capture into a real tool
@@ -2109,7 +2045,6 @@ export async function startBenchmarkServer() {
               : {},
         });
       }
-
       // Also pass through any directly-named actions (e.g. when the planner
       // emits MESSAGE/CALENDAR directly without the BENCHMARK_ACTION wrapper),
       // skipping the BENCHMARK_ACTION sentinel itself which has already been
@@ -2142,7 +2077,6 @@ export async function startBenchmarkServer() {
           arguments: argumentsObj,
         });
       }
-
       if (
         shouldDropLifeOpsReadOnlyFollowupToolCalls({
           userText,
@@ -2153,9 +2087,7 @@ export async function startBenchmarkServer() {
       ) {
         toolCalls.length = 0;
       }
-
       const usage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
-
       return {
         text: responseText,
         toolCalls,
@@ -2172,7 +2104,6 @@ export async function startBenchmarkServer() {
       };
     },
   });
-
   const server = http.createServer(async (req, res) => {
     // Security: restrict CORS to localhost origins only.
     const allowedOrigin = resolveAllowedOrigin(req);
@@ -2183,20 +2114,16 @@ export async function startBenchmarkServer() {
       "Content-Type, Authorization",
     );
     res.setHeader("Vary", "Origin");
-
     const requestUrl = new URL(req.url ?? "/", "http://localhost");
     const pathname = requestUrl.pathname;
-
     if (req.method === "OPTIONS") {
       res.writeHead(200);
       res.end();
       return;
     }
-
     if (await lifeopsBenchHandler.tryHandle(req, res, pathname)) {
       return;
     }
-
     if (pathname === "/api/benchmark/health" && req.method === "GET") {
       const activeSession = getLastSession();
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2257,7 +2184,6 @@ export async function startBenchmarkServer() {
       );
       return;
     }
-
     if (pathname === "/api/benchmark/reset" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
@@ -2297,7 +2223,6 @@ export async function startBenchmarkServer() {
             parsed.benchmark.trim().length > 0
               ? parsed.benchmark
               : "unknown";
-
           const session = resolveSession(taskId, benchmark, true);
           if (!session) {
             throw new Error("Failed to initialize benchmark session");
@@ -2305,9 +2230,7 @@ export async function startBenchmarkServer() {
           const key = sessionKey(session);
           trajectoriesBySession.set(key, []);
           outboxBySession.set(key, []);
-
           await ensureBenchmarkSessionContext(runtime, session);
-
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -2325,7 +2248,6 @@ export async function startBenchmarkServer() {
       });
       return;
     }
-
     if (pathname === "/api/benchmark/outbox" && req.method === "GET") {
       const context = extractRecord({
         benchmark: requestUrl.searchParams.get("benchmark") ?? undefined,
@@ -2340,13 +2262,11 @@ export async function startBenchmarkServer() {
         resolveSession(taskId, benchmark, false) ??
         getLastSession() ??
         resolveSession("default-task", "unknown", false);
-
       if (!session) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", outbox: [] }));
         return;
       }
-
       const key = sessionKey(session);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -2360,7 +2280,6 @@ export async function startBenchmarkServer() {
       );
       return;
     }
-
     if (pathname === "/api/benchmark/trajectory" && req.method === "GET") {
       const context = extractRecord({
         benchmark: requestUrl.searchParams.get("benchmark") ?? undefined,
@@ -2375,7 +2294,6 @@ export async function startBenchmarkServer() {
         resolveSession(taskId, benchmark, false) ??
         getLastSession() ??
         resolveSession("default-task", "unknown", false);
-
       if (!session) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
@@ -2387,7 +2305,6 @@ export async function startBenchmarkServer() {
         );
         return;
       }
-
       const key = sessionKey(session);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -2403,7 +2320,6 @@ export async function startBenchmarkServer() {
       );
       return;
     }
-
     if (pathname === "/api/benchmark/diagnostics" && req.method === "GET") {
       try {
         const context = extractRecord({
@@ -2419,13 +2335,11 @@ export async function startBenchmarkServer() {
           resolveSession(taskId, benchmark, false) ??
           getLastSession() ??
           resolveSession("default-task", "unknown", false);
-
         if (!session) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ status: "ok", diagnostics: null }));
           return;
         }
-
         const diagnostics = await collectSessionDiagnostics(runtime, session);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", diagnostics }));
@@ -2438,7 +2352,6 @@ export async function startBenchmarkServer() {
       }
       return;
     }
-
     if (pathname === "/api/benchmark/message" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
@@ -2480,7 +2393,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           const text =
             typeof parsed.text === "string" ? parsed.text.trim() : "";
           if (!text) {
@@ -2488,7 +2400,6 @@ export async function startBenchmarkServer() {
               "Request body must include non-empty string `text`",
             );
           }
-
           const context = extractRecord(parsed.context);
           const taskId = extractTaskId(context);
           const benchmark = extractBenchmarkName(context);
@@ -2502,16 +2413,13 @@ export async function startBenchmarkServer() {
           const key = sessionKey(session);
           const trajectory = trajectoriesBySession.get(key) ?? [];
           const startedAt = Date.now();
-
           await ensureBenchmarkSessionContext(runtime, session);
-
           const benchmarkContext = normalizeBenchmarkContext(session, context);
           const composedPrompt = composeBenchmarkPrompt({
             text,
             context: benchmarkContext,
             image: parsed.image,
           });
-
           if (isWooBenchName(session.benchmark)) {
             const messages = normalizeWooBenchNativeMessages(
               text,
@@ -2576,7 +2484,6 @@ export async function startBenchmarkServer() {
                   ? ["REPLY"]
                   : [];
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -2598,7 +2505,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -2618,7 +2524,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isActionCallingBenchmarkName(session.benchmark) &&
             Array.isArray(benchmarkContext.tools) &&
@@ -2684,7 +2589,6 @@ export async function startBenchmarkServer() {
                   ? ["REPLY"]
                   : [];
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -2706,7 +2610,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -2726,7 +2629,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isLocaBenchmarkName(session.benchmark) &&
             Array.isArray(benchmarkContext.tools) &&
@@ -2786,7 +2688,6 @@ export async function startBenchmarkServer() {
                   ? ["REPLY"]
                   : [];
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -2808,7 +2709,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -2828,7 +2728,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isBfclBenchmarkName(session.benchmark) &&
             Array.isArray(benchmarkContext.tools) &&
@@ -2890,7 +2789,6 @@ export async function startBenchmarkServer() {
                   ? ["REPLY"]
                   : [];
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -2912,7 +2810,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -2932,7 +2829,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isWebShopBenchmarkName(session.benchmark) &&
             Array.isArray(benchmarkContext.tools) &&
@@ -2992,7 +2888,6 @@ export async function startBenchmarkServer() {
                   ? ["REPLY"]
                   : [];
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -3014,7 +2909,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -3034,7 +2928,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isHermesNativeEnvProxyName(session.benchmark) &&
             Array.isArray(benchmarkContext.tools) &&
@@ -3086,7 +2979,6 @@ export async function startBenchmarkServer() {
                   ? nativeResult
                   : "";
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -3108,7 +3000,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_native_tools",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -3128,7 +3019,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           if (
             isTerminalBenchmarkName(session.benchmark) ||
             isSweBenchmarkName(session.benchmark) ||
@@ -3164,7 +3054,6 @@ export async function startBenchmarkServer() {
                   ? nativeResult
                   : "";
             const finishedAt = Date.now();
-
             trajectory.push({
               step: trajectory.length + 1,
               startedAt,
@@ -3186,7 +3075,6 @@ export async function startBenchmarkServer() {
               nativeRuntimeApi: "useModel",
               toolBridge: "runtime_model_text",
             });
-
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
@@ -3206,7 +3094,6 @@ export async function startBenchmarkServer() {
             );
             return;
           }
-
           const incomingMessage: Memory = {
             id: stringToUuid(`benchmark-msg:${Date.now()}:${Math.random()}`),
             content: {
@@ -3229,7 +3116,6 @@ export async function startBenchmarkServer() {
             roomId: session.roomId,
             createdAt: Date.now(),
           };
-
           const callbackTexts: string[] = [];
           const callback = async (content: Content): Promise<Memory[]> => {
             if (
@@ -3240,12 +3126,10 @@ export async function startBenchmarkServer() {
             }
             return [];
           };
-
           if (!runtime.messageService) {
             throw new Error("Runtime message service is not available");
           }
           const messageService = runtime.messageService;
-
           clearCapturedAction();
           const lifecycleSystemHint =
             typeof benchmarkContext.system_hint === "string"
@@ -3282,7 +3166,6 @@ export async function startBenchmarkServer() {
             ? lifecycleTurn.result
             : await handleNativeTurn();
           const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
-
           if (lifecycleProfile) {
             const attestation = lifecycleDispatch?.attestation;
             const modelTypeCallCount = Object.values(
@@ -3310,7 +3193,6 @@ export async function startBenchmarkServer() {
               );
             }
           }
-
           const capturedAction = getCapturedAction();
           const capturedActions = getCapturedActions();
           if (lifecycleProfile && !lifecycleTurn) {
@@ -3324,7 +3206,6 @@ export async function startBenchmarkServer() {
                 result.actionResults,
               )
             : null;
-
           const responseText =
             typeof result.responseContent?.text === "string"
               ? result.responseContent.text
@@ -3356,7 +3237,6 @@ export async function startBenchmarkServer() {
             ? lifecycleProjection.toolCalls
             : capturedActionsToToolCalls(capturedActions);
           const finishedAt = Date.now();
-
           trajectory.push({
             step: trajectory.length + 1,
             startedAt,
@@ -3382,7 +3262,6 @@ export async function startBenchmarkServer() {
             lifecycleTaskActionRegistered,
             lifecycleSystemHintAttestation: lifecycleDispatch?.attestation,
           });
-
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -3413,11 +3292,9 @@ export async function startBenchmarkServer() {
       });
       return;
     }
-
     res.writeHead(404);
     res.end("Not Found");
   });
-
   // Bump per-connection timeouts so long-running benchmark turns (slow LLM
   // calls, growing context) do not hit Node's defaults mid-flight. Defaults
   // in Node 22 are: requestTimeout 300s, headersTimeout 60s, keepAlive 5s.
@@ -3445,7 +3322,6 @@ export async function startBenchmarkServer() {
   // Disable Node's per-socket idle timeout: benchmark turns can be longer
   // than any reasonable default while waiting for a model response.
   server.timeout = 0;
-
   const host = resolveHost();
   server.listen(port, host, () => {
     elizaLogger.info(
@@ -3457,7 +3333,6 @@ export async function startBenchmarkServer() {
     console.log(`ELIZA_BENCH_READY host=${host} port=${port}`);
   });
 }
-
 startBenchmarkServer().catch((err: unknown) => {
   elizaLogger.error(
     `[bench] Failed to start benchmark server: ${formatUnknownError(err)}`,

@@ -5,29 +5,25 @@
  * start servers. Hardware scripts feed it real measurements; unit tests can
  * exercise the orchestration logic without native artifacts.
  *
- * Word-error-rate scoring lives in `@elizaos/shared/voice-wer` (the single
+ * Word-error-rate scoring lives in `@elizaos/core/voice-wer` (the single
  * source of truth shared with the headful self-test, #8785); it is re-exported
  * here so existing `./e2e-harness` importers keep working unchanged.
  */
+export { normalizeWerText, wordErrorRate } from "@elizaos/core/voice-wer";
 
-export { normalizeWerText, wordErrorRate } from "@elizaos/shared";
-
-import { normalizeWerText, wordErrorRate } from "@elizaos/shared";
+import { normalizeWerText, wordErrorRate } from "@elizaos/core/voice-wer";
 import {
 	computeDiarizationErrorRate,
 	type DiarizationSegment,
 } from "./diarization-error-rate";
 import { percentile, round1, round4 } from "./metric-math";
-
 export type VoiceE2eHarnessErrorCode =
 	| "missing-artifact"
 	| "missing-measurement"
 	| "invalid-measurement";
-
 export class VoiceE2eHarnessError extends Error {
 	readonly code: VoiceE2eHarnessErrorCode;
 	readonly details?: unknown;
-
 	constructor(
 		code: VoiceE2eHarnessErrorCode,
 		message: string,
@@ -39,7 +35,6 @@ export class VoiceE2eHarnessError extends Error {
 		this.details = details;
 	}
 }
-
 export interface RequiredVoiceArtifact {
 	kind:
 		| "bundle-root"
@@ -54,17 +49,14 @@ export interface RequiredVoiceArtifact {
 	minBytes?: number;
 	magic?: string;
 }
-
 export interface VoiceArtifactProbe {
 	exists(path: string): boolean;
 	size(path: string): number | null;
 	readMagic?(path: string, bytes: number): string | null;
 }
-
 export interface VerifiedVoiceArtifact extends RequiredVoiceArtifact {
 	size: number | null;
 }
-
 export function assertRequiredVoiceArtifacts(
 	artifacts: ReadonlyArray<RequiredVoiceArtifact>,
 	probe: VoiceArtifactProbe,
@@ -75,7 +67,6 @@ export function assertRequiredVoiceArtifacts(
 		reason: string;
 	}> = [];
 	const verified: VerifiedVoiceArtifact[] = [];
-
 	for (const artifact of artifacts) {
 		if (!probe.exists(artifact.path)) {
 			failures.push({
@@ -85,7 +76,6 @@ export function assertRequiredVoiceArtifacts(
 			});
 			continue;
 		}
-
 		const size = probe.size(artifact.path);
 		if (
 			artifact.minBytes !== undefined &&
@@ -99,24 +89,19 @@ export function assertRequiredVoiceArtifacts(
 			});
 			continue;
 		}
-
 		if (artifact.magic) {
 			const got = probe.readMagic?.(artifact.path, artifact.magic.length);
 			if (got !== artifact.magic) {
 				failures.push({
 					kind: artifact.kind,
 					path: artifact.path,
-					reason: `bad magic (${JSON.stringify(got)} !== ${JSON.stringify(
-						artifact.magic,
-					)})`,
+					reason: `bad magic (${JSON.stringify(got)} !== ${JSON.stringify(artifact.magic)})`,
 				});
 				continue;
 			}
 		}
-
 		verified.push({ ...artifact, size });
 	}
-
 	if (failures.length > 0) {
 		const list = failures
 			.map((f) => `- ${f.kind}: ${f.path} (${f.reason})`)
@@ -127,16 +112,13 @@ export function assertRequiredVoiceArtifacts(
 			{ failures },
 		);
 	}
-
 	return verified;
 }
-
 export interface TtsAsrRoundTripInput {
 	referenceText: string;
 	hypothesisText: string;
 	maxWer?: number;
 }
-
 export interface TtsAsrRoundTripResult {
 	kind: "tts-asr-roundtrip";
 	referenceText: string;
@@ -147,7 +129,6 @@ export interface TtsAsrRoundTripResult {
 	maxWer: number;
 	passed: boolean;
 }
-
 export function scoreTtsAsrRoundTrip(
 	input: TtsAsrRoundTripInput,
 ): TtsAsrRoundTripResult {
@@ -164,7 +145,6 @@ export function scoreTtsAsrRoundTrip(
 		passed: wer <= maxWer,
 	};
 }
-
 export interface BargeInInterruptionInput {
 	voiceDetectedAtMs: number;
 	ttsCancelledAtMs?: number | null;
@@ -173,7 +153,6 @@ export interface BargeInInterruptionInput {
 	maxCancelMs?: number;
 	requireLlmCancel?: boolean;
 }
-
 export interface BargeInInterruptionResult {
 	kind: "barge-in-interruption";
 	ttsCancelMs: number | null;
@@ -183,7 +162,6 @@ export interface BargeInInterruptionResult {
 	maxCancelMs: number;
 	passed: boolean;
 }
-
 export function scoreBargeInInterruption(
 	input: BargeInInterruptionInput,
 ): BargeInInterruptionResult {
@@ -206,14 +184,12 @@ export function scoreBargeInInterruption(
 		"audioDrainedAtMs",
 		input.audioDrainedAtMs,
 	);
-
 	if (ttsCancelMs === null) {
 		throw missingMeasurement("ttsCancelledAtMs");
 	}
 	if (input.requireLlmCancel !== false && llmCancelMs === null) {
 		throw missingMeasurement("llmCancelledAtMs");
 	}
-
 	const measured = [ttsCancelMs, llmCancelMs, audioDrainMs].filter(
 		(value): value is number => value !== null,
 	);
@@ -228,7 +204,6 @@ export function scoreBargeInInterruption(
 		passed: bargeInCancelMs <= maxCancelMs,
 	};
 }
-
 export interface PauseContinuationInput {
 	speechPauseAtMs: number;
 	continuationAtMs: number;
@@ -240,7 +215,6 @@ export interface PauseContinuationInput {
 	maxAbortAfterContinuationMs?: number;
 	maxRestartAfterContinuationMs?: number;
 }
-
 export interface PauseContinuationResult {
 	kind: "pause-continuation";
 	continuationGapMs: number;
@@ -250,7 +224,6 @@ export interface PauseContinuationResult {
 	maxContinuationGapMs: number;
 	passed: boolean;
 }
-
 export function scorePauseContinuation(
 	input: PauseContinuationInput,
 ): PauseContinuationResult {
@@ -286,7 +259,6 @@ export function scorePauseContinuation(
 		input.committedBeforeContinuationAtMs !== null &&
 		input.committedBeforeContinuationAtMs !== undefined &&
 		input.committedBeforeContinuationAtMs < input.continuationAtMs;
-
 	return {
 		kind: "pause-continuation",
 		continuationGapMs: round1(continuationGapMs),
@@ -304,7 +276,6 @@ export function scorePauseContinuation(
 			restartAfterContinuationMs <= maxRestartAfterContinuationMs,
 	};
 }
-
 export interface OptimisticRollbackRestartInput {
 	speechPauseAtMs: number;
 	continuationAtMs: number;
@@ -316,7 +287,6 @@ export interface OptimisticRollbackRestartInput {
 	maxRestoreAfterContinuationMs?: number;
 	maxRestartAfterRestoreMs?: number;
 }
-
 export interface OptimisticRollbackRestartResult {
 	kind: "optimistic-rollback-restart";
 	saveAfterPauseMs: number | null;
@@ -325,7 +295,6 @@ export interface OptimisticRollbackRestartResult {
 	restartAfterRestoreMs: number;
 	passed: boolean;
 }
-
 export function scoreOptimisticRollbackRestart(
 	input: OptimisticRollbackRestartInput,
 ): OptimisticRollbackRestartResult {
@@ -356,7 +325,6 @@ export function scoreOptimisticRollbackRestart(
 		"restartedAtMs",
 		required(input.restartedAtMs, "restartedAtMs"),
 	);
-
 	return {
 		kind: "optimistic-rollback-restart",
 		saveAfterPauseMs:
@@ -370,7 +338,6 @@ export function scoreOptimisticRollbackRestart(
 			abortAfterContinuationMs <= maxRestoreAfterContinuationMs,
 	};
 }
-
 export interface FirstResponseLatencyInput {
 	turnStartedAtMs: number;
 	asrFinalAtMs?: number | null;
@@ -379,7 +346,6 @@ export interface FirstResponseLatencyInput {
 	audioFirstPlayedAtMs?: number | null;
 	maxFirstAudioMs?: number;
 }
-
 export interface FirstResponseLatencyResult {
 	kind: "first-response-latency";
 	asrFinalMs: number | null;
@@ -389,7 +355,6 @@ export interface FirstResponseLatencyResult {
 	maxFirstAudioMs: number;
 	passed: boolean;
 }
-
 export function scoreFirstResponseLatency(
 	input: FirstResponseLatencyInput,
 ): FirstResponseLatencyResult {
@@ -418,7 +383,6 @@ export function scoreFirstResponseLatency(
 		"audioFirstPlayedAtMs",
 		input.audioFirstPlayedAtMs,
 	);
-
 	return {
 		kind: "first-response-latency",
 		asrFinalMs: asrFinalMs === null ? null : round1(asrFinalMs),
@@ -429,9 +393,7 @@ export function scoreFirstResponseLatency(
 		passed: firstAudioMs <= maxFirstAudioMs,
 	};
 }
-
 // ── EOT decision: latency + false-trigger / false-suppression over a stream ──
-
 export interface EotDecisionSample {
 	/** The classifier decided end-of-turn here (the agent may jump in). */
 	decided: boolean;
@@ -440,7 +402,6 @@ export interface EotDecisionSample {
 	/** Optional ms from the true boundary to the decision (decided samples). */
 	latencyMs?: number;
 }
-
 export interface EotDecisionResult {
 	kind: "eot-decision";
 	total: number;
@@ -454,10 +415,11 @@ export interface EotDecisionResult {
 	maxFalseTriggerRate: number;
 	passed: boolean;
 }
-
 export function scoreEotDecision(
 	samples: ReadonlyArray<EotDecisionSample>,
-	opts: { maxFalseTriggerRate?: number } = {},
+	opts: {
+		maxFalseTriggerRate?: number;
+	} = {},
 ): EotDecisionResult {
 	const maxFalseTriggerRate = opts.maxFalseTriggerRate ?? 0.1;
 	const total = samples.length;
@@ -485,14 +447,11 @@ export function scoreEotDecision(
 		passed: total > 0 && ftr <= maxFalseTriggerRate,
 	};
 }
-
 // ── Respond decision: respond-when-should vs respond-when-shouldn't ──────────
-
 export interface RespondDecisionSample {
 	responded: boolean;
 	expectRespond: boolean;
 }
-
 export interface RespondDecisionResult {
 	kind: "respond-decision";
 	total: number;
@@ -504,10 +463,11 @@ export interface RespondDecisionResult {
 	minAccuracy: number;
 	passed: boolean;
 }
-
 export function scoreRespondDecision(
 	samples: ReadonlyArray<RespondDecisionSample>,
-	opts: { minAccuracy?: number } = {},
+	opts: {
+		minAccuracy?: number;
+	} = {},
 ): RespondDecisionResult {
 	const minAccuracy = opts.minAccuracy ?? 0.9;
 	const total = samples.length;
@@ -534,14 +494,11 @@ export function scoreRespondDecision(
 		passed: total > 0 && accuracy >= minAccuracy,
 	};
 }
-
 // ── Diarization: DER (speaker-confusion) against ground-truth labels ─────────
-
 export interface DiarizationSample {
 	predictedLabel: string | null;
 	expectedLabel: string;
 }
-
 export interface DiarizationResult {
 	kind: "diarization";
 	total: number;
@@ -557,10 +514,11 @@ export interface DiarizationResult {
 	maxDer: number;
 	passed: boolean;
 }
-
 export function scoreDiarization(
 	samples: ReadonlyArray<DiarizationSample>,
-	opts: { maxDer?: number } = {},
+	opts: {
+		maxDer?: number;
+	} = {},
 ): DiarizationResult {
 	const maxDer = opts.maxDer ?? 0.2;
 	const total = samples.length;
@@ -581,7 +539,6 @@ export function scoreDiarization(
 		passed: total > 0 && der <= maxDer,
 	};
 }
-
 /** One scored turn for timeline DER: its speech span + predicted/true speaker. */
 export interface DiarizationTurnSample {
 	/** Ground-truth speaker label (the diarization reference). */
@@ -593,7 +550,6 @@ export interface DiarizationTurnSample {
 	/** Speech-region end of this turn (ms; must be ≥ startMs). */
 	endMs: number;
 }
-
 /**
  * Score diarization with the frame-based, label-agnostic {@link
  * computeDiarizationErrorRate} (#9147) rather than a per-turn string compare.
@@ -605,7 +561,9 @@ export interface DiarizationTurnSample {
  */
 export function scoreDiarizationTimeline(
 	turns: ReadonlyArray<DiarizationTurnSample>,
-	opts: { maxDer?: number } = {},
+	opts: {
+		maxDer?: number;
+	} = {},
 ): DiarizationResult {
 	const maxDer = opts.maxDer ?? 0.2;
 	const reference: DiarizationSegment[] = turns.map((t) => ({
@@ -645,7 +603,6 @@ export function scoreDiarizationTimeline(
 		passed: turns.length > 0 && result.der <= maxDer,
 	};
 }
-
 /**
  * Score an actual diarizer timeline. Unlike {@link scoreDiarizationTimeline},
  * the hypothesis spans here come from the diarizer itself; callers must not
@@ -654,7 +611,9 @@ export function scoreDiarizationTimeline(
 export function scoreDiarizationSegments(
 	reference: ReadonlyArray<DiarizationSegment>,
 	hypothesis: ReadonlyArray<DiarizationSegment>,
-	opts: { maxDer?: number } = {},
+	opts: {
+		maxDer?: number;
+	} = {},
 ): DiarizationResult {
 	const maxDer = opts.maxDer ?? 0.2;
 	const result = computeDiarizationErrorRate(reference, hypothesis);
@@ -690,14 +649,11 @@ export function scoreDiarizationSegments(
 		passed: reference.length > 0 && result.der <= maxDer,
 	};
 }
-
 // ── Entity extraction: inferred name/entity match (precision / recall / F1) ──
-
 export interface EntityExtractionInput {
 	expected: ReadonlyArray<string>;
 	inferred: ReadonlyArray<string>;
 }
-
 export interface EntityExtractionResult {
 	kind: "entity-extraction";
 	precision: number;
@@ -706,14 +662,14 @@ export interface EntityExtractionResult {
 	minF1: number;
 	passed: boolean;
 }
-
 function normEntity(s: string): string {
 	return s.trim().toLowerCase();
 }
-
 export function scoreEntityExtraction(
 	input: EntityExtractionInput,
-	opts: { minF1?: number } = {},
+	opts: {
+		minF1?: number;
+	} = {},
 ): EntityExtractionResult {
 	const minF1 = opts.minF1 ?? 0.8;
 	const expected = new Set(input.expected.map(normEntity).filter(Boolean));
@@ -736,14 +692,11 @@ export function scoreEntityExtraction(
 		passed: f1 >= minF1,
 	};
 }
-
 // ── Voice→entity match: recognized voice resolves to the right entity ────────
-
 export interface VoiceEntityMatchSample {
 	matchedEntityId: string | null;
 	expectedEntityId: string;
 }
-
 export interface VoiceEntityMatchResult {
 	kind: "voice-entity-match";
 	total: number;
@@ -752,10 +705,11 @@ export interface VoiceEntityMatchResult {
 	minMatchRate: number;
 	passed: boolean;
 }
-
 export function scoreVoiceEntityMatch(
 	samples: ReadonlyArray<VoiceEntityMatchSample>,
-	opts: { minMatchRate?: number } = {},
+	opts: {
+		minMatchRate?: number;
+	} = {},
 ): VoiceEntityMatchResult {
 	const minMatchRate = opts.minMatchRate ?? 0.9;
 	const total = samples.length;
@@ -773,16 +727,13 @@ export function scoreVoiceEntityMatch(
 		passed: total > 0 && matchRate >= minMatchRate,
 	};
 }
-
 // ── Echo / self-voice rejection: the agent's own TTS must not be a user turn ─
-
 export interface EchoRejectionSample {
 	/** Ground truth: this turn is the agent's own TTS echoed back through the mic. */
 	isAgentEcho: boolean;
 	/** The agent responded to (i.e. failed to suppress) this turn. */
 	responded: boolean;
 }
-
 export interface EchoRejectionResult {
 	kind: "echo-rejection";
 	/** Number of agent-echo turns scored. */
@@ -793,7 +744,6 @@ export interface EchoRejectionResult {
 	minRejectionRate: number;
 	passed: boolean;
 }
-
 /**
  * Score self-echo rejection over the agent-echo turns only: each must be
  * suppressed (no response). Real turns are scored by {@link scoreRespondDecision}
@@ -801,7 +751,9 @@ export interface EchoRejectionResult {
  */
 export function scoreEchoRejection(
 	samples: ReadonlyArray<EchoRejectionSample>,
-	opts: { minRejectionRate?: number } = {},
+	opts: {
+		minRejectionRate?: number;
+	} = {},
 ): EchoRejectionResult {
 	const minRejectionRate = opts.minRejectionRate ?? 0.9;
 	const echo = samples.filter((s) => s.isAgentEcho);
@@ -818,16 +770,13 @@ export function scoreEchoRejection(
 		passed: total > 0 && rejectionRate >= minRejectionRate,
 	};
 }
-
 // ── Owner security: owner vs. intruder gating (never accept an impostor) ──────
-
 export interface OwnerSecuritySample {
 	/** The system judged this turn to be the device owner. */
 	predictedOwner: boolean;
 	/** Ground truth: this turn IS the owner. */
 	expectedOwner: boolean;
 }
-
 export interface OwnerSecurityResult {
 	kind: "owner-security";
 	total: number;
@@ -840,7 +789,6 @@ export interface OwnerSecurityResult {
 	maxImpostorAcceptRate: number;
 	passed: boolean;
 }
-
 /**
  * Score owner-vs-intruder gating. Passing requires both high overall accuracy
  * AND an impostor-accept rate at/below the (strict, default 0) ceiling —
@@ -849,7 +797,10 @@ export interface OwnerSecurityResult {
  */
 export function scoreOwnerSecurity(
 	samples: ReadonlyArray<OwnerSecuritySample>,
-	opts: { minAccuracy?: number; maxImpostorAcceptRate?: number } = {},
+	opts: {
+		minAccuracy?: number;
+		maxImpostorAcceptRate?: number;
+	} = {},
 ): OwnerSecurityResult {
 	const minAccuracy = opts.minAccuracy ?? 0.9;
 	const maxImpostorAcceptRate = opts.maxImpostorAcceptRate ?? 0;
@@ -882,16 +833,13 @@ export function scoreOwnerSecurity(
 			impostorAcceptRate <= maxImpostorAcceptRate,
 	};
 }
-
 // ── Speaker-gated barge-in: right turns cancel TTS fast, wrong ones never do ──
-
 export interface BargeInGatingSample {
 	/** Ground truth: this barge-in SHOULD hard-stop the agent's TTS. */
 	expectCancel: boolean;
 	/** Measured cancel latency (ms), or null when the agent did NOT cancel. */
 	cancelMs: number | null;
 }
-
 export interface BargeInGatingResult {
 	kind: "barge-in-gating";
 	total: number;
@@ -906,7 +854,6 @@ export interface BargeInGatingResult {
 	maxCancelMs: number;
 	passed: boolean;
 }
-
 /**
  * Score speaker-gated barge-in over the barge-in turns. A turn is gated correctly
  * when it either (a) SHOULD cancel and did so within `maxCancelMs`, or (b) should
@@ -916,7 +863,9 @@ export interface BargeInGatingResult {
  */
 export function scoreBargeInGating(
 	samples: ReadonlyArray<BargeInGatingSample>,
-	opts: { maxCancelMs?: number } = {},
+	opts: {
+		maxCancelMs?: number;
+	} = {},
 ): BargeInGatingResult {
 	const maxCancelMs = opts.maxCancelMs ?? 250;
 	const total = samples.length;
@@ -947,9 +896,7 @@ export function scoreBargeInGating(
 		passed: total > 0 && correct === total,
 	};
 }
-
 // ── ERLE: echo-return-loss-enhancement floor on AEC scenarios ────────────────
-
 export interface ErleResult {
 	kind: "erle";
 	/** Number of AEC echo turns with an ERLE measurement. */
@@ -960,7 +907,6 @@ export interface ErleResult {
 	minErleDb: number;
 	passed: boolean;
 }
-
 /**
  * Score echo-return-loss-enhancement against a floor (dB). Passing requires the
  * WORST turn to clear the floor: a single un-cancelled echo burst is a failure.
@@ -968,8 +914,12 @@ export interface ErleResult {
  * excluded from the mean so one silent turn cannot mask a weak one.
  */
 export function scoreErle(
-	samples: ReadonlyArray<{ erleDb: number }>,
-	opts: { minErleDb?: number } = {},
+	samples: ReadonlyArray<{
+		erleDb: number;
+	}>,
+	opts: {
+		minErleDb?: number;
+	} = {},
 ): ErleResult {
 	const minErleDb = opts.minErleDb ?? 18;
 	const values = samples.map((s) => s.erleDb);
@@ -986,9 +936,7 @@ export function scoreErle(
 		passed: values.length > 0 && worst >= minErleDb,
 	};
 }
-
 // ── Streaming-ASR partial monotonicity: the committed prefix never retracts ───
-
 export interface PartialMonotonicityResult {
 	kind: "partial-monotonicity";
 	/** Number of partial→partial transitions checked (partials.length - 1). */
@@ -997,7 +945,6 @@ export interface PartialMonotonicityResult {
 	retractions: number;
 	passed: boolean;
 }
-
 /**
  * Score partial-transcript monotonicity over an ordered sequence of committed
  * prefixes emitted by streaming ASR. Each partial must be a prefix-extension of
@@ -1023,14 +970,12 @@ export function scorePartialMonotonicity(
 		passed: total > 0 && retractions === 0,
 	};
 }
-
 export interface MeasurementCoverageResult {
 	kind: "measurement-coverage";
 	metric: string;
 	count: number;
 	passed: boolean;
 }
-
 /** Fail-closed evidence that a real lane measured a required signal. */
 export function scoreMeasurementCoverage(
 	metric: string,
@@ -1043,7 +988,6 @@ export function scoreMeasurementCoverage(
 		passed: Number.isInteger(count) && count > 0,
 	};
 }
-
 export type VoiceE2eCaseResult =
 	| TtsAsrRoundTripResult
 	| BargeInInterruptionResult
@@ -1061,12 +1005,10 @@ export type VoiceE2eCaseResult =
 	| ErleResult
 	| PartialMonotonicityResult
 	| MeasurementCoverageResult;
-
 export interface VoiceE2eSummary {
 	passed: boolean;
 	cases: VoiceE2eCaseResult[];
 }
-
 export function summarizeVoiceE2e(
 	cases: ReadonlyArray<VoiceE2eCaseResult>,
 ): VoiceE2eSummary {
@@ -1075,14 +1017,12 @@ export function summarizeVoiceE2e(
 		cases: [...cases],
 	};
 }
-
 function required(value: number | null | undefined, name: string): number {
 	if (value === null || value === undefined || !Number.isFinite(value)) {
 		throw missingMeasurement(name);
 	}
 	return value;
 }
-
 function optionalDuration(
 	fromName: string,
 	from: number,
@@ -1092,7 +1032,6 @@ function optionalDuration(
 	if (to === null || to === undefined) return null;
 	return duration(fromName, from, toName, to);
 }
-
 function duration(
 	fromName: string,
 	from: number,
@@ -1111,7 +1050,6 @@ function duration(
 	}
 	return delta;
 }
-
 function missingMeasurement(name: string): VoiceE2eHarnessError {
 	return new VoiceE2eHarnessError(
 		"missing-measurement",

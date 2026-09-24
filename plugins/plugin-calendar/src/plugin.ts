@@ -4,12 +4,13 @@
  * the `app_calendar` schema, the Microsoft connector-account OAuth provider,
  * and the provider-authenticated calendar webhook.
  */
+
 import {
   getConnectorAccountManager,
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { calendarAction } from "./actions/calendar.js";
 import { calendarSourcesAction } from "./actions/calendar-sources.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";
@@ -21,7 +22,6 @@ import { CalendarMigrationService } from "./service/migration.js";
 import { calendarSchema } from "./service/schema.js";
 import { CALENDAR_VIEW_CAPABILITIES } from "./view-capabilities.js";
 import { serverInteract } from "./view-interact.js";
-
 /**
  * First-class calendar plugin. Owns the calendar domain that previously lived
  * inside `@elizaos/plugin-personal-assistant`: the calendar event/sync store, the
@@ -99,5 +99,4 @@ export const calendarPlugin: Plugin = {
     },
   ],
 };
-
 export default calendarPlugin;

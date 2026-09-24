@@ -2,14 +2,13 @@
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 export interface CloudAuthWindowFrame {
 	x: number;
 	y: number;
 	width: number;
 	height: number;
 }
-
 export interface CloudAuthWindowLike {
 	focus(): void;
 	close(): void;
@@ -22,7 +21,6 @@ export interface CloudAuthWindowLike {
 		) => void;
 	};
 }
-
 export interface CreateCloudAuthWindowOptions {
 	title: string;
 	url: string;
@@ -32,12 +30,10 @@ export interface CreateCloudAuthWindowOptions {
 	transparent: boolean;
 	sandbox: boolean;
 }
-
 interface CloudAuthWindowManagerOptions {
 	createWindow: (options: CreateCloudAuthWindowOptions) => CloudAuthWindowLike;
 	onWindowFocused?: (window: CloudAuthWindowLike) => void;
 }
-
 const CLOUD_WINDOW_FRAME: CloudAuthWindowFrame = {
 	x: 220,
 	y: 140,
@@ -86,14 +82,12 @@ const TRUSTED_ELIZA_WINDOW_PRELOAD = `(() => {
     } catch { /* error-policy:J6 best-effort window.close override in injected auth-window script; last-resort assignment may be blocked on a locked page */ }
   }
 })();`;
-
 export function isTrustedElizaUrl(value: string): boolean {
 	try {
 		const url = new URL(value);
 		if (url.protocol !== "http:" && url.protocol !== "https:") {
 			return false;
 		}
-
 		const hostname = url.hostname.toLowerCase();
 		return (
 			isElizaCloudControlPlaneHostname(hostname) ||
@@ -106,78 +100,70 @@ export function isTrustedElizaUrl(value: string): boolean {
 		return false;
 	}
 }
-
 type NavigationEventLike =
 	| string
 	| {
 			url?: string;
-			data?: { detail?: string };
+			data?: {
+				detail?: string;
+			};
 			preventDefault?: () => void;
 	  }
 	| null
 	| undefined;
-
 export function readNavigationEventUrl(event: NavigationEventLike): string {
 	if (typeof event === "string") {
 		return event;
 	}
-
 	if (typeof event?.url === "string") {
 		return event.url;
 	}
-
 	if (typeof event?.data?.detail === "string") {
 		return event.data.detail;
 	}
-
 	return "";
 }
-
 type HostMessageEventLike =
 	| {
 			detail?: unknown;
-			data?: { detail?: unknown };
+			data?: {
+				detail?: unknown;
+			};
 	  }
 	| null
 	| undefined;
-
 function readHostMessageEventDetail(event: HostMessageEventLike): unknown {
 	if (event && "detail" in event && event.detail !== undefined) {
 		return event.detail;
 	}
-
 	return event?.data?.detail;
 }
-
 function isTrustedElizaCloseMessage(event: HostMessageEventLike): boolean {
 	const detail = readHostMessageEventDetail(event);
 	if (typeof detail === "string") {
 		try {
-			const parsed = JSON.parse(detail) as { type?: unknown };
+			const parsed = JSON.parse(detail) as {
+				type?: unknown;
+			};
 			return parsed.type === TRUSTED_ELIZA_CLOSE_MESSAGE_TYPE;
 		} catch {
 			// error-policy:J3 malformed close-message JSON is not a trusted signal
 			return false;
 		}
 	}
-
 	if (!detail || typeof detail !== "object") {
 		return false;
 	}
-
 	return "type" in detail && detail.type === TRUSTED_ELIZA_CLOSE_MESSAGE_TYPE;
 }
-
 export class CloudAuthWindowManager {
 	private window: CloudAuthWindowLike | null = null;
 	private readonly createWindowFn: CloudAuthWindowManagerOptions["createWindow"];
 	private readonly onWindowFocused?: CloudAuthWindowManagerOptions["onWindowFocused"];
-
 	constructor(options: CloudAuthWindowManagerOptions) {
 		this.createWindowFn = options.createWindow;
 		this.onWindowFocused = options.onWindowFocused;
 	}
-
 	open(url: string): boolean {
 		if (!isTrustedElizaUrl(url)) {
 			console.warn(
@@ -185,13 +171,11 @@ export class CloudAuthWindowManager {
 			);
 			return false;
 		}
-
 		if (this.window) {
 			this.window.webview.loadURL(url);
 			this.window.focus();
 			return true;
 		}
-
 		const window = this.createWindowFn({
 			title: "Eliza Cloud",
 			url,
@@ -201,10 +185,8 @@ export class CloudAuthWindowManager {
 			transparent: false,
 			sandbox: true,
 		});
-
 		this.window = window;
 		this.onWindowFocused?.(window);
-
 		window.webview.on("host-message", (event) => {
 			if (!isTrustedElizaCloseMessage(event as HostMessageEventLike)) {
 				return;
@@ -219,7 +201,6 @@ export class CloudAuthWindowManager {
 				this.window = null;
 			}
 		});
-
 		return true;
 	}
 }

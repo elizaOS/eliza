@@ -1,11 +1,12 @@
 /** Reports keyboard and palette interactions and defines settings navigation events. */
-
-import { getElizaApiBase, getElizaApiToken } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/core/utils/eliza-globals";
+import { logger } from "@elizaos/ui/logger";
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 /** Shortcut report POST — independent hop, own 15s deadline. */
-const SHORTCUT_FETCH_TIMEOUT_MS = 15_000;
-
+const SHORTCUT_FETCH_TIMEOUT_MS = 15000;
 async function postShortcutReport(args: {
   base: string;
   token?: string | null;
@@ -31,7 +32,6 @@ async function postShortcutReport(args: {
   }
   await res.arrayBuffer();
 }
-
 /**
  * Report a user-fired keyboard / command-palette shortcut to the agent (#8792).
  * Fire-and-forget, fully guarded: a failure here must never break the shortcut.
@@ -63,7 +63,6 @@ export function reportShortcutFired(
     );
   }
 }
-
 export interface NavigateSettingsDetail {
   section?: string;
 }

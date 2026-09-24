@@ -7,7 +7,7 @@
  * threshold, so verbose output also follows an elevated log level.
  */
 import { logger } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
+import { theme } from "../terminal/theme.js";
 
 const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,
@@ -18,29 +18,23 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
   fatal: 60,
   silent: 100,
 };
-
 function isLogLevelEnabled(level: string): boolean {
   const current = (process.env.LOG_LEVEL ?? "info").toLowerCase();
   return (
     (LOG_LEVEL_PRIORITY[level] ?? 30) >= (LOG_LEVEL_PRIORITY[current] ?? 30)
   );
 }
-
 let globalVerbose = false;
 let globalYes = false;
-
 export function setVerbose(v: boolean) {
   globalVerbose = v;
 }
-
 export function isVerbose() {
   return globalVerbose;
 }
-
 export function shouldLogVerbose() {
   return globalVerbose || isLogLevelEnabled("debug");
 }
-
 export function logVerbose(message: string) {
   if (!shouldLogVerbose()) {
     return;
@@ -55,11 +49,9 @@ export function logVerbose(message: string) {
   }
   console.log(theme.muted(message));
 }
-
 export function setYes(v: boolean) {
   globalYes = v;
 }
-
 export function isYes() {
   return globalYes;
 }

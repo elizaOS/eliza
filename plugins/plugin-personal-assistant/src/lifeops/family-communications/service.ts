@@ -6,6 +6,7 @@
  */
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -16,7 +17,6 @@ import {
   type ScheduledTaskRunnerHandle,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   createHouseholdCoordinationService,
   getHouseholdCoordinationService,
