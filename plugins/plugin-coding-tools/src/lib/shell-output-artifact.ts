@@ -28,7 +28,13 @@ const PENDING_DIRECTORY_PATTERN =
   /^\.pending-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEGMENT_FILE_PATTERN = /^(stdout|stderr)-\d{6}\.seg$/;
 const PARSED_MANIFEST_CACHE_MAX_BYTES = 2 * 1024 * 1024;
-let lastParsedManifest: { bytes: Buffer; value: unknown } | undefined;
+let lastParsedManifest:
+  | {
+      bytes: Buffer;
+      value: unknown;
+      unsignedBytes?: Buffer;
+    }
+  | undefined;
 
 /** Reuse parsing only when newly read bytes match; never cache filesystem authority. */
 function parseFreshManifest(bytes: Buffer): unknown {
@@ -428,10 +434,19 @@ function verifyManifestMac(
   manifest: PersistedShellOutputManifestV2,
   key: Uint8Array,
 ): void {
-  const expected = Buffer.from(
-    manifestMac(unsignedManifest(manifest), key),
-    "hex",
-  );
+  // Fresh byte equality above permits reusing serialization, never authority.
+  // The cache holds only one size-bounded manifest, and every read still uses
+  // the current key and verifies owner, expiry, and segment hashes.
+  const cached =
+    lastParsedManifest?.value === manifest ? lastParsedManifest : undefined;
+  if (cached && !cached.unsignedBytes) {
+    cached.unsignedBytes = Buffer.from(
+      JSON.stringify(unsignedManifest(manifest)),
+    );
+  }
+  const expected = cached?.unsignedBytes
+    ? createHmac("sha256", key).update(cached.unsignedBytes).digest()
+    : Buffer.from(manifestMac(unsignedManifest(manifest), key), "hex");
   const actual = Buffer.from(manifest.mac, "hex");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new Error("artifact manifest authentication failed");

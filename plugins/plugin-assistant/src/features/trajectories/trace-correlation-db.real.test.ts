@@ -507,93 +507,100 @@ describe("trajectories trace_id join key (real PGLite)", () => {
     await harness.service.flushWriteQueue(trajectoryId);
     await harness.service.endTrajectory(trajectoryId, "completed");
 
-    harness.service.logLlmCall({
-      stepId,
-      model: "native-after-end",
-      systemPrompt: "system",
-      userPrompt: "prompt",
-      response: "must be rejected",
-      purpose: "action",
-    });
-    harness.service.logProviderAccess(stepId, {
-      providerName: "native-after-end-provider",
-      data: {},
-      purpose: "context",
-    });
-    await harness.service.flushWriteQueue(trajectoryId);
-    const completed = await harness.service.getTrajectoryDetail(trajectoryId);
-    expect(completed?.metrics.finalStatus).toBe("completed");
-    expect(completed?.steps.flatMap((step) => step.llmCalls)).toHaveLength(1);
-    expect(completed?.steps.flatMap((step) => step.providerAccesses)).toEqual(
-      [],
-    );
-    expect(
-      (
-        harness.runtime.reportError as ReturnType<typeof vi.fn>
-      ).mock.calls.filter(
-        ([scope, , context]) =>
-          scope === "TrajectoriesService.lateCapture" &&
-          (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-      ),
-    ).toHaveLength(2);
+    // Trailing captures are accepted for two minutes to preserve complete context.
+    // This case verifies rejection after that window, including after reload.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 121_000);
+    try {
+      harness.service.logLlmCall({
+        stepId,
+        model: "native-after-end",
+        systemPrompt: "system",
+        userPrompt: "prompt",
+        response: "must be rejected",
+        purpose: "action",
+      });
+      harness.service.logProviderAccess(stepId, {
+        providerName: "native-after-end-provider",
+        data: {},
+        purpose: "context",
+      });
+      await harness.service.flushWriteQueue(trajectoryId);
+      const completed = await harness.service.getTrajectoryDetail(trajectoryId);
+      expect(completed?.metrics.finalStatus).toBe("completed");
+      expect(completed?.steps.flatMap((step) => step.llmCalls)).toHaveLength(1);
+      expect(completed?.steps.flatMap((step) => step.providerAccesses)).toEqual(
+        [],
+      );
+      expect(
+        (
+          harness.runtime.reportError as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(
+          ([scope, , context]) =>
+            scope === "TrajectoriesService.lateCapture" &&
+            (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+        ),
+      ).toHaveLength(2);
 
-    const reloaded = await makeFaultService(harness.runtime.agentId);
-    reloaded.service.logLlmCall({
-      stepId,
-      model: "native-after-reload",
-      systemPrompt: "system",
-      userPrompt: "prompt",
-      response: "must still be rejected",
-      purpose: "action",
-    });
-    reloaded.service.logProviderAccess(stepId, {
-      providerName: "native-after-reload-provider",
-      data: {},
-      purpose: "context",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await reloaded.service.flushWriteQueue(trajectoryId);
-    expect(
-      (
-        reloaded.runtime.reportError as ReturnType<typeof vi.fn>
-      ).mock.calls.filter(
-        ([scope, , context]) =>
-          scope === "TrajectoriesService.lateCapture" &&
-          (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-      ),
-    ).toHaveLength(2);
-    const afterReloadCapture =
-      await reloaded.service.getTrajectoryDetail(trajectoryId);
-    expect(
-      afterReloadCapture?.steps.flatMap((step) => step.llmCalls),
-    ).toHaveLength(1);
-    expect(
-      afterReloadCapture?.steps.flatMap((step) => step.providerAccesses),
-    ).toEqual([]);
+      const reloaded = await makeFaultService(harness.runtime.agentId);
+      reloaded.service.logLlmCall({
+        stepId,
+        model: "native-after-reload",
+        systemPrompt: "system",
+        userPrompt: "prompt",
+        response: "must still be rejected",
+        purpose: "action",
+      });
+      reloaded.service.logProviderAccess(stepId, {
+        providerName: "native-after-reload-provider",
+        data: {},
+        purpose: "context",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await reloaded.service.flushWriteQueue(trajectoryId);
+      expect(
+        (
+          reloaded.runtime.reportError as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(
+          ([scope, , context]) =>
+            scope === "TrajectoriesService.lateCapture" &&
+            (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+        ),
+      ).toHaveLength(2);
+      const afterReloadCapture =
+        await reloaded.service.getTrajectoryDetail(trajectoryId);
+      expect(
+        afterReloadCapture?.steps.flatMap((step) => step.llmCalls),
+      ).toHaveLength(1);
+      expect(
+        afterReloadCapture?.steps.flatMap((step) => step.providerAccesses),
+      ).toEqual([]);
 
-    await harness.service.stop();
-    const rowsBefore = await raw(
-      `SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
-    );
-    const inertId = await harness.service.startTrajectory(
-      harness.runtime.agentId,
-      { source: "native-after-stop" },
-    );
-    harness.service.startStep(inertId, { timestamp: Date.now() });
-    harness.service.logLlmCall({
-      stepId,
-      model: "native-after-stop",
-      systemPrompt: "system",
-      userPrompt: "prompt",
-      response: "must remain inert",
-      purpose: "action",
-    });
-    await harness.service.flushWriteQueue(inertId);
-    const rowsAfter = await raw(
-      `SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
-    );
-    expect(rowsAfter[0]?.total).toBe(rowsBefore[0]?.total);
-    expect(harness.service.isEnabled()).toBe(false);
+      await harness.service.stop();
+      const rowsBefore = await raw(
+        `SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
+      );
+      const inertId = await harness.service.startTrajectory(
+        harness.runtime.agentId,
+        { source: "native-after-stop" },
+      );
+      harness.service.startStep(inertId, { timestamp: Date.now() });
+      harness.service.logLlmCall({
+        stepId,
+        model: "native-after-stop",
+        systemPrompt: "system",
+        userPrompt: "prompt",
+        response: "must remain inert",
+        purpose: "action",
+      });
+      await harness.service.flushWriteQueue(inertId);
+      const rowsAfter = await raw(
+        `SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
+      );
+      expect(rowsAfter[0]?.total).toBe(rowsBefore[0]?.total);
+      expect(harness.service.isEnabled()).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("drains cache-miss capture and terminal lookup before native stop", async () => {
