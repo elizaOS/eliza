@@ -1,0 +1,11 @@
+// Ships the verified full Chromium browser without re-signing or privileged grants.
+android_app_import {
+    name: "ElizaChromiumBrowser",
+    apk: "Chromium.apk",
+    presigned: true,
+    preprocessed: true,
+    product_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+}

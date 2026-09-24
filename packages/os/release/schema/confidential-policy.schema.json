@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/confidential-policy.v1.json",
+  "title": "ElizaOS confidential profile memory + side-channel policy",
+  "description": "Structured form of the ELIZAOS_PROFILE=confidential memory/side-channel posture (plan §3-§4, OS-3). Hashed at build time into measurements.policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedBy", "summary", "memory", "sideChannel", "gate"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedBy": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "swap",
+        "mlock",
+        "hugepages",
+        "pageCache",
+        "zeroization",
+        "kexecHibernation",
+        "guestMemfd"
+      ],
+      "properties": {
+        "swap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hostBackedSwap", "zramOnly", "zramDmCrypt", "swapTargetMasked"],
+          "properties": {
+            "hostBackedSwap": { "type": "boolean" },
+            "zramOnly": { "type": "boolean" },
+            "zramDmCrypt": { "type": "boolean" },
+            "swapTargetMasked": { "type": "boolean" }
+          }
+        },
+        "mlock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "secretPages",
+            "mlockallFutureForInference",
+            "raiseRlimitMemlock",
+            "madvDontDump",
+            "disableCoreDumpsForSecretUnits"
+          ],
+          "properties": {
+            "secretPages": { "type": "boolean" },
+            "mlockallFutureForInference": { "type": "boolean" },
+            "raiseRlimitMemlock": { "type": "boolean" },
+            "madvDontDump": { "type": "boolean" },
+            "disableCoreDumpsForSecretUnits": { "type": "boolean" }
+          }
+        },
+        "hugepages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "weightsArenaHugepages",
+            "privateEncryptedMemoryOnly",
+            "noHostBackedFileMapping"
+          ],
+          "properties": {
+            "weightsArenaHugepages": { "type": "boolean" },
+            "privateEncryptedMemoryOnly": { "type": "boolean" },
+            "noHostBackedFileMapping": { "type": "boolean" }
+          }
+        },
+        "pageCache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dmCryptModelVolume", "preferODirectForWeights", "dropCachesAfterUnseal"],
+          "properties": {
+            "dmCryptModelVolume": { "type": "boolean" },
+            "preferODirectForWeights": { "type": "boolean" },
+            "dropCachesAfterUnseal": { "type": "boolean" }
+          }
+        },
+        "zeroization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blkdiscardOnShutdown",
+            "zeroKeyOnTeardown",
+            "panicNotifierZeroesKeys",
+            "kdumpDisabled"
+          ],
+          "properties": {
+            "blkdiscardOnShutdown": { "type": "boolean" },
+            "zeroKeyOnTeardown": { "type": "boolean" },
+            "panicNotifierZeroesKeys": { "type": "boolean" },
+            "kdumpDisabled": { "type": "boolean" }
+          }
+        },
+        "kexecHibernation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hibernationDisabled", "kexecDisabled"],
+          "properties": {
+            "hibernationDisabled": { "type": "boolean" },
+            "kexecDisabled": { "type": "boolean" }
+          }
+        },
+        "guestMemfd": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["useGuestMemfd", "minimalSharedWindow"],
+          "properties": {
+            "useGuestMemfd": { "type": "boolean" },
+            "minimalSharedWindow": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "sideChannel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpuMitigations", "smt", "observability", "secureBoot"],
+      "properties": {
+        "cpuMitigations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mitigationsOff",
+            "kpti",
+            "retbleed",
+            "mdsTaa",
+            "mmioStaleData",
+            "l1tf",
+            "kaslr",
+            "randomizeKstackOffset"
+          ],
+          "properties": {
+            "mitigationsOff": { "type": "boolean" },
+            "kpti": { "type": "boolean" },
+            "retbleed": { "type": "boolean" },
+            "mdsTaa": { "type": "boolean" },
+            "mmioStaleData": { "type": "boolean" },
+            "l1tf": { "type": "boolean" },
+            "kaslr": { "type": "boolean" },
+            "randomizeKstackOffset": { "type": "boolean" }
+          }
+        },
+        "smt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nosmt", "pinInferenceThreads", "isolcpusForWeights"],
+          "properties": {
+            "nosmt": { "type": "boolean" },
+            "pinInferenceThreads": { "type": "boolean" },
+            "isolcpusForWeights": { "type": "boolean" }
+          }
+        },
+        "observability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "perfEventParanoid",
+            "unprivilegedRdpmcDisabled",
+            "restrictCapPerfmon",
+            "denyDevMem",
+            "denyProcKcore",
+            "kptrRestrict",
+            "dmesgRestrict"
+          ],
+          "properties": {
+            "perfEventParanoid": { "type": "integer", "minimum": 0, "maximum": 3 },
+            "unprivilegedRdpmcDisabled": { "type": "boolean" },
+            "restrictCapPerfmon": { "type": "boolean" },
+            "denyDevMem": { "type": "boolean" },
+            "denyProcKcore": { "type": "boolean" },
+            "kptrRestrict": { "type": "integer", "minimum": 0, "maximum": 2 },
+            "dmesgRestrict": { "type": "integer", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "secureBoot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kernelLockdown",
+            "imaAppraisal",
+            "dmVerityRootfs",
+            "moduleSignatureEnforce",
+            "dmCryptUserData",
+            "unsealBindsStateDir"
+          ],
+          "properties": {
+            "kernelLockdown": { "enum": ["none", "integrity", "confidentiality"] },
+            "imaAppraisal": { "type": "boolean" },
+            "dmVerityRootfs": { "type": "boolean" },
+            "moduleSignatureEnforce": { "type": "boolean" },
+            "dmCryptUserData": { "type": "boolean" },
+            "unsealBindsStateDir": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "blockedOn", "provingCommand"],
+      "properties": {
+        "name": { "const": "confidential-policy-check" },
+        "blockedOn": { "type": "string", "minLength": 1 },
+        "provingCommand": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
