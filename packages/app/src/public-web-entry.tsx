@@ -12,7 +12,7 @@ import { ErrorBoundary } from "@elizaos/ui";
 import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
 import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import * as React from "react";
-import { Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
@@ -21,7 +21,6 @@ import { registerViewServiceWorker } from "./sw-registration";
 const ManagedCloudPage = lazy(
   () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
 );
-
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;

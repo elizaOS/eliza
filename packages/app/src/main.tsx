@@ -2813,8 +2813,6 @@ const ManagedCloudPage = lazy(async () => {
   return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
 });
 
-
-
 /**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
