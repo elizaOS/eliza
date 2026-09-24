@@ -20,7 +20,10 @@ import {
 } from "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs";
 
 const script = fileURLToPath(
-  new URL("../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs", import.meta.url),
+  new URL(
+    "../../../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
+    import.meta.url,
+  ),
 );
 test("selected live check fails when its credential is absent and emits no success receipt", () => {
   const result = spawnSync(process.execPath, [script], {
