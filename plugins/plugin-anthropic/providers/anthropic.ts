@@ -13,7 +13,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getApiKeyOptional, getAuthMode, getBaseURL, isBrowser } from "../utils/config";
+import { getApiKeyOptional, getAuthMode, getBaseURL } from "../utils/config";
 import {
   clearTokenCache,
   getClaudeOAuthToken,
@@ -121,7 +121,7 @@ function getApiKeyForSdk(runtime: IAgentRuntime, useOAuth: boolean): string | un
   // request auth is supplied by a custom fetch implementation. OAuth mode
   // deletes the SDK x-api-key header and injects the Bearer token per request.
   if (useOAuth) return OAUTH_SDK_API_KEY_SENTINEL;
-  return isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
+  return getApiKeyOptional(runtime) ?? undefined;
 }
 
 export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {

@@ -290,7 +290,7 @@ function requiredOrigin(value: unknown) {
   if (typeof value !== "string" || !value) {
     throw new Error("--base-url is required");
   }
-  let url;
+  let url: URL;
   try {
     url = new URL(value);
   } catch {
@@ -416,7 +416,7 @@ async function fetchProviderDiscoveryBoundary({
   fetchImpl: ProviderDiscoveryFetch;
 }) {
   const boundary = method === "HEAD" ? `${surface} HEAD` : surface;
-  let response;
+  let response: Response;
   try {
     response = await fetchImpl(`${baseUrl}${path}`, {
       method,
@@ -484,7 +484,7 @@ export async function verifyStewardProviderDiscovery(
   });
 
   const body = await readBoundedBody(response);
-  let payload;
+  let payload: unknown;
   try {
     payload = parseProviderDiscoveryJson(body);
   } catch {
@@ -525,7 +525,7 @@ export async function verifyStewardProviderDiscoveryWithRetry(
     throw new Error("attempts must be an integer from 1 through 10");
   }
   const checkedConfig = validateProviderDiscoveryConfig(config);
-  let lastError;
+  let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       return await verifyStewardProviderDiscovery(checkedConfig, { fetchImpl });

@@ -25,7 +25,6 @@ import { logger, ModelType } from "@elizaos/core";
 import { initializeAnthropic, type PluginConfig } from "./init";
 import {
   handleActionPlanner,
-  handleImageDescription,
   handleReasoningLarge,
   handleReasoningSmall,
   handleResponseHandler,
@@ -34,7 +33,8 @@ import {
   handleTextMega,
   handleTextNano,
   handleTextSmall,
-} from "./models";
+} from "./models/text";
+import { handleImageDescription } from "./models/image";
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
@@ -192,7 +192,6 @@ export const anthropicPlugin: Plugin = {
     PLANNER_MODEL: env.PLANNER_MODEL ?? null,
     ANTHROPIC_EXPERIMENTAL_TELEMETRY: env.ANTHROPIC_EXPERIMENTAL_TELEMETRY ?? null,
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL ?? null,
-    ANTHROPIC_BROWSER_BASE_URL: env.ANTHROPIC_BROWSER_BASE_URL ?? null,
     ANTHROPIC_COT_BUDGET: env.ANTHROPIC_COT_BUDGET ?? null,
     ANTHROPIC_COT_BUDGET_SMALL: env.ANTHROPIC_COT_BUDGET_SMALL ?? null,
     ANTHROPIC_COT_BUDGET_LARGE: env.ANTHROPIC_COT_BUDGET_LARGE ?? null,
@@ -283,3 +282,5 @@ export const anthropicPlugin: Plugin = {
 };
 
 export default anthropicPlugin;
+
+export * from "./utils/config";

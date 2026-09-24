@@ -36,6 +36,19 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+export interface RawReservedStorageWriter {
+  file: string;
+  line: number;
+  op: string;
+  key: string;
+}
+
+interface FileIndex {
+  src: string;
+  defs: Map<string, string>;
+  imports: Map<string, { file: string; name: string }>;
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..", "..");
 const SCAN_ROOTS = [
@@ -50,7 +63,7 @@ const ALLOWED_FILES = new Set([
 ]);
 const IDENT = "[A-Za-z_$][\\w$]*";
 
-function isSkipped(path) {
+function isSkipped(path: string) {
   return (
     /\.(test|spec)\.[tj]sx?$/.test(path) ||
     /\.stories\.[tj]sx?$/.test(path) ||
@@ -60,7 +73,7 @@ function isSkipped(path) {
   );
 }
 
-function walk(dir, out) {
+function walk(dir: string, out: string[]): void {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules" || entry === "dist") continue;
     const full = join(dir, entry);
@@ -74,9 +87,9 @@ function walk(dir, out) {
  * every byte offset + line number) and string/template literal bodies — so a
  * reported `file:line` matches the on-disk file exactly.
  */
-function stripComments(src) {
+function stripComments(src: string) {
   let out = "";
-  const blank = (s) => s.replace(/[^\n]/g, " ");
+  const blank = (s: string) => s.replace(/[^\n]/g, " ");
   for (let i = 0; i < src.length; i += 1) {
     const c = src[i];
     const n = src[i + 1];
@@ -108,7 +121,7 @@ function stripComments(src) {
   return out;
 }
 
-function resolveImport(fromFile, spec) {
+function resolveImport(fromFile: string, spec: string) {
   if (!spec.startsWith(".")) return null;
   const base = resolve(dirname(fromFile), spec);
   const cands = [
@@ -123,8 +136,8 @@ function resolveImport(fromFile, spec) {
 }
 
 /** Per-file: stripped source, local const defs, and resolved named imports. */
-function indexFiles(files) {
-  const idx = new Map();
+function indexFiles(files: string[]) {
+  const idx = new Map<string, FileIndex>();
   const constDef = new RegExp(
     `\\b(?:export\\s+)?(?:const|let|var)\\s+(${IDENT})\\s*(?::[^=]+)?=\\s*([^;\\n]+)`,
     "g",
@@ -133,10 +146,10 @@ function indexFiles(files) {
     /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
   for (const file of files) {
     const src = stripComments(readFileSync(file, "utf8"));
-    const defs = new Map();
+    const defs = new Map<string, string>();
     for (const m of src.matchAll(constDef))
       if (!defs.has(m[1])) defs.set(m[1], m[2].trim());
-    const imports = new Map();
+    const imports = new Map<string, { file: string; name: string }>();
     for (const m of src.matchAll(importRe)) {
       const target = resolveImport(file, m[2]);
       if (!target) continue;
@@ -154,13 +167,17 @@ function indexFiles(files) {
   return idx;
 }
 
-export function findRawReservedStorageWriters() {
-  const files = [];
+export function findRawReservedStorageWriters(): RawReservedStorageWriter[] {
+  const files: string[] = [];
   for (const root of SCAN_ROOTS) walk(root, files);
   const idx = indexFiles(files);
 
   /** Does identifier `name` (in `file`) resolve to a reserved-prefix key? */
-  function identReserved(name, file, seen = new Set()) {
+  function identReserved(
+    name: string,
+    file: string,
+    seen = new Set<string>(),
+  ): boolean {
     const key = `${file}#${name}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -173,7 +190,11 @@ export function findRawReservedStorageWriters() {
     return false;
   }
 
-  function rhsReserved(rhs, file, seen) {
+  function rhsReserved(
+    rhs: string | undefined,
+    file: string,
+    seen: Set<string>,
+  ): boolean {
     if (!rhs) return false;
     const q = rhs[0];
     if (q === '"' || q === "'") return RESERVED.test(rhs.slice(1));
@@ -188,7 +209,7 @@ export function findRawReservedStorageWriters() {
   }
 
   /** "reserved" | "unresolved" for a key argument evaluated in `file`. */
-  function classifyKey(arg, file) {
+  function classifyKey(arg: string, file: string) {
     if (!arg) return "unresolved";
     const q = arg[0];
     if (q === '"' || q === "'")
@@ -205,7 +226,7 @@ export function findRawReservedStorageWriters() {
   }
 
   // Reserved-key builders: function/arrow returning a reserved template head.
-  const builders = new Map(); // name -> Set(definingFiles)
+  const builders = new Map<string, Set<string>>(); // name -> Set(definingFiles)
   const fnDecl = new RegExp(
     `\\bfunction\\s+(${IDENT})\\s*\\([^)]*\\)\\s*(?::[^{]+)?\\{([\\s\\S]*?)\\n\\}`,
     "g",
@@ -224,7 +245,7 @@ export function findRawReservedStorageWriters() {
       if (rhsReserved(m[2], file, new Set()))
         builders.set(m[1], (builders.get(m[1]) ?? new Set()).add(file));
   }
-  function builderReserved(name, file) {
+  function builderReserved(name: string, file: string) {
     const defs = builders.get(name);
     if (!defs) return false;
     if (defs.has(file)) return true;
@@ -233,8 +254,8 @@ export function findRawReservedStorageWriters() {
   }
 
   // Storage accessors: functions/arrows returning window.localStorage.
-  const accessors = new Set();
-  const returnsLS = (b) =>
+  const accessors = new Set<string>();
+  const returnsLS = (b: string) =>
     /return[^;]*\b(?:window|globalThis)\.localStorage\b/.test(b) ||
     /=>\s*[^;{]*\b(?:window|globalThis)\.localStorage\b/.test(b);
   for (const [, rec] of idx) {
@@ -249,7 +270,7 @@ export function findRawReservedStorageWriters() {
       if (returnsLS(m[2])) accessors.add(m[1]);
   }
 
-  const receiverBefore = (src, dotIdx) => {
+  const receiverBefore = (src: string, dotIdx: number) => {
     let i = dotIdx - 1;
     while (i >= 0 && /\s/.test(src[i])) i -= 1;
     if (src[i] === "?") i -= 1;
@@ -271,7 +292,7 @@ export function findRawReservedStorageWriters() {
     return src.slice(i + 1, end).trim();
   };
 
-  const callArgs = (src, openParenIdx) => {
+  const callArgs = (src: string, openParenIdx: number) => {
     const args = [];
     let depth = 1;
     let i = openParenIdx + 1;
@@ -299,7 +320,7 @@ export function findRawReservedStorageWriters() {
     return args;
   };
 
-  const isStorageReceiver = (recv, storageVars) => {
+  const isStorageReceiver = (recv: string, storageVars: Set<string>) => {
     if (/(^|\.)localStorage$/.test(recv)) return true;
     const call = recv.match(new RegExp(`^(${IDENT})\\s*\\(\\s*\\)$`));
     if (call && accessors.has(call[1])) return true;
@@ -308,14 +329,14 @@ export function findRawReservedStorageWriters() {
 
   // A write wrapped in `runAsPrivilegedShell(() => …)` is the sanctioned form —
   // the statement (back to the last `;{}` boundary) names it.
-  const inPrivileged = (src, writeIdx) => {
+  const inPrivileged = (src: string, writeIdx: number) => {
     let b = writeIdx;
     while (b > 0 && !";{}".includes(src[b - 1])) b -= 1;
     return src.slice(b, writeIdx).includes("runAsPrivilegedShell");
   };
 
-  const enclosingFn = (src, at) => {
-    let best = null;
+  const enclosingFn = (src: string, at: number) => {
+    let best: RegExpExecArray | null = null;
     for (const m of src
       .slice(0, at)
       .matchAll(new RegExp(`\\bfunction\\s+(${IDENT})\\s*\\(([^)]*)\\)`, "g")))
@@ -329,13 +350,19 @@ export function findRawReservedStorageWriters() {
   };
 
   const WRITER = /\??\.\s*(setItem|removeItem)\s*\(/g;
-  const violations = [];
-  const paramHelpers = [];
+  const violations: RawReservedStorageWriter[] = [];
+  const paramHelpers: {
+    file: string;
+    line: number;
+    op: string;
+    fn: string;
+    pIdx: number;
+  }[] = [];
 
   for (const [file, rec] of idx) {
-    if (ALLOWED_FILES.has(file.split("/").pop())) continue;
+    if (ALLOWED_FILES.has(file.split("/").pop() ?? "")) continue;
     const { src } = rec;
-    const storageVars = new Set();
+    const storageVars = new Set<string>();
     for (const m of src.matchAll(
       new RegExp(`\\b(?:const|let|var)\\s+(${IDENT})\\s*=\\s*([^;\\n]+)`, "g"),
     )) {
@@ -378,6 +405,7 @@ export function findRawReservedStorageWriters() {
     const callRe = new RegExp(`\\b${h.fn}\\s*\\(`, "g");
     for (const cs of callSites) {
       const rec = idx.get(cs.file);
+      if (!rec) throw new Error(`Missing indexed call-site file: ${cs.file}`);
       for (const cm of rec.src.matchAll(callRe)) {
         const args = callArgs(rec.src, cm.index + cm[0].length - 1);
         if (classifyKey(args[h.pIdx] ?? "", cs.file) === "reserved") {
