@@ -6,8 +6,7 @@
 
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { ModelType } from "@elizaos/core";
-import { addLogListener, type LogEntry } from "@elizaos/core/logger";
+import { addLogListener, type LogEntry, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The logger freezes its level at module init and the repo test setup defaults

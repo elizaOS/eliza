@@ -193,6 +193,8 @@ jobs:
           install-protoc: "true"
       - name: Build view bundles
         run: bun run build:views
+      - name: Initialize pinned native sources for provenance tests
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
       - name: Run plugin tests
         timeout-minutes: 85
         run: bun run test:plugins

@@ -43,9 +43,10 @@ runs:
         run-postinstall: "false"
         publish-bun-install-cache: "false"
 
-    - name: Build core exports for cloud tests
+    - name: Build linked elizaOS workspaces
       shell: bash
-      run: bun run --cwd packages/core build
+      working-directory: packages/cloud/shared
+      run: bun run build:linked-workspaces
 
     - name: Validate migration journal
       shell: bash

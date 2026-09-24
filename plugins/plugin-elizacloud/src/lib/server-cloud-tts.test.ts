@@ -9,7 +9,7 @@
  * so a stalled upstream cannot hang the warming `for (;;)` loop.
  */
 import { _resetCloudSecretsForTesting } from "../cloud-config/cloud-secrets.js";
-import { addLogListener } from "@elizaos/core/logger";
+import { addLogListener } from "@elizaos/core";
 import { afterAll } from "vitest";
 import { afterEach } from "vitest";
 import { beforeEach } from "vitest";
