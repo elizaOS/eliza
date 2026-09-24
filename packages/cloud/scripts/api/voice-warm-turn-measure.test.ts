@@ -85,6 +85,18 @@ describe("voice warm-turn measurements", () => {
     });
   });
 
+  test.each([
+    { t: "stt_final", traceId: 42 },
+    { t: "stt_final", text: { unexpected: "object" } },
+  ])("rejects malformed transcript metadata", async (frame) => {
+    const socket = new EventTarget();
+    const turn = measureTurn(socket, 1, false, 1_000);
+    socket.dispatchEvent(
+      new MessageEvent("message", { data: JSON.stringify(frame) }),
+    );
+    await expect(turn.promise).rejects.toThrow("invalid control frame");
+  });
+
   test("fails immediately on malformed or provider-error control frames", async () => {
     const malformedSocket = new EventTarget();
     const malformed = measureTurn(malformedSocket, 1, false, 1_000);
