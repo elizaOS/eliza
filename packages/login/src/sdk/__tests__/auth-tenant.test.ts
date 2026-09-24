@@ -1,3 +1,4 @@
+/** Exercises tenant, guest, MFA and wallet session contracts against a real loopback HTTP fixture. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -23,6 +24,8 @@ class TestStorage {
     this.store.clear();
   }
 }
+
+const servers = new Set<ReturnType<typeof createServer>>();
 
 type CapturedRequest = {
   method: string;
@@ -64,7 +67,7 @@ async function startLoginServer(
   handler: (
     request: CapturedRequest,
   ) => Promise<ResponsePayload> | ResponsePayload,
-): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+): Promise<{ baseUrl: string }> {
   const server = createServer(async (req, res) => {
     const bodyText = await readRequestBody(req);
     const bodyJson =
@@ -93,21 +96,9 @@ async function startLoginServer(
     });
   });
 
+  servers.add(server);
   const { port } = server.address() as AddressInfo;
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      });
-    },
-  };
+  return { baseUrl: `http://127.0.0.1:${port}` };
 }
 
 function createAuthWithSession(
@@ -133,28 +124,17 @@ describe("LoginAuth multi-tenant", () => {
     storage = new TestStorage();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    for (const server of servers) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+      servers.delete(server);
+    }
     storage.clear();
   });
 
   describe("tenantId in config", () => {
-    test("getTenantId returns configured value", () => {
-      const auth = new LoginAuth({
-        baseUrl: "http://127.0.0.1:1",
-        storage,
-        tenantId: "my-app",
-      });
-      expect(auth.getTenantId()).toBe("my-app");
-    });
-
-    test("getTenantId returns undefined when not configured", () => {
-      const auth = new LoginAuth({
-        baseUrl: "http://127.0.0.1:1",
-        storage,
-      });
-      expect(auth.getTenantId()).toBeUndefined();
-    });
-
     test("getSession exposes MFA freshness claims from stored tokens", () => {
       const auth = new LoginAuth({
         baseUrl: "http://127.0.0.1:1",
@@ -201,14 +181,11 @@ describe("LoginAuth multi-tenant", () => {
         return { json: { ok: true, data: tenants } };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.listTenants();
-        expect(result).toHaveLength(2);
-        expect(result[0]?.tenantName).toBe("Babylon");
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      expect(auth.getTenantId()).toBeUndefined();
+      const result = await auth.listTenants();
+      expect(result).toHaveLength(2);
+      expect(result[0]?.tenantName).toBe("Babylon");
     });
 
     test("throws when not authenticated", async () => {
@@ -250,17 +227,14 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl, "my-app");
-        const result = await auth.getCurrentUser();
-        expect(result.walletAutoCreated).toBe(true);
-        expect(result.embeddedWalletConfig).toEqual({
-          tenantId: "my-app",
-          createOnLogin: "users-without-wallets",
-        });
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl, "my-app");
+      expect(auth.getTenantId()).toBe("my-app");
+      const result = await auth.getCurrentUser();
+      expect(result.walletAutoCreated).toBe(true);
+      expect(result.embeddedWalletConfig).toEqual({
+        tenantId: "my-app",
+        createOnLogin: "users-without-wallets",
+      });
     });
   });
 
@@ -288,18 +262,14 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.stepUpWithTotp("123456");
-        expect(result.token).toBe(steppedUpToken);
-        expect(storage.getItem("steward_session_token")).toBe(steppedUpToken);
-        expect(storage.getItem("steward_refresh_token")).toBe(
-          "totp-step-up-refresh",
-        );
-        expect(auth.getSession()?.mfaMethod).toBe("totp");
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const result = await auth.stepUpWithTotp("123456");
+      expect(result.token).toBe(steppedUpToken);
+      expect(storage.getItem("steward_session_token")).toBe(steppedUpToken);
+      expect(storage.getItem("steward_refresh_token")).toBe(
+        "totp-step-up-refresh",
+      );
+      expect(auth.getSession()?.mfaMethod).toBe("totp");
     });
 
     test("stepUpWithRecoveryCode and stepUpWithSms use current-session step-up endpoints", async () => {
@@ -334,19 +304,15 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        await auth.stepUpWithRecoveryCode("ABCDE-FGHJK");
-        expect(auth.getSession()?.mfaMethod).toBe("recovery_code");
-        await auth.stepUpWithSms("654321");
-        expect(auth.getSession()?.mfaMethod).toBe("sms");
-        expect(calls).toEqual([
-          "/auth/mfa/totp/step-up",
-          "/auth/mfa/sms/step-up",
-        ]);
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      await auth.stepUpWithRecoveryCode("ABCDE-FGHJK");
+      expect(auth.getSession()?.mfaMethod).toBe("recovery_code");
+      await auth.stepUpWithSms("654321");
+      expect(auth.getSession()?.mfaMethod).toBe("sms");
+      expect(calls).toEqual([
+        "/auth/mfa/totp/step-up",
+        "/auth/mfa/sms/step-up",
+      ]);
     });
   });
 
@@ -385,27 +351,23 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = new LoginAuth({
-          baseUrl: server.baseUrl,
-          storage,
-          tenantId: "my-app",
-        });
-        const result = await auth.signInAsGuest({ expiresIn: "7d" });
-        expect(result.user.isGuest).toBe(true);
-        expect(storage.getItem("steward_session_token")).toBe(token);
-        expect(storage.getItem("steward_refresh_token")).toBe("guest-refresh");
-        expect(auth.getGuestState()).toMatchObject({
-          isGuest: true,
-          userId: "guest-1",
-          tenantId: "test-tenant",
-          expiresAt: guestExpiresAt,
-          isExpired: false,
-        });
-        expect(auth.getGuestState().expiryMessage).toContain("expires in");
-      } finally {
-        await server.close();
-      }
+      const auth = new LoginAuth({
+        baseUrl: server.baseUrl,
+        storage,
+        tenantId: "my-app",
+      });
+      const result = await auth.signInAsGuest({ expiresIn: "7d" });
+      expect(result.user.isGuest).toBe(true);
+      expect(storage.getItem("steward_session_token")).toBe(token);
+      expect(storage.getItem("steward_refresh_token")).toBe("guest-refresh");
+      expect(auth.getGuestState()).toMatchObject({
+        isGuest: true,
+        userId: "guest-1",
+        tenantId: "test-tenant",
+        expiresAt: guestExpiresAt,
+        isExpired: false,
+      });
+      expect(auth.getGuestState().expiryMessage).toContain("expires in");
     });
 
     test("upgradeGuestWithEmail requires a guest session and exchanges verified email token", async () => {
@@ -446,21 +408,15 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
-        const result = await auth.upgradeGuestWithEmail({
-          email: "guest@example.test",
-          token: "magic-token",
-        });
-        expect("mfaRequired" in result).toBe(false);
-        expect(storage.getItem("steward_session_token")).toBe(upgradedToken);
-        expect(storage.getItem("steward_refresh_token")).toBe(
-          "upgraded-refresh",
-        );
-        expect(auth.getGuestState().isGuest).toBe(false);
-      } finally {
-        await server.close();
-      }
+      const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
+      const result = await auth.upgradeGuestWithEmail({
+        email: "guest@example.test",
+        token: "magic-token",
+      });
+      expect("mfaRequired" in result).toBe(false);
+      expect(storage.getItem("steward_session_token")).toBe(upgradedToken);
+      expect(storage.getItem("steward_refresh_token")).toBe("upgraded-refresh");
+      expect(auth.getGuestState().isGuest).toBe(false);
 
       const fullAuth = createAuthWithSession(storage, "http://127.0.0.1:1");
       await expect(
@@ -486,15 +442,11 @@ describe("LoginAuth multi-tenant", () => {
         return { json: { ok: true, deleted: true, userId: "guest-3" } };
       });
 
-      try {
-        const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
-        const result = await auth.deleteGuest();
-        expect(result).toEqual({ ok: true, deleted: true, userId: "guest-3" });
-        expect(storage.getItem("steward_session_token")).toBeNull();
-        expect(storage.getItem("steward_refresh_token")).toBeNull();
-      } finally {
-        await server.close();
-      }
+      const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
+      const result = await auth.deleteGuest();
+      expect(result).toEqual({ ok: true, deleted: true, userId: "guest-3" });
+      expect(storage.getItem("steward_session_token")).toBeNull();
+      expect(storage.getItem("steward_refresh_token")).toBeNull();
     });
   });
 
@@ -514,14 +466,10 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.joinTenant("babylon");
-        expect(result.tenantId).toBe("babylon");
-        expect(result.role).toBe("member");
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const result = await auth.joinTenant("babylon");
+      expect(result.tenantId).toBe("babylon");
+      expect(result.role).toBe("member");
     });
   });
 
@@ -543,18 +491,14 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.acceptTenantInvitation(
-          "babylon",
-          "invite-token",
-        );
-        expect(result.tenantId).toBe("babylon");
-        expect(result.role).toBe("developer");
-        expect(result.invitationId).toBe("invite-1");
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const result = await auth.acceptTenantInvitation(
+        "babylon",
+        "invite-token",
+      );
+      expect(result.tenantId).toBe("babylon");
+      expect(result.role).toBe("developer");
+      expect(result.invitationId).toBe("invite-1");
     });
   });
 
@@ -566,12 +510,8 @@ describe("LoginAuth multi-tenant", () => {
         return { json: { ok: true } };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        await expect(auth.leaveTenant("some-app")).resolves.toBeUndefined();
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      await expect(auth.leaveTenant("some-app")).resolves.toBeUndefined();
     });
   });
 
@@ -585,17 +525,13 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.refreshSession();
-        expect(result).toBeNull();
-        expect(storage.getItem("steward_session_token")).not.toBeNull();
-        expect(storage.getItem("steward_refresh_token")).toBe(
-          "refresh-token-123",
-        );
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const result = await auth.refreshSession();
+      expect(result).toBeNull();
+      expect(storage.getItem("steward_session_token")).not.toBeNull();
+      expect(storage.getItem("steward_refresh_token")).toBe(
+        "refresh-token-123",
+      );
     });
   });
 
@@ -623,22 +559,15 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
-        const result = await auth.signInWithSIWE(
-          "0xabc",
-          async () => "0xsigned",
-        );
+      const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
+      const result = await auth.signInWithSIWE("0xabc", async () => "0xsigned");
 
-        expect(result.user).toEqual({
-          id: "user-siwe",
-          email: "",
-          walletAddress: "0xabc",
-          walletChain: "ethereum",
-        });
-      } finally {
-        await server.close();
-      }
+      expect(result.user).toEqual({
+        id: "user-siwe",
+        email: "",
+        walletAddress: "0xabc",
+        walletChain: "ethereum",
+      });
     });
   });
 
@@ -690,28 +619,24 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
-        const result = await auth.signInWithSolana(
-          "So11111111111111111111111111111111111111112",
-          async (messageBytes) => {
-            signedMessages.push(new TextDecoder().decode(messageBytes));
-            return new Uint8Array([1, 2, 3, 4]);
-          },
-        );
+      const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
+      const result = await auth.signInWithSolana(
+        "So11111111111111111111111111111111111111112",
+        async (messageBytes) => {
+          signedMessages.push(new TextDecoder().decode(messageBytes));
+          return new Uint8Array([1, 2, 3, 4]);
+        },
+      );
 
-        expect(signedMessages).toHaveLength(1);
-        expect(result.user).toEqual({
-          id: "user-solana",
-          email: "",
-          walletAddress: "So11111111111111111111111111111111111111112",
-          walletChain: "solana",
-        });
-        expect(storage.getItem("steward_session_token")).toBe(token);
-        expect(storage.getItem("steward_refresh_token")).toBe("sol-refresh");
-      } finally {
-        await server.close();
-      }
+      expect(signedMessages).toHaveLength(1);
+      expect(result.user).toEqual({
+        id: "user-solana",
+        email: "",
+        walletAddress: "So11111111111111111111111111111111111111112",
+        walletChain: "solana",
+      });
+      expect(storage.getItem("steward_session_token")).toBe(token);
+      expect(storage.getItem("steward_refresh_token")).toBe("sol-refresh");
     });
   });
 
@@ -735,18 +660,14 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const session = await auth.switchTenant("new-app");
-        expect(session).not.toBeNull();
-        expect(session?.tenantId).toBe("new-app");
-        expect(storage.getItem("steward_session_token")).toBe(newToken);
-        expect(storage.getItem("steward_refresh_token")).toBe(
-          "new-refresh-token",
-        );
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const session = await auth.switchTenant("new-app");
+      expect(session).not.toBeNull();
+      expect(session?.tenantId).toBe("new-app");
+      expect(storage.getItem("steward_session_token")).toBe(newToken);
+      expect(storage.getItem("steward_refresh_token")).toBe(
+        "new-refresh-token",
+      );
     });
 
     test("returns null when no refresh token", async () => {
@@ -769,13 +690,9 @@ describe("LoginAuth multi-tenant", () => {
         };
       });
 
-      try {
-        const auth = createAuthWithSession(storage, server.baseUrl);
-        const result = await auth.switchTenant("new-app");
-        expect(result).toBeNull();
-      } finally {
-        await server.close();
-      }
+      const auth = createAuthWithSession(storage, server.baseUrl);
+      const result = await auth.switchTenant("new-app");
+      expect(result).toBeNull();
     });
   });
 });

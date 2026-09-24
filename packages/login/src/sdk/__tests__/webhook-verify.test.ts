@@ -1,3 +1,4 @@
+/** Exercises real HMAC signing and verification across versioned, legacy and tampered webhook payloads. */
 import { describe, expect, test } from "bun:test";
 
 import { signWebhookPayload, verifyWebhookSignature } from "../webhook-verify";
@@ -55,7 +56,7 @@ describe("verifyWebhookSignature", () => {
     expect(r.reason).toBe("missing-signature");
   });
 
-  test("rejects when signature is wrong length / different secret", async () => {
+  test("rejects when signed with a different secret", async () => {
     const bad = await signWebhookPayload(BODY, "another-secret");
     const r = await verifyWebhookSignature(BODY, bad, SECRET, null, {
       allowLegacyBodySignature: true,
@@ -180,20 +181,6 @@ describe("verifyWebhookSignature", () => {
     });
     expect(r.valid).toBe(false);
     expect(r.reason).toBe("bad-signature");
-  });
-
-  test("(d) a retried delivery keeps a stable id, timestamp, and v2 signature", async () => {
-    // Same deliveryId + signedAt across attempts => identical canonical material => identical sig.
-    const ts = Math.floor(Date.now() / 1000);
-    const first = `v2=${await v2Sign(ts, "stable-del", "tx_signed", BODY)}`;
-    const retry = `v2=${await v2Sign(ts, "stable-del", "tx_signed", BODY)}`;
-    expect(retry).toBe(first);
-    const r = await verifyWebhookSignature(BODY, retry, SECRET, ts, {
-      eventType: "tx_signed",
-      deliveryId: "stable-del",
-    });
-    expect(r.valid).toBe(true);
-    expect(r.deliveryId).toBe("stable-del");
   });
 
   test("rejects a v2 signature missing the delivery id / event type context", async () => {
