@@ -9,11 +9,21 @@ import { Hono } from "hono";
 
 const webhookSecret = "test-blooio-webhook-secret";
 const organizationId = "11111111-1111-4111-8111-111111111111";
-const processedKeys = new Set<string>();
-const isAlreadyProcessed = mock(async (key: string) => processedKeys.has(key));
-const markAsProcessed = mock(async (key: string) => {
-  processedKeys.add(key);
-});
+const claimedKeys = new Set<string>();
+// Mirrors the claim-before-work contract of the real helper: the key is
+// claimed before the work runs and released if the work throws.
+const processOnce = mock(
+  async (key: string, _source: string, work: () => Promise<unknown>) => {
+    if (claimedKeys.has(key)) return { status: "duplicate" as const };
+    claimedKeys.add(key);
+    try {
+      return { status: "processed" as const, result: await work() };
+    } catch (error) {
+      claimedKeys.delete(key);
+      throw error;
+    }
+  },
+);
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: {
@@ -31,8 +41,7 @@ mock.module("@/lib/services/blooio-automation", () => ({
 }));
 
 mock.module("@/lib/utils/idempotency", () => ({
-  isAlreadyProcessed,
-  markAsProcessed,
+  processOnce,
 }));
 
 const { default: app } = await import("./route");
@@ -89,9 +98,8 @@ const retiredBridgePayload = {
 
 describe("Blooio webhook authority", () => {
   beforeEach(() => {
-    processedKeys.clear();
-    isAlreadyProcessed.mockClear();
-    markAsProcessed.mockClear();
+    claimedKeys.clear();
+    processOnce.mockClear();
   });
 
   test("contains no deleted bridge import, discriminator, or child route", async () => {
@@ -120,8 +128,7 @@ describe("Blooio webhook authority", () => {
       });
     }
 
-    expect(isAlreadyProcessed).not.toHaveBeenCalled();
-    expect(markAsProcessed).not.toHaveBeenCalled();
+    expect(processOnce).not.toHaveBeenCalled();
   });
 
   test("does not expose a retired bridge child route", async () => {
@@ -134,8 +141,7 @@ describe("Blooio webhook authority", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(isAlreadyProcessed).not.toHaveBeenCalled();
-    expect(markAsProcessed).not.toHaveBeenCalled();
+    expect(processOnce).not.toHaveBeenCalled();
   });
 
   test("validates a signed non-Blooio envelope as provider input", async () => {
@@ -151,8 +157,7 @@ describe("Blooio webhook authority", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Invalid webhook payload",
     });
-    expect(isAlreadyProcessed).not.toHaveBeenCalled();
-    expect(markAsProcessed).not.toHaveBeenCalled();
+    expect(processOnce).not.toHaveBeenCalled();
   });
 
   test("accepts a signed Blooio v4 event and deduplicates its retry", async () => {
@@ -172,11 +177,12 @@ describe("Blooio webhook authority", () => {
     const firstResponse = await fetchRoute(request(body, { headers }));
     expect(firstResponse.status).toBe(200);
     await expect(firstResponse.json()).resolves.toEqual({ success: true });
-    expect(isAlreadyProcessed).toHaveBeenCalledWith("blooio:msg_blooio_v4");
-    expect(markAsProcessed).toHaveBeenCalledWith(
+    expect(processOnce).toHaveBeenCalledWith(
       "blooio:msg_blooio_v4",
       "blooio",
+      expect.any(Function),
     );
+    expect(claimedKeys.has("blooio:msg_blooio_v4")).toBe(true);
 
     const retryResponse = await fetchRoute(request(body, { headers }));
     expect(retryResponse.status).toBe(200);
@@ -184,8 +190,8 @@ describe("Blooio webhook authority", () => {
       success: true,
       status: "already_processed",
     });
-    expect(isAlreadyProcessed).toHaveBeenCalledTimes(2);
-    expect(markAsProcessed).toHaveBeenCalledTimes(1);
+    expect(processOnce).toHaveBeenCalledTimes(2);
+    expect(claimedKeys.size).toBe(1);
   });
 
   test("rejects a signed inbound message without a stable ID", async () => {
@@ -204,7 +210,6 @@ describe("Blooio webhook authority", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Inbound message ID is required",
     });
-    expect(isAlreadyProcessed).not.toHaveBeenCalled();
-    expect(markAsProcessed).not.toHaveBeenCalled();
+    expect(processOnce).not.toHaveBeenCalled();
   });
 });

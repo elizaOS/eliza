@@ -66,6 +66,34 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
   }
 }
 
+/** Outcome of `processOnce`: the work ran here, or another delivery already holds the key. */
+export type ProcessOnceOutcome<T> = { status: "processed"; result: T } | { status: "duplicate" };
+
+/**
+ * Run webhook work at most once per key. The key is claimed atomically BEFORE
+ * the work starts, so a redelivery that overlaps a slow first delivery is
+ * refused instead of processed twice (the check-then-mark shape leaves that
+ * window open for the whole duration of the work). A failing work function
+ * releases the claim so a genuine retry can proceed, and the error propagates
+ * to the caller's boundary.
+ */
+export async function processOnce<T>(
+  key: string,
+  source: string,
+  work: () => Promise<T>,
+): Promise<ProcessOnceOutcome<T>> {
+  const claimed = await tryClaimForProcessing(key, source);
+  if (!claimed) return { status: "duplicate" };
+  try {
+    return { status: "processed", result: await work() };
+  } catch (error) {
+    // error-policy:J2 the claim is released so the provider's retry is not
+    // refused as a duplicate; the failure itself is rethrown unchanged.
+    await releaseProcessingClaim(key);
+    throw error;
+  }
+}
+
 /**
  * Release a previously claimed processing key, allowing retries.
  * Call this when processing fails and you want the message to be retryable.

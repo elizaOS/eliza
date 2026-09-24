@@ -19,7 +19,21 @@ const sendMessage = mock(async () => ({
   provider: "twilio" as const,
   providerMessageIds: ["SM_reply"],
 }));
-const markAsProcessed = mock(async () => undefined);
+const claimedKeys = new Set<string>();
+// Mirrors the claim-before-work contract of the real helper: the key is
+// claimed before the work runs and released if the work throws.
+const processOnce = mock(
+  async (key: string, _source: string, work: () => Promise<unknown>) => {
+    if (claimedKeys.has(key)) return { status: "duplicate" as const };
+    claimedKeys.add(key);
+    try {
+      return { status: "processed" as const, result: await work() };
+    } catch (error) {
+      claimedKeys.delete(key);
+      throw error;
+    }
+  },
+);
 const usageCreate = mock(async (_record: unknown) => {
   throw new Error(sentinelProviderBody);
 });
@@ -69,8 +83,7 @@ mock.module("@/lib/services/usage", () => ({
 }));
 
 mock.module("@/lib/utils/idempotency", () => ({
-  isAlreadyProcessed: mock(async () => false),
-  markAsProcessed,
+  processOnce,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -109,7 +122,8 @@ describe("Twilio webhook privacy", () => {
       provider: "twilio",
       providerMessageIds: ["SM_reply"],
     });
-    markAsProcessed.mockClear();
+    claimedKeys.clear();
+    processOnce.mockClear();
     usageCreate.mockClear();
     loggerInfo.mockClear();
     loggerWarn.mockClear();
@@ -176,7 +190,8 @@ describe("Twilio webhook privacy", () => {
 
     expect(response.status).toBe(500);
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(markAsProcessed).not.toHaveBeenCalled();
+    expect(processOnce).toHaveBeenCalledTimes(1);
+    expect(claimedKeys.size).toBe(0);
     expect(usageCreate).not.toHaveBeenCalled();
   });
 });

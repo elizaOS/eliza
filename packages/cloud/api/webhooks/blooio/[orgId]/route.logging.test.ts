@@ -65,8 +65,12 @@ mock.module("@/lib/utils/blooio-api", () => ({
 }));
 
 mock.module("@/lib/utils/idempotency", () => ({
-  isAlreadyProcessed: mock(async () => false),
-  markAsProcessed: mock(async () => undefined),
+  processOnce: mock(
+    async (_key: string, _source: string, work: () => Promise<unknown>) => ({
+      status: "processed" as const,
+      result: await work(),
+    }),
+  ),
 }));
 
 mock.module("@/lib/utils/logger", () => ({

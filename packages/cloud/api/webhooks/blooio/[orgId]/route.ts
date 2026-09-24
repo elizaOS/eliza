@@ -19,7 +19,7 @@ import {
   parseBlooioWebhookEvent,
   verifyBlooioSignature,
 } from "@/lib/utils/blooio-api";
-import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
+import { processOnce } from "@/lib/utils/idempotency";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -103,9 +103,60 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       return c.json({ error: "Inbound message ID is required" }, 400);
     }
 
+    // Log the event
+    logger.info("[BlooioWebhook] Received event", {
+      orgId,
+    });
+
+    // Handle different event types
+    const handleEvent = async (): Promise<void> => {
+      switch (payload.event) {
+        case "message.received":
+          await handleIncomingMessage(orgId, payload, (promise) =>
+            c.executionCtx.waitUntil(promise),
+          );
+          break;
+
+        case "message.sent":
+          logger.info("[BlooioWebhook] Message sent confirmation", {
+            orgId,
+          });
+          break;
+
+        case "message.delivered":
+          logger.info("[BlooioWebhook] Message delivered", {
+            orgId,
+          });
+          break;
+
+        case "message.failed":
+          logger.error("[BlooioWebhook] Message delivery failed", {
+            orgId,
+          });
+          break;
+
+        case "message.read":
+          logger.info("[BlooioWebhook] Message read", {
+            orgId,
+          });
+          break;
+
+        default:
+          logger.info("[BlooioWebhook] Unhandled event type", {
+            orgId,
+          });
+      }
+    };
+
     if (payload.message_id) {
-      const idempotencyKey = `blooio:${payload.message_id}`;
-      if (await isAlreadyProcessed(idempotencyKey)) {
+      // Claim the message id before handling so an overlapping redelivery is
+      // refused instead of processed twice (#31768).
+      const outcome = await processOnce(
+        `blooio:${payload.message_id}`,
+        "blooio",
+        handleEvent,
+      );
+      if (outcome.status === "duplicate") {
         logger.info("[BlooioWebhook] Duplicate message, skipping", {
           orgId,
         });
@@ -118,54 +169,7 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
           orgId,
         },
       );
-    }
-
-    // Log the event
-    logger.info("[BlooioWebhook] Received event", {
-      orgId,
-    });
-
-    // Handle different event types
-    switch (payload.event) {
-      case "message.received":
-        await handleIncomingMessage(orgId, payload, (promise) =>
-          c.executionCtx.waitUntil(promise),
-        );
-        break;
-
-      case "message.sent":
-        logger.info("[BlooioWebhook] Message sent confirmation", {
-          orgId,
-        });
-        break;
-
-      case "message.delivered":
-        logger.info("[BlooioWebhook] Message delivered", {
-          orgId,
-        });
-        break;
-
-      case "message.failed":
-        logger.error("[BlooioWebhook] Message delivery failed", {
-          orgId,
-        });
-        break;
-
-      case "message.read":
-        logger.info("[BlooioWebhook] Message read", {
-          orgId,
-        });
-        break;
-
-      default:
-        logger.info("[BlooioWebhook] Unhandled event type", {
-          orgId,
-        });
-    }
-
-    // Mark message as processed after successful handling (only if we have a message_id)
-    if (payload.message_id) {
-      await markAsProcessed(`blooio:${payload.message_id}`, "blooio");
+      await handleEvent();
     }
 
     return c.json({ success: true });
