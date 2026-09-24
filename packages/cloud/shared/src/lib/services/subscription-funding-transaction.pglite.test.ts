@@ -3049,7 +3049,7 @@ describe.skipIf(!sshFixturePath)("isolated SSH/Docker funding", () => {
               expect(persistedBackupId).toMatch(
                 /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
               );
-              // The legacy in-place replacement stop removed the container on
+              // The cold retirement removed the container on
               // the real host after its backup gate committed.
               expect(
                 (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
@@ -3080,9 +3080,17 @@ describe.skipIf(!sshFixturePath)("isolated SSH/Docker funding", () => {
             expect(final.windows).toHaveLength(1);
             expect(final.windows[0]).toMatchObject({ retirement_backup_id: null });
             expect(
-              (await fixture.query("SELECT status FROM agent_sandboxes WHERE id=$1", [agentId]))
-                .rows[0],
-            ).toMatchObject({ status: "stopped" });
+              (
+                await fixture.query(
+                  "SELECT status,sandbox_id,node_id,container_name FROM agent_sandboxes WHERE id=$1",
+                  [agentId],
+                )
+              ).rows[0],
+            ).toMatchObject(
+              scenario === "user-suspend-settled-running"
+                ? { status: "sleeping", sandbox_id: null, node_id: null, container_name: null }
+                : { status: "stopped" },
+            );
             expect(
               (
                 await fixture.query(
