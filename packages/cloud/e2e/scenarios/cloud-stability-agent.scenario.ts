@@ -36,7 +36,7 @@ const reminderArgs = {
 };
 const plannerToolNames = [
   ownerRemindersAction.name,
-  "DISCOVER_TOOLS",
+  "DISCOVER_ACTIONS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
 const syntheticRuntimePolicy = {
@@ -306,7 +306,7 @@ const definition = scenario({
         match: {
           modelType: "RESPONSE_HANDLER",
           input: { includes: request },
-          toolNames: ["HANDLE_RESPONSE", "READ_CONTEXT"],
+          toolNames: ["HANDLE_RESPONSE"],
         },
         response: {
           json: {
@@ -417,7 +417,7 @@ const definition = scenario({
         name: "cloud-reminder-post-action-evaluator",
         match: {
           modelType: "RESPONSE_HANDLER",
-          input: { exact: '{"plannerCompleted":true,"turnScope":"final"}' },
+          input: { includes: request },
           toolNames: [],
         },
         response: {
