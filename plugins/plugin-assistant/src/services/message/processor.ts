@@ -29,6 +29,7 @@ import {
   getTrajectoryContext,
   getUserMessageText,
   INFERENCE_MARKS,
+  incomingMessagePersistenceSnapshot,
   incomingPipelineHookContext,
   isCanonicalModelCapabilityDisabled,
   isObjectRecord as isRecord,
@@ -233,7 +234,9 @@ export class MessageProcessor {
       // wrapper XML back into the user's chat bubble or re-enter context as
       // history on later turns. `message` (used downstream this turn) keeps its
       // wrap.
-      const persistableMessage = stripAugmentationForPersistence(message);
+      const persistableMessage =
+        incomingMessagePersistenceSnapshot(message) ??
+        stripAugmentationForPersistence(message);
 
       if (message.id) {
         const createdMemoryId = await persistIncomingMessageMemory(

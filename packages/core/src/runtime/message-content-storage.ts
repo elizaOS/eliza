@@ -9,6 +9,60 @@ import {
 	MESSAGE_CONTENT_SEGMENT_TABLE,
 } from "./message-content-segments";
 
+const ingressPersistenceSnapshots = new WeakMap<Memory, Memory>();
+
+/** Bind a host-confirmed durable message to its request-scoped routing representation. Never serialized or accepted from message metadata. */
+export function bindIncomingMessagePersistence(
+	message: Memory,
+	persisted: Memory,
+): void {
+	if (
+		!message.id ||
+		message.id !== persisted.id ||
+		message.agentId !== persisted.agentId ||
+		message.roomId !== persisted.roomId ||
+		message.entityId !== persisted.entityId
+	) {
+		throw new ElizaError(
+			"Ingress persistence snapshot identity differs from its routed message",
+			{
+				code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+				context: { messageId: message.id ?? null },
+			},
+		);
+	}
+	ingressPersistenceSnapshots.set(message, structuredClone(persisted));
+}
+
+/** Carry a trusted host binding through an explicit prompt-only augmentation. */
+export function inheritIncomingMessagePersistence(
+	source: Memory,
+	augmented: Memory,
+): void {
+	const persisted = ingressPersistenceSnapshots.get(source);
+	if (persisted) bindIncomingMessagePersistence(augmented, persisted);
+}
+
+/** Returns a defensive original only for a message explicitly bound by its host. */
+export function incomingMessagePersistenceSnapshot(
+	message: Memory,
+): Memory | undefined {
+	const persisted = ingressPersistenceSnapshots.get(message);
+	if (!persisted) return undefined;
+	if (
+		message.id !== persisted.id ||
+		message.agentId !== persisted.agentId ||
+		message.roomId !== persisted.roomId ||
+		message.entityId !== persisted.entityId
+	) {
+		throw new ElizaError("Ingress persistence snapshot identity changed", {
+			code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+			context: { messageId: message.id ?? null },
+		});
+	}
+	return structuredClone(persisted);
+}
+
 function contentNeedsNativeSegments(content: Content): boolean {
 	const encoder = new TextEncoder();
 	if (

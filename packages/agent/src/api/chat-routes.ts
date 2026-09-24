@@ -26,6 +26,7 @@ import {
   INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
+  inheritIncomingMessagePersistence,
   isRateLimitError,
   isTextGenerationModelType,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -2798,6 +2799,7 @@ async function generateChatResponseWithTiming(
               ),
             { phase: "pre-model" },
           );
+          inheritIncomingMessagePersistence(message, generationMessage);
           generationAbortController.signal.throwIfAborted();
           try {
             result = await timeInferenceSpan(
