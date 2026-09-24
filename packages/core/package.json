@@ -114,12 +114,6 @@
 			"import": "./dist/automation-node-contributors.js",
 			"default": "./dist/automation-node-contributors.js"
 		},
-		"./awareness": {
-			"types": "./dist/awareness/index.d.ts",
-			"eliza-source": "./src/awareness/index.ts",
-			"import": "./dist/awareness/index.js",
-			"default": "./dist/awareness/index.js"
-		},
 		"./awareness/registry": {
 			"types": "./dist/awareness/registry.d.ts",
 			"eliza-source": "./src/awareness/registry.ts",
@@ -605,12 +599,6 @@
 			"import": "./dist/contracts/first-run-routes.js",
 			"default": "./dist/contracts/first-run-routes.js"
 		},
-		"./contracts/health": {
-			"types": "./dist/contracts/health.d.ts",
-			"eliza-source": "./src/contracts/health.ts",
-			"import": "./dist/contracts/health.js",
-			"default": "./dist/contracts/health.js"
-		},
 		"./contracts/inbox-routes": {
 			"types": "./dist/contracts/inbox-routes.d.ts",
 			"eliza-source": "./src/contracts/inbox-routes.ts",
@@ -622,12 +610,6 @@
 			"eliza-source": "./src/contracts/inbox.ts",
 			"import": "./dist/contracts/inbox.js",
 			"default": "./dist/contracts/inbox.js"
-		},
-		"./contracts": {
-			"types": "./dist/contracts/index.d.ts",
-			"eliza-source": "./src/contracts/index.ts",
-			"import": "./dist/contracts/index.js",
-			"default": "./dist/contracts/index.js"
 		},
 		"./contracts/lifeops-connector-degradation": {
 			"types": "./dist/contracts/lifeops-connector-degradation.d.ts",
@@ -875,12 +857,6 @@
 			"import": "./dist/i18n/recurrence-markers.js",
 			"default": "./dist/i18n/recurrence-markers.js"
 		},
-		"./i18n/validation-keywords": {
-			"types": "./dist/i18n/validation-keywords.d.ts",
-			"eliza-source": "./src/i18n/validation-keywords.ts",
-			"import": "./dist/i18n/validation-keywords.js",
-			"default": "./dist/i18n/validation-keywords.js"
-		},
 		"./integration-observability": {
 			"types": "./dist/integration-observability.d.ts",
 			"eliza-source": "./src/integration-observability.ts",
@@ -892,12 +868,6 @@
 			"eliza-source": "./src/knowledge-graph/entity-types.ts",
 			"import": "./dist/knowledge-graph/entity-types.js",
 			"default": "./dist/knowledge-graph/entity-types.js"
-		},
-		"./knowledge-graph": {
-			"types": "./dist/knowledge-graph/index.d.ts",
-			"eliza-source": "./src/knowledge-graph/index.ts",
-			"import": "./dist/knowledge-graph/index.js",
-			"default": "./dist/knowledge-graph/index.js"
 		},
 		"./knowledge-graph/merge": {
 			"types": "./dist/knowledge-graph/merge.d.ts",
@@ -911,12 +881,6 @@
 			"import": "./dist/knowledge-graph/relationship-types.js",
 			"default": "./dist/knowledge-graph/relationship-types.js"
 		},
-		"./lifeops-constants": {
-			"types": "./dist/lifeops-constants/index.d.ts",
-			"eliza-source": "./src/lifeops-constants/index.ts",
-			"import": "./dist/lifeops-constants/index.js",
-			"default": "./dist/lifeops-constants/index.js"
-		},
 		"./lifeops-constants/service-constants": {
 			"types": "./dist/lifeops-constants/service-constants.d.ts",
 			"eliza-source": "./src/lifeops-constants/service-constants.ts",
@@ -928,12 +892,6 @@
 			"eliza-source": "./src/lifeops-normalize/calendar-time-zone.ts",
 			"import": "./dist/lifeops-normalize/calendar-time-zone.js",
 			"default": "./dist/lifeops-normalize/calendar-time-zone.js"
-		},
-		"./lifeops-normalize": {
-			"types": "./dist/lifeops-normalize/index.d.ts",
-			"eliza-source": "./src/lifeops-normalize/index.ts",
-			"import": "./dist/lifeops-normalize/index.js",
-			"default": "./dist/lifeops-normalize/index.js"
 		},
 		"./lifeops-normalize/owner-entity": {
 			"types": "./dist/lifeops-normalize/owner-entity.d.ts",
@@ -1006,12 +964,6 @@
 			"eliza-source": "./src/markdown/frontmatter.ts",
 			"import": "./dist/markdown/frontmatter.js",
 			"default": "./dist/markdown/frontmatter.js"
-		},
-		"./markdown": {
-			"types": "./dist/markdown/index.d.ts",
-			"eliza-source": "./src/markdown/index.ts",
-			"import": "./dist/markdown/index.js",
-			"default": "./dist/markdown/index.js"
 		},
 		"./markdown/ir": {
 			"types": "./dist/markdown/ir.d.ts",
@@ -1265,12 +1217,6 @@
 			"eliza-source": "./src/utils/tts-debug.ts",
 			"import": "./dist/utils/tts-debug.js",
 			"default": "./dist/utils/tts-debug.js"
-		},
-		"./validation-keywords": {
-			"types": "./dist/validation-keywords.d.ts",
-			"eliza-source": "./src/validation-keywords.ts",
-			"import": "./dist/validation-keywords.js",
-			"default": "./dist/validation-keywords.js"
 		},
 		"./views/host-external-contract": {
 			"types": "./dist/views/host-external-contract.d.ts",
