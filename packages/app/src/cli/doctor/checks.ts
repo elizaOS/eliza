@@ -421,7 +421,7 @@ export async function checkPort(port: number): Promise<CheckResult> {
   // Binding tests whether the app can listen; connection errors do not prove
   // availability (for example, a local permission failure or a dropped packet).
   const error = await new Promise<NodeJS.ErrnoException | null>((resolve) => {
-    const server = createServer();
+    const server = createServer((socket) => socket.destroy());
     let settled = false;
     const finish = (error: NodeJS.ErrnoException | null) => {
       if (settled) return;

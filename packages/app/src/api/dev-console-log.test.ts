@@ -57,8 +57,11 @@ it("continues short reads and never returns unread buffer bytes after truncation
     writeFileSync(log, "first\nsecond\nlast\n");
     const spy = vi
       .spyOn(fs, "readSync")
-      .mockImplementation((fd, buffer, offset, length, position) =>
-        read(fd, buffer, offset, Math.min(length, 4), position),
+      .mockImplementation((fd, buffer, options = {}) =>
+        read(fd, buffer, {
+          ...options,
+          length: Math.min(options.length ?? buffer.byteLength, 4),
+        }),
       );
     expect(readDevConsoleLogTail(log, { maxLines: 2 })).toEqual({
       ok: true,
@@ -66,12 +69,12 @@ it("continues short reads and never returns unread buffer bytes after truncation
     });
     expect(spy.mock.calls.length).toBeGreaterThan(1);
     let firstRead = true;
-    spy.mockImplementation((fd, buffer, offset, length, position) => {
+    spy.mockImplementation((fd, buffer, options) => {
       if (firstRead) {
         firstRead = false;
         fs.truncateSync(log, 6);
       }
-      return read(fd, buffer, offset, length, position);
+      return read(fd, buffer, options);
     });
     expect(readDevConsoleLogTail(log)).toEqual({ ok: true, body: "first\n" });
   } finally {

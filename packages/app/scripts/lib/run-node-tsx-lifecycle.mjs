@@ -19,7 +19,8 @@ export function signalChildProcessTree({
   signal,
 }) {
   if (child.exitCode != null || child.signalCode != null) return false;
-  if (platform !== "win32" && Number.isInteger(child.pid)) {
+  if (!Number.isInteger(child.pid) || child.pid <= 0) return false;
+  if (platform !== "win32") {
     try {
       killProcess(-child.pid, signal);
       return true;
@@ -35,7 +36,7 @@ export function signalChildProcessTree({
 
 /**
  * Poll the wrapper's parent because Node has no portable parent-death signal.
- * PID 1/0 means the launcher died and the wrapper was reparented.
+ * A different parent (including a subreaper) means the original launcher died.
  */
 export function startParentOrphanWatchdog({
   clearIntervalFn = clearInterval,
@@ -44,6 +45,7 @@ export function startParentOrphanWatchdog({
   readParentPid = () => process.ppid,
   setIntervalFn = setInterval,
 }) {
+  const initialParentPid = readParentPid();
   let triggered = false;
   let timer;
   const stop = () => {
@@ -52,7 +54,9 @@ export function startParentOrphanWatchdog({
     timer = undefined;
   };
   const check = () => {
-    if (triggered || readParentPid() > 1) return false;
+    const parentPid = readParentPid();
+    if (triggered || (parentPid > 1 && parentPid === initialParentPid))
+      return false;
     triggered = true;
     stop();
     onOrphan();

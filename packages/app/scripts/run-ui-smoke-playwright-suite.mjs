@@ -1,27 +1,15 @@
 /**
  * Launches the app package's UI-smoke Playwright runner
- * (scripts/run-ui-playwright.mjs), resolving the app dir across repo layouts
+ * (scripts/run-ui-playwright.mjs), resolving the app dir from this script
  * and reserving free localhost ports for the stub API and UI before spawning.
  */
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
-import { resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const candidateRoots = [
-  path.resolve(here, ".."),
-  path.resolve(here, "..", "..", "..", ".."),
-];
-const repoRoot =
-  candidateRoots.find((candidate) =>
-    fs.existsSync(
-      path.join(resolveMainAppDir(candidate, "app"), "package.json"),
-    ),
-  ) ?? path.resolve(here, "..");
-const appDir = resolveMainAppDir(repoRoot, "app");
+const appDir = path.resolve(here, "..");
 const uiPlaywrightRunner = path.join(
   appDir,
   "scripts",
@@ -64,7 +52,7 @@ for (const spec of specFiles) {
     nodeCmd,
     [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", spec],
     {
-      cwd: repoRoot,
+      cwd: appDir,
       env,
       stdio: "inherit",
     },

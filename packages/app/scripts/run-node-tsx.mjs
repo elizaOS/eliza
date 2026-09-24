@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import {
   parseRunNodeTsxArgs,
   signalChildProcessTree,
@@ -43,19 +44,6 @@ if (args.length === 0) {
   process.exit(1);
 }
 
-function withWorkspaceNodePath(env) {
-  const rootModules = path.join(process.cwd(), "node_modules");
-  const bunModules = path.join(rootModules, ".bun", "node_modules");
-  const modulePaths = [rootModules, bunModules];
-  return {
-    ...env,
-    NODE_PATH: env.NODE_PATH
-      ? `${modulePaths.join(path.delimiter)}${path.delimiter}${env.NODE_PATH}`
-      : modulePaths.join(path.delimiter),
-    PWD: process.cwd(),
-  };
-}
-
 const nodeArgs = [
   // WHY: this runner executes TypeScript workspace scripts before every
   // workspace package has a fresh dist build. Prefer source exports for
@@ -70,7 +58,7 @@ const nodeArgs = [
 const child = spawn(resolveNodeCmd(), nodeArgs, {
   cwd: process.cwd(),
   detached: exitWithParent && process.platform !== "win32",
-  env: withWorkspaceNodePath(process.env),
+  env: { ...extendNodePathEnv(process.env, process.cwd()), PWD: process.cwd() },
   stdio: "inherit",
 });
 

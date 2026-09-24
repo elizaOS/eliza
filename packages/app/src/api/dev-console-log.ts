@@ -83,13 +83,11 @@ export function readDevConsoleLogTail(
       const buf = Buffer.alloc(readSize);
       let bytesRead = 0;
       while (bytesRead < readSize) {
-        const count = fs.readSync(
-          fd,
-          buf,
-          bytesRead,
-          readSize - bytesRead,
-          start + bytesRead,
-        );
+        const count = fs.readSync(fd, buf, {
+          offset: bytesRead,
+          length: readSize - bytesRead,
+          position: start + bytesRead,
+        });
         if (count === 0) break;
         bytesRead += count;
       }

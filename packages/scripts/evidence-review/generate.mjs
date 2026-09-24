@@ -17,7 +17,7 @@ import {
   closeOcrEngines,
   ocrImage,
   resolveOcrEngine,
-} from "../../app/scripts/mvp-visual-verify/ocr.mjs";
+} from "@elizaos/testing/evidence/visual-primitives";
 import {
   analyzeImageFile,
   classifyArtifactPath,
@@ -28,7 +28,7 @@ import {
 } from "./lib.mjs";
 
 // sharp is not imported here: all pixel work runs inside
-// @elizaos/testing/evidence/visual-primitives (reached via lib.mjs and ocr.mjs), which
+// @elizaos/testing/evidence/visual-primitives (also reached via lib.mjs), which
 // owns the only `sharp` this repo resolves from a root-level script. Importing
 // it here fails module resolution (sharp is nested under the evidence package),
 // which is why analyzeImageFile no longer takes a sharp handle.

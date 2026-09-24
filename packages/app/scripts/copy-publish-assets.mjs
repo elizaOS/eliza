@@ -106,7 +106,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/dev-process-lifecycle.mjs",
   "scripts/lib/dev-trajectory-recovery.mjs",
   "scripts/lib/dev-ui-log-filter.mjs",
-  "scripts/lib/dev-ui-onchain.mjs",
   "scripts/lib/dev-ui-vision.mjs",
   "scripts/lib/dev-ui-vite.mjs",
   "scripts/lib/duet-bridge.ts",
