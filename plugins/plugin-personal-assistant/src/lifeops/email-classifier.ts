@@ -10,7 +10,7 @@ export type {
   EmailCategory,
   EmailClassification,
   EmailLikeMessage,
-} from "@elizaos/shared/email-classification/email-classifier";
+} from "@elizaos/shared";
 export {
   _resetEmailClassifierCache,
   classifyEmail,

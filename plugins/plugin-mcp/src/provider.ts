@@ -4,7 +4,7 @@
  * data without dropping any discovered server, tool, or resource.
  */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { formatMcpProviderForPrompt } from "@elizaos/shared/mcp";
+import { formatMcpProviderForPrompt } from "@elizaos/shared";
 import type { McpService } from "./service";
 import { MCP_SERVICE_NAME } from "./types";
 

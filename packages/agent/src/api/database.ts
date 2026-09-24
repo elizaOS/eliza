@@ -32,9 +32,10 @@ import {
   readJsonBody as parseJsonBody,
   type QueryResult,
   resolveApiBindHost,
+  sendJson,
+  sendJsonError,
   type TableInfo,
 } from "@elizaos/shared";
-import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   DatabaseConfig,

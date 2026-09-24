@@ -8,7 +8,7 @@ import type {
   WalletEntry,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/shared/contracts/wallet-types";
+} from "@elizaos/shared";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AgentStatus,

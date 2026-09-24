@@ -16,7 +16,7 @@ import {
 	type RemoteControllerGrant,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import {
 	digestRemoteResultValue,
 	openRemoteControlMessage,

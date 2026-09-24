@@ -16,8 +16,10 @@ import type {
   SensitiveRequestDeliveryAdapter,
   SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
-import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  readAliasedEnv,
+} from "@elizaos/shared";
 
 /**
  * Cloud API base used when neither a runtime setting nor an env override

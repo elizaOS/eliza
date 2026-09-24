@@ -16,7 +16,7 @@ import type {
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
-} from "@elizaos/shared/automation-node-contributors";
+} from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

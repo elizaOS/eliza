@@ -35,7 +35,7 @@ vi.mock("../../../hooks/useRuntimeMode", () => ({
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "../../../services/local-inference/types";
+} from "@elizaos/shared";
 
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the

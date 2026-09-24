@@ -27,7 +27,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseTcpPort } from "../lib/cli-numbers.mjs";
+import { parseTcpPort } from "../lib/cli-numbers.ts";
 import { connectionById, connectionStatus } from "./lib/connections.mjs";
 import {
   completeGoogleFlow,

@@ -7,11 +7,11 @@ Examples:
   python -m elizaos_webshop --use-sample-tasks --mock --max-tasks 3
 
   # Full Princeton WebShop, 1k-product profile (needs `fetch_data.py` first).
-  python scripts/fetch_data.py --profile small
+  python -m elizaos_webshop_tools.fetch_data --profile small
   python -m elizaos_webshop --profile small --bridge --max-tasks 50
 
   # 1.18M-product profile (large download).
-  python scripts/fetch_data.py --profile full
+  python -m elizaos_webshop_tools.fetch_data --profile full
   python -m elizaos_webshop --profile full --bridge --max-tasks 500
 """
 
@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Upstream data profile. 'small' = 1k products (default), "
             "'full' = ~1.18M products. Requires running "
-            "`python scripts/fetch_data.py --profile <profile>` first."
+            "`python -m elizaos_webshop_tools.fetch_data --profile <profile>` first."
         ),
     )
     p.add_argument("--hf", action="store_true", help="(deprecated) Load tasks from HuggingFace (tasks only)")

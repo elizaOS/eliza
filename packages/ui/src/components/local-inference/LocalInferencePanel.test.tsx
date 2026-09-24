@@ -42,10 +42,9 @@ vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>
     selector(appStateMock),
 }));
-vi.mock("../../utils/asset-url", () => ({
+vi.mock("@elizaos/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/shared")>()),
   resolveApiUrl: (path: string) => path,
-}));
-vi.mock("../../utils/eliza-globals", () => ({
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({

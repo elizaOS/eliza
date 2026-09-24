@@ -13,17 +13,21 @@
 import { existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/shared/runtime-env";
-import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import type {
+  ActiveModelState,
+  CatalogModel,
+  InstalledModel,
+} from "@elizaos/shared";
 import {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
-} from "./catalog";
+  resolvePlatform,
+} from "@elizaos/shared";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { localInferenceEngine } from "./engine";
 import { recommendForFirstRun } from "./recommendation";
 import { touchElizaModel } from "./registry";
-import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
 
 export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 export {

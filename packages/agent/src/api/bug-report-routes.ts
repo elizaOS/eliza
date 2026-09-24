@@ -14,8 +14,8 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";

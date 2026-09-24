@@ -11,7 +11,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";

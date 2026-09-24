@@ -19,19 +19,12 @@ export default defineConfig({
   ...baseConfig,
   resolve: {
     ...baseConfig.resolve,
-    // goals.real-db.test.ts drives PA's lifeops/repository.ts, which reads the
-    // carved DB schemas/repos/factories from these server-safe plugin subpaths.
-    // The package barrels re-export React views (→ @elizaos/ui → react-router)
-    // and must never enter the keyless node test graph, so the repository imports
-    // the leaf DB modules directly. Those subpaths carry no `bun` export
-    // condition, so anchor each to source explicitly (the modules depend only on
-    // @elizaos/core + drizzle).
+    // Resolve workspace dependencies to the current source revision for the
+    // real-database tests, including the Relationships package root.
     alias: [
       {
-        find: /^@elizaos\/plugin-relationships\/knowledge-graph$/,
-        replacement: sourceOf(
-          "../plugin-relationships/src/knowledge-graph/index.ts",
-        ),
+        find: /^@elizaos\/plugin-relationships$/,
+        replacement: sourceOf("../plugin-relationships/src/index.ts"),
       },
       {
         find: /^@elizaos\/ui$/,

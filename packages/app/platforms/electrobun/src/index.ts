@@ -5,10 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { formatError } from "@elizaos/core";
-import {
-	resolveApiToken,
-	resolveDesktopApiPort,
-} from "@elizaos/shared/runtime-env";
+import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
 	ApplicationMenu,

@@ -7,7 +7,7 @@
  *
  * For the first cut we ship a single small-MobileFaceNet-style
  * architecture and tag it as `facenet_128`. The architecture is
- * defined here AND in `scripts/face_embed_to_gguf.py` — the converter
+ * defined here AND in `packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py` — the converter
  * builds a torch model with the matching topology, optionally pulls
  * pretrained weights from facenet-pytorch's InceptionResnetV1 head,
  * projects them down to 128-d via a fixed orthonormal matrix, and
@@ -39,7 +39,7 @@
  *   l2 norm:    x / ||x||_2                                → (128,)
  *
  * GGUF tensor naming (matches the keys produced by
- * scripts/face_embed_to_gguf.py):
+ * packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py):
  *
  *   emb.stem.weight                (32, 3, 3, 3)
  *   emb.stem.bias                  (32,)

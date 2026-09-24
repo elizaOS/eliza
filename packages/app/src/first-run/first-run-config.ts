@@ -10,22 +10,20 @@
  * resolved no LLM route). Side-effect free; callers apply the result.
  */
 
-import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceRouteConfig,
+  ServiceRoutingConfig,
+} from "@elizaos/shared";
 import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
   type FirstRunCredentialInputs,
   type FirstRunLocalProviderId,
   normalizeFirstRunProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared/contracts/first-run-options";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-} from "@elizaos/shared/contracts/service-routing";
-import type {
-  LinkedAccountFlagsConfig,
-  ServiceRouteConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing-types";
+} from "@elizaos/shared";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,

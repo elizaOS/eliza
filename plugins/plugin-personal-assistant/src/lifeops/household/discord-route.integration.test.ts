@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

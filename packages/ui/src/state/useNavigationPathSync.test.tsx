@@ -6,11 +6,11 @@
  * preserving the browser path that names the exact owning page.
  */
 
+import { resetUiRegistryHostForTests } from "@elizaos/shared";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import type { Tab } from "../navigation";
-import { resetUiRegistryHostForTests } from "../registry-host";
 import { useNavigationPathSync } from "./useAppProviderEffects";
 
 afterEach(() => {

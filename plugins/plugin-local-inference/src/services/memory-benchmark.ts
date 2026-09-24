@@ -11,7 +11,7 @@ import {
 	ELIZA_1_CONTEXT_TARGET,
 	ELIZA_1_KV_QUANT,
 	selectBestEliza1Fit,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import type { ArbiterEvent } from "./memory-arbiter";
 import type {
 	CatalogModel,

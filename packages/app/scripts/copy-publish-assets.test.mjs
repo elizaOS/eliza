@@ -121,7 +121,7 @@ it("ships consumer build tools without private repository test dependencies", as
       readFileSync(
         path.join(
           repositoryRoot,
-          "plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+          "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
         ),
       ),
     );

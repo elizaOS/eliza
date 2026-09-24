@@ -68,9 +68,6 @@
         "../../../plugins/plugin-native-messages/src/index.ts"
       ],
       "@elizaos/plugin-openai": ["../../../plugins/plugin-openai/index.ts"],
-      "@elizaos/plugin-openai/endpoint-config": [
-        "../../../plugins/plugin-openai/utils/config.ts"
-      ],
       "@elizaos/plugin-native-phone": [
         "../../../plugins/plugin-native-phone/src/index.ts"
       ],
@@ -195,7 +192,6 @@
       "@elizaos/plugin-telegram": [
         "../../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-mcp/*": ["../../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/*": ["../../../plugins/plugin-todos/src/*"],
       "@elizaos/plugin-vision": ["../../../plugins/plugin-vision/src/index.ts"],

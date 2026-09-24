@@ -45,17 +45,17 @@ import {
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import type {
+  AppPackageRouteContext,
   HttpPlugin as Plugin,
   Route,
   RouteHandlerContext,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import {
   getHttpRuntime,
   getPluginHttpRoutes,
 } from "@elizaos/shared/api/http-plugin-runtime";
-import type { AppPackageRouteContext } from "@elizaos/shared/api/route-helpers";
 import {
   type AppRouteModule,
   hasRuntimeAppRouteModule,

@@ -1,6 +1,11 @@
 /** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 import { Capacitor } from "@capacitor/core";
 import {
+  BROWSER_TAB_PRELOAD_SCRIPT,
+  resolveApiUrl,
+  setBrowserTabsRendererImpl,
+} from "@elizaos/shared";
+import {
   ArrowLeft,
   ArrowRight,
   EllipsisVertical,
@@ -30,11 +35,6 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
-import { resolveApiUrl } from "../../utils/asset-url";
-import {
-  BROWSER_TAB_PRELOAD_SCRIPT,
-  setBrowserTabsRendererImpl,
-} from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";

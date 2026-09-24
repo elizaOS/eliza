@@ -12,7 +12,7 @@
  * stable `commandId` so the authority can retain its terminal outcome.
  */
 
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type { TranscriptSegment } from "@elizaos/shared";
 import type { ImageAttachment } from "../../../api/client-types-chat";
 import type { OsIntent } from "../../../os-intent/contract";
 import { decodeOsIntent } from "../../../os-intent/decode";

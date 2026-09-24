@@ -26,10 +26,10 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
   ] = await Promise.all([
     read("linux/elizaos/Makefile"),
     read("linux/elizaos/Dockerfile"),
-    read("linux/elizaos/scripts/ensure-foreign-binfmt.sh"),
+    read("scripts/linux/ensure-foreign-binfmt.sh"),
     read("linux/elizaos/mkosi/mkosi.finalize.chroot"),
-    read("linux/elizaos/scripts/mkosi-qemu-qualify.py"),
-    read("linux/elizaos/scripts/mkosi-persistence-qualify.py"),
+    read("scripts/linux/mkosi-qemu-qualify.py"),
+    read("scripts/linux/mkosi-persistence-qualify.py"),
     read("linux/elizaos/debian-snapshot.lock.json").then(JSON.parse),
   ]);
 
@@ -43,7 +43,7 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
   assert.match(dockerfile, /^ {8}ipxe-qemu \\/m);
   assert.match(
     makefile,
-    /ELIZAOS_ARCH=\$\(ARCH\) \/work\/src\/elizaos\/scripts\/ensure-foreign-binfmt\.sh/,
+    /ELIZAOS_ARCH=\$\(ARCH\) \/work\/src\/scripts\/linux\/ensure-foreign-binfmt\.sh/,
   );
   assert.match(binfmt, /\/usr\/lib\/binfmt\.d\/\$handler\.conf/);
   assert.match(binfmt, />\/proc\/sys\/fs\/binfmt_misc\/register/);

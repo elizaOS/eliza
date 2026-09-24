@@ -24,6 +24,7 @@
     "src/test-utils/**",
     "test/**",
     "vitest.config.ts",
+    "vite.config.views.ts",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.spec.ts",

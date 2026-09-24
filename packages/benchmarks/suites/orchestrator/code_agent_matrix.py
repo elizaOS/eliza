@@ -1080,7 +1080,7 @@ def default_command(
     if benchmark == "osworld":
         cmd = [
             python,
-            "scripts/python/run_multienv_eliza.py",
+            "../../scripts/osworld/python/run_multienv_eliza.py",
             "--model",
             model,
             "--result_dir",

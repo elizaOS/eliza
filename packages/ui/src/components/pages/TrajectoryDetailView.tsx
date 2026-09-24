@@ -6,6 +6,11 @@
  */
 
 import {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "@elizaos/shared";
+import {
   Brain,
   CheckCircle,
   MessageSquare,
@@ -27,11 +32,6 @@ import type {
   TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state";
-import {
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
-} from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
 import {
   type TrajectoryCacheMetric,

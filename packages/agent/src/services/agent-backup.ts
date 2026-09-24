@@ -30,11 +30,11 @@ import {
   type AgentBackupCaptureV2FrameHeader,
   type AgentBackupCaptureV2Request,
   compareAgentBackupCaptureV2FilePaths,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
 } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
   stableJsonString,

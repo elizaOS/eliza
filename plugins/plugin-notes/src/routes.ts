@@ -5,7 +5,7 @@
  */
 
 import { isElizaError, toElizaError } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 import { getNotesService } from "./service.js";
 
 export const notesRoutes: Route[] = [

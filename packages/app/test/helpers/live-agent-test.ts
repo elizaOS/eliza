@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import type { UUID } from "@elizaos/core";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, it } from "vitest";
 

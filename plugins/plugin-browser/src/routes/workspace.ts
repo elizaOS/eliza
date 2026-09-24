@@ -7,7 +7,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
 import {
   type BrowserWorkspaceErrorCode,

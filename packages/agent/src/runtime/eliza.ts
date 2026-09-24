@@ -168,6 +168,7 @@ import {
   subAgentCredentialsPlugin,
 } from "@elizaos/plugin-assistant";
 import {
+  buildDefaultElizaCloudServiceRouting,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   getFirstRunProviderOption,
@@ -185,7 +186,6 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import {
   type AgentHostBridge,

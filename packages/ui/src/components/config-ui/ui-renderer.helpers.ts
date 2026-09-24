@@ -5,15 +5,16 @@
  * XSS from agent-authored specs), and enumerates the supported component types.
  * No React — logic only, so it can be unit-tested in isolation.
  */
-import {
-  getByPath,
-  matchesSafeUntrustedRegexPattern,
-} from "../../config/config-catalog";
+
 import type {
   AuthState,
   UiSpecValidationCheck,
   UiSpecVisibilityCondition,
-} from "../../config/ui-spec";
+} from "@elizaos/shared";
+import {
+  getByPath,
+  matchesSafeUntrustedRegexPattern,
+} from "../../config/config-catalog";
 
 const BLOCKED_LINK_PROTOCOLS = new Set([
   "javascript",

@@ -13,10 +13,7 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
  */
 
 import type { AccessContext, IAgentRuntime } from "@elizaos/core";
-import type {
-  Route,
-  RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+import type { Route, RouteHandlerResult } from "@elizaos/shared";
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";

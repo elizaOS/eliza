@@ -1,4 +1,4 @@
-import type { RouteHandlerResult } from "@elizaos/shared/api/http-plugin";
+import type { RouteHandlerResult } from "@elizaos/shared";
 import {
   buildLegacyShim,
   capturedToResult,

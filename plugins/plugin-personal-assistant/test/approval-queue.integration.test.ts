@@ -24,7 +24,7 @@ import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import {
   type DispatchResult,
   schedulingPlugin,

@@ -12,11 +12,11 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
+  composePromptFromState,
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,
-} from "../templates/toolSelectionTemplate";
+} from "@elizaos/shared";
 import type { McpProvider } from "../types";
 import type { ToolSelectionArgument, ToolSelectionName } from "./schemas";
 import {

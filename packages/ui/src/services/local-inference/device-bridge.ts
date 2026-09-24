@@ -38,7 +38,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   computeGenerationThroughput,
   type GenerationThroughput,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import type {
   LocalInferenceLoadArgs,

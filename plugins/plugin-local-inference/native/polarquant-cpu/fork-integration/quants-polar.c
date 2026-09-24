@@ -20,7 +20,7 @@
 //            inverse Walsh-Hadamard -> rescale by L2 norm / QK_POLAR.
 //
 // QJL is **on by default** in this in-fork TU because the GGUF
-// converter at scripts/polarquant_to_gguf.py only ever emits Q4_POLAR
+// converter at packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/polarquant_to_gguf.py only ever emits Q4_POLAR
 // tensors with the QJL bits populated. A no-QJL variant should bump a
 // metadata key in the GGUF and the type-traits hookup will branch on that.
 #include "quants-polar.h"
@@ -38,7 +38,7 @@
 
 // 16 Lloyd-Max centroids for X ~ N(0, 1), 100-iter convergence.
 // Bit-exact match against
-//   plugins/plugin-local-inference/native/polarquant-cpu/scripts/gen_centroids.py
+//   packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/gen_centroids.py
 // which mirrors
 //   packages/training/scripts/quantization/polarquant/polar_quant.py
 //   ::_compute_lloyd_max_centroids(n_levels=16, n_iter=100)

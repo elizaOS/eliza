@@ -1,7 +1,7 @@
 /** Exercises bounded JUnit reconciliation against Bun and Vitest shapes. */
 
 import { describe, expect, test } from "bun:test";
-import { MAX_JUNIT_BYTES, parseJunitSummary } from "../lib/junit-summary.mjs";
+import { MAX_JUNIT_BYTES, parseJunitSummary } from "../lib/junit-summary.ts";
 
 const bunNested = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="bun test" tests="2" assertions="1" failures="0" skipped="1">

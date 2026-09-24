@@ -17,7 +17,7 @@ import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import {
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

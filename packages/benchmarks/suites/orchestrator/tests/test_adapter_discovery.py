@@ -1165,7 +1165,7 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             if benchmark_id == "interrupt_bench":
                 assert "--mode=harness" in cell.command
             if benchmark_id == "eliza_1":
-                assert "scripts/harness_runner.py" in cell.command_display
+                assert "../../scripts/eliza-1/harness_runner.py" in cell.command_display
                 assert "--harness" in cell.command
                 assert cell.command[cell.command.index("--harness") + 1] == harness
             if benchmark_id == "orchestrator_lifecycle":

@@ -20,7 +20,7 @@
  * release fills, uploads roll deterministically into `pr-evidence-2`,
  * `pr-evidence-3`, … — the newest release with free capacity, creating the next
  * one when none has room. Every emitted URL points at whichever release actually
- * holds the asset, and the evidence gate (check-pr-evidence.mjs) accepts the
+ * holds the asset, and the evidence gate (check-pr-evidence.ts) accepts the
  * whole `pr-evidence`/`pr-evidence-N` family identically.
  * `rows` accepts a local file (uploaded automatically), an existing URL, or an
  * `N/A - reason` string per row; rows not named are left untouched. Every
@@ -493,7 +493,7 @@ async function runGate(pr, body, headSha) {
     hasMatchingEvidenceHead,
     verifyReferencedArtifacts,
   } = await import(
-    pathToFileURL(join(import.meta.dirname, "check-pr-evidence.mjs")).href
+    pathToFileURL(join(import.meta.dirname, "check-pr-evidence.ts")).href
   );
   const labels = gh([
     "pr",

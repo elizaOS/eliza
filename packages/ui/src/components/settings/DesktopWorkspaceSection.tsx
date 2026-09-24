@@ -7,6 +7,7 @@
  * the browser.
  */
 
+import { resolveApiUrl } from "@elizaos/shared";
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -22,7 +23,6 @@ import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelector } from "../../state";
-import { resolveApiUrl } from "../../utils/asset-url";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   DESKTOP_WORKSPACE_SURFACES,

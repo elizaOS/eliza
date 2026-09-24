@@ -21,7 +21,7 @@ import {
   isLoopbackBindHost,
   type RuntimeEnvRecord,
   resolveApiBindHost,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import type {
   AppendAuditEventInput,
   AuthRepository,

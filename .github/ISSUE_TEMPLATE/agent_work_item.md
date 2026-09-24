@@ -32,11 +32,8 @@ does not apply.
 - [ ] Domain artifacts:
 - [ ] CI or local commands:
 
-## Claim / Status Notes
+## Status
 
-Before working, comment `CLAIMING: <scope>` with your lane tag, add this issue
-to the active Project, set `Status = Claimed`, and set `Claimed by = <tag>`.
-When active work starts, move the card to `In progress`.
+<!-- Link related work and note blockers or the next step. -->
 
-Follow the full workflow in [`AGENTS.md`](../../AGENTS.md) (claim
-protocol, GitHub Projects states, and the mechanically-enforced evidence bar).
+Follow the repository guidance in [AGENTS.md](../../AGENTS.md).

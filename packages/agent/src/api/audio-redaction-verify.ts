@@ -37,8 +37,8 @@ import type {
   RedactionTranscribeInput,
   RedactionTranscriber,
   RedactionTranscript,
-} from "@elizaos/shared/audio-redaction-verify";
-import type { TranscriptWord } from "@elizaos/shared/transcripts";
+  TranscriptWord,
+} from "@elizaos/shared";
 import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
 
 // ---------------------------------------------------------------------------

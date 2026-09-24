@@ -11,4 +11,4 @@ import "./styles/brand-gold.css";
 // would emit base utilities again after responsive overrides.
 import "@rainbow-me/rainbowkit/styles.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
-import "@elizaos/ui/styles/login.css";
+import "./styles/login.css";

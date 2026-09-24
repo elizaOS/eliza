@@ -1,6 +1,6 @@
 /** Enqueues owner-authenticated commands and leases them to the bound host. */
 
-import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared/contracts/remote-control";
+import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";

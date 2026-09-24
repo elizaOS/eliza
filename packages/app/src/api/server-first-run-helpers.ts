@@ -9,28 +9,24 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/shared/character-language";
-import {
-  getDefaultStylePreset,
-  getStylePresets,
-} from "@elizaos/shared/character-presets";
-import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
-import {
-  deriveFirstRunCredentialPersistencePlan,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunCredentialInputs,
-} from "@elizaos/shared/contracts/first-run-options";
-import {
-  normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountFlagsConfig,
-  normalizeServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
 import type {
+  DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
   ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing-types";
-import { isCloudProvisionedContainer } from "@elizaos/shared/elizacloud/cloud-provisioning";
-import { PREMADE_VOICES } from "@elizaos/shared/voice";
+} from "@elizaos/shared";
+import {
+  deriveFirstRunCredentialPersistencePlan,
+  getDefaultStylePreset,
+  getStylePresets,
+  isCloudProvisionedContainer,
+  migrateLegacyRuntimeConfig,
+  normalizeCharacterLanguage,
+  normalizeDeploymentTargetConfig,
+  normalizeFirstRunCredentialInputs,
+  normalizeLinkedAccountFlagsConfig,
+  normalizeServiceRoutingConfig,
+  PREMADE_VOICES,
+} from "@elizaos/shared";
 import { resolveProviderCredential } from "./credential-resolver";
 import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
 

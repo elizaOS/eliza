@@ -14,7 +14,7 @@
 
 import type { Buffer } from "node:buffer";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
-import { validateAsrWordTimings } from "@elizaos/shared/transcripts";
+import { validateAsrWordTimings } from "@elizaos/shared";
 
 export interface AsrTranscribeOptions {
   /** BCP-47 language hint; auto-detect when absent. */

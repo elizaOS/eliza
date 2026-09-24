@@ -35,7 +35,7 @@ import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateAsrWordTimings } from "@elizaos/shared/transcripts";
+import { validateAsrWordTimings } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { decodeMonoPcm16Wav } from "./engine-bridge";

@@ -16,7 +16,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";
 const VERIFY_PATH = "/api/identity/person-links/verify";

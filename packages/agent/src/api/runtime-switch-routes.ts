@@ -45,8 +45,8 @@ import {
   findCatalogModel,
   type ProviderId,
   readJsonBody,
+  resolveServerOnlyPort,
 } from "@elizaos/shared";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import { PendingRequestMap } from "./pending-request-map.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared

@@ -20,9 +20,8 @@ import {
   parseArtifactShareGrants,
   resolveArtifactDisclosure,
 } from "@elizaos/core";
-import type { MeetingSession } from "@elizaos/shared";
-import type { TranscriptScope } from "@elizaos/shared/transcripts";
-import { normalizeTranscriptScope } from "@elizaos/shared/transcripts";
+import type { MeetingSession, TranscriptScope } from "@elizaos/shared";
+import { normalizeTranscriptScope } from "@elizaos/shared";
 
 function transcriptScopeFromRow(row: Memory): TranscriptScope {
   const raw = (row.content as { transcript?: unknown } | undefined)?.transcript;

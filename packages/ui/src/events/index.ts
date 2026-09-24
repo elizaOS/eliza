@@ -18,7 +18,7 @@ import {
   type NavigateViewEvent,
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
@@ -64,7 +64,7 @@ export {
   VOICE_CONFIG_UPDATED_EVENT,
   // Avatar / VRM
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
 export * from "../views/view-event-bus";
 export * from "../views/view-event-types";

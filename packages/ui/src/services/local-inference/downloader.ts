@@ -21,7 +21,13 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { ensureDefaultAssignment } from "./assignments";
+import type {
+  CatalogModel,
+  DownloadEvent,
+  DownloadJob,
+  DownloadState,
+  InstalledModel,
+} from "@elizaos/shared";
 import {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
@@ -30,7 +36,8 @@ import {
   isEliza1TierId,
   isEliza1TierPublished,
   tierBundleSlug,
-} from "./catalog";
+} from "@elizaos/shared";
+import { ensureDefaultAssignment } from "./assignments";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
   type Eliza1DeviceCaps,
@@ -46,13 +53,6 @@ import {
   localInferenceRoot,
 } from "./paths";
 import { upsertElizaModel } from "./registry";
-import type {
-  CatalogModel,
-  DownloadEvent,
-  DownloadJob,
-  DownloadState,
-  InstalledModel,
-} from "./types";
 import { hashFile } from "./verify";
 
 interface ActiveJob {

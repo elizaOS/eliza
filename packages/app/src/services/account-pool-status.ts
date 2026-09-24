@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
+import type { LinkedAccountConfig } from "@elizaos/shared";
 import {
   type AccountPool,
   getDefaultAccountPool,

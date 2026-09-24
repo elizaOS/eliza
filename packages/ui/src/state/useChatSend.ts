@@ -5,9 +5,9 @@
  * streaming, stop, retry, edit, clear, and queue management.
  */
 
+import { asRecord } from "@elizaos/shared";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/shared/browser-contracts";
 import { logger } from "@elizaos/shared/logger";
-import { asRecord } from "@elizaos/shared/type-guards";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation } from "../api";
 import {

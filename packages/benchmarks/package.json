@@ -18,7 +18,7 @@
     "test:plugin": "bun run --cwd plugin-benchmarks test",
     "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",
     "test:py": "pytest tests/ -v",
-    "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development suites/lifeops-bench/scripts/export-action-manifest.ts"
+    "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development scripts/lifeops-bench/export-action-manifest.ts"
   },
   "engines": {
     "node": "24.15.0",

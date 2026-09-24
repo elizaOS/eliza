@@ -16,8 +16,8 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/shared";
 import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

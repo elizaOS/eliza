@@ -7,12 +7,12 @@ import type {
   EncryptedRemoteControlEnvelope,
   RemoteControllerPlatform,
   RemoteControllerPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import {
   isEncryptedRemoteControlEnvelope,
   isRemoteControlIdentifier,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 import { fetchAgentTransport } from "./transport";

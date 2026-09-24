@@ -16,7 +16,7 @@ import {
   ServiceType,
   stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
-import type { RouteHandlerResult } from "@elizaos/shared/api/http-plugin";
+import type { RouteHandlerResult } from "@elizaos/shared";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";

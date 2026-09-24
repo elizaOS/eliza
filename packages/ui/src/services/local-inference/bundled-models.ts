@@ -27,6 +27,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { InstalledModel } from "@elizaos/shared";
 import {
   ensureDefaultAssignment,
   readAssignments,
@@ -34,7 +35,6 @@ import {
 } from "./assignments";
 import { elizaModelsDir } from "./paths";
 import { upsertElizaModel } from "./registry";
-import type { InstalledModel } from "./types";
 
 interface BundledModelEntry {
   id: string;

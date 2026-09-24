@@ -10,7 +10,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {

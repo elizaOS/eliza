@@ -2,19 +2,35 @@
  * Barrel for the local-inference service: catalog, readiness, assignments,
  * downloader, and engine surface.
  */
+
+export type {
+  ActiveModelState,
+  CatalogModel,
+  DownloadEvent,
+  DownloadJob,
+  DownloadState,
+  HardwareFitLevel,
+  HardwareProbe,
+  InstalledModel,
+  LocalInferenceDownloadStatus,
+  LocalInferenceReadiness,
+  LocalInferenceSlotReadiness,
+  ModelBucket,
+  ModelCategory,
+  ModelHubSnapshot,
+  TextGenerationSlot,
+} from "@elizaos/shared";
 export {
   computeGenerationThroughput,
-  type GenerationCounters,
-  type GenerationThroughput,
-  isGenerationCounters,
-} from "@elizaos/shared/local-inference";
-export type { LocalInferenceLoader } from "./active-model";
-export {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
   MODEL_CATALOG,
-} from "./catalog";
+} from "@elizaos/shared";
+export type { LocalInferenceLoader } from "./active-model";
 export {
   filterSettingsDefaultLocalModels,
   isDefaultLocalModelFamily,
@@ -54,20 +70,3 @@ export {
   type SnapshotThermalState,
 } from "./resource-snapshot-bridge";
 export { LocalInferenceService, localInferenceService } from "./service";
-export type {
-  ActiveModelState,
-  CatalogModel,
-  DownloadEvent,
-  DownloadJob,
-  DownloadState,
-  HardwareFitLevel,
-  HardwareProbe,
-  InstalledModel,
-  LocalInferenceDownloadStatus,
-  LocalInferenceReadiness,
-  LocalInferenceSlotReadiness,
-  ModelBucket,
-  ModelCategory,
-  ModelHubSnapshot,
-  TextGenerationSlot,
-} from "./types";

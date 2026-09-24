@@ -257,7 +257,7 @@ const integrationConfig = {
       // packages/agent/src/** was dead in the same way as the two cases
       // above, and its test/** sibling on line 332 only looks covered: the
       // agent package's own lanes exclude the `.integration.test.` suffix
-      // (vitest.config.ts and scripts/run-vitest-batches.mjs), so this config
+      // (vitest.config.ts and scripts/run-vitest-batches.ts), so this config
       // is the only lane that can run those files (#17778). Both agent roots
       // are listed so a new suite is picked up by pattern rather than by an
       // author remembering to add it somewhere.

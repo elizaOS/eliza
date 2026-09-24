@@ -37,7 +37,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import type { AudioRedactionSpan } from "@elizaos/shared/audio-redaction";
+import type { AudioRedactionSpan } from "@elizaos/shared";
 import {
   AudioRedactionChildError,
   runAudioRedactionChild,

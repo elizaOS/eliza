@@ -1742,7 +1742,7 @@ function packageDesktopBuild() {
     ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
     ELIZA_BUILD_VARIANT: buildVariant,
-    PATH: `${path.join(ELECTROBUN_DIR, "scripts", "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+    PATH: `${path.join(APP_DIR, "scripts", "electrobun", "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
     ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
@@ -1816,11 +1816,14 @@ function packageDesktopBuild() {
     // launches. Keep this outer repair only for unsigned release-style builds
     // whose hook deliberately declines the dev-only identity.
     const appBundlePath = findLatestMacAppBundle();
-    runBun(["scripts/local-adhoc-sign-macos.ts", appBundlePath], {
-      cwd: ELECTROBUN_DIR,
-      env: packageEnv,
-      label: `Applying local ad-hoc Eliza signing (${path.basename(appBundlePath)})`,
-    });
+    runBun(
+      ["../../scripts/electrobun/local-adhoc-sign-macos.ts", appBundlePath],
+      {
+        cwd: ELECTROBUN_DIR,
+        env: packageEnv,
+        label: `Applying local ad-hoc Eliza signing (${path.basename(appBundlePath)})`,
+      },
+    );
   }
 
   // Mac App Store post-package codesign: when building the store variant on

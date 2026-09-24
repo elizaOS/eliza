@@ -7,7 +7,7 @@ import type {
   LegacyRouteHandler,
   PaymentEnabledRoute,
   Route,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 
 export interface X402PluginModule {
   __mobileStub?: boolean;

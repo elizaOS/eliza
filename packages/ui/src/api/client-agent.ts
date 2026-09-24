@@ -4,20 +4,18 @@
  */
 
 import type {
+  AllPermissionsState,
   FirstRunConnectorConfig as ConnectorConfig,
   FirstRunOptions,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/first-run-options";
-import type {
-  AllPermissionsState,
   PermissionId,
   PermissionState,
-} from "@elizaos/shared/contracts/permissions";
+  SubscriptionStatusResponse,
+} from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared/settings-debug";
+} from "@elizaos/shared";
 import {
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,

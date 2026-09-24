@@ -4,12 +4,12 @@
  * case-insensitive-slug states.
  */
 
+import type { OverlayAppContext } from "@elizaos/shared";
+import { registerOverlayApp } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactElement } from "react";
 import { Button } from "../ui/button";
 import { AppWindowRenderer } from "./AppWindowRenderer";
-import type { OverlayAppContext } from "./overlay-app-api";
-import { registerOverlayApp } from "./overlay-app-registry";
 
 function MockOverlayComponent(props: OverlayAppContext): ReactElement {
   return (

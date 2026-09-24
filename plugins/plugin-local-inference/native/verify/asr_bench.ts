@@ -43,7 +43,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 
 import { loadElizaInferenceFfi } from "../../src/services/voice/ffi-bindings";
-import { validateAsrWordTimings } from "@elizaos/shared/transcripts";
+import { validateAsrWordTimings } from "@elizaos/shared";
 
 /* --------------------------------- args --------------------------------- */
 

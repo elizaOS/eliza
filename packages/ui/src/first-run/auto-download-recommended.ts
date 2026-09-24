@@ -21,13 +21,10 @@
  *   - download POST fails → silent skip, no marker.
  */
 
+import type { CatalogModel, ModelHubSnapshot } from "@elizaos/shared";
 import { client } from "../api";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";
-import type {
-  CatalogModel,
-  ModelHubSnapshot,
-} from "../services/local-inference/types";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";

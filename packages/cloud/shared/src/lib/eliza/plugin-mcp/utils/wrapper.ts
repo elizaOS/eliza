@@ -8,8 +8,8 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { parseJSON } from "@elizaos/shared";
 import { DEFAULT_MAX_RETRIES, type ValidationResult } from "../types";
-import { parseJSON } from "./json";
 
 export interface WithModelRetryOptions<T> {
   runtime: IAgentRuntime;

@@ -6,7 +6,7 @@
 import type {
   CharacterLanguage,
   StylePreset,
-} from "@elizaos/shared/contracts/first-run-options";
+} from "./contracts/first-run-options.js";
 
 export type CharacterVariant = {
   catchphrase: string;

@@ -40,7 +40,7 @@ import type {
   RouteBodyValue,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import {
   type CapturedAction,

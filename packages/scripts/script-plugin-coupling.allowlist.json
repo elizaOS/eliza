@@ -282,5 +282,140 @@
     "file": "packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
     "tokens": ["plugins/plugin-native-inference"],
     "reason": "Package-owned native-inference build guard inspects its Android bridge manifest."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts",
+    "tokens": ["plugins/plugin-vision"],
+    "reason": "Package-owned vision dependency tooling relocated into the repository script directory."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/native/voice-bench/generate-fixtures.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned native voice fixture generator relocated into repository tooling."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-workbench.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/echo-aec-evidence.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/asr-real-smoke.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-bench-synth-worker.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-voice-stack.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/generate-voice-corpus.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/local-inference-ablation.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-robustness-asr.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/noise-rejection-real.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/memory-benchmark.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/real-agent-voice-overlap.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/mixed-real-roundtrip.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/voice-bench-shared.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/local-model-lifecycle-matrix.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/kokoro-real-smoke.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/stt-quant-bench-real.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/meeting-acoustic-stress-real.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-local-inference/speaker-isolation-real.ts",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-macos-desktop-evidence.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-windows-desktop-evidence.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/capture-linux-desktop-evidence.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/record-windows-cua-input.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.mjs",
+    "tokens": ["plugins/plugin-computeruse"],
+    "reason": "package-owned computer-use evidence tooling relocates to the canonical scripts tree while retaining its plugin sources and platform manifests"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-native-bun-runtime/engine/engine-paths.mjs",
+    "tokens": ["plugins/plugin-native-bun-runtime"],
+    "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
   }
 ]

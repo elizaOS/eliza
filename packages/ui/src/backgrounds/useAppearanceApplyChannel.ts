@@ -9,13 +9,13 @@
 import {
   APPEARANCE_APPLY_EVENT,
   type AppearanceApplyPayload,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { useViewEvent } from "../hooks/useViewEvent";
 import { UI_LANGUAGES, type UiLanguage } from "../i18n";
 import { useAppSelector } from "../state/app-store";
 import { ACCENT_PRESETS, type UiThemeMode } from "../state/ui-preferences";
 
-export type { AppearanceApplyPayload } from "@elizaos/shared/events";
+export type { AppearanceApplyPayload } from "@elizaos/shared";
 export { APPEARANCE_APPLY_EVENT };
 
 const THEME_MODES = new Set<UiThemeMode>(["light", "dark", "system"]);

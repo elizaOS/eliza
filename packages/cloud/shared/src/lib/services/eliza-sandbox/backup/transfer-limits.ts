@@ -1,5 +1,5 @@
 /** Reads snapshot transfer bodies against explicit transport limits and rejects incomplete or oversized state. Error-body excerpts are diagnostics only and never become restored agent context. */
-import { resolveRetainableAgentBackupBytes } from "@elizaos/shared/agent-backup-limits";
+import { resolveRetainableAgentBackupBytes } from "@elizaos/shared";
 import { type AgentBackupStateData } from "../../../../db/schemas/agent-sandboxes";
 
 /**

@@ -1,10 +1,11 @@
 /** Exercises the rendered Settings download action against real catalog publication and hardware policy. */
 // @vitest-environment jsdom
+
+import type { HardwareProbe } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
-import type { HardwareProbe } from "../../services/local-inference/types";
 import { FirstRunOffer } from "./FirstRunOffer";
 
 const hardware: HardwareProbe = {

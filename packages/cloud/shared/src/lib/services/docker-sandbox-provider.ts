@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { WARM_POOL_ORG_ID } from "../../db/schemas/agent-sandboxes";

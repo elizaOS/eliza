@@ -23,11 +23,11 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType, parseBooleanFromText } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/shared";
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
 } from "@elizaos/shared/i18n/keyword-matching-core";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
   setRoomMuteUntil,
   setWorldMuteState,

@@ -1,6 +1,6 @@
 /** Completes only the exact started claim attempt with a target-signed result. */
 
-import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared/contracts/remote-control";
+import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";

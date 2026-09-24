@@ -1,6 +1,6 @@
 /** Covers `TranscriptService` transcript lifecycle. Deterministic. */
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
 	type CreateTranscriptInput,

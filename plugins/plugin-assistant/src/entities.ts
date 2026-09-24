@@ -14,7 +14,7 @@ import {
   type World,
   withVisibleComponents,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
+import { composePrompt } from "@elizaos/shared";
 import {
   type EntityMatch,
   normalizeEntityMatchesStrict,

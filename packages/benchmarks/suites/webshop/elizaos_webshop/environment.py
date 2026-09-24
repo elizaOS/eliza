@@ -543,7 +543,7 @@ def _configure_official_lucene_search() -> dict[str, str | int]:
     if not _OFFICIAL_INDEX_DIR.is_dir() or not _OFFICIAL_INDEX_MANIFEST.is_file():
         raise FileNotFoundError(
             "The full WebShop profile requires its official Lucene index. Run "
-            "`python scripts/build_search_index.py` with the benchmark runtime first."
+            "`python -m elizaos_webshop_tools.build_search_index` with the benchmark runtime first."
         )
     manifest = json.loads(_OFFICIAL_INDEX_MANIFEST.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):

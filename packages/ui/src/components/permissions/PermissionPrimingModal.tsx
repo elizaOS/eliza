@@ -2,7 +2,7 @@
  * Renders the post-login permission soft-ask modal and its injected-controller
  * seam for tests and stories.
  */
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+import type { PermissionId } from "@elizaos/shared";
 import {
   AudioLines,
   Bell,

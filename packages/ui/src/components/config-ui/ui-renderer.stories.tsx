@@ -3,8 +3,9 @@
  * dashboard spec, the loading skeleton, and auth-gated visibility for an
  * unauthenticated viewer.
  */
+
+import type { UiSpec } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
-import type { UiSpec } from "../../config/ui-spec";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { UiRenderer } from "./ui-renderer";
 

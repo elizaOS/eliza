@@ -11,7 +11,7 @@
  *
  * Detector provenance: Bazarevsky et al., arXiv:1907.05047 and MediaPipe's
  * front-face model. Embedding converters pin FaceNet or ArcFace upstream
- * weights; see scripts/blazeface_to_gguf.py and scripts/face_embed_to_gguf.py.
+ * weights; see packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py and packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py.
  */
 
 #ifndef FACE_FACE_H
@@ -25,8 +25,8 @@ extern "C" {
 #endif
 
 /* Pinned model variants this header is dimensioned around. The GGUF
- * conversion scripts (`scripts/blazeface_to_gguf.py`,
- * `scripts/face_embed_to_gguf.py`) emit artifacts that declare these
+ * conversion scripts (`packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py`,
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py`) emit artifacts that declare these
  * as their `face.detector` / `face.embedder` keys. Loaders refuse a
  * GGUF whose tag does not match. */
 #define FACE_DETECTOR_BLAZEFACE_FRONT  "blazeface_front"
@@ -82,7 +82,7 @@ typedef struct face_embed_session   *face_embed_handle;
 
 /*
  * Open a BlazeFace session against a GGUF produced by
- * `scripts/blazeface_to_gguf.py`. The GGUF must declare its
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py`. The GGUF must declare its
  * `face.detector` key as FACE_DETECTOR_BLAZEFACE_FRONT. Returns 0 on
  * success and writes the new handle into `*out`. Returns `-ENOENT`
  * for missing GGUF, `-EINVAL` for shape / version mismatch.
@@ -120,7 +120,7 @@ int face_detect_close(face_detect_handle handle);
 
 /*
  * Open a face-embedding session against a GGUF produced by
- * `scripts/face_embed_to_gguf.py`. The GGUF must declare its
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py`. The GGUF must declare its
  * `face.embedder` key as one of FACE_EMBEDDER_FACENET_128 /
  * FACE_EMBEDDER_ARCFACE_MINI_128. Returns 0 on success and writes the
  * new handle into `*out`.

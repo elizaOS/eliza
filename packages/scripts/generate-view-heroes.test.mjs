@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import tmp from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -105,8 +111,15 @@ describe("generate-view-heroes execution", () => {
   });
 
   it("main supports --dry-run mode", async () => {
-    const result = await main(["--dry-run"]);
-    assert.ok(result.writtenCount > 0);
-    assert.equal(result.missingCount, 0);
+    const root = mkdtempSync(path.join(tmp.tmpdir(), "hero-dry-run-"));
+    mkdirSync(path.join(root, "plugins"));
+    try {
+      const result = await main(["--dry-run", `--repo-root=${root}`]);
+      assert.ok(result.writtenCount > 0);
+      assert.equal(result.missingCount, 0);
+      assert.deepEqual(readdirSync(path.join(root, "plugins")), []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

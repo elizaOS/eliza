@@ -26,8 +26,8 @@ function runFixture(mode: "mixed" | "skipped" | "failed") {
       mkdirSync(path.join(directory, child));
     }
     copyFileSync(
-      path.join(root, "packages/agent/scripts/run-vitest-batches.mjs"),
-      path.join(directory, "scripts/run-vitest-batches.mjs"),
+      path.join(root, "packages/agent/scripts/run-vitest-batches.ts"),
+      path.join(directory, "scripts/run-vitest-batches.ts"),
     );
     writeFileSync(
       path.join(directory, "package.json"),
@@ -35,7 +35,7 @@ function runFixture(mode: "mixed" | "skipped" | "failed") {
         name,
         private: true,
         type: "module",
-        scripts: { test: "node scripts/run-vitest-batches.mjs" },
+        scripts: { test: "node scripts/run-vitest-batches.ts" },
       }),
     );
     writeFileSync(

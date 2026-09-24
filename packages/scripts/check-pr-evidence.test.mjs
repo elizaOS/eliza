@@ -38,7 +38,7 @@ import {
   SURFACE_ARTIFACT_ROW_IDS,
   SURFACE_OCR_EVIDENCE_ROW,
   verifyReferencedArtifacts,
-} from "./check-pr-evidence.mjs";
+} from "./check-pr-evidence.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(
@@ -1123,6 +1123,12 @@ describe("check-pr-evidence row primitives", () => {
   });
 
   it("detects rendered-UI source files in the diff", () => {
+    for (const file of [
+      "packages/os/landing/index.html",
+      "packages/eliza-computer/src/Home.tsx",
+    ]) {
+      assert.equal(requiresSurfaceArtifactsFromFiles([file]), true);
+    }
     assert.equal(
       requiresSurfaceArtifactsFromFiles(["packages/ui/src/components/Foo.tsx"]),
       true,

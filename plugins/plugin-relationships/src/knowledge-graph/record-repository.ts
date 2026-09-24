@@ -13,8 +13,8 @@ import type {
   EntityFilter,
   Relationship,
   RelationshipFilter,
-} from "@elizaos/shared/knowledge-graph";
-import { normalizeEntityConnectorAccountId } from "@elizaos/shared/knowledge-graph";
+} from "@elizaos/shared";
+import { normalizeEntityConnectorAccountId } from "@elizaos/shared";
 
 const ENTITIES = "plugin_knowledge_graph_entities_v1";
 const RELATIONSHIPS = "plugin_knowledge_graph_relationships_v1";

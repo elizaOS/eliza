@@ -197,6 +197,17 @@ test("generated workspace declarations are valid only when Turbo builds them", (
       /unresolved @elizaos\/target/,
     );
 
+    const unmappedOwnerConfig = path.join(root, "packages/owner/tsconfig.json");
+    const unmapped = JSON.parse(readFileSync(unmappedOwnerConfig, "utf8"));
+    delete unmapped.compilerOptions.paths;
+    writeJson(unmappedOwnerConfig, unmapped);
+    assert.match(
+      auditTsconfigWorkspaceResolution({ repoRoot: root }).violations.join(
+        "\n",
+      ),
+      /unresolved @elizaos\/target/,
+    );
+
     const turbo = JSON.parse(
       readFileSync(path.join(root, "turbo.json"), "utf8"),
     );
@@ -221,6 +232,66 @@ test("generated workspace declarations are valid only when Turbo builds them", (
       ]),
     });
     assert.deepEqual(sourceMapped.violations, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("self imports must resolve to source even when old declarations exist", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "tsconfig-self-import-"));
+  try {
+    writeJson(path.join(root, "package.json"), { workspaces: ["packages/*"] });
+    writeJson(path.join(root, "turbo.json"), {
+      tasks: { typecheck: { dependsOn: [] } },
+    });
+    writeJson(path.join(root, "tsconfig.json"), {
+      compilerOptions: {
+        paths: { "@elizaos/owner/*": ["packages/owner/src/*"] },
+      },
+    });
+    const owner = path.join(root, "packages/owner");
+    writeJson(path.join(owner, "package.json"), {
+      name: "@elizaos/owner",
+      scripts: { typecheck: "tsc --noEmit" },
+      exports: { "./*": { types: "./dist/*.d.ts" } },
+    });
+    const config = {
+      compilerOptions: {
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        noEmit: true,
+        paths: { "@elizaos/owner/*": ["dist/*"] },
+      },
+      include: ["src/**/*.ts"],
+    };
+    writeJson(path.join(owner, "tsconfig.json"), config);
+    mkdirSync(path.join(owner, "src"));
+    mkdirSync(path.join(owner, "dist"));
+    writeFileSync(
+      path.join(owner, "src/index.ts"),
+      'import { value } from "@elizaos/owner/api"; export { value };',
+    );
+    writeFileSync(
+      path.join(owner, "src/api.ts"),
+      'export const value = "current";',
+    );
+    writeFileSync(
+      path.join(owner, "dist/api.d.ts"),
+      'export declare const value: "stale";',
+    );
+    const audit = () => auditTsconfigWorkspaceResolution({ repoRoot: root });
+    assert.match(
+      audit().violations.join("\n"),
+      /unresolved @elizaos\/owner\/api/,
+    );
+    rmSync(path.join(owner, "dist"), { recursive: true });
+    assert.match(
+      audit().violations.join("\n"),
+      /unresolved @elizaos\/owner\/api/,
+    );
+    config.compilerOptions.paths["@elizaos/owner/*"] = ["src/*"];
+    writeJson(path.join(owner, "tsconfig.json"), config);
+    assert.deepEqual(audit().violations, []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

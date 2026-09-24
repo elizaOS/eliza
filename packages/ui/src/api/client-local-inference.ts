@@ -5,14 +5,6 @@
  * raw `fetch` from UI code.
  */
 
-import { ElizaError } from "@elizaos/shared/browser-contracts";
-import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
-import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
-import type { PublicRegistration } from "../services/local-inference/handler-registry";
-import type {
-  RoutingPolicy,
-  RoutingPreferences,
-} from "../services/local-inference/routing-preferences";
 import type {
   ActiveModelState,
   AgentModelSlot,
@@ -23,7 +15,13 @@ import type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
-} from "../services/local-inference/types";
+  ProviderStatus,
+  RoutingPolicy,
+  RoutingPreferences,
+} from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
+import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
+import type { PublicRegistration } from "../services/local-inference/handler-registry";
 import type { VerifyResult } from "../services/local-inference/verify";
 import { ElizaClient } from "./client-base";
 

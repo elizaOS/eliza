@@ -6,7 +6,7 @@
  * refreshes after each mutation.
  */
 
-import type { CustomActionDef } from "@elizaos/shared/contracts/config";
+import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";

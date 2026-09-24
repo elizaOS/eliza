@@ -50,29 +50,26 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
-import { formatError, readAliasedEnv } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import type { Route } from "@elizaos/shared";
 import {
+  formatError,
+  getStylePresets,
+  isMobilePlatform,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  normalizeCharacterLanguage,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
+  readAliasedEnv,
   readRequestBody,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/shared/api/http-helpers";
-import type { Route } from "@elizaos/shared/api/http-plugin";
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared/character-presets";
-import {
-  isMobilePlatform,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+} from "@elizaos/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   AgentBackupClientDisconnectedError,

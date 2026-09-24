@@ -9,7 +9,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { AuthStore } from "@elizaos/app/services/auth-store";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { createMachineSession } from "../../../../packages/app/src/api/auth/sessions.ts";
