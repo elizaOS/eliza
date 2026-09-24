@@ -12,7 +12,8 @@ Tracking: https://github.com/elizaOS/eliza/issues/32494
 
 - [x] Fetch develop and shaw/mega-refactor without modifying shared changes.
 - [x] Start isolated chore/e2e-workflow-consolidation from b45c2b8525;
-  develop 1d072518c7 is already an ancestor.
+  develop 1d072518c7 was already an ancestor. Refreshed and merged mega
+  c74723a656 and develop 435deee563 in isolated integration on 2026-09-23.
 - [x] Preserve the unpublished admission prototype as historical work only.
 - [x] Separate workflow policy from the existing test/provider and script lanes.
 - [ ] Integrate their reviewed commits before final validation and delivery.
@@ -57,12 +58,18 @@ Progress checkpoint:
 - Provider typecheck, changed-source Biome, workflow syntax, trigger policy,
   and cache policy pass. Core-only build passes without the 74-task bootstrap.
 - Executable script audit passes after retiring its obsolete unit-job binding.
-- Root verification attempt 1 failed in UI lint, which still invokes unit tests
-  and stale design-registry baseline checks. The manifest cleanup owner has the
-  exact failure; no all-green repository result is claimed.
-- Remaining: integrate the rest of the test retirement, review
-  cloud/device/certification test entry
-  points, and run terminal repository/hosted validation before develop delivery.
+- Certification now runs canonical E2E once and captures its complete output
+  before signing; its legacy scenario corpus and broad build bootstrap are gone.
+- Cloud release runs the canonical lane instead of the mixed Worker mock suite.
+  This is not replacement proof of deployed cloud behavior.
+- The newly added benchmark unit/smoke workflow is retired as well.
+- Root verification exposed and prompted repairs to UI lint, native React bridge
+  typechecking, and Calendar compiler configuration. Terminal repository-wide
+  acceptance on the latest integration remains outstanding.
+- Remaining: finish test retirement, replace cloud/device partial and mock flows
+  with real product E2E, qualify product voice transport, and obtain terminal
+  repository/hosted validation before develop delivery. Six current passing cases
+  are interim coverage, not closure of the full product scope.
 - Mega's native submodule c4401ff01c80e7bf4f9f12149eae772fcb7dfef0 is not
   remotely fetchable. A locally seeded native install is not fresh-fetch proof.
 - Current Markdown validation reports unresolved mega-refactor links outside

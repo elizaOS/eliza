@@ -1065,17 +1065,14 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/cloud/api typecheck
 
-      - name: Run Worker e2e
-        # Hard deploy gate (#13618): Worker behavior regressions must fail the
-        # deploy instead of shipping behind a green soft-failed e2e step.
+      - name: Run canonical E2E
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run --cwd packages/cloud/api test:e2e
-        env:
-          # The deploy runner is a shared self-hosted box running wrangler dev,
-          # PGlite, and the full Worker suite. Keep release gating tolerant of
-          # runner load without enabling live external Steward side effects.
-          TEST_REQUEST_TIMEOUT_MS: "60000"
-          RUN_STEWARD_WALLET_E2E: "0"
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.mjs
+          bun packages/scripts/patch-llama-cpp-capacitor.mjs
+          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
+          bash packages/scripts/github/install-playwright-browsers.sh chromium
+          bun run test:e2e
 
       - name: Build
         working-directory: ${{ env.CHECKOUT_DIR }}

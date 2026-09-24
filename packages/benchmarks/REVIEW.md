@@ -48,10 +48,8 @@ Concurrent changes elsewhere in this checkout are outside this cleanup.
 - Added narrow ignore-rule exceptions for authored task trees and consumed
   snapshots hidden by the root runtime-state rules. These inputs will now be
   included when the benchmark sources are committed.
-- Added the root [benchmark workflow](../../.github/workflows/benchmarks.yml)
-  for offline tests, inventory, and runtime smoke checks. Paid live framework
-  execution requires explicit manual selection. Execution classifications no
-  longer claim nonexistent scheduled workflows.
+- The separate benchmark unit/smoke workflow was retired under the repository
+  full E2E policy. Benchmark campaigns remain explicit research commands.
 - Benchmark provenance and resume fingerprints include the enclosing runtime,
   plugins, patches, and root lockfile, including uncommitted changes.
 
