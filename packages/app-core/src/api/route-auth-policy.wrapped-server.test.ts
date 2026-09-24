@@ -42,7 +42,7 @@ async function post(
   });
 }
 
-describe.sequential("per-agent compat pass-through auth", () => {
+describe("per-agent compat pass-through auth", { concurrent: false }, () => {
   beforeAll(async () => {
     savedEnv = Object.fromEntries(
       ENV_KEYS.map((key) => [key, process.env[key]]),

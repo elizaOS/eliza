@@ -14,12 +14,12 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/shared": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2"
   },

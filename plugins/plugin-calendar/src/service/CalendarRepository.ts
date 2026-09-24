@@ -1238,7 +1238,7 @@ export class CalendarRepository {
                last_error_message = ${sqlText(args.error?.message)},
                last_error_retryable = ${
                  args.error === null ? "NULL" : sqlBoolean(args.error.retryable)
-},
+               },
                last_synced_at = ${sqlQuote(args.completedAt)},
                lease_token = NULL,
                lease_expires_at = NULL,

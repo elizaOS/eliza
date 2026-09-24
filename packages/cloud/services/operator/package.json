@@ -50,7 +50,7 @@
     "pepr": "^2.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@typescript-eslint/parser": "8.70.0",
     "@types/bun": "1.3.14",
     "esbuild": "0.28.1",

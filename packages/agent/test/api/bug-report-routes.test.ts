@@ -76,7 +76,7 @@ function createContext(
   return ctx;
 }
 
-describe.sequential("bug report repository routing", () => {
+describe("bug report repository routing", { concurrent: false }, () => {
   beforeEach(() => {
     resetBugReportRateLimit();
     vi.stubEnv(BUG_REPORT_REPO_ENV_KEY, "");
@@ -516,7 +516,9 @@ const { rateLimitBugReport, sanitize } = await import(
   "../../src/api/bug-report-routes.ts"
 );
 
-describe.sequential("bug report sanitize and rate-limit units", () => {
+describe("bug report sanitize and rate-limit units", {
+  concurrent: false,
+}, () => {
   afterEach(() => {
     vi.useRealTimers();
     resetBugReportRateLimit();
@@ -583,7 +585,7 @@ describe.sequential("bug report sanitize and rate-limit units", () => {
   });
 });
 
-describe.sequential("bug report route edge behavior", () => {
+describe("bug report route edge behavior", { concurrent: false }, () => {
   beforeEach(() => {
     resetBugReportRateLimit();
     vi.stubEnv(BUG_REPORT_REPO_ENV_KEY, "");

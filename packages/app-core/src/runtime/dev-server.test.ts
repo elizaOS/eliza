@@ -314,7 +314,7 @@ afterEach(() => {
   installProcessExitMock();
 });
 
-describe.sequential("dev-server process entry", () => {
+describe("dev-server process entry", { concurrent: false }, () => {
   it("waits for enrolled recovery before publishing the runtime and clears inherited enrollment", async () => {
     let release!: (value: string) => void;
     prepareDevTrajectoryRecovery.mockReturnValueOnce(

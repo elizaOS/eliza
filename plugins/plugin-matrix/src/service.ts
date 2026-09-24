@@ -607,7 +607,7 @@ export class MatrixService extends Service implements IMatrixService {
 
   capabilityDescription = "Matrix messaging service for chat communication";
 
-  protected declare runtime: IAgentRuntime;
+  declare protected runtime: IAgentRuntime;
   private states = new Map<string, MatrixAccountState>();
   private defaultAccountId = DEFAULT_MATRIX_ACCOUNT_ID;
 
