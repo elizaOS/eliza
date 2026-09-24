@@ -12,4 +12,3 @@ bun run --cwd packages/cloud/test-mocks test  # local transport contracts
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
-
