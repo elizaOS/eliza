@@ -5,7 +5,7 @@
  * provider and connector secrets from process.env, bridging Matrix public
  * identifiers as plain settings so the redaction layer leaves them intact,
  * gating the advanced-memory capability set (off for the lean-chat cloud plugin
- * set), and appending capability hints to the system prompt. This is the
+ * set). Capability discovery belongs to the runtime, not character prose. This is the
  * boot-time identity, not the persisted agent database record.
  */
 import {
@@ -257,34 +257,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     };
   });
 
-  // Capability hints — append short descriptions of features the runtime has
-  // auto-enabled so the model knows about new actions/tools without requiring
-  // the user to hand-edit the system prompt. Kept terse (one sentence per
-  // capability) to stay out of the way of the preset's voice.
-  const capabilityHints: string[] = [];
-  const workflowMasterEnabled = config.workflow?.enabled !== false;
-  const workflowExplicitlyDisabled =
-    config.plugins?.entries?.workflow?.enabled === false;
-  if (workflowMasterEnabled && !workflowExplicitlyDisabled) {
-    capabilityHints.push(
-      "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.",
-    );
-  }
-  capabilityHints.push(
-    "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.",
-  );
-  // Config can be rebuilt from a previously materialized Character during a
-  // runtime restart. Normalize these runtime-owned lines before appending so
-  // each rebuild is idempotent instead of growing the system prompt forever.
-  const systemWithoutCapabilityHints = systemPrompt
-    .split("\n")
-    .filter((line) => !capabilityHints.includes(line.trim()))
-    .join("\n")
-    .trim();
-  const effectiveSystemPrompt =
-    capabilityHints.length > 0
-      ? `${systemWithoutCapabilityHints}\n\n${capabilityHints.join("\n")}`
-      : systemWithoutCapabilityHints;
   const connectorProjection = projectConnectorSettings(
     {
       ...(agentEntry?.settings ?? {}),
@@ -298,7 +270,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     name,
     ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,
-    system: effectiveSystemPrompt,
+    system: systemPrompt,
     ...(topics ? { topics } : {}),
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
