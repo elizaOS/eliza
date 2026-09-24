@@ -3,6 +3,9 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
+    "paths": {
+      "@elizaos/plugin-native-contacts/bridge": ["./src/bridge.ts"]
+    },
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
