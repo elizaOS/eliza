@@ -76,7 +76,7 @@ describe("standalone calendar reply provenance", () => {
           intent: actor.content.text,
           scenario: "feed_results",
           facts: expect.stringMatching(/\S/),
-          context: { events: [] },
+          context: { label: expect.stringMatching(/end exclusive;/) },
         },
       },
     });

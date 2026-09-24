@@ -4,9 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import benchmarks.swe_bench.cli as swe_cli
+import pytest
 from benchmarks.swe_bench.cli import (
     _BaselineClient,
     _build_client_for_harness,
@@ -72,9 +71,7 @@ def test_build_report_ignores_unknown_token_counts_for_average() -> None:
 
 
 def test_parse_required_capabilities_accepts_comma_joined_string() -> None:
-    required = _parse_required_capabilities(
-        "code.read, code.write,code.read, code.shell"
-    )
+    required = _parse_required_capabilities("code.read, code.write,code.read, code.shell")
 
     assert required == ["code.read", "code.write", "code.shell"]
 
@@ -285,9 +282,10 @@ def test_baseline_client_random_is_seeded() -> None:
     second = _BaselineClient([instance], mode="random", seed="fixed")
 
     context = {"instance_id": instance.instance_id}
-    assert first.send_message(text="", context=context).text == second.send_message(
-        text="", context=context
-    ).text
+    assert (
+        first.send_message(text="", context=context).text
+        == second.send_message(text="", context=context).text
+    )
 
 
 def test_build_prompt_excludes_evaluator_targets_and_keeps_patch_guidance() -> None:
@@ -318,9 +316,7 @@ def test_candidate_context_paths_exclude_hidden_evaluator_targets() -> None:
     instance = _mock_instance()
     instance.repo = "astropy/astropy"
     instance.problem_statement = "Header rows fail for RST writer."
-    instance.fail_to_pass = [
-        "astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"
-    ]
+    instance.fail_to_pass = ["astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"]
 
     candidates = _candidate_context_paths(instance)
 
@@ -423,8 +419,7 @@ def test_extract_patch_for_repo_drops_context_only_bare_hunks(tmp_path: Path) ->
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "def greet():\n"
-        "    print('hello')\n",
+        "def greet():\n    print('hello')\n",
         encoding="utf-8",
     )
     response = (
@@ -451,8 +446,7 @@ def test_extract_patch_for_repo_repairs_bare_hunk_headers_with_sections(
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "def greet():\n"
-        "    print('hello')\n",
+        "def greet():\n    print('hello')\n",
         encoding="utf-8",
     )
     response = (
@@ -475,8 +469,7 @@ def test_extract_patch_for_repo_drops_noop_bare_hunks(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "def greet():\n"
-        "    print('hello')\n",
+        "def greet():\n    print('hello')\n",
         encoding="utf-8",
     )
     response = (
@@ -504,18 +497,11 @@ def test_extract_patch_for_repo_expands_zero_context_hunks(tmp_path: Path) -> No
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "before\n"
-        "bug\n"
-        "after\n",
+        "before\nbug\nafter\n",
         encoding="utf-8",
     )
     response = (
-        "diff --git a/hello.py b/hello.py\n"
-        "--- a/hello.py\n"
-        "+++ b/hello.py\n"
-        "@@\n"
-        "-bug\n"
-        "+fixed\n"
+        "diff --git a/hello.py b/hello.py\n--- a/hello.py\n+++ b/hello.py\n@@\n-bug\n+fixed\n"
     )
 
     patch = swe_cli._extract_patch_for_repo(response, repo)
@@ -530,18 +516,11 @@ def test_extract_patch_for_repo_preserves_blank_context_lines(tmp_path: Path) ->
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "before\n"
-        "bug\n"
-        "\n",
+        "before\nbug\n\n",
         encoding="utf-8",
     )
     response = (
-        "diff --git a/hello.py b/hello.py\n"
-        "--- a/hello.py\n"
-        "+++ b/hello.py\n"
-        "@@\n"
-        "-bug\n"
-        "+fixed\n"
+        "diff --git a/hello.py b/hello.py\n--- a/hello.py\n+++ b/hello.py\n@@\n-bug\n+fixed\n"
     )
 
     patch = swe_cli._extract_patch_for_repo(response, repo)
@@ -555,12 +534,7 @@ def test_extract_patch_for_repo_adds_trailing_context_for_terminal_change(
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "hello.py").write_text(
-        "def greet():\n"
-        "    before()\n"
-        "    bug()\n"
-        "\n"
-        "def later():\n"
-        "    pass\n",
+        "def greet():\n    before()\n    bug()\n\ndef later():\n    pass\n",
         encoding="utf-8",
     )
     response = (
@@ -695,6 +669,7 @@ async def test_subtask_provider_uses_worktree_diff(
     (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
     subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+    base_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
 
     fake = tmp_path / "opencode"
     fake.write_text(
@@ -733,7 +708,7 @@ async def test_subtask_provider_uses_worktree_diff(
     instance = SWEBenchInstance(
         instance_id="mock__repo-1",
         repo="mock/repo",
-        base_commit="abc123",
+        base_commit=base_commit,
         problem_statement="Fix sample.py",
         hints_text="",
         created_at="",
@@ -754,8 +729,6 @@ async def test_subtask_provider_uses_worktree_diff(
     assert result.success is True
     assert "subtask_provider=opencode" in result.status
     assert "+print('fixed')" in result.generated_patch
-
-
 
 
 @pytest.mark.asyncio
@@ -836,7 +809,8 @@ async def test_elizaos_run_instance_repairs_failed_patch(
     assert result.generated_patch == repaired_patch
     assert len(evaluator.seen_patches) == 2
     repair_calls = [
-        call for call in client.calls
+        call
+        for call in client.calls
         if call[0] == "send" and call[2].get("phase") == "patch_repair"
     ]
     assert len(repair_calls) == 1
@@ -872,9 +846,7 @@ async def test_generate_patch_retries_malformed_unified_diff() -> None:
         def send_message(self, *, text, context):
             self.calls.append(("send", text, context))
             patch = (
-                valid_patch
-                if context.get("phase") == "patch_generation_retry"
-                else malformed_patch
+                valid_patch if context.get("phase") == "patch_generation_retry" else malformed_patch
             )
             return type("Response", (), {"text": patch, "params": {}})()
 
@@ -890,7 +862,8 @@ async def test_generate_patch_retries_malformed_unified_diff() -> None:
     assert error is None
     assert patch == valid_patch
     retry_calls = [
-        call for call in client.calls
+        call
+        for call in client.calls
         if call[0] == "send" and call[2].get("phase") == "patch_generation_retry"
     ]
     assert len(retry_calls) == 1
@@ -910,6 +883,7 @@ async def test_eliza_worktree_applies_and_scores_worktree_diff(
     (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
     subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+    base_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
 
     async def fake_setup(self, instance):
         self.current_repo = repo
@@ -950,7 +924,7 @@ async def test_eliza_worktree_applies_and_scores_worktree_diff(
     instance = SWEBenchInstance(
         instance_id="mock__repo-1",
         repo="mock/repo",
-        base_commit="abc123",
+        base_commit=base_commit,
         problem_statement="Fix sample.py",
         hints_text="",
         created_at="",
@@ -989,6 +963,7 @@ async def test_eliza_worktree_records_repair_status(
     (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
     subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+    base_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
 
     async def fake_setup(self, instance):
         self.current_repo = repo
@@ -1055,7 +1030,7 @@ async def test_eliza_worktree_records_repair_status(
     instance = SWEBenchInstance(
         instance_id="mock__repo-1",
         repo="mock/repo",
-        base_commit="abc123",
+        base_commit=base_commit,
         problem_statement="Fix sample.py",
         hints_text="",
         created_at="",
@@ -1079,6 +1054,5 @@ async def test_eliza_worktree_records_repair_status(
     assert "repaired_from=tests_failed" in result.status
     assert "repair_attempts=1" in result.status
     assert any(
-        context.get("phase") == "native_worktree_patch_repair"
-        for _, context in client.calls
+        context.get("phase") == "native_worktree_patch_repair" for _, context in client.calls
     )

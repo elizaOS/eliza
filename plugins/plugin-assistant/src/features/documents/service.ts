@@ -2015,10 +2015,20 @@ export class DocumentService extends Service {
         // so roomId here is always a real UUID or omitted; || vs ?? is moot.
         roomId: roomId || agentId,
         entityId: targetEntityId,
-        content: projectDocumentParentContent({
-          text: sourceText,
-          projection: sourceProjection.metadata,
-        }),
+        // Binary source bytes retain their existing base64 storage contract.
+        // Progressive reads use the independently stored extracted-text segments.
+        content: fileBuffer
+          ? {
+              ...projectDocumentParentContent({
+                text: sourceText,
+                projection: sourceProjection.metadata,
+              }),
+              ...documentMemory.content,
+            }
+          : projectDocumentParentContent({
+              text: sourceText,
+              projection: sourceProjection.metadata,
+            }),
         metadata: {
           ...(documentMemory.metadata ?? {}),
           ...sourceProjection.metadata,
