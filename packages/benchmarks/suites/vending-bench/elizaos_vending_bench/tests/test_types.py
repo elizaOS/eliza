@@ -284,23 +284,8 @@ class TestVendingBenchResult:
         assert result.profit == Decimal("250.00")
 
 
-class TestLeaderboard:
-    """Test leaderboard constants."""
-
-    def test_leaderboard_scores_exist(self) -> None:
-        """Test that leaderboard scores are defined."""
-        assert len(LEADERBOARD_SCORES) > 0
-
-    def test_grok_4_top_score(self) -> None:
-        """Test Grok 4 is in the leaderboard with known score."""
-        assert "grok_4" in LEADERBOARD_SCORES
-        assert LEADERBOARD_SCORES["grok_4"].top_score == Decimal("4694.15")
-
-    def test_all_entries_have_required_fields(self) -> None:
-        """Test all leaderboard entries have required fields."""
-        for _key, entry in LEADERBOARD_SCORES.items():
-            assert entry.model_name
-            assert entry.top_score > 0
+def test_local_simulator_does_not_claim_external_leaderboard_scores() -> None:
+    assert LEADERBOARD_SCORES == {}
 
 
 class TestCoherenceError:

@@ -27,7 +27,7 @@ import {
   type CacheableSection,
   type ProviderCachePlan,
   type ProviderCachePlanArgs,
-} from "./provider-cache-plan";
+} from "./provider-cache-plan.ts";
 
 /**
  * Options for {@link trajectoryStepsToMessages}.

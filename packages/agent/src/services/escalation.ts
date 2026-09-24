@@ -60,6 +60,8 @@ const activeEscalations = new Map<
     states: Map<string, EscalationState>;
   }
 >();
+const stoppedRuntimes = new WeakSet<IAgentRuntime>();
+
 const pendingTimers = new Map<
   string,
   Map<string, ReturnType<typeof setTimeout>>
@@ -474,6 +476,7 @@ function scheduleCheck(
   escalationId: string,
   delayMs: number,
 ): void {
+  if (stoppedRuntimes.has(runtime)) return;
   const agentId = agentIdOf(runtime);
   releaseTimer(agentId, escalationId);
 
@@ -519,6 +522,12 @@ export class EscalationService {
     reason: string,
     text: string,
   ): Promise<EscalationState> {
+    if (stoppedRuntimes.has(runtime)) {
+      throw new ElizaError("Cannot start escalation after runtime shutdown", {
+        code: "ESCALATION_RUNTIME_STOPPED",
+        severity: "ephemeral",
+      });
+    }
     const existing = await EscalationService.getActiveEscalation(runtime);
     if (existing) {
       const resumeWaitMs = pendingTimers
@@ -620,6 +629,7 @@ export class EscalationService {
     runtime: IAgentRuntime,
     escalationId: string,
   ): Promise<void> {
+    if (stoppedRuntimes.has(runtime)) return;
     // Read-only: escalationsFor() would allocate an empty bucket for an
     // unknown escalation id.
     const state = activeEscalations
@@ -761,6 +771,28 @@ export class EscalationService {
         `[escalation] Rehydrated unresolved escalation ${persisted.id} from cache`,
       );
     }
+  }
+
+  /** Drain this runtime's writes and release timers without resolving durable state. */
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    stoppedRuntimes.add(runtime);
+    const agentId = agentIdOf(runtime);
+    const cancelTimers = () => {
+      const bucket = activeEscalations.get(agentId);
+      if (bucket && bucket.runtime !== runtime) return;
+      for (const timer of pendingTimers.get(agentId)?.values() ?? []) {
+        clearTimeout(timer);
+      }
+      pendingTimers.delete(agentId);
+    };
+    cancelTimers();
+    // Queue behind admitted start/check/resolve operations before closing the DB.
+    await transition(agentId, async () => {
+      cancelTimers();
+      if (activeEscalations.get(agentId)?.runtime === runtime) {
+        activeEscalations.delete(agentId);
+      }
+    });
   }
 
   static _reset(): void {

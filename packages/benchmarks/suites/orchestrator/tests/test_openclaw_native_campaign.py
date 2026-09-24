@@ -28,7 +28,6 @@ _REQUIRED_CAMPAIGN_FACTORIES = {
     "suites/clawbench/clawbench/multi_harness_runner.py",
     "scripts/eliza-1/harness_runner.py",
     "harnesses/eliza/eliza_adapter/mmau.py",
-    "scripts/framework/harness_runner.py",
     "harnesses/hermes/hermes_adapter/harness_openai_proxy.py",
     "harnesses/hermes/hermes_adapter/swe_env_smoke.py",
     "suites/lifeops-bench/eliza_lifeops_bench/__main__.py",

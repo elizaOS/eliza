@@ -21,7 +21,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Final
+from collections.abc import Awaitable, Callable
+from typing import Any, Final
 
 from openclaw_adapter.client import OpenClawClient
 
@@ -56,10 +57,9 @@ def _compute_cost_usd(
     pricing = _CEREBRAS_PRICING.get(key)
     if pricing is None:
         return None
-    return (
-        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
-        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
-    )
+    return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
+        completion_tokens / 1_000_000.0
+    ) * pricing["output_per_million_usd"]
 
 
 DEFAULT_LIFEOPS_PREAMBLE = (
@@ -71,43 +71,12 @@ DEFAULT_LIFEOPS_PREAMBLE = (
 )
 
 
-def _normalize_lifeops_tool_call(
-    name: str,
-    args: object,
-) -> tuple[str, object]:
-    if name != "CALENDAR":
-        return name, args
-    if isinstance(args, str):
-        try:
-            parsed = json.loads(args)
-        except json.JSONDecodeError:
-            return name, args
-        if not isinstance(parsed, dict):
-            return name, args
-        args_dict: dict[str, Any] = dict(parsed)
-    elif isinstance(args, dict):
-        args_dict = dict(args)
-    else:
-        return name, args
-
-    action = str(args_dict.get("subaction") or args_dict.get("action") or "").lower()
-    has_window = any(k in args_dict for k in ("startAt", "endAt", "windowStart", "windowEnd"))
-    intent = str(args_dict.get("intent") or "").lower()
-    looks_like_availability = has_window and (
-        action in {"search_events", "check_availability"}
-        or "availab" in intent
-        or "free" in intent
-    )
-    if not looks_like_availability:
-        return name, args
-
-    if "windowStart" in args_dict and "startAt" not in args_dict:
-        args_dict["startAt"] = args_dict.pop("windowStart")
-    if "windowEnd" in args_dict and "endAt" not in args_dict:
-        args_dict["endAt"] = args_dict.pop("windowEnd")
-    args_dict["action"] = "check_availability"
-    args_dict["subaction"] = "check_availability"
-    return "CALENDAR_CHECK_AVAILABILITY", args_dict
+def _validated_tool_arguments(args: object) -> dict[str, Any] | str:
+    """Preserve model arguments; malformed calls must never become empty calls."""
+    parsed = json.loads(args) if isinstance(args, str) else args
+    if not isinstance(parsed, dict):
+        raise TypeError("LifeOps tool arguments must encode an object")
+    return args if isinstance(args, str) else dict(parsed)
 
 
 def build_lifeops_bench_agent_fn(
@@ -195,7 +164,9 @@ def build_lifeops_bench_agent_fn(
             raise RuntimeError("OpenClaw LifeOps send_message failed") from exc
         latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
 
-        raw_tool_calls = resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        raw_tool_calls = (
+            resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        )
         tool_calls: list[dict[str, Any]] = []
         if isinstance(raw_tool_calls, list):
             for entry in raw_tool_calls:
@@ -204,15 +175,14 @@ def build_lifeops_bench_agent_fn(
                 name = str(entry.get("name") or "")
                 if not name:
                     continue
-                args = entry.get("arguments")
-                name, args = _normalize_lifeops_tool_call(name, args)
+                args = _validated_tool_arguments(entry.get("arguments"))
                 tool_calls.append(
                     {
                         "id": str(entry.get("id") or f"call_{len(tool_calls)}"),
                         "type": "function",
                         "function": {
                             "name": name,
-                            "arguments": args if isinstance(args, dict) else {},
+                            "arguments": args,
                         },
                     }
                 )
@@ -223,14 +193,16 @@ def build_lifeops_bench_agent_fn(
             tool_calls=tool_calls or None,
         )
         if model_name:
-            setattr(turn, "model_name", model_name)
-        setattr(turn, "latency_ms", int(latency_ms))
+            turn.model_name = model_name
+        turn.latency_ms = int(latency_ms)
         # OpenClaw exposes usage either at params['usage'] (OpenAI-compat mode)
         # or under params['_meta']['usage'] (CLI mode). Prefer the direct slot
         # and fall back to the meta blob so both transports surface cache.
         usage = resp.params.get("usage") if isinstance(resp.params, dict) else None
         if not isinstance(usage, dict):
-            usage_meta = resp.params.get("_meta") if isinstance(resp.params, dict) else None
+            usage_meta = (
+                resp.params.get("_meta") if isinstance(resp.params, dict) else None
+            )
             usage = usage_meta.get("usage") if isinstance(usage_meta, dict) else None
         if isinstance(usage, dict):
             attach_usage_cache_fields(turn, usage)
@@ -248,13 +220,15 @@ def build_lifeops_bench_agent_fn(
         out_tok = int(out_tok_raw) if isinstance(out_tok_raw, (int, float)) else 0
         pricing_model = model_name or getattr(bridge, "model", None)
         cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
-        setattr(turn, "cost_usd", float(cost) if cost is not None else None)
+        turn.cost_usd = float(cost) if cost is not None else None
         return turn
 
     return _agent_fn
 
 
-def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[str, Any]]:
+def _history_to_openai_messages(
+    conversation_history: list[Any],
+) -> list[dict[str, Any]]:
     """Convert LifeOpsBench ``MessageTurn`` history into OpenAI chat shape.
 
     Preserves assistant ``tool_calls`` and tool-result ``tool_call_id`` /
@@ -264,9 +238,8 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
     """
     out: list[dict[str, Any]] = []
     for turn in conversation_history:
-        role = (
-            getattr(turn, "role", None)
-            or (turn.get("role") if isinstance(turn, dict) else None)
+        role = getattr(turn, "role", None) or (
+            turn.get("role") if isinstance(turn, dict) else None
         )
         if role not in {"system", "user", "assistant", "tool"}:
             continue

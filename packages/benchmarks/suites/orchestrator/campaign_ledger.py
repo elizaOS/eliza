@@ -612,7 +612,7 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
     ),
     _adapter(
         "framework",
-        _C.UNSUPPORTED,
+        _C.NON_AGENT,
         21,
         21,
         21,
@@ -718,7 +718,7 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
     ),
     _adapter(
         "swe_bench_orchestrated",
-        _C.MANUAL,
+        _C.UNSUPPORTED,
         2_294,
         25_234,
         25_234,

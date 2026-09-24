@@ -15,6 +15,11 @@ import type {
 import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 
+/**
+ * Exercises batched document embeddings through a real AgentRuntime model
+ * registry and in-memory persistence, including both serial fallback paths.
+ */
+
 const AGENT_ID = "00000000-0000-0000-0000-00000000b47c" as UUID;
 const ITEM_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID;
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
@@ -131,7 +136,12 @@ async function getStoredFragments(runtime: AgentRuntime): Promise<Memory[]> {
     count: 20,
   });
   return memories
-    .filter((memory) => memory.metadata?.documentId === ITEM_ID)
+    .filter(
+      (memory) =>
+        memory.metadata?.documentId === ITEM_ID &&
+        (memory.metadata as unknown as Record<string, unknown>).fragmentRole !==
+          "source-segment",
+    )
     .sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
 }
 

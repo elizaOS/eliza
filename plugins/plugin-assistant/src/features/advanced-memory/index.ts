@@ -1,3 +1,9 @@
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { historyRetentionEvaluator } from "../../services/history-retention.ts";
+import { memoryItems } from "./evaluators/index.ts";
+import { longTermMemoryProvider } from "./providers/index.ts";
+import { MemoryService } from "./services/memory-service.ts";
+
 /**
  * Entry point for the advanced-memory capability. `createAdvancedMemoryPlugin`
  * assembles the `memory` plugin from long-term extraction, direct-text history
@@ -7,13 +13,6 @@
  * and its types.
  */
 
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { historyRetentionEvaluator } from "../../services/history-retention.ts";
-import { memoryItems } from "./evaluators/index.ts";
-import { longTermMemoryProvider } from "./providers/index.ts";
-import { MemoryService } from "./services/memory-service.ts";
-
-// Export memory domain contracts; SQL owns concrete storage schemas.
 export {
   type LongTermMemory,
   LongTermMemoryCategory,
@@ -27,6 +26,16 @@ export {
 } from "./evaluators/index.ts";
 export { longTermMemoryProvider } from "./providers/index.ts";
 export { MemoryService } from "./services/memory-service.ts";
+// Export memory domain contracts; SQL owns concrete storage schemas.
+export {
+  latestSessionSummaryContentEnvelope,
+  loadSessionSummaryContentLedger,
+  mergeSessionSummaryMetadata,
+  parseSessionSummaryContentEnvelope,
+  publishSessionSummaryContentManifests,
+  renderSessionSummaryContentLedger,
+  SESSION_SUMMARY_PROGRESSIVE_CONTENT_METADATA_KEY,
+} from "./session-summary-content-manifest.ts";
 
 /**
  * Create the advanced-memory plugin.

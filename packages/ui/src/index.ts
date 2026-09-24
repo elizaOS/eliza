@@ -20,4 +20,4 @@ export {
   List as SpatialList,
   Text as SpatialText,
   VStack as SpatialVStack,
-} from "./spatial/index.ts";
+} from "./spatial/primitives.tsx";

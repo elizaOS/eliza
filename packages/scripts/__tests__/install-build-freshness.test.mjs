@@ -56,7 +56,7 @@ for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
         JSON.stringify({
           name: "fixture",
           private: true,
-          packageManager: "bun@1.3.14",
+          packageManager: "bun@1.4.2",
           workspaces: ["packages/leaf", "packages/consumer"],
         }),
       );
@@ -172,7 +172,7 @@ for (const dependencyKind of ["dependencies", "peerDependencies"]) {
       write("package.json", {
         name: "fixture",
         private: true,
-        packageManager: "bun@1.3.14",
+        packageManager: "bun@1.4.2",
         workspaces: ["packages/*"],
       });
       write("turbo.json", {

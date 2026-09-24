@@ -9,11 +9,21 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import {
+  type AppBillingApplicationProduct,
+  AppBillingClient,
+  type AppBillingClientOptions,
+  type AppBillingResult,
+} from "./app-billing.js";
 import type {
   AppBillingAccountResponse,
   AppBillingEnvironment,
   AppBillingRegistrationResponse,
 } from "./app-billing-account.js";
+import {
+  AppInferenceClient,
+  type AppInferenceClientOptions,
+} from "./app-inference.js";
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { pollUntil } from "./poll.js";
@@ -308,6 +318,7 @@ function createCliLoginRequestId(): string {
 }
 
 export class ElizaCloudClient {
+  private readonly appInferenceFetch: typeof fetch;
   readonly http: ElizaCloudHttpClient;
   readonly v1: CloudApiClient;
   readonly routes: ElizaCloudPublicRoutesClient;
@@ -315,6 +326,7 @@ export class ElizaCloudClient {
   readonly apiBaseUrl: string;
 
   constructor(options: ElizaCloudClientOptions = {}) {
+    this.appInferenceFetch = options.fetchImpl ?? fetch;
     this.baseUrl = normalizeBaseUrl(
       options.baseUrl,
       DEFAULT_ELIZA_CLOUD_BASE_URL,
@@ -335,6 +347,7 @@ export class ElizaCloudClient {
       baseUrl: apiOrigin,
     });
     this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
+      nativeApplicationSlot: options.nativeApplicationSlot,
       bearerToken: options.bearerToken,
       defaultHeaders: options.defaultHeaders,
       fetchImpl: options.fetchImpl,
@@ -585,6 +598,36 @@ export class ElizaCloudClient {
       "/subscriptions/plans",
       { skipAuth: true },
     );
+  }
+
+  /** Resolves native product configuration without starting a trial or requiring an existing subscription. */
+  getApplicationBillingProduct(
+    slotKey: string,
+  ): Promise<AppBillingResult<AppBillingApplicationProduct>> {
+    return this.v1.requestData(
+      "GET",
+      `/billing/application-slots/${encodeURIComponent(slotKey)}`,
+    );
+  }
+
+  /** Binds purchaser subscription operations to an independently registered app. */
+  appBilling(
+    appId: string,
+    options?: AppBillingClientOptions,
+  ): AppBillingClient {
+    return new AppBillingClient(this.v1, appId, options);
+  }
+
+  /** Binds app customer usage to delegated consent and independent developer infrastructure funding. */
+  appInference(
+    appId: string,
+    options: AppInferenceClientOptions,
+  ): AppInferenceClient {
+    return new AppInferenceClient(appId, {
+      ...options,
+      apiBaseUrl: this.apiBaseUrl,
+      fetchImpl: this.appInferenceFetch,
+    });
   }
 
   createResponse(

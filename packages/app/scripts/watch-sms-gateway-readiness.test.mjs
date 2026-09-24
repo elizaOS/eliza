@@ -1,6 +1,6 @@
 /**
- * Focused coverage for watch-sms-gateway-readiness --timeout / --interval:
- * parser contract plus real CLI rejection before any adb poll.
+ * Exercises readiness argument validation, probe deadlines, and wireless
+ * reconnect through the real CLI with controlled external executables.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -26,6 +26,82 @@ function runCli(args) {
     timeout: 8_000,
   });
 }
+
+describe("wireless reconnect", () => {
+  test.each(["device", "unauthorized"])(
+    "uses fresh %s state after connect before invoking the installer",
+    (state) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sms-reconnect-"));
+      const executable = (name, source) => {
+        const target = path.join(dir, name);
+        fs.writeFileSync(target, `#!/bin/sh\n${source}\n`, { mode: 0o755 });
+        return target;
+      };
+      const adb = executable(
+        "adb",
+        `
+echo "$*" >> "$SMS_FIXTURE_DIR/calls"
+case "$1" in
+  devices)
+    echo "List of devices attached"
+    if [ -f "$SMS_FIXTURE_DIR/connected" ]; then
+      echo "phone $SMS_FIXTURE_STATE product:fixture"
+      echo "other offline product:fixture"
+    fi ;;
+  mdns) echo "phone _adb-tls-connect._tcp 127.0.0.1:5555" ;;
+  connect)
+    echo connected > "$SMS_FIXTURE_DIR/connected"
+    echo "connected to $2" ;;
+esac`,
+      );
+      executable("curl", "exit 1");
+      executable("ioreg", "exit 0");
+      executable("node", 'printf "%s\\n" "$@" > "$SMS_FIXTURE_DIR/install"');
+      try {
+        const result = spawnSync(
+          process.execPath,
+          [SCRIPT, "--run-install", "--timeout", "2", "--interval", "2"],
+          {
+            encoding: "utf8",
+            timeout: 8_000,
+            env: {
+              ...process.env,
+              PATH: `${dir}:/usr/bin:/bin`,
+              ADB: adb,
+              SMS_FIXTURE_DIR: dir,
+              SMS_FIXTURE_STATE: state,
+            },
+          },
+        );
+        expect(result.signal).toBeNull();
+        expect(
+          fs
+            .readFileSync(path.join(dir, "calls"), "utf8")
+            .split("\n")
+            .slice(0, 4),
+        ).toEqual([
+          "devices -l",
+          "mdns services",
+          "connect 127.0.0.1:5555",
+          "devices -l",
+        ]);
+        if (state === "device") {
+          expect(result.status, result.stderr).toBe(0);
+          expect(fs.readFileSync(path.join(dir, "install"), "utf8")).toContain(
+            "--wait-device\n60\n--grant-role\n",
+          );
+          expect(result.stdout).toContain("wireless adb connected");
+        } else {
+          expect(result.status).toBe(1);
+          expect(result.stderr).toContain("Timed out waiting");
+          expect(fs.existsSync(path.join(dir, "install"))).toBe(false);
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
 
 describe("parseWatchSeconds", () => {
   test("accepts complete positive decimals through the 24-hour cap", () => {

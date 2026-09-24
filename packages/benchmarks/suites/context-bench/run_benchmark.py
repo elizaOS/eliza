@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Run the Context Benchmark via the eliza TS bridge.
+"""Run the Context Benchmark via the eliza TS bridge.
 
 The query path always goes through the eliza TypeScript benchmark server
 via ``eliza_adapter.context_bench.make_eliza_llm_query``. The legacy
@@ -8,12 +7,12 @@ direct-OpenAI / direct-Anthropic / Python-AgentRuntime / heuristic-mock
 modes have been removed.
 """
 
-import asyncio
 import argparse
+import asyncio
+import json
 import os
 import re
 import sys
-import json
 from pathlib import Path
 
 # Make the harness adapter packages importable without an editable install.
@@ -23,7 +22,6 @@ ADAPTER_DIRS = (
     HARNESSES_DIR / "eliza",
     HARNESSES_DIR / "hermes",
     HARNESSES_DIR / "openclaw",
-    HARNESSES_DIR / "smithers",
 )
 
 
@@ -43,18 +41,17 @@ def _ensure_context_bench_import_paths() -> None:
 
 _ensure_context_bench_import_paths()
 
-from elizaos_context_bench import (
+from elizaos_context_bench import (  # noqa: E402 - source paths are installed above
     ContextBenchConfig,
-    ContextBenchRunner,
     ContextBenchReporter,
+    ContextBenchRunner,
     NeedlePosition,
     save_results,
 )
 
 
 def _load_env_file(env_path: Path) -> None:
-    """
-    Minimal .env loader (no external dependency).
+    """Minimal .env loader (no external dependency).
 
     - Only sets keys that are not already present in os.environ.
     - Ignores blank lines and comments.
@@ -76,7 +73,7 @@ def _load_env_file(env_path: Path) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         if key.startswith("export "):
-            key = key[len("export "):].strip()
+            key = key[len("export ") :].strip()
         value = value.strip().strip('"').strip("'")
         if not key:
             continue
@@ -86,7 +83,6 @@ def _load_env_file(env_path: Path) -> None:
 
 def _make_mock_llm_query():
     """Return a deterministic local query function for smoke tests."""
-
     semantic_answers = {
         "How much money did the main product bring in this year?": "$47 million",
         "What percentage of patients improved with the new treatment?": "73%",
@@ -102,13 +98,25 @@ def _make_mock_llm_query():
         (r"The secret code for the vault is ([^.]+)\.", "What is the secret code for the vault?"),
         (r"The headquarters is located at ([^.]+)\.", "Where is the headquarters located?"),
         (r"The project's codename is ([^.]+)\.", "What is the project's codename?"),
-        (r"The password to access the system is ([^.]+)\.", "What is the password to access the system?"),
+        (
+            r"The password to access the system is ([^.]+)\.",
+            "What is the password to access the system?",
+        ),
         (r"The meeting point has been set to ([^.]+)\.", "What is the meeting point?"),
-        (r"The total budget allocated was exactly \$(\d+)\.", "What was the total budget allocated?"),
-        (r"The experiment recorded a temperature of ([^.]+) degrees Celsius\.", "What temperature did the experiment record?"),
+        (
+            r"The total budget allocated was exactly \$(\d+)\.",
+            "What was the total budget allocated?",
+        ),
+        (
+            r"The experiment recorded a temperature of ([^.]+) degrees Celsius\.",
+            "What temperature did the experiment record?",
+        ),
         (r"The population count reached ([^.]+) individuals\.", "What was the population count?"),
         (r"The speed measured was ([^.]+) kilometers per hour\.", "What speed was measured?"),
-        (r"The compound's molecular weight is ([^.]+)\.", "What is the compound's molecular weight?"),
+        (
+            r"The compound's molecular weight is ([^.]+)\.",
+            "What is the compound's molecular weight?",
+        ),
         (r"The deadline for submission is ([^.]+)\.", "What is the deadline for submission?"),
         (r"The company was founded on ([^.]+)\.", "When was the company founded?"),
         (r"The event is scheduled for ([^.]+)\.", "When is the event scheduled?"),
@@ -159,10 +167,8 @@ def get_llm_query_fn(provider: str, client: object | None = None, harness: str =
         from openclaw_adapter.context_bench import make_openclaw_llm_query
 
         return make_openclaw_llm_query()
-    if harness_key == "smithers":
-        from smithers_adapter.context_bench import make_smithers_llm_query
-
-        return make_smithers_llm_query()
+    if harness_key != "eliza":
+        raise ValueError(f"Unsupported context benchmark harness: {harness_key}")
 
     from eliza_adapter.context_bench import make_eliza_llm_query
 
@@ -180,7 +186,6 @@ async def run_benchmark(
     expand_scenarios: bool = False,
 ) -> object:
     """Run the context benchmark via the eliza TS bridge."""
-
     repo_root = Path(__file__).resolve().parents[2]
     _load_env_file(repo_root / ".env")
 
@@ -195,7 +200,8 @@ async def run_benchmark(
     if quick:
         config = ContextBenchConfig(
             context_lengths=context_lengths or [1024, 4096],
-            positions=positions or [NeedlePosition.START, NeedlePosition.MIDDLE, NeedlePosition.END],
+            positions=positions
+            or [NeedlePosition.START, NeedlePosition.MIDDLE, NeedlePosition.END],
             tasks_per_position=tasks_per_position or 2,
             run_niah_basic=True,
             run_niah_semantic=False,
@@ -206,7 +212,8 @@ async def run_benchmark(
     else:
         config = ContextBenchConfig(
             context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384, 32768],
-            positions=positions or [
+            positions=positions
+            or [
                 NeedlePosition.START,
                 NeedlePosition.EARLY,
                 NeedlePosition.MIDDLE,
@@ -281,9 +288,7 @@ async def run_benchmark(
 
     failed_queries = [result for result in results.results if result.error]
     if failed_queries:
-        examples = ", ".join(
-            f"{result.task_id}: {result.error}" for result in failed_queries[:3]
-        )
+        examples = ", ".join(f"{result.task_id}: {result.error}" for result in failed_queries[:3])
         raise RuntimeError(
             "ContextBench query transport failed for "
             f"{len(failed_queries)}/{len(results.results)} tasks; examples: {examples}"
@@ -293,6 +298,7 @@ async def run_benchmark(
 
 
 def main() -> int:
+    """Run the selected context suite and write its results."""
     parser = argparse.ArgumentParser(
         prog="benchmarks.context-bench.run_benchmark",
         description="Run the Context Benchmark via the eliza TS bridge.",
@@ -315,7 +321,10 @@ def main() -> int:
     parser.add_argument(
         "--model",
         default=None,
-        help="Accepted for registry compatibility; model selection is handled by the provider bridge.",
+        help=(
+            "Accepted for registry compatibility; "
+            "model selection is handled by the provider bridge."
+        ),
     )
     parser.add_argument(
         "--context-lengths",
@@ -336,7 +345,7 @@ def main() -> int:
     parser.add_argument(
         "--harness",
         default="eliza",
-        choices=["eliza", "hermes", "openclaw", "smithers"],
+        choices=["eliza", "hermes", "openclaw"],
         help="Agent harness routing the LLM query (default: eliza)",
     )
     parser.add_argument(
@@ -369,7 +378,8 @@ def main() -> int:
     if args.quick:
         config = ContextBenchConfig(
             context_lengths=context_lengths or [1024, 4096],
-            positions=positions or [NeedlePosition.START, NeedlePosition.MIDDLE, NeedlePosition.END],
+            positions=positions
+            or [NeedlePosition.START, NeedlePosition.MIDDLE, NeedlePosition.END],
             tasks_per_position=args.tasks_per_position or 2,
             run_niah_basic=True,
             run_niah_semantic=False,
@@ -379,7 +389,8 @@ def main() -> int:
     else:
         config = ContextBenchConfig(
             context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384, 32768],
-            positions=positions or [
+            positions=positions
+            or [
                 NeedlePosition.START,
                 NeedlePosition.EARLY,
                 NeedlePosition.MIDDLE,

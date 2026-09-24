@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "customConditions": ["eliza-source"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,6 +13,7 @@
     "noEmit": true,
     "types": ["node", "bun-types"],
     "ignoreDeprecations": "5.0",
+<<<<<<< HEAD
     "paths": {
       "@elizaos/cloud-shared/*": ["../../cloud/shared/src/*"],
       "@elizaos/cloud-test-mocks": ["../test-mocks/src/index.ts"],
@@ -31,6 +33,11 @@
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"]
     },
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
+=======
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx"
+>>>>>>> origin/develop
   },
-  "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"]
+  "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"],
+  "extends": "../../testing/tsconfig.workspace.json"
 }

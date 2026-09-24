@@ -14,7 +14,7 @@ export default mergeConfig(
       ],
     },
     test: {
-      include: ["src/**/*.test.ts"],
+      include: ["src/**/*.test.ts", "corpus/**/*.test.ts"],
       testTimeout: 60000,
       hookTimeout: 60000,
     },

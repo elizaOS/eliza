@@ -89,8 +89,6 @@ project(':elizaos-plugin-native-messages').projectDir = new File('../../../../pl
 include ':elizaos-plugin-native-inference'
 project(':elizaos-plugin-native-inference').projectDir = new File('../../../../plugins/plugin-native-inference/android')
 
-include ':elizaos-capacitor-mobile-agent-bridge'
-project(':elizaos-capacitor-mobile-agent-bridge').projectDir = new File('../../../../plugins/plugin-native-mobile-agent-bridge/android')
 
 include ':elizaos-capacitor-mobile-signals'
 project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../plugins/plugin-native-mobile-signals/android')
@@ -98,8 +96,6 @@ project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../
 include ':elizaos-plugin-native-phone'
 project(':elizaos-plugin-native-phone').projectDir = new File('../../../../plugins/plugin-native-phone/android')
 
-include ':elizaos-capacitor-screencapture'
-project(':elizaos-capacitor-screencapture').projectDir = new File('../../../../plugins/plugin-native-screencapture/android')
 
 include ':elizaos-capacitor-secure-store'
 project(':elizaos-capacitor-secure-store').projectDir = new File('../../../../plugins/plugin-native-secure-store/android')

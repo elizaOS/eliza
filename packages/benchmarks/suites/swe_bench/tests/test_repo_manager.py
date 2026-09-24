@@ -3,11 +3,10 @@
 import asyncio
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import pytest
-
 from benchmarks.swe_bench.repo_manager import RepositoryManager
 from benchmarks.swe_bench.types import SWEBenchInstance
 
@@ -34,10 +33,7 @@ class TestRepositoryManager:
 
     def test_repo_cache_path_is_repo_scoped(self, repo_manager: RepositoryManager) -> None:
         """Test repository mirror cache paths are stable per source repo."""
-        assert (
-            repo_manager._repo_cache_path("astropy/astropy").name
-            == "astropy__astropy.git"
-        )
+        assert repo_manager._repo_cache_path("astropy/astropy").name == "astropy__astropy.git"
 
     def test_read_file_no_repo(self, repo_manager: RepositoryManager) -> None:
         """Test reading file with no repo set up."""
@@ -239,9 +235,7 @@ class TestRepositoryManagerIntegration:
         assert manager.current_repo == repo_dir
 
     @pytest.mark.asyncio
-    async def test_read_file(
-        self, temp_workspace: Path, sample_instance: SWEBenchInstance
-    ) -> None:
+    async def test_read_file(self, temp_workspace: Path, sample_instance: SWEBenchInstance) -> None:
         """Test reading a file from repository."""
         manager = RepositoryManager(str(temp_workspace))
         await manager.setup_repo(sample_instance)
@@ -277,9 +271,7 @@ class TestRepositoryManagerIntegration:
         assert content == "Hello"
 
     @pytest.mark.asyncio
-    async def test_get_diff(
-        self, temp_workspace: Path, sample_instance: SWEBenchInstance
-    ) -> None:
+    async def test_get_diff(self, temp_workspace: Path, sample_instance: SWEBenchInstance) -> None:
         """Test getting diff after changes."""
         manager = RepositoryManager(str(temp_workspace))
         await manager.setup_repo(sample_instance)
@@ -324,3 +316,72 @@ class TestRepositoryManagerIntegration:
         success, error = await manager.apply_patch("")
         assert not success  # Empty patch should fail
         assert "Empty patch" in error or error
+
+
+@pytest.mark.asyncio
+async def test_patch_round_trip_includes_committed_staged_and_nested_new_files(
+    tmp_path: Path,
+) -> None:
+    """Replay all agent edits against the official base without dropping paths."""
+    repo = tmp_path / "source"
+    repo.mkdir()
+
+    def git(*args: str, cwd: Path = repo, input_text: str | None = None):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, input=input_text, capture_output=True, text=True, check=True
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Patch fixture")
+    for name in ("committed.txt", "staged.txt", "working.txt"):
+        (repo / name).write_text("original\n")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD").stdout.strip()
+    expected = {
+        "committed.txt": "committed edit\n",
+        "staged.txt": "staged edit\n",
+        "working.txt": "unstaged edit\n",
+        "new dir/nested file.txt": "nested\n",
+        'quoted"file.txt': "quoted\n",
+        "newline\nfile.txt": "newline\n",
+    }
+    (repo / "committed.txt").write_text(expected["committed.txt"])
+    git("add", "committed.txt")
+    git("commit", "-qm", "agent commit")
+    (repo / "staged.txt").write_text(expected["staged.txt"])
+    git("add", "staged.txt")
+    for name, content in expected.items():
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    binary_data = b"\x00\xffbinary fixture\x00"
+    (repo / "new dir/asset.bin").write_bytes(binary_data)
+    status_before = git("status", "--porcelain", "-z").stdout
+    head_before = git("rev-parse", "HEAD").stdout
+    manager = RepositoryManager(str(tmp_path / "manager"))
+    manager.current_repo = repo
+    manager.current_instance = SWEBenchInstance(
+        instance_id="fixture-1",
+        repo="fixture/repo",
+        base_commit=base,
+        problem_statement="fixture",
+        hints_text="",
+        created_at="",
+        patch="",
+        test_patch="",
+        fail_to_pass=[],
+        pass_to_pass=[],
+    )
+    patch = await manager.get_diff()
+    assert git("status", "--porcelain", "-z").stdout == status_before
+    assert git("rev-parse", "HEAD").stdout == head_before
+    replay = tmp_path / "replay"
+    git("clone", "-q", str(repo), str(replay))
+    git("checkout", "--detach", base, cwd=replay)
+    git("apply", "--check", "-", cwd=replay, input_text=patch)
+    git("apply", "-", cwd=replay, input_text=patch)
+    for name, content in expected.items():
+        assert (replay / name).read_text() == content
+    assert (replay / "new dir/asset.bin").read_bytes() == binary_data

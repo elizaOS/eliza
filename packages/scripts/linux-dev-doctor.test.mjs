@@ -11,7 +11,7 @@ import {
 function healthyRun(command, args) {
   const key = `${command} ${args.join(" ")}`;
   const outputs = new Map([
-    ["bun --version", "1.3.14"],
+    ["bun --version", "1.4.2"],
     ["node --version", "v24.15.0"],
     [
       "gh auth status --active --json hosts --jq .hosts | to_entries[] | .value[] | select(.active == true) | .login",

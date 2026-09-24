@@ -563,6 +563,8 @@ export interface AnchorContext {
 }
 
 export interface AnchorContribution {
+  /** The host atomically consumes persisted admission instead of comparing firedAt. */
+  consumption?: "host_claim";
   anchorKey: string;
   describe: { label: string; provider: string };
   resolve(

@@ -328,7 +328,7 @@ export function requireTraceableRealtimeSearch(
     result.success === true &&
     data.actionName === "WEB_SEARCH" &&
     normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
-    (data.provider === "parallel" || data.provider === "exa") &&
+    data.provider === "parallel" &&
     typeof receiptObservedAt === "number" &&
     Number.isSafeInteger(receiptObservedAt) &&
     Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&

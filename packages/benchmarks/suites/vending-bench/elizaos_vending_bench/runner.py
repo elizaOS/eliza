@@ -170,11 +170,11 @@ class VendingBenchRunner:
 
         # Compare with leaderboard
         leaderboard_comparison: LeaderboardComparison | None = None
-        if self.config.compare_leaderboard and self.config.max_days_per_run >= 3:
+        if self.config.compare_leaderboard and LEADERBOARD_SCORES and self.config.max_days_per_run >= 3:
             leaderboard_comparison = self._compare_leaderboard(metrics)
         elif self.config.compare_leaderboard:
             logger.warning(
-                "[VendingBenchRunner] Skipping net-worth leaderboard comparison for %s-day revenue smoke",
+                "[VendingBenchRunner] No comparable reference leaderboard available for this %s-day local simulation",
                 self.config.max_days_per_run,
             )
 
@@ -377,8 +377,10 @@ class VendingBenchRunner:
     def _compare_leaderboard(
         self,
         metrics: VendingBenchMetrics,
-    ) -> LeaderboardComparison:
-        """Compare results with published leaderboard scores."""
+    ) -> LeaderboardComparison | None:
+        """Compare only configured matching-protocol references; never rank an empty table."""
+        if not LEADERBOARD_SCORES:
+            return None
         our_score = metrics.max_net_worth
 
         # Sort leaderboard by score

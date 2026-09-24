@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
@@ -77,6 +78,7 @@ export function validatePeriodEndCancellationObservation(input: {
   allowRetainedCanceledAt?: Date | null;
 }) {
   const { source } = input;
+  assertOrganizationSubscription(source);
   if (
     source.status !== "active" ||
     source.provider !== "stripe" ||
@@ -142,6 +144,7 @@ export function validateCancellationCustomer(input: {
   organizationCustomerId: string | null;
   environment: Record<string, string | undefined>;
 }) {
+  assertOrganizationSubscription(input.source);
   const parsed = z
     .object({
       id: z.string(),

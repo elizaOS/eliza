@@ -31,8 +31,9 @@ export default function extend<T extends object>(
   deepOrTarget: boolean | T,
   ...sources: object[]
 ): T {
-  const deep = typeof deepOrTarget === "boolean";
-  const target = (deep ? sources.shift() : deepOrTarget) as AnyRecord;
+  const hasFlag = typeof deepOrTarget === "boolean";
+  const deep = deepOrTarget === true;
+  const target = (hasFlag ? sources.shift() : deepOrTarget) as AnyRecord;
 
   for (const source of sources) {
     if (source == null) continue;

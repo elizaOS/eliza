@@ -31,6 +31,7 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
           isCoreRuntime,
         );
         if (runtime) {
+<<<<<<< HEAD
           const importers = Object.entries(output.modules)
             .filter(([id]) =>
               this.getModuleInfo(id)?.importedIds.some(isCoreRuntime),
@@ -38,6 +39,14 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
             .map(([id]) => id);
           this.error(
             `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}.\nRetained modules importing core:\n${importers.join("\n")}`,
+=======
+          const importers =
+            this.getModuleInfo(runtime)?.importers.filter(
+              (id) => id in output.modules,
+            ) ?? [];
+          this.error(
+            `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}. Importing modules: ${importers.join(", ") || "dynamic import"}.`,
+>>>>>>> origin/develop
           );
         }
       }

@@ -5,7 +5,7 @@ bridges, benchmarks, and first-party plugins. Read the nearest package
 `README.md` and `AGENTS.md` before editing; manifests and source are authoritative.
 
 - Preserve unrelated changes in this shared working tree.
-- Use pinned Bun 1.3.14 and Node 24.15.0, ESM, and the repository's Biome config.
+- Use pinned Bun 1.4.2 and Node 24.15.0, ESM, and the repository's Biome config.
 - Keep core independent of hosts; hosts compose assistant behavior, storage,
   and model providers. Validate untrusted input at boundaries.
 - Preserve authorization, tenant isolation, cancellation, and effect receipts.

@@ -34,10 +34,30 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function isTransientModelError(error: unknown): boolean {
+	if (isModelFundingAuthorityError(error)) return false;
 	const message = getErrorMessage(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
 	);
+}
+
+/** A failed funded operation must retain its payer and original intent across wrappers and retries. */
+export function isModelFundingAuthorityError(error: unknown): boolean {
+	const pending: unknown[] = [error];
+	const seen = new Set<object>();
+	while (pending.length) {
+		const value = pending.pop();
+		if (typeof value !== "object" || value === null || seen.has(value))
+			continue;
+		seen.add(value);
+		if ("code" in value && value.code === "MODEL_FUNDING_AUTHORITY_FAILED")
+			return true;
+		if ("cause" in value) pending.push(value.cause);
+		if ("lastError" in value) pending.push(value.lastError);
+		if ("errors" in value && Array.isArray(value.errors))
+			pending.push(...value.errors);
+	}
+	return false;
 }
 
 const OUTPUT_LIMIT_FINISH_REASONS = new Set([

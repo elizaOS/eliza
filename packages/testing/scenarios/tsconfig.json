@@ -1,10 +1,11 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": ["../../../tsconfig.json", "../tsconfig.workspace.json"],
   "compilerOptions": {
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "types": ["node", "bun-types"],
+<<<<<<< HEAD
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
@@ -251,6 +252,9 @@
         "../../../plugins/plugin-x/src/lifeops-message-adapter.ts"
       ]
     }
+=======
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+>>>>>>> origin/develop
   },
   "include": ["./**/*.ts", "./**/*.d.ts"],
   "exclude": [

@@ -7,8 +7,8 @@ import logging
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from .types import CodeLocation, SWEBenchInstance
 
@@ -130,9 +130,7 @@ class RepositoryManager:
                 logger.info(f"Repository ready at {repo_dir}")
                 return repo_dir
             except subprocess.CalledProcessError:
-                logger.warning(
-                    "Failed to reuse existing clone, falling back to fresh clone"
-                )
+                logger.warning("Failed to reuse existing clone, falling back to fresh clone")
                 shutil.rmtree(repo_dir)
         elif repo_dir.exists():
             logger.info(f"Cleaning up existing directory: {repo_dir}")
@@ -240,33 +238,54 @@ class RepositoryManager:
         if not self.current_repo:
             return ""
 
+        if self.current_instance is not None:
+            base_ref = self.current_instance.base_commit
+        else:
+            head = await self._run_command(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                cwd=self.current_repo,
+                check=False,
+            )
+            # Unborn local fixtures have an empty tree as their baseline.
+            base_ref = (
+                head.stdout.strip()
+                if head.returncode == 0
+                else (
+                    await self._run_command(
+                        ["git", "hash-object", "-t", "tree", "--stdin"],
+                        cwd=self.current_repo,
+                        input_data="",
+                    )
+                ).stdout.strip()
+            )
         tracked_diff = await self._run_command(
-            ["git", "diff"],
+            ["git", "diff", "--binary", base_ref, "--"],
             cwd=self.current_repo,
         )
         combined_diff = tracked_diff.stdout
 
-        # Include untracked files so newly created files appear in generated patches.
-        status = await self._run_command(
-            ["git", "status", "--porcelain"],
+        # NUL-delimited file enumeration preserves quoted/newline paths and
+        # descends into untracked directories without parsing human status text.
+        untracked = await self._run_command(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
             cwd=self.current_repo,
-            check=False,
         )
-        untracked_files: list[str] = []
-        for line in status.stdout.splitlines():
-            if line.startswith("?? "):
-                file_path = line[3:].strip()
-                if file_path:
-                    untracked_files.append(file_path)
-
-        for file_path in untracked_files:
+        for file_path in filter(None, untracked.stdout.split("\0")):
             file_diff = await self._run_command(
-                ["git", "diff", "--no-index", "--", "/dev/null", file_path],
+                ["git", "diff", "--binary", "--no-index", "--", "/dev/null", file_path],
                 cwd=self.current_repo,
                 check=False,
             )
-            if file_diff.stdout:
-                combined_diff += file_diff.stdout
+            # git diff uses 1 for a nonempty diff; other failures must not
+            # silently drop part of the agent's patch.
+            if file_diff.returncode not in (0, 1):
+                raise subprocess.CalledProcessError(
+                    file_diff.returncode,
+                    file_diff.args,
+                    output=file_diff.stdout,
+                    stderr=file_diff.stderr,
+                )
+            combined_diff += file_diff.stdout
 
         return combined_diff
 
@@ -440,20 +459,20 @@ class RepositoryManager:
         process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,
-            stdin=asyncio.subprocess.PIPE if input_data else None,
+            stdin=asyncio.subprocess.PIPE if input_data is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(input=input_data.encode() if input_data else None),
+                process.communicate(input=input_data.encode() if input_data is not None else None),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError as error:
             process.kill()
             await process.wait()
-            raise subprocess.TimeoutExpired(cmd, timeout)
+            raise subprocess.TimeoutExpired(cmd, timeout) from error
 
         result = subprocess.CompletedProcess(
             args=cmd,

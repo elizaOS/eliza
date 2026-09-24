@@ -1,7 +1,7 @@
 /** Reports unsupported Bun runtimes without contradicting the repository pin. */
 const MINIMUM_BUN_MAJOR = 1;
 const MINIMUM_BUN_MINOR = 3;
-const REPOSITORY_BUN_PIN = "1.3.14";
+const REPOSITORY_BUN_PIN = "1.4.2";
 
 function parseBunVersion(rawVersion: unknown) {
   const trimmed = String(rawVersion ?? "").trim();
