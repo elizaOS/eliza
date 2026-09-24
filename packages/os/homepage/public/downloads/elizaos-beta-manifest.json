@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "product": "elizaOS",
+  "channel": "beta",
+  "availableFrom": "2026-08-17",
+  "artifacts": [
+    {
+      "id": "linux-mkosi-x86_64",
+      "label": "elizaOS persistent image for x86_64",
+      "kind": "raw-image",
+      "platform": "linux",
+      "architecture": "x86_64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "linux-mkosi-arm64",
+      "label": "elizaOS persistent image for arm64",
+      "kind": "raw-image",
+      "platform": "linux",
+      "architecture": "arm64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "linux-mkosi-riscv64",
+      "label": "elizaOS persistent image for riscv64",
+      "kind": "raw-image",
+      "platform": "linux",
+      "architecture": "riscv64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "debian-package-amd64",
+      "label": "elizaOS Debian package for amd64",
+      "kind": "package",
+      "platform": "debian",
+      "architecture": "amd64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "debian-package-arm64",
+      "label": "elizaOS Debian package for arm64",
+      "kind": "package",
+      "platform": "debian",
+      "architecture": "arm64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "debian-package-riscv64",
+      "label": "elizaOS Debian package for riscv64",
+      "kind": "package",
+      "platform": "debian",
+      "architecture": "riscv64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "setup-macos-arm64",
+      "label": "elizaOS Setup for macOS",
+      "kind": "setup-installer",
+      "platform": "macos",
+      "architecture": "arm64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "setup-linux-x64",
+      "label": "elizaOS Setup for Linux",
+      "kind": "setup-installer",
+      "platform": "linux",
+      "architecture": "x64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "setup-windows-x64",
+      "label": "elizaOS Setup for Windows",
+      "kind": "setup-installer",
+      "platform": "windows",
+      "architecture": "x64",
+      "url": null,
+      "checksumUrl": null
+    },
+    {
+      "id": "usb-installer-linux-x64",
+      "label": "elizaOS USB Installer for Linux",
+      "kind": "usb-installer",
+      "platform": "linux",
+      "architecture": "x64",
+      "url": null,
+      "checksumUrl": null
+    }
+  ]
+}
