@@ -30,7 +30,7 @@ jobs:
       - uses: ./.github/actions/setup-bun-workspace
         with:
           run-postinstall: 'false'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
