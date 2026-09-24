@@ -14,7 +14,6 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/core/events";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/types/message-source";
-import { logger } from "@elizaos/ui/logger";
 import {
   type AgentStatus,
   type CodingAgentSession,
@@ -34,6 +33,7 @@ import {
   dispatchAppEmoteEvent,
   dispatchVoiceControl,
 } from "../events";
+import { logger } from "../logger.ts";
 import {
   getWindowNavigationPath,
   isRouteRootPath,

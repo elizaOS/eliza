@@ -27,7 +27,9 @@ export function testPgliteStorageMode(): TestPgliteStorageMode {
   if (mode === "disk") {
     return "disk";
   }
-  throw new Error(`ELIZA_TEST_PGLITE_STORAGE must be "memory" or "disk", got "${mode}"`);
+  throw new Error(
+    `ELIZA_TEST_PGLITE_STORAGE must be "memory" or "disk", got "${mode}"`,
+  );
 }
 
 /** True when the data dir is PGlite's in-memory URL form (no host filesystem). */

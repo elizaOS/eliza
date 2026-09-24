@@ -10,7 +10,6 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ElizaError } from "@elizaos/core";
 import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
-import { logger } from "@elizaos/ui/logger";
 import {
   act,
   cleanup,
@@ -26,6 +25,7 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import { logger } from "../../logger.ts";
 import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
 import { Field } from "../../spatial/primitives";
 import {

@@ -16,7 +16,7 @@ import type {
   TodoMutationRecord,
   TodoStore,
 } from "@elizaos/plugin-todos";
-import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
+import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";

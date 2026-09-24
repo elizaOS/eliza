@@ -4,7 +4,7 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import { type CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureCalendarSourceIdentity,

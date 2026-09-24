@@ -22,7 +22,6 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { logger } from "@elizaos/ui/logger";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -30,6 +29,7 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
 import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
 import {
   loadAgentProfileRegistry,

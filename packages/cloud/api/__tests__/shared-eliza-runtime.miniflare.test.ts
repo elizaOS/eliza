@@ -590,15 +590,22 @@ describe("Shared Eliza runtime in Workerd", () => {
                 index: 0,
                 message: {
                   role: "assistant",
-                  content: JSON.stringify({
-                    success: true,
-                    decision: "FINISH",
-                    thought: "The untrusted sender cannot use a USER action.",
-                    messageToUser:
-                      "Image generation requires an authenticated Personal Shared user.",
-                  }),
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `workerd-image-${probe}-refusal`,
+                      type: "function",
+                      function: {
+                        name: "REPLY",
+                        arguments: JSON.stringify({
+                          text: "Image generation requires an authenticated Personal Shared user.",
+                          eliza_turn_scope: "final",
+                        }),
+                      },
+                    },
+                  ],
                 },
-                finish_reason: "stop",
+                finish_reason: "tool_calls",
               },
             ],
             usage: {
@@ -1257,7 +1264,8 @@ describe("Shared Eliza runtime in Workerd", () => {
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
-    expect(toolNames).toEqual(["HANDLE_RESPONSE", "READ_CONTEXT"]);
+    // This first lifecycle turn has no authorized context references to read.
+    expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

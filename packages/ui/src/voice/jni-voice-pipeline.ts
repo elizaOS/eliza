@@ -31,7 +31,6 @@ import {
   NlmsEchoCanceller,
   platformPlaybackDelaySamples,
 } from "@elizaos/core/voice/aec";
-import { logger } from "@elizaos/ui/logger";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
@@ -39,6 +38,7 @@ import type {
   TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
+import { logger } from "../logger.ts";
 import {
   type BuildVoiceTurnSignalContext,
   buildVoiceTurnSignal,

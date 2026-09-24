@@ -9,7 +9,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";

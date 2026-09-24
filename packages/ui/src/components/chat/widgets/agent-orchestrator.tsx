@@ -16,7 +16,6 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import {
   Activity,
   AlertTriangle,
@@ -57,6 +56,7 @@ import type {
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
+import { logger } from "../../../logger.ts";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";

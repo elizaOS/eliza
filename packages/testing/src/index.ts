@@ -1,12 +1,5 @@
 /** Scenario authoring contracts and explicit runtime fixtures for package-owned validation. */
 
-// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
-export {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-  type TestPgliteStorageMode,
-  testPgliteStorageMode,
-} from "@elizaos/plugin-sql/database-utils/pglite-storage";
 export * from "../scenario-runner/schema/index.js";
 export {
   CerebrasJudge,
@@ -126,6 +119,13 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime.ts";
+// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
+export {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+  type TestPgliteStorageMode,
+  testPgliteStorageMode,
+} from "./pglite-storage.ts";
 export { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture.ts";
 
 export * from "./progressive-content-conformance.ts";

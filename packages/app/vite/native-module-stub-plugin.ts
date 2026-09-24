@@ -3,7 +3,7 @@
  * renderer stubs.
  */
 import path from "node:path";
-import { type Plugin } from "vite";
+import type { Plugin } from "vite";
 
 /**
  * Names of exported functions that carry their own `.native` sub-function
@@ -250,7 +250,6 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-local-inference",
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
-    "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-orchestrator",
     "@elizaos/plugin-telegram",
     // Node-only edge-tts backend. app's runtime/ensure-text-to-speech-handler.ts
@@ -542,66 +541,6 @@ export function nativeModuleStubPlugin(
           "  return c;",
           "}",
           "export default function sharp() { return mk(); }",
-        ].join("\n");
-      }
-      if (strippedId === "@elizaos/plugin-sql") {
-        return [
-          "const handler = { get: () => table, apply: () => table };",
-          "const table = new Proxy(function table() {}, handler);",
-          ...[
-            "agentTable",
-            "approvalRequestTable",
-            "authAuditEventTable",
-            "authBootstrapJtiSeenTable",
-            "authIdentityCreatedAtDefault",
-            "authIdentityTable",
-            "authOwnerBindingTable",
-            "authOwnerLoginTokenTable",
-            "authSessionTable",
-            "cacheTable",
-            "channelTable",
-            "channelParticipantsTable",
-            "componentTable",
-            "embeddingTable",
-            "entityTable",
-            "entityIdentityTable",
-            "entityMergeCandidateTable",
-            "factCandidateTable",
-            "logTable",
-            "longTermMemories",
-            "memoryTable",
-            "memoryAccessLogs",
-            "messageTable",
-            "messageServerTable",
-            "messageServerAgentsTable",
-            "pairingAllowlistTable",
-            "pairingRequestTable",
-            "participantTable",
-            "relationshipTable",
-            "roomTable",
-            "serverTable",
-            "sessionSummaries",
-            "taskTable",
-            "worldTable",
-          ].map((name) => `export const ${name} = table;`),
-          ...[
-            "and",
-            "asc",
-            "count",
-            "desc",
-            "eq",
-            "gt",
-            "gte",
-            "inArray",
-            "isNull",
-            "lt",
-            "lte",
-            "ne",
-            "or",
-            "sql",
-          ].map((name) => `export const ${name} = table;`),
-          "export const schema = table;",
-          "export default table;",
         ].join("\n");
       }
       if (

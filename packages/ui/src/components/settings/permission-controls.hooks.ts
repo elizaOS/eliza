@@ -6,7 +6,6 @@
  * `useDesktopPermissionsState` to the settings UI.
  */
 import { PERMISSION_IDS } from "@elizaos/core/contracts/permissions";
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
@@ -19,6 +18,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
+import { logger } from "../../logger.ts";
 import { isRendererPermissionAuthoritative } from "../../platform/desktop-permissions-client";
 import { SETTINGS_REFRESH_DELAYS_MS } from "./permission-types";
 

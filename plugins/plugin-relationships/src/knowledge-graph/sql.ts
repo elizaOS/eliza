@@ -3,10 +3,7 @@
  * to the shared owner. Existing imports and domain transaction rules remain stable.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  executeSql,
-  type RuntimeDb,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+import { executeSql, type RuntimeDb } from "@elizaos/plugin-sql";
 
 export {
   parseJsonArray,
@@ -20,7 +17,7 @@ export {
   toBoolean,
   toNumber,
   toText,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.adapter.db as RuntimeDb | undefined;

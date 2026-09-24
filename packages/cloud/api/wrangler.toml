@@ -23,14 +23,13 @@ keep_vars = true
 # Bundle-time aliases — swap Node-only / forbidden-top-level-IO modules for
 # Workers-friendly adapters for services outside the Worker. The shared turn
 # host uses the ordinary Node runtime through nodejs_compat; core has no Worker
-# shim or platform variant. SQL aliases expose the shared Drizzle tables.
+# shim or platform variant. SQL uses the canonical package root.
 # -----------------------------------------------------------------------------
 [define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [alias]
-"@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
 "@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"

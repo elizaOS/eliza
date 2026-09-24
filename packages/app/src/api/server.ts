@@ -150,7 +150,7 @@ import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
 } from "@elizaos/core/settings-debug";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";

@@ -4,7 +4,7 @@
  * Structured service inputs retain their separate contract. */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,

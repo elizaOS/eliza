@@ -10,7 +10,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,

@@ -55,7 +55,7 @@ interface ConstraintRow {
 }
 
 import { sql } from "drizzle-orm";
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 import * as schema from "../../schema";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";

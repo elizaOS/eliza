@@ -44,7 +44,7 @@ import {
   createWebSearchEdgePlugin,
   webSearchEdgeAction,
   webSearchEdgePlugin,
-} from "@elizaos/plugin-web-search/edge";
+} from "@elizaos/plugin-web-search";
 import {
   generateText,
   type JSONSchema7,

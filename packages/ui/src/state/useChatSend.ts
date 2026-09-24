@@ -7,7 +7,6 @@
 
 import { asRecord } from "@elizaos/core/type-guards";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/types/message-source";
-import { logger } from "@elizaos/ui/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import {
   type ChatActionResultSummary,
@@ -45,6 +44,7 @@ import {
   type CloudHandoffPhaseDetail,
   dispatchChatPrefill,
 } from "../events";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {

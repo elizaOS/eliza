@@ -13,7 +13,6 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
 } from "@elizaos/core/contracts/service-routing";
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {
@@ -22,6 +21,7 @@ import type {
   AccountsListResponse,
   AccountTestResult,
 } from "../api/client-agent";
+import { logger } from "../logger.ts";
 import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 export interface UseAccountsOptions {

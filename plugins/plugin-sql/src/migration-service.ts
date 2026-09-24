@@ -13,7 +13,7 @@ import { applyMembershipAuthorityTtlConstraints } from "./membership-authority-t
 import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
-import { RuntimeMigrator } from "./runtime-migrator";
+import { RuntimeMigrator } from "./runtime-migrator/runtime-migrator";
 import type { DrizzleDatabase } from "./types";
 
 const MESSAGE_SEARCH_OBJECTS_ENV = "ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS";
