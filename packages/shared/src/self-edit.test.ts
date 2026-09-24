@@ -78,7 +78,7 @@ describe("isSelfEditPathDenied", () => {
     expect(deniedSuffixes).toContain("packages/shared/src/restart.ts");
     expect(deniedSuffixes).toContain("packages/agent/src/actions/restart.ts");
     expect(deniedSuffixes).toContain("scripts/run-node.mjs");
-    expect(deniedSuffixes).toContain("packages/app-core/scripts/run-node.mjs");
+    expect(deniedSuffixes).toContain("packages/app/scripts/run-node.mjs");
 
     for (const suffix of deniedSuffixes) {
       expect(isSelfEditPathDenied(`/var/app/${suffix}`)).toBe(true);

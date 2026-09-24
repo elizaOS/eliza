@@ -4,7 +4,8 @@
  * voice gate, and connector send handler with only model responses stubbed.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -110,7 +111,7 @@ async function createHarness(
   finalText: string,
   actionCallbackText?: string,
 ): Promise<Harness> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       id: AGENT_ID,
@@ -118,7 +119,7 @@ async function createHarness(
       bio: "Exercises the real message-service delivery boundary.",
       settings: {},
     }),
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });

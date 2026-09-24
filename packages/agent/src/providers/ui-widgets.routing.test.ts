@@ -1,4 +1,5 @@
 /** Tests production provider discovery through the real Stage-1 and planner selectors with a deterministic runtime fixture. */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   type AgentContext,
   AgentRuntime,
@@ -7,7 +8,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly.ts";
 import {
@@ -45,9 +46,9 @@ describe("production widget provider routing", () => {
   it.each(["MEMBER", "ADMIN"] as const)(
     "keeps generative grammar deferred while advertising only authorized support to %s",
     async (role) => {
-      const actual = new AgentRuntime({
+      const actual = createSQLiteTestRuntime({
         character: { name: "widget-routing" },
-        adapter: new InMemoryDatabaseAdapter(),
+        
       });
       activeRuntimes.push(actual);
       await actual.initialize({ skipMigrations: true });

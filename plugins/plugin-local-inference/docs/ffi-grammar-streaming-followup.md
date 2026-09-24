@@ -26,7 +26,7 @@ GBNF compilation already exists: `compileSkeletonToGbnf(skeleton)` in
 `src/services/structured-output.ts:202` (and `resolveBindingGrammarSource` /
 `StructuredGenerateParams.responseSkeleton`).
 
-1. **C header** — `packages/app-core/scripts/ffi-stub/ffi-streaming-llm.h` (and
+1. **C header** — `packages/app/scripts/ffi-stub/ffi-streaming-llm.h` (and
    the real header in the omnivoice tool): add a grammar field to
    `eliza_llm_stream_config_t`, e.g. `const char * gbnf_grammar; /* NULL ok */`.
 

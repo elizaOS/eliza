@@ -2,6 +2,7 @@
  * Virtual time proves queue retries honor provider windows without paid calls.
  * The provider responses are protocol fixtures, not model quality evidence.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createServer } from "node:http";
 import {
   AgentRuntime,
@@ -12,7 +13,7 @@ import {
   TaskService,
 } from "@elizaos/core";
 import { EvaluatorService } from "@elizaos/plugin-assistant";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
 
@@ -59,9 +60,9 @@ it("shares a provider hold across memory jobs and resumes after restart and fore
   try {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Loopback did not bind");
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: { name: "BackgroundCooldownWire", bio: "Isolated integration fixture" },
-      adapter: new InMemoryDatabaseAdapter(),
+      
       settings: {
         ELIZA_PROVIDER: "cerebras",
         OPENAI_API_KEY: "loopback-fixture-key",

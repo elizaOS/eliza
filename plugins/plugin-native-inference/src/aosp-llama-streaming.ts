@@ -2,13 +2,13 @@
  * AOSP streaming-LLM FFI binding.
  *
  * Wraps the C ABI declared in
- * `packages/app-core/scripts/omnivoice-fuse/ffi-streaming-llm.h` and
+ * `packages/app/scripts/omnivoice-fuse/ffi-streaming-llm.h` and
  * adapts it to the JS-side surface expected by
- * `FfiStreamingRunner` (in `@elizaos/app-core`).  Same shape as the
+ * `FfiStreamingRunner` (in `@elizaos/app`).  Same shape as the
  * desktop FFI binding in `voice/ffi-bindings.ts` — the runner does not
  * know or care which platform is underneath.
  *
- * Why this lives in the AOSP plugin and NOT in app-core:
+ * Why this lives in the AOSP plugin and NOT in app:
  *   - `bun:ffi` is the only path to the native runtime on the AOSP agent
  *     process; the fused `libelizainference.so` is the sole text/voice
  *     native library and lives in the per-ABI asset dir on Android
@@ -17,7 +17,7 @@
  *     driven by `cmake-graft.mjs`).  Putting the binding here keeps all
  *     native on-device inference co-located.
  *   - It lets us register the same `FfiStreamingRunnerFactory` shape the
- *     dispatcher imports from app-core — so the existing dispatcher
+ *     dispatcher imports from app — so the existing dispatcher
  *     stitches mobile streaming through the same entry point the desktop
  *     runner uses.
  *
@@ -32,7 +32,7 @@
 import { logger } from "@elizaos/core";
 
 /* -------------------------------------------------------------------- */
-/* JS-visible types — kept in sync with app-core's ffi-bindings.ts.     */
+/* JS-visible types — kept in sync with app's ffi-bindings.ts.     */
 /* -------------------------------------------------------------------- */
 
 /**
@@ -84,7 +84,7 @@ export interface AospLlmStreamStep {
 }
 
 /**
- * Surface the streaming runner factory in `app-core` expects.  Same
+ * Surface the streaming runner factory in `app` expects.  Same
  * shape as the desktop `ElizaInferenceFfi.llmStream*` slice.  Methods
  * are optional only on the `ElizaInferenceFfi` parent because older
  * builds may omit them; here every method MUST be present (the loader
@@ -454,7 +454,7 @@ export function createAospStreamingLlmBinding(deps: {
 
 /* -------------------------------------------------------------------- */
 /* Async-iterable façade.  Same contract a caller would see if they used*/
-/* the bare `ElizaInferenceFfi` slice from app-core — this is here so   */
+/* the bare `ElizaInferenceFfi` slice from app — this is here so   */
 /* AOSP-side callers that want to iterate without registering a chunk   */
 /* callback (e.g. a UI-side token replayer) have a JS-idiomatic API.    */
 /* -------------------------------------------------------------------- */
@@ -487,7 +487,7 @@ const DEFAULT_MAX_TEXT_BYTES = 1024;
 /**
  * Run one streaming generate against the binding.  Mirrors
  * `FfiStreamingRunner.generateWithUsage` but lives in the plugin so the
- * AOSP build can use it without depending on `@elizaos/app-core` at
+ * AOSP build can use it without depending on `@elizaos/app` at
  * compile time.  When the dispatcher routes through the shared voice
  * lifecycle service, the parent `FfiStreamingRunner` is preferred — this
  * is for direct callers (text-only UI surfaces, e2e probes).

@@ -17,7 +17,7 @@
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { SecretsManager } from "@elizaos/credentials/vault";
+import type { SecretsManager } from "@elizaos/auth/vault";
 import { formatErrorWithStack } from "@elizaos/shared";
 import { reconcileDirectTextModelSettings } from "../runtime-settings.ts";
 import type {

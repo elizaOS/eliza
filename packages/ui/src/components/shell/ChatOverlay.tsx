@@ -5761,7 +5761,7 @@ export function ChatOverlay({
   // the sr-only probe below (accessibility-tree channel — data attributes are
   // invisible to the native iOS/Android AX tree, so the on-device XCUITest
   // gesture suite reads this as a static text instead; see
-  // packages/app-core/platforms/ios/App/AppUITests/GestureSemanticsUITests.swift).
+  // packages/app/platforms/ios/App/AppUITests/GestureSemanticsUITests.swift).
   // A free-rest at/near the top reads "full", a mid free-rest folds into
   // "half" — the label never disagrees with the rendered height.
   const detentLabel = pilled

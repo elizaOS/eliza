@@ -3,7 +3,7 @@
  * transport, OAuth, visibility, and persistence are intentionally out of scope.
  */
 
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { describe, expect, it } from "vitest";
 import { toolReasoningTemplate as localToolReasoningTemplate } from "../../../../../plugins/plugin-mcp/src/prompts.js";
 import { buildMcpProviderData as buildLocalProjection } from "../../../../../plugins/plugin-mcp/src/utils/mcp.js";

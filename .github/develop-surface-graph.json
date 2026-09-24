@@ -32,27 +32,23 @@
       "workspacePatterns": [
         "packages/core",
         "packages/agent",
-        "packages/credentials",
+        "packages/auth",
         "packages/logger",
-        "packages/prompts",
         "packages/shared",
         "packages/synthetic-world",
         "packages/skills",
-        "packages/credentials",
         "plugins/**",
         "packages/app",
-        "packages/app-core",
         "packages/homepage",
         "packages/ui",
         "packages/scenario-runner",
-        "packages/test",
+        "packages/testing",
         "plugins/plugin-app-control",
         "plugins/plugin-computeruse",
         "packages/**"
       ],
       "inputs": [
         "packages/scripts/**",
-        "scripts/**",
         "*.md",
         "**/*.md",
         "packages/docs/**",
@@ -71,7 +67,7 @@
         "plugins/plugin-cloud-apps",
         "plugins/plugin-elizacloud"
       ],
-      "inputs": ["scripts/cloud/**"],
+      "inputs": ["packages/scripts/cloud/**"],
       "dependsOn": ["canonical"]
     },
     {
@@ -91,7 +87,6 @@
       "workspacePatterns": [
         "packages/agent",
         "packages/app",
-        "packages/app-core",
         "packages/core",
         "packages/shared",
         "packages/ui"
@@ -115,13 +110,6 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "secrets",
-      "workflow": ".github/workflows/gitleaks.yml",
-      "catchAll": true,
-      "workspacePatterns": [],
-      "inputs": ["**", ".gitleaks.toml"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core", "packages/shared"],
@@ -136,7 +124,6 @@
       "workflow": ".github/workflows/ui-e2e-gate.yml",
       "workspacePatterns": [
         "packages/app",
-        "packages/app-core",
         "packages/core",
         "packages/shared",
         "packages/ui"
@@ -151,12 +138,7 @@
     {
       "id": "ui-stories",
       "workflow": ".github/workflows/ui-story-gate.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/app-core",
-        "packages/shared",
-        "packages/ui"
-      ],
+      "workspacePatterns": ["packages/app", "packages/shared", "packages/ui"],
       "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
       "dependsOn": ["ui-core"]
     }

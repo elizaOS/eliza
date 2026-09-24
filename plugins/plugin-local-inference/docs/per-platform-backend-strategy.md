@@ -15,9 +15,9 @@ decode** — Metal is, and it is already the shipped, optimized, verified path.
 
 | Platform | GGML backend | Source of truth |
 |---|---|---|
-| **macOS** (Apple Silicon) | **Metal** (TurboQuant + eliza kernels embedded) | `packages/app-core/scripts/build-llama-cpp-mtp.mjs` (`-DGGML_METAL=ON`, embed metallib) |
+| **macOS** (Apple Silicon) | **Metal** (TurboQuant + eliza kernels embedded) | `packages/app/scripts/build-llama-cpp-mtp.mjs` (`-DGGML_METAL=ON`, embed metallib) |
 | **iOS** (arm64) | **Metal** (static archives) | same build script, `ios-arm64-metal` / `…-metal-fused` targets |
-| **Android** arm64 | **Vulkan** (GPU) + CPU fallback | `packages/app-core/scripts/aosp/compile-libllama.mjs` |
+| **Android** arm64 | **Vulkan** (GPU) + CPU fallback | `packages/app/scripts/aosp/compile-libllama.mjs` |
 | **Android** x86_64 | CPU only | same (Vulkan wired for arm64 only) |
 | **Linux / Windows desktop** | CUDA (NVIDIA) / CPU | desktop dylib build + `cuda_verify` |
 
@@ -145,6 +145,6 @@ is warranted or beneficial for iOS/Mac LLM decode.
 | Item | Issue | Why gated |
 |---|---|---|
 | ~~Gemma MTP drafter GGUF conversion + on-Metal `--spec-type draft-mtp` gate~~ — **DONE 2026-06-24**: drafter converted (`drafter-2b.gguf`), validated on M-series Metal, and the fast-tier draft window fixed (`draftMax` 4→1 = **1.37–1.66× decode win** on the 2B; the prior "regression" was the mistuned window, not the head). A from-scratch H200 head is now only a possible large/slow-tier optimization, not a fast-tier unlock. | #8848 / #9172 | n/a — shipped; see `docs/gemma4-mtp-drafter-conversion.md` (2026-06-24 correction) |
-| ~~Rebuild + republish the **prebuilt Android Vulkan fused-lib** to `eliza-archive`~~ — **OBSOLETE: no archive dependency.** Build the supported Android ABIs explicitly through `packages/app-core/scripts/aosp/compile-libllama.mjs`, then run the package/device verification on the target hardware. The retired producer/consumer workflows no longer mediate artifacts through the Actions API. | #9508 | n/a — operator-built |
+| ~~Rebuild + republish the **prebuilt Android Vulkan fused-lib** to `eliza-archive`~~ — **OBSOLETE: no archive dependency.** Build the supported Android ABIs explicitly through `packages/app/scripts/aosp/compile-libllama.mjs`, then run the package/device verification on the target hardware. The retired producer/consumer workflows no longer mediate artifacts through the Actions API. | #9508 | n/a — operator-built |
 | **Real-audio GPU CI lane** (DER/WER/echo/owner/impostor numbers) | #9454 | needs a `gpu-cuda-12.6` self-hosted runner + `ELEVENLABS_API_KEY` |
 | **PCM-level AEC3** sample-level echo cancellation (turn-level self-voice gate already shipped) | #9455 | net-new DSP feature (adaptive filter + double-talk detect + ERLE corpus) |

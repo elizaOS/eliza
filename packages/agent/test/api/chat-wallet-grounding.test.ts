@@ -1,4 +1,5 @@
 /** Exercises the chat adapter with the real runtime, message service, and persistence; model transport and wallet observations are controlled. */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   AgentRuntime,
   ChannelType,
@@ -9,7 +10,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { expect, it, vi } from "vitest";
 import { generateChatResponse } from "../../src/api/chat-routes.js";
 
@@ -17,13 +18,13 @@ it.each([2, 4])(
   "delivers and persists the observed %s SOL through the real message service",
   async (observedAmount) => {
     const owner = crypto.randomUUID();
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: createCharacter({
         name: "Wallet route proof",
         bio: "Local boundary test",
         settings: { ELIZA_ADMIN_ENTITY_ID: owner },
       }),
-      adapter: new InMemoryDatabaseAdapter(),
+      
       plugins: [createAssistantPlugin()],
       enableAutonomy: false,
       logLevel: "fatal",

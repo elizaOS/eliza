@@ -194,7 +194,7 @@ const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
 
 // Minimal subset of Electrobun's <electrobun-webview> custom element surface
 // used by this view. Inlined so this file typechecks identically from any
-// package that consumes app-core source — the full type lives in
+// package that consumes app source — the full type lives in
 // node_modules/electrobun/dist/api/browser/webviewtag.ts.
 type WebviewTagElement = HTMLElement & {
   loadURL(url: string): void;
@@ -275,7 +275,7 @@ type ElectrobunWebviewProps = React.DetailedHTMLProps<
 >;
 
 // JSX intrinsic for the Electrobun custom element. Kept local so packages that
-// consume ui source do not need app-core's ambient module declarations.
+// consume ui source do not need app's ambient module declarations.
 declare module "react/jsx-runtime" {
   namespace JSX {
     interface IntrinsicElements {

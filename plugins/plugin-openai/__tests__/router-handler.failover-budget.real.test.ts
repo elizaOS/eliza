@@ -4,6 +4,7 @@
  * no external model, credentials, device backend, or live routing file is used.
  * Run with vitest.real-runtime.config.ts to exercise current core sources.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   AgentRuntime,
@@ -13,7 +14,7 @@ import {
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";
@@ -39,7 +40,7 @@ beforeEach(() => {
 function fixture(options: { sdk?: boolean; prefer?: string | null; routerFirst?: boolean } = {}) {
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", "0");
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: {
       name: "RetryBudgetFixture",
       bio: "Test request-local provider failover",
@@ -47,7 +48,7 @@ function fixture(options: { sdk?: boolean; prefer?: string | null; routerFirst?:
         ELIZA_BRAIN_PROVIDER: options.prefer ?? "",
       },
     },
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
   });
   const fetch = vi.fn(

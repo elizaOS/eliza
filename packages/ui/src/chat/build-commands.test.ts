@@ -2,7 +2,7 @@
  * Unit coverage for slash-command list assembly from the view registry, gated by
  * enabled view kinds. Pure functions, no live agent.
  */
-import type { EnabledViewKinds } from "@elizaos/common";
+import type { EnabledViewKinds } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import {

@@ -1,15 +1,16 @@
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import { ModelType } from "../../types";
 
 function fixture() {
-	const adapter = new InMemoryDatabaseAdapter();
 	const runtime = new AgentRuntime({
 		character: { name: "DiagnosticShutdown", bio: "test" },
-		adapter,
+		
 		logLevel: "fatal",
 	});
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+	runtime.registerDatabaseAdapter(adapter);
 	runtime.registerModel(ModelType.TEXT_LARGE, async () => "answer", "fixture");
 	return { runtime, adapter };
 }

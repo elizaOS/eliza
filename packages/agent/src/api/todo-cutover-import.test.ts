@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../app-core/test/helpers/real-runtime.ts";
+} from "../../../app/test/helpers/real-runtime.ts";
 import { importSharedTodoCutover } from "./todo-cutover-import.ts";
 
 const ENTITY_ID = "11111111-1111-4111-8111-111111111111" as UUID;

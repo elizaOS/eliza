@@ -22,8 +22,8 @@ import type {
   LoginMfaRequiredResult,
   LoginProviders,
   LoginTelegramLoginPayload,
-} from "@elizaos/login";
-import { LoginApiError, LoginAuth } from "@elizaos/login";
+} from "@elizaos/auth";
+import { LoginApiError, LoginAuth } from "@elizaos/auth";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,

@@ -47,7 +47,7 @@ import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-f
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../../../../plugins/plugin-app-control/src/actions/view-catalog-scope.ts";
 import { NAVIGATION_CAPABILITY_READ_INSTRUCTION } from "../../../../plugins/plugin-app-control/src/actions/view-navigation-context.ts";
 
-import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { typedTurnEvaluationFixtures } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";

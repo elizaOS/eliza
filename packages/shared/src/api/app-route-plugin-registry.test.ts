@@ -3,7 +3,7 @@ import { getHttpRuntime } from "./http-plugin-runtime";
 /**
  * The app-route plugin registry + its idempotent drain.
  *
- * Both the headless `@elizaos/agent` boot and the `@elizaos/app-core` boot drain
+ * Both the headless `@elizaos/agent` boot and the `@elizaos/app` boot drain
  * this registry onto the same `runtime.routes` in a combined deployment, so the
  * drain MUST be idempotent (dedup by `${type}:${path}`) — otherwise every route
  * the orchestrator/lifeops/workflow plugins register would be mounted twice.

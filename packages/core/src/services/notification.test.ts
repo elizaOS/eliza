@@ -3,7 +3,7 @@
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import {
 	afterAll,
 	beforeAll,
@@ -27,7 +27,7 @@ import { NotificationService } from "./notification.ts";
 
 async function createRuntime(
 	services: NonNullable<Plugin["services"]>,
-	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(":memory:"),
 ): Promise<{
 	runtime: AgentRuntime;
 	cleanup: () => Promise<void>;
@@ -368,7 +368,7 @@ describe("NotificationService", () => {
 	});
 
 	it("fails startup when persisted notification state cannot be read", async () => {
-		class UnreadableCacheAdapter extends InMemoryDatabaseAdapter {
+		class UnreadableCacheAdapter extends SQLiteDatabaseAdapter {
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
 				throw new Error("notification cache unavailable");
 			}
@@ -402,7 +402,7 @@ describe("NotificationService", () => {
 	});
 
 	it("recovers persisted history after a transient hydration failure", async () => {
-		class TransientCacheAdapter extends InMemoryDatabaseAdapter {
+		class TransientCacheAdapter extends SQLiteDatabaseAdapter {
 			readAttempts = 0;
 
 			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
@@ -468,7 +468,7 @@ describe("NotificationService", () => {
 	});
 
 	it("backs off repeated recovery requests after a persistent failure", async () => {
-		class UnavailableCacheAdapter extends InMemoryDatabaseAdapter {
+		class UnavailableCacheAdapter extends SQLiteDatabaseAdapter {
 			readAttempts = 0;
 
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {

@@ -115,17 +115,17 @@ const FLOATING_ALLOWLIST = [];
 // not a repository runtime selector.
 const EXCLUDED_SURFACES = [
   {
-    prefix: "packages/app-core/scripts/bun-riscv64/",
+    prefix: "packages/app/scripts/bun-riscv64/",
     classification: "embedded-boundary-excluded",
     reason: "custom RISC-V Bun build with its own device-proof record",
   },
   {
-    prefix: "packages/app-core/scripts/lib/stage-android-agent.mjs",
+    prefix: "packages/app/scripts/lib/stage-android-agent.mjs",
     classification: "embedded-boundary-excluded",
     reason: "Android embedded Bun staging; channel-driven, device-proven",
   },
   {
-    prefix: "packages/app-core/src/cli/doctor/checks.ts",
+    prefix: "packages/app/src/cli/doctor/checks.ts",
     classification: "advisory-excluded",
     reason: "doctor fix hint for the developer's machine, not a repo runtime",
   },

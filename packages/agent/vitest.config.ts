@@ -189,13 +189,6 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
       },
       {
-        // Vitest deliberately omits Vite's `module` condition. Resolve this
-        // workspace package explicitly so parallel builds cannot remove its
-        // dist entry while an agent test imports core's prompt re-export.
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
         replacement: path.join(
           monorepoRoot,
@@ -226,26 +219,19 @@ export default defineConfig({
           "plugins/plugin-openai/utils/config.ts",
         ),
       },
-      {
-        // Core's src re-exports `@elizaos/prompts`, which ships no dist in
-        // this lane — anchor it to source so suites importing @elizaos/core
-        // load (same fix plugin-app-control's config carries).
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
       ...baseAliases,
       {
-        find: /^@elizaos\/credentials\/vault$/,
+        find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           monorepoRoot,
-          "packages/credentials/src/vault/index.ts",
+          "packages/auth/src/vault/index.ts",
         ),
       },
       {
-        find: /^@elizaos\/credentials\/vault\/(.+)$/,
+        find: /^@elizaos\/auth\/vault\/(.+)$/,
         replacement: path.join(
           monorepoRoot,
-          "packages/credentials/src/vault/$1",
+          "packages/auth/src/vault/$1",
         ),
       },
     ],

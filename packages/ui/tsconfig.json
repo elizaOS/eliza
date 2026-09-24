@@ -46,8 +46,8 @@
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/app-core": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/app-core/*": ["./src/platform/empty-node-module.ts"],
+      "@elizaos/app": ["./src/platform/empty-node-module.ts"],
+      "@elizaos/app/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -65,11 +65,11 @@
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/credentials/vault": [
-        "../../packages/credentials/src/vault/index.ts"
+      "@elizaos/auth/vault": [
+        "../../packages/auth/src/vault/index.ts"
       ],
-      "@elizaos/credentials/vault/*": [
-        "../../packages/credentials/src/vault/*"
+      "@elizaos/auth/vault/*": [
+        "../../packages/auth/src/vault/*"
       ],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],

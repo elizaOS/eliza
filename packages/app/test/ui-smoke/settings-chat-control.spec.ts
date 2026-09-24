@@ -8,7 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { SETTINGS_SECTIONS } from "../../../../scripts/ai-qa/route-catalog.ts";
+import { SETTINGS_SECTIONS } from "../../../scripts/ai-qa/route-catalog.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,

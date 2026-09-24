@@ -30,7 +30,7 @@
  * bad backup or, worse, booting fresh.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import { logger } from "../utils/logger";

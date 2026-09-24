@@ -463,7 +463,7 @@ export type BoundaryRole = "OWNER" | "GUEST";
  * authorized caller (trusted loopback owner or a valid API token) is the OWNER
  * principal; everyone else is GUEST — the server-authoritative unauthenticated
  * tier (#9948). Routes must use this instead of re-deriving `isAuthorized(req) ?
- * "OWNER" : "GUEST"` inline (which drifted to NONE elsewhere). app-core's
+ * "OWNER" : "GUEST"` inline (which drifted to NONE elsewhere). app's
  * resolveBoundaryRole is deliberately not importable from the agent, so this is
  * the agent-local equivalent with the same OWNER/GUEST vocabulary.
  */

@@ -23,7 +23,7 @@ line numbers.
    (`/metrics`, `/workspace-files`) pointing at the real `/api/orchestrator/*` usage surface.
 4. **Declared capability param schemas** for the 15 orchestrator view capabilities so
    voice/NL routing can pass `taskId`/`title`/`goal`/etc. **Mounted the sensitive-request
-   REST routes** (`packages/app-core/src/api/server.ts`) — the secret create/submit/fulfill
+   REST routes** (`packages/app/src/api/server.ts`) — the secret create/submit/fulfill
    path that orchestrator provider setup will use.
 5. **Locked capability manifest↔dispatch parity** with a regression test
    (`plugin-task-coordinator/__tests__/unit/orchestrator-capability-parity.test.ts`) + a
@@ -120,5 +120,5 @@ registry-registration gap (fixed in this branch) can't silently reopen.
 Isolated worktree `/home/nubs/Git/iqlabs/eliza-labs/eliza-orchestrator-feat`, branch
 `nubs/orchestrator-view-feature`. Fresh worktrees need `@elizaos/core` built first
 (`cd packages/core && bun run build`) or vitest can't resolve `@elizaos/core`; building the
-full plugin set is required to run app-core integration tests. Rebase onto the active branch
+full plugin set is required to run app integration tests. Rebase onto the active branch
 before merging (file sets don't overlap with the desktop/local-inference work in flight).

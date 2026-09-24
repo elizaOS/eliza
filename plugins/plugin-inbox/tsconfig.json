@@ -16,8 +16,8 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],

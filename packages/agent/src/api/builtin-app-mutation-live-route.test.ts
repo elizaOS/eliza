@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Proves My Apps semantic twins against a real AgentRuntime and TCP API host:
  * APP stop moves a real AppManager run out of inventory, and VIEWS show

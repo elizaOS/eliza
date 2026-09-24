@@ -1,5 +1,5 @@
 /** Exercises strict retirement on real AgentRuntime instances with controlled lifecycle hooks. Deferred operations prove bounded shutdown cannot certify cleanup or replay teardown on a later wait. */
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { trackPostDeliveryTask } from "../services/post-delivery-task-tracker";

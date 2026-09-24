@@ -21,8 +21,7 @@ import {
   resolveOptimizedPromptForRuntime,
   segmentBlock,
 } from "@elizaos/core";
-import { messageHandlerTemplate } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/prompts/rendering";
+import { composePrompt } from "@elizaos/shared/text/template-rendering";
 import { v4 } from "uuid";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import {
@@ -47,6 +46,7 @@ import {
   labelHistorySources,
   shortenHistoryRoleLabels,
 } from "./history-wire.js";
+import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
   composeResponseState,

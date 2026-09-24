@@ -55,7 +55,6 @@
     "build:unlocked": "bun run build:js && bun run build:views && bun run build:types"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

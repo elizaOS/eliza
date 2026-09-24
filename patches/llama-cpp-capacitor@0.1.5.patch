@@ -10,8 +10,8 @@ diff --git a/android/build.gradle b/android/build.gradle
 +}
 +
 +// Per-ABI resolver for the MTP cross-compile output produced by
-+// `packages/app-core/scripts/build-llama-cpp-mtp.mjs` and
-+// `packages/app-core/scripts/aosp/compile-libllama.mjs`. Each ABI has
++// `packages/app/scripts/build-llama-cpp-mtp.mjs` and
++// `packages/app/scripts/aosp/compile-libllama.mjs`. Each ABI has
 +// its own gradle property (`eliza.mtp.android.libdir.<abi>`) and env
 +// var (`ELIZA_MTP_ANDROID_LIBDIR_<ABI>`). For arm64-v8a the legacy
 +// unsuffixed names are still honored for backwards compatibility.
@@ -250,7 +250,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +endif()
 +
 +if(NOT ELIZA_MTP_LIBDIR OR ELIZA_MTP_LIBDIR STREQUAL "")
-+    message(FATAL_ERROR "MTP Android lib dir is empty for ABI ${ANDROID_ABI}; set -Peliza.mtp.android.libdir.${ANDROID_ABI} or ELIZA_MTP_ANDROID_LIBDIR_<ABI>, or run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-${ANDROID_ABI}-cpu (or aosp/compile-libllama.mjs)")
++    message(FATAL_ERROR "MTP Android lib dir is empty for ABI ${ANDROID_ABI}; set -Peliza.mtp.android.libdir.${ANDROID_ABI} or ELIZA_MTP_ANDROID_LIBDIR_<ABI>, or run packages/app/scripts/build-llama-cpp-mtp.mjs --target android-${ANDROID_ABI}-cpu (or aosp/compile-libllama.mjs)")
 +endif()
 +
 +set(ELIZA_LLAMA_CPP_DIR "${ELIZA_REPO_ROOT}/plugins/plugin-local-inference/native/llama.cpp")

@@ -13,7 +13,7 @@
  * `surface-isolation.ts`. Consumes `SandboxedViewFrame` (the mechanism) directly.
  */
 
-import type { SurfaceManifest } from "@elizaos/common";
+import type { SurfaceManifest } from "@elizaos/core";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";
@@ -115,7 +115,7 @@ export function SandboxProbeView() {
 export function registerSandboxProbeView(): void {
   registerAppShellPage({
     id: SANDBOX_PROBE_VIEW_ID,
-    pluginId: "app-core",
+    pluginId: "app",
     label: "Sandbox Probe",
     icon: "shield",
     path: `/apps/${SANDBOX_PROBE_VIEW_ID}`,

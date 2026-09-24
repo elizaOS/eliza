@@ -126,7 +126,7 @@ const RULES = [
       reason:
         "Voice rows need audible proof plus measured ASR/TTS behavior so success is not judged by a text-only path.",
       collectionHints: [
-        "bun run --cwd packages/app-core voice:latency-report",
+        "bun run --cwd packages/app voice:latency-report",
         "Attach the captured audio sample, transcript, and measured TTS/STT latency.",
       ],
     },

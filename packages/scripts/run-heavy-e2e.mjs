@@ -4,7 +4,7 @@
  * (`test:e2e:heavy`).
  *
  * The two suites this lane runs (qa-checklist and memory-relationships under
- * packages/app-core/test/app) self-skip through `describeIf` unless
+ * packages/app/test/app) self-skip through `describeIf` unless
  * ELIZA_LIVE_TEST=1, a real Chrome binary, and a live provider API key are all
  * present — and a fully skipped vitest run still exits 0. On the release
  * runner that combination turned the gate into a permanent no-op green
@@ -14,7 +14,7 @@
  * vitest exit it requires every named suite file to have executed at least one
  * assertion with zero skipped tests.
  *
- * The root script invokes it from packages/app-core so the vitest config
+ * The root script invokes it from packages/app so the vitest config
  * resolves its include globs; every CLI argument is forwarded to
  * `bunx vitest run` unchanged. The preflight mirrors the suites' own gating
  * constants; if those ever drift, the post-run executed-assertion check is the
@@ -32,7 +32,7 @@ export const DEFAULT_CHROME_PATH =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 /**
- * Env vars accepted by packages/app-core/test/helpers/live-provider.ts as a
+ * Env vars accepted by packages/app/test/helpers/live-provider.ts as a
  * live LLM provider credential, including the CI-scoped ELIZA_E2E_* aliases.
  */
 export const LIVE_PROVIDER_KEY_ENV_VARS = [

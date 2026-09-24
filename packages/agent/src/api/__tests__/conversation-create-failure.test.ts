@@ -2,7 +2,7 @@
  * Regression for `POST /api/conversations` when room initialization fails:
  * the handler must answer 500 and leave the live conversation list unchanged
  * instead of registering a phantom conversation with no backing room. Drives
- * the real `handleConversationRoutes` against a real `InMemoryDatabaseAdapter`
+ * the real `handleConversationRoutes` against a real `SQLiteDatabaseAdapter`
  * behind a thin runtime shim whose `ensureConnection` is scripted to fail.
  * Import admission uses the real room queue and disconnect tracker to cover
  * cancellation, failed setup, and preservation of existing registrations.
@@ -12,7 +12,7 @@
 import { EventEmitter } from "node:events";
 import type { Memory, UUID } from "@elizaos/core";
 import { ChannelType, RoomHandlerQueue, stringToUuid } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -24,7 +24,7 @@ import type { ConversationMeta } from "../server-types.ts";
 const AGENT_ID = "00000000-0000-0000-0000-0000000000c2" as UUID;
 
 function makeRuntime(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   ensureConnectionFailure: Error | null,
 ): unknown {
   return {
@@ -42,7 +42,7 @@ function makeRuntime(
           name: params.roomName,
           source: "test",
           type: ChannelType.DM,
-        } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],
+        } as Parameters<SQLiteDatabaseAdapter["createRooms"]>[0][number],
       ]);
     },
     async createMemory(memory: Memory, tableName: string) {
@@ -93,7 +93,7 @@ function makeRuntime(
 }
 
 function makeState(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   ensureConnectionFailure: Error | null,
 ): ConversationRouteState & {
   runtime: NonNullable<ConversationRouteState["runtime"]>;
@@ -188,10 +188,10 @@ function startImport(state: ConversationRouteState, conversationId: string) {
 }
 
 describe("POST /api/conversations — failed room initialization", () => {
-  let adapter: InMemoryDatabaseAdapter;
+  let adapter: SQLiteDatabaseAdapter;
 
   beforeEach(async () => {
-    adapter = new InMemoryDatabaseAdapter();
+    adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
   });
 

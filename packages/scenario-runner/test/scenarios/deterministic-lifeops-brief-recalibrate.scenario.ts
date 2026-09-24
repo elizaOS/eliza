@@ -46,7 +46,7 @@ import {
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
-} from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+} from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 

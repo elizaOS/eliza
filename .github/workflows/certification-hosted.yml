@@ -1,7 +1,7 @@
 # certification-hosted — runs the certification chain on a GitHub-hosted
 # runner, as the sanctioned fallback for certification-vast when the vast.ai
 # path is unavailable (dead VAST_API_KEY, no offers). Thin caller of
-# scripts/vast/local-certify.mjs, which runs the exact chain the vast onstart
+# packages/scripts/vast/local-certify.mjs, which runs the exact chain the vast onstart
 # runs — packages/evidence bundle:create → certify:rollup → certify:sign —
 # "same commands, same output; the gate cannot tell the difference (by design
 # — the signature is what matters)".
@@ -120,7 +120,7 @@ jobs:
       # else — box credentials, POSTGRES_URL, TERM/FORCE_COLOR, D-Bus/XDG
       # session state — is dropped. The command also runs inside a private
       # session bus (dbus-run-session) because hosted runners have a per-user
-      # session bus and packages/credentials's keychain-safety heuristic
+      # session bus and packages/auth's keychain-safety heuristic
       # (isKeychainUnsafe) branches on its reachability; without it the vault
       # master-key suite honestly reports the headless-host gap.
       - name: Prepare hermetic runner (robot pool)

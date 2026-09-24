@@ -28,8 +28,8 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],

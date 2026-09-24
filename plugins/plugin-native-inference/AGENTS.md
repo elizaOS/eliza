@@ -1,13 +1,16 @@
 # `@elizaos/plugin-native-inference`
 
-AOSP-only bootstrap for the fused `libelizainference.so` runtime. It connects
+Native inference workspace for AOSP FFI, Capacitor llama, mobile host bridges,
+and Android ML Kit OCR. The root entrypoint bootstraps the fused
+`libelizainference.so` runtime. It connects
 Bun to the native library through `bun:ffi`, registers local text, embedding,
 speech, and transcription handlers, and manages the resident model lifecycle.
-This is a function library rather than an elizaOS `Plugin` object.
+The root is a function library; the explicit bridge entrypoint also exports
+the runtime-owned mobile device bridge plugin.
 
-Read the repository [CLAUDE.md](../../CLAUDE.md), the parent
-[`plugin-local-inference` guide](../plugin-local-inference/CLAUDE.md), and the
-[native inference contract](../plugin-local-inference/native/CLAUDE.md) before
+Read the repository [CLAUDE.md](../../AGENTS.md), the parent
+[`plugin-local-inference` guide](../plugin-local-inference/AGENTS.md), and the
+[native inference contract](../plugin-local-inference/native/AGENTS.md) before
 changing its ABI, model selection, or memory policy.
 
 ## Runtime boundary
@@ -127,3 +130,28 @@ device logs. Voice or ASR changes require recorded playback/transcription and
 latency evidence; ABI changes require the native contract/reference gates from
 the parent guide. Follow the root platform evidence requirements and inspect
 the staged libraries and model artifacts by hand.
+
+## Consolidated platform entrypoints
+
+- `.` retains the AOSP bootstrap and its bundle-safety sink.
+- `./host-bridge` exports the mobile service plugin and lazy host bootstraps.
+- `./android/bridge`, `./android/dispatch`, `./ios/bridge`,
+  `./mobile-device-bridge-bootstrap`, and `./shared/*` retain the explicit host paths.
+- `./llama` exports the Capacitor adapter, separate chat/embedding contexts,
+  device relay, and token-tree codec from `src/llama/`.
+- `./mlkit-text` registers the Android `Tesseract` OCR surface from
+  `src/mlkit-text/`. Keep its native registration name stable.
+
+Browser callers must use the llama or OCR entrypoints, never the host barrel.
+Do not re-export host modules from browser entrypoints. Preserve the existing
+WebSocket authentication, iOS IPC ownership, filesystem sandbox, and teardown
+contracts documented in [mobile bridge](docs/mobile-bridge.md),
+[Capacitor llama](docs/capacitor-llama.md), and [OCR](docs/mlkit-text.md).
+
+`android/` is the Capacitor-discovered ML Kit library. `android-bridge/` retains
+the separately integrated computer-use native fragment; do not add its services
+or permissions to the OCR manifest as a side effect of package consolidation.
+
+The build emits ESM and declarations into `dist/`. `test:aosp` runs Bun tests;
+`test:mobile` runs the serial Vitest mobile and OCR suites. `test` runs both.
+The build/typecheck config keeps host type shims at the existing boundary.

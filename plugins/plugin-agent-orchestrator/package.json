@@ -78,7 +78,7 @@
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.105",
     "smol-toml": "^1.8.0",
-    "@elizaos/credentials": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },

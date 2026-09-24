@@ -4,7 +4,7 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
- * dev server proxies /api and /ws here (see eliza/packages/app-core/scripts/dev-ui.mjs).
+ * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.mjs).
  */
 
 import crypto from "node:crypto";
@@ -305,7 +305,7 @@ async function getX402Plugin(): Promise<X402PluginModule | null> {
 // that's absent (benign) vs a broken transitive import (drift)" decision on the
 // real specifier rather than the short key. See optional-plugin-fallback.ts.
 const optionalPluginSpecifiers = {
-  capacitor: "@elizaos/plugin-capacitor-bridge",
+  capacitor: "@elizaos/plugin-native-inference/host-bridge",
   computerUse: "@elizaos/plugin-computeruse",
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
@@ -676,7 +676,7 @@ import {
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 
-// Re-export for downstream consumers (e.g. @elizaos/app-core)
+// Re-export for downstream consumers (e.g. @elizaos/app)
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -1751,9 +1751,9 @@ async function handleRequestForViewClient(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // app-core authenticates the session-tier dashboard reads
+  // app authenticates the session-tier dashboard reads
   // (/api/cloud/status, /api/cloud/credits) before forwarding into the agent
-  // server. They need no dedicated exemption here: app-core's forwarded
+  // server. They need no dedicated exemption here: app's forwarded
   // requests arrive over trusted loopback and already pass `isAuthorized`,
   // while exempting the paths let ANY unauthenticated caller who could reach
   // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
@@ -1877,9 +1877,9 @@ async function handleRequestForViewClient(
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
   //
-  // The cloud-SSO handoff route is owned by the app-core host and injected
+  // The cloud-SSO handoff route is owned by the app host and injected
   // downward through the agent host bridge (see ../runtime/host-bridge.ts) so
-  // agent never imports `@elizaos/app-core`. A local on-device agent never
+  // agent never imports `@elizaos/app`. A local on-device agent never
   // legitimately serves it, so the bridge omits the handler and the request
   // falls through to the normal pipeline.
   const handleCloudPairRoute = getAgentHostBridge().handleCloudPairRoute;
@@ -1891,7 +1891,7 @@ async function handleRequestForViewClient(
     return;
   }
 
-  // The packaged desktop runs the agent listener directly, but app-core owns
+  // The packaged desktop runs the agent listener directly, but app owns
   // its browser-session store. The host consumes the one-shot local socket
   // proof here; its handler enforces loopback peer+Host, originlessness,
   // socket ownership, and socket mode before minting anything.
@@ -1917,7 +1917,7 @@ async function handleRequestForViewClient(
 
   // ── Runtime-mode visibility gate ────────────────────────────────────────
   // Enforced here, in the server every host shares, so the bare agent
-  // (`bun run start`) honors the same mode contract as the app-core wrapper:
+  // (`bun run start`) honors the same mode contract as the app wrapper:
   // routes outside the active runtime mode return 404 before auth runs
   // (hidden, not probeable). OPTIONS is exempt so CORS preflight keeps its
   // unconditional 204 below.
@@ -2310,7 +2310,7 @@ async function handleRequestForViewClient(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("@elizaos/credentials/auth")) as never,
+        (await import("@elizaos/auth/auth")) as never,
     } as never)
   ) {
     return;
@@ -3872,7 +3872,7 @@ export async function startApiServer(opts?: {
    * Lets a host recognize credentials it owns before the dashboard WebSocket
    * is admitted. The agent server still owns origin/path checks, pending-socket
    * limits, and its static-token fallback; this hook only adds an authenticated
-   * principal such as app-core's revocable machine session.
+   * principal such as app's revocable machine session.
    */
   authorizeWebSocket?: WebSocketAuthorizer;
   /**
@@ -4228,7 +4228,7 @@ export async function startApiServer(opts?: {
     (isMobilePlatform() ||
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")
   ) {
-    // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
+    // Defer to a macrotask: resolving @elizaos/plugin-native-inference (and its
     // device-bridge attach) measured ~15s of blocking on the mobile bundle and
     // — because it sat on the synchronous pre-`server.listen` path — held the
     // whole API bind (and the boot screen) hostage for that entire time (#11903).
@@ -4583,7 +4583,7 @@ export async function startApiServer(opts?: {
       return false;
     }
     // Mirrors the pairing-token env contract enforced by
-    // @elizaos/plugin-capacitor-bridge's attachMobileDeviceBridgeToServer.
+    // @elizaos/plugin-native-inference/host-bridge's attachMobileDeviceBridgeToServer.
     return Boolean(
       process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
         process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim(),

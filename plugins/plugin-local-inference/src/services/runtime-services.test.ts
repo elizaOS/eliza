@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Exercises local-inference service registration against a real AgentRuntime:
  * initialize, lazy start, synchronous discovery, and runtime-owned teardown.

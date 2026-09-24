@@ -295,7 +295,7 @@ test("historic app and Electrobun mappings are real red-green controls", {
     configOverrides: new Map([
       [
         appConfig,
-        withoutPath(appConfig, "@elizaos/capacitor-mobile-agent-bridge"),
+        withoutPath(appConfig, "@elizaos/plugin-native-inference/bridge"),
       ],
     ]),
   });
@@ -306,7 +306,7 @@ test("historic app and Electrobun mappings are real red-green controls", {
 
   const electrobunConfig = path.join(
     repoRoot,
-    "packages/app-core/platforms/electrobun/tsconfig.json",
+    "packages/app/platforms/electrobun/tsconfig.json",
   );
   const electrobunBroken = auditTsconfigWorkspaceResolution({
     repoRoot,

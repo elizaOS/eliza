@@ -4,7 +4,7 @@ Lean end-to-end scenario runner for elizaOS agents. Loads `.scenario.ts` files, 
 
 ## Purpose / role
 
-This package is the canonical integration-test runtime for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/test/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
+This package is the canonical integration-test runtime for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/testing/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
 
 ## Layout
 
@@ -106,9 +106,9 @@ A scenario declares its CI lane via the optional `lane` field
 - `live-only` — needs live model credentials and/or connector services. This is
   the default for any scenario that does not declare a lane.
 
-`--lane <lane>` filters `run`/`list` to one lane. The big `packages/test/scenarios`
+`--lane <lane>` filters `run`/`list` to one lane. The big `packages/testing/scenarios`
 corpus is `live-only` by default; the keyless subset is run on PRs via
-`test:corpus:pr:e2e` (`run ../test/scenarios --lane pr-deterministic`).
+`test:corpus:pr:e2e` (`run ../testing/scenarios --lane pr-deterministic`).
 
 ## Commands
 

@@ -8,9 +8,9 @@ for the current code is: keep the seams separate and document why.
 
 Do not extract a shared helper between:
 
-- `packages/app-core/scripts/lib/api-supervisor.mjs`
-- `packages/app-core/scripts/dev-ui.mjs`
-- `packages/app-core/scripts/dev-platform.mjs`
+- `packages/app/scripts/lib/api-supervisor.mjs`
+- `packages/app/scripts/dev-ui.mjs`
+- `packages/app/scripts/dev-platform.mjs`
 - `packages/scripts/dev-all.mjs`
 - `packages/scripts/run-all-tests.mjs`
 - `packages/scripts/lib/test-task-pool.mjs`

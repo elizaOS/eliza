@@ -11,8 +11,8 @@ import { computeCanRespond } from "./health-routes.ts";
  * chat composer back to "waking up").
  *
  * Booting the full `startApiServer` to assert the live WS payload is not viable
- * in this vitest lane: `server.ts` imports `@elizaos/app-core/api/cloud-pair-route`
- * (and other subpaths) which the package's `@elizaos/app-core` test alias rewrites
+ * in this vitest lane: `server.ts` imports `@elizaos/app/api/cloud-pair-route`
+ * (and other subpaths) which the package's `@elizaos/app` test alias rewrites
  * to a non-directory path (ENOTDIR), so the module graph fails to load. No
  * committed agent test imports `server.ts` for that reason.
  *

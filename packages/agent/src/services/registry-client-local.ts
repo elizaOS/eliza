@@ -52,7 +52,7 @@ interface LocalPackageAppMeta {
    * If true, this app declares itself as the default landing tab for the
    * shell. Exactly one installed app should set this; if multiple do, the
    * shell picks the first one alphabetically by package name and logs a
-   * warning. Used by `getMainTabApp()` in app-core to compute the
+   * warning. Used by `getMainTabApp()` in app to compute the
    * landing tab at boot.
    */
   mainTab?: boolean;

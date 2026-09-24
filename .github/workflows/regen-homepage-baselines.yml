@@ -45,7 +45,7 @@ jobs:
         working-directory: packages/homepage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node ../app-core/scripts/write-homepage-release-data.mjs
+        run: node ../app/scripts/write-homepage-release-data.mjs
 
       - name: Install homepage browser
         run: PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium

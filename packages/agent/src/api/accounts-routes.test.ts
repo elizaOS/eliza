@@ -81,7 +81,7 @@ const fakes = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/credentials/auth/account-storage", () => ({
+vi.mock("@elizaos/auth/auth/account-storage", () => ({
   listAccounts: () => fakes.accounts,
   loadAccount: (_providerId: string, accountId: string) =>
     fakes.accounts.find((account) => account.id === accountId),
@@ -109,16 +109,16 @@ vi.mock("@elizaos/credentials/auth/account-storage", () => ({
     owner: "runtime",
   }),
 }));
-vi.mock("@elizaos/credentials/auth/codex-usage", () => ({
+vi.mock("@elizaos/auth/auth/codex-usage", () => ({
   fetchCodexUsage: vi.fn(),
 }));
-vi.mock("@elizaos/credentials/auth/credentials", () => ({
+vi.mock("@elizaos/auth/auth/credentials", () => ({
   getAccessToken: fakes.getAccessToken,
 }));
-vi.mock("@elizaos/credentials/auth/direct-api-probe", () => ({
+vi.mock("@elizaos/auth/auth/direct-api-probe", () => ({
   probeDirectApiKey: fakes.probeDirectApiKey,
 }));
-vi.mock("@elizaos/credentials/auth/oauth-flow", () => ({
+vi.mock("@elizaos/auth/auth/oauth-flow", () => ({
   cancelFlow: fakes.cancelFlow,
   getFlowState: fakes.getFlowState,
   startAnthropicOAuthFlow: fakes.startFlow,

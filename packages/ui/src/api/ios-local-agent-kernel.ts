@@ -4,7 +4,7 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { formatError } from "@elizaos/common";
+import { formatError } from "@elizaos/core";
 import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
 import { logger } from "@elizaos/shared/logger";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
@@ -1622,7 +1622,7 @@ async function requestJson(request: Request): Promise<Record<string, unknown>> {
 async function loadCapacitorLlama(): Promise<CapacitorLlamaAdapter | null> {
   llamaAdapterPromise ??= (async () => {
     try {
-      const packageName = "@elizaos/capacitor-llama";
+      const packageName = "@elizaos/plugin-native-inference/llama";
       const mod = (await import(
         /* @vite-ignore */ packageName
       )) as CapacitorLlamaModule | null;
@@ -2276,7 +2276,7 @@ function buildPrompt(messages: LocalMessage[], latestText: string): string {
  * Classify a thrown error from `llama.generate` so the caller can decide
  * between "rotate to cloud" and "propagate". Same shape and reasons as the
  * AOSP bootstrap's wrapper — we don't share the type because the iOS kernel
- * deliberately has zero dependency on `@elizaos/app-core`.
+ * deliberately has zero dependency on `@elizaos/app`.
  */
 type IosLocalGenerateFallbackReason =
   | "local-unavailable"

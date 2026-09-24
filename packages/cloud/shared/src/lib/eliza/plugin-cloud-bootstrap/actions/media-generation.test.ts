@@ -1,7 +1,6 @@
 // Exercises media generation behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { type Memory } from "@elizaos/common";
-import { type IAgentRuntime, ModelType, ServiceType } from "@elizaos/core";
+import { type IAgentRuntime, type Memory, ModelType, ServiceType } from "@elizaos/core";
 import { CloudMediaGenerationService } from "../services/cloud-media-generation-service";
 import { generateMediaAction } from "./media-generation";
 

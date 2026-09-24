@@ -2,10 +2,10 @@
  * Local inference shared types.
  *
  * Shared contracts referenced by the server-side service in
- * `@elizaos/app-core` and the UI client in `@elizaos/ui`.
+ * `@elizaos/app` and the UI client in `@elizaos/ui`.
  *
  * Server-only logic (KV cache management, native runtime lifecycle,
- * conversation registry, metrics scraping) stays in `app-core`; only
+ * conversation registry, metrics scraping) stays in `app`; only
  * the type contracts live here.
  */
 
@@ -164,7 +164,7 @@ export interface OpenVinoHardwareProbe {
  *
  * This (the llama.cpp-handle layer) is *not* the same enum as the
  * bundle-manifest layer's `Eliza1Kernel`
- * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
+ * (`@elizaos/app/src/services/local-inference/manifest/schema`):
  * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
  * `polarquant` / `turbo3_tcq` shared by name. The translation is
  * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.

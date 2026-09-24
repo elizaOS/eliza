@@ -61,9 +61,9 @@ This file describes what training has to *do* to satisfy that contract.
 This package does NOT own:
 
 - The runtime engine, downloader, or routing — those are in
-  `packages/app-core/` (see `packages/app-core/scripts/` for build hooks).
+  `packages/app/` (see `packages/app/scripts/` for build hooks).
 - The build hook or kernel patches — that is
-  `packages/app-core/scripts/build-llama-cpp-mtp.mjs`.
+  `packages/app/scripts/build-llama-cpp-mtp.mjs`.
 
 ---
 
@@ -207,7 +207,7 @@ entry points for training and publishing:
   (not production model bundles); `push_model_to_hf.py` redirects callers to
   the canonical entry points.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
-  serving harnesses (not production runtime — that is app-core).
+  serving harnesses (not production runtime — that is app).
 
 When adding a new pipeline stage, prefer extending the existing
 `run_pipeline.py` graph over inventing a parallel entry point. The

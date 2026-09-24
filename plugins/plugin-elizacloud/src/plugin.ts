@@ -8,7 +8,7 @@
  * and is browser-safe; this `plugin.ts` is loaded only on the server via
  * `register-routes.ts`.
  *
- * Migrated from packages/app-core/src/api/cloud-routes.ts and
+ * Migrated from packages/app/src/api/cloud-routes.ts and
  * cloud-status-routes.ts. The login/persist, login/status and disconnect
  * paths each carry a small loopback-PUT that previously lived inline in
  * server.ts; that orchestration moved here so server.ts no longer needs
@@ -344,7 +344,7 @@ const cloudRoutes: Route[] = [
 export const elizaCloudRoutePlugin: Plugin = {
   name: "@elizaos/plugin-elizacloud:routes",
   description:
-    "Eliza Cloud connection, login, status, credit, and relay routes (extracted from app-core/server.ts)",
+    "Eliza Cloud connection, login, status, credit, and relay routes (extracted from app/server.ts)",
   routes: cloudRoutes,
   // Routes-only plugin — no services or persistent resources to dispose.
   dispose: async (_runtime) => {},

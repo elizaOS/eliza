@@ -99,7 +99,7 @@ function writeApk(repoRoot, buildId) {
 }
 
 function writeFreshDist(repoRoot, buildId) {
-  const dist = path.join(repoRoot, "packages", "app", "dist");
+  const dist = path.join(repoRoot, "packages", "app", "web-dist");
   mkdirSync(dist, { recursive: true });
   writeFileSync(
     path.join(dist, "eliza-renderer-build.json"),

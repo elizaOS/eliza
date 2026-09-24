@@ -61,7 +61,7 @@ provider exchanges an RS256 assertion for a bearer token at
 endpoint for the account's project.
 
 The Android build additionally needs `google-services.json` dropped into
-`packages/app-core/platforms/android/app/` at build time; without it the
+`packages/app/platforms/android/app/` at build time; without it the
 `com.google.gms.google-services` gradle plugin is skipped and the device never
 mints an FCM token (see that module's `build.gradle`).
 

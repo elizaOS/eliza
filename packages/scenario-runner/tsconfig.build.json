@@ -10,8 +10,7 @@
     "outDir": "dist",
     "paths": {
       "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/testing/*": ["../testing/src/*"],
-      "@elizaos/common": ["../common/dist/index.d.ts"]
+      "@elizaos/testing/*": ["../testing/src/*"]
     },
     "rootDir": "../.."
   },

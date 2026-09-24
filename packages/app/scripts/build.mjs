@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveElizaAssetBaseUrls } from "../../../packages/app-core/scripts/lib/asset-cdn.mjs";
+import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { normalizeEnvPrefix } from "../src/env-prefix.js";
 import {
   removePublicBuildStamp,
@@ -21,14 +21,14 @@ const repoRoot = path.resolve(appDir, "..", "..");
 const repoSetupScript = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "run-repo-setup.mjs",
 );
 const pruneCdnAssetsScript = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "prune-cdn-local-assets.mjs",
 );

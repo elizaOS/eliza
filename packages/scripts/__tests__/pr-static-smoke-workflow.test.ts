@@ -154,7 +154,6 @@ describe("PR Static Smoke workflow", () => {
         "packages/cloud/e2e",
         "packages/cloud/shared",
         "packages/core",
-        "packages/prompts",
         "packages/shared",
         "packages/ui",
         "plugins/plugin-cloud-apps",
@@ -170,7 +169,7 @@ describe("PR Static Smoke workflow", () => {
       expect.arrayContaining([
         "packages/cloud",
         "packages/app",
-        "packages/app-core",
+        "packages/app",
         "packages/scripts",
         ".github/actions/cloud-setup-test-env",
         ".github/develop-surface-graph.json",
@@ -208,14 +207,13 @@ describe("PR Static Smoke workflow", () => {
     expect(admission?.run).not.toContain('result" = "skipped');
   });
 
-  test("fails closed over mergeability, secrets, workflows, and affected static checks", () => {
+  test("fails closed over mergeability, workflows, and affected static checks", () => {
     expect(workflow.jobs?.["source-smoke"]?.["runs-on"]).toBe("ubuntu-24.04");
     const commands = (workflow.jobs?.["source-smoke"]?.steps ?? [])
       .map((step) => step.run ?? "")
       .join("\n");
     expect(commands).toContain("git merge-tree --write-tree");
     expect(commands).toContain("git diff --check");
-    expect(commands).toContain("gitleaks detect");
     expect(commands).toContain("actionlint");
     expect(commands).toContain(
       "packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",

@@ -6,7 +6,7 @@
  * order and internal-tool ordering — never by ad-hoc package-name sets here.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/common";
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,

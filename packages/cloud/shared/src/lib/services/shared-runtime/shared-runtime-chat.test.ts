@@ -8,7 +8,7 @@
 process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
 

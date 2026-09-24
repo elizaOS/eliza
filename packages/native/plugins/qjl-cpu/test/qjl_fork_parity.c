@@ -21,7 +21,7 @@
  *
  * Run:
  *   1. Build the fork's libggml-cpu.so via
- *      `node packages/app-core/scripts/aosp/compile-libllama.mjs --abi x86_64`
+ *      `node packages/app/scripts/aosp/compile-libllama.mjs --abi x86_64`
  *      (host-arch build; for arm64 run on a real arm64 host or via
  *      qemu-aarch64).
  *   2. Build this test with the standalone qjl-cpu library:

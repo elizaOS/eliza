@@ -11,7 +11,7 @@ const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
-  "app-core-focused",
+  "app-focused",
   "agent-focused",
   "lifeops-focused",
   "cloud-api-key-client",
@@ -90,10 +90,10 @@ const TASKS = [
     description: "Host app typecheck",
   },
   {
-    id: "app-core-typecheck",
+    id: "app-typecheck",
     tier: 1,
     command: "bun",
-    args: ["run", "--cwd", "packages/app-core", "typecheck"],
+    args: ["run", "--cwd", "packages/app", "typecheck"],
     description: "App-core typecheck",
   },
   {

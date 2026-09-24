@@ -10,7 +10,7 @@ import {
 } from "@elizaos/core";
 import { BrowserService } from "@elizaos/plugin-browser";
 import type { HttpPlugin } from "@elizaos/shared/api/http-plugin";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";

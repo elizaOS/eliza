@@ -2,7 +2,7 @@
  * Node/Bun FFI binding to `libelizainference.{dylib,so,dll}`.
  *
  * The fused omnivoice + llama.cpp build (see
- * `packages/app-core/scripts/omnivoice-fuse/`) produces ONE shared
+ * `packages/app/scripts/omnivoice-fuse/`) produces ONE shared
  * library that exports both `llama_*` and `omnivoice_*` symbols plus
  * the C ABI declared in `scripts/omnivoice-fuse/ffi.h`. This module is
  * the JS-side proxy for that ABI — it loads the library, binds every

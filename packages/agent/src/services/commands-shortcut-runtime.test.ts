@@ -16,7 +16,7 @@ import {
 } from "@elizaos/core";
 import { runShortcutGate } from "@elizaos/plugin-assistant";
 import commandsPlugin from "@elizaos/plugin-commands";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const responseId = "00000000-0000-0000-0000-0000000000f1" as UUID;
@@ -34,7 +34,7 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
   let runtime: AgentRuntime;
 
   beforeAll(async () => {
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:");
     runtime = new AgentRuntime({
       character: { name: "TestAgent", bio: ["t"], settings: {} } as Character,
       adapter,

@@ -5,8 +5,8 @@
  */
 
 import type http from "node:http";
-import { resolveAuthorizedRouteRole } from "@elizaos/app-core/api/auth";
-import { authStoreForRuntime } from "@elizaos/app-core/services/auth-store";
+import { resolveAuthorizedRouteRole } from "@elizaos/app/api/auth";
+import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";

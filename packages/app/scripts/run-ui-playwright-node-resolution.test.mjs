@@ -2,7 +2,7 @@
  * Exercises the Playwright-lane Node runtime resolution shared by
  * scripts/run-ui-playwright.mjs and the playwright.*.config.ts webServer
  * commands. Deterministic: candidate probes are injected fixtures mirroring
- * app-core's run-node-runtime.test.mjs, plus one real-probe acceptance case
+ * app's run-node-runtime.test.mjs, plus one real-probe acceptance case
  * against the host runtime when it is a genuine Node.js 24+ process.
  */
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { parseNodeMajor } from "../../app-core/scripts/run-node-runtime.mjs";
+import { parseNodeMajor } from "./run-node-runtime.mjs";
 import {
   resolveExecutableFromPath,
   resolvePlaywrightNodeRuntime,

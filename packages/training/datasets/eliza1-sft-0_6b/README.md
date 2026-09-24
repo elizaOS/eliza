@@ -53,7 +53,7 @@ at format time — they are metadata for stratified sampling and audits.
 
 | task | rows | source |
 |---|---:|---|
-| `action_selection` | ~68 | `packages/app-core/test/benchmarks/action-selection-cases.ts` — user turn → the action the agent should pick (or a plain reply for `expectedAction: null`), rendered as `ACTION: NAME {params}` + a short confirmation. 1:1 with the action-selection benchmark case ids. |
+| `action_selection` | ~68 | `packages/app/test/benchmarks/action-selection-cases.ts` — user turn → the action the agent should pick (or a plain reply for `expectedAction: null`), rendered as `ACTION: NAME {params}` + a short confirmation. 1:1 with the action-selection benchmark case ids. |
 | `tool_use` | ~730 | Cerebras-generated agent-loop turns over the canonical action catalog (`OWNER_TODOS`, `CALENDAR`, `MESSAGE`, `BLOCK`, …, `REPLY`): more domain/phrasing variety, ambiguous cases, negative (no-action) cases. |
 | `personality` | ~37 | `suites/personality-bench/tests/calibration/{hand-graded,adversarial}.jsonl` in the [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks) repo — PASS-graded trajectories for the five rubrics (`shut_up`, `hold_style`, `note_trait_unrelated`, `escalation`, `scope_global_vs_user`). Rows whose complete trajectory ends in an empty silence target are rejected; earlier turns are never repackaged as the target. |
 | `assistant` | ~370 | Cerebras-generated general assistant turns (concise factual Q&A, explanations of speculative decoding / quantization / VAD / on-device inference — the topics the `eliza1_eval_suite` held-out text-eval corpus probes), plus polite refusals (`cerebras:refusal`) and short multi-turn exchanges (`cerebras:multiturn`). |

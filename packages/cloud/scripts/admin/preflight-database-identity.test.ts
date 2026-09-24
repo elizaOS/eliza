@@ -155,7 +155,7 @@ describe("database identity preflight", () => {
     expect(
       classifyDatabaseIdentityFailure({
         code: "ERR_MODULE_NOT_FOUND",
-        message: "missing /private/worktree/packages/prompts/dist/index.js",
+        message: "missing /private/worktree/packages/shared/dist/text/template-rendering.js",
       }),
     ).toBe("dependency_unavailable");
     expect(

@@ -16,9 +16,9 @@
  * baseline with the available dependencies.
  *
  * `@elizaos/plugin-inbox` is deliberately NOT an `@elizaos/agent` dependency:
- * it depends on `@elizaos/app-core`, which depends on `@elizaos/agent`, so
+ * it depends on `@elizaos/app`, which depends on `@elizaos/agent`, so
  * declaring it here creates a Turbo build cycle
- * (`agent -> plugin-inbox -> app-core -> agent`). It reaches the packaged
+ * (`agent -> plugin-inbox -> app -> agent`). It reaches the packaged
  * runtime as a hard dependency of `@elizaos/plugin-personal-assistant`, which
  * the runtime-copy transitive walk keeps because the edge is `required`.
  */
@@ -36,7 +36,7 @@ const declaredDependencies = Object.keys(
 );
 
 /**
- * Would close `agent -> plugin-inbox -> app-core -> agent`, so it ships through
+ * Would close `agent -> plugin-inbox -> app -> agent`, so it ships through
  * the transitive walk instead of a direct dependency here.
  */
 const CYCLE_EXCLUDED_FROM_AGENT_DEPS = new Set(["@elizaos/plugin-inbox"]);

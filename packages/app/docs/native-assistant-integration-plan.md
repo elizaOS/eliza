@@ -6,7 +6,7 @@ feel like real system citizens rather than a WebView with a chat box.
 ## Baseline Already In Tree
 
 - Capacitor app shell with native iOS and Android projects under
-  `packages/app-core/platforms`.
+  `packages/app/platforms`.
 - Deep-link contract: `elizaos://assistant`, `elizaos://chat`,
   `elizaos://voice`, `elizaos://lifeops/*`, `elizaos://share`.
 - Android App Actions via `res/xml/shortcuts.xml`: chat/ask, voice, daily

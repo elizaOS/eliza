@@ -30,7 +30,7 @@
 >
 >   * The five Metal patch hooks have been collapsed into one
 >     `patchMetalKernels` implementation in
->     `packages/app-core/scripts/kernel-patches/metal-kernels.mjs`. It
+>     `packages/app/scripts/kernel-patches/metal-kernels.mjs`. It
 >     copies the verified standalones from `packages/inference/metal/` into
 >     the fork at `ggml/src/ggml-metal/eliza-shipped/<name>.metal`, then
 >     patches `ggml/src/ggml-metal/CMakeLists.txt` so each standalone is
@@ -322,15 +322,15 @@ make metal
 
 # 5) Optional: build the patched llama-server. Metal kernel patching is
 #    unconditional for Metal targets; there are no opt-in env vars.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --backend metal
 
 # 6) Optional: build the iOS Capacitor static archive that the
 #    LlamaCpp.xcframework patch in
-#    packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
+#    packages/app/patches/llama-cpp-capacitor@0.1.5.patch consumes.
 #    Requires macOS host with Xcode installed.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-simulator-metal
 ```
 
@@ -374,7 +374,7 @@ make android-vulkan-smoke
 # 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
 #    default-on. The build still refuses publishable artifacts until graph
 #    dispatch capabilities are runtime-ready, not merely symbol-shipped.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend vulkan
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -515,9 +515,9 @@ The MTP/TBQ/QJL/Polar/Metal fork ships in-tree as a git submodule at
 `bun install` runs `git submodule update --init --recursive`, so a fresh
 checkout has it. Both build paths default to this checkout:
 
-- `packages/app-core/scripts/build-llama-cpp-mtp.mjs` — desktop / server /
+- `packages/app/scripts/build-llama-cpp-mtp.mjs` — desktop / server /
   Windows / iOS.
-- `packages/app-core/scripts/aosp/compile-libllama.mjs` — Android cross-compile
+- `packages/app/scripts/aosp/compile-libllama.mjs` — Android cross-compile
   (same pinned commit, so both paths land on identical kernels).
 
 The build re-applies the kernel patches (`kernel-patches/*`) on top of the
@@ -533,8 +533,8 @@ SWA-based bodies can silently run target-only after `--spec-type mtp`.
 
 Source-of-truth: the verified `.metal` and `.comp` files in this
 directory (`plugins/plugin-local-inference/native/{metal,vulkan}/`). The build script
-`packages/app-core/scripts/build-llama-cpp-mtp.mjs` calls into
-`packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
+`packages/app/scripts/build-llama-cpp-mtp.mjs` calls into
+`packages/app/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
 during `applyForkPatches()` and the helpers do the actual work:
 
 ### Metal (darwin desktop)
@@ -636,7 +636,7 @@ ggml-metal-ops dispatch work flagged above.
 The on-device path consumes
 [`@elizaos/llama-cpp-capacitor`](https://www.npmjs.com/package/@elizaos/llama-cpp-capacitor)
 (currently v0.1.5 from npm), an opaque prebuilt framework. The patch at
-`packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch` switches the
+`packages/app/patches/llama-cpp-capacitor@0.1.5.patch` switches the
 plugin to consume a vendored `LlamaCpp.xcframework` so we can ship a
 custom-built static archive against the patched fork.
 
@@ -645,8 +645,8 @@ targets (compile-only on this machine — they require macOS host with
 Xcode):
 
 ```bash
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
 ```
 
 Both pass `-DGGML_METAL=ON -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64`
@@ -664,7 +664,7 @@ packaging and verifier path are not wired here yet. Those spellings fail
 with explicit diagnostics instead of falling through to a generic unsupported
 target list. Android system-agent fused artifacts, including emulator
 `android-x86_64-*-fused`, are owned by
-`packages/app-core/scripts/aosp/compile-libllama.mjs`.
+`packages/app/scripts/aosp/compile-libllama.mjs`.
 
 Server fused CUDA on arm64 Linux is supported as
 `linux-aarch64-cuda-fused`. It uses the same CUDA fused-attention CMake flags

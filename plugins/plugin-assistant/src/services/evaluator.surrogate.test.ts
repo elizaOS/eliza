@@ -12,7 +12,8 @@
  * remaining characters, so the boundary parity is swept rather than assumed.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
@@ -41,14 +42,14 @@ function isWellFormed(value: string): boolean {
 }
 
 function makeRuntime(): AgentRuntime {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: {
       name: "EvaluatorSurrogateAgent",
       bio: "test",
       settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
     } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;

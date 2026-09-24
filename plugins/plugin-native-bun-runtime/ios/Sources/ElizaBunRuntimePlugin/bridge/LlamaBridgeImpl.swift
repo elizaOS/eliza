@@ -27,7 +27,7 @@ import os
 // We call llama.cpp's C symbols directly through @_silgen_name rather than
 // importing a generated module. This keeps us provider-agnostic: the same
 // Swift code works whether the binary slice came from `LlamaCpp.xcframework`
-// (built by the app-core iOS local-inference pipeline) or from a different
+// (built by the app iOS local-inference pipeline) or from a different
 // distribution. The contract is the linker — at link time
 // the symbols must resolve, otherwise we get a clear "Undefined symbol"
 // error.
@@ -514,7 +514,7 @@ private final class CachedVoiceContext {
 /// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
 /// types so the caller can leave the params struct at default. Fork-specific
 /// TBQ / QJL / Q4_POLAR codes mirror the patched ggml_type enum values
-/// introduced by `packages/app-core/scripts/build-llama-cpp-mtp.mjs`;
+/// introduced by `packages/app/scripts/build-llama-cpp-mtp.mjs`;
 /// when the linked slice doesn't have those kernels compiled in, llama.cpp
 /// reports the error at context-init time and we surface it through
 /// `loadModel`'s failure path.

@@ -5,8 +5,8 @@ import type {
   DeterministicModelFixtureRegistry,
 } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import echoScenario from "../../test/scenarios/convo/echo-self-test.scenario";
-import greetingScenario from "../../test/scenarios/convo/greeting-dynamic.scenario";
+import echoScenario from "../../testing/scenarios/convo/echo-self-test.scenario";
+import greetingScenario from "../../testing/scenarios/convo/greeting-dynamic.scenario";
 import { runScenario } from "./executor";
 import {
   createScenarioRuntime,

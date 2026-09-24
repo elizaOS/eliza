@@ -80,11 +80,11 @@ describe("ocr.tesseract", () => {
 });
 
 describe("UNLIMITED_OCR_PROMPT drift guard", () => {
-  it("is byte-identical to scripts/gpu-vision/lib.mjs OCR_PROMPT", async () => {
+  it("is byte-identical to packages/scripts/gpu-vision/lib.mjs OCR_PROMPT", async () => {
     // Import the real service module so the two prompt pins can never drift
     // silently — a change to either side fails here until both move together.
     const libUrl = new URL(
-      "../../../../../scripts/gpu-vision/lib.mjs",
+      "../../../../scripts/gpu-vision/lib.mjs",
       import.meta.url,
     );
     const lib = (await import(libUrl.href)) as { OCR_PROMPT: string };

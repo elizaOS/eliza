@@ -99,7 +99,7 @@ throws `java.lang.UnsatisfiedLinkError: No implementation found for
 crash-loops; only the detached boot-receiver agent stays alive. This is why
 on-device verification had to go via the direct `adb forward :31337` agent API
 instead of the WebView. Fix: build with the real fork llama lib
-(`packages/app-core/scripts/build-llama-cpp-mtp.mjs --target
+(`packages/app/scripts/build-llama-cpp-mtp.mjs --target
 android-arm64-vulkan`, or `-Peliza.mtp.android.libdir` /
 `ELIZA_MTP_ANDROID_LIBDIR`), not `skipForkLlamaLib`. The gate itself is
 unaffected — it lives in the embedded agent, which runs fine.

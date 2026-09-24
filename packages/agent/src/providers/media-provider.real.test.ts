@@ -12,7 +12,7 @@
  */
 
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../app-core/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../app/test/helpers/conditional-tests.ts";
 import type { VisionConfig } from "../config/types.eliza";
 import {
   createVisionProvider,

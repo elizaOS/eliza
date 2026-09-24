@@ -13,7 +13,7 @@ const session = (
   agentType: "claude",
   label: "feature/auth",
   originalTask: "Wire up OAuth callback",
-  workdir: "/repo/packages/credentials",
+  workdir: "/repo/packages/auth",
   status: "active",
   decisionCount: 0,
   autoResolvedCount: 0,

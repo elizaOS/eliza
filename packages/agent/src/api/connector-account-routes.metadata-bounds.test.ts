@@ -1,7 +1,7 @@
 /**
  * Bounds coverage for the two metadata walks in connector-account-routes.ts
  * against the REAL route handler and the REAL @elizaos/core connector-account
- * manager (core is not mocked here; InMemoryDatabaseAdapter stands in for
+ * manager (core is not mocked here; SQLiteDatabaseAdapter stands in for
  * plugin-sql), modelled on the sibling connector-account-routes.durable.test.ts
  * harness.
  *
@@ -26,7 +26,7 @@ import {
   type ConnectorAccountPatch,
   getConnectorAccountManager,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConnectorAccountRouteContext,
@@ -65,7 +65,7 @@ function wideObject(width: number): Record<string, unknown> {
   );
 }
 
-function createRuntime(adapter?: InMemoryDatabaseAdapter) {
+function createRuntime(adapter?: SQLiteDatabaseAdapter) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     adapter,
@@ -109,8 +109,8 @@ function createContext(
   return { ctx, captured };
 }
 
-async function newAdapter(): Promise<InMemoryDatabaseAdapter> {
-  const adapter = new InMemoryDatabaseAdapter();
+async function newAdapter(): Promise<SQLiteDatabaseAdapter> {
+  const adapter = SQLiteDatabaseAdapter.create(":memory:");
   await adapter.initialize();
   return adapter;
 }

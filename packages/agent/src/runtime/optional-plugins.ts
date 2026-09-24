@@ -96,7 +96,7 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
   // would drag react/.tsx into the bun-target mobile agent bundle. (In
   // packages/agent's package.json this is an optional PEER dependency, not a
-  // regular one: plugin-inbox depends on app-core which depends on agent, so
+  // regular one: plugin-inbox depends on app which depends on agent, so
   // a regular dep closes a turbo build cycle; peers stay out of the task
   // graph while bun still links the workspace package for resolution.)
   "@elizaos/plugin-inbox": {

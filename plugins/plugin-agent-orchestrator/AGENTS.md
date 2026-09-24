@@ -149,7 +149,7 @@ voice-only scheduler.
 
 Backend → auth-mode reach (`ORCHESTRATOR_BACKEND_AUTH`, mirroring
 `AGENT_PROVIDER_CANDIDATES` in
-`packages/app-core/src/services/coding-account-bridge.ts`; subscription is
+`packages/app/src/services/coding-account-bridge.ts`; subscription is
 preferred over API key):
 
 | Backend | Auth modes (preferred → fallback) |

@@ -10,7 +10,7 @@
  * behavior of this module.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { MARKDOWN_CHUNK_LIMIT_INVALID } from "./chunk.js";
 import {

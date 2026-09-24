@@ -47,14 +47,14 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 // #18056: desktop shell is loaded only via dynamic import / React.lazy so the
-// cold anonymous /login entry does not static-import app-core/ui browser graphs.
+// cold anonymous /login entry does not static-import app/ui browser graphs.
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
-} from "@elizaos/app-core/api/ios-local-agent-transport";
-import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
+} from "@elizaos/app/api/ios-local-agent-transport";
+import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { getStylePresets } from "@elizaos/shared/character-presets";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
@@ -384,18 +384,18 @@ const ShellViewAgentSurface = lazyNamedComponent<{
 const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
   Record<string, never>
 >(async () => {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.DesktopSurfaceNavigationRuntime;
 });
 const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("@elizaos/app/desktop-shell");
     return mod.DesktopTrayRuntime;
   },
 );
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("@elizaos/app/desktop-shell");
     return mod.DetachedShellRoot;
   },
 );
@@ -405,16 +405,16 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
 );
 
 async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.runIosFullBunSmokeIfRequested();
 }
 
 async function buildLocalizedTrayMenuAsync(
   ...args: Parameters<
-    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
+    typeof import("@elizaos/app/desktop-shell").buildLocalizedTrayMenu
   >
 ) {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.buildLocalizedTrayMenu(...args);
 }
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
@@ -952,10 +952,10 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (() => {
-    // app-core owns the AppBootConfig singleton and is already evaluated: this
+    // app owns the AppBootConfig singleton and is already evaluated: this
     // module statically imports its desktop bindings, so the whole package
     // loads with the entry chunk before main() runs. A dynamic
-    // import("@elizaos/app-core") here would be a runtime no-op, but its
+    // import("@elizaos/app") here would be a runtime no-op, but its
     // escaping namespace would force Rollup to retain every export of the
     // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
     // entry chunk (#13187). Everything else exposed through the boot config is
@@ -3380,7 +3380,7 @@ async function initializeMobileDeviceBridge(): Promise<void> {
   mobileDeviceBridgeStartPromise = (async () => {
     try {
       const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-llama"),
+        import("@elizaos/plugin-native-inference/llama"),
         getOrCreateDeviceBridgeId(),
       ]);
       const pairingToken =
@@ -3456,7 +3456,7 @@ async function initializeMobileAgentTunnel(): Promise<void> {
   mobileAgentTunnelStartPromise = (async () => {
     try {
       const [{ MobileAgentBridge }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-mobile-agent-bridge"),
+        import("@elizaos/plugin-native-inference/host-bridge"),
         getOrCreateDeviceBridgeId(),
       ]);
 
@@ -3504,7 +3504,7 @@ async function stopMobileAgentTunnel(): Promise<void> {
   mobileAgentTunnelStartPromise = null;
   try {
     const { MobileAgentBridge } = await import(
-      "@elizaos/capacitor-mobile-agent-bridge"
+      "@elizaos/plugin-native-inference/host-bridge"
     );
     await MobileAgentBridge.stopInboundTunnel();
   } catch (error) {

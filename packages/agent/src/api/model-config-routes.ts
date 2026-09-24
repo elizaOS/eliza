@@ -199,7 +199,7 @@ function findEntry(
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
 
-// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app-core's
+// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app's
 // coding-account-bridge.ts. The model catalog may advertise newer effort
 // variants before the managed Codex ACP spawn path supports them end to end;
 // accepting one here would persist a selection the coding backend cannot honor.

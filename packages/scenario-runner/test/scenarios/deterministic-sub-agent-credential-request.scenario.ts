@@ -29,12 +29,12 @@ import {
 } from "../../../../plugins/plugin-agent-orchestrator/src/services/credential-bridge-auth";
 import type { SessionInfo } from "../../../../plugins/plugin-agent-orchestrator/src/services/types";
 import { codingAgentRoutePlugin } from "../../../../plugins/plugin-agent-orchestrator/src/setup-routes";
-import { handleCredentialTunnelRoute } from "../../../app-core/src/api/credential-tunnel-routes";
+import { handleCredentialTunnelRoute } from "../../../app/src/api/credential-tunnel-routes";
 import {
   createCredentialTunnelService,
   registerSubAgentCredentialBridgeAdapter,
-} from "../../../app-core/src/services/credential-tunnel-service";
-import { ownerAppInlineSensitiveRequestAdapter } from "../../../app-core/src/services/sensitive-requests/owner-app-inline-adapter";
+} from "../../../app/src/services/credential-tunnel-service";
+import { ownerAppInlineSensitiveRequestAdapter } from "../../../app/src/services/sensitive-requests/owner-app-inline-adapter";
 
 const SCENARIO_ID = "deterministic-sub-agent-credential-request";
 const CHILD_SESSION_ID = "scenario-credential-child";

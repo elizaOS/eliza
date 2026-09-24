@@ -4,7 +4,7 @@
  * resolve.
  *
  * The auto-enable surface lives in `@elizaos/shared`. The published
- * `@elizaos/app-core@2.0.0-alpha.537` bundle has a frozen reference to the
+ * `@elizaos/app@2.0.0-alpha.537` bundle has a frozen reference to the
  * old `@elizaos/agent` subpath; until that bundle is republished against
  * `@elizaos/shared`, this file is the bridge that keeps Linux Electrobun
  * (and any other consumer of the packaged eliza-dist) booting.

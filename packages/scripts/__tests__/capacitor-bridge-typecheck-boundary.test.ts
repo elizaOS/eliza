@@ -6,7 +6,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { dispatchRoute as dispatchApiRoute } from "@elizaos/plugin-capacitor-bridge/type-shims/agent-api";
+import { dispatchRoute as dispatchApiRoute } from "@elizaos/plugin-native-inference/type-shims/agent-api";
 import {
   configFileExists,
   dispatchApiRoute as dispatchRootRoute,
@@ -14,20 +14,20 @@ import {
   loadElizaConfig,
   saveElizaConfig,
   startEliza,
-} from "@elizaos/plugin-capacitor-bridge/type-shims/agent-root";
+} from "@elizaos/plugin-native-inference/type-shims/agent-root";
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 
 test("bridge typecheck uses the same agent shims as declaration builds", () => {
   const bridgePackage = JSON.parse(
     readFileSync(
-      resolve(repoRoot, "plugins/plugin-capacitor-bridge/package.json"),
+      resolve(repoRoot, "plugins/plugin-native-inference/package.json"),
       "utf8",
     ),
   );
   const buildConfig = JSON.parse(
     readFileSync(
-      resolve(repoRoot, "plugins/plugin-capacitor-bridge/tsconfig.build.json"),
+      resolve(repoRoot, "plugins/plugin-native-inference/tsconfig.build.json"),
       "utf8",
     ),
   );

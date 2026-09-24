@@ -76,7 +76,7 @@ None: Automated tests are acceptable.
 
 # Evidence Gate
 
-Evidence must match the exact commit reviewed. `scripts/pr-evidence.mjs rows`
+Evidence must match the exact commit reviewed. `packages/scripts/pr-evidence.mjs rows`
 sets this marker from the live PR head; rerun it after every push.
 <!-- evidence-head:replace-with-current-40-character-head-sha -->
 

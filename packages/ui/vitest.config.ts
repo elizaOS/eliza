@@ -12,7 +12,6 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
-const promptsSrc = resolve(monorepoRoot, "packages/prompts/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -72,8 +71,8 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
-        find: /^@elizaos\/login$/,
-        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+        find: /^@elizaos\/auth$/,
+        replacement: resolve(monorepoRoot, "packages/auth/src/sdk/index.ts"),
       },
       {
         find: /^@elizaos\/ui$/,
@@ -126,7 +125,7 @@ export default defineConfig({
         replacement: resolve(promptsSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
         replacement: hostExternalStub,
       },
       {
@@ -185,11 +184,11 @@ export default defineConfig({
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),
       },
-      // `@elizaos/capacitor-llama` and `@elizaos/plugin-wallet/ui` are workspace packages
+      // `@elizaos/plugin-native-inference/llama` and `@elizaos/plugin-wallet/ui` are workspace packages
       // built to dist/ only; UI tests `vi.mock` them, so alias to stubs so the
       // import resolves in CI where their dist/ isn't built.
       {
-        find: /^@elizaos\/capacitor-llama$/,
+        find: /^@elizaos\/plugin-native-inference\/llama$/,
         replacement: resolve(
           packageRoot,
           "test/stubs/elizaos-capacitor-llama.ts",

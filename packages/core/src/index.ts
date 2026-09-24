@@ -162,17 +162,6 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 
-export {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicPick,
-	deterministicSample,
-	deterministicShuffle,
-	getDeterministicNames,
-	hashStringToUint32,
-	shortStringHash,
-	stableStringify,
-} from "@elizaos/common";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -315,6 +304,17 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
+export {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicPick,
+	deterministicSample,
+	deterministicShuffle,
+	getDeterministicNames,
+	hashStringToUint32,
+	shortStringHash,
+	stableStringify,
+} from "./utils/deterministic.js";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
@@ -362,6 +362,7 @@ export {
 	hasOwnerAccess,
 	type SecurityDeps,
 } from "./access-control/role-access.ts";
+export * from "./access-control/role-primitives.js";
 export { actionToJsonSchema } from "./actions/action-schema.ts";
 export {
 	pinnedDiscriminatorDescription,
@@ -378,8 +379,17 @@ export {
 	DISCOVER_TOOLS_NAME,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
+export * from "./connectors/connector-config.js";
+export * from "./connectors.js";
 export * from "./embedding-vector-space";
+export * from "./embedding-vector-space.js";
+export * from "./env-utils.js";
+export * from "./errors.js";
+export * from "./inference-trace.js";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
+export * from "./messaging/interactions/dashboard-markers.js";
+export * from "./messaging/interactions/parse.js";
+export * from "./name-tokens.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
@@ -475,6 +485,7 @@ export {
 	splitTranscriptList,
 } from "./runtime/response-field-transcript.ts";
 export { RunTerminalOwner } from "./runtime/run-terminal-owner";
+export * from "./runtime/shortcut-registry.js";
 export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
 export {
 	looksLikeActionEnvelopeJson,
@@ -495,6 +506,7 @@ export {
 	reverseString,
 	URGENCY_KEYWORDS,
 } from "./security/injection-primitives.ts";
+export * from "./security/log-redaction.js";
 export { validateMcpServerConfig } from "./security/mcp-server-config.ts";
 export {
 	buildFailureReplyPrompt,
@@ -577,11 +589,20 @@ export type {
 	ContextObjectPromptSegment,
 	ContextObjectTool,
 } from "./types/context-object.ts";
+export * from "./types/effects.js";
+export * from "./types/interactions.js";
 export * from "./types/long-term-memory.ts";
+export * from "./types/memory.js";
+export * from "./types/message-source.js";
 export type {
 	TokenUsageForCost,
 	TrajectoryRuntimeLogger,
 } from "./types/model-pricing";
+export * from "./types/notification.js";
+export * from "./types/primitives.js";
+export * from "./types/shortcut.js";
+export * from "./types/surface-manifest.js";
+export * from "./types/swarm-coordinator.js";
 export type {
 	ActionAttempt,
 	ARTTrajectory,
@@ -601,6 +622,7 @@ export type {
 	TrajectoryStep,
 } from "./types/trajectory-export.ts";
 export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+export * from "./types/view-kind.js";
 export {
 	collectActionResultSizeWarnings,
 	getActionResultActionName,
@@ -622,10 +644,14 @@ export {
 	withActiveRoutingContexts,
 } from "./utils/context-routing.ts";
 export { createHash } from "./utils/crypto-compat.ts";
+export * from "./utils/deterministic.js";
+export * from "./utils/env-alias.js";
+export * from "./utils/example-names.js";
 export {
 	isExpectedLocalEmbeddingUnavailability,
 	modelProviderFailureDetails,
 } from "./utils/expected-local-embedding-unavailability.ts";
+export * from "./utils/format-error.js";
 export {
 	getErrorMessage,
 	isProviderContextOverflowError,
@@ -655,4 +681,5 @@ export {
 	isObjectRecord,
 	isPlainObject,
 } from "./utils/type-guards.ts";
+export * from "./utils/unicode.js";
 export { UnionFind } from "./utils/union-find.ts";

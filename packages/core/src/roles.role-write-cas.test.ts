@@ -8,7 +8,7 @@
  * or network.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { WORLD_METADATA_REVISION_KEY } from "./database/world-metadata-cas.ts";
 import {
@@ -35,21 +35,21 @@ function baseMetadata(): RolesWorldMetadata {
 
 /** Read the world back through the adapter so assertions use stored truth. */
 async function storedWorld(
-	adapter: InMemoryDatabaseAdapter,
+	adapter: SQLiteDatabaseAdapter,
 ): Promise<World | undefined> {
 	const rows = await adapter.getWorldsByIds([WORLD_ID]);
 	return rows[0];
 }
 
 async function storedRoles(
-	adapter: InMemoryDatabaseAdapter,
+	adapter: SQLiteDatabaseAdapter,
 ): Promise<Record<string, string>> {
 	const world = await storedWorld(adapter);
 	return ((world?.metadata as RolesWorldMetadata | undefined)?.roles ??
 		{}) as Record<string, string>;
 }
 
-function buildRuntime(adapter: InMemoryDatabaseAdapter): IAgentRuntime {
+function buildRuntime(adapter: SQLiteDatabaseAdapter): IAgentRuntime {
 	return {
 		agentId: AGENT_ID,
 		adapter,
@@ -82,7 +82,7 @@ function buildMessage(): Memory {
 }
 
 async function setup() {
-	const adapter = new InMemoryDatabaseAdapter();
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 	await adapter.init();
 	await adapter.createWorlds([
 		{

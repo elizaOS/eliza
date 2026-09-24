@@ -5,7 +5,7 @@
     "paths": {
       "@homepage/*": ["../homepage/src/*"],
       "@/*": ["../homepage/src/*"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app": ["../app/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
@@ -61,11 +61,11 @@
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../../plugins/plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
@@ -85,8 +85,8 @@
       "@elizaos/capacitor-desktop": [
         "../../plugins/plugin-native-desktop/src/index.ts"
       ],
-      "@elizaos/capacitor-llama": [
-        "../../plugins/plugin-native-llama/src/index.ts"
+      "@elizaos/plugin-native-inference/llama": [
+        "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
@@ -112,7 +112,7 @@
       "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
-      "@elizaos/capacitor-mobile-agent-bridge": [
+      "@elizaos/plugin-native-inference/bridge": [
         "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [

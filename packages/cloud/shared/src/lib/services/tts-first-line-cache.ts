@@ -30,7 +30,7 @@
  */
 
 import crypto from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {

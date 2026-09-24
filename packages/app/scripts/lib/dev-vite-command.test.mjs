@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveViteCommand } from "../../../app-core/scripts/lib/dev-ui-vite.mjs";
+import { resolveViteCommand } from "./dev-ui-vite.mjs";
 
 const appDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -212,7 +212,7 @@ describe("development Vite process commands", () => {
       path.join(
         repoRoot,
         "packages",
-        "app-core",
+        "app",
         "scripts",
         "dev-platform.mjs",
       ),
@@ -278,7 +278,7 @@ describe("development Vite process commands", () => {
         ...viteCommand.args.slice(0, viteCliIndex),
         "--input-type=module",
         "--eval",
-        'await import("./packages/common/src/errors.ts")',
+        'await import("./packages/core/src/errors.ts")',
       ],
       {
         cwd: repoRoot,

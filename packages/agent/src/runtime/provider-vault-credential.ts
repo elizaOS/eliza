@@ -7,7 +7,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import type { Vault } from "@elizaos/credentials/vault";
+import type { Vault } from "@elizaos/auth/vault";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,

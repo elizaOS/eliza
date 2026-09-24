@@ -26,7 +26,7 @@ five tiers in one command) is `finetune_all_tiers.py`.
 - **Python 3.11+** (3.12 recommended; tested on 3.11 and 3.12)
 - **CUDA 12.1+** and NVIDIA driver 570+ (H100/H200/A100 for 9B/27B tiers)
 - **uv** package manager: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- **bun install** from the repo root (for the Electrobun/app-core parts)
+- **bun install** from the repo root (for the Electrobun/app parts)
 - **HF_TOKEN** — HuggingFace write token; required for publish steps
 - **NEBIUS_API_KEY** / **NEBIUS_PROJECT_ID** — required only for Nebius cloud runs
 - **CEREBRAS_API_KEY** — required only for `benchmark_vs_cerebras.py`

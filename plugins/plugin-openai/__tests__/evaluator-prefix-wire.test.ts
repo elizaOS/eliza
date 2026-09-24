@@ -4,8 +4,9 @@
  * This proves lossless static-prefix ordering reaches the wire without enabling
  * account-gated cache hints; the provider response is deterministic, not live AI.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createServer } from "node:http";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
 import type { Evaluator, Memory, PromptSegment } from "../../../packages/core/src/types";
@@ -121,7 +122,7 @@ it.each([
         vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
         vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
       }
-      const runtime = new AgentRuntime({
+      const runtime = createSQLiteTestRuntime({
         // The 140K-char message and the repeated schema are the point of this
         // wire test; keep them above the post-turn input budget's default.
         character: {
@@ -129,7 +130,7 @@ it.each([
           bio: "test",
           settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
         },
-        adapter: new InMemoryDatabaseAdapter(),
+        
         logLevel: "fatal",
       });
       runtime.evaluators.length = 0;

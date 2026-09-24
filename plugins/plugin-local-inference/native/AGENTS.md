@@ -4,7 +4,7 @@ Private native-kernel workspace for the local-inference stack: Metal, Vulkan, CU
 
 ## Role
 
-This directory owns reusable kernel sources and the verification harness used to prove elizaOS/llama.cpp integrations. It is not a second TypeScript inference runtime. Production model loading and FFI dispatch live in the parent `@elizaos/plugin-local-inference`; build orchestration and target packaging live in app-core scripts and the managed llama.cpp fork.
+This directory owns reusable kernel sources and the verification harness used to prove elizaOS/llama.cpp integrations. It is not a second TypeScript inference runtime. Production model loading and FFI dispatch live in the parent `@elizaos/plugin-local-inference`; build orchestration and target packaging live in app scripts and the managed llama.cpp fork.
 
 `verify/kernel-contract.json` is the authoritative, machine-checked statement of kernel names, required runtime capability keys, fixtures, backend status, hardware evidence, and graph-smoke gates. Do not infer readiness from the presence of a shader, a successful compiler invocation, or prose reports.
 

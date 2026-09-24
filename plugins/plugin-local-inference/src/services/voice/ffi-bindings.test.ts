@@ -188,7 +188,7 @@ const ELIZA_FFI_METHODS = [
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // __dirname = plugins/plugin-local-inference/src/services/voice
-// FFI_STUB_DIR  = packages/app-core/scripts/ffi-stub
+// FFI_STUB_DIR  = packages/app/scripts/ffi-stub
 // (H2.c collapsed omnivoice-fuse/ — the FFI stub artifacts moved to ffi-stub/.)
 const FFI_STUB_DIR = path.resolve(
 	__dirname,
@@ -198,7 +198,7 @@ const FFI_STUB_DIR = path.resolve(
 	"..",
 	"..",
 	"packages",
-	"app-core",
+	"app",
 	"scripts",
 	"ffi-stub",
 );

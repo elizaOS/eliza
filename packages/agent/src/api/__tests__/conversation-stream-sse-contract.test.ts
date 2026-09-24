@@ -20,7 +20,7 @@
  * cases executed byte-identical logic, so the matrix was collapsed. The real
  * provider-resolution path (real plugin, real model, real HTTP SSE) is
  * exercised live by
- * `packages/app-core/test/app/streaming-visible-text.live.e2e.test.ts`.
+ * `packages/app/test/app/streaming-visible-text.live.e2e.test.ts`.
  */
 
 import crypto from "node:crypto";

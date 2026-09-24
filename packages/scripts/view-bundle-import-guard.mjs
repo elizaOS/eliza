@@ -149,9 +149,9 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
 // same-named package. Their function identities are therefore part of the
 // loader contract and must not be interchangeable across map keys.
 const LOADER_NAMED_IMPORTER_BINDINGS = new Map([
-  ["@elizaos/app-core", "importAppCoreViewCompat"],
-  ["@elizaos/app-core/browser", "importAppCoreViewCompat"],
-  ["@elizaos/app-core/ui-compat", "importAppCoreViewCompat"],
+  ["@elizaos/app", "importAppCoreViewCompat"],
+  ["@elizaos/app/browser", "importAppCoreViewCompat"],
+  ["@elizaos/app/ui-compat", "importAppCoreViewCompat"],
   ["@elizaos/core", "importCoreViewCompat"],
   ["@elizaos/ui", "importUiRootCompat"],
   ["@elizaos/ui/app-navigate-view", "importUiAppNavigateViewCompat"],

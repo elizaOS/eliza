@@ -1,6 +1,5 @@
 /** Owns provider selection, shared execution lifetime, and audience-aware state composition for one runtime. Uses the runtime’s canonical public state cache and preserves original runtime identity at provider and hook boundaries. */
 
-import { buildDeterministicSeed } from "@elizaos/common";
 import { ElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
 import {
@@ -35,6 +34,7 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../utils/context-routing";
+import { buildDeterministicSeed } from "../../utils/deterministic.js";
 import { toWellFormedUnicode } from "../../utils/well-formed.js";
 import { buildProviderAttributionsFromState } from "../trajectory-provider-attribution";
 import {

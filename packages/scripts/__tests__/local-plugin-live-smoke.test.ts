@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const runnerPath = fileURLToPath(
   new URL(
-    "../../app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "../../app/scripts/run-local-plugin-live-smoke.mjs",
     import.meta.url,
   ),
 );
@@ -24,7 +24,7 @@ test("uses the repository as Vitest root and repository-relative test paths", ()
     'const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");',
   );
   expect(runner).toContain(
-    '"packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts"',
+    '"packages/app/test/live-agent/plugin-lifecycle.live.e2e.test.ts"',
   );
   expect(runner).toContain(
     '"packages/scripts/vitest/live-e2e.config.ts"',

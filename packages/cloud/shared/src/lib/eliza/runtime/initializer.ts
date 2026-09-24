@@ -1,13 +1,16 @@
 /** Builds tenant-scoped hosted Eliza runtimes from character, plugin, and connector state. */
 
-import { ElizaError, type JsonObject, type JsonValue, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
   type Character,
+  ElizaError,
   elizaLogger,
   type IDatabaseAdapter,
+  type JsonObject,
+  type JsonValue,
   type Plugin,
   stringToUuid,
+  type UUID,
   type World,
 } from "@elizaos/core";
 import { doorDashPlugin } from "@elizaos/plugin-doordash";

@@ -1,6 +1,6 @@
 /** Exercises TEI identity admission, canonical input preparation and vector validation at a real HTTP boundary. */
 import { afterEach, expect, test } from "bun:test";
-import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/common";
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core";
 import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { embedMany } from "ai";
 import { isKnownUnacceptedProviderError } from "../services/inference-provider-outcome";

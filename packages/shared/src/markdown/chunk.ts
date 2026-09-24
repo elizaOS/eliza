@@ -1,6 +1,6 @@
 /** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   findFenceSpanAt,
   isSafeFenceBreak,

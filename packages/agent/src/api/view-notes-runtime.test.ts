@@ -8,7 +8,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { NotesService, notesPlugin } from "@elizaos/plugin-notes";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { expect, it } from "vitest";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import { getView, listViews } from "./views-registry.ts";

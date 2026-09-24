@@ -3,7 +3,7 @@
  * and preserve forward progress and UTF-16 integrity for valid tiny limits.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { MARKDOWN_CHUNK_LIMIT_INVALID } from "./chunk.ts";
 import {

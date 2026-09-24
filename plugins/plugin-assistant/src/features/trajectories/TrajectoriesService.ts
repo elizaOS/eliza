@@ -1319,7 +1319,7 @@ export class TrajectoriesService extends Service {
 
     const sqlHelper = this.getSqlHelper();
     const dbCandidate = runtime.adapter.db as { execute?: unknown } | undefined;
-    // Adapters without SQL support (e.g. InMemoryDatabaseAdapter used in tests)
+    // Adapters without SQL support (e.g. SQLiteDatabaseAdapter used in tests)
     // expose `db = {}` rather than a Drizzle handle. Treat schema/CRUD calls as
     // no-ops so trajectory logging can degrade gracefully instead of spamming
     // "db.execute is not a function" for every step.

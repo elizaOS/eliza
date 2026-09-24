@@ -200,13 +200,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/options\.command\.substring\(/,
 		/options\.command\.slice\(/,
 	],
-	"packages/app-core/platforms/electrobun/src/voice/voice-service.ts": [
+	"packages/app/platforms/electrobun/src/voice/voice-service.ts": [
 		/this\.recent\.splice\(/,
 		/recentTurns:\s*this\.recent\.slice\(/,
 		/params\.limit\s*\?\?\s*\d+/,
 		/clampLimit\(params\.limit/,
 	],
-	"packages/app-core/platforms/electrobun/src/native/browser-workspace.ts": [
+	"packages/app/platforms/electrobun/src/native/browser-workspace.ts": [
 		/DEFAULT_EVENT_LOG_LIMIT/,
 		/MAX_EVENT_QUERY_LIMIT/,
 		/MAX_EVENT_PAYLOAD_DEPTH/,
@@ -214,22 +214,22 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/this\.events\.splice\(/,
 		/value\.slice\(0,\s*50\)/,
 	],
-	"packages/app-core/platforms/electrobun/src/native/browser-bridge-broker-server.ts":
+	"packages/app/platforms/electrobun/src/native/browser-bridge-broker-server.ts":
 		[/stderr[^\n]*\.slice\(/],
-	"packages/app-core/platforms/electrobun/src/native/permissions.ts": [
+	"packages/app/platforms/electrobun/src/native/permissions.ts": [
 		/stderr\.trim\(\)\.slice\(/,
 	],
-	"packages/app-core/deploy/cloud-agent-shared.ts": [
+	"packages/app/deploy/cloud-agent-shared.ts": [
 		/MAX_DATABASE_DIAGNOSTIC_CHARS/,
 	],
-	"packages/app-core/platforms/electrobun/src/shell-sync-relay.ts": [
+	"packages/app/platforms/electrobun/src/shell-sync-relay.ts": [
 		/truncateWellFormed\(/,
 	],
-	"packages/app-core/platforms/electrobun/src/ssh-runtime-rpc.ts": [
+	"packages/app/platforms/electrobun/src/ssh-runtime-rpc.ts": [
 		/MAX_DIAGNOSTIC_STDERR_CHARS/,
 		/diagnosticStderrTail[^\n]*\.slice\(/,
 	],
-	"packages/app-core/platforms/electrobun/src/trace/trace-store.ts": [
+	"packages/app/platforms/electrobun/src/trace/trace-store.ts": [
 		/DEFAULT_MAX_SESSIONS/,
 		/DEFAULT_MAX_EVENTS_PER_SESSION/,
 		/DEFAULT_MAX_EVENT_PAYLOAD_BYTES/,
@@ -324,7 +324,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-web-search/src/services/webSearchService.ts": [
 		/maxResults:\s*options\?\.limit\s*\?\?\s*3/,
 	],
-	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java":
+	"packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java":
 		[
 			/getInt\("maxTokens",\s*48\)/,
 			/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
@@ -446,7 +446,98 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contextSummaryProvider/,
 		/summaryEvaluator/,
 	],
-	"packages/prompts/src/index.ts": [
+	"packages/agent/src/api/custom-action-prompt.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"packages/agent/src/api/memory-context-prompt.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"packages/agent/src/runtime/default-character-prompt.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"packages/agent/src/runtime/observation-prompt.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/advanced-memory/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/advanced-planning/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/autonomy/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/basic-capabilities/contact-prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/basic-capabilities/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/features/secrets/prompts.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/prompts/response-policy.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/runtime/actions/parameter-prompt.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
+	"plugins/plugin-assistant/src/services/message/prompts.ts": [
 		/INITIAL_SUMMARIZATION_TEMPLATE/,
 		/UPDATE_SUMMARIZATION_TEMPLATE/,
 		/Keep (?:the )?answer under \d+ words/i,
@@ -909,7 +1000,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts": [
 		/maxTokens:\s*args\.maxTokens\s*\?\?\s*512/,
 	],
-	"plugins/plugin-native-llama/src/capacitor-llama-adapter.ts": [
+	"plugins/plugin-native-inference/src/llama/capacitor-llama-adapter.ts": [
 		/Math\.min\(Math\.floor\(requested\),\s*MOBILE_MAX_TOKENS_CAP\)/,
 	],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
@@ -979,10 +1070,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/plannerBlob\.slice\(/,
 		/plannerPreview/,
 	],
-	"packages/app-core/src/services/account-pool-broker.ts": [
+	"packages/app/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
 	],
-	"packages/app-core/test/helpers/trajectory-harness.ts": [
+	"packages/app/test/helpers/trajectory-harness.ts": [
 		/truncateText/,
 		/safeStringify/,
 		/formatMarkdownPayload/,

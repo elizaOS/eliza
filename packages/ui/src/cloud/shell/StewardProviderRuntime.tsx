@@ -1,5 +1,5 @@
 /**
- * Lazy Steward runtime — the heavy `@elizaos/login` / `@elizaos/ui` chunk.
+ * Lazy Steward runtime — the heavy `@elizaos/auth` / `@elizaos/ui` chunk.
  *
  * Loaded only by {@link StewardAuthProvider} when a token is present or the
  * route needs auth, so the wallet/Steward stack never lands on the first-paint
@@ -10,7 +10,7 @@
  * (honoring `exp`) running while a cloud surface is mounted.
  */
 
-import { LoginClient } from "@elizaos/login";
+import { LoginClient } from "@elizaos/auth";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
   type ComponentProps,
@@ -20,7 +20,7 @@ import {
   useRef,
 } from "react";
 import { dispatchStewardSessionChange } from "../../events/steward-session-event";
-import { LoginProvider, useAuth as useStewardAuth } from "../../login/index";
+import { LoginProvider, useAuth as useStewardAuth } from "../../auth/index";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
@@ -348,7 +348,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user]);
 
   // Map the SDK context to the local context shape explicitly. The structural
-  // pass-through is fragile across @elizaos/login resolutions; verifyEmailCallback
+  // pass-through is fragile across @elizaos/auth resolutions; verifyEmailCallback
   // must narrow the MFA-required union before exposing tokens.
   const localAuth = useMemo<LocalStewardAuthValue>(
     () => ({

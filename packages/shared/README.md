@@ -51,7 +51,7 @@ bun run --cwd packages/shared test
 ```
 
 Build emits the package distribution; typecheck validates source without writing
-it. Keyword data and matching live in [prompts](../prompts/src/keywords.ts);
+it. Keyword data and matching live in [shared keyword data](src/i18n/keywords.ts);
 shared adds application locale normalization. Brand assets live in `assets/`;
 the `sync` script copies them into consumer public directories.
 

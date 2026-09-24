@@ -11,7 +11,7 @@ multi-account surface (`AccountList` and friends).
 | UI | The REAL `packages/ui/src/components/accounts/*` tree (`AccountList`, `AccountCard`, `AddAccountDialog`, `RotationStrategyPicker`, `EditableAccountLabel`), the real `useAccounts` hook, and the real `ElizaClient` network layer, esbuild-bundled with the real Tailwind theme |
 | Network | Same-origin `fetch` from the browser into a live HTTP server |
 | API | The REAL `handleAccountsRoutes` from `packages/agent/src/api/accounts-routes.ts` — same zod schemas, same handlers the dashboard server mounts |
-| Pool | The REAL default `AccountPool` from `packages/app-core/src/services/account-pool.ts` (pinned to source via `tsconfig.e2e-paths.json` so a stale `dist` can never stand in for the current tree) |
+| Pool | The REAL default `AccountPool` from `packages/app/src/services/account-pool.ts` (pinned to source via `tsconfig.e2e-paths.json` so a stale `dist` can never stand in for the current tree) |
 | Storage | The REAL on-disk credential store + `_pool-metadata.json` overlay under a scratch `ELIZA_HOME` |
 
 The only stubs: the app-state barrel (translator-only —
@@ -56,5 +56,5 @@ or page error.
 10. Zero page errors across the whole flow.
 
 Companion service-level coverage (same workstream) lives in
-`packages/app-core/src/services/multi-account-affinity-failover.test.ts` and
-`packages/app-core/test/services/multi-account-upstream-429-failover.test.ts`.
+`packages/app/src/services/multi-account-affinity-failover.test.ts` and
+`packages/app/test/services/multi-account-upstream-429-failover.test.ts`.

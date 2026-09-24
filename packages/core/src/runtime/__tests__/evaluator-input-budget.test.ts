@@ -4,7 +4,8 @@
  * resolved model window cannot accept them.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
@@ -181,9 +182,9 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 	it("preserves complete input on a real AgentRuntime failover attempt", async () => {
 		const primaryRequests: CapturedRequest[] = [];
 		const backupRequests: CapturedRequest[] = [];
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -230,9 +231,9 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 	it("preserves complete input for a smaller backup under the same model type", async () => {
 		const primaryRequests: CapturedRequest[] = [];
 		const backupRequests: CapturedRequest[] = [];
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -282,9 +283,9 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				throw new Error("attempt preparation defect");
 			}
 		});
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -320,9 +321,9 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				code: "MODEL_INPUT_OVER_BUDGET",
 			});
 		});
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -364,7 +365,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 	it("budgets the actual owner-selected provider before its first attempt", async () => {
 		const largeRequests: CapturedRequest[] = [];
 		const smallHandler = vi.fn(async () => ENVELOPE);
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: {
 				name: "EvaluatorAgent",
 				bio: "test",
@@ -373,7 +374,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 					SMALL_EVALUATOR_MODEL: "llama3.1-8b",
 				},
 			} as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -477,9 +478,9 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				code: "MODEL_INPUT_OVER_BUDGET",
 			});
 		});
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "large", 10, {
@@ -566,9 +567,9 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				code: "MODEL_INPUT_OVER_BUDGET",
 			});
 		});
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "small", 10, {
@@ -599,9 +600,9 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				code: "MODEL_INPUT_OVER_BUDGET",
 			});
 		});
-		const runtimeWithRecorder = new AgentRuntime({
+		const runtimeWithRecorder = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtimeWithRecorder.registerModel(
@@ -679,9 +680,9 @@ describe("runEvaluator — provider-owned input rejection", () => {
 			});
 		});
 		const finalRequests: CapturedRequest[] = [];
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		registerRateLimitedPrimary(runtime);
@@ -728,9 +729,9 @@ describe("runEvaluator — provider-owned input rejection", () => {
 				code: "MODEL_INPUT_OVER_BUDGET",
 			});
 		});
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		registerRateLimitedPrimary(runtime);
@@ -781,9 +782,9 @@ describe("runEvaluator — trajectory stage records the per-attempt prepared req
 	it("persists the successful failover attempt's request, not the preflight snapshot", async () => {
 		const backupRequests: CapturedRequest[] = [];
 		const recordedStages: Array<Record<string, unknown>> = [];
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		runtime.registerModel(

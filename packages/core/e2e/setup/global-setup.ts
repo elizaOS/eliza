@@ -9,7 +9,7 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
 import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
 import { AgentRuntime } from "../../src/runtime";
@@ -256,7 +256,7 @@ export default async function globalSetup(): Promise<void> {
 		plugins.push(providerPlugin);
 	}
 
-	const adapter = new InMemoryDatabaseAdapter(agentId);
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
 	await adapter.init();
 
 	const runtime = new AgentRuntime({

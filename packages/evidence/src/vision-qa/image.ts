@@ -6,7 +6,7 @@
  * only burns tokens for detail the model discards. We downscale here, once, and
  * record both the original and sent dimensions so the qa.json provenance shows
  * exactly what the model saw. Sharp is the repo-standard raster tool
- * (`packages/app-core`, `packages/app`); the encoded MIME type is derived from
+ * (`packages/app`, `packages/app`); the encoded MIME type is derived from
  * the decoded pixels, never trusted from the file extension.
  */
 

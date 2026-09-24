@@ -17,9 +17,9 @@
  *
  * The `unlimited` endpoint resolves in order: explicit constructor option,
  * `ELIZA_GPU_VISION_URL`, then the discovery record `serve.json` written by
- * `scripts/gpu-vision/serve.mjs` (only after its server answered /health). The
+ * `packages/scripts/gpu-vision/serve.mjs` (only after its server answered /health). The
  * OCR prompt is locked byte-for-byte to that service's `OCR_PROMPT`
- * (`scripts/gpu-vision/lib.mjs`) — a drift-guard test compares the two.
+ * (`packages/scripts/gpu-vision/lib.mjs`) — a drift-guard test compares the two.
  */
 
 import { execFile, spawn } from "node:child_process";
@@ -373,7 +373,7 @@ async function runAppleVision(
 
 /**
  * The exact OCR prompt the GPU vision service is tuned for. MUST stay
- * byte-identical to `OCR_PROMPT` in `scripts/gpu-vision/lib.mjs` — the service
+ * byte-identical to `OCR_PROMPT` in `packages/scripts/gpu-vision/lib.mjs` — the service
  * and this client are pinned to one prompt so OCR output is reproducible across
  * runs and across the two entry points. A drift-guard test in `ocr.test.ts`
  * imports the script module and compares the constants.
@@ -445,7 +445,7 @@ function validGroundingBox(box: [number, number, number, number]): boolean {
   );
 }
 
-/** Where `scripts/gpu-vision/serve.mjs` records its ready server (its
+/** Where `packages/scripts/gpu-vision/serve.mjs` records its ready server (its
  * `serveStatePath()`): `ELIZA_GPU_VISION_CACHE` override, else the per-user
  * cache. Kept in lockstep with lib.mjs `cacheDir()`. */
 export function defaultServeStatePath(): string {
@@ -463,7 +463,7 @@ const SERVE_SET_KEY = "ocr";
  * GPU vision-lane engine: an OpenAI-compatible chat-completions client against
  * the `llama-server` serving Baidu Unlimited-OCR (#14543). The endpoint
  * resolves from the explicit `baseUrl` option, then `ELIZA_GPU_VISION_URL`,
- * then the `serve.json` discovery record `scripts/gpu-vision/serve.mjs` writes
+ * then the `serve.json` discovery record `packages/scripts/gpu-vision/serve.mjs` writes
  * once its server answers /health; when none resolves the engine is
  * unavailable (cpu-tier runs), and when resolved-but-unreachable it reports the
  * transport failure so the analyzer degrades to `skipped-missing-tool` rather
@@ -538,7 +538,7 @@ export class UnlimitedOcrEngine implements OcrEngine {
       return {
         ok: false,
         reason: isEnoent(error)
-          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: node scripts/gpu-vision/serve.mjs)`
+          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: node packages/scripts/gpu-vision/serve.mjs)`
           : `ELIZA_GPU_VISION_URL unset and gpu-vision serve.json unreadable at ${statePath}: ${errMessage(error)}`,
       };
     }

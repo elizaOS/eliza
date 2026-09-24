@@ -20,7 +20,7 @@ const repoRoot = path.resolve(
 // architecture's reliance on `src/` (not `dist/`) resolution plus
 // workspace-source watching.
 const LEVELS = [
-  { name: "app (packages/app)", file: "packages/app/src/entry.ts" },
+  { name: "app (packages/app)", file: "packages/app/src/renderer-entry.ts" },
   // The chat harness deliberately skips the full App component. Target an
   // eager UI provider imported directly by main.tsx so this level is guaranteed
   // in both harness and normal full-app graphs.

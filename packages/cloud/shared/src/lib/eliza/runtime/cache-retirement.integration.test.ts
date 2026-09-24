@@ -2,7 +2,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type IAgentRuntime, Service } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { RuntimeCache } from "./cache";
 import { DbAdapterPool } from "./database/adapter-pool";
 
@@ -16,12 +16,12 @@ test.each(["remove", "organization", "stale"] as const)(
     const original = new AgentRuntime({
       agentId,
       logLevel: "fatal",
-      adapter: new InMemoryDatabaseAdapter(agentId),
+      adapter: SQLiteDatabaseAdapter.create(":memory:", agentId),
     });
     const replacement = new AgentRuntime({
       agentId,
       logLevel: "fatal",
-      adapter: new InMemoryDatabaseAdapter(agentId),
+      adapter: SQLiteDatabaseAdapter.create(":memory:", agentId),
     });
     const stopping = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
@@ -77,7 +77,7 @@ async function controlledRetirement(agentId: ReturnType<typeof randomUUID>, fail
   const runtime = new AgentRuntime({
     agentId,
     logLevel: "fatal",
-    adapter: new InMemoryDatabaseAdapter(agentId),
+    adapter: SQLiteDatabaseAdapter.create(":memory:", agentId),
   });
   const entered = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
@@ -225,7 +225,7 @@ test("publication retires a competing generation inserted during capacity evicti
     return new AgentRuntime({
       agentId: id,
       logLevel: "fatal",
-      adapter: new InMemoryDatabaseAdapter(id),
+      adapter: SQLiteDatabaseAdapter.create(":memory:", id),
     });
   });
   await cache.set(evicted.runtime.agentId, evicted.runtime, "Oldest", evicted.runtime.agentId);
@@ -271,7 +271,7 @@ test("admission revoked while capacity eviction waits prevents publication", asy
     return new AgentRuntime({
       agentId: id,
       logLevel: "fatal",
-      adapter: new InMemoryDatabaseAdapter(id),
+      adapter: SQLiteDatabaseAdapter.create(":memory:", id),
     });
   });
   await cache.set(evicted.runtime.agentId, evicted.runtime, "Oldest", evicted.runtime.agentId);

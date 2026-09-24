@@ -1,7 +1,7 @@
 /**
  * Barrel for the config surface. Re-exports the app-config types from
  * `@elizaos/shared` (the canonical app-config lives in
- * `@elizaos/app-core/config/app-config`) alongside the local config modules.
+ * `@elizaos/app/config/app-config`) alongside the local config modules.
  */
 export type {
   AndroidUserAgentMarker,

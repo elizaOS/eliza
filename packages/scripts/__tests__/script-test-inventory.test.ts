@@ -81,8 +81,6 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/.spec.cjs",
       "packages/scripts/a/b/not-a-test.ts",
       "packages/other/ignored.test.ts",
-      "scripts/tooling.test.mjs",
-      "scripts/nested/deep/case.SPEC.TS",
       "scripts/not-a-test.mjs",
       "scripts-adjacent/ignored.test.mjs",
       "packages/ui/scripts/ignored.test.ts",
@@ -101,8 +99,6 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/name_spec.js",
       "packages/scripts/a/b/name_test.tsx",
       "packages/scripts/root.test.ts",
-      "scripts/nested/deep/case.SPEC.TS",
-      "scripts/tooling.test.mjs",
     ]);
     expect(() =>
       inventory(["packages\\scripts\\cloud\\nested.test.ts"]),
@@ -932,12 +928,12 @@ jobs:
           "packages/scripts/test-console/__tests__/connections-coverage.test.ts",
       ),
     ).toBe(true);
-    // The #19445 gap: root-level scripts/ tests must be discovered, the
+    // Operational security scripts must be discovered, the
     // security-advisory-gate suite among them.
     expect(
       result.files.some(
         ({ file }) =>
-          file === "scripts/security/security-advisory-gate.test.mjs",
+          file === "packages/scripts/security/security-advisory-gate.test.mjs",
       ),
     ).toBe(true);
     for (const entry of result.files) {

@@ -12,7 +12,6 @@
  * its LLM calls, provider accesses, and events.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import type {
   TrajectoryDetailRecord,
   TrajectoryLlmCallRecord,
@@ -20,6 +19,7 @@ import type {
   TrajectoryStepRecord,
   TrajectorySummaryRecord,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export interface ActivityPlaintextSummary {
   eventType: string;

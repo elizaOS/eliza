@@ -8,7 +8,7 @@
  * and is browser-safe; this `plugin.ts` is loaded only on the server via
  * `../register-routes.ts`.
  *
- * Migrated from packages/app-core/src/api/wallet-market-overview-route.ts.
+ * Migrated from packages/app/src/api/wallet-market-overview-route.ts.
  */
 
 import type http from "node:http";
@@ -47,6 +47,6 @@ const walletHttpRoutes: Route[] = [
 export const walletRoutePlugin: Plugin = {
   name: "@elizaos/plugin-wallet:routes",
   description:
-    "Wallet HTTP route handlers (market overview, etc.) — extracted from packages/app-core/src/api.",
+    "Wallet HTTP route handlers (market overview, etc.) — extracted from packages/app/src/api.",
   routes: walletHttpRoutes,
 };

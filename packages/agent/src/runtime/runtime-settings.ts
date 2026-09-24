@@ -8,7 +8,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/credentials/auth/types";
+} from "@elizaos/auth/auth/types";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,

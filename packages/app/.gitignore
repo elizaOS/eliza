@@ -1,4 +1,4 @@
-# Native shells: materialized from packages/app-core/platforms (cap:sync / mobile build).
+# Native shells: materialized from packages/app/platforms (cap:sync / mobile build).
 /ios/
 /android/
 
@@ -61,3 +61,6 @@ capture-output/
 # Run-scoped device-e2e triage bundles (ios-device-e2e.mjs / android runners):
 # MP4/JPG + logs + summary.json posted inline to PRs, never committed.
 device-e2e-output/
+
+action-benchmark-report/
+web-dist/

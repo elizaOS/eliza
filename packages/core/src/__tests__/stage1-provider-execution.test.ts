@@ -3,7 +3,7 @@
  * cached planning context cannot leak back into a later response decision.
  * Uses an in-memory runtime and counting providers; no model or network. */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality";
 import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store";
@@ -59,7 +59,6 @@ describe("stage1ResponseStateProviderNames", () => {
 	it("composes the actual user's saved style before context selection without exposing another user's slot", async () => {
 		const runtime = await createInitializedRuntime({
 			character: { name: "preference-stage1" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
 		});
 		const store = (await PersonalityStore.start(runtime)) as PersonalityStore;
 		runtime.services.set(PersonalityStore.serviceType, [store]);
@@ -215,7 +214,6 @@ describe("stage1ResponseStateProviderNames", () => {
 	it("renders stored pending choices and incoming selected values before a reply decision", async () => {
 		const runtime = await createInitializedRuntime({
 			character: { name: "choices" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
 		});
 		runtime.registerProvider(choiceProvider);
 		await runtime.createTask({
@@ -295,7 +293,6 @@ describe("stage1ResponseStateProviderNames", () => {
 	it("renders bot-loop evidence before deciding on a group reply, but stays inert for humans", async () => {
 		const runtime = await createInitializedRuntime({
 			character: { name: "bot-awareness" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
 		});
 		runtime.registerProvider(botAwarenessProvider);
 		await runtime.createMemory(

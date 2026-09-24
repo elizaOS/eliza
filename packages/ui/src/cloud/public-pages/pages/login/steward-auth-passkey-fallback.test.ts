@@ -6,7 +6,7 @@
  */
 // @vitest-environment jsdom
 
-import { LoginApiError, LoginAuth } from "@elizaos/login";
+import { LoginApiError, LoginAuth } from "@elizaos/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function jsonResponse(

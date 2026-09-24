@@ -1,4 +1,0 @@
-interface:
-  display_name: "Contribute to elizaOS"
-  short_description: "Finish and verify elizaOS contributions"
-  default_prompt: "Use $contribute-to-eliza to finish and prove one scoped elizaOS issue, or independently review one open pull request."

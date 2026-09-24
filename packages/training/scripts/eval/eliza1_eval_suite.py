@@ -1348,7 +1348,7 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "reason": "bun not on PATH; cannot run native VAD smoke",
             "vadModel": str(ctx.vad_model),
         }
-    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app-core" / "scripts" / "voice-vad-smoke.ts"
+    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app" / "scripts" / "voice-vad-smoke.ts"
     if not smoke.is_file():
         return {
             **base,

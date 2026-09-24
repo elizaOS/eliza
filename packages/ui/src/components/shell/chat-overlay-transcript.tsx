@@ -4,7 +4,7 @@
  * this module owns transcript-only presentation policy.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/common";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import type { ChatTurnStatus } from "../../api/client-types-chat";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import {

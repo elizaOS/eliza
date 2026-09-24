@@ -26,7 +26,7 @@ const repoRoot = path.resolve(appDir, "..", "..");
 const smokeScript = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "platforms",
   "electrobun",
   "scripts",

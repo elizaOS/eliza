@@ -13,7 +13,7 @@
  * abort, no retries); the caller owns retry/backoff policy.
  */
 
-import { BGE_SMALL_VECTOR_SPACE, ElizaError, identifyEmbeddingVector } from "@elizaos/common";
+import { BGE_SMALL_VECTOR_SPACE, ElizaError, identifyEmbeddingVector } from "@elizaos/core";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
 export const SHARED_RECALL_EMBEDDING_MODEL = "bge-small-en-v1.5";

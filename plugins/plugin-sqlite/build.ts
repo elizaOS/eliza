@@ -7,12 +7,14 @@ await buildPlugin({
   clean: true,
   externals: [
     "@elizaos/core",
-    "@elizaos/plugin-inmemorydb",
+    "@elizaos/retrieval",
     "node:sqlite",
     "bun:sqlite",
     "devalue",
+    "sql.js",
   ],
   targets: [
+    { label: "Portable", entry: "./portable.ts", outSubdir: ".", target: "node", format: "esm" },
     {
       label: "Node",
       entry: "./index.ts",

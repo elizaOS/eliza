@@ -1,5 +1,5 @@
 /**
- * Unit coverage for browser-safe error formatting helpers in format-error.ts.
+ * Unit coverage for runtime error formatting helpers in format-error.ts.
  *
  * Verifies formatError and formatErrorWithStack across standard Error instances,
  * custom error shapes, nested causes, plain strings, primitives, and nullish inputs.

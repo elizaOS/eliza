@@ -6,10 +6,10 @@
  * It observes the app-level auth check (`observeOnly` → no extra poll) and maps
  * it to a canonical role. This is the interim derivation until `/api/auth/me`
  * returns the server-resolved boundary role (the same tier `resolveBoundaryRole`
- * computes in app-core); when that lands, only `deriveShellRole` changes.
+ * computes in app); when that lands, only `deriveShellRole` changes.
  */
 
-import { ROLE_RANK, type RoleGateRole } from "@elizaos/common";
+import { ROLE_RANK, type RoleGateRole } from "@elizaos/core";
 import type { ReactNode } from "react";
 import { useAuthStatus } from "../hooks/useAuthStatus.ts";
 import { RoleProvider } from "../hooks/useRole.tsx";

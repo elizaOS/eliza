@@ -12,7 +12,7 @@
  *
  * 2. **Eliza Cloud SSO** (`getSsoRedirectUrl` / `exchangeCodeForSession`) —
  *    OAuth-style authorization-code flow against the cloud issuer. The
- *    callback handler in `app-core` (`api/auth/cloud-sso.ts`) consumes these
+ *    callback handler in `app` (`api/auth/cloud-sso.ts`) consumes these
  *    methods to bind a verified cloud user to a local Identity. All error
  *    paths fail closed: the methods throw and the caller MUST refuse the
  *    request. There is no partial-claims fallback.
@@ -118,7 +118,7 @@ export interface ExchangeCodeArgs {
   /**
    * Source for `getJwksUrl()`. The caller resolves this from the runtime
    * service registry (`runtime.getService("CLOUD_BOOTSTRAP")`) so this
-   * file does not import from `app-core` directly.
+   * file does not import from `app` directly.
    */
   bootstrap: CloudBootstrapService;
   /** Allows tests to inject a fake fetch for the token endpoint. */

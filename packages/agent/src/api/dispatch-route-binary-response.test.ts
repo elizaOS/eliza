@@ -12,7 +12,7 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { Buffer } from "node:buffer";
 import { gzipSync } from "node:zlib";
 import { AgentRuntime, type Character, isElizaError } from "@elizaos/core";
-import { dispatchBufferedRequest } from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";

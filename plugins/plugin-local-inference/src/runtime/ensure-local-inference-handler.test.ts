@@ -10,7 +10,7 @@ import {
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));

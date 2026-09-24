@@ -6,7 +6,8 @@
  * runtime over the in-memory adapter with registered fake handlers; deterministic.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import { runWithStreamingContext } from "../../streaming-context";
@@ -14,13 +15,13 @@ import { type Character, ModelType, type ResponseSkeleton } from "../../types";
 import { isLocalProvider } from "../action-model-routing";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "StreamingAgent",
 			bio: "test",
 			settings: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 }

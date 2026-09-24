@@ -1,5 +1,5 @@
 /**
- * End-to-end test for packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs.
+ * End-to-end test for packages/app/scripts/omnivoice-fuse/freeze-voice.mjs.
  *
  * The CLI builds an ELZ2 v2 voice preset from a corpus directory. We
  * exercise the corpus-discovery + selection + dry-run + skip-encode write
@@ -38,7 +38,7 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const SCRIPT = path.join(
 	REPO_ROOT,
 	"packages",
-		"app-core",
+		"app",
 		"scripts",
 		"voice",
 		"freeze-voice.mjs",

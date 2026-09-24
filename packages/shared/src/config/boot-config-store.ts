@@ -6,7 +6,7 @@
  * fields used by API clients and asset helpers.
  */
 
-import { resolveEnvAlias } from "@elizaos/common";
+import { resolveEnvAlias } from "@elizaos/core";
 import type { BrandingConfig } from "./branding.js";
 
 export function getBootConfigEnvAliases() {

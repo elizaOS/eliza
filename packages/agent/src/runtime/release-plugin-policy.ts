@@ -11,7 +11,7 @@ import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [
   "@elizaos/core",
-  "@elizaos/prompts",
+  "@elizaos/shared",
 ] as const;
 
 const BASELINE_PROVIDER_PLUGINS = [

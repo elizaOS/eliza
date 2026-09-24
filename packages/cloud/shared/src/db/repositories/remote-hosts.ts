@@ -4,7 +4,7 @@
  * sessions and commands so relay operations cannot outlive revocation.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   type RemoteConnectionMode,

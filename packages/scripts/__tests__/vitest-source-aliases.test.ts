@@ -82,8 +82,8 @@ describe("workspace source aliases", () => {
     const aliases = buildWorkspaceSourceAliases(workspaceRepoRoot);
     const cases = [
       {
-        specifier: "@elizaos/credentials/kms",
-        target: "packages/credentials/src/kms/index.ts",
+        specifier: "@elizaos/auth/kms",
+        target: "packages/auth/src/kms/index.ts",
       },
       {
         specifier: "@elizaos/plugin-anthropic/endpoint-config",
@@ -136,7 +136,7 @@ describe("workspace source aliases", () => {
       writeFileSync(
         path.join(packageDir, "package.json"),
         JSON.stringify({
-          name: "@elizaos/login-fixture",
+          name: "@elizaos/auth-fixture",
           type: "module",
           exports: {
             ".": {
@@ -172,7 +172,7 @@ describe("workspace source aliases", () => {
         resolve: { alias: buildWorkspaceSourceAliases(repoRoot) },
       });
       try {
-        const sdk = await server.ssrLoadModule("@elizaos/login-fixture");
+        const sdk = await server.ssrLoadModule("@elizaos/auth-fixture");
         expect(sdk.greet("Ada")).toBe("Hello, Ada");
         await expect(
           server.ssrLoadModule("@elizaos/excluded"),

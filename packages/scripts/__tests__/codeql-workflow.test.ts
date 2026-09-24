@@ -92,8 +92,8 @@ const expectedIgnores = [
   "**/*.stories.ts",
   "**/*.stories.tsx",
   "**/aesthetic-audit-output-*/**",
-  "packages/test/**",
-  "packages/app-core/scripts/bun-riscv64/**",
+  "packages/testing/**",
+  "packages/app/scripts/bun-riscv64/**",
   "packages/scripts/test-console/**",
 ];
 

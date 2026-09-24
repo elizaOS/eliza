@@ -5,8 +5,8 @@ import {
   deleteAccount,
   listAccounts,
   saveAccount,
-} from "@elizaos/credentials/auth/account-storage";
-import { getAccessToken } from "@elizaos/credentials/auth/credentials";
+} from "@elizaos/auth/auth/account-storage";
+import { getAccessToken } from "@elizaos/auth/auth/credentials";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
@@ -31,10 +31,10 @@ const poolMock = {
   selectionState: vi.fn(),
 };
 
-vi.mock("@elizaos/credentials/auth/account-storage", async (importOriginal) => {
+vi.mock("@elizaos/auth/auth/account-storage", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("@elizaos/credentials/auth/account-storage")
+      typeof import("@elizaos/auth/auth/account-storage")
     >();
   return {
     ...actual,
@@ -53,10 +53,10 @@ vi.mock("@elizaos/credentials/auth/account-storage", async (importOriginal) => {
   };
 });
 
-vi.mock("@elizaos/credentials/auth/credentials", async (importOriginal) => {
+vi.mock("@elizaos/auth/auth/credentials", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("@elizaos/credentials/auth/credentials")
+      typeof import("@elizaos/auth/auth/credentials")
     >();
   return { ...actual, getAccessToken: vi.fn(async () => null) };
 });
@@ -115,7 +115,7 @@ describe("accounts routes provider-scoped account resolution", () => {
     __clearSubscriptionCliInstallFailures();
     _resetAccountsRoutesPoolCache();
     // The routes read the pool through the host-bridge seam (not an
-    // @elizaos/app-core import), so the fixture pool is installed the same
+    // @elizaos/app import), so the fixture pool is installed the same
     // way a real host installs it.
     setAgentHostBridge({
       ...defaultAgentHostBridge,
@@ -244,7 +244,7 @@ describe("accounts routes provider-scoped account resolution", () => {
       ["openai-api", "shared-id"],
     ]);
     // Third argument is the runtime storage policy (#17464); its ownership
-    // semantics are covered by packages/credentials, so only its presence matters.
+    // semantics are covered by packages/auth, so only its presence matters.
     expect(vi.mocked(deleteAccount).mock.calls).toEqual([
       ["openai-api", "shared-id", expect.anything()],
     ]);

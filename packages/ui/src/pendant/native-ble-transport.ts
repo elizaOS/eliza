@@ -28,7 +28,7 @@
  * import target is injectable for tests via {@link NativeBleTransportDeps}.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@elizaos/shared/logger";
 import {
   BATTERY_LEVEL_CHAR_UUID_128,

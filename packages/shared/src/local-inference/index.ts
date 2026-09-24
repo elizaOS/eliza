@@ -2,9 +2,9 @@
  * @elizaos/shared/local-inference
  *
  * Shared local-inference contract used by both the server-side service
- * (`@elizaos/app-core/src/services/local-inference`) and the UI client
+ * (`@elizaos/app/src/services/local-inference`) and the UI client
  * (`@elizaos/ui/src/services/local-inference`). Type definitions live
- * here; runtime logic stays in `app-core` (server-side KV cache
+ * here; runtime logic stays in `app` (server-side KV cache
  * management, llama-server lifecycle, conversation registry, metrics)
  * and `ui` (client wiring against the agent API).
  */

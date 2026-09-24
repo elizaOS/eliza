@@ -8,8 +8,7 @@ runners, environments, and a concise job graph.
 
 `pr-static-smoke.yml` is the sole pull-request and merge-candidate workflow. It
 publishes the stable `All Tests Passed` context after proving the exact candidate
-is mergeable, checking its diff and conflict markers, scanning its commits for
-secrets, linting changed workflow definitions, performing a frozen install, and
+is mergeable, checking its diff and conflict markers, linting changed workflow definitions, performing a frozen install, and
 building plus linting and typechecking the affected workspace closure. When the
 Billing replay runtime workspace closure changes, it also runs the keyless,
 mock-backed payment replay Playwright proof and requires that job in the same
@@ -111,7 +110,7 @@ manifest for `develop`. `promotion-branches.json` covers `staging` and `main`
 with the same review requirement and no bypass actors. Promotion branches allow
 merge commits to preserve ancestry between successive releases. Their source
 checks do not require merging the destination back into the source; the merged
-destination must pass the full validation graph before deployment. `scripts/security/apply-branch-protection.sh`
+destination must pass the full validation graph before deployment. `packages/scripts/security/apply-branch-protection.sh`
 is read-only by default (`--check`) and requires explicit `--apply` authority to
 create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
 same semantic readback by manual dispatch and through the
@@ -193,14 +192,12 @@ remain separate tests.
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
 and macOS/Windows contracts. Dev Smoke runs staging startup and HMR without
 direct model-provider credentials; billable local onboarding is excluded from
-automatic branch validation. `gitleaks.yml` scans branch commits once; PR
-admission retains its own diff scan.
+automatic branch validation.
 
-UI fixture contracts, Discord gateway source tests, and Gitleaks also accept
+UI fixture contracts and Discord gateway source tests also accept
 manual dispatch on a fixed source ref when newer branch pushes repeatedly
 cancel the full graph. Use `gh workflow run <workflow>.yml --ref <fixed-ref>`;
-the selected ref supplies both the workflow and its checkout. Gitleaks retains
-its tip-commit scan when no push range is available. UI fixtures expose
+the selected ref supplies both the workflow and its checkout. UI fixtures expose
 `publish_bun_install_cache=false` to disable their designated cache writer.
 These runs provide supplemental source evidence only: they do not create a
 full-graph completion certificate, deployment authority, or promotion receipt.

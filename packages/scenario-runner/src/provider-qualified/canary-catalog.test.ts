@@ -11,7 +11,7 @@ import { loadScenarioMetadataFile } from "../loader.ts";
 import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 
 const PROVIDER_SCENARIO_DIRECTORY = fileURLToPath(
-  new URL("../../../test/scenarios/provider-qualified/", import.meta.url),
+  new URL("../../../testing/scenarios/provider-qualified/", import.meta.url),
 );
 
 describe("canonical provider canary inventory", () => {

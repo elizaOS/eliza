@@ -14,7 +14,7 @@ import {
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
-} from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+} from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;

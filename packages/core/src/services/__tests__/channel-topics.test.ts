@@ -5,7 +5,7 @@
  * uses AgentRuntime and the real in-memory database adapter.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
 import { AgentRuntime } from "../../runtime.ts";
@@ -22,7 +22,7 @@ const ROOM_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
 const activeRuntimes: AgentRuntime[] = [];
 
-class FailingRoomAdapter extends InMemoryDatabaseAdapter {
+class FailingRoomAdapter extends SQLiteDatabaseAdapter {
 	failReads = false;
 	failWrites = false;
 
@@ -39,7 +39,7 @@ class FailingRoomAdapter extends InMemoryDatabaseAdapter {
 
 async function makeRuntime(
 	seed: Room[] = [],
-	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(":memory:"),
 ): Promise<AgentRuntime> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({ name: "ChannelTopicsIntegrationAgent" }),

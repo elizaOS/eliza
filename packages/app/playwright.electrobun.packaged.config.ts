@@ -13,7 +13,7 @@ import { defineConfig } from "@playwright/test";
 // `packages/shared/dist/index.js`. If you need a green run without an existing
 // build, run `bun run --cwd packages/shared build` first, or skip this suite
 // (`PLAYWRIGHT_SKIP_PACKAGED=1`) and rely on `playwright.ui-smoke.config.ts`
-// which points at the dev stack (`packages/app-core/scripts/playwright-ui-live-stack.ts`).
+// which points at the dev stack (`packages/app/scripts/playwright-ui-live-stack.ts`).
 export default defineConfig({
   testDir: "./test/electrobun-packaged",
   testMatch: ["**/*.e2e.spec.ts"],

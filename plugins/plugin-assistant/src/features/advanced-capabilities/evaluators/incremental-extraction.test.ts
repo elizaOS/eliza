@@ -1,5 +1,6 @@
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { PGlite } from "@electric-sql/pglite";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
@@ -54,9 +55,9 @@ function options(evidenceId = "factMemory:revision1"): EvaluatorRunOptions & {
 }
 
 async function makeRuntime() {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: { name: "Eliza", bio: "test", settings: {} } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
   });
   await runtime.createRooms([

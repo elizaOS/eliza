@@ -1,0 +1,95 @@
+{
+  "extends": "./tsconfig.host.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "rootDir": "../../",
+    "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "paths": {
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
+      "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../core/dist/*"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/auth/vault": ["../auth/dist/vault/index.d.ts"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/capacitor-canvas": [
+        "../../plugins/plugin-native-canvas/dist/esm/index.d.ts"
+      ],
+      "@elizaos/capacitor-location": [
+        "../../plugins/plugin-native-location/dist/esm/index.d.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../../plugins/plugin-native-mobile-signals/dist/esm/index.d.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../../plugins/plugin-native-appblocker/dist/esm/index.d.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/dist/esm/index.d.ts"
+      ],
+      "@elizaos/plugin-native-phone/bridge": [
+        "../../plugins/plugin-native-phone/dist/bridge.d.ts"
+      ],
+      "@elizaos/capacitor-screencapture": [
+        "../../plugins/plugin-native-screencapture/dist/esm/index.d.ts"
+      ]
+    }
+  },
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "include": [
+    "src/connectors",
+    "src/ui-compat.ts",
+    "src/desktop-native-notification-boundary.test.ts",
+    "src/config",
+    "src/security",
+    "src/entry.ts",
+    "src/platform",
+    "src/runtime",
+    "src/desktop-test-bridge-notification-route.test.ts",
+    "src/utils",
+    "src/desktop-shell.ts",
+    "src/cli",
+    "src/permissions",
+    "src/browser.ts",
+    "src/styles",
+    "src/entry-cloud-api-key.test.ts",
+    "src/__tests__",
+    "src/boot-profile.ts",
+    "src/diagnostics",
+    "src/registry",
+    "src/first-run",
+    "src/api",
+    "src/index.ts",
+    "src/account-pool.ts",
+    "src/entry-cloud-api-key.ts",
+    "src/boot-profile.test.ts",
+    "src/alias-env-reads.13422.test.ts",
+    "src/services"
+  ]
+}

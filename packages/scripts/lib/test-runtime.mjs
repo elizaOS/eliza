@@ -30,32 +30,22 @@ function isExecutable(filePath) {
     fs.accessSync(filePath, fs.constants.X_OK);
     return true;
   } catch {
+    // error-policy:J4 An unavailable executable is excluded from runtime discovery.
     return false;
   }
 }
 
-function compareNodeVersionDesc(left, right) {
-  const parse = (value) =>
-    value
-      .replace(/^v/, "")
-      .split(".")
-      .map((part) => Number.parseInt(part, 10) || 0);
-  const leftParts = parse(path.basename(path.dirname(path.dirname(left))));
-  const rightParts = parse(path.basename(path.dirname(path.dirname(right))));
-  for (let index = 0; index < 3; index += 1) {
-    if (leftParts[index] !== rightParts[index]) {
-      return rightParts[index] - leftParts[index];
-    }
+function readPinnedNodeVersion(repoRoot) {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+  );
+  const version = manifest.engines?.node;
+  if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(
+      `Expected an exact engines.node version in ${repoRoot}/package.json`,
+    );
   }
-  return 0;
-}
-
-function readNvmrc(repoRoot) {
-  try {
-    return fs.readFileSync(path.join(repoRoot, ".nvmrc"), "utf8").trim();
-  } catch {
-    return "";
-  }
+  return version;
 }
 
 function nodeOptionsWithHeapLimit(value) {
@@ -67,25 +57,18 @@ function nodeOptionsWithHeapLimit(value) {
 }
 
 function nvmNodeCandidates(homeDir, repoRoot) {
-  const versionsDir = path.join(homeDir, ".nvm", "versions", "node");
-  const candidates = [];
-  const nvmrc = readNvmrc(repoRoot);
-  if (nvmrc) {
-    const version = nvmrc.startsWith("v") ? nvmrc : `v${nvmrc}`;
-    candidates.push(path.join(versionsDir, version, "bin", "node"));
-  }
-
-  try {
-    for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        candidates.push(path.join(versionsDir, entry.name, "bin", "node"));
-      }
-    }
-  } catch {
-    // nvm is optional.
-  }
-
-  return [...new Set(candidates)].sort(compareNodeVersionDesc);
+  const version = readPinnedNodeVersion(repoRoot);
+  return [
+    path.join(
+      homeDir,
+      ".nvm",
+      "versions",
+      "node",
+      `v${version}`,
+      "bin",
+      "node",
+    ),
+  ];
 }
 
 function pathNodeCandidates(env) {

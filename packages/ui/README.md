@@ -38,7 +38,7 @@ import "@elizaos/ui/styles"; // default stylesheets (renderer only)
 
 Login components, wallet providers and authentication hooks are exported from
 the root `@elizaos/ui` barrel. The authentication client and service are owned
-by `@elizaos/login`. The imported login source retains its original MIT notice
+by `@elizaos/auth`. The imported login source retains its original MIT notice
 in [`src/login/LICENSE`](src/login/LICENSE), included in the published UI artifact.
 
 ```tsx

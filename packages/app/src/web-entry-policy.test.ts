@@ -104,13 +104,13 @@ describe("hosted public renderer entry policy", () => {
 
   it("ships the selector as the HTML entry and keeps all renderers dynamic", () => {
     const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
-    const entrySource = readFileSync(resolve(appRoot, "src/entry.ts"), "utf8");
+    const entrySource = readFileSync(resolve(appRoot, "src/renderer-entry.ts"), "utf8");
     const publicEntrySource = readFileSync(
       resolve(appRoot, "src/public-web-entry.tsx"),
       "utf8",
     );
 
-    expect(indexHtml).toContain('src="/src/entry.ts"');
+    expect(indexHtml).toContain('src="/src/renderer-entry.ts"');
     expect(entrySource).toContain('import("./public-web-entry")');
     expect(entrySource).toContain('import("./marketing-home-entry")');
     expect(entrySource).toContain('import("./main")');

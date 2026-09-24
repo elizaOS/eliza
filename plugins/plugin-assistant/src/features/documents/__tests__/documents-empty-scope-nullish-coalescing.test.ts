@@ -10,7 +10,7 @@
  * against a real `addDocument` call.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
 import type {
@@ -31,7 +31,7 @@ async function makeHarness(): Promise<{
   runtime: AgentRuntime;
   service: DocumentService;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,

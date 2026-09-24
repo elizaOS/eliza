@@ -2,10 +2,10 @@
  * Behavioral tests for `ConnectorAccountManager` — provider registration and
  * connector dedup, stored/provider account merge, single-use OAuth consumption,
  * PKCE-secret handling, and owner-binding policy — driven against a stub runtime
- * and the real `InMemoryDatabaseAdapter` (no live connector, no network).
+ * and the real `SQLiteDatabaseAdapter` (no live connector, no network).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../errors";
 import type { TargetInfo } from "../types";
@@ -25,7 +25,7 @@ class TestRuntime {
 	private messageConnectors: MessageConnectorRegistration[] = [];
 	private postConnectors: PostConnectorRegistration[] = [];
 
-	constructor(public readonly adapter?: InMemoryDatabaseAdapter) {}
+	constructor(public readonly adapter?: SQLiteDatabaseAdapter) {}
 
 	getService(): undefined {
 		return undefined;
@@ -55,7 +55,7 @@ class TestRuntime {
 	}
 }
 
-function makeRuntime(adapter?: InMemoryDatabaseAdapter): IAgentRuntime {
+function makeRuntime(adapter?: SQLiteDatabaseAdapter): IAgentRuntime {
 	return new TestRuntime(adapter) as IAgentRuntime;
 }
 
@@ -397,7 +397,7 @@ describe("ConnectorAccountManager", () => {
 	});
 
 	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -515,7 +515,7 @@ describe("ConnectorAccountManager", () => {
 	});
 
 	it("fails a flow whose PKCE verifier died with a restart instead of forwarding a doomed exchange", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -568,9 +568,9 @@ describe("durable storage binding", () => {
 		const runtime = makeRuntime();
 		const manager = getConnectorAccountManager(runtime);
 
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
-		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+		(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 			adapter;
 
 		await manager.upsertAccount("google", GOOGLE_ACCOUNT);
@@ -596,7 +596,7 @@ describe("durable storage binding", () => {
 	});
 
 	it("round-trips a provider-owned account key separately from the external identity", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
 		const manager = getConnectorAccountManager(makeRuntime(adapter));
 		const stableKey = "acct_google_role_bound_key";
@@ -652,7 +652,7 @@ describe("durable storage binding", () => {
 	});
 
 	it("prefers an explicitly injected storage over the runtime adapter", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -695,9 +695,9 @@ describe("fallback-to-durable state handoff", () => {
 		const manager = getConnectorAccountManager(runtime);
 		await manager.upsertAccount("google", BOOT_ACCOUNT);
 
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
-		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+		(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 			adapter;
 
 		// Post-attachment read sees the boot-window account...
@@ -728,11 +728,11 @@ describe("fallback-to-durable state handoff", () => {
 		const manager = getConnectorAccountManager(runtime);
 		const storage = manager.getStorage();
 
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.initialize();
 
 		const pendingUpsert = storage.upsertAccount(BOOT_ACCOUNT);
-		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+		(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 			adapter;
 		await pendingUpsert;
 
@@ -756,9 +756,9 @@ describe("fallback-to-durable state handoff", () => {
 		manager.registerProvider({
 			provider: "oauth-split",
 			startOAuth: async () => {
-				const adapter = new InMemoryDatabaseAdapter();
+				const adapter = SQLiteDatabaseAdapter.create(":memory:");
 				await adapter.initialize();
-				(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+				(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 					adapter;
 				return { authUrl: "https://auth.example/start" };
 			},
@@ -807,9 +807,9 @@ describe("fallback-to-durable state handoff", () => {
 			provider: "oauth-complete-split",
 			startOAuth: async () => ({ authUrl: "https://auth.example/start" }),
 			completeOAuth: async () => {
-				const adapter = new InMemoryDatabaseAdapter();
+				const adapter = SQLiteDatabaseAdapter.create(":memory:");
 				await adapter.initialize();
-				(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+				(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 					adapter;
 				return {
 					account: {

@@ -112,7 +112,7 @@ bun run --cwd plugins/plugin-discord test        # vitest run (unit tests)
 bun run --cwd plugins/plugin-discord typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-discord lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-discord format      # biome format --write
-bun run --cwd plugins/plugin-discord test:e2e    # live smoke test via app-core runner
+bun run --cwd plugins/plugin-discord test:e2e    # live smoke test via app runner
 bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated .d.ts files
 ```
 

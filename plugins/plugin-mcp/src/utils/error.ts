@@ -13,7 +13,7 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
 import type { McpProvider } from "../types";
 

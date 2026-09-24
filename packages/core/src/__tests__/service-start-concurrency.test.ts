@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Verifies production service startup ordering and ownership with real runtime
  * lifecycle calls. Implementations launch concurrently, readiness drains the

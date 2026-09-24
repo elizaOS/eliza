@@ -105,7 +105,7 @@ its result, it never drives or proves the bytes served by staging Pages.
    lookup/race.
 3. Require `Verify Pages frontend freshness` for
    `https://staging.eliza.app`. That step compares the live entry assets with
-   the exact local `packages/app/dist` artifact and records expected versus
+   the exact local `packages/app/web-dist` artifact and records expected versus
    served asset names.
 4. For a credentialed browser proof, validate that the same detailed Wrangler
    row names the first-party alias `https://develop.eliza-app.pages.dev` and use

@@ -65,7 +65,7 @@ process.env.ELIZA_FUSED_WAKE_MIC_ARGV = [
 
 // Import the REAL desktop producer (resolves through the alias above).
 const { FusedWakeManager } = await import(
-  join(repoRoot, "packages/app-core/platforms/electrobun/src/native/fused-wake.ts")
+  join(repoRoot, "packages/app/platforms/electrobun/src/native/fused-wake.ts")
 );
 
 const outDir = join(here, "output-fused-wake-integration");

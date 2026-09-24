@@ -2,7 +2,7 @@
  * Anthropic OAuth credential store with multi-account support.
  *
  * If the host runtime has installed the account-pool bridge on
- * `globalThis` (app-core does this when the multi-account `LinkedAccountConfig`
+ * `globalThis` (app does this when the multi-account `LinkedAccountConfig`
  * store is non-empty), token reads route through the pool: `select` picks
  * the active account, the OAuth fetch wrapper retries on 401 against a
  * different account, and the pool tracks rate-limited / invalid health.

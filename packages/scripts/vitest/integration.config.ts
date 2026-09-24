@@ -229,7 +229,7 @@ const integrationConfig = {
     globalSetup: [
       path.join(
         elizaWorkspaceRoot,
-        "packages/app-core/test/e2e-global-setup.ts",
+        "packages/app/test/e2e-global-setup.ts",
       ),
     ],
     // Integration files frequently replace globals and module-level mocks.
@@ -249,7 +249,7 @@ const integrationConfig = {
     include: [
       elizaGlob("packages/agent/test/**/*.integration.test.ts"),
       elizaGlob("apps/*/test/**/*.integration.test.ts"),
-      elizaGlob("packages/app-core/test/**/*.integration.test.ts"),
+      elizaGlob("packages/app/test/**/*.integration.test.ts"),
       // Plugin-level integration tests (16 *.integration.test.ts files in
       // app-lifeops/test/) were dead in CI — neither the plugin's own
       // vitest.config.ts (which excludes the integration suffix from the
@@ -280,7 +280,7 @@ const integrationConfig = {
       elizaGlob("packages/agent/src/**/*.integration.test.ts"),
     ],
     setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
+      path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts"),
     ],
     exclude: [
       "dist/**",
@@ -296,8 +296,8 @@ const integrationConfig = {
       "**/*.real.e2e.test.ts",
       "**/*.real.e2e.test.tsx",
       // --- server/runtime route tests must live in the live/real lane ---
-      elizaGlob("packages/app-core/src/api/**/*.test.{ts,tsx}"),
-      elizaGlob("packages/app-core/src/services/**/*.test.{ts,tsx}"),
+      elizaGlob("packages/app/src/api/**/*.test.{ts,tsx}"),
+      elizaGlob("packages/app/src/services/**/*.test.{ts,tsx}"),
       elizaGlob("apps/*/src/**/*routes.test.{ts,tsx}"),
       elizaGlob("apps/*/src/services/**/*.test.{ts,tsx}"),
     ],

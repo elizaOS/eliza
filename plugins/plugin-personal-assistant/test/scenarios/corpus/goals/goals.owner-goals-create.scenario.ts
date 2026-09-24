@@ -21,7 +21,7 @@ import {
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
-} from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
+} from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
 import { evaluatorSourceRevision } from "../../../../../plugin-assistant/src/services/evaluator-progress.ts";

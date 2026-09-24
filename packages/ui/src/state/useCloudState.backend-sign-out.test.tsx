@@ -1,7 +1,7 @@
 /** Verifies useCloudState — backend-backed (unlocked) Cloud account sign-out through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
- * On a backend-backed session (local app-core / agent runtime, runtime NOT
+ * On a backend-backed session (local app / agent runtime, runtime NOT
  * locked) the Cloud account is also persisted server-side and re-reported by
  * /api/cloud/status. Signing out there must clear the backend session, not just
  * the renderer/Steward token — otherwise the Settings affordance reports

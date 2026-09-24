@@ -334,7 +334,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
 ];
 
 // Canonical settings-section metadata (pure data) re-exported here so
-// non-renderer consumers (e.g. app-core's dev-route-catalog parity test) can
+// non-renderer consumers (e.g. app's dev-route-catalog parity test) can
 // assert the QA catalog never drifts from the UI's section list.
 export {
   SETTINGS_SECTION_META,

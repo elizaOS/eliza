@@ -1,5 +1,5 @@
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Real-world plugin smoke tests for lifecycle correctness.
  *

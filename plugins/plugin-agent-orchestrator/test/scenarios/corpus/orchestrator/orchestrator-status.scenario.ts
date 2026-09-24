@@ -25,7 +25,7 @@ import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
-import { transientTurnEvaluationSeed } from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   registerOrchestratorCommands,
@@ -90,7 +90,7 @@ export default scenario({
         registerOrchestratorCommands(runtime.agentId);
         // Mount the orchestrator's real route plugin onto the runtime so the
         // scenario API server serves /api/orchestrator/* exactly as an
-        // app-core host would (the host normally drains the route-plugin
+        // app host would (the host normally drains the route-plugin
         // registry; the scenario runtime does not, so mount it explicitly).
         for (const route of codingAgentRoutePlugin.routes ?? []) {
           getHttpRuntime(runtime).routes.push(route);

@@ -13,12 +13,12 @@
  * quiet when a human is active in the gap, when the interlocutor is human,
  * and in DMs.
  *
- * Deterministic: real AgentRuntime + InMemoryDatabaseAdapter; providers read
+ * Deterministic: real AgentRuntime + SQLiteDatabaseAdapter; providers read
  * either the composed RECENT_MESSAGES state or the coalesced room scan; no
  * model calls.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
@@ -55,15 +55,16 @@ afterEach(async () => {
 
 async function makeRuntime(): Promise<{
   runtime: AgentRuntime;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
   const runtime = new AgentRuntime({
     character: createCharacter({ name: "Eliza" }),
-    adapter,
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
   await runtime.initialize();
   await adapter.createWorlds([
     {
@@ -120,7 +121,7 @@ function makeRow(args: {
 }
 
 async function seed(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   rows: Memory[],
 ): Promise<void> {
   await adapter.createMemories(
@@ -306,7 +307,7 @@ describe("ANXIETY provider", () => {
     let scans = 0;
     const realGetMemories = adapter.getMemories.bind(adapter);
     adapter.getMemories = async (
-      params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0],
+      params: Parameters<SQLiteDatabaseAdapter["getMemories"]>[0],
     ) => {
       if (params.tableName === "messages") scans += 1;
       return realGetMemories(params);

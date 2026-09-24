@@ -4,7 +4,8 @@
  * deterministic model handlers and an in-memory trajectory service; no network.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
@@ -71,13 +72,13 @@ async function makeRuntime(): Promise<{
 	runtime: AgentRuntime;
 	trajectory: CapturingTrajectoryService;
 }> {
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: {
 			name: "TrajectoryDedupeAgent",
 			bio: "test",
 			settings: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 	runtimes.push(runtime);

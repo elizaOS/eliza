@@ -67,7 +67,7 @@ export function createLiveScenarioPlan(options = {}) {
   const scenarioRoot =
     scenarioRootInput.length > 0
       ? path.resolve(repoRoot, scenarioRootInput)
-      : path.join(repoRoot, "packages", "test", "scenarios");
+      : path.join(repoRoot, "packages", "testing", "scenarios");
   const reportPath =
     env.REPORT_PATH ??
     path.join(repoRoot, "artifacts", "lifeops-scenario-report.json");

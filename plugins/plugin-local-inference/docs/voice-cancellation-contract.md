@@ -131,7 +131,7 @@ barge-ins abort it cleanly.
   tests), `plugins/plugin-local-inference/src/services/voice/cancellation-coordinator.test.ts`
   (12 tests), `plugins/plugin-local-inference/src/services/voice/optimistic-policy.test.ts`
   (13 tests).
-- Integration: `packages/app-core/__tests__/voice/barge-in.test.ts` (9
+- Integration: `packages/app/__tests__/voice/barge-in.test.ts` (9
   scenarios) — covers the W3-9 brief's two load-bearing claims:
   1. "User speaks, EOT fires, LM start happens within 200 ms of EOT-fired
      timestamp."

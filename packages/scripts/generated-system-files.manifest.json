@@ -3,10 +3,10 @@
   "groups": [
     {
       "id": "native-background-task-runner",
-      "source": "packages/app-core/platforms/shared/runners/eliza-tasks.js",
+      "source": "packages/app/platforms/shared/runners/eliza-tasks.js",
       "generated": [
-        "packages/app-core/platforms/android/app/src/main/assets/runners/eliza-tasks.js",
-        "packages/app-core/platforms/ios/App/App/runners/eliza-tasks.js"
+        "packages/app/platforms/android/app/src/main/assets/runners/eliza-tasks.js",
+        "packages/app/platforms/ios/App/App/runners/eliza-tasks.js"
       ]
     },
     {
@@ -71,7 +71,6 @@
         "plugins/plugin-native-screencapture/tsconfig.json",
         "plugins/plugin-native-canvas/tsconfig.json",
         "plugins/plugin-native-eliza-tasks/tsconfig.json",
-        "plugins/plugin-native-mlkit-text/tsconfig.json",
         "plugins/plugin-native-mobile-signals/tsconfig.json",
         "plugins/plugin-native-swabble/tsconfig.json"
       ]

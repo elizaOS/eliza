@@ -137,10 +137,10 @@ drivers. The `MockPipelineDriver` remains test-only scaffolding; the real
 pipeline driver is a follow-up — the contract is the
 `PipelineDriver` interface in `src/types.ts`. To wire it:
 
-1. Construct a `VoicePipeline` (`packages/app-core/.../voice/pipeline.ts`)
+1. Construct a `VoicePipeline` (`packages/app/.../voice/pipeline.ts`)
    with real `StreamingTranscriber`, `DraftProposer`, and `TargetVerifier`
    implementations. The bench package intentionally does **not** depend on
-   `@elizaos/app-core` — wire from a thin host package that owns both.
+   `@elizaos/app` — wire from a thin host package that owns both.
 2. Inside the driver's `run(args)`, feed `args.audio.pcm` to the
    `VoiceScheduler` via its `MicSource` adapter while replaying frames
    through `SyntheticAudioSource` at wall-clock rate.

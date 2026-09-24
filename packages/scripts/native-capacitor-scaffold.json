@@ -15,7 +15,6 @@
       "packages": [
         "plugin-native-canvas",
         "plugin-native-eliza-tasks",
-        "plugin-native-mlkit-text",
         "plugin-native-mobile-signals",
         "plugin-native-screencapture",
         "plugin-native-swabble"
@@ -71,10 +70,6 @@
     {
       "packageName": "plugin-native-location",
       "globalName": "capacitorLocation"
-    },
-    {
-      "packageName": "plugin-native-mlkit-text",
-      "globalName": "capacitorMlKitText"
     },
     {
       "packageName": "plugin-native-mobile-agent-bridge",

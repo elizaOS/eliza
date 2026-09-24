@@ -2524,17 +2524,17 @@ jobs:
           bunx wrangler@4.100.0 pages functions build functions \
             --outdir "$functions_bundle" \
             --project-directory . \
-            --build-output-directory dist
+            --build-output-directory web-dist
           test -s "$functions_bundle/index.js"
-          install -m 0644 "$functions_bundle/index.js" dist/_worker.js
-          node --check dist/_worker.js
+          install -m 0644 "$functions_bundle/index.js" web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
-            packages/app/dist
+            packages/app/web-dist
             packages/app/wrangler.toml
           if-no-files-found: error
           retention-days: 1
@@ -2752,8 +2752,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         run: |
           set -euo pipefail
-          test -s dist/_worker.js
-          node --check dist/_worker.js
+          test -s web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
@@ -2972,7 +2972,7 @@ jobs:
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
-        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # `pages_build_output_dir = "./web-dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
           set -euo pipefail
@@ -3078,7 +3078,7 @@ jobs:
           for served_url in "${served_frontends[@]}"; do
             node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
               --served-url "$served_url" \
-              --dist packages/app/dist \
+              --dist packages/app/web-dist \
               --require-text "Signing in to your agent" \
               --require-text "This tab will continue automatically" \
               --require-text "Open this agent from Eliza Cloud"

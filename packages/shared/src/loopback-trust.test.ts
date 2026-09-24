@@ -1,6 +1,6 @@
 /**
  * Unit coverage for the shared local-trust gate (`loopback-trust.ts`) that both
- * `@elizaos/app-core` and `@elizaos/agent` use to decide whether an inbound HTTP
+ * `@elizaos/app` and `@elizaos/agent` use to decide whether an inbound HTTP
  * request may bypass auth. Exercises loopback peer detection, proxy-client-header
  * spoofing rejection, Host/Origin/Referer classification, and the per-consumer env
  * policy gates — running the shared host/origin cases under both option bundles to
@@ -22,7 +22,7 @@ import {
 
 /**
  * The two consumers pin DIFFERENT policy gates. These option bundles mirror
- * exactly what `@elizaos/app-core` and `@elizaos/agent` pass. If a consumer's
+ * exactly what `@elizaos/app` and `@elizaos/agent` pass. If a consumer's
  * wrapper ever drops a gate, the per-consumer suites below break.
  */
 const APP_CORE_OPTIONS: LoopbackTrustOptions = {
@@ -212,7 +212,7 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
   // These hold for BOTH consumers (gates all off). Run each case under both
   // option bundles to prove the host/origin logic is shared verbatim.
   for (const [label, options] of [
-    ["app-core", APP_CORE_OPTIONS],
+    ["app", APP_CORE_OPTIONS],
     ["agent", AGENT_OPTIONS],
   ] as const) {
     describe(`(${label} options)`, () => {
@@ -420,7 +420,7 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
   }
 });
 
-describe("isTrustedLocalRequest — app-core policy gates (cloudCheck=env, dev bypass)", () => {
+describe("isTrustedLocalRequest — app policy gates (cloudCheck=env, dev bypass)", () => {
   const savedConfig = getBootConfig();
 
   beforeEach(clearTrustEnv);
@@ -543,7 +543,7 @@ describe("cloudCheck semantics differ between consumers", () => {
   beforeEach(clearTrustEnv);
   afterEach(clearTrustEnv);
 
-  it("bare ELIZA_CLOUD_PROVISIONED=1 denies app-core trust but NOT agent trust", () => {
+  it("bare ELIZA_CLOUD_PROVISIONED=1 denies app trust but NOT agent trust", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     const req = makeReq({ headers: { host: "localhost:2138" } });
     expect(isTrustedLocalRequest(req, APP_CORE_OPTIONS)).toBe(false);

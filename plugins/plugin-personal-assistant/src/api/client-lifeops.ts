@@ -94,7 +94,7 @@ import type {
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 // Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
-// app-core/api/client.ts imports this file (LifeOps extension) as a side-effect
+// app/api/client.ts imports this file (LifeOps extension) as a side-effect
 // before re-exporting `ElizaClient` from its root barrel, so a root-barrel
 // import here resolves to `undefined` at module-init time (and the root barrel
 // does not re-export the class value). The `/api` subpath is the class's home

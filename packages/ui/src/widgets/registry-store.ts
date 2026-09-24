@@ -89,7 +89,7 @@ export function getWidgetComponent(
  * `ChatSidebarWidgetProps` is structurally compatible with `WidgetProps`
  * (events + clearEvents).
  *
- * This is the public API for plugins outside app-core to register their own
+ * This is the public API for plugins outside app to register their own
  * widget components — call it when the plugin loads (e.g. via a side-effect
  * import of a widgets module).
  */

@@ -1,6 +1,7 @@
 /** Exercises delivered-reply embedding with a real runtime and in-memory persistence. */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { expect, test, vi } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
@@ -9,9 +10,9 @@ import { ModelType } from "../types/model";
 import { EmbeddingGenerationService } from "./embedding";
 
 async function fixture() {
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: createCharacter({ name: "Delivered reply indexing" }),
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});

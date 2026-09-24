@@ -7,7 +7,8 @@
  * layer is a pure no-op when disabled.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import {
@@ -22,13 +23,13 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "PiiSwapAgent",
 			bio: "test",
 			settings: { ELIZA_PII_SWAP_ENABLED: enabled },
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 }
@@ -323,7 +324,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 	});
 
 	it("composes with the secret-swap layer (both enabled): secret → placeholder, name → surrogate", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: {
 				name: "PiiSwapAgent",
 				bio: "test",
@@ -333,7 +334,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 					ELIZA_SECRET_SWAP_ENABLED: true,
 				},
 			} as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);

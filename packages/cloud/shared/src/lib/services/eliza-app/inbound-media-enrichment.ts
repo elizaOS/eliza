@@ -13,7 +13,7 @@
  * never retries a terminal failure.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   type InboundMediaDescriptionCeilings,
   type InboundMediaDescriptionClaim,

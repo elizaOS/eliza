@@ -9,7 +9,7 @@ import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/testing";
-import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";

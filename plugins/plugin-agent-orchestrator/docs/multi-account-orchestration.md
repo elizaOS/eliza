@@ -14,8 +14,8 @@ running sub-agent vs. let it keep working.
 | Account contracts (`LinkedAccountConfig`, `LinkedAccountUsage`, 12 provider ids) | `packages/core/src/contracts/service-routing-types.ts` | ✅ |
 | Credential storage (`<stateDir>/auth/{providerId}/{accountId}.json`) | `packages/agent/src/auth/account-storage.ts` | ✅ |
 | OAuth flows (Anthropic + Codex) + coding-plan keys + API keys | `packages/agent/src/auth/oauth-flow.ts`, `credentials.ts` | ✅ |
-| `AccountPool` — priority / round-robin / **least-used** / quota-aware, affinity, health | `packages/app-core/src/services/account-pool.ts` | ✅ |
-| Usage probes (`pollAnthropicUsage`, `pollCodexUsage`) + JSONL day counters | `packages/app-core/src/services/account-usage.ts` | ✅ |
+| `AccountPool` — priority / round-robin / **least-used** / quota-aware, affinity, health | `packages/app/src/services/account-pool.ts` | ✅ |
+| Usage probes (`pollAnthropicUsage`, `pollCodexUsage`) + JSONL day counters | `packages/app/src/services/account-usage.ts` | ✅ |
 | Accounts REST API (`/api/accounts/*` incl. OAuth SSE) | `packages/agent/src/api/accounts-routes.ts` | ✅ |
 | Settings UI (AccountList / AccountCard / AddAccountDialog / RotationStrategyPicker) + `useAccounts` | `packages/ui/src/components/accounts/*` | ✅ |
 | Multi-account API-key routing for the *main agent* | `credential-resolver.ts` → `resolveProviderCredentialMulti` | ✅ |
@@ -40,7 +40,7 @@ bridge**.
 ## Hitlist
 
 ### P0 — Keystone: account selection on spawn (round-robin / least-used)
-- [x] `coding-account-bridge.ts` (app-core): install the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
+- [x] `coding-account-bridge.ts` (app): install the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
 - [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json` + minimal `config.toml`; opencode → `CEREBRAS_API_KEY` (pooled Cerebras); direct API providers → their env key.
 - [x] Wire into `AcpService.spawnSession`: select before transport branch, merge `envPatch` into `customCredentials`, stamp `session.metadata.account*`, surface on `SpawnResult.metadata`.
 - [x] `buildEnv`: when `CLAUDE_CODE_OAUTH_TOKEN` is injected for claude, drop `ANTHROPIC_API_KEY` so the selected subscription wins.
@@ -60,7 +60,7 @@ bridge**.
 - [x] Mock account fixtures (multi-account, multi-provider) + an in-memory pool for unit tests.
 - [x] Unit tests: selection strategy, per-agent env injection + API-key drop (Claude & Codex), intra-provider retry, usage attribution, interruption decider, route registration.
 - [x] Live E2E (gated `ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1`): validates the selector bridge + usage probe against ≥2 **real** linked accounts (distinct-account rotation via the exclude set; live session/weekly usage).
-- [x] **Composed offline E2E** (`bun run --cwd plugins/plugin-agent-orchestrator test:e2e:multi-account`): real app-core `AccountPool` (real-format mock accounts in a temp state dir) → installed selector bridge → orchestrator `AcpService.spawnSession` / `sendToSession` → a REAL spawned subprocess (a fake "acpx" standing in for the subscription CLI). Asserts 11/11: two Claude spawns pick **distinct** accounts (least-used round-robin), each subprocess receives its account's `CLAUDE_CODE_OAUTH_TOKEN`, a follow-up prompt for the first Claude session reuses that session's selected account token, the parent `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` are dropped, Codex gets a per-account `CODEX_HOME/auth.json` with the right token+account_id. Point `ELIZA_ACP_CLI` at the real binary + connect real accounts for true live-key validation. (This harness caught a real cli-transport bug: `runAcpx` rebuilt the env without `agentType`, re-adding the parent keys — now fixed.)
+- [x] **Composed offline E2E** (`bun run --cwd plugins/plugin-agent-orchestrator test:e2e:multi-account`): real app `AccountPool` (real-format mock accounts in a temp state dir) → installed selector bridge → orchestrator `AcpService.spawnSession` / `sendToSession` → a REAL spawned subprocess (a fake "acpx" standing in for the subscription CLI). Asserts 11/11: two Claude spawns pick **distinct** accounts (least-used round-robin), each subprocess receives its account's `CLAUDE_CODE_OAUTH_TOKEN`, a follow-up prompt for the first Claude session reuses that session's selected account token, the parent `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` are dropped, Codex gets a per-account `CODEX_HOME/auth.json` with the right token+account_id. Point `ELIZA_ACP_CLI` at the real binary + connect real accounts for true live-key validation. (This harness caught a real cli-transport bug: `runAcpx` rebuilt the env without `agentType`, re-adding the parent keys — now fixed.)
 
 ### P4 — Connect-accounts window
 - [x] The connect-accounts window (Settings → Accounts: `AddAccountDialog` OAuth / API-key / coding-plan-key flows, `AccountList`, `RotationStrategyPicker`) pre-exists and is the surface for linking multiple accounts of each type.

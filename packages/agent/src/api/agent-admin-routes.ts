@@ -9,7 +9,7 @@
  */
 import path from "node:path";
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/credentials/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   getDefaultStylePreset,

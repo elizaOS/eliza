@@ -1,7 +1,7 @@
 /** Drives the genuine Shared AgentRuntime reminder action with a fixed clock and deterministic model boundary. */
 
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { ChannelType } from "@elizaos/common";
+import { ChannelType } from "@elizaos/core";
 import type { ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 
 const NOW = "2026-08-16T04:48:56.509Z";

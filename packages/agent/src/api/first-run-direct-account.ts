@@ -10,8 +10,8 @@ import {
   createRuntimeAccountStoragePolicy,
   deleteAccount,
   saveAccount,
-} from "@elizaos/credentials/auth/account-storage";
-import { probeDirectApiKey } from "@elizaos/credentials/auth/direct-api-probe";
+} from "@elizaos/auth/auth/account-storage";
+import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

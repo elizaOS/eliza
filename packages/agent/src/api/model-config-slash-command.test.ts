@@ -108,7 +108,7 @@ async function startHarness(
     server.listen(0, "127.0.0.1", () => resolve()),
   );
   // The slash handler resolves its loopback target from ELIZA_PORT — point it
-  // at this live route server, exactly like production points it at app-core.
+  // at this live route server, exactly like production points it at app.
   process.env.ELIZA_PORT = String((server.address() as AddressInfo).port);
 
   initForRuntime("agent-model-config-e2e");

@@ -4,13 +4,13 @@
  * memo must collapse those into one adapter round-trip each, slice the shared
  * window exactly like a direct adapter query, and self-invalidate on every
  * write so a compose immediately after message intake can never see a stale
- * window. Real AgentRuntime + InMemoryDatabaseAdapter (which mirrors
+ * window. Real AgentRuntime + SQLiteDatabaseAdapter (which mirrors
  * plugin-sql's newest-first ordering) with counting delegates that still run
  * the real adapter queries; real RECENT_MESSAGES/ATTACHMENTS/FACTS providers
  * for the compose-level proof; no model.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { factsProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { attachmentsProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/attachments.ts";
@@ -34,7 +34,7 @@ type AdapterCallCounts = {
  * delegate, not a stub: results come from the actual in-memory store.
  */
 function instrumentAdapter(
-	adapter: InMemoryDatabaseAdapter,
+	adapter: SQLiteDatabaseAdapter,
 ): AdapterCallCounts {
 	const counts: AdapterCallCounts = { getRoomsByIds: 0, messagesScans: 0 };
 	const realGetRoomsByIds = adapter.getRoomsByIds.bind(adapter);
@@ -44,7 +44,7 @@ function instrumentAdapter(
 	};
 	const realGetMemories = adapter.getMemories.bind(adapter);
 	adapter.getMemories = async (
-		params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0],
+		params: Parameters<SQLiteDatabaseAdapter["getMemories"]>[0],
 	) => {
 		if (params.tableName === "messages") counts.messagesScans += 1;
 		return realGetMemories(params);
@@ -54,10 +54,10 @@ function instrumentAdapter(
 
 async function makeRuntime(): Promise<{
 	runtime: AgentRuntime;
-	adapter: InMemoryDatabaseAdapter;
+	adapter: SQLiteDatabaseAdapter;
 	counts: AdapterCallCounts;
 }> {
-	const adapter = new InMemoryDatabaseAdapter();
+	const adapter = SQLiteDatabaseAdapter.create(":memory:");
 	const runtime = await createInitializedRuntime({
 		character: { name: "coalescing-test" } as Character,
 		adapter,
@@ -98,7 +98,7 @@ function makeMessageRow(index: number, text?: string): Memory {
 }
 
 async function seedMessages(
-	adapter: InMemoryDatabaseAdapter,
+	adapter: SQLiteDatabaseAdapter,
 	count: number,
 ): Promise<Memory[]> {
 	const rows = Array.from({ length: count }, (_, i) => makeMessageRow(i));

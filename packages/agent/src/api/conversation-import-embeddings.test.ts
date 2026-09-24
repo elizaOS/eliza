@@ -1,3 +1,4 @@
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   AgentRuntime,
   createCharacter,
@@ -5,7 +6,7 @@ import {
   ModelType,
   stringToUuid,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { expect, test, vi } from "vitest";
 import {
   registerImportedConversationEmbeddingWorker,
@@ -13,9 +14,9 @@ import {
 } from "./conversation-import-embeddings.ts";
 
 function fixture() {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: createCharacter({ name: "Import repair" }),
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });

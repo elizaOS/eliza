@@ -28,7 +28,7 @@ A device launch spans four independently-instrumented systems:
 | Subsystem | Owns | Source of truth |
 |---|---|---|
 | Renderer / app shell | First paint, startup shell, hydration | `packages/app/src/main.tsx`, `packages/ui/src/state/startup-coordinator.ts` |
-| Native host | Window/WebView, child agent process, health polling | `packages/app-core/platforms/electrobun/src/` (desktop); Capacitor bridges (mobile) |
+| Native host | Window/WebView, child agent process, health polling | `packages/app/platforms/electrobun/src/` (desktop); Capacitor bridges (mobile) |
 | Local API server | Binds `/api/*`, flips `/api/health ready:true` | `packages/agent/src/api/server.ts` |
 | AgentRuntime boot | Plugin/service load, model handlers | `packages/agent/src/runtime/eliza.ts`, `boot-timer.ts`, `boot-telemetry.ts` |
 
@@ -54,7 +54,7 @@ sequenceDiagram
     Main->>Main: ⌖ module-eval
     Main->>Main: ⌖ main-start
     Main->>Mods: ⌖ app-modules:start
-    Note over Mods: BLOCK on app-core + 3 companion modules only;<br/>7 plugins deferred until after React paint (see optimization below)
+    Note over Mods: BLOCK on app + 3 companion modules only;<br/>7 plugins deferred until after React paint (see optimization below)
     Mods-->>Main: ⌖ app-modules:end (measure: app-modules)
     Main->>Br: ⌖ bridges:start (storage + platform bridges)
     Br-->>Main: ⌖ bridges:end (measure: bridges)
@@ -139,7 +139,7 @@ through the same coordinator polling.
 
 `main.tsx` installs `installIosLocalAgentNativeRequestBridge()` +
 `installIosLocalAgentFetchBridge()`; `eliza-local-agent://ipc` and loopback
-fetches resolve to `ElizaBunRuntime` (`@elizaos/app-core/api/ios-local-agent-transport`).
+fetches resolve to `ElizaBunRuntime` (`@elizaos/app/api/ios-local-agent-transport`).
 
 ### iOS cloud / web-PWA (remote backend)
 

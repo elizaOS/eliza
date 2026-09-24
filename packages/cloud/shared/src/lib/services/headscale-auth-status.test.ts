@@ -17,7 +17,7 @@ import {
 describe("classifyMeshAuthStatus", () => {
   it("pins the shared entrypoint contract constants", () => {
     // Must stay in lockstep with TS_AUTHKEY_EXPIRED_EXIT_CODE / the marker path
-    // in packages/app-core/scripts/docker-entrypoint.sh.
+    // in packages/app/scripts/docker-entrypoint.sh.
     expect(TS_AUTHKEY_EXPIRED_EXIT_CODE).toBe(78);
     expect(TS_AUTHKEY_EXPIRED_MARKER_BASENAME).toBe("authkey-expired");
   });

@@ -1,3 +1,4 @@
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createAssistantPlugin } from "../index.ts";
 
 /**
@@ -11,7 +12,7 @@ import { createAssistantPlugin } from "../index.ts";
  * (deterministic — no live model, no network).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -165,14 +166,14 @@ function makeTransportRuntime(gateModel: ReturnType<typeof vi.fn>): {
   target: TargetInfo;
   sent: Content[];
 } {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: {
       name: `Voice Gate Transport ${v4()}`,
       bio: "test",
       settings: {},
     } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
   });
   const sent: Content[] = [];

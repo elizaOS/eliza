@@ -8,7 +8,7 @@ import {
   IMMERSIVE_WALLPAPER_SURFACE,
   type PageLayoutManifest,
   type SurfaceManifest,
-} from "@elizaos/common";
+} from "@elizaos/core";
 
 /** A route-sensitive surface policy used by launcher roots with opaque children. */
 export interface BuiltinRouteConditionalSurface {

@@ -1,7 +1,7 @@
 /**
  * Canonical barrel for the core type system: re-exports every `types/*` module
  * plus the public prompt/util helpers, forming the `@elizaos/core` type surface
- * that `@elizaos/agent`, `@elizaos/app-core`, and every plugin import.
+ * that `@elizaos/agent`, `@elizaos/app`, and every plugin import.
  *
  * Most modules are re-exported via `export *`, but a few whose runtime values
  * must survive tree-shaking (e.g. view-kind) are re-exported explicitly — see

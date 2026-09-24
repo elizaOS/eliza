@@ -56,7 +56,7 @@ compete with the chat brain and must survive an external text provider:
 | Service type | Class | File | Description |
 |---|---|---|---|
 | `CLOUD_AUTH` | `CloudAuthService` | `src/services/cloud-auth.ts` | Auth entry points — device auto-signup and Cloud SSO OAuth flow |
-| `CLOUD_BOOTSTRAP` | `CloudBootstrapServiceImpl` | `src/services/cloud-bootstrap.ts` | Exposes Cloud trust-anchor (JWKS URL, issuer, container id) without importing app-core |
+| `CLOUD_BOOTSTRAP` | `CloudBootstrapServiceImpl` | `src/services/cloud-bootstrap.ts` | Exposes Cloud trust-anchor (JWKS URL, issuer, container id) without importing app |
 | `CLOUD_MANAGED_GATEWAY_RELAY` | `CloudManagedGatewayRelayService` | `src/services/cloud-managed-gateway-relay.ts` | Long-poll relay enabling Cloud to push requests to a local agent |
 | `CLOUD_MODEL_REGISTRY` | `CloudModelRegistryService` | `src/services/cloud-model-registry.ts` | Fetches and caches available models from Cloud (30 min TTL) |
 | `CLOUD_CONTAINER` | `CloudContainerService` | `src/services/cloud-container.ts` | ECS container lifecycle: create, list, poll status, delete |
@@ -188,7 +188,7 @@ bun run --cwd plugins/plugin-elizacloud build       # compile node + browser bun
 bun run --cwd plugins/plugin-elizacloud typecheck   # type check only (tsc --noEmit)
 bun run --cwd plugins/plugin-elizacloud test        # run all tests via vitest
 bun run --cwd plugins/plugin-elizacloud test:unit   # unit tests only
-bun run --cwd plugins/plugin-elizacloud test:e2e    # live smoke test via app-core script
+bun run --cwd plugins/plugin-elizacloud test:e2e    # live smoke test via app script
 bun run --cwd plugins/plugin-elizacloud lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-elizacloud clean       # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 ```

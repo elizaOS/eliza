@@ -11,7 +11,8 @@
  * secret, and an abort mid-stream drops the held tail instead of emitting it.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import {
@@ -28,7 +29,7 @@ const SECRET = "sk-live-Str3amGuardKey1234567890";
 const NAME = "Dana Whitfield";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "GuardedStreamAgent",
 			bio: "test",
@@ -38,7 +39,7 @@ function makeRuntime(): AgentRuntime {
 				ELIZA_PII_SWAP_ENABLED: true,
 			},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 }
@@ -220,7 +221,7 @@ describe("AgentRuntime.useModel streaming guard — incremental egress (#15256)"
 	});
 
 	it("is a no-op passthrough when both guards are disabled (single, unmodified stream)", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: {
 				name: "UnguardedStreamAgent",
 				bio: "test",
@@ -229,7 +230,7 @@ describe("AgentRuntime.useModel streaming guard — incremental egress (#15256)"
 					ELIZA_PII_SWAP_ENABLED: false,
 				},
 			} as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		const reply = "The quick brown fox jumps over the lazy dog every morning.";

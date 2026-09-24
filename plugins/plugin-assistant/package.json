@@ -14,6 +14,12 @@
       },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./prompts/response-policy": {
+      "types": "./dist/prompts/response-policy.d.ts",
+      "eliza-source": "./src/prompts/response-policy.ts",
+      "import": "./dist/prompts/response-policy.js",
+      "default": "./dist/prompts/response-policy.js"
     }
   },
   "files": [
@@ -40,7 +46,6 @@
     "dedent": "^1.7.1",
     "mammoth": "^1.9.0",
     "unpdf": "^1.4.0",
-    "@elizaos/prompts": "workspace:*",
     "zod": "^4.4.3",
     "uuid": "^14.0.0",
     "@elizaos/shared": "workspace:*",

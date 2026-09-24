@@ -38,7 +38,7 @@ export interface HomeWidgetSunset {
  * Serializable widget metadata declared by a plugin.
  *
  * The canonical shape lives in `@elizaos/core` (`PluginWidgetDeclaration`)
- * so plugins can self-declare without depending on app-core. The client
+ * so plugins can self-declare without depending on app. The client
  * surface adds an optional `uiSpec` for plugins without bundled React
  * components.
  */

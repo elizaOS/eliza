@@ -30,11 +30,11 @@
 				"../../packages/shared/src/local-inference/*.ts"
 			],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
-			"@elizaos/plugin-capacitor-bridge": [
-				"../plugin-capacitor-bridge/src/index.ts"
+			"@elizaos/plugin-native-inference/host-bridge": [
+				"../plugin-native-inference/src/bridge.ts"
 			],
-			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
-				"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
+			"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap": [
+				"../plugin-native-inference/src/mobile-device-bridge-bootstrap.ts"
 			],
 			"@elizaos/plugin-computeruse/mobile/ios-bridge": [
 				"../plugin-computeruse/src/mobile/ios-bridge.ts"
@@ -63,15 +63,15 @@
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
-			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+			"@elizaos/app": ["../../packages/app/src/index.ts"],
+			"@elizaos/app/*": ["../../packages/app/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
-			"@elizaos/credentials/vault": [
-				"../../packages/credentials/src/vault/index.ts"
+			"@elizaos/auth/vault": [
+				"../../packages/auth/src/vault/index.ts"
 			],
-			"@elizaos/credentials/vault/*": [
-				"../../packages/credentials/src/vault/*"
+			"@elizaos/auth/vault/*": [
+				"../../packages/auth/src/vault/*"
 			],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],

@@ -25,7 +25,7 @@ import {
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
-} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
+} from "./scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -224,7 +224,7 @@ function buildLucideUsedBarrelSource(): string {
 }
 
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
-const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
+const appCoreSrcRoot = path.join(elizaRoot, "packages/app/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",
@@ -356,7 +356,7 @@ export default bufferModule;
   };
 }
 
-// Other Capacitor packages imported by eliza/packages/app-core sources.
+// Other Capacitor packages imported by eliza/packages/app sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
 function _tryResolve(id: string): string | undefined {
@@ -724,7 +724,7 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     );
   }
   return (
-    text.includes("../app-core/src/browser.ts") ||
+    text.includes("../app/src/browser.ts") ||
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
     text.includes(
@@ -1216,7 +1216,7 @@ export function stripAndroidCloudPublicAssetReferences(
     );
 }
 
-const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
+const DEFAULT_RENDERER_ENTRY = "/src/renderer-entry.ts";
 
 /**
  * Keeps the canonical application renderer for Android Cloud builds. Play
@@ -1518,7 +1518,7 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
   APP_ENV_PREFIX,
 );
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
-/** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
+/** Set by eliza/packages/app/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
 function resolveOptionalLocalVoiceGatewayPort(
@@ -2572,7 +2572,7 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router-dom",
       "three",
       "@capacitor/core",
-      "@elizaos/app-core",
+      "@elizaos/app",
       "zod",
       "@opentelemetry/api",
       // One physical Buffer identity across bn.js / elliptic / asn1.js /
@@ -2584,8 +2584,8 @@ export const INVALID_TRACER_PROVIDER = {};
     ],
     alias: [
       {
-        find: /^@elizaos\/login$/,
-        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
+        find: /^@elizaos\/auth$/,
+        replacement: path.resolve(elizaRoot, "packages/auth/src/sdk/index.ts"),
       },
       {
         find: /^@homepage\//,
@@ -2893,7 +2893,7 @@ export const INVALID_TRACER_PROVIDER = {};
           ]
         : []),
       // Force local @elizaos/ui source paths when the app bundles linked
-      // @elizaos/app-core sources directly.
+      // @elizaos/app sources directly.
       {
         find: /^@elizaos\/ui$/,
         replacement: path.join(uiPkgRoot, "src/browser.ts"),
@@ -3029,12 +3029,12 @@ export const INVALID_TRACER_PROVIDER = {};
           },
         ];
       })(),
-      // Force local @elizaos/app-core when workspace-linked (prevents stale
+      // Force local @elizaos/app when workspace-linked (prevents stale
       // bun cache copies from overriding the symlinked local source).
       ...(() => {
         const appCorePkgPath = path.resolve(
           elizaRoot,
-          "packages/app-core/package.json",
+          "packages/app/package.json",
         );
         const appCorePkgDir = path.dirname(appCorePkgPath);
         const appCoreBrowserEntry = path.resolve(
@@ -3053,7 +3053,7 @@ export const INVALID_TRACER_PROVIDER = {};
             // barrel re-exports server modules that pull Node-only code like
             // sharp into the Vite client graph.
             generatedAliases.push({
-              find: new RegExp(`^${escapeRegExp("@elizaos/app-core")}$`),
+              find: new RegExp(`^${escapeRegExp("@elizaos/app")}$`),
               replacement: appCoreBrowserEntry,
             });
             continue;
@@ -3067,7 +3067,7 @@ export const INVALID_TRACER_PROVIDER = {};
           if (!sourceTarget) continue;
           generatedAliases.push({
             find: new RegExp(
-              `^${escapeRegExp(`@elizaos/app-core/${key.slice(2)}`)}$`,
+              `^${escapeRegExp(`@elizaos/app/${key.slice(2)}`)}$`,
             ),
             replacement: sourceTarget,
           });
@@ -3085,23 +3085,23 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(uiSource, "$1"),
           },
           {
-            find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
+            find: /^@elizaos\/app\/first-run\/first-run-config$/,
             replacement: path.join(
               appCoreSrcRoot,
               "first-run/first-run-config.ts",
             ),
           },
           {
-            find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+            find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(
               appCoreSrcRoot,
               "api/ios-local-agent-transport.ts",
             ),
           },
-          // #18056: thin desktop shell — avoids app-core/browser.ts star-export
+          // #18056: thin desktop shell — avoids app/browser.ts star-export
           // of @elizaos/ui/browser on the packages/app main entry.
           {
-            find: /^@elizaos\/app-core\/desktop-shell$/,
+            find: /^@elizaos\/app\/desktop-shell$/,
             replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
           },
 
@@ -3115,7 +3115,7 @@ export const INVALID_TRACER_PROVIDER = {};
           // @elizaos/plugin-elizacloud — the plugin ships a deliberately
           // minimal browser facade (`dist/browser/index.browser.js`) that
           // only exports the plugin descriptor + a couple of error classes.
-          // `app-core/dist/api/server.js` re-exports several server-only
+          // `app/dist/api/server.js` re-exports several server-only
           // helpers (`__resetCloudBaseUrlCache`, `ensureCloudTtsApiKeyAlias`,
           // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
@@ -3279,11 +3279,11 @@ export const INVALID_TRACER_PROVIDER = {};
       // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
-      "@elizaos/credentials/vault",
+      "@elizaos/auth/vault",
     ],
   },
   build: {
-    outDir: path.resolve(here, "dist"),
+    outDir: path.resolve(here, "web-dist"),
     // Watch + incremental: avoid wiping dist each cycle; keeps Electrobun reloads fast.
     emptyOutDir: !desktopFastDist,
     sourcemap: desktopFastDist ? false : enableAppSourceMaps,

@@ -16,7 +16,7 @@ Hetzner/Cloudflare secrets.
 
 | Topology | Where it's decided | Status |
 | --- | --- | --- |
-| **Automatic setup** | `app-core/src/first-run/first-run-config.ts` → `buildFirstRunRuntimeConfig()` | exists |
+| **Automatic setup** | `app/src/first-run/first-run-config.ts` → `buildFirstRunRuntimeConfig()` | exists |
 | **Local agent + local inference** | `runtime: "local"` + local model provider key | exists |
 | **Local agent + cloud inference** | `runtime: "local"` + `serviceRouting.llmText.transport: "cloud-proxy"` (`cloud-routing`) | exists |
 | **Cloud agent (provisioned)** | `runtime: "cloud"`, `provider: "elizacloud"` → async provisioning queue | exists |

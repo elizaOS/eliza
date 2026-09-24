@@ -1,4 +1,5 @@
 /** Tests deterministic and live provider selection for scenario runtimes. */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,7 @@ import {
   createDeterministicModelPlugin,
   type LiveProviderConfig,
 } from "@elizaos/testing";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   clearLlmWireMockEnvForLiveProvider,
@@ -74,9 +75,9 @@ describe("explicit CLI scenario planner", () => {
         { mode: 0o700 },
       );
       await chmod(executablePath, 0o700);
-      const runtime = new AgentRuntime({
+      const runtime = createSQLiteTestRuntime({
         character: createCharacter({ name: "CliPlannerRegression" }),
-        adapter: new InMemoryDatabaseAdapter(),
+        
         plugins: [],
         enableAutonomy: false,
         settings: {

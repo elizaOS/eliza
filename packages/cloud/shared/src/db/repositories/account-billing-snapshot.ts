@@ -6,7 +6,7 @@
  * sources. No legacy billing shadow is imported or queried.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   type ActiveBillableResource,

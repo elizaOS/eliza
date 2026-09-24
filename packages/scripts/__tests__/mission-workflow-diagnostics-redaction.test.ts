@@ -233,7 +233,7 @@ exit 17
 
   test("shared app harness never forwards child bytes or onboarding bodies", () => {
     const harness = read(
-      "packages/app-core/scripts/playwright-ui-live-stack.ts",
+      "packages/app/scripts/playwright-ui-live-stack.ts",
     );
     expect(harness).toContain("attachSafeChildOutputObserver");
     expect(harness).not.toMatch(/\.(?:stdout|stderr)\.on\(["']data["']/);

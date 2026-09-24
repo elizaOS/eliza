@@ -28,13 +28,13 @@ without restarting the provider chain. The planner follows the same boundary,
 including required-tool generation errors. Cancellation remains terminal.
 
 Action catalogs and search-keyword selection are owned here. Matching uses the
-canonical prompts keyword module; core supplies only localization contracts.
+shared keyword module; core supplies only localization contracts.
 Retrieval uses one default ranking policy; process-wide MODEL_TIER presets no
 longer change its weights. Callers can supply explicit retrieval weights.
 
 Conversational entity resolution and entity prompt formatting are owned here.
 Core enforces component visibility using resolved roles and preserves stable
-agent-scoped IDs. Template rendering is imported from prompts.
+agent-scoped IDs. Template rendering is imported from shared.
 
 See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
 for deleted retry/compatibility paths, consolidated miss handling, retained

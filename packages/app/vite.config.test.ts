@@ -382,7 +382,7 @@ describe("app shell local connection policy", () => {
         <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->
         <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: eliza-local-agent: https://*;" />
       </head>
-      <script type="module" src="/src/entry.ts"></script>`;
+      <script type="module" src="/src/renderer-entry.ts"></script>`;
     const stripped = stripAndroidCloudIpcBootstrap(source);
     expect(stripped).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
     expect(stripped).not.toContain("eliza-local-agent:");
@@ -467,13 +467,13 @@ describe("app shell local connection policy", () => {
   });
 
   test("keeps the canonical renderer for Android Cloud builds", () => {
-    const source = '<script type="module" src="/src/entry.ts"></script>';
+    const source = '<script type="module" src="/src/renderer-entry.ts"></script>';
 
     expect(selectAndroidCloudRendererEntry(source, true)).toBe(source);
     expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);
     expect(() =>
       selectAndroidCloudRendererEntry("<main></main>", true),
-    ).toThrow("missing the expected /src/entry.ts");
+    ).toThrow("missing the expected /src/renderer-entry.ts");
 
     const hook = androidCloudRendererEntryPlugin(true).transformIndexHtml;
     if (typeof hook !== "object" || !("handler" in hook)) {

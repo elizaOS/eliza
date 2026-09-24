@@ -4,7 +4,7 @@ End-to-end scenario runner for elizaOS agents. Loads `.scenario.ts` files, execu
 
 ## What it is
 
-The scenario runner is the integration-testing harness for elizaOS plugins and agent behaviour. Unlike unit tests that mock the runtime, it boots a real `AgentRuntime` backed by PGLite (an in-process Postgres) and drives it through scripted conversation turns. It is used by `packages/test/scenarios/` and by individual plugin test suites.
+The scenario runner is the integration-testing harness for elizaOS plugins and agent behaviour. Unlike unit tests that mock the runtime, it boots a real `AgentRuntime` backed by PGLite (an in-process Postgres) and drives it through scripted conversation turns. It is used by `packages/testing/scenarios/` and by individual plugin test suites.
 
 ## Quick start
 

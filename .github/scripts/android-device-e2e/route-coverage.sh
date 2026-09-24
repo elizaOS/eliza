@@ -9,8 +9,8 @@ bun run --cwd packages/app build  # ensure web dist
 mkdir -p packages/app/test-results/android-onboarding-to-home
 ELIZA_API_PORT=31337 \
 ELIZA_PAIRING_DISABLED=1 \
-  node packages/app-core/scripts/run-node-tsx.mjs \
-    packages/app-core/scripts/serve-real-local-agent.ts \
+  node packages/app/scripts/run-node-tsx.mjs \
+    packages/app/scripts/serve-real-local-agent.ts \
     > packages/app/test-results/android-onboarding-to-home/host-agent.log 2>&1 &
 HOST_AGENT_PID=$!
 trap 'kill "$HOST_AGENT_PID" 2>/dev/null || true' EXIT

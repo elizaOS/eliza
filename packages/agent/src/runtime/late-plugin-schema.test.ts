@@ -13,7 +13,7 @@ import {
   type JsonValue,
   stringToUuid,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { sql } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
@@ -49,7 +49,7 @@ function deferred(): {
   };
 }
 
-class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
+class PGliteMigrationAdapter extends SQLiteDatabaseAdapter {
   readonly pglite: PGlite;
   readonly pgliteDb: PgliteDatabase;
   readonly inboxMigrationEntered = deferred();

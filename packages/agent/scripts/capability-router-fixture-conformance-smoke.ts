@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
-import { runCapabilityRouterConformance } from "../../app-core/src/cli/program/register.capability-router.ts";
+import { runCapabilityRouterConformance } from "../../app/src/cli/program/register.capability-router.ts";
 
 type ReadyPayload = {
   baseUrl: string;

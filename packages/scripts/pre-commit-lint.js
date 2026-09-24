@@ -61,7 +61,7 @@ function assertNoGeneratedAppPlatformsStaged() {
   throw new Error(
     [
       "Generated app platform files must not be committed.",
-      "Canonical native templates live under packages/app-core/platforms and packages/app/* platform shells are materialized during builds.",
+      "Canonical native templates live under packages/app/platforms and packages/app/* platform shells are materialized during builds.",
       "Unstage these files and rely on the ignored generated output instead:",
       formattedFiles,
     ].join("\n"),

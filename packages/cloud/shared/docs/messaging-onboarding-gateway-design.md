@@ -65,10 +65,10 @@ preserve the gateway separation already present in the repo.
   `packages/cloud/services/tunnel-proxy/README.md` define the current Headscale
   and tunnel-proxy tag model.
 - Gateway smoke scenarios already cover linked-user routing in
-  `packages/test/scenarios/gateway/telegram-gateway.bot-routes-to-user-agent.scenario.ts`,
-  `packages/test/scenarios/gateway/discord-gateway.bot-routes-to-user-agent.scenario.ts`,
+  `packages/testing/scenarios/gateway/telegram-gateway.bot-routes-to-user-agent.scenario.ts`,
+  `packages/testing/scenarios/gateway/discord-gateway.bot-routes-to-user-agent.scenario.ts`,
   and
-  `packages/test/scenarios/gateway/whatsapp-gateway.bot-routes-to-user-agent.scenario.ts`.
+  `packages/testing/scenarios/gateway/whatsapp-gateway.bot-routes-to-user-agent.scenario.ts`.
 
 ## Implementation Gaps Blocking Launch
 

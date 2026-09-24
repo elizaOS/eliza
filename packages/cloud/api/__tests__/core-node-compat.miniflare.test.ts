@@ -21,9 +21,9 @@ test("boots the built kernel and dispatches known inference without a core shim"
       path.join(directory, "worker.mjs"),
       `
       import { AgentRuntime, ModelType } from ${JSON.stringify(core)};
-      import { InMemoryDatabaseAdapter } from ${JSON.stringify(fileURLToPath(new URL("../../../../plugins/plugin-inmemorydb/dist/runtime.js", import.meta.url)))};
+      import { SQLiteDatabaseAdapter } from ${JSON.stringify(fileURLToPath(new URL("../../../../plugins/plugin-sqlite/dist/index.js", import.meta.url)))};
       export default { async fetch() {
-        const runtime = new AgentRuntime({ adapter: new InMemoryDatabaseAdapter(), character: { name: "Compatibility fixture", bio: [] }, logLevel: "fatal" });
+        const runtime = new AgentRuntime({ adapter: SQLiteDatabaseAdapter.create(":memory:"), character: { name: "Compatibility fixture", bio: [] }, logLevel: "fatal" });
         try {
           await runtime.initialize({ skipMigrations: true });
           let calls = 0;

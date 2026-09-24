@@ -2,7 +2,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type IAgentRuntime, type Plugin, Service } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { edgeRuntimeCache } from "../../cache/edge-runtime-cache";
 import { agentLoader } from "../agent-loader";
 import type { UserContext } from "../user-context";
@@ -82,7 +82,7 @@ test.each(["mcp-version", "adapter"] as const)(
       boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(async () => {
         entered.resolve();
         await release.promise;
-        return new InMemoryDatabaseAdapter(f.agentId);
+        return SQLiteDatabaseAdapter.create(":memory:", f.agentId);
       });
     }
     const creation = f.factory.createRuntimeForUser(f.context);
@@ -130,7 +130,7 @@ test("invalidation during real runtime initialization retains the unpublished ru
   };
   f.loaded.plugins.push(plugin);
   boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(
-    async () => new InMemoryDatabaseAdapter(f.agentId),
+    async () => SQLiteDatabaseAdapter.create(":memory:", f.agentId),
   );
   const creation = f.factory.createRuntimeForUser(f.context);
   const outcome = creation.then(
@@ -164,7 +164,7 @@ test("invalidation during real runtime initialization retains the unpublished ru
 test("a fresh creation after invalidation succeeds, but an invalidated health check cannot return it", async () => {
   const f = fixture();
   boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(
-    async () => new InMemoryDatabaseAdapter(f.agentId),
+    async () => SQLiteDatabaseAdapter.create(":memory:", f.agentId),
   );
   await f.factory.invalidateRuntime(f.agentId);
   const runtime = await f.factory.createRuntimeForUser(f.context);
@@ -211,7 +211,7 @@ test.each(["loader", "adapter", "initialization"] as const)(
     const release = Promise.withResolvers<void>();
     const stopped = Promise.withResolvers<void>();
     const finishStop = Promise.withResolvers<void>();
-    const adapter = new InMemoryDatabaseAdapter(f.agentId);
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", f.agentId);
     const close = boundary(spyOn(adapter, "close"));
     let stops = 0;
     const reentryErrors: Error[] = [];

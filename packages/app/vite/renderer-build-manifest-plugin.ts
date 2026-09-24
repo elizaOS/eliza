@@ -8,8 +8,8 @@ import type { Plugin } from "vite";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
-import { viteRendererBuildNeeded } from "../../app-core/scripts/lib/vite-renderer-dist-stale.mjs";
+} from "../scripts/lib/renderer-build-manifest.mjs";
+import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.mjs";
 
 /**
  * Emits `dist/eliza-renderer-build.json` at the end of EVERY production renderer

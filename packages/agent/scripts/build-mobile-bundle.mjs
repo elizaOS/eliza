@@ -277,7 +277,7 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
-  "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
+  "@elizaos/app": path.join(stubsDir, "app-runtime.cjs"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
   // arm64-Android does not provide that resolver, so an unstubbed reference
   // bombs the bundle resolve:
@@ -347,7 +347,7 @@ const nativeStubs = {
   // unencrypted UDP (fine for our purposes — the agent is text-only).
   "@snazzah/davey": path.join(stubsDir, "null-plugin.cjs"),
   // `@napi-rs/keyring` is the OS-keychain master-key resolver in
-  // `@elizaos/credentials/vault`. No Android prebuild ships, and the bundled
+  // `@elizaos/auth/vault`. No Android prebuild ships, and the bundled
   // platform-dispatch loader fails at runtime with `Cannot find native
   // binding` BEFORE vault's defensive try/catch around `await import` can
   // catch it. The agent's master-key path falls through to
@@ -1197,7 +1197,7 @@ const workspaceSrcFallbackPlugin = {
       // (for example @elizaos/plugin-x402/startup-validator); fall back to
       // source when that subpath has not been emitted yet.
       const distDir = path.join(pkgDir, "dist");
-      // The bundle's own runtime/API packages (@elizaos/agent, @elizaos/app-core)
+      // The bundle's own runtime/API packages (@elizaos/agent, @elizaos/app)
       // have compiled `dist` re-exports (e.g. dist/api/cloud-pair-route,
       // dist/runtime) whose circular barrel exports come out `undefined` once
       // Bun re-bundles them, OR re-emit bare `@elizaos/*` requires Bun can't
@@ -1206,7 +1206,7 @@ const workspaceSrcFallbackPlugin = {
       // into the single bundle and circular exports settle via Bun's bundler.
       const forceSourceResolution =
         pkgName === "@elizaos/agent" ||
-        pkgName === "@elizaos/app-core" ||
+        pkgName === "@elizaos/app" ||
         // @elizaos/cloud-sdk's dist is a barrel that re-exports the
         // CloudApiClient class (`export { CloudApiClient } from "./http.js"`).
         // Re-bundling that dist makes the re-export resolve to `undefined`, so

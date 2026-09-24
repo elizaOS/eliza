@@ -192,7 +192,7 @@ Rules:
   /api/sensitive-requests/:id` and flips to `Cancelled`.
 
 Backend wiring is a sibling of the inline adapter:
-`packages/app-core/src/services/sensitive-requests/owner-app-oauth-adapter.ts`.
+`packages/app/src/services/sensitive-requests/owner-app-oauth-adapter.ts`.
 The adapter's `deliver()` accepts `request.target.kind === "oauth"` requests
 (new target kind), builds an envelope with `form: { kind: "oauth", provider,
 scopes, label, submitLabel: "Connect …" }`, and sends the inline chat content.

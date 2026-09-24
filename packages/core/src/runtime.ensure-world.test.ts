@@ -3,7 +3,7 @@
  * adapter, including repeated updates after the persisted revision advances.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "./errors";
 import { AgentRuntime } from "./runtime";
@@ -12,7 +12,7 @@ import { stringToUuid } from "./utils";
 
 describe("AgentRuntime.ensureWorldExists", () => {
 	it("rereads and merges after a concurrent creator wins the unique insert", async () => {
-		class CreateRaceAdapter extends InMemoryDatabaseAdapter {
+		class CreateRaceAdapter extends SQLiteDatabaseAdapter {
 			private arrivals = 0;
 			private release!: () => void;
 			private readonly bothArrived = new Promise<void>((resolve) => {
@@ -67,7 +67,7 @@ describe("AgentRuntime.ensureWorldExists", () => {
 	});
 
 	it("reports a typed failure after bounded create-race retries", async () => {
-		class PermanentlyRacedAdapter extends InMemoryDatabaseAdapter {
+		class PermanentlyRacedAdapter extends SQLiteDatabaseAdapter {
 			override async upsertWorlds(worlds: World[]): Promise<void> {
 				throw new ElizaError("World already exists", {
 					code: "WORLD_ALREADY_EXISTS",
@@ -95,7 +95,7 @@ describe("AgentRuntime.ensureWorldExists", () => {
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-test" } as Character,
 		});
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		runtime.registerDatabaseAdapter(adapter);
 		const worldId = stringToUuid("ensure-world-revision") as UUID;
@@ -134,7 +134,7 @@ describe("AgentRuntime.ensureWorldExists", () => {
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-authority-test" } as Character,
 		});
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		runtime.registerDatabaseAdapter(adapter);
 		const worldId = stringToUuid("ensure-world-authority") as UUID;

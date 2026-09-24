@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Required-service preflight regressions over real AgentRuntime instances.
  * Service classes are deterministic; registration, startup, retry, and stop

@@ -80,7 +80,7 @@ the full `all` build compiles locally only when
 | Consumer | Path | What it pulls |
 |---|---|---|
 | `@elizaos/capacitor-bun-runtime` | `eliza/plugins/plugin-native-bun-runtime/` | `LlamaCpp.xcframework` via the Pod's `vendored_frameworks` |
-| `@elizaos/bun-ios-runtime` | `eliza/packages/native/bun-runtime/` | Pending wire-up (see M02-deps-cross-build) |
+| `@elizaos/capacitor-bun-runtime` | `eliza/plugins/plugin-native-bun-runtime/engine/` | Pending wire-up (see M02-deps-cross-build) |
 | `eliza` iOS app shell | `eliza/native/ios-bun-port/` | Pending wire-up (the directory is being migrated to depend on this package) |
 
 ## Prerequisites

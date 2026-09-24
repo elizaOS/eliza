@@ -282,7 +282,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
           steps:
             - run: |
                 bun run root-before
-                cd packages/prompts && bun run check:secrets
+                node packages/scripts/check-prompt-secrets.mjs
     `;
     expect(workflowRootScriptReferences(source, "cd.yml")).toEqual([
       { file: "cd.yml", job: "proof", script: "root-before" },

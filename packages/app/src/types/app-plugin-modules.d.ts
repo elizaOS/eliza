@@ -7,7 +7,7 @@ import type { ComponentType } from "react";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
 
-declare module "@elizaos/app-core" {
+declare module "@elizaos/app" {
   export const AppWindowRenderer: ComponentType<{ slug: string }>;
   export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
     id: string;

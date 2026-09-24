@@ -7,7 +7,7 @@
 //
 // `OrchestratorWorkbench` is the rich GUI surface of `OrchestratorView` (its
 // `Escape` child) so it ships inside this bundle transitively, not as a named
-// export. `CodingAgentTasksPanel` reaches its mount through the app-core slot
+// export. `CodingAgentTasksPanel` reaches its mount through the app slot
 // registry (register-slots.ts → the built-in /apps/tasks page), so it is
 // intentionally absent here.
 export { CockpitRoute } from "./CockpitRoute";

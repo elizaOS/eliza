@@ -110,7 +110,7 @@ test("generated mobile platform bundles and staging roots are outside maintained
     isMaintainedSource(
       fileURLToPath(
         new URL(
-          "../../app-core/platforms/android/app/src/main/assets/agent/Widget.tsx",
+          "../../app/platforms/android/app/src/main/assets/agent/Widget.tsx",
           import.meta.url,
         ),
       ),
@@ -162,7 +162,7 @@ test("generated mobile platform bundles and staging roots are outside maintained
     isMaintainedSource(
       fileURLToPath(
         new URL(
-          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          "../../app/platforms/electrobun/src/Widget.tsx",
           import.meta.url,
         ),
       ),

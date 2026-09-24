@@ -15,8 +15,8 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "paths": {
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
@@ -24,10 +24,10 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/credentials/auth": [
-        "../../packages/credentials/src/auth/index.ts"
+      "@elizaos/auth/auth": [
+        "../../packages/auth/src/auth/index.ts"
       ],
-      "@elizaos/credentials/auth/*": ["../../packages/credentials/src/auth/*"],
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
@@ -91,11 +91,11 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/skills": ["../../packages/skills/src/index.ts"],
       "@elizaos/skills/*": ["../../packages/skills/src/*"],
-      "@elizaos/credentials/vault": [
-        "../../packages/credentials/src/vault/index.ts"
+      "@elizaos/auth/vault": [
+        "../../packages/auth/src/vault/index.ts"
       ],
-      "@elizaos/credentials/vault/*": [
-        "../../packages/credentials/src/vault/*"
+      "@elizaos/auth/vault/*": [
+        "../../packages/auth/src/vault/*"
       ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
@@ -112,11 +112,11 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-native-filesystem": [
         "../plugin-native-filesystem/src/index.ts"

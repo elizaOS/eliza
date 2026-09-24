@@ -7,7 +7,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 
 export const RETRY_CONFIG = {
   baseDelayMs: 200,

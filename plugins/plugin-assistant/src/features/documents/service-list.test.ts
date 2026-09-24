@@ -1,9 +1,9 @@
 /**
  * Exercises document-list filtering and pagination through a real AgentRuntime,
- * DocumentService, and InMemoryDatabaseAdapter with persisted memory records.
+ * DocumentService, and SQLiteDatabaseAdapter with persisted memory records.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
@@ -27,11 +27,11 @@ const ROOM_B = "00000000-0000-0000-0000-00000000d00e" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-00000000abcd" as UUID;
 
 async function makeHarness(): Promise<{
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
   runtime: AgentRuntime;
   service: DocumentService;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,

@@ -16,7 +16,7 @@ const snapSource = readFileSync(
   "utf8",
 );
 const snapcraftSource = readFileSync(
-  new URL("packages/app-core/packaging/snap/snapcraft.yaml", repoRoot),
+  new URL("packages/app/packaging/snap/snapcraft.yaml", repoRoot),
   "utf8",
 );
 const mobileSource = readFileSync(

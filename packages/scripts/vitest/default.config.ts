@@ -24,7 +24,7 @@ import {
   getUiSourceRoot,
 } from "@elizaos/testing/eliza-package-paths";
 import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
+import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.mjs";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
@@ -167,7 +167,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-app-manager",
   "plugin-assistant",
   "plugin-browser",
-  "plugin-capacitor-bridge",
+  "plugin-native-inference",
   "plugin-coding-tools",
   "plugin-commands",
   "plugin-computeruse",
@@ -210,7 +210,7 @@ const vitestInlineDeps = [
   "@testing-library/react",
   "@elizaos/core",
   "@elizaos/agent",
-  "@elizaos/app-core",
+  "@elizaos/app",
   "react",
   "react-dom",
   "react-test-renderer",
@@ -223,10 +223,10 @@ const vitestInlineDeps = [
 
 const vitestResolveAlias: ModuleAlias[] = [
   {
-    find: /^@elizaos\/login$/,
+    find: /^@elizaos\/auth$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "packages/login/src/sdk/index.ts",
+      "packages/auth/src/sdk/index.ts",
     ),
   },
   {
@@ -290,20 +290,20 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   // Leaf auth package (account storage, credentials, oauth flows, atomic-json).
-  // Sits below @elizaos/agent and @elizaos/app-core; source-aliased here so every
+  // Sits below @elizaos/agent and @elizaos/app; source-aliased here so every
   // base-config consumer resolves it without needing its dist built.
   {
-    find: /^@elizaos\/credentials\/auth$/,
+    find: /^@elizaos\/auth\/auth$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "packages/credentials/src/auth/index.ts",
+      "packages/auth/src/auth/index.ts",
     ),
   },
   {
-    find: /^@elizaos\/credentials\/auth\/(.+)$/,
+    find: /^@elizaos\/auth\/auth\/(.+)$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "packages/credentials/src/auth/$1",
+      "packages/auth/src/auth/$1",
     ),
   },
   // Server-safe DB subpaths of the carved LifeOps plugins. PA's
@@ -355,10 +355,10 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: path.join(cloudSdkSourceRoot, "index.ts"),
   },
   {
-    find: /^@elizaos\/credentials\/vault$/,
+    find: /^@elizaos\/auth\/vault$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "packages/credentials/src/vault/index.ts",
+      "packages/auth/src/vault/index.ts",
     ),
   },
   {
@@ -396,13 +396,6 @@ const vitestResolveAlias: ModuleAlias[] = [
         {
           find: /^@elizaos\/testing$/,
           replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
-        },
-        {
-          find: /^@elizaos\/common$/,
-          replacement: path.join(
-            elizaWorkspaceRoot,
-            "packages/common/src/index.ts",
-          ),
         },
         {
           find: /^@elizaos\/core$/,
@@ -459,9 +452,9 @@ export default defineConfig({
       // the default suite; add them here when that package is meant to run in
       // the shared root Vitest job. apps/app test/vite/** lives under
       // apps/app/vitest.config.ts instead of this root config.
-      // app-core src-colocated tests run here; real-runtime suites run in
+      // app src-colocated tests run here; real-runtime suites run in
       // the app-unit config (apps/app/vitest.config.ts) which provides the
-      // correct @elizaos/app-core alias resolution. Running both in parallel
+      // correct @elizaos/app alias resolution. Running both in parallel
       // causes file-system race conditions on shared test fixtures.
       // Keep the standalone-safe Electrobun tests in the default unit suite.
       // native/agent.test.ts requires the full desktop runtime, so it runs only
@@ -473,7 +466,7 @@ export default defineConfig({
       "apps/chrome-extension/**/*.test.tsx",
     ],
     setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
+      path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts"),
     ],
     exclude: [
       "dist/**",

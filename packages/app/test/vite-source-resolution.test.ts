@@ -164,13 +164,13 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves shared environment utilities through the common owner while %s config resolves",
+    "resolves shared environment utilities through the Node runtime owner while %s config resolves",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/common",
+            "@elizaos/core",
             path.resolve(appRoot, "../shared/src/env-utils.ts"),
           );
         expect(resolved?.id).toBe(
@@ -178,8 +178,8 @@ describe("workspace package resolution", () => {
             path.resolve(
               appRoot,
               command === "serve"
-                ? "../common/src/index.ts"
-                : "../common/dist/index.js",
+                ? "../core/dist/index.js"
+                : "../core/dist/index.js",
             ),
           ),
         );

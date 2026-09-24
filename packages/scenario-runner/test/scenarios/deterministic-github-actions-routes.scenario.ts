@@ -27,7 +27,7 @@ import { buildReviewPreview } from "../../../../plugins/plugin-github/src/action
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
-import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";

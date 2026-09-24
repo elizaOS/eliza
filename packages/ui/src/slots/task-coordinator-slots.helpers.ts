@@ -5,7 +5,7 @@
  * app plugins call `registerTaskCoordinatorSlots` at boot to supply their
  * implementations.
  *
- * See `task-coordinator-slots.tsx` for the architectural note on why app-core
+ * See `task-coordinator-slots.tsx` for the architectural note on why app
  * does not import from @elizaos/plugin-task-coordinator directly.
  */
 

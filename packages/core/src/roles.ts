@@ -49,9 +49,13 @@ import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 import { stringToUuid, validateUuid } from "./utils.ts";
 
-export type { RoleName } from "@elizaos/common";
+export type { RoleName } from "./access-control/role-primitives.js";
 
-import { isAdminRank, ROLE_RANK, type RoleName } from "@elizaos/common";
+import {
+	isAdminRank,
+	ROLE_RANK,
+	type RoleName,
+} from "./access-control/role-primitives.js";
 
 /**
  * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
@@ -82,7 +86,7 @@ export {
 	hasAtLeastRole,
 	isAdminRank,
 	ROLE_RANK,
-} from "@elizaos/common";
+} from "./access-control/role-primitives.js";
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };
 	roles?: Record<string, RoleName>;

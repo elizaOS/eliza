@@ -24,7 +24,7 @@ import {
   type ResolvedSurfaceManifest,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
@@ -530,7 +530,7 @@ async function importUiBridgeCompat(
 }
 
 // Framework + host modules the shell always provides to every view bundle:
-// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app-core` view
+// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app` view
 // compat surface, `@elizaos/shared`, and the native capacitor bridges. This map is
 // FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
 // a build-variant entrypoint) contributes its own specifiers through
@@ -540,9 +540,9 @@ type ScopedHostExternalImporter = (
   scope?: SurfaceRealmScope | null,
 ) => Promise<Record<string, unknown>>;
 const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
-  "@elizaos/app-core": importAppCoreViewCompat,
-  "@elizaos/app-core/browser": importAppCoreViewCompat,
-  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
+  "@elizaos/app": importAppCoreViewCompat,
+  "@elizaos/app/browser": importAppCoreViewCompat,
+  "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
   "@elizaos/plugin-native-contacts/bridge": () =>
     importHostExternal("@elizaos/plugin-native-contacts/bridge"),

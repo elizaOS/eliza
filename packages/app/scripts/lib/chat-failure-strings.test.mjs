@@ -17,25 +17,25 @@ import {
   ANDROID_FULL_TURN_FAILURE_RE,
   IOS_FAILURE_FRAGMENTS,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
-} from "../../../app-core/src/platform/chat-failure-strings.ts";
+} from "../../src/platform/chat-failure-strings.ts";
 import { renderSwiftFailureStrings } from "./chat-failure-strings.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const swiftArtifactPath = path.resolve(
   here,
-  "../../../app-core/platforms/ios/App/AppUITests/ChatFailureStrings.generated.swift",
+  "../../../app/platforms/ios/App/AppUITests/ChatFailureStrings.generated.swift",
 );
 const bootCaptureUITestsPath = path.resolve(
   here,
-  "../../../app-core/platforms/ios/App/AppUITests/BootCaptureUITests.swift",
+  "../../../app/platforms/ios/App/AppUITests/BootCaptureUITests.swift",
 );
 const iosRuntimeBridgePath = path.resolve(
   here,
-  "../../../app-core/src/platform/ios-runtime-bridge.ts",
+  "../../../app/src/platform/ios-runtime-bridge.ts",
 );
 const appCoreBrowserPath = path.resolve(
   here,
-  "../../../app-core/src/browser.ts",
+  "../../../app/src/browser.ts",
 );
 const appMainPath = path.resolve(here, "../../src/main.tsx");
 

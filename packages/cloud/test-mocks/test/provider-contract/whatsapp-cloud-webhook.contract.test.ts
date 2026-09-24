@@ -6,8 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
-import type { UUID } from "@elizaos/common";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
   WhatsAppConnectorService,
   whatsappSetupRoutes,

@@ -406,7 +406,7 @@ describe("device-bridge WS upgrade gate (W1-011)", () => {
     } finally {
       await ipcApi.close();
       const { mobileDeviceBridge } = await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
       await mobileDeviceBridge.close();
     }

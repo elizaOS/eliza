@@ -31,7 +31,7 @@
  *
  * Consumers: the AOSP fused text handler (`plugin-native-inference`), the
  * bionic-host loader branch (`plugin-local-inference`), and the mobile
- * device-bridge text handlers (`plugin-capacitor-bridge`). All three run in the
+ * device-bridge text handlers (`plugin-native-inference`). All three run in the
  * same agent process and share the {@link getInferencePriorityGate} singleton.
  *
  * The device-class background wait policy (#11760 probe seam) lives here too:

@@ -46,7 +46,7 @@ function write(repoRoot: string, relPath: string, content: string): void {
 /** Fixture repo mirroring the real silo layouts inspected on develop. */
 function buildFixtureRepo(): string {
   const repo = tmpDir();
-  // scripts/e2e-recordings/run-all.mjs output: per-package Playwright results.
+  // packages/scripts/e2e-recordings/run-all.mjs output: per-package Playwright results.
   write(
     repo,
     "e2e-recordings/app-ui/test-results/chat-flow/video.webm",

@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
  * `skipListen` guard for the local-agent IPC transport (#12180).
  *
  * `startApiServer` cannot be imported directly into THIS vitest lane: `server.ts`
- * imports `@elizaos/app-core` subpaths that the package's test alias rewrites to
+ * imports `@elizaos/app` subpaths that the package's test alias rewrites to
  * a non-directory path (ENOTDIR), so its module graph fails to load in-process —
  * the same documented constraint that keeps every other agent test from
  * importing `server.ts` (see `health-routes.canRespond-ws.test.ts`).

@@ -8,7 +8,7 @@ view instrumentation, GenUI, voice, and platform/bridge glue.
 
 A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
-shell), `@elizaos/app-core`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
+shell), `@elizaos/app`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
 homepage, and many plugin UI packages (`plugin-wallet`,
 `plugin-native-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,

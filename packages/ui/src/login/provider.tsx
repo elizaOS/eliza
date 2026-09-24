@@ -1,6 +1,6 @@
 /** Maintains the shared login client, account session and authentication operations for React consumers. */
-import type { LoginSession } from "@elizaos/login";
-import { LoginAuth } from "@elizaos/login";
+import type { LoginSession } from "@elizaos/auth";
+import { LoginAuth } from "@elizaos/auth";
 import {
   createContext,
   useCallback,
@@ -135,7 +135,7 @@ export function LoginProvider({
   };
 
   const signInAsGuest = useCallback(
-    async (options?: import("@elizaos/login").LoginGuestSignInOptions) => {
+    async (options?: import("@elizaos/auth").LoginGuestSignInOptions) => {
       if (!authInstance)
         throw new Error("LoginProvider: auth prop not configured");
       setAuthLoading(true);
@@ -149,7 +149,7 @@ export function LoginProvider({
   );
 
   const upgradeGuestWithEmail = useCallback(
-    async (input: import("@elizaos/login").LoginGuestUpgradeEmailInput) => {
+    async (input: import("@elizaos/auth").LoginGuestUpgradeEmailInput) => {
       if (!authInstance)
         throw new Error("LoginProvider: auth prop not configured");
       setAuthLoading(true);
@@ -298,8 +298,8 @@ export function LoginProvider({
           publicKey: string,
           signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
         ) => Promise<
-          | import("@elizaos/login").LoginAuthResult
-          | import("@elizaos/login").LoginMfaRequiredResult
+          | import("@elizaos/auth").LoginAuthResult
+          | import("@elizaos/auth").LoginMfaRequiredResult
         >;
       }
     ).signInWithSolana;
@@ -336,8 +336,8 @@ export function LoginProvider({
 
   const signInWithTelegram = useCallback(
     async (
-      payload: import("@elizaos/login").LoginTelegramLoginPayload,
-      config?: import("@elizaos/login").LoginTelegramLoginConfig,
+      payload: import("@elizaos/auth").LoginTelegramLoginPayload,
+      config?: import("@elizaos/auth").LoginTelegramLoginConfig,
     ) => {
       if (!authInstance)
         throw new Error("LoginProvider: auth prop not configured");
@@ -353,8 +353,8 @@ export function LoginProvider({
 
   const signInWithFarcaster = useCallback(
     async (
-      payload: import("@elizaos/login").LoginFarcasterLoginPayload,
-      config?: import("@elizaos/login").LoginFarcasterLoginConfig,
+      payload: import("@elizaos/auth").LoginFarcasterLoginPayload,
+      config?: import("@elizaos/auth").LoginFarcasterLoginConfig,
     ) => {
       if (!authInstance)
         throw new Error("LoginProvider: auth prop not configured");

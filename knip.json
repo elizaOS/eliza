@@ -127,31 +127,17 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/test": {
+    "packages/testing": {
       "entry": [
-        "harness/index.ts",
-        "harness/**/*.test.ts",
-        "mocks/**/*.test.ts",
-        "mocks/mockoon/*.mjs",
-        "scripts/**/*.mjs",
+        "src/index.ts",
+        "src/**/*.test.ts",
         "scenarios/**/*.ts",
-        "soc2/**/*.test.ts",
-        "vitest/**/*.ts"
+        "vitest.config.ts"
       ],
-      "project": [
-        "eliza-package-paths.ts",
-        "harness/**/*.ts",
-        "helpers/**/*.ts",
-        "mocks/**/*.ts",
-        "mocks/**/*.mjs",
-        "scenarios/**/*.ts",
-        "scripts/**/*.mjs",
-        "soc2/**/*.ts",
-        "vitest/**/*.ts"
-      ],
+      "project": ["src/**/*.ts", "scenarios/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/credentials": {
+    "packages/auth": {
       "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
@@ -257,13 +243,17 @@
         "vitest.e2e.config.ts",
         "playwright.*.config.ts",
         "scripts/**/*.{mjs,ts}",
-        "vite/**/*.ts"
+        "vite/**/*.ts",
+        "test/**/*.{ts,tsx}",
+        "vitest.app-real-e2e.config.ts",
+        "vitest.harvest-live-agent.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "vite/**/*.ts",
-        "*.ts"
+        "*.ts",
+        "test/**/*.{ts,tsx}"
       ],
       "ignore": ["dist/**", "ios/**", "android/**"],
       "ignoreDependencies": [
@@ -283,40 +273,18 @@
         "pathe",
         "tailwindcss",
         "three",
-        "ws"
-      ],
-      "ignoreUnresolved": ["tsx"]
-    },
-    "packages/app-core": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
-        "test/**/*.{ts,tsx}",
-        "vitest.config.ts",
-        "vitest.app-real-e2e.config.ts",
-        "vitest.harvest-live-agent.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
-        "test/**/*.{ts,tsx}",
-        "*.ts"
-      ],
-      "ignoreDependencies": [
-        "@capacitor/barcode-scanner",
+        "ws",
         "@capacitor/background-runner",
-        "@capacitor/haptics",
         "@capacitor/keyboard",
         "@capacitor/local-notifications",
-        "@capacitor/push-notifications",
         "@elizaos/plugin-anthropic",
         "@elizaos/plugin-personal-assistant",
         "@elizaos/plugin-openai",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",
-        "electrobun",
-        "tailwindcss"
+        "electrobun"
       ],
+      "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
       "ignoreBinaries": [
         "adb",
         "afconvert",
@@ -341,10 +309,9 @@
         "tsc6",
         "where",
         "winget"
-      ],
-      "ignoreUnresolved": ["scripts/build.mjs"]
+      ]
     },
-    "packages/app-core/deploy/cloud-agent-template": {
+    "packages/app/deploy/cloud-agent-template": {
       "entry": ["entrypoint.ts"],
       "project": ["*.ts"],
       "ignoreDependencies": [
@@ -354,7 +321,7 @@
         "@elizaos/plugin-workflow"
       ]
     },
-    "packages/app-core/platforms/electrobun": {
+    "packages/app/platforms/electrobun": {
       "entry": [
         "src/**/*.{ts,tsx,js}",
         "electrobun.config.ts",
@@ -449,7 +416,6 @@
         "@ai-sdk/anthropic",
         "@ai-sdk/google",
         "@ai-sdk/openai",
-        "@elizaos/prompts",
         "@openrouter/ai-sdk-provider"
       ],
       "ignoreUnresolved": [

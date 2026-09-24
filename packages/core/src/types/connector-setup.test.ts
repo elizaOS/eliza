@@ -1,7 +1,7 @@
 /**
  * Exercises the connector-setup contract — the `SetupState` lifecycle union,
  * `SETUP_ERROR_CODES`, `buildSetupError`, `setupPath`, and `SetupStatusResponse`
- * that connector plugins and the app-core API host share. Deterministic
+ * that connector plugins and the app API host share. Deterministic
  * assertions with no model or database in the loop.
  */
 import { describe, expect, it } from "vitest";
@@ -15,7 +15,7 @@ import {
 } from "./connector-setup";
 
 // Canonical connector-setup contract (#10201). Connector plugins and the
-// app-core API host all import these from `@elizaos/core`; this test pins the
+// app API host all import these from `@elizaos/core`; this test pins the
 // runtime behaviour and the closed set of states so a drift is caught here.
 
 describe("connector-setup contract", () => {

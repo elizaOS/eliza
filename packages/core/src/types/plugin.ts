@@ -283,12 +283,12 @@ export interface PluginAppBridge {
 export type {
 	AppShellBackgroundPolicy,
 	ViewHeaderPolicy,
-} from "@elizaos/common";
+} from "./surface-manifest.js";
 
 import type {
 	AppShellBackgroundPolicy,
 	ViewHeaderPolicy,
-} from "@elizaos/common";
+} from "./surface-manifest.js";
 
 /**
  * How the app shell frames a view's top bar (#13586).
@@ -305,7 +305,7 @@ import type {
 
 /**
  * A nav-tab declaration so an app/plugin can register its own page in the
- * shell's main navigation without app-core hard-coding it. Resolved by the
+ * shell's main navigation without app hard-coding it. Resolved by the
  * shell at startup from the loaded plugin's `app.navTabs` field.
  */
 export interface PluginAppNavTab {
@@ -370,8 +370,8 @@ export interface PluginAppNavTab {
 
 /**
  * Serializable widget metadata declared by a plugin. Mirrors the
- * client-side type in `@elizaos/app-core/widgets` but lives here so plugins
- * can self-declare without depending on app-core.
+ * client-side type in `@elizaos/app/widgets` but lives here so plugins
+ * can self-declare without depending on app.
  */
 export const PLUGIN_WIDGET_SLOTS = [
 	"chat-sidebar",
@@ -466,13 +466,13 @@ export {
 	dedupeModalities,
 	type ViewModality,
 	type ViewType,
-} from "@elizaos/common";
+} from "./view-kind.js";
 
 import {
 	dedupeModalities,
 	type ViewModality,
 	type ViewType,
-} from "@elizaos/common";
+} from "./view-kind.js";
 
 /**
  * The surfaces a view declaration renders on: the explicit `modalities` list
@@ -910,7 +910,7 @@ export interface PluginApp {
 	visibleInAppStore?: boolean;
 	/**
 	 * Nav tabs this app contributes to the shell. The shell reads these at
-	 * runtime so apps can register pages dynamically without app-core
+	 * runtime so apps can register pages dynamically without app
 	 * hard-coding them.
 	 */
 	navTabs?: PluginAppNavTab[];

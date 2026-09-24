@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
-} from "../../../app-core/scripts/lib/renderer-build-manifest.mjs";
+} from "./renderer-build-manifest.mjs";
 import { readAndroidApkRendererManifest } from "./android-renderer-stamp.mjs";
 import { isDeviceLeased } from "./device-lease.mjs";
 
@@ -50,11 +50,11 @@ export const AGENT_API_PORT = 31337;
 const APK_CANDIDATES = [
   path.join(
     elizaRoot,
-    "packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk",
+    "packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk",
   ),
   path.join(appDir, "android/app/build/outputs/apk/debug/app-debug.apk"),
 ];
-const DEFAULT_RENDERER_DIST = path.join(appDir, "dist");
+const DEFAULT_RENDERER_DIST = path.join(appDir, "web-dist");
 
 // ---------------------------------------------------------------------------
 // SDK binary resolution

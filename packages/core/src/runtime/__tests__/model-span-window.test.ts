@@ -9,7 +9,8 @@
  * adapter with registered fake model handlers; deterministic.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import {
 	InferenceTurnTimer,
@@ -27,12 +28,12 @@ const SPAN_CEILING_MS = PRE_HOOK_DELAY_MS - 50;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "SpanWindowAgent",
 			bio: "test",
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 }

@@ -137,7 +137,7 @@ describe("consolidated Android release AAB authority", () => {
       const sandbox = mkdtempSync(join(tmpdir(), "eliza-ci-aab-evidence-"));
       const releaseDirectory = join(
         sandbox,
-        "packages/app-core/platforms/android/app/build/outputs/bundle/release",
+        "packages/app/platforms/android/app/build/outputs/bundle/release",
       );
       const aabPath = join(releaseDirectory, "app-release.aab");
       const auditPath = join(sandbox, "android-cloud-release-aab-audit.log");

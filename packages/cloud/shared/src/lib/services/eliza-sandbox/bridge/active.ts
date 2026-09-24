@@ -1,7 +1,7 @@
 /** Owns the production sandbox JSON-RPC and streaming bridge, including shared-turn history and billing settlement. Dedicated transport and runtime readiness are supplied by the service host so routing and authentication retain their canonical boundary. */
 
 import crypto from "node:crypto";
-import { ChannelType } from "@elizaos/common";
+import { ChannelType } from "@elizaos/core";
 import {
   type AgentSandbox,
   agentSandboxesRepository,
@@ -875,7 +875,7 @@ export class ActiveSandboxBridge {
 
     const attempts = [
       // Try the cloud-agent image's native /bridge JSON-RPC first. This is
-      // the canonical surface served by packages/app-core/deploy/cloud-agent-shared.ts.
+      // the canonical surface served by packages/app/deploy/cloud-agent-shared.ts.
       // It returns 200 with {result:{text}} on success, 500 with
       // {error:{message}} on runtime failures (e.g. no LLM key). When an
       // image doesn't expose /bridge (public ghcr.io/elizaos/eliza compatibility
@@ -954,7 +954,7 @@ export class ActiveSandboxBridge {
 
   /**
    * Native JSON-RPC POST to the cloud-agent image's `/bridge` endpoint.
-   * Source: packages/app-core/deploy/cloud-agent-shared.ts (the handler this
+   * Source: packages/app/deploy/cloud-agent-shared.ts (the handler this
    * proxies to). Returns the agent's reply unchanged on 200, propagates
    * runtime errors as JSON-RPC error envelopes on 500, throws
    * BridgeRouteUnavailableError on 404 so callers fall through to legacy

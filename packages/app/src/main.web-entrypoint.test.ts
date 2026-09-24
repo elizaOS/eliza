@@ -5,7 +5,7 @@
  * full dashboard tree.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app/desktop-shell";
 import { STEWARD_ACTIVE_SCOPE_KEY } from "@elizaos/shared/steward-session-client";
 import {
   DEFAULT_BOOT_CONFIG,
@@ -40,7 +40,7 @@ vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
 vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
   initializeCapacitorBridge: webBoot.initializeCapacitor,
 }));
-vi.mock("@elizaos/app-core/api/ios-local-agent-transport", () => ({
+vi.mock("@elizaos/app/api/ios-local-agent-transport", () => ({
   installIosLocalAgentNativeRequestBridge: vi.fn(),
   installIosLocalAgentFetchBridge: vi.fn(),
 }));

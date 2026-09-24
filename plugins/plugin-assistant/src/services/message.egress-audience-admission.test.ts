@@ -16,13 +16,14 @@
  *    WasUsed`), so a scoped-but-not-owner-exclusive response shipped in full —
  *    this assertion is inexpressible on the pre-wiring path.
  *
- * Real AgentRuntime + InMemoryDatabaseAdapter with REAL attested audiences
+ * Real AgentRuntime + SQLiteDatabaseAdapter with REAL attested audiences
  * (`attestDeliveryAudienceFromCanonicalRoom`), never a cast — the audience
  * brand is module-private and the whole point is proving the seam consumes
  * genuine attestation evidence.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
@@ -57,10 +58,10 @@ afterEach(async () => {
 });
 
 async function makeRuntime(): Promise<AgentRuntime> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({ name: `EgressAdmission${v4().slice(0, 8)}` }),
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });

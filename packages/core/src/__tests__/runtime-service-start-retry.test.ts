@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Eager service startup retries a failed boot-time start with a bounded
  * backoff instead of leaving the service type failed for the process lifetime.

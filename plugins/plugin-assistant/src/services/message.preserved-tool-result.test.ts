@@ -1,3 +1,4 @@
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createAssistantPlugin } from "../index.ts";
 
 /**
@@ -12,7 +13,7 @@ import { createAssistantPlugin } from "../index.ts";
  * candidate selection.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";
@@ -117,7 +118,7 @@ async function createHarness(options: {
   actionResult: Record<string, unknown>;
   actionGate?: (roomId: UUID) => Promise<void>;
 }): Promise<Harness> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       id: AGENT_ID,
@@ -125,7 +126,7 @@ async function createHarness(options: {
       bio: "Exercises the planner-loop failure rescue seam.",
       settings: {},
     }),
-    adapter: new InMemoryDatabaseAdapter(),
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });

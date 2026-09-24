@@ -8,7 +8,7 @@
  * package ships the GUI route only.
  *
  * The legacy GUI panel ({@link CodingAgentTasksPanel}) still mounts through the
- * app-core slot registry (the packages/ui Tasks page); this wrapper is the
+ * app slot registry (the packages/ui Tasks page); this wrapper is the
  * cross-modality view-bundle surface. Each spatial affordance maps 1:1 to a
  * client method.
  */

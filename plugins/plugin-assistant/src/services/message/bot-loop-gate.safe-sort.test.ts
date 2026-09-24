@@ -2,7 +2,7 @@
  * Exercises safe NaN handling and ascending sort order in runBotLoopGate.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -29,18 +29,19 @@ afterEach(async () => {
 
 async function makeRuntime(): Promise<{
   runtime: AgentRuntime;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       name: "GateAgent",
     }),
-    adapter,
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
   await runtime.initialize();
   runtime.useModel = (async () => {
     throw new Error("bot-loop gate must not call a model");

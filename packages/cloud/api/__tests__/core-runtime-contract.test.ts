@@ -1,6 +1,5 @@
 /** Cloud consumers use canonical core security helpers without a duplicated shim. */
 import { describe, expect, test } from "bun:test";
-import { toWellFormedUnicode } from "@elizaos/common";
 import {
   fetchWithSsrfGuard as canonicalFetch,
   type GuardedFetchOptions,
@@ -10,6 +9,7 @@ import {
   SsrfBlockedError,
   stripAugmentationForPersistence,
   stripHtmlRawTextElements,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 
 /** Inject only the transport; the production guard resolves and validates every hop. */

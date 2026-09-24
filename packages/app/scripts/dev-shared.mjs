@@ -11,8 +11,8 @@ import { fileURLToPath } from "node:url";
 import {
   assertRendererOnlyDevCloudTargetSupported,
   configureDevCloudEnvironment,
-} from "../../app-core/scripts/lib/dev-cloud-target.mjs";
-import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
+} from "./lib/dev-cloud-target.mjs";
+import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import {
   createDevServerCloudProfileFingerprint,
   defaultRegistryPath,

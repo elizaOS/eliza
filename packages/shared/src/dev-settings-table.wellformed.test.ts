@@ -3,7 +3,7 @@
  * Verifies truncateCell, boxTopRule, boxRow never split surrogate pairs and sanitize lone surrogates.
  */
 
-import { toWellFormedUnicode } from "@elizaos/common";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { boxRow, boxTopRule, truncateCell } from "./dev-settings-table";
 

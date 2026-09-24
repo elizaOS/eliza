@@ -8,8 +8,8 @@
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/testing": ["./src/index.ts"],
       "@elizaos/testing/*": ["./src/*"],
-      "@elizaos/plugin-inmemorydb/runtime": [
-        "../../plugins/plugin-inmemorydb/runtime.ts"
+      "@elizaos/plugin-sqlite": [
+        "../../plugins/plugin-sqlite/index.ts"
       ]
     },
     "composite": false,

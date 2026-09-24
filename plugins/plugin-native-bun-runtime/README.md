@@ -4,7 +4,7 @@ Native host package for the local agent runtime. The iOS Swift implementation
 can run in two modes:
 
 - `engine: "auto"` / `engine: "bun"`: uses the directly linked
-  `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
+  `ElizaBunEngine.framework` from `@elizaos/capacitor-bun-runtime` when the app was
   built with `ELIZA_IOS_FULL_BUN_ENGINE=1`. Store-distributed iOS local mode
   must use `engine: "bun"` and fail closed if the framework is missing.
 - `engine: "compat"`: hosts a `JSContext` compatibility bridge on a dedicated
@@ -12,8 +12,8 @@ can run in two modes:
   staged iOS agent payload from `public/agent/agent-bundle.js`. This path is
   development/sideload-only.
 
-The full Bun engine artifact is produced outside this package by the
-`packages/native/bun-runtime` build harness and an `elizaos/bun` fork.
+The full Bun engine artifact is produced by this package’s
+`engine/` build harness and an `elizaos/bun` fork.
 
 The Android implementation delegates lifecycle and RPC calls to the host app's
 `ElizaAgentService` over its app-owned agent bridge.
@@ -82,7 +82,7 @@ await ElizaBunRuntime.stop();
 ## Bridge contract
 
 The full-engine ABI lives in
-`packages/native/bun-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
+`plugins/plugin-native-bun-runtime/engine/BRIDGE_CONTRACT.md`. The compatibility host still
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 

@@ -33,7 +33,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { isTokenExpiryText } from "@elizaos/credentials/auth/token-expiry";
+import { isTokenExpiryText } from "@elizaos/auth/auth/token-expiry";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";

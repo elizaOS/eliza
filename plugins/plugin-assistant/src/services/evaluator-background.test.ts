@@ -2,7 +2,7 @@ import { createAssistantPlugin } from "../index.ts";
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
 import { PGlite } from "@electric-sql/pglite";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -61,7 +61,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-async function setup(adapter = new InMemoryDatabaseAdapter()) {
+async function setup(adapter = SQLiteDatabaseAdapter.create(":memory:")) {
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: {
@@ -279,7 +279,7 @@ describe("durable background memory", () => {
           `CREATE TABLE entity_identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),entity_id uuid NOT NULL,agent_id uuid NOT NULL,platform text NOT NULL,handle text NOT NULL,verified boolean NOT NULL,confidence real NOT NULL,source text,first_seen timestamptz NOT NULL,last_seen timestamptz NOT NULL,evidence_message_ids jsonb,extraction_evidence jsonb,CONSTRAINT unique_entity_identity UNIQUE(entity_id,platform,handle,agent_id))`,
         );
         const { runtime, service, message } = await setup(
-          Object.assign(new InMemoryDatabaseAdapter(), { db: drizzle(client) }),
+          Object.assign(SQLiteDatabaseAdapter.create(":memory:"), { db: drizzle(client) }),
         );
         const identities = new RelationshipsService(runtime);
         const getService = runtime.getService.bind(runtime);

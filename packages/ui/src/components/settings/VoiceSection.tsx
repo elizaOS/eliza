@@ -364,7 +364,7 @@ export function VoiceSection({
           reads those keys, so they were dead privacy opt-ins. The first-line
           cache implementation exists (`wrapWithFirstLineCache`, wired
           unconditionally via
-          packages/app-core/src/runtime/tts-cache-wiring.ts →
+          packages/app/src/runtime/tts-cache-wiring.ts →
           tts-provider-registry.ts) but does not consult the setting; gate that
           consumer on `messages.voice.cloudFirstLineCache` before re-adding the
           toggle. `autoLearnVoices` has no consumer anywhere — build the

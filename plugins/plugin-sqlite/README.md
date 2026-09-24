@@ -27,3 +27,8 @@ Back up an existing version 1 database with the previous Node adapter before upg
 After a successful migration, close the source runtime before moving the database or a consistent backup to the other runtime. Preserve the agent UUID and validate the restored state before accepting traffic. This is transfer, not concurrent replication or encrypted transport. Codec parsing and runtime guards do not replace backup freshness, key management or grant revocation policies.
 
 Node/Bun process tests on a development host are not Android qualification. The selected Android build still needs actual-device proof for native SQLite availability, filesystem protection, power-loss/restart, background execution and conversational performance. Unqualified hardware and unpinned runtimes remain unsupported deployment profiles.
+
+For isolated temporary storage, call `SQLiteDatabaseAdapter.create(":memory:", agentId)`
+and then `initialize()`. This uses the native SQLite engine with the same
+transaction and ownership checks as durable storage. Close the adapter after
+use; temporary databases are independent and disappear when closed.

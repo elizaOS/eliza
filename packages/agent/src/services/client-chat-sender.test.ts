@@ -5,8 +5,9 @@
  * an unknown dashboard-origin source routed via the default fallback), not
  * hijacking a real connector's own handler, cross-conversation safety, and
  * single-owner swarm delivery. Most cases use a deterministic state stand-in;
- * transport ownership runs through AgentRuntime and InMemoryDatabaseAdapter.
+ * transport ownership runs through AgentRuntime and SQLiteDatabaseAdapter.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import crypto from "node:crypto";
 import {
   AgentRuntime,
@@ -19,7 +20,7 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { handleSwarmSynthesis } from "../api/server-helpers-swarm.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
@@ -114,13 +115,13 @@ describe("registerClientChatSendHandler — relay source coverage", () => {
   });
 
   it("keeps dashboard relays out of real runtime connector discovery", () => {
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: {
         name: "Dashboard Relay Test Agent",
         bio: ["test"],
         settings: {},
       } as Character,
-      adapter: new InMemoryDatabaseAdapter(),
+      
       logLevel: "fatal",
     });
     const { state } = makeState([]);
@@ -230,17 +231,18 @@ describe("registerClientChatSendHandler — delivery", () => {
 
 describe("swarm synthesis — dashboard transport ownership", () => {
   it("persists and broadcasts once through the real runtime relay", async () => {
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: {
         name: "Dashboard Synthesis Test Agent",
         bio: ["test"],
         settings: {},
       } as Character,
-      adapter,
+      
       logLevel: "fatal",
     });
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+    runtime.registerDatabaseAdapter(adapter);
+    await adapter.initialize();
     const roomId = crypto.randomUUID() as UUID;
     const worldId = crypto.randomUUID() as UUID;
     await runtime.createRooms([

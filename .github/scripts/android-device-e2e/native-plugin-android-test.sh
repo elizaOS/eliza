@@ -3,7 +3,7 @@
 
 set -euo pipefail
 adb wait-for-device
-ANDROID_DIR="$GITHUB_WORKSPACE/packages/app-core/platforms/android"
+ANDROID_DIR="$GITHUB_WORKSPACE/packages/app/platforms/android"
 GRADLEW="$ANDROID_DIR/gradlew"
 chmod +x "$GRADLEW"
 
@@ -69,7 +69,7 @@ printf '%s\n' "$MS_OUT" | grep -qE 'OK \([0-9]+ test' || {
 # state rather than requiring a transcript. All other assertions
 # (registration, role, IME selection, deep-link landing) still gate
 # the job.
-APP_APK="$GITHUB_WORKSPACE/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
+APP_APK="$GITHUB_WORKSPACE/packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
 if [ -f "$APP_APK" ]; then
   adb install -r -t "$APP_APK"
 else

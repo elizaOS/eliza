@@ -163,7 +163,7 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-import { resolveDefaultVaultDataDir } from "@elizaos/credentials/vault";
+import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -196,11 +196,11 @@ import {
 } from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
-// pool, build variant) are INJECTED downward by the app-core host via
-// `setAgentHostBridge` before boot — agent never imports `@elizaos/app-core`.
+// pool, build variant) are INJECTED downward by the app host via
+// `setAgentHostBridge` before boot — agent never imports `@elizaos/app`.
 // When no host installs a bridge (mobile bundle / standalone agent), the leaf
 // default in `./host-bridge.ts` supplies the same no-op behavior the mobile
-// `app-core-runtime.cjs` stub used to. `await`-compatible (returns the bridge
+// `app-runtime.cjs` stub used to. `await`-compatible (returns the bridge
 // synchronously) so existing `await importAppCoreRuntime()` call sites are
 // unchanged.
 function importAppCoreRuntime(): AgentHostBridge {
@@ -4371,7 +4371,7 @@ export async function startEliza(
   // (work / personal / throwaway). Cloud sandboxes get one set of credentials
   // injected by the daemon as env vars, so there's nothing to multiplex. The
   // pool implementation is supplied by the host through the injected agent host
-  // bridge (see ./host-bridge.ts) — no app-core import, no boot-time cycle.
+  // bridge (see ./host-bridge.ts) — no app import, no boot-time cycle.
   if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
     try {
       const accountPool = await importAppCoreRuntime();
@@ -4409,7 +4409,7 @@ export async function startEliza(
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
     const { applySubscriptionCredentialsLocal } = await import(
-      "@elizaos/credentials/auth"
+      "@elizaos/auth/auth"
     );
     await applySubscriptionCredentialsLocal(config);
   } catch (err) {
@@ -4420,7 +4420,7 @@ export async function startEliza(
 
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
-      "@elizaos/credentials/auth"
+      "@elizaos/auth/auth"
     );
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
@@ -4748,7 +4748,7 @@ export async function startEliza(
   const runtimeLogLevel = (() => {
     // process.env.LOG_LEVEL is already resolved (set explicitly or from
     // config.logging.level above), so prefer it to honour the dev-mode
-    // LOG_LEVEL=error override set by eliza/packages/app-core/scripts/dev-ui.mjs.
+    // LOG_LEVEL=error override set by eliza/packages/app/scripts/dev-ui.mjs.
     const lvl = process.env.LOG_LEVEL ?? config.logging?.level ?? "error";
     if (lvl === "silent") return "fatal" as const;
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -4967,7 +4967,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
@@ -5920,16 +5920,16 @@ export async function startEliza(
     // Drain app-route plugin loaders into runtime.routes. App-route plugins
     // (e.g. @elizaos/plugin-agent-orchestrator:routes) register a loader on a
     // global registry via registerAppRoutePluginLoader rather than exposing
-    // their HTTP routes through Plugin.routes directly. packages/app-core's
+    // their HTTP routes through Plugin.routes directly. packages/app's
     // boot path drains this registry, but the headless agent-server boot did
     // not, so /api/coding-agents/* and /api/orchestrator/* 404ed even though
     // the orchestrator plugin's services were registered. This MUST run after
     // the deferred plugin wave (the orchestrator loads deferred, ~5s after
     // runtime.initialize), otherwise the registry is still empty. Mirror
-    // app-core's registerAppRoutePlugins: load each loader and push its rawPath
+    // app's registerAppRoutePlugins: load each loader and push its rawPath
     // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
-    // The drain is idempotent (dedups by type:path), so in a combined app-core
-    // deployment where app-core also drains the registry, neither double-mounts.
+    // The drain is idempotent (dedups by type:path), so in a combined app
+    // deployment where app also drains the registry, neither double-mounts.
     abortSignal.throwIfAborted();
     await drainAppRoutePluginLoaders(runtime);
     bootTimer.lap("deferred:app-route-plugins");

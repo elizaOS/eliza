@@ -4,11 +4,11 @@
  */
 
 import { expect, type Locator, type Page } from "@playwright/test";
-import { buildFirstRunRuntimeConfig } from "../../../app-core/src/first-run/first-run-config";
+import { buildFirstRunRuntimeConfig } from "../../src/first-run/first-run-config";
 import {
   getFirstRunProviderForLiveProvider,
   selectLiveProvider,
-} from "../../../app-core/test/helpers/live-provider";
+} from "../helpers/live-provider";
 import { waitForFirstRunActivation } from "../../../ui/src/api/first-run-activation";
 import {
   ExpectedDevSmokeFailureMatcher,

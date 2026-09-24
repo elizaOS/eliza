@@ -2,7 +2,7 @@
  * Supervised child fixture for the memory-watchdog crash/restart e2e (#10197).
  * Run under `bun`. It wires the REAL memory watchdog to the REAL
  * `requestRestart` seam through the same restart handler production registers
- * (`app-core/src/cli/run-main.ts` → exit `RESTART_EXIT_CODE`), then drives real
+ * (`app/src/cli/run-main.ts` → exit `RESTART_EXIT_CODE`), then drives real
  * RSS pressure so the e2e proves the whole chain end to end:
  *
  *   startMemoryWatchdog() → real `process.memoryUsage().rss` sample ≥ threshold
@@ -20,7 +20,7 @@ import process from "node:process";
 import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/shared";
 import { startMemoryWatchdog } from "../../src/runtime/memory-watchdog.ts";
 
-// Mirror the production restart handler (app-core/src/cli/run-main.ts): a
+// Mirror the production restart handler (app/src/cli/run-main.ts): a
 // restart request exits with RESTART_EXIT_CODE so the supervisor relaunches.
 // This is the seam the watchdog depends on — the e2e proves it fires for real.
 setRestartHandler((reason) => {

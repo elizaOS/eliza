@@ -14,7 +14,7 @@ import { ConnectorSetupService } from "../../../packages/agent/src/services/conn
 import { createCharacter } from "../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../packages/core/src/runtime.ts";
 import type { UUID } from "../../../packages/core/src/types/index.ts";
-import { createDatabaseAdapter } from "../../plugin-inmemorydb/index.ts";
+import { createDatabaseAdapter } from "../../plugin-sqlite/index.ts";
 import { getTelegramPollerClaim } from "../src/poller-lock.ts";
 import { TelegramService } from "../src/service.ts";
 import { telegramSetupRoutes } from "../src/setup-routes.ts";

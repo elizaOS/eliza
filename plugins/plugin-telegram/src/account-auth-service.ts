@@ -15,7 +15,7 @@ import {
   decrypt,
   encrypt,
   loadDefaultMasterKeySync,
-} from "@elizaos/credentials/vault";
+} from "@elizaos/auth/vault";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 

@@ -5,7 +5,7 @@
  * proxies are wrapped before crossing an await boundary to avoid their then trap.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getElizaApiBase } from "@elizaos/shared/utils/eliza-globals";
 import {
   installElizaBridge,
@@ -105,7 +105,7 @@ type FetchWithOptionalPreconnect = typeof fetch & {
 // ---------------------------------------------------------------------------
 //
 // The native shell appends its stage events to Documents/eliza-boot-trace.jsonl
-// (packages/app-core/platforms/ios/App/App/ElizaStartupTrace.swift). The
+// (packages/app/platforms/ios/App/App/ElizaStartupTrace.swift). The
 // renderer appends to the SAME file through the native Agent plugin's
 // `appendBootTrace` bridge method (the Filesystem pod is not shipped in the
 // iOS app), so a single serialized native writer owns the file and lines

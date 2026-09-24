@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { PROVIDER_CANARY_SCENARIOS } from "../../../test/scenarios/provider-qualified/_provider-canary-catalog.ts";
+import { PROVIDER_CANARY_SCENARIOS } from "../../../testing/scenarios/provider-qualified/_provider-canary-catalog.ts";
 import { providerCanaryControllerContract } from "./controller-registry.ts";
 import {
   createProviderCanaryScenarioSnapshot,

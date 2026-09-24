@@ -56,14 +56,14 @@ fixture, or session report. Set `GOOGLE_REDIRECT_URI` to exactly
 and register that exact URI on the nonproduction Google OAuth client. Verify
 only name presence and the callback URI; do not print or copy secret values.
 
-The general `node scripts/lifeops/hitl-credential-dashboard.mjs` credential dashboard still supports connectors that
+The general `node packages/scripts/lifeops/hitl-credential-dashboard.mjs` credential dashboard still supports connectors that
 use layered environment configuration, but it is not the intake path for the
 Google OAuth client in this acceptance run. Google client credentials and the
 resulting account tokens must remain in the protected settings and connector
 credential stores.
 
 The HITL runner tracks this lane as the `lifeops-live` group
-(`node scripts/hitl/run-hitl.mjs --groups=lifeops-live` — see
+(`node packages/scripts/hitl/run-hitl.mjs --groups=lifeops-live` — see
 `docs/testing/hitl-probes.md`). That command produces the review plan; it
 does not contact providers or replace the supervised matrix below. The lane is
 intentionally outside the golden-path default because it requires real

@@ -9,7 +9,7 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { SecretsManager } from "@elizaos/credentials/vault";
+import type { SecretsManager } from "@elizaos/auth/vault";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,

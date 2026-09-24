@@ -114,7 +114,7 @@ describe("experimental exact-window helper adapter", () => {
       temporaryRoots.push(root);
       const sourceDir = fileURLToPath(
         new URL(
-          "../../../../packages/app-core/platforms/electrobun/direct-only/computeruse-exact-window/",
+          "../../../../packages/app/platforms/electrobun/direct-only/computeruse-exact-window/",
           import.meta.url,
         ),
       );

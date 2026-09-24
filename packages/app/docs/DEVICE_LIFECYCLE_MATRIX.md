@@ -78,7 +78,7 @@ attach them inline on the issue/PR.
   (`simctl` + `scripts/lib/ios-simulator-capture.mjs` recording), writes
   `ios-lifecycle-report.json` with explicit `pass`/`fail`/`skipped` rows.
 - **Native surfaces under test:**
-  `packages/app-core/platforms/android/.../ElizaAgentService.java` (agent FGS,
+  `packages/app/platforms/android/.../ElizaAgentService.java` (agent FGS,
   watchdog, detached-process adoption),
   `.../ElizaBootReceiver.java` (BOOT_COMPLETED autostart, gated by
   `shouldAutoStart` — branded device or persisted runtime mode ≠ cloud),

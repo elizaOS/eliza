@@ -1,4 +1,3 @@
-import { resolveEnvAlias } from "@elizaos/common";
 /**
  * App boot configuration plus the non-mutating brand<->ELIZA env-alias reader,
  * shared across every bundled copy of `@elizaos/core`. The boot-config store is
@@ -18,6 +17,7 @@ import {
 	peekAmbientSingleton,
 	setAmbientSingleton,
 } from "./ambient-context.js";
+import { resolveEnvAlias } from "./utils/env-alias.js";
 
 interface AppBootConfig {
 	envAliases?: readonly (readonly [string, string])[];

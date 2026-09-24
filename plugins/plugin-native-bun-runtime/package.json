@@ -31,7 +31,13 @@
     "ElizaosCapacitorBunRuntime.podspec",
     "dist/",
     "src/",
-    "README.md"
+    "README.md",
+    "ElizaBunEngine.podspec",
+    "engine/scripts/",
+    "engine/Sources/",
+    "engine/patches/",
+    "engine/README.md",
+    "engine/artifacts/ElizaBunEngine.xcframework/"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -43,7 +49,7 @@
   "scripts": {
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-bun-runtime -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run",
+    "test": "bun run test:bridge && bun run engine:test",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
@@ -51,7 +57,16 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:bridge": "vitest run",
+    "engine:check": "node engine/scripts/check-upstream-support.mjs",
+    "engine:check:strict": "node engine/scripts/check-upstream-support.mjs --strict",
+    "engine:build:sim": "node engine/scripts/build-ios-bun-engine.mjs --target=simulator",
+    "engine:build:device": "node engine/scripts/build-ios-bun-engine.mjs --target=device",
+    "engine:verify:app-store": "node engine/scripts/verify-ios-app-store.mjs",
+    "engine:test": "node --test engine/scripts/*.test.mjs",
+    "engine:smoke:sim": "node engine/scripts/smoke-ios-bun-engine.mjs --target=simulator",
+    "engine:smoke:device": "node engine/scripts/smoke-ios-bun-engine.mjs --target=device"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

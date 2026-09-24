@@ -26,12 +26,6 @@ export const __loggerTestHooks = {
 	stripAnsi: (str: string): string => stripAnsi(str),
 };
 
-import {
-	REDACTION_FAILED_VALUE,
-	redactLogValue,
-	redactSensitiveLogText,
-	redactTrailingArgs,
-} from "@elizaos/common";
 import adze, {
 	type ConsoleStyle,
 	type LevelConfiguration,
@@ -40,6 +34,12 @@ import adze, {
 	type UserConfiguration,
 } from "adze";
 import type Log from "adze/dist/log.js";
+import {
+	REDACTION_FAILED_VALUE,
+	redactLogValue,
+	redactSensitiveLogText,
+	redactTrailingArgs,
+} from "./security/log-redaction.js";
 
 const getEnvironmentVar = (
 	key: string,

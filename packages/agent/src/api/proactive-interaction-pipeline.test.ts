@@ -24,7 +24,7 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PROACTIVE_CHATTINESS_SETTING_KEY,

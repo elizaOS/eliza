@@ -38,7 +38,7 @@ Cross-package shapes (session DTO, WS events, `parseMeetingUrl`) live in
 | Route | `DELETE /api/meetings/:id` | Request a graceful leave |
 
 All routes are `rawPath` plugin routes (registered on `runtime.routes`,
-dispatched by both the upstream agent server and app-core) and private — the
+dispatched by both the upstream agent server and app) and private — the
 host dispatcher answers 401 for unauthenticated callers.
 
 ## Platform matrix

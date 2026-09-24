@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runI18nCheck } from "../../app-core/scripts/check-i18n.mjs";
+import { runI18nCheck } from "../../app/scripts/check-i18n.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -44,7 +44,7 @@ describe("UI source-catalog CI gate", () => {
       readFileSync(join(repoRoot, "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> };
     expect(rootPackage.scripts?.verify).toContain(
-      "node packages/app-core/scripts/check-i18n.mjs",
+      "node packages/app/scripts/check-i18n.mjs",
     );
   });
 

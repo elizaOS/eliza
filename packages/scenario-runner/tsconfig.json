@@ -18,19 +18,19 @@
       "@elizaos/testing": ["../testing/src/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/credentials/auth": ["../credentials/src/auth/index.ts"],
-      "@elizaos/credentials/auth/*": ["../credentials/src/auth/*"],
+      "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/credentials/vault": ["../credentials/src/vault/index.ts"],
-      "@elizaos/credentials/vault/*": ["../credentials/src/vault/*"],
+      "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["../auth/src/vault/*"],
       "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/app": ["../app/src/index.ts"],
+      "@elizaos/app/*": ["../app/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
@@ -83,11 +83,11 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../../plugins/plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-native-filesystem": [
         "../../plugins/plugin-native-filesystem/src/index.ts"

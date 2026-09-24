@@ -8,7 +8,7 @@ on the phone, that each model actually works.
 ## Runner
 
 `runModelGrind(deps)` lives in
-`plugins/plugin-capacitor-bridge/src/ios/model-grind.ts`. Native helpers are
+`plugins/plugin-native-inference/src/ios/model-grind.ts`. Native helpers are
 injected (`ModelGrindDeps`) from `ios/bridge.ts`, so the orchestration is
 testable without native coupling (`model-grind.test.ts`).
 

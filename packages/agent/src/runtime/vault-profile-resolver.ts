@@ -23,7 +23,7 @@ import {
   resolveActiveValue,
   type Vault,
   type VaultEntryMeta,
-} from "@elizaos/credentials/vault";
+} from "@elizaos/auth/vault";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,

@@ -673,7 +673,7 @@ Concrete findings from the inspected PR files:
   and path guards, but it exposes only low-level runner capabilities. A coding
   container built from this shape still needs a capability-router plugin server
   layer before the agent can treat its output like a normal plugin.
-- `packages/app-core/platforms/electrobun/docs/capability-routing.md` makes the
+- `packages/app/platforms/electrobun/docs/capability-routing.md` makes the
   right responsibility split for desktop: plugins mean things, satellites
   execute system operations, and UI renders. The limitation is platform scope:
   the objective also requires iOS, cloud-to-home, home-to-cloud, and generic
@@ -686,7 +686,7 @@ Concrete findings from the inspected PR files:
 Current branch provider-adapter check:
 
 - The historical PR files above are not present in this checkout. A current
-  file scan under `packages/agent`, `packages/cloud/services`, `packages/app-core`,
+  file scan under `packages/agent`, `packages/cloud/services`, `packages/app`,
   `plugins`, and `.github` finds the canonical implementation in
   `remote-capability-router`, `remote-plugin-adapter`, the agent API route, and
   the Cloud provisioner only.
@@ -1167,11 +1167,11 @@ Current local verification ledger:
   restricted-platform capability asset proxy guard and product-route provider
   selection for URL-backed endpoint providers.
 - `bunx vitest run
-packages/app-core/src/cli/program/register.capability-router.test.ts
+packages/app/src/cli/program/register.capability-router.test.ts
 --coverage.enabled=false` passed with 6 tests passing for direct,
   URL-backed provider, Cloud, invalid-provider CLI payload construction, and
   direct endpoint conformance validation.
-- `bunx tsc --noEmit -p packages/app-core/tsconfig.json --pretty false`
+- `bunx tsc --noEmit -p packages/app/tsconfig.json --pretty false`
   passed after adding the CLI conformance command.
 - `bunx tsc --noEmit -p packages/ui/tsconfig.json --pretty false` passed after
   adding the Settings provider-family selector.
@@ -1193,7 +1193,7 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   for the capability-router protocol.
 - `bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token` started the
   runnable reference endpoint on localhost, and
-  the local app-core CLI entrypoint
+  the local app CLI entrypoint
   `capability-router conformance <fixture-url> --token fixture-token` passed
   against it, exercising the canonical fixture through HTTP.
 - `bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts` passed, automatically

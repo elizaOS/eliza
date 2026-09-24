@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleActionPlanner,
@@ -135,10 +135,9 @@ describe("direct model routing", () => {
             }),
           );
           const config = loadElizaConfig();
-          const adapter = new InMemoryDatabaseAdapter();
           const runtime = new AgentRuntime({
             character: { name: pass, bio: ["Direct routing wire regression"] },
-            adapter,
+            
             settings: {
               ...buildRuntimeSettingsProjection(config),
               ELIZA_PROVIDER: backend,
@@ -151,6 +150,8 @@ describe("direct model routing", () => {
             },
             logLevel: "fatal",
           });
+          const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+          runtime.registerDatabaseAdapter(adapter);
           try {
             await adapter.createAgents([
               {

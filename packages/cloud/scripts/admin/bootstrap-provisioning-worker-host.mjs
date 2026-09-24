@@ -224,7 +224,7 @@ function validateRuntimeEnv(env) {
 }
 
 /**
- * Sandbox containers boot a `SandboxRegistry` (packages/app-core) that
+ * Sandbox containers boot a `SandboxRegistry` (packages/app) that
  * publishes `agent:<id>:server` / `server:<name>:url` keys to the shared
  * Upstash so gateway-discord and gateway-webhook can route inbound
  * platform messages to them. The orchestrator reads `KV_REST_API_URL` and

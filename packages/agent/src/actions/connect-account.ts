@@ -28,7 +28,7 @@ import { logger } from "@elizaos/core";
 import {
   SUBSCRIPTION_PROVIDER_METADATA,
   type SubscriptionProvider,
-} from "@elizaos/credentials/auth/types";
+} from "@elizaos/auth/auth/types";
 
 const CONNECT_ACCOUNT = "CONNECT_ACCOUNT";
 

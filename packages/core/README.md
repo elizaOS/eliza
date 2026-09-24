@@ -313,7 +313,7 @@ fields remain compatible through a service-level bounded fallback.
 source files, routes, browser or edge variants. Verify the installed tarball with
 `node packages/core/scripts/verify-package.mjs` from the repository root.
 
-Core runs in Node.js and exposes one root barrel. Hosts supply a database adapter or a persistence plugin explicitly; ephemeral hosts can use `@elizaos/plugin-inmemorydb/runtime`. There is no environment-controlled storage fallback.
+Core runs in Node.js and exposes one root barrel. Hosts supply a database adapter or a persistence plugin explicitly; ephemeral hosts can use `@elizaos/plugin-sqlite`. There is no environment-controlled storage fallback.
 
 ## Configuration
 
@@ -837,16 +837,16 @@ Media fetching, MIME detection and connector attachment helpers are exported
 from `@elizaos/shared/media`; core has no file-type dependency.
 
 Action-catalog construction and search policy belong to assistant. Prompt
-keyword data and matching belong to prompts; neither is a core dependency.
+keyword data and matching belong to shared; neither is a core dependency.
 The kernel retains the localized-example provider contract for registration.
 
-Tolerant model-output JSON parsing belongs to `@elizaos/prompts/parsing`.
+Tolerant model-output JSON parsing belongs to `@elizaos/shared/text/model-output`.
 Core does not export those helpers or depend on JSON5.
 
-Handlebars rendering is owned by `@elizaos/prompts/rendering`; conversational
+Handlebars rendering is owned by `@elizaos/shared/text/template-rendering`; conversational
 entity resolution and formatting are assistant-owned. Core retains current-role
 component visibility and stable agent-scoped identity. Its external production
-dependencies are Zod and Adze; common supplies shared pure primitives.
+dependencies are Zod and Adze; core owns its error, redaction, Unicode and environment primitives.
 Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
 
 Direct-text Stage 1 leaves the complete action catalog behind planner discovery. It may name known operations as untrusted hints or request `DISCOVER_TOOLS` for unfamiliar ones; plans without hints begin with discovery instead of loading all domain schemas. Fresh admission and complete schema loading remain mandatory. Group and coding keep their existing catalog paths.

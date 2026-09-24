@@ -9,7 +9,7 @@ import type {
   SurfaceManifest,
   ViewHeaderPolicy,
   ViewKind,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import type { OverlayApp } from "@elizaos/shared/apps/overlay-app-api";
 import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
@@ -321,7 +321,7 @@ export function requireRegisteredAgentSurface(
 export type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
 function hostExternalImporterRegistryKey(): symbol {
-  return Symbol.for("elizaos.app-core.host-external-importer-registry");
+  return Symbol.for("elizaos.app.host-external-importer-registry");
 }
 
 function getHostExternalImporterStore(): Map<string, HostExternalImporter> {

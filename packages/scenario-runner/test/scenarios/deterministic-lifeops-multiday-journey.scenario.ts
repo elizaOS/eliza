@@ -51,7 +51,7 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { typedTurnEvaluationFixtures } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 

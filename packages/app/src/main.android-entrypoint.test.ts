@@ -4,7 +4,7 @@
  * status bar, and authenticated background-runner configuration.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app/desktop-shell";
 import {
   DEFAULT_BOOT_CONFIG,
   getBootConfig,
@@ -52,7 +52,7 @@ vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
 vi.mock("@elizaos/ui/api/android-native-agent-transport", () => ({
   installAndroidNativeAgentFetchBridge: androidBoot.installAndroidFetch,
 }));
-vi.mock("@elizaos/app-core/api/ios-local-agent-transport", () => ({
+vi.mock("@elizaos/app/api/ios-local-agent-transport", () => ({
   installIosLocalAgentNativeRequestBridge: vi.fn(),
   installIosLocalAgentFetchBridge: vi.fn(),
 }));
@@ -84,7 +84,7 @@ vi.mock("@elizaos/capacitor-agent", () => ({
     getLocalAgentToken: vi.fn(async () => ({ token: "android-token" })),
   },
 }));
-vi.mock("@elizaos/capacitor-llama", () => ({
+vi.mock("@elizaos/plugin-native-inference/llama", () => ({
   startDeviceBridgeClient: androidBoot.startDeviceBridge,
 }));
 vi.mock("./camera-bridge-responder", () => ({

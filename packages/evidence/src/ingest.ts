@@ -360,7 +360,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "e2e-recordings",
     source: "e2e-recordings",
-    producedBy: "scripts/e2e-recordings/run-all.mjs",
+    producedBy: "packages/scripts/e2e-recordings/run-all.mjs",
     lane: "e2e",
     roots: [{ label: "repo", dir: "e2e-recordings" }],
   },

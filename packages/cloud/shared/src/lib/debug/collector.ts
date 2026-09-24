@@ -5,7 +5,7 @@
  * a comprehensive DebugTrace for analysis.
  */
 
-import type { UUID } from "@elizaos/common";
+import type { UUID } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import type {
   ActionExecutionStepData,

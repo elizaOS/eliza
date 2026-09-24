@@ -22,8 +22,8 @@
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "@elizaos/agent": ["./packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["./packages/agent/src/*"],
-      "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/app": ["./packages/app/src/index.ts"],
+      "@elizaos/app/*": ["./packages/app/src/*"],
       "@elizaos/cloud-sdk": ["./packages/cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
       "@elizaos/core": ["./packages/core/src/index.ts"],
@@ -97,16 +97,16 @@
         "./plugins/plugin-native-wifi/src/index.ts"
       ],
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
-      "@elizaos/credentials/auth": ["./packages/credentials/src/auth/index.ts"],
-      "@elizaos/credentials/auth/*": ["./packages/credentials/src/auth/*"],
+      "@elizaos/auth/auth": ["./packages/auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/skills": ["./packages/skills/src/index.ts"],
       "@elizaos/skills/*": ["./packages/skills/src/*"],
-      "@elizaos/credentials/vault": [
-        "./packages/credentials/src/vault/index.ts"
+      "@elizaos/auth/vault": [
+        "./packages/auth/src/vault/index.ts"
       ],
-      "@elizaos/credentials/vault/*": ["./packages/credentials/src/vault/*"],
+      "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
       "@elizaos/cloud-shared": ["./packages/cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["./packages/cloud/shared/src/*"],
       "@elizaos/plugin-wallet/*": ["./plugins/plugin-wallet/src/*"],
@@ -146,7 +146,7 @@
       "@elizaos/plugin-native-messages/bridge": [
         "./plugins/plugin-native-messages/src/bridge.ts"
       ],
-      "@elizaos/capacitor-mobile-agent-bridge": [
+      "@elizaos/plugin-native-inference/bridge": [
         "./plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
@@ -176,11 +176,11 @@
       "@elizaos/plugin-native-inference": [
         "./plugins/plugin-native-inference/src/index.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "./plugins/plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "./plugins/plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "./plugins/plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "./plugins/plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-native-settings": [
         "./plugins/plugin-native-settings/src/index.ts"
@@ -213,5 +213,6 @@
     "plugins/plugin-sql/**",
     "plugins/plugin-linear/**",
     "**/build.ts"
-  ]
+  ],
+  "references": []
 }

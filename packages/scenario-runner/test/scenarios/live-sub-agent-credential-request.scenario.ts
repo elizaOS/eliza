@@ -34,12 +34,12 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import type { AcpActionService } from "../../../../plugins/plugin-agent-orchestrator/src/actions/common";
 import type { SessionInfo } from "../../../../plugins/plugin-agent-orchestrator/src/services/types";
 import { codingAgentRoutePlugin } from "../../../../plugins/plugin-agent-orchestrator/src/setup-routes";
-import { handleCredentialTunnelRoute } from "../../../app-core/src/api/credential-tunnel-routes";
+import { handleCredentialTunnelRoute } from "../../../app/src/api/credential-tunnel-routes";
 import {
   createCredentialTunnelService,
   registerSubAgentCredentialBridgeAdapter,
-} from "../../../app-core/src/services/credential-tunnel-service";
-import { ownerAppInlineSensitiveRequestAdapter } from "../../../app-core/src/services/sensitive-requests/owner-app-inline-adapter";
+} from "../../../app/src/services/credential-tunnel-service";
+import { ownerAppInlineSensitiveRequestAdapter } from "../../../app/src/services/sensitive-requests/owner-app-inline-adapter";
 
 const SCENARIO_ID = "live-sub-agent-credential-request";
 const OPENAI_KEY = "OPENAI_API_KEY";
@@ -552,7 +552,7 @@ async function runLiveCodexCredentialRoundtrip(
     }
 
     const { createIsolatedAccountStoragePolicy, saveAccount } = await import(
-      "@elizaos/credentials/auth/account-storage"
+      "@elizaos/auth/auth/account-storage"
     );
     saveAccount(
       {
@@ -573,10 +573,10 @@ async function runLiveCodexCredentialRoundtrip(
       createIsolatedAccountStoragePolicy(home),
     );
     const { getDefaultAccountPool } = await import(
-      "../../../app-core/src/services/account-pool"
+      "../../../app/src/services/account-pool"
     );
     const { getCodingAgentSelectorBridge } = await import(
-      "../../../app-core/src/services/coding-account-bridge"
+      "../../../app/src/services/coding-account-bridge"
     );
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();

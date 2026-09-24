@@ -9,7 +9,7 @@
  *      desktop + mobile viewports, in the keyless `mock` lane (default) or the
  *      `--live` lane (real backend agent + model). Tees the runner output and
  *      extracts the backend `[ClassName]` / `[ui-smoke][api]` lines.
- *   2. Runs the per-step vision review (`scripts/ai-qa/review-walkthrough.mjs`)
+ *   2. Runs the per-step vision review (`packages/scripts/ai-qa/review-walkthrough.mjs`)
  *      when a configured reviewer provider key is present, writing the
  *      committed verdict markdown.
  *   3. Stitches ONE human-speed, step-labeled recording per viewport from the
@@ -514,7 +514,7 @@ async function main() {
     if (!args.reviewerPreflighted) {
       const preflight = await run(
         process.execPath,
-        [join(REPO_ROOT, "scripts", "ai-qa", "reviewer-preflight.mjs")],
+        [join(REPO_ROOT, "packages", "scripts", "ai-qa", "reviewer-preflight.mjs")],
         { cwd: REPO_ROOT, env: childEnv },
       );
       if (preflight.code !== 0) {
@@ -578,7 +578,7 @@ async function main() {
     const review = await run(
       process.execPath,
       [
-        join(REPO_ROOT, "scripts", "ai-qa", "review-walkthrough.mjs"),
+        join(REPO_ROOT, "packages", "scripts", "ai-qa", "review-walkthrough.mjs"),
         "--run-dir",
         runDir,
         "--verdict-md",

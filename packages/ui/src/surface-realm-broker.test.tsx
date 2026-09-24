@@ -9,10 +9,7 @@
 // real jsdom DOM; no `<App/>` harness (the shell wiring is proven in
 // `App.surface-mutation-fuzz.test.tsx`).
 
-import {
-  resolveSurfaceManifest,
-  type SurfaceCapability,
-} from "@elizaos/common";
+import { resolveSurfaceManifest, type SurfaceCapability } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   brokerSurfaceNavigate,

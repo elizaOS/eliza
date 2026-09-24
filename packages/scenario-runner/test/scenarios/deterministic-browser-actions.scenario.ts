@@ -19,7 +19,7 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const strictBrowserRoutes = [
   {

@@ -1081,7 +1081,7 @@ jobs:
   });
 
   test("accepts the global-ARG + bare stage re-declaration Dockerfile shape", () => {
-    // The shape packages/app-core/deploy/Dockerfile.ci actually uses.
+    // The shape packages/app/deploy/Dockerfile.ci actually uses.
     const inventory = inventoryOf(
       buildRepo({
         files: {

@@ -204,7 +204,7 @@ export async function loadIosStreamingLlmBinding(): Promise<IosStreamingLlmBindi
  *
  * Unavailable adapter body. Until the Swift bridge reports streaming support,
  * this code path is unreachable because the loader returns null first. The
- * shape is here so app-core wiring compiles against the platform contract.
+ * shape is here so app wiring compiles against the platform contract.
  */
 function buildIosBinding(
 	_plugin: CapacitorLlamaStreamingPlugin,

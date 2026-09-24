@@ -30,19 +30,19 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Execute Windows PowerShell 5.1 security helpers
         shell: powershell
-        run: .\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-security.ps1
+        run: .\packages/app/platforms/electrobun/scripts/test-browser-bridge-windows-security.ps1
       - name: Compile and probe staged Windows native host
         shell: powershell
-        run: .\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-native-host.ps1
+        run: .\packages/app/platforms/electrobun/scripts/test-browser-bridge-windows-native-host.ps1
       - name: Run browser broker security contracts
         id: contracts
         shell: powershell
-        working-directory: packages/app-core/platforms/electrobun
+        working-directory: packages/app/platforms/electrobun
         run: bunx vitest run --config vitest.electrobun.config.ts src/native/browser-bridge-broker-secret.test.ts src/native/browser-bridge-broker-server.test.ts src/native/browser-bridge-registration.test.ts src/native/browser-bridge-unregister.test.ts src/native/browser-bridge-windows-native-host-proof.test.ts
       - name: Diagnose broker test installation failure
         if: ${{ failure() && (steps.install.outcome == 'failure' || steps.contracts.outcome == 'failure') }}
         shell: powershell
-        working-directory: packages/app-core/platforms/electrobun
+        working-directory: packages/app/platforms/electrobun
         run: |
           Write-Output "Install outcome: ${{ steps.install.outcome }}; contracts outcome: ${{ steps.contracts.outcome }}"
           Get-Command node, bun | Select-Object Name, Source

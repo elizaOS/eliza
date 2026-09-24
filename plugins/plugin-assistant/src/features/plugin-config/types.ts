@@ -84,7 +84,7 @@ export interface PluginActivationResult {
  *   4. Register a plugin with the runtime once it is ready.
  *
  * Resolved via `runtime.getService(PLUGIN_CONFIG_CLIENT_SERVICE)`. The
- * provider may live in `@elizaos/cloud` or in the app-core runtime — this
+ * provider may live in `@elizaos/cloud` or in the app runtime — this
  * slice does not import it.
  */
 export interface PluginConfigClient {
@@ -123,7 +123,7 @@ export interface PluginConfigClient {
 
 /**
  * Service name constant — used by every action's
- * `runtime.getService(...)` call so the cloud / app-core adapter can register
+ * `runtime.getService(...)` call so the cloud / app adapter can register
  * itself under a stable key.
  */
 export const PLUGIN_CONFIG_CLIENT_SERVICE = "PluginConfigClient";

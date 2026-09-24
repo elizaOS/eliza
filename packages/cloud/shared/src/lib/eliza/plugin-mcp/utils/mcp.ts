@@ -3,8 +3,7 @@
  * allowlist before Cloud tools or resources become planner-visible.
  */
 
-import { type Memory } from "@elizaos/common";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
 import { buildMcpProviderProjection } from "@elizaos/shared/mcp";
 import type { McpProvider, McpServer } from "../types";
 

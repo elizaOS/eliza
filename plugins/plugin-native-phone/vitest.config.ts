@@ -82,12 +82,12 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui.tsx"),
       },
       {
-        find: /^@elizaos\/app-core$/,
-        replacement: resolve(rootDir, "../../packages/app-core/src/index.ts"),
+        find: /^@elizaos\/app$/,
+        replacement: resolve(rootDir, "../../packages/app/src/index.ts"),
       },
       {
-        find: /^@elizaos\/app-core\/(.+)$/,
-        replacement: resolve(rootDir, "../../packages/app-core/src/$1"),
+        find: /^@elizaos\/app\/(.+)$/,
+        replacement: resolve(rootDir, "../../packages/app/src/$1"),
       },
       {
         find: /^@elizaos\/ui\/spatial$/,

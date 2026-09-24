@@ -292,7 +292,7 @@ describe("the real repository", () => {
         report.documentedExclusions.length,
     ).toBe(report.relevantPackages);
     expect(report.documentedExclusions.map((entry) => entry.dir)).toEqual([
-      "packages/app-core/platforms/electrobun",
+      "packages/app/platforms/electrobun",
       "packages/cloud/e2e",
       "packages/homepage",
     ]);

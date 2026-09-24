@@ -4,7 +4,7 @@
  * after the shell can paint, then releases them when the phase is torn down.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,

@@ -380,7 +380,7 @@ describe("parseArgs", () => {
       parseArgs([
         "--served-url",
         "https://app.elizacloud.ai",
-        "--dist=packages/app/dist",
+        "--dist=packages/app/web-dist",
         "--require-text",
         "Signing in to your agent",
         "--require-text=CloudPairRelay",
@@ -391,7 +391,7 @@ describe("parseArgs", () => {
       ]),
     ).toEqual({
       servedUrl: "https://app.elizacloud.ai",
-      distDir: "packages/app/dist",
+      distDir: "packages/app/web-dist",
       requiredTexts: ["Signing in to your agent", "CloudPairRelay"],
       attempts: 9,
       intervalMs: 250,

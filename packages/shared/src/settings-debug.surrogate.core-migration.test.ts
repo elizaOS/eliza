@@ -1,6 +1,6 @@
 /** Surrogate safety for settings-debug truncation: maskString and sanitizeDebugString must never emit lone surrogates. */
 
-import { toWellFormedUnicode } from "@elizaos/common";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import {
   MAX_STRING,

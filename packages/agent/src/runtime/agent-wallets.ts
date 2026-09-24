@@ -24,7 +24,7 @@ import {
   setEntryMeta,
   type Vault,
   VaultDecryptionError,
-} from "@elizaos/credentials/vault";
+} from "@elizaos/auth/vault";
 import type { WalletChain } from "@elizaos/shared";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";

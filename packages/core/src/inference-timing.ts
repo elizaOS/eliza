@@ -336,9 +336,9 @@ const DEFAULT_MAX_SPANS = 512;
 export {
 	INFERENCE_TRACE_ID_PATTERN,
 	isInferenceTraceId,
-} from "@elizaos/common";
+} from "./inference-trace.js";
 
-import { INFERENCE_TRACE_ID_PATTERN } from "@elizaos/common";
+import { INFERENCE_TRACE_ID_PATTERN } from "./inference-trace.js";
 
 /**
  * Mint a bounded, gateway-valid correlation id (32 lowercase hex). The format

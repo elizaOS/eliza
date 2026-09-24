@@ -3,6 +3,7 @@
  * model-usage events, and trajectory recording — against a mocked `ai` SDK
  * (`generateText`/`streamText`), no network.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import type { Character, IAgentRuntime } from "@elizaos/core";
 import {
   AgentRuntime,
@@ -12,7 +13,7 @@ import {
   runWithStreamingContext,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -489,13 +490,13 @@ describe("OpenAI native text plumbing", () => {
       usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
     });
     const { handleResponseHandler } = await import("../models/text");
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: {
         name: "Ada",
         bio: "test runtime",
         settings: {},
       } as Character,
-      adapter: new InMemoryDatabaseAdapter(),
+      
       logLevel: "fatal",
     });
     runtime.registerModel(ModelType.RESPONSE_HANDLER, handleResponseHandler, "openai");

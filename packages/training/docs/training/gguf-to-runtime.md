@@ -2,7 +2,7 @@
 
 This is the handoff between this package (the offline training /
 quantization / GGUF pipeline) and the Eliza runtime
-(`packages/app-core`, `packages/shared`). It assumes you already have a
+(`packages/app`, `packages/shared`). It assumes you already have a
 freshly produced `eliza-1-<tier>.gguf` (e.g. from
 `scripts/optimize_for_eliza1.py`, which also writes a
 `gguf/eliza1_manifest.json` next to it).
@@ -17,7 +17,7 @@ coordinator → the local-inference handler — picking the model up.
 
 ## A. Point the runtime at a local GGUF file
 
-The runtime's model registry (`packages/app-core/src/services/local-inference/registry.ts`)
+The runtime's model registry (`packages/app/src/services/local-inference/registry.ts`)
 tracks two kinds of model:
 
 - `source: "eliza-download"` — files Eliza owns, written under the
@@ -86,7 +86,7 @@ Once a model is installed (either source), three layers route a
    `GET /api/local-inference/active` reports state.
 
 3. **Runtime handler + router**
-   (`packages/app-core/src/runtime/ensure-local-inference-handler.ts`
+   (`packages/app/src/runtime/ensure-local-inference-handler.ts`
    plus `services/local-inference/router-handler.ts`). On boot in
    `local` / `local-only` runtime mode, `ensureLocalInferenceHandler`
    registers a `ModelType.TEXT_SMALL` / `TEXT_LARGE` handler at priority
@@ -151,7 +151,7 @@ uv run python scripts/emit_eliza1_catalog.py \
 
 The canonical catalog is **`packages/shared/src/local-inference/catalog.ts`**
 (`@elizaos/shared/local-inference/catalog`). The
-`packages/app-core/src/services/local-inference/catalog.ts` path is a
+`packages/app/src/services/local-inference/catalog.ts` path is a
 re-export shim — do not edit it. `emit_eliza1_catalog.py` does not
 rewrite the file; it prints a labeled patch fragment and names the file
 to apply it to. If you are introducing a **new** tier id (not just

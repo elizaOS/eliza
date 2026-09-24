@@ -130,7 +130,7 @@ export ELIZA_APP_BLOOIO_WEBHOOK_SECRET=local-blooio-secret     # gateway + drive
 # 1. Cloud API stack (PGlite + mock redis) on 48803, forwarding Blooio
 #    webhooks to the gateway below. --reset wipes bindings from earlier runs.
 ELIZA_APP_WEBHOOK_GATEWAY_URL=http://127.0.0.1:3002 \
-  bun scripts/cloud/mock-stack-up.mjs --reset --port-api 48803 --no-frontend
+  bun packages/scripts/cloud/mock-stack-up.mjs --reset --port-api 48803 --no-frontend
 
 # 2. Mock Blooio provider (records outbound sends, serves /_capture) on 48810.
 bun packages/cloud/scripts/group-room-sim/mock-blooio-provider.ts
@@ -161,7 +161,7 @@ Notes on the wiring:
   the Worker.
 - `bun --preload` wants a `./`-prefixed or absolute path.
 - The stack DB persists group bindings. A group chat id bound to one owner
-  refuses `Eliza link` from another, so either `bun scripts/cloud/mock-stack-up.mjs --reset` or a fresh
+  refuses `Eliza link` from another, so either `bun packages/scripts/cloud/mock-stack-up.mjs --reset` or a fresh
   `RUN_TAG` per run.
 - Do not share the stack with other runs: the silence windows attribute every
   group send in the capture to the room being scored.

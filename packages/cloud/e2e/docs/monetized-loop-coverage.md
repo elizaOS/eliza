@@ -47,7 +47,7 @@ node provisioning (`initializing → running`) is exercised separately in step (
 
 ### #8921 — `cloud:mock --with-daemon` ✅ implemented
 
-`cloud:mock --with-daemon` (`scripts/cloud/mock-stack-up.mjs`) runs the
+`cloud:mock --with-daemon` (`packages/scripts/cloud/mock-stack-up.mjs`) runs the
 autoscale / hot-pool / pool-replenish cron loops on real intervals against the
 mock stack — POSTing each `/v1/cron/*` endpoint with the `CRON_SECRET` bearer on
 a `DAEMON_TICK_MS` cadence (default 15s, fires once immediately). The pool is

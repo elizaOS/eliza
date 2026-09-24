@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
 const SCENARIO_ROOTS = [
-  "packages/test/scenarios",
+  "packages/testing/scenarios",
   "plugins/plugin-personal-assistant/test/scenarios",
   "plugins/plugin-app-control/test/scenarios",
   "plugins/plugin-health/test/scenarios",

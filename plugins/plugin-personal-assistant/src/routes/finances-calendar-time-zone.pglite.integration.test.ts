@@ -106,7 +106,7 @@ describe("finances bill dueness through both surfaces (#31062)", () => {
     base = `http://127.0.0.1:${address.port}`;
   }, 180_000);
 
-  // The shared app-core setup restores real timers after every test, so the
+  // The shared app setup restores real timers after every test, so the
   // pinned instant is re-armed per test rather than once for the file.
   beforeEach(() => {
     vi.stubEnv("TZ", "UTC");

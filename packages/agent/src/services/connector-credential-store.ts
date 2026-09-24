@@ -29,7 +29,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { createVault, type Vault } from "@elizaos/credentials/vault";
+import { createVault, type Vault } from "@elizaos/auth/vault";
 import {
   getAgentHostBridge,
   hasDurableHostVault,

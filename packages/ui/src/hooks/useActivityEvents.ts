@@ -6,7 +6,7 @@
  * moving rail layer — then flushed once on settle.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { activityEventToPlaintext } from "@elizaos/shared/activity-plaintext";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";

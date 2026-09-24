@@ -60,7 +60,7 @@ describe("applyCors", () => {
     delete process.env.WAIFU_CHAT_FRAME_ANCESTORS;
   });
 
-  it("allows app-core client headers used by Capacitor WebViews", () => {
+  it("allows app client headers used by Capacitor WebViews", () => {
     const res = new HeaderCapture();
 
     expect(

@@ -27,8 +27,8 @@ const AGENT_ROOT = path.resolve(
 describe("standalone source-checkout start contract", () => {
   it.each([
     ["plugin-sql", "@elizaos/plugin-sql"],
-    ["plugin-inmemorydb", "@elizaos/plugin-inmemorydb"],
-    ["plugin-inmemorydb", "@elizaos/plugin-inmemorydb/runtime"],
+    ["plugin-sqlite", "@elizaos/plugin-sqlite"],
+    ["plugin-sqlite", "@elizaos/plugin-sqlite"],
   ])("imports %s through %s without generated output", (name, specifier) => {
     const fixture = mkdtempSync(path.join(tmpdir(), "eliza-source-start-"));
     const packageRoot = path.resolve(AGENT_ROOT, "../../plugins", name);

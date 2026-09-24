@@ -10,7 +10,7 @@
  * and a blocked origin wins over every allow mode.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { BrowserBridgeSettings } from "../../api/browser-contracts";
 import type {
   BrowserBridgeSession,

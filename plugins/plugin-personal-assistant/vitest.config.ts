@@ -1,6 +1,6 @@
 /**
  * Base Vitest configuration for the plugin: extends the repo default config and
- * wires the LifeOps and app-core test setup, stub roots, and workspace aliases
+ * wires the LifeOps and app test setup, stub roots, and workspace aliases
  * so unit specs resolve source and native-library policy correctly.
  */
 import fs from "node:fs";
@@ -21,7 +21,7 @@ const packageRootFromRepo = path
 const appCoreTestSetup = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "test",
   "setup.ts",
 );
@@ -30,7 +30,7 @@ const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
 const appCoreTaskHostCapabilities = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "src",
   "services",
   "task-host-capabilities.ts",
@@ -253,33 +253,33 @@ export default defineConfig({
     preserveSymlinks: false,
     alias: [
       {
-        find: /^@elizaos\/app-core\/api\/compat-route-shared$/,
+        find: /^@elizaos\/app\/api\/compat-route-shared$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "api",
           "compat-route-shared.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/api\/auth$/,
+        find: /^@elizaos\/app\/api\/auth$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "api",
           "auth.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        find: /^@elizaos\/app\/services\/auth-store$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "services",
           "auth-store.ts",
@@ -332,20 +332,20 @@ export default defineConfig({
         ),
       },
       // Registered HTTP routes must exercise the real owner authentication
-      // boundary even when app-core's distribution has not been built.
+      // boundary even when app's distribution has not been built.
       {
-        find: /^@elizaos\/app-core\/api\/(auth|compat-route-shared)$/,
-        replacement: path.join(elizaRoot, "packages/app-core/src/api/$1.ts"),
+        find: /^@elizaos\/app\/api\/(auth|compat-route-shared)$/,
+        replacement: path.join(elizaRoot, "packages/app/src/api/$1.ts"),
       },
       {
-        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        find: /^@elizaos\/app\/services\/auth-store$/,
         replacement: path.join(
           elizaRoot,
-          "packages/app-core/src/services/auth-store.ts",
+          "packages/app/src/services/auth-store.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
+        find: /^@elizaos\/app\/services\/task-host-capabilities$/,
         replacement: appCoreTaskHostCapabilities,
       },
       {
@@ -369,7 +369,7 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/credentials\/vault$/,
+        find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
@@ -805,7 +805,7 @@ export default defineConfig({
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "test",
           "stubs",
           "capacitor-core.ts",

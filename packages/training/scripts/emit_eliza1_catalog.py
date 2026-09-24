@@ -9,7 +9,7 @@ it has a catalog entry. The canonical catalog (``MODEL_CATALOG``,
     packages/shared/src/local-inference/catalog.ts
 
 (``@elizaos/shared/local-inference/catalog``). The old
-``packages/app-core/src/services/local-inference/catalog.ts`` path is now
+``packages/app/src/services/local-inference/catalog.ts`` path is now
 just a re-export shim of that module, so anything written there is
 ignored — the shim has no ``MODEL_CATALOG`` literal to patch.
 
@@ -74,8 +74,8 @@ log = logging.getLogger("emit_eliza1_catalog")
 
 
 # The canonical catalog this script targets. Both the server
-# (``@elizaos/app-core``) and the UI client (``@elizaos/ui``) import
-# ``MODEL_CATALOG`` from here; the old app-core path is a re-export shim.
+# (``@elizaos/app``) and the UI client (``@elizaos/ui``) import
+# ``MODEL_CATALOG`` from here; the old app path is a re-export shim.
 CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 
 
@@ -299,7 +299,7 @@ def _find_model_catalog_close(text: str) -> int:
     if anchor == -1:
         raise SystemExit(
             "catalog file has no `MODEL_CATALOG` declaration; pass --catalog "
-            f"pointing at {CANONICAL_CATALOG_PATH} (not the app-core re-export shim)."
+            f"pointing at {CANONICAL_CATALOG_PATH} (not the app re-export shim)."
         )
     close = text.find("];", anchor)
     if close == -1:
@@ -337,7 +337,7 @@ def _entry_with_header(entry: Eliza1CatalogEntry, catalog_hint: str) -> str:
     return (
         f"// Add this entry to the `MODEL_CATALOG` array in:\n"
         f"//   {catalog_hint}\n"
-        f"// (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"// (the @elizaos/app copy is a re-export shim — do not edit it).\n"
         f"// If `{entry.id}` is a NEW tier id, also add it to ELIZA_1_TIER_IDS\n"
         f"// in the same file (that is what marks it default-eligible).\n"
         f"{entry.to_ts_literal()}"
@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     header = (
         f"# MODEL_CATALOG patch for {entry.id}\n"
         f"# Apply to: {args.catalog}\n"
-        f"# (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"# (the @elizaos/app copy is a re-export shim — do not edit it).\n"
         f"# If {entry.id} is a NEW tier id, also add it to ELIZA_1_TIER_IDS in that file.\n"
     )
     if args.output is not None:

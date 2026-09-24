@@ -51,7 +51,7 @@ link alone to an authenticated remote connect against a pairing-enabled
 
 Harness authors: do not attempt to smuggle a session or token through the deep
 link — the constraint is enforced by the parser and asserted end-to-end in
-`packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts`
+`packages/app/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts`
 (§4), the driven e2e for the #13692 production auth path.
 
 ## Missing Secrets

@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -114,7 +114,7 @@ describe("Identity merge provenance", () => {
     const client = new PGlite();
     try {
       await createIdentityTables(client);
-      const adapter = Object.assign(new InMemoryDatabaseAdapter(), {
+      const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
         db: drizzle(client),
       });
       const runtime = new AgentRuntime({
@@ -212,7 +212,7 @@ describe("Identity merge provenance", () => {
       const client = new PGlite();
       try {
         await createIdentityTables(client);
-        const adapter = Object.assign(new InMemoryDatabaseAdapter(), {
+        const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
           db: drizzle(client),
         });
         const runtime = new AgentRuntime({
@@ -295,7 +295,7 @@ describe("Source-owned identity reconciliation", () => {
   async function setup() {
     const client = new PGlite();
     await createIdentityTables(client);
-    const adapter = Object.assign(new InMemoryDatabaseAdapter(), {
+    const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
       db: drizzle(client),
     });
     const runtime = new AgentRuntime({

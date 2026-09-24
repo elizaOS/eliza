@@ -1,94 +1,36 @@
 # @elizaos/plugin-native-inference
 
-AOSP-only llama.cpp FFI bindings (via `bun:ffi`) and local-inference bootstrap for elizaOS mobile builds.
+Native inference and mobile bridges for elizaOS, with explicit entrypoints for
+each runtime.
 
-## What it does
+| Import | Purpose |
+| --- | --- |
+| `@elizaos/plugin-native-inference` | AOSP fused `libelizainference.so` bootstrap through lazy `bun:ffi` |
+| `@elizaos/plugin-native-inference/host-bridge` | Agent-side device bridge service and lazy mobile CLI helpers |
+| `@elizaos/plugin-native-inference/llama` | Capacitor llama adapter, device relay, and token-tree codec |
+| `@elizaos/plugin-native-inference/mlkit-text` | Android ML Kit OCR, registered as `Tesseract` |
 
-This package enables on-device inference for Eliza agents running on Android (AOSP). It connects the Bun runtime to a native `libllama.so` + shim via `bun:ffi`, and registers the following model type handlers on `AgentRuntime`:
+The host bridge also exposes `/android/bridge`, `/android/dispatch`,
+`/ios/bridge`, `/mobile-device-bridge-bootstrap`, `/shared/fs-shim`, and
+`/shared/stdio-bridge`. Browser code imports the llama or OCR entrypoint so
+Node and Bun host code stays outside the renderer.
 
-| Model type | Backend |
-|---|---|
-| `TEXT_SMALL` / `TEXT_LARGE` | llama.cpp FFI (`libllama.so` via `libeliza-llama-shim.so`) |
-| `TEXT_EMBEDDING` | llama.cpp FFI (separate embedding context, disabled by default) |
-| `TEXT_TO_SPEECH` | Fused Kokoro (`libelizainference.so`) — WAV output at 24 kHz |
-| `TRANSCRIPTION` | ASR via `libelizainference.so` |
+AOSP uses one fused native text/voice runtime, activated by `ELIZA_LOCAL_LLAMA=1`
+(or automatically on riscv64); `ELIZA_DISABLE_FFI_LLAMA=1` disables it.
+Stock Android uses the authenticated device WebSocket bridge; iOS uses native
+Bun host IPC. Chat and BGE embedding contexts remain separately owned.
 
-All handlers self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on non-AOSP platforms. The package is safe to import unconditionally from the mobile agent bundle.
+The Capacitor-discovered `android/` library contains ML Kit OCR. The
+`android-bridge/` directory retains the separately integrated computer-use
+native fragment. No model binaries are committed here.
 
-## Capabilities
-
-- **Local LLM inference** — in-process llama.cpp via `bun:ffi`; no HTTP server subprocess.
-- **Speculative decoding (MTP)** — optional in-process MTP drafter via `libeliza-llama-speculative-shim.so`; auto-paired when a `mtp/` drafter GGUF is found in the active model bundle.
-- **Custom KV-cache quantization** — supports `q8_0`, `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar` quant types from the elizaOS/llama.cpp fork (default: K=`q8_0`, V=`f16` for chat).
-- **Text-to-speech** — Kokoro synthesis via `libelizainference.so` (`eliza_inference_kokoro_*`); pre-warm support to amortize first-request latency.
-- **Transcription** — ASR via `libelizainference.so` from PCM WAV input or `{ pcm, sampleRateHz }` params.
-- **Model auto-download** — if no bundled GGUF is found, downloads `elizaos/eliza-1` from HuggingFace (opt-out: `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1`).
-- **Cloud fallback** — for `TEXT_SMALL` / `TEXT_LARGE`, a secondary handler at priority -1 forwards to Eliza Cloud when the local FFI path fails with a recoverable error.
-
-## How to enable
-
-This package is loaded by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`. It is not an elizaOS plugin with auto-discovery — activation requires calling `ensureAospLocalInferenceHandlers(runtime)` after the agent runtime starts.
-
-Set the following environment variable before launching the bun process (done automatically by `ElizaAgentService.java` in AOSP builds):
-
-```
-ELIZA_LOCAL_LLAMA=1
+```bash
+bun run --cwd plugins/plugin-native-inference build
+bun run --cwd plugins/plugin-native-inference typecheck
+bun run --cwd plugins/plugin-native-inference lint:check
+bun run --cwd plugins/plugin-native-inference test
 ```
 
-The package also auto-activates on `process.arch === "riscv64"` without requiring the env var (unless `ELIZA_DISABLE_FFI_LLAMA=1` is set).
-
-## Required native libraries
-
-The following shared libraries must be present in `cwd/{abi}/` (where `{abi}` is `arm64-v8a`, `x86_64`, or `riscv64`). They are compiled by `packages/app-core/scripts/aosp/compile-libllama.mjs`:
-
-- `libllama.so` — elizaOS/llama.cpp fork (`v0.1.0-eliza`, based on `apothic/llama.cpp-1bit-turboquant` @ `main-b8198-b2b5273`)
-- `libeliza-llama-shim.so` — struct-by-value wrapper (NEEDED-links `libllama.so`)
-- `libeliza-llama-speculative-shim.so` — MTP speculative decoding (optional)
-- `libelizainference.so` — fused Kokoro TTS + ASR (optional, required for voice)
-
-`ElizaAgentService.java` sets `LD_LIBRARY_PATH` to the ABI dir before spawning bun.
-
-## Required model files
-
-Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority order:
-
-1. `assignments.json` + `registry.json` (managed by the local-inference service)
-2. `manifest.json` (written by `packages/app-core/scripts/aosp/stage-default-models.mjs`)
-3. Glob fallback scan for `*.gguf` matching expected name patterns
-
-Default models downloaded from their pinned HuggingFace sources when not staged:
-- **Chat:** the catalog's first-run model (currently `bundles/e2b/text/eliza-1-e2b-128k.gguf`)
-- **Embedding:** `bge-small-en-v1.5-f16.gguf`, pinned to the shared CompendiumLabs artifact revision and SHA-256
-
-The Android downloader derives published bundle slugs from
-`@elizaos/shared/local-inference`; stable tier ids such as `eliza-1-2b` must
-not be used as Hugging Face directory names after an architecture re-slug.
-
-## Key environment variables
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `ELIZA_LOCAL_LLAMA` | — | Set `"1"` to activate |
-| `ELIZA_DISABLE_FFI_LLAMA` | — | Set `"1"` to force opt-out |
-| `ELIZA_LLAMA_THREADS` | `os.cpus().length` | CPU thread count |
-| `ELIZA_LLAMA_N_CTX` | `4096` | Chat context window |
-| `ELIZA_LOCAL_EMBEDDING_ENABLED` | `"0"` | Set `"1"` to load embedding GGUF |
-| `ELIZA_LLAMA_KV_TYPE_K` / `_V` | `q8_0` / `f16` | KV-cache quant type |
-| `ELIZA_MTP` | — | Set `"1"` for MTP speculative decoding |
-| `ELIZA_AOSP_TTS_PREWARM` | — | Set `"true"` to pre-warm TTS at boot |
-| `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` | — | Set `"1"` to skip HuggingFace download |
-| `ELIZA_AOSP_LLAMA_DEBUG_LOG` | — | Set `"1"` for line-delimited debug log |
-
-See `CLAUDE.md` for the full variable reference.
-
-## Package layout
-
-```
-src/
-  index.ts                          Barrel (bundle-safety sink included)
-  aosp-llama-adapter.ts             bun:ffi loader, AospLlamaAdapter class
-  aosp-llama-streaming.ts           Streaming-LLM FFI bindings
-  aosp-local-inference-bootstrap.ts Model handler registration, TTS, ASR
-  aosp-debug-log.ts                 Append-only debug log utility
-__tests__/                          bun test suites
-```
+See [the package guide](AGENTS.md), [mobile bridge contracts](docs/mobile-bridge.md),
+[Capacitor adapter contracts](docs/capacitor-llama.md), and
+[OCR contracts](docs/mlkit-text.md) for activation, ownership, and verification.

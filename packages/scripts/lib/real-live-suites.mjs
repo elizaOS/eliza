@@ -86,7 +86,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-personal-assistant/test/scheduled-task-voicing.live.test.ts",
     requires: ["CEREBRAS_API_KEY"],
-    guardVia: ["packages/app-core/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-concurrency.postgres.real.test.ts",
@@ -117,15 +117,15 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "packages/agent/vitest.config.ts excludes *.real.test.ts in every deterministic lane; run explicitly via `bunx vitest run --config packages/agent/vitest.push-real.config.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
   },
   {
-    file: "packages/app-core/src/services/coding-account-bridge.live.test.ts",
+    file: "packages/app/src/services/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "operator-run multi-account integration; not part of routine CI",
   },
   {
-    file: "packages/app-core/test/services/smithers-linked-codex-subscription.live.test.ts",
+    file: "packages/app/test/services/smithers-linked-codex-subscription.live.test.ts",
     optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
     notes:
-      "app-core Smithers-linked Codex subscription roundtrip; needs an authenticated ~/.codex/auth.json and spends real ChatGPT-subscription traffic",
+      "app Smithers-linked Codex subscription roundtrip; needs an authenticated ~/.codex/auth.json and spends real ChatGPT-subscription traffic",
   },
   {
     file: "packages/core/src/runtime/__tests__/field-registry-cerebras.live.test.ts",
@@ -279,7 +279,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       ["ANTHROPIC_API_KEY"],
       ["GOOGLE_GENERATIVE_AI_API_KEY"],
     ],
-    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
+    guardVia: ["packages/app/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
@@ -292,7 +292,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       ["ANTHROPIC_API_KEY"],
       ["GOOGLE_GENERATIVE_AI_API_KEY"],
     ],
-    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
+    guardVia: ["packages/app/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-pty/test/pty.real.test.ts",

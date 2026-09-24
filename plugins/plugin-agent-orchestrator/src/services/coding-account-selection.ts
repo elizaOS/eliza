@@ -1,10 +1,10 @@
 /**
  * Orchestrator-side reader for the coding-agent account-selector bridge.
  *
- * The bridge itself lives in `@elizaos/app-core` (it owns the `AccountPool` and
+ * The bridge itself lives in `@elizaos/app` (it owns the `AccountPool` and
  * the credential store). This plugin depends only on `@elizaos/core`, so — like
  * the parent-context bridge — it reads the contract off a `globalThis` symbol
- * rather than importing app-core. When no pool/accounts are configured the
+ * rather than importing app. When no pool/accounts are configured the
  * bridge is absent and every helper here no-ops, leaving the single-account
  * behavior untouched.
  */
@@ -22,7 +22,7 @@ import {
 import {
   isRefreshTokenExpiryText,
   isTokenExpiryText,
-} from "@elizaos/credentials/auth";
+} from "@elizaos/auth/auth";
 import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
@@ -53,7 +53,7 @@ export interface ResolvedCodingAccount {
  * Agent types that authenticate per pooled account. claude and codex are
  * first-party CLIs. Pi additionally consumes the typed coding-plan and direct
  * API routes declared in the shared descriptor. Derivation from that descriptor
- * keeps this gate aligned with the app-core bridge.
+ * keeps this gate aligned with the app bridge.
  */
 const MULTI_ACCOUNT_AGENT_TYPES = new Set(
   Object.entries(CODING_AGENT_BACKEND_PROVIDERS)

@@ -2,7 +2,7 @@
  * Subprocess boot harness for `server-skip-listen.test.ts` (#12180).
  *
  * `startApiServer` (server.ts) cannot be imported into the agent vitest lane —
- * the `@elizaos/app-core` subpath alias rewrites to a non-directory path
+ * the `@elizaos/app` subpath alias rewrites to a non-directory path
  * (ENOTDIR), which is why no committed agent test imports server.ts (see
  * `health-routes.canRespond-ws.test.ts`). But under a plain Bun runtime the
  * module graph loads fine, so this harness boots the REAL `startApiServer` in a

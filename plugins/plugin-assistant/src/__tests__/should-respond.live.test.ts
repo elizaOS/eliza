@@ -11,13 +11,13 @@ import {
 
 import type { Character, State } from "@elizaos/core";
 import { AgentRuntime, ModelType } from "@elizaos/core";
-import { shouldRespondTemplate } from "@elizaos/prompts";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import {
   createOllamaModelHandlers,
   isOllamaAvailable,
 } from "@elizaos/testing/ollama-provider";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { shouldRespondTemplate } from "../services/message/prompts.js";
 
 const runLiveTests = process.env.ELIZA_RUN_LIVE_TESTS === "1";
 const liveDescribe = runLiveTests ? describe : describe.skip;
@@ -79,7 +79,7 @@ function getClassifierSchema() {
 
 liveDescribe("shouldRespond live", () => {
   let runtime: AgentRuntime;
-  let adapter: InMemoryDatabaseAdapter;
+  let adapter: SQLiteDatabaseAdapter;
 
   beforeAll(async () => {
     if (!(await isOllamaAvailable())) {
@@ -103,7 +103,7 @@ liveDescribe("shouldRespond live", () => {
       settings: {},
     };
 
-    adapter = new InMemoryDatabaseAdapter();
+    adapter = SQLiteDatabaseAdapter.create(":memory:");
     runtime = new AgentRuntime({
       character,
       adapter,

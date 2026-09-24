@@ -1,7 +1,7 @@
 /**
  * Endpoint test for `POST /api/conversations/dev/seed-messages` — the dev-only
  * backdated-corpus seed route. Drives the real `handleConversationRoutes`
- * against a real `InMemoryDatabaseAdapter` (through a thin runtime shim) and
+ * against a real `SQLiteDatabaseAdapter` (through a thin runtime shim) and
  * asserts the HTTP-boundary behaviour the route owns: production 404, bounded +
  * validated request body (garbage → 400), and a successful seed that lands real
  * backdated rows and registers the conversations in live state.
@@ -13,7 +13,7 @@
 
 import type { Memory, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type ConversationRouteContext,
@@ -24,7 +24,7 @@ import type { ConversationMeta } from "../server-types.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 
-function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
+function makeRuntime(adapter: SQLiteDatabaseAdapter): unknown {
   return {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
@@ -44,7 +44,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
           type: ChannelType.DM,
           worldId: params.worldId,
           channelId: params.channelId,
-        } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],
+        } as Parameters<SQLiteDatabaseAdapter["createRooms"]>[0][number],
       ]);
     },
     async createMemory(memory: Memory, tableName: string, unique?: boolean) {
@@ -56,7 +56,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
   };
 }
 
-function makeState(adapter: InMemoryDatabaseAdapter): ConversationRouteState {
+function makeState(adapter: SQLiteDatabaseAdapter): ConversationRouteState {
   return {
     runtime: makeRuntime(adapter),
     conversations: new Map<string, ConversationMeta>(),
@@ -104,10 +104,10 @@ function seedRequest(
 
 describe("POST /api/conversations/dev/seed-messages (route boundary)", () => {
   const prevNodeEnv = process.env.NODE_ENV;
-  let adapter: InMemoryDatabaseAdapter;
+  let adapter: SQLiteDatabaseAdapter;
 
   beforeEach(async () => {
-    adapter = new InMemoryDatabaseAdapter();
+    adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
   });
   afterEach(() => {

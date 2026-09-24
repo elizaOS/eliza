@@ -144,7 +144,7 @@ Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on
 it by requesting a clean restart through the existing `requestRestart()` seam
-(host exits `RESTART_EXIT_CODE=75`, the `packages/app-core/scripts/run-node.mjs`
+(host exits `RESTART_EXIT_CODE=75`, the `packages/app/scripts/run-node.mjs`
 supervisor relaunches) — never a silent `process.exit`.
 - `ELIZA_MEMORY_WATCHDOG` — `1`/`true` enables it (default **off**).
 - `ELIZA_MEMORY_WATCHDOG_RSS_MB` — RSS restart threshold in MB (default `1536`, floor `128`).

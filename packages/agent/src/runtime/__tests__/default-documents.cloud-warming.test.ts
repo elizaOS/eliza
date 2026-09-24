@@ -12,7 +12,7 @@ import {
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerCloudEmbeddingModels } from "../../../../../plugins/plugin-elizacloud/src/index.ts";
@@ -106,7 +106,7 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
       throw new Error("Expected the embedding test server to bind a TCP port");
     }
 
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
     const runtime = new AgentRuntime({
       agentId: AGENT_ID,

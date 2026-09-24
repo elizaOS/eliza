@@ -6,7 +6,7 @@
 
 /// <reference path="./web-bluetooth.d.ts" />
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@elizaos/shared/logger";
 import {
   BATTERY_LEVEL_CHAR_UUID,

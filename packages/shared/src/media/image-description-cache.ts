@@ -11,7 +11,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { createHash, ModelType } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 
 export interface CachedImageDescription {
   title: string;

@@ -10,7 +10,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import rolesPlugin from "./index";
 
@@ -23,7 +23,7 @@ describe("runtime roles bootstrap CAS", () => {
     const runtime = new AgentRuntime({
       character: { name: "roles-cas-owner" } as Character,
     });
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:");
     await adapter.init();
     runtime.registerDatabaseAdapter(adapter);
     const ownerId = stringToUuid("runtime-roles-owner-2") as UUID;
@@ -78,7 +78,7 @@ describe("runtime roles bootstrap CAS", () => {
     const runtime = new AgentRuntime({
       character: { name: "roles-cas" } as Character,
     });
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:");
     await adapter.init();
     runtime.registerDatabaseAdapter(adapter);
     const ownerId = stringToUuid("runtime-roles-owner") as UUID;

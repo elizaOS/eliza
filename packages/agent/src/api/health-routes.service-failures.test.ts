@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Integration coverage for service-start truth on GET /api/health (#16309):
  * boots a real AgentRuntime (no database, no mocks around the runtime), and

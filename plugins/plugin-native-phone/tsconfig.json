@@ -36,8 +36,8 @@
       "@elizaos/plugin-agent-skills": [
         "../plugin-agent-skills/dist/index.d.ts"
       ],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/plugin-coding-tools": [

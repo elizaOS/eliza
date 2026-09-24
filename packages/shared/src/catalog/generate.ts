@@ -62,7 +62,7 @@ const GENERATED_PATH = join(HERE, "generated.json");
 // fs) to materialize ELIZA_CURATED_APP_DEFINITIONS without bundling the full
 // registry. Regenerated alongside generated.json.
 const CURATED_DEFS_PATH = join(HERE, "curated-app-definitions.json");
-// Derived channel -> plugin-package map. agent + app-core statically import this
+// Derived channel -> plugin-package map. agent + app statically import this
 // (browser-safe, no fs) instead of hand-maintaining duplicate CHANNEL_PLUGIN_MAPs.
 const CHANNEL_MAP_PATH = join(HERE, "channel-plugin-map.json");
 // Derived env-key -> provider plugin package map. The agent statically imports
@@ -111,7 +111,7 @@ export function collectCuratedAppDefinitions(
 
 // Derive the channel -> plugin-package map from connector entries' `channels`.
 // This replaces the hand-maintained CHANNEL_PLUGIN_MAP duplicated in agent +
-// app-core. Keys are sorted for a stable artifact; consumers read by key.
+// app. Keys are sorted for a stable artifact; consumers read by key.
 export function collectChannelPluginMap(
   entries: RegistryEntry[],
 ): Record<string, string> {

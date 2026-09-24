@@ -3,7 +3,7 @@
 // The Routing tab is the single source of truth for `GET/PUT /api/secrets/routing`.
 // The keyless stub's `GET /api/secrets/routing` always returns `{rules:[]}` and its
 // PUT does not persist, so a save→reload→read-back never converges. This spec
-// therefore exploits the real app-core runtime + on-disk vault
+// therefore exploits the real app runtime + on-disk vault
 // (ELIZA_UI_SMOKE_LIVE_STACK=1) and is classified LIVE_ONLY. It NEVER stubs the
 // route under test — `PUT /api/secrets/routing` hits the real backend.
 //

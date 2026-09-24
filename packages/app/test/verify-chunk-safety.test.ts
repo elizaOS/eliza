@@ -8,10 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-// The gate script reads `${cwd}/dist/assets/*.js` and exits non-zero when the
+// The gate script reads `${cwd}/web-dist/assets/*.js` and exits non-zero when the
 // bn.js crypto marker (`toArrayLike`) lands in a chunk that is NOT one of the
 // lazy `vendor-(crypto|solana|wallet)-` chunks. We exercise it as a subprocess
-// against synthetic `dist/assets` fixtures so the regression guard is itself
+// against synthetic `web-dist/assets` fixtures so the regression guard is itself
 // tested — the #9150 fold (crypto graph folded into the eager date-fns `en_US`
 // locale chunk) MUST fail the gate, and a clean lazy layout MUST pass.
 
@@ -27,7 +27,7 @@ const CRYPTO_MARKER = "toArrayLike";
 let workDir: string;
 
 function writeChunk(name: string, contents: string): void {
-  writeFileSync(join(workDir, "dist", "assets", name), contents, "utf8");
+  writeFileSync(join(workDir, "web-dist", "assets", name), contents, "utf8");
 }
 
 function runGate(): { status: number; output: string } {
@@ -49,7 +49,7 @@ function runGate(): { status: number; output: string } {
 
 beforeEach(() => {
   workDir = mkdtempSync(join(tmpdir(), "chunk-safety-"));
-  mkdirSync(join(workDir, "dist", "assets"), { recursive: true });
+  mkdirSync(join(workDir, "web-dist", "assets"), { recursive: true });
 });
 
 afterEach(() => {
@@ -110,7 +110,7 @@ describe("verify-chunk-safety gate", () => {
 describe("verify-chunk-safety eagerness guard", () => {
   function writeIndexHtml(entryFile: string): void {
     writeFileSync(
-      join(workDir, "dist", "index.html"),
+      join(workDir, "web-dist", "index.html"),
       `<!doctype html><html><head><script type="module" crossorigin src="/assets/${entryFile}"></script></head><body></body></html>`,
       "utf8",
     );

@@ -1,7 +1,7 @@
 /**
  * Normalize the `auth` field on a coding-agent preflight row so the
  * server-side response shape matches the client type declared in
- * `packages/app-core/src/api/client-types-cloud.ts`:
+ * `packages/app/src/api/client-types-cloud.ts`:
  *
  *     auth?: {
  *       status: "authenticated" | "unauthenticated" | "unknown";

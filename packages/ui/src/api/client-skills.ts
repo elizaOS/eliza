@@ -51,7 +51,7 @@ export interface AppRunSteeringResult {
  * Wrapped response shape for `/api/setup/telegram-account/*` routes.
  *
  * Matches the canonical `SetupStatusResponse` in
- * `eliza/packages/app-core/src/api/setup-contract.ts` plus the connector-
+ * `eliza/packages/app/src/api/setup-contract.ts` plus the connector-
  * specific detail block that drives the multi-step login wizard.
  */
 export interface TelegramAccountSetupStatus {

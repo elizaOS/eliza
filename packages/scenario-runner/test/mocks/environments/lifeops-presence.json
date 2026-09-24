@@ -72,7 +72,7 @@
     {
       "uuid": "00000005-0000-4000-8000-lifeopspresence",
       "type": "http",
-      "documentation": "Mac IOUserActivity idle level + lock state mock — mirrors the JSON shape getPowerState in packages/app-core/platforms/electrobun/src/native/desktop.ts emits after parsing pmset / ioreg / CGSession output.",
+      "documentation": "Mac IOUserActivity idle level + lock state mock — mirrors the JSON shape getPowerState in packages/app/platforms/electrobun/src/native/desktop.ts emits after parsing pmset / ioreg / CGSession output.",
       "method": "get",
       "endpoint": "__mock/lifeops/presence/desktop/power",
       "responses": [

@@ -114,7 +114,7 @@ Capacitor plugin registration name: `"ElizaCamera"` (used internally by `@capaci
 - **Manual focus/exposure on web.** `setFocusPoint` and `setExposurePoint` throw if the device does not report `"manual"` in its `focusMode`/`exposureMode` capabilities — which is the case for most desktop webcams.
 - **Build output.** `tsc` compiles to `dist/esm/`; rollup then bundles into `dist/plugin.js` (IIFE for browser script tag) and `dist/plugin.cjs.js` (CJS). The `exports` field in `package.json` selects source-mode builds via the explicit `eliza-source` condition at `src/index.ts`.
 - **iOS deployment target:** iOS 15.0+, Swift 5.9. Depends on `AVFoundation`, `Photos`, and `UIKit`.
-- **Android:** Kotlin implementation under `ai.eliza.plugins.camera`. Camera enumeration is read via `CameraDeviceReader` and covered by an **instrumented test** (`android/src/androidTest/.../CameraDeviceReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-camera:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967); `getDevices` delegates to the reader (JS shape unchanged).
+- **Android:** Kotlin implementation under `ai.eliza.plugins.camera`. Camera enumeration is read via `CameraDeviceReader` and covered by an **instrumented test** (`android/src/androidTest/.../CameraDeviceReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-camera:connectedDebugAndroidTest` from `packages/app/platforms/android` (issue #9967); `getDevices` delegates to the reader (JS shape unchanged).
 - See root `CLAUDE.md` for repo-wide conventions (logger, ESM, naming, architecture rules).
 
 ## Verification

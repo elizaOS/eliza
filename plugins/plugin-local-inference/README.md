@@ -143,7 +143,7 @@ The plugin exposes these subpath exports (see `package.json` `exports`):
 - `@elizaos/plugin-local-inference` — plugin object, `GENERATE_MEDIA` action, `handleLocalInferenceRoutes`, embedding presets.
 - `@elizaos/plugin-local-inference/runtime` — boot-time handler registration (`ensureLocalInferenceHandler`), embedding warm-up policy, mobile gate.
 - `@elizaos/plugin-local-inference/runtime/embedding-presets` — `detectEmbeddingPreset`, `EMBEDDING_PRESETS`.
-- `@elizaos/plugin-local-inference/routes` — HTTP route handlers (`handleLocalInferenceCompatRoutes`, TTS/ASR, voice) mounted by app-core.
+- `@elizaos/plugin-local-inference/routes` — HTTP route handlers (`handleLocalInferenceCompatRoutes`, TTS/ASR, voice) mounted by app.
 - `@elizaos/plugin-local-inference/services` — full service surfaces (engine, arbiter, catalog, recommendation, voice) for deep integrations.
 
 The **MemoryArbiter** (`services/memory-arbiter.ts`) is the single coordination point for all model handles across modalities. On memory-constrained devices (mobile, low-RAM desktop), the arbiter evicts models by priority before loading a new one. Cross-plugin consumers (vision, image-gen) register capabilities via `arbiter.registerCapability(...)` rather than loading models independently.
@@ -244,7 +244,7 @@ bun install
 bun run --cwd packages/core prebuild
 
 # 1. Build + stage the fused lib with Kokoro folded in.
-bun packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
+bun packages/app/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
 
 # 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
 DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"

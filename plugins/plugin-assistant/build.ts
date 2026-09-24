@@ -10,7 +10,10 @@ const manifest = JSON.parse(
 );
 await rm(`${root}dist`, { recursive: true, force: true });
 await build({
-  entry: { index: `${root}src/index.ts` },
+  entry: {
+    index: `${root}src/index.ts`,
+    "prompts/response-policy": `${root}src/prompts/response-policy.ts`,
+  },
   outDir: `${root}dist`,
   tsconfig: `${root}tsconfig.build.json`,
   platform: "node",

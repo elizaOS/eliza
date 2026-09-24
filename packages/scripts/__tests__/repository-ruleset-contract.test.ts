@@ -16,7 +16,7 @@ const drift = Bun.YAML.parse(
 const manifest = JSON.parse(
   read(".github/rulesets/required-branches.json"),
 ) as Record<string, any>;
-const helper = read("scripts/security/apply-branch-protection.sh");
+const helper = read("packages/scripts/security/apply-branch-protection.sh");
 const codeowners = read(".github/CODEOWNERS");
 const driftSource = read(".github/workflows/repository-ruleset-drift.yml");
 

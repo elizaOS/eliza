@@ -187,6 +187,6 @@ vector.
 - `packages/training/scripts/quantization/polarquant_apply.py` -- the
   orchestrator that produces the safetensors sidecar this converter
   consumes.
-- `packages/app-core/scripts/aosp/compile-libllama.mjs` -- the
+- `packages/app/scripts/aosp/compile-libllama.mjs` -- the
   toolchain that will build the `libllama.so` carrying the eventual
   Q4_POLAR kernel registration.

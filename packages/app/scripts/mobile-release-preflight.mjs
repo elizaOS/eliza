@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateStagedIosSideloadBundle } from "../../app-core/scripts/lib/mobile-lane-stamp.mjs";
+import { evaluateStagedIosSideloadBundle } from "./lib/mobile-lane-stamp.mjs";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -228,14 +228,14 @@ function checkAndroid() {
   const androidRoot = path.join(
     appRoot,
     "..",
-    "app-core",
+    "app",
     "platforms",
     "android",
   );
   addCheck(
     "Android project",
     fs.existsSync(path.join(androidRoot, "gradlew")),
-    "packages/app-core/platforms/android/gradlew exists",
+    "packages/app/platforms/android/gradlew exists",
     "Run `bun run --cwd packages/app cap:sync:android`.",
   );
   addCheck(

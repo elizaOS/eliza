@@ -25,7 +25,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
 ### Registered elizaOS services
-- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-capacitor-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
+- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-native-inference/host-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
 - `TimedAsrService` (`src/services/runtime-services.ts`) — additive `timedAsr` seam for fused per-word timings. Meeting transcription discovers it without importing this plugin or widening the string-only `TRANSCRIPTION` model contract.
 - `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
 
@@ -34,7 +34,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 - `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the single fused `libelizainference` FFI implementation via the `BackendDispatcher`; one model is loaded at a time, with unload-before-load swaps.
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
-### HTTP routes (mounted by app-core)
+### HTTP routes (mounted by app)
 Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferenceRoutes`, which is exported from the root `@elizaos/plugin-local-inference`):
 - Catalog, download, status, and chat-command routes via `handleLocalInferenceRoutes` (`src/local-inference-routes.ts`, root subpath)
 - TTS: `handleLocalInferenceTtsRoute` (`src/routes/local-inference-tts-route.ts`)
@@ -43,10 +43,10 @@ Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferen
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
 - Voice profiles (TTS preset catalog): `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
-- Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
+- Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
 
 ### HTTP routes (served from `plugin.routes` — `runtime.routes` rawPath)
-No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app-core via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
+No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
 - Speaker-profile entity binding (`/v1/voice/speaker-profiles`, `…/:id/bind`, `…/:id/unbind`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the HTTP runtime path for `VoiceProfileStore.bindEntity`, issue #8234)
 - Voice-profile management UI (`/api/voice/profiles*` — list / rename / delete / merge / split / export / sample / bind / unbind): `handleVoiceProfilesManagementRoutes` (`src/routes/voice-profiles-management-routes.ts`) — the server half of the `VoiceProfileSection` settings UI
 
@@ -147,9 +147,9 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `MODELS_DIR` | No | Override default GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | No | Filename of the small text model GGUF (Capacitor/mobile adapter) |
 | `LOCAL_LARGE_MODEL` | No | Filename of the large text model GGUF (Capacitor/mobile adapter) |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch (consumed by app-core) |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch (consumed by app) |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
-| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app-core/electrobun) |
+| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app/electrobun) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | No | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_LOCAL_LLAMA` | No | Set `1` to force AOSP local inference path |
 | `ELIZA_LOCAL_ONLY` | No | Set `1` or `true` to force all model slots to local inference (overrides routing policy) |
@@ -160,7 +160,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_IMAGEGEN_ACCELERATOR` | No | Accelerator for image-gen backend (`coreml`, `tensorrt`, `mflux`, `sd-cpp`) |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | No | Enable iOS/AOSP device-bridge mode |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
-| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for `DeviceBridge.generate()`/`.embed()` calls (default 60000). Must be a canonical decimal integer from 1 through 2147483647 — malformed or out-of-range throws `ElizaError` (`code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`) before any device lookup. Also read independently by `@elizaos/plugin-capacitor-bridge`'s device bridge (separate class, same accepted grammar). |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for `DeviceBridge.generate()`/`.embed()` calls (default 60000). Must be a canonical decimal integer from 1 through 2147483647 — malformed or out-of-range throws `ElizaError` (`code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`) before any device lookup. Also read independently by `@elizaos/plugin-native-inference/host-bridge`'s device bridge (separate class, same accepted grammar). |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
@@ -193,7 +193,7 @@ Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (default
 ### Add a new route handler
 1. Create `src/routes/my-route.ts` exporting a handler function.
 2. Export it from `src/routes/index.ts`.
-3. Mount it in the consuming runtime (currently `packages/app-core/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
+3. Mount it in the consuming runtime (currently `packages/app/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
 
 ### Add a new backend capability (e.g. a new image-gen backend)
 1. Implement the capability in `src/services/imagegen/` following the `ImageGenBackend` interface.

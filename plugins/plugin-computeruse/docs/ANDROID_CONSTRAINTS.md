@@ -15,7 +15,7 @@
 For normal Google Android and Play distribution, Eliza uses Google App
 Actions and Android shortcuts only:
 
-- `packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml`
+- `packages/app/platforms/android/app/src/main/res/xml/shortcuts.xml`
   declares `actions.intent.OPEN_APP_FEATURE`, `CREATE_MESSAGE`,
   and `GET_THING`.
 - `OPEN_APP_FEATURE` is the static feature surface for chat/ask, voice,

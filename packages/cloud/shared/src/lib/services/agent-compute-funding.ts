@@ -1,6 +1,6 @@
 /** Reserves Dedicated runtime funds under lifecycle authority before provider work, and binds them to one exact container. */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";

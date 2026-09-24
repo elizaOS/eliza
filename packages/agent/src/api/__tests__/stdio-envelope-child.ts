@@ -35,11 +35,11 @@ import { AgentRuntime, type Character } from "@elizaos/core";
 import {
   type AndroidRequestPayload,
   dispatchBufferedRequest,
-} from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+} from "@elizaos/plugin-native-inference/android/dispatch";
 import {
   createStdioBridge,
   type StdioBridgeRequestFrame,
-} from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
+} from "@elizaos/plugin-native-inference/shared/stdio-bridge";
 import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { dispatchRoute } from "../dispatch-route.ts";
 

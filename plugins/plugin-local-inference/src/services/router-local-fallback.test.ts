@@ -3,6 +3,7 @@
  * Deterministic model handlers and readiness inputs isolate fallback behavior;
  * no model is loaded, downloaded, or called over the network.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
 	AgentRuntime,
 	type Character,
@@ -14,7 +15,7 @@ import {
 	runWithStreamingContext,
 	type StreamChunkCallback,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readiness = vi.hoisted(() => ({
@@ -57,13 +58,13 @@ import { LocalInferenceUnavailableError } from "../provider";
 import { installRouterHandler, ROUTER_PROVIDER } from "./router-handler";
 
 function makeRuntime(preferCloud: boolean) {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "LocalAdmissionAgent",
 			bio: "test",
 			settings: { ELIZA_BRAIN_PROVIDER: preferCloud ? "test-cloud" : "" },
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 }

@@ -179,7 +179,7 @@ If an evidence type does not apply, keep it visible in the PR and write
 before asking for review; capturing is not review.
 
 Evidence is a reviewer-owned acceptance record rather than a required GitHub
-Actions status. Use `scripts/check-pr-evidence.mjs` locally when preparing the
+Actions status. Use `packages/scripts/check-pr-evidence.mjs` locally when preparing the
 pull request, and reject missing or placeholder evidence during review. A PR
 whose diff touches rendered UI should attach concrete before/after screenshots,
 a walkthrough video, and OCR review artifacts.
@@ -299,7 +299,7 @@ validates them locally:
 
 ```bash
 # name files <pr-number>-<artifact>.<ext>, then:
-node scripts/pr-evidence.mjs attach 15171 15171-after-desktop.jpg 15171-walkthrough.mp4
+node packages/scripts/pr-evidence.mjs attach 15171 15171-after-desktop.jpg 15171-walkthrough.mp4
 # embed in the PR evidence rows:
 #   ![after](https://github.com/elizaOS/eliza/releases/download/pr-evidence/15171-after-desktop.jpg)
 ```

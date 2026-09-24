@@ -21,9 +21,6 @@
     "useUnknownInCatchVariables": true,
     "types": ["vite/client", "bun-types"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
 }

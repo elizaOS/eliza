@@ -12,7 +12,7 @@ import {
   type KmsAeadOperationKeyBundleHandle,
   KmsAeadOperationKeyBundleProvider,
   LocalKmsAdapter,
-} from "@elizaos/credentials/kms";
+} from "@elizaos/auth/kms";
 import {
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,

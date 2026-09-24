@@ -14,7 +14,7 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { getBootConfig } from "@elizaos/ui/config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -205,7 +205,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     deviceBridgeStartPromise = (async () => {
       try {
         const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-          import("@elizaos/capacitor-llama"),
+          import("@elizaos/plugin-native-inference/llama"),
           getOrCreateDeviceBridgeId(),
         ]);
         const pairingToken =
@@ -280,7 +280,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     agentTunnelStartPromise = (async () => {
       try {
         const [{ MobileAgentBridge }, deviceId] = await Promise.all([
-          import("@elizaos/capacitor-mobile-agent-bridge"),
+          import("@elizaos/plugin-native-inference/host-bridge"),
           getOrCreateDeviceBridgeId(),
         ]);
 
@@ -328,7 +328,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     agentTunnelStartPromise = null;
     try {
       const { MobileAgentBridge } = await import(
-        "@elizaos/capacitor-mobile-agent-bridge"
+        "@elizaos/plugin-native-inference/host-bridge"
       );
       await MobileAgentBridge.stopInboundTunnel();
     } catch (error) {

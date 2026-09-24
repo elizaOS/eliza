@@ -1,6 +1,6 @@
 "use client";
 
-import type { LoginProviders } from "@elizaos/login";
+import type { LoginProviders } from "@elizaos/auth";
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
@@ -28,7 +28,7 @@ import {
   GoogleIcon,
   LoginForm,
   useAuth,
-} from "../../../login/index";
+} from "../../../auth/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { CornerBrackets } from "../primitives";

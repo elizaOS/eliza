@@ -1,5 +1,6 @@
 /** Tests real maps service/action behavior over the in-memory runtime database adapter. */
 
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   type ActionParameters,
   AgentRuntime,
@@ -12,7 +13,7 @@ import {
   tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
@@ -110,10 +111,10 @@ describe("MapsService and MAPS action", () => {
   let service: MapsService;
 
   beforeEach(() => {
-    runtime = new AgentRuntime({
+    runtime = createSQLiteTestRuntime({
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Test" }),
-      adapter: new InMemoryDatabaseAdapter(),
+      
       logLevel: "fatal",
     });
     service = new MapsService(runtime);

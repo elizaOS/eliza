@@ -14,11 +14,11 @@ import { AgentRuntime, type Character, isElizaError } from "@elizaos/core";
 import {
   dispatchBufferedRequest,
   dispatchStreamingRequest,
-} from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+} from "@elizaos/plugin-native-inference/android/dispatch";
 import {
   createStdioBridge,
   type StdioBridgeResponseFrame,
-} from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
+} from "@elizaos/plugin-native-inference/shared/stdio-bridge";
 import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";

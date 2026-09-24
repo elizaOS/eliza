@@ -10,7 +10,7 @@
  * parsed assignments directly through `options.parameters`).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,
@@ -37,8 +37,8 @@ function baseRoles(): Record<string, string> {
   };
 }
 
-async function buildAdapter(): Promise<InMemoryDatabaseAdapter> {
-  const adapter = new InMemoryDatabaseAdapter();
+async function buildAdapter(): Promise<SQLiteDatabaseAdapter> {
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.init();
   await adapter.createWorlds([
     {
@@ -65,7 +65,7 @@ async function buildAdapter(): Promise<InMemoryDatabaseAdapter> {
 }
 
 function buildRuntime(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   over: Partial<IAgentRuntime> = {},
 ): IAgentRuntime {
   return {
@@ -118,7 +118,7 @@ function buildMessage(): Memory {
   } as Memory;
 }
 
-async function storedRoles(adapter: InMemoryDatabaseAdapter) {
+async function storedRoles(adapter: SQLiteDatabaseAdapter) {
   const rows = await adapter.getWorldsByIds([CONFIG_WORLD_ID]);
   return (rows[0]?.metadata as { roles?: Record<string, string> })?.roles ?? {};
 }

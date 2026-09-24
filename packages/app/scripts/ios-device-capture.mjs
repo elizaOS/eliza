@@ -6,7 +6,7 @@
  *
  * Flow:
  *   1. Template-sync the iOS project (ensure-capacitor-platform) so the
- *      AppUITests target from packages/app-core/platforms/ios is present in
+ *      AppUITests target from packages/app/platforms/ios is present in
  *      the generated packages/app/ios project.
  *   2. `xcodebuild build-for-testing -scheme AppUITests` → produces
  *      AppUITests-Runner.app + App.app + an .xctestrun file. Device builds
@@ -637,7 +637,7 @@ const APPUITESTS_SOURCE_DIR = path.resolve(
   scriptDir,
   "..",
   "..",
-  "app-core",
+  "app",
   "platforms",
   "ios",
   "App",

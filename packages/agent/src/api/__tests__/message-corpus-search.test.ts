@@ -1,7 +1,7 @@
 /**
  * End-to-end proof that the backdated message-corpus seeder feeds real, scalable
  * time-window message search. Runs the REAL `generateMessageCorpus` +
- * `seedMessageCorpus` and drives the REAL `InMemoryDatabaseAdapter.searchMessages`
+ * `seedMessageCorpus` and drives the REAL `SQLiteDatabaseAdapter.searchMessages`
  * (real `rankMessageSearch` + real `withinCreatedAtWindow`) — no model of the
  * store stands in for the thing under test.
  *
@@ -20,7 +20,7 @@
 
 import type { Memory, MessageSearchHit, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   generateMessageCorpus,
@@ -41,7 +41,7 @@ const AGENT_ID = "00000000-0000-0000-0000-0000000000a9" as UUID;
  * genuine adapter writes — the search path they feed is unmocked.
  */
 function makeRuntimeShim(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
 ): MessageCorpusRuntime {
   return {
     agentId: AGENT_ID,
@@ -56,7 +56,7 @@ function makeRuntimeShim(
           type: ChannelType.DM,
           worldId: params.worldId,
           channelId: params.channelId,
-        } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],
+        } as Parameters<SQLiteDatabaseAdapter["createRooms"]>[0][number],
       ]);
     },
     async createMemory(memory: Memory, tableName: string, unique?: boolean) {
@@ -69,7 +69,7 @@ function makeRuntimeShim(
 }
 
 async function search(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   roomIds: readonly UUID[],
   query: string,
   opts: {
@@ -94,14 +94,14 @@ const at = (h: MessageSearchHit): number =>
   typeof h.memory.createdAt === "number" ? h.memory.createdAt : Number.NaN;
 
 describe("message-corpus seeder → real time-window search", () => {
-  let adapter: InMemoryDatabaseAdapter;
+  let adapter: SQLiteDatabaseAdapter;
   let roomIds: UUID[];
   let sampleQueries: string[];
   let oldestMessageAt: number;
   let newestMessageAt: number;
 
   beforeAll(async () => {
-    adapter = new InMemoryDatabaseAdapter();
+    adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
     // ~1 year+ of history: 10 conversations × 30 messages over 13 months, so
     // there is material on both sides of every "N months ago" boundary.

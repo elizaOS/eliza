@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectWorkspaceMaps } from "../../app-core/scripts/lib/workspace-discovery.mjs";
+import { collectWorkspaceMaps } from "../../app/scripts/lib/workspace-discovery.mjs";
 import {
   expandWorkspaceGlobs,
   listPackages,
@@ -245,7 +245,7 @@ describe("listPackages — name mapping", () => {
     );
   });
 
-  test("app-core compatibility uses the same resolver and absolute maps", () => {
+  test("app compatibility uses the same resolver and absolute maps", () => {
     const root = makeRepo();
     writeRootPackage(root, ["packages/*"]);
     writePackage(root, "packages/a", "@x/a");

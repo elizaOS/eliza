@@ -3,7 +3,7 @@
  * plugins and connectors. Manager-backed ops (install/uninstall/update/sync/
  * eject/reinject) go through the plugin_manager service; configure/read_config/
  * toggle/list/disconnect hit the local /api/plugins compat routes because their
- * orchestration lives in @elizaos/app-core, which this layer cannot import.
+ * orchestration lives in @elizaos/app, which this layer cannot import.
  */
 import type {
   Action,
@@ -342,7 +342,7 @@ async function doReinject(
 }
 
 // configure / read_config / toggle: orchestration (vault mirror, runtime
-// mutation, drift reconciliation) is in @elizaos/app-core which the agent
+// mutation, drift reconciliation) is in @elizaos/app which the agent
 // layer cannot import. Hit the local /api/plugins compat routes instead.
 
 async function doConfigure(params: PluginParams): Promise<ActionResult> {

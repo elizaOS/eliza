@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime, ModelType } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { ElizaClient } from "@elizaos/ui/api/client";
 import { completeRemoteAgentFirstRun } from "@elizaos/ui/first-run/adopt-remote-first-run";
 import { setPendingFirstRunTextReleaseHandler } from "@elizaos/ui/first-run/first-run-pending-text";

@@ -194,7 +194,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] =
 //   VisionService degrades gracefully on a phone (no capture tool → warns).
 // - plugin-scheduling is the always-loaded ScheduledTask runtime primitive;
 //   its deps are core/shared/drizzle + the peer plugin-sql, it imports no
-//   app-core/agent, and probes host capabilities via ELIZA_PLATFORM.
+//   app/agent, and probes host capabilities via ELIZA_PLATFORM.
 // Membership is declared via `mobileCore` in CORE_PLUGIN_PROFILE_METADATA;
 // this list is derived (legacy host-owned read surface).
 export const MOBILE_CORE_PLUGINS: readonly string[] =

@@ -37,8 +37,8 @@
       "@elizaos/plugin-task-coordinator/*": [
         "./plugin-task-coordinator/dist/*"
       ],
-      "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
-      "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
+      "@elizaos/app": ["../packages/app/dist/index.d.ts"],
+      "@elizaos/app/*": ["../packages/app/dist/*"],
       "@elizaos/agent": ["../packages/agent/dist/index.d.ts"],
       "@elizaos/agent/*": ["../packages/agent/dist/*"],
       "@elizaos/plugin-discord": ["./plugin-discord/dist/index.d.ts"],

@@ -11,7 +11,7 @@ import { expect, test } from "@playwright/test";
 import { build, normalizePath } from "vite";
 
 const appRoot = fileURLToPath(new URL("../..", import.meta.url));
-const entryPath = path.join(appRoot, "src/entry.ts");
+const entryPath = path.join(appRoot, "src/renderer-entry.ts");
 const renderers = ["marketing-home-entry", "public-web-entry", "main"] as const;
 let fixtureRoot: string;
 

@@ -5,7 +5,7 @@
  * two OVERLAPPING callers both read an empty room and both persist an identical
  * greeting row, which paints the doubled "Hey, I'm <agent>" bubble and leaks a
  * duplicate row into model context. Drives the real `handleConversationRoutes`
- * against a real `InMemoryDatabaseAdapter` (thin runtime shim) and asserts the
+ * against a real `SQLiteDatabaseAdapter` (thin runtime shim) and asserts the
  * room-history ownership holds: concurrent requests store exactly one greeting,
  * and create-with-greeting cannot deadlock a direct greeting request.
  */
@@ -16,7 +16,7 @@ import {
   MESSAGE_SOURCE_AGENT_GREETING,
   RoomHandlerQueue,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type ConversationRouteContext,
@@ -30,7 +30,7 @@ const CONV_ID = "11111111-1111-4111-8111-111111111111";
 const ROOM_ID = "22222222-2222-4222-8222-222222222222" as UUID;
 
 function makeRuntime(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   beforeGetMemories?: (roomId: UUID) => Promise<void>,
 ): unknown {
   return {
@@ -45,7 +45,7 @@ function makeRuntime(
           name: params.roomName,
           source: "test",
           type: ChannelType.DM,
-        } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],
+        } as Parameters<SQLiteDatabaseAdapter["createRooms"]>[0][number],
       ]);
     },
     async createMemory(memory: Memory, tableName: string) {
@@ -100,7 +100,7 @@ function makeRuntime(
 }
 
 function makeState(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   beforeGetMemories?: (roomId: UUID) => Promise<void>,
 ): ConversationRouteState {
   const conv: ConversationMeta = {
@@ -190,7 +190,7 @@ function createConversationRequest(
 }
 
 async function greetingRows(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   roomId = ROOM_ID,
 ) {
   const memories = await adapter.getMemories({
@@ -206,10 +206,10 @@ async function greetingRows(
 }
 
 describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing", () => {
-  let adapter: InMemoryDatabaseAdapter;
+  let adapter: SQLiteDatabaseAdapter;
 
   beforeEach(async () => {
-    adapter = new InMemoryDatabaseAdapter();
+    adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
   });
 

@@ -2,8 +2,7 @@
  * Shared app manager contracts.
  */
 
-import type { ViewKind } from "@elizaos/common";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, ViewKind } from "@elizaos/core";
 import z from "zod";
 import curatedAppDefinitions from "../catalog/curated-app-definitions.json" with {
   type: "json",
@@ -23,7 +22,7 @@ export function isValidAppRouteSlug(value: unknown): value is string {
 
 // ---------------------------------------------------------------------------
 // Runtime-registered curated apps — keyed on a global Symbol so the same
-// store is shared across @elizaos/shared, @elizaos/app-core, and any plugin
+// store is shared across @elizaos/shared, @elizaos/app, and any plugin
 // that wires in additional curated entries. Owning the helpers here removes
 // shared's dependency on the @elizaos/core export.
 // ---------------------------------------------------------------------------
@@ -210,7 +209,7 @@ export interface RegistryAppInfo {
   /**
    * If true, the app declares itself as the default landing tab. Exactly one
    * installed app should set this. Sourced from `package.json` →
-   * `elizaos.app.mainTab`. Consumed by `getMainTabApp()` in `@elizaos/app-core`
+   * `elizaos.app.mainTab`. Consumed by `getMainTabApp()` in `@elizaos/app`
    * to compute the shell's landing tab at boot.
    */
   mainTab?: boolean;

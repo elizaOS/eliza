@@ -5,15 +5,19 @@
  */
 
 import {
+  AgentRuntime,
   ChannelType,
   type Content,
   ContentType,
+  createUniqueUuid,
+  EventType,
   type Media,
   Memory,
   MemoryType,
+  stringToUuid,
   type UUID,
-} from "@elizaos/common";
-import { AgentRuntime, createUniqueUuid, EventType, stringToUuid, type World } from "@elizaos/core";
+  type World,
+} from "@elizaos/core";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { discordConnectionsRepository, userCharactersRepository } from "../../../db/repositories";

@@ -5,7 +5,8 @@
  * in-memory adapter with a stubbed `composeState` — deterministic, no model.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import { attestDeliveryAudienceFromCanonicalRoom } from "../../security";
@@ -98,9 +99,9 @@ describe("runActionsByMode", () => {
 	let runtime: AgentRuntime;
 
 	beforeAll(async () => {
-		runtime = new AgentRuntime({
+		runtime = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			adapter: new InMemoryDatabaseAdapter(),
+			
 			logLevel: "fatal",
 		});
 		// Register the runtime with a no-op composeState so we don't need a

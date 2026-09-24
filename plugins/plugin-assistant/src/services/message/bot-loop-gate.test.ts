@@ -16,11 +16,11 @@
  *  - opt-out setting and threshold clamping,
  *  - read failure fails open (a DB error never mutes the agent).
  *
- * Deterministic: real AgentRuntime + InMemoryDatabaseAdapter, zero model
+ * Deterministic: real AgentRuntime + SQLiteDatabaseAdapter, zero model
  * calls (asserted via a throwing useModel stub).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -54,19 +54,20 @@ afterEach(async () => {
 
 async function makeRuntime(settings?: Record<string, string>): Promise<{
   runtime: AgentRuntime;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       name: "GateAgent",
       ...(settings ? { settings } : {}),
     }),
-    adapter,
+    
     logLevel: "fatal",
     enableAutonomy: false,
   });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
   await runtime.initialize();
   // Model-independence proof: any model call during the gate is a failure.
   runtime.useModel = (async () => {
@@ -127,7 +128,7 @@ function makeRow(args: {
 }
 
 async function seed(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   rows: Memory[],
 ): Promise<void> {
   await adapter.createMemories(
@@ -364,7 +365,7 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
     // unrelated background services (relationships graph builder etc.) keep
     // working and cannot surface unhandled rejections into the test run.
     adapter.getMemories = async (
-      params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0],
+      params: Parameters<SQLiteDatabaseAdapter["getMemories"]>[0],
     ) => {
       if (params.tableName === "messages" && params.roomId === GROUP_ROOM) {
         throw new Error("db unavailable");

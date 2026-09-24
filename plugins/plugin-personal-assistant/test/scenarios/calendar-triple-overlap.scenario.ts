@@ -69,7 +69,7 @@ const GYM_RESCHEDULED_END = at(5 * 60);
 
 // ---------------------------------------------------------------------------
 // Repository access (structural, same pattern as the lifeops workflow-event
-// scenarios in packages/test/scenarios).
+// scenarios in packages/testing/scenarios).
 // ---------------------------------------------------------------------------
 
 interface CalendarEventRecordLike {

@@ -7,7 +7,7 @@
  * The seed registers the owner `PLUGIN` action exactly as the real agent does
  * (`promoteSubactionsToActions`, so the planner sees the dedicated
  * `PLUGIN_TOGGLE` verb, not just the umbrella) and a fetch shim standing in for
- * the app-core `/api/plugins` + `/api/plugins/:id` routes, so the real
+ * the app `/api/plugins` + `/api/plugins/:id` routes, so the real
  * `doList`/`doToggle` handlers run end-to-end and the outbound toggle request is
  * captured. The runtime factory always loads plugin-personal-assistant, so the
  * `PLUGIN` verb competes against the full LifeOps action set (incl. the
@@ -72,8 +72,8 @@ function isPluginFamily(name: string): boolean {
 }
 
 /**
- * Stand in for the app-core plugin routes the `PLUGIN` handlers hit on a fixed
- * localhost port (app-core owns them in production; they are not mounted in the
+ * Stand in for the app plugin routes the `PLUGIN` handlers hit on a fixed
+ * localhost port (app owns them in production; they are not mounted in the
  * bare scenario runtime): `GET /api/plugins` returns a small catalog with
  * discord enabled so the list turn is real, and `PUT /api/plugins/:id` records
  * the toggle so the domain effect is asserted.

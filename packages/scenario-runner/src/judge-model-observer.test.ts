@@ -2,13 +2,14 @@
  * Exercises model identity capture through a real runtime registry and event
  * bus with deterministic model handlers, including asynchronous isolation.
  */
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   AgentRuntime,
   createCharacter,
   EventType,
   ModelType,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { isJudgeIndependent } from "./judge-independence.ts";
 import {
@@ -17,9 +18,9 @@ import {
 } from "./judge-model-observer.ts";
 
 function runtimeFixture(emit = true) {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: createCharacter({ name: "Identity observer" }),
-    adapter: new InMemoryDatabaseAdapter(),
+    
     enableAutonomy: false,
     logLevel: "fatal",
   });

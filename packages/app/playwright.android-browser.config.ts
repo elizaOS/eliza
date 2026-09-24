@@ -15,7 +15,7 @@ const repoRoot = path.resolve(appDir, "../..");
 const uiSmokeLiveStack = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "playwright-ui-live-stack.ts",
 );
@@ -30,7 +30,7 @@ const uiSmokePort = resolvePlaywrightPortEnv(
   "ELIZA_UI_SMOKE_PORT",
   2138,
 );
-// Fail-fast Node runtime resolution: the shared app-core validator throws at
+// Fail-fast Node runtime resolution: the shared app validator throws at
 // config load — before the webServer command spawns — when ELIZA_NODE_PATH is
 // invalid or no real Node.js 24+ executable can be found.
 const nodeExecutable = resolvePlaywrightNodeRuntime();
@@ -66,7 +66,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
     url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer: process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1",

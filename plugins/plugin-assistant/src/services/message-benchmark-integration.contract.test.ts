@@ -2,7 +2,7 @@
 
 import { AgentRuntime, type Memory } from "@elizaos/core";
 import { contextBenchProvider } from "@elizaos/testing";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import {
   composeResponseState,

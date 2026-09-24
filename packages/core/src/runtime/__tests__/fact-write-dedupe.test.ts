@@ -1,13 +1,14 @@
 /**
  * Structural write-time dedupe for the `facts` table, driven through a real
- * AgentRuntime + InMemoryDatabaseAdapter (only the extraction model output is
+ * AgentRuntime + SQLiteDatabaseAdapter (only the extraction model output is
  * canned via registerModel). Regression-proves the live double-write: one
  * extraction turn persisted the same claim twice — a fact row (kind=current)
  * plus a relationship-echo row with no `kind`, which the FACTS reader then
  * promoted to a durable fact ("nubs plays guitar" duplicated durable).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { factsProvider } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { runFactsAndRelationshipsStage } from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
@@ -23,9 +24,9 @@ const ROOM = "00000000-0000-0000-0000-000000000003" as UUID;
 const JAKE = "00000000-0000-0000-0000-0000000000a1" as UUID;
 
 function makeRuntime(modelResponse?: string): AgentRuntime {
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: { name: "Eliza", bio: "test", settings: {} } as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		
 		logLevel: "fatal",
 	});
 	if (modelResponse !== undefined) {

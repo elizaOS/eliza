@@ -16,7 +16,7 @@
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
-import { isInferenceTraceId } from "@elizaos/common";
+import { isInferenceTraceId } from "@elizaos/core";
 import { renderCloudPairHandoffHtml } from "@elizaos/shared/contracts";
 import {
   ELIZA_DOMAIN_CONTRACTS,

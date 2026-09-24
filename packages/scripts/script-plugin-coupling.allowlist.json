@@ -174,7 +174,7 @@
     "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {
-    "file": "scripts/check-markdown-links.mjs",
+    "file": "packages/scripts/check-markdown-links.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-computeruse",
@@ -184,7 +184,7 @@
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
   {
-    "file": "scripts/generate-view-heroes.mjs",
+    "file": "packages/scripts/generate-view-heroes.mjs",
     "tokens": [
       "plugins/plugin-app-control",
       "plugins/plugin-blocker",
@@ -206,27 +206,27 @@
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
   {
-    "file": "scripts/lifeops/connector-paths.mjs",
+    "file": "packages/scripts/lifeops/connector-paths.mjs",
     "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
     "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
   },
   {
-    "file": "scripts/lifeops/credential-probes.mjs",
+    "file": "packages/scripts/lifeops/credential-probes.mjs",
     "tokens": ["plugins/plugin-github"],
     "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
   },
   {
-    "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
+    "file": "packages/scripts/lifeops/hitl-credential-dashboard.mjs",
     "tokens": ["plugins/plugin-github"],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
   },
   {
-    "file": "scripts/portable-linux-fused-inference.mjs",
+    "file": "packages/scripts/portable-linux-fused-inference.mjs",
     "tokens": ["plugins/plugin-local-inference"],
     "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
   },
   {
-    "file": "scripts/training-harvest/build-manifest.mjs",
+    "file": "packages/scripts/training-harvest/build-manifest.mjs",
     "tokens": ["@elizaos/plugin-cli-inference"],
     "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
   }

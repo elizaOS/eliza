@@ -14,8 +14,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
@@ -23,11 +23,11 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/credentials/vault": [
-        "../../packages/credentials/src/vault/index.ts"
+      "@elizaos/auth/vault": [
+        "../../packages/auth/src/vault/index.ts"
       ],
-      "@elizaos/credentials/vault/*": [
-        "../../packages/credentials/src/vault/*"
+      "@elizaos/auth/vault/*": [
+        "../../packages/auth/src/vault/*"
       ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"

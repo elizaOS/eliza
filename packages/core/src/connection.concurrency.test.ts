@@ -11,7 +11,7 @@
  * entity or a world overlap freely.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureConnection, ensureConnections } from "./connection";
 import { logger } from "./logger";
@@ -28,7 +28,7 @@ function deferred<T = void>() {
 	return { promise, reject, resolve };
 }
 
-class HoldingEntityAdapter extends InMemoryDatabaseAdapter {
+class HoldingEntityAdapter extends SQLiteDatabaseAdapter {
 	readonly entityWriteStarted = deferred();
 	readonly releaseEntityWrite = deferred();
 
@@ -46,8 +46,9 @@ afterEach(() => {
 
 describe("ensureConnection under concurrency", () => {
 	it("preserves both connections' per-source entity identity", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-entity-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("concurrent-entity-person");
 		const messageServerId = stringToUuid("concurrent-entity-server");
 
@@ -81,8 +82,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("preserves world metadata contributed by a concurrent caller", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-world-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const worldId = stringToUuid("concurrent-world");
 		const messageServerId = stringToUuid("concurrent-world-server");
 
@@ -111,8 +113,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("keeps sequential reconciliation unchanged", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("sequential-entity-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("sequential-entity-person");
 		const messageServerId = stringToUuid("sequential-entity-server");
 
@@ -160,8 +163,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("still creates room participants for every concurrent connection", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-participants-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const worldId = stringToUuid("concurrent-participants-world");
 		const messageServerId = stringToUuid("concurrent-participants-server");
 		const roomIds = ["a", "b", "c"].map((suffix) =>
@@ -223,7 +227,7 @@ describe("ensureConnection under concurrency", () => {
 
 	it("does not serialize identical record ids across independent adapters", async () => {
 		const firstAdapter = new HoldingEntityAdapter();
-		const secondAdapter = new InMemoryDatabaseAdapter();
+		const secondAdapter = SQLiteDatabaseAdapter.create(":memory:");
 		const secondWriteStarted = deferred();
 		const originalSecondUpsert =
 			secondAdapter.upsertEntities.bind(secondAdapter);
@@ -256,7 +260,7 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("allows a successor reconciliation after the predecessor rejects", async () => {
-		class RejectFirstEntityWriteAdapter extends InMemoryDatabaseAdapter {
+		class RejectFirstEntityWriteAdapter extends SQLiteDatabaseAdapter {
 			private entityWrites = 0;
 
 			override async upsertEntities(entities: Entity[]): Promise<void> {
@@ -294,8 +298,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("acquires reverse-overlap batches in sorted order without deadlock", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("reverse-overlap-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const firstEntityId = stringToUuid("reverse-overlap-first-entity");
 		const secondEntityId = stringToUuid("reverse-overlap-second-entity");
 		const firstWorldId = stringToUuid("reverse-overlap-first-world");

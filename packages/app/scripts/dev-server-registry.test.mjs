@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { configureDevCloudEnvironment } from "../../app-core/scripts/lib/dev-cloud-target.mjs";
+import { configureDevCloudEnvironment } from "./lib/dev-cloud-target.mjs";
 import {
   allocatePortsForWorktree,
   createDevServerCloudProfileFingerprint,

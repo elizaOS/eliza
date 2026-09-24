@@ -4,7 +4,7 @@
  * Dispatches every `/api/accounts*` and `/api/providers*` request through the
  * REAL `handleAccountsRoutes` from `@elizaos/agent` — the exact handler the
  * dashboard API server mounts — backed by the REAL default `AccountPool`
- * (`@elizaos/app-core/account-pool`, pinned to source via
+ * (`@elizaos/app/account-pool`, pinned to source via
  * tsconfig.e2e-paths.json) over a REAL on-disk credential store under a
  * scratch `ELIZA_HOME`. Nothing between the browser's fetch and the disk is a
  * mock.
@@ -27,7 +27,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { getDefaultAccountPool } from "@elizaos/app-core/account-pool";
+import { getDefaultAccountPool } from "@elizaos/app/account-pool";
 import {
   type AccountsRouteContext,
   handleAccountsRoutes,

@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { personalSharedAgentId } from "./services/shared-runtime/personal-shared-agent";
 
 const telegramUser = {

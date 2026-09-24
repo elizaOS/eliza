@@ -4,7 +4,7 @@ Owner: macOS reconciliation lane
 
 Consumer: `@elizaos/plugin-calendar` Apple normalization and unified-feed deduplication
 
-Native file intentionally untouched: `packages/app-core/platforms/electrobun/native/macos/window-effects.mm`
+Native file intentionally untouched: `packages/app/platforms/electrobun/native/macos/window-effects.mm`
 
 ## Required event JSON additions
 
@@ -29,7 +29,7 @@ Expose a narrow change-generation or callback boundary backed by `EKEventStoreCh
 
 ## Acceptance expectations
 
-- Rebuild `libMacWindowEffects.dylib` with `bun run --cwd packages/app-core/platforms/electrobun build:native-effects`.
+- Rebuild `libMacWindowEffects.dylib` with `bun run --cwd packages/app/platforms/electrobun build:native-effects`.
 - A Google recurring event surfaced through Apple must emit the same portable UID and original occurrence instant as the direct Google API event.
 - `plugins/plugin-calendar/src/apple-calendar.provenance.test.ts` must continue to collapse the overlap to one Google-authoritative event with both provider sources retained in dedup metadata.
 - A Calendar edit made in Apple Calendar must change the native generation/callback, invalidate the cached Apple sync state, and appear on the next bounded feed read without restarting Eliza.

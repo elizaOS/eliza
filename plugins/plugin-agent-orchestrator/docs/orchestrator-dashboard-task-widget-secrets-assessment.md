@@ -94,7 +94,7 @@ priority order:
 | Whole `src/components/chat` suite | — | 49 | green |
 
 `bun run --cwd packages/ui lint` clean. `bun run --cwd packages/ui typecheck` clean.
-`bun run --cwd packages/app-core typecheck` shows two pre-existing
+`bun run --cwd packages/app typecheck` shows two pre-existing
 `@elizaos/plugin-commands` resolution errors unrelated to this change.
 
 ## What a screenshot pass would look for (next session)

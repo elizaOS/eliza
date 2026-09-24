@@ -869,7 +869,7 @@ def build_parser() -> argparse.ArgumentParser:
     scenario = parser.add_argument_group("scenario runner options")
     scenario.add_argument(
         "--scenario-root",
-        default="packages/test/scenarios",
+        default="packages/testing/scenarios",
         help="Scenario directory for the direct scenario-runner suite.",
     )
     scenario.add_argument(

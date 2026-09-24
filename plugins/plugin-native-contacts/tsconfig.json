@@ -20,8 +20,8 @@
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
@@ -33,11 +33,11 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/credentials/vault": [
-        "../../packages/credentials/src/vault/index.ts"
+      "@elizaos/auth/vault": [
+        "../../packages/auth/src/vault/index.ts"
       ],
-      "@elizaos/credentials/vault/*": [
-        "../../packages/credentials/src/vault/*"
+      "@elizaos/auth/vault/*": [
+        "../../packages/auth/src/vault/*"
       ],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],

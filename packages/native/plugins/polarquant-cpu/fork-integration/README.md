@@ -73,7 +73,7 @@ through `llama-perplexity` once a real Q4_POLAR model GGUF is built.
 ## Pinning the integrated commit
 
 When the fork's `polarquant-q4-cpu` branch lands and is pushed, update
-`packages/app-core/scripts/aosp/compile-libllama.mjs`:
+`packages/app/scripts/aosp/compile-libllama.mjs`:
 
 ```
 export const LLAMA_CPP_TAG    = "polarquant-q4-cpu-<short-sha>";

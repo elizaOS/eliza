@@ -12,7 +12,7 @@
  *   3. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import type {
   CodingAgentCreateTaskInput,

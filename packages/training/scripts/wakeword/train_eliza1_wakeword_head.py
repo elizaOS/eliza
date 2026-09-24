@@ -14,7 +14,7 @@ it is replaceable (pass `--phrase "..."`). Until a head trained by this script
 ships in bundles, `wake/hey-eliza.onnx` is the upstream `hey_jarvis` head
 renamed and the runtime marks it a placeholder
 (`OPENWAKEWORD_PLACEHOLDER_HEADS` in
-`packages/app-core/src/services/local-inference/voice/wake-word.ts`).
+`packages/app/src/services/local-inference/voice/wake-word.ts`).
 
 Pipeline (each step is a function below; `--help` lists the flags):
 

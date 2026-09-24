@@ -59,8 +59,6 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-cloud-apps": "workspace:*",
-    "@elizaos/plugin-doordash": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
@@ -76,7 +74,7 @@
     "@solana/kit": "^6.0.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "1.98.4",
-    "@elizaos/login": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "@x402/svm": "2.21.0",
     "ai": "^6.0.170",
@@ -110,11 +108,8 @@
     "zod": "^4.4.3",
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/credentials": "workspace:*",
-    "@elizaos/prompts": "workspace:*",
-    "@elizaos/common": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*",
-    "@elizaos/retrieval": "workspace:*"
+    "@elizaos/retrieval": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

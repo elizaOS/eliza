@@ -16,7 +16,7 @@ import {
   resolveSurfaceManifest,
   type SurfaceManifestBearer,
   type ViewKind,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
 import { X } from "lucide-react";
 import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";

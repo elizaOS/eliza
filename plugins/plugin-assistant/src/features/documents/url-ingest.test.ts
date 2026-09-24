@@ -2,7 +2,7 @@
  * Unit tests for SSRF-safe URL document ingestion and content classification.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
@@ -215,8 +215,6 @@ describe("url-ingest", () => {
     );
     const fetched = await fetchDocumentFromUrl("https://8.8.8.8/raw");
     const agentId = "00000000-0000-4000-8000-000000026346" as UUID;
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.initialize();
     const runtime = new AgentRuntime({
       agentId,
       character: {
@@ -224,9 +222,12 @@ describe("url-ingest", () => {
         bio: "Exercises binary URL ingestion persistence.",
         settings: {},
       } as Character,
-      adapter,
+      
       logLevel: "fatal",
     });
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+    runtime.registerDatabaseAdapter(adapter);
+    await adapter.initialize();
     const service = new DocumentService(runtime);
 
     const added = await service.addDocument({

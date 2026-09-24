@@ -14,7 +14,7 @@ import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/testing";
-import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";

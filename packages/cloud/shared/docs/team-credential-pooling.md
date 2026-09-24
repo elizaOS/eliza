@@ -15,7 +15,7 @@ the self-host `AccountPool`.
 
 | Piece | Source |
 |---|---|
-| Rotation/health brain | `AccountPool` from `@elizaos/app-core/account-pool`, **unchanged** — cloud supplies `DrizzleAccountPoolDeps` |
+| Rotation/health brain | `AccountPool` from `@elizaos/app/account-pool`, **unchanged** — cloud supplies `DrizzleAccountPoolDeps` |
 | Ciphertext store | existing `secrets` vault (AES-256-GCM envelope, audit log). `pooled_credentials.secret_id` → `secrets.id` |
 | Metadata columns | mirror the runtime-owned `LinkedAccountConfig` / `LinkedAccountHealthDetail` / `LinkedAccountUsage` contract 1:1 |
 | Pre-pool validation | `probePooledApiKey`, patterned on `packages/agent/src/auth/direct-api-probe.ts` (#11033) — kept local so the Worker bundle never pulls `@elizaos/agent` |

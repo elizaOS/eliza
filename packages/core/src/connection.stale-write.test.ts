@@ -4,7 +4,7 @@
  * stored world between the read and the write). Deterministic; no database.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { ensureConnection } from "./connection";
 import { ElizaError } from "./errors";
@@ -24,7 +24,7 @@ function staleError(): ElizaError {
 	});
 }
 
-async function connect(adapter: InMemoryDatabaseAdapter) {
+async function connect(adapter: SQLiteDatabaseAdapter) {
 	await ensureConnection(adapter, {
 		agentId,
 		entityId,
@@ -40,7 +40,7 @@ async function connect(adapter: InMemoryDatabaseAdapter) {
 
 describe("ensureConnection world upsert under a stale revision", () => {
 	it("re-reads and re-applies the merge after one stale-write conflict", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		const realUpsert = adapter.upsertWorlds.bind(adapter);
 		let conflicts = 1;
@@ -79,7 +79,7 @@ describe("ensureConnection world upsert under a stale revision", () => {
 		// Live 2026-09-06: every owner turn bumped the web-chat world's revision
 		// (+1 per message on a 1.5 MB metadata blob) although ownership, name and
 		// server were already identical.
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		await connect(adapter);
 		const [before] = await adapter.getWorldsByIds([worldId]);
@@ -91,7 +91,7 @@ describe("ensureConnection world upsert under a stale revision", () => {
 	});
 
 	it("propagates the conflict after the bounded attempts", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		const upsertWorlds = vi.fn(async () => {
 			throw staleError();
@@ -104,7 +104,7 @@ describe("ensureConnection world upsert under a stale revision", () => {
 	});
 
 	it("does not retry other write failures", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:");
 		await adapter.init();
 		const failure = new Error("disk full");
 		const upsertWorlds = vi.fn(async () => {

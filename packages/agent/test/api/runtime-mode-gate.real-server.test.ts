@@ -1,6 +1,6 @@
 /**
  * Real-server e2e for the runtime-mode gate on the BARE agent server — the
- * exact `startApiServer` root `bun run start` binds, with no app-core wrapper
+ * exact `startApiServer` root `bun run start` binds, with no app wrapper
  * in front. Spawns the fixture child under `bun --conditions=eliza-source`
  * (the same source-mode resolution the dev/live stack uses) against a temp
  * `ELIZA_STATE_DIR`, rewrites `eliza.json` between phases (the mode resolver
@@ -12,7 +12,7 @@
  * ungated: in remote mode `GET /api/local-inference/hub` served the
  * local-model catalog (200) and `POST /api/cloud/login` executed LOCALLY
  * (returning a live elizacloud session URL) instead of forwarding to the
- * configured target — every phase below failed. The app-core compat pipeline
+ * configured target — every phase below failed. The app compat pipeline
  * now calls the same pre-dispatch hook instead of being the only gated host.
  */
 
@@ -196,7 +196,7 @@ describe("bare agent server enforces the runtime-mode contract", () => {
 
   // local-only (`cloud.enabled === false`) has no e2e phase: `loadElizaConfig`
   // runs `migrateLegacyRuntimeConfig`, which prunes `cloud.enabled` before the
-  // disk-backed mode resolver reads it, so NO host (bare agent or app-core)
+  // disk-backed mode resolver reads it, so NO host (bare agent or app)
   // can currently reach local-only from persisted config — a pre-existing
   // resolver hole tracked separately from the gate move. The local-only
   // decision itself stays covered by the pure-resolver unit tests in

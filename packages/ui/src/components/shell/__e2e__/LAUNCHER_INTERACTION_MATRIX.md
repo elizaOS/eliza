@@ -21,7 +21,7 @@ decision D5): `home-launcher-surface`, `data-page`, `home-launcher-page-probe`,
 | **launcher-e2e** | scripted CDP touch | `components/pages/__e2e__/run-launcher-e2e.mjs` | real touch on the launcher grid |
 | **loop-model** | seeded model self-check (jsdom) | `src/testing/launcher-loop/launcher-loop.test.ts` | the `#12373` engine's model + invariants against an in-memory `FakeDriver` |
 | **loop-android** | seeded model loop, device | `packages/app/test/android/launcher-gesture-loop.android.spec.ts` | `AndroidInput` real gestures, ≥200 actions (shipped by #12373) |
-| **loop-ios** | seeded model loop, simulator | `packages/app-core/platforms/ios/App/AppUITests/LauncherGestureLoopUITests.swift` | XCUIElement swipes/taps, AX-probe asserts |
+| **loop-ios** | seeded model loop, simulator | `packages/app/platforms/ios/App/AppUITests/LauncherGestureLoopUITests.swift` | XCUIElement swipes/taps, AX-probe asserts |
 | **gesture-matrix** | scripted, real app | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | tap-vs-long-press, edge cases |
 | **desktop-smoke** | packaged Electrobun | `packages/app/test/electrobun-packaged/desktop-launcher-smoke.e2e.spec.ts` | bridge `eval` drives the store + screenshot (no CDP gestures) |
 | **loop-web** | seeded model loop, real browser | `__e2e__/run-launcher-loop-e2e.mjs` | ≥500 CDP-touch actions against the composed fixture, batched with video (`test:launcher-loop-e2e`) |

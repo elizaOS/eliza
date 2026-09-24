@@ -9,7 +9,7 @@
  * into the security group with non-colliding ids.
  */
 
-import { isViewVisible } from "@elizaos/common";
+import { isViewVisible } from "@elizaos/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { listSettingsSections } from "../../components/settings/settings-section-registry";
 import {

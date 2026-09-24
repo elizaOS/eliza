@@ -35,7 +35,7 @@ Specialized app and voice evidence also flows through `app-live-e2e.yml` and
 
 iOS, Android, desktop packaging, store signing, and physical-device evidence
 are operator-run release checks. Their commands remain in `packages/app` and
-`packages/app-core`; they are not automatic pull-request fan-out.
+`packages/app`; they are not automatic pull-request fan-out.
 
 Run the narrow package command while developing, then use the repository gates
 before review:

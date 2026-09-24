@@ -5,7 +5,7 @@
  * deterministic without starting or restarting a live agent runtime.
  */
 import type http from "node:http";
-import type { SecretsManager } from "@elizaos/credentials/vault";
+import type { SecretsManager } from "@elizaos/auth/vault";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";

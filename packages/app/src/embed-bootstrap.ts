@@ -13,7 +13,7 @@
  *      the verified OWNER/ADMIN principal.
  *   3. Install that token on the ElizaClient (`client.setToken`) so every
  *      subsequent agent API call carries it as a bearer — the credential the
- *      auth boundary now accepts (see app-core embed-session-token wiring).
+ *      auth boundary now accepts (see app embed-session-token wiring).
  *
  * The handshake is dependency-injected (window / fetch / client) so it is unit
  * testable without the iframe runtime or the ElizaClient singleton. It never

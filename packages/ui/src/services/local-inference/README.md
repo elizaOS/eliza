@@ -5,7 +5,7 @@ so UI code can reach the **catalog**, **recommendation**, **routing
 preferences**, **type contract**, and **path helpers** without dragging
 in the server runtime (KV cache management, llama-server lifecycle,
 conversation registry, metrics scraping). Those server pieces live in
-`@elizaos/app-core` and stay there.
+`@elizaos/app` and stay there.
 
 The canonical server-side service is at
 [`plugins/plugin-local-inference/src/services/`](../../../../../plugins/plugin-local-inference/src/services/README.md).
@@ -30,7 +30,7 @@ Anything else in this directory exists to satisfy the local dependency
 graph for those files (e.g. `recommendation.ts` reaches into
 `hardware.ts` and the local `types.ts`).
 
-## Shared with `@elizaos/app-core` via `@elizaos/shared`
+## Shared with `@elizaos/app` via `@elizaos/shared`
 
 The following files are byte-identical with the server-side twins and
 have identical semantics. They have been extracted to

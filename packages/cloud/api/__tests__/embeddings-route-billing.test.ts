@@ -6,7 +6,7 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { EmbeddingsResponse } from "@elizaos/cloud-sdk";
-import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/common";
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core";
 import { APICallError } from "ai";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";

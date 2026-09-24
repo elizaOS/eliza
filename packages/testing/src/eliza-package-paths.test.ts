@@ -50,7 +50,7 @@ describe("getElizaCoreEntry", () => {
 });
 
 describe("worktree package isolation", () => {
-  it.each(["agent", "app-core", "shared"])(
+  it.each(["agent", "app", "shared"])(
     "loads %s from the requested worktree when a sibling checkout exists",
     async (name) => {
       const root = await mkdtemp(
