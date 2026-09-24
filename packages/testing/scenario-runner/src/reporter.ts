@@ -1,6 +1,6 @@
 /**
  * JSON + stdout reporting for the scenario runner. The JSON shape is what
- * `scripts/run-scenario-benchmark.mjs` expects back (scenarios[], totalCount,
+ * `scripts/run-scenario-benchmark.ts` expects back (scenarios[], totalCount,
  * failedCount) plus the richer per-scenario fields we emit for humans.
  */
 

@@ -172,7 +172,7 @@ resource "cloudflare_dns_record" "canonical_control_plane" {
 # headscale-on-CP cutover that was previously a manual `dig`/dashboard step on
 # every CP rebuild (a DR gap). The nginx vhost + Let's Encrypt cert that serve
 # this hostname are provisioned by the arm-headscale-control-plane workflow
-# (packages/cloud/scripts/admin/arm-headscale-control-plane.mjs) — that script
+# (packages/cloud/scripts/admin/arm-headscale-control-plane.ts) — that script
 # runs AFTER this record exists, so HTTP-01 issuance can resolve the name.
 #
 # Headscale is singular per env (one coordination server), so this binds to the

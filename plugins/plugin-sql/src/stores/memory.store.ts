@@ -10,7 +10,8 @@ import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizao
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { embeddingSpaceCondition } from "../embedding-space";
 import { serializeJsonb } from "../sanitize-json";
-import { embeddingTable, memoryTable } from "../schema/index";
+import { embeddingTable } from "../schema/embedding";
+import { memoryTable } from "../schema/memory";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

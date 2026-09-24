@@ -19,7 +19,7 @@
  *     The real-model trajectory is written to `<run>/<viewport>/trajectory/`.
  *
  * Artifacts land under `reports/walkthrough/<runId>/` (gitignored); the
- * committed verdict markdown is produced by `packages/scripts/ai-qa/review-walkthrough.mjs`.
+ * committed verdict markdown is produced by `packages/scripts/ai-qa/review-walkthrough.ts`.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";

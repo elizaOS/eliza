@@ -7,7 +7,7 @@
 // hardcoded color that does not respond to the theme (the classic invisible-in-
 // dark / invisible-in-light bug). Findings + screenshots are written per section.
 //
-// Run:  ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.mjs \
+// Run:  ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.ts \
 //   --config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts
 
 import { mkdir, writeFile } from "node:fs/promises";

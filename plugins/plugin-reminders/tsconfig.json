@@ -3,29 +3,17 @@
   "compilerOptions": {
     "composite": false,
     "types": ["node"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/plugin-sql/database-utils/carve-out-migration": [
-        "../plugin-sql/src/database-utils/carve-out-migration.ts"
-      ]
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],

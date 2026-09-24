@@ -8,7 +8,7 @@
 // a screenshot taken WITH the simulated notch so the safe-area behavior is
 // visible. Developer mode is seeded on so dev-only sections render too.
 //
-// Run on demand:  ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.mjs \
+// Run on demand:  ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.ts \
 //   --config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts
 
 import { mkdir, writeFile } from "node:fs/promises";

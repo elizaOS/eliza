@@ -3,8 +3,9 @@
  * triage tables, persisting examples with object context, and registering a client_chat
  * send handler so digests deliver. DB-backed runtime.
  */
+
+import { InboxRepository as InboxTriageRepository } from "@elizaos/plugin-inbox";
 import { afterEach, describe, expect, it } from "vitest";
-import { InboxTriageRepository } from "../src/inbox/repository.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 describe("LifeOps inbox triage schema bootstrap", () => {

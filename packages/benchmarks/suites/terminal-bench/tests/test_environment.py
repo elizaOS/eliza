@@ -1,6 +1,7 @@
 """Tests for Terminal-Bench environment."""
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,7 @@ from elizaos_terminal_bench.environment import (
     LocalTerminalEnvironment,
     MockTerminalEnvironment,
     TerminalEnvironment,
+    task_build_context,
 )
 from elizaos_terminal_bench.types import (
     CommandStatus,
@@ -368,3 +370,22 @@ fi
 
         finally:
             await env.stop()
+
+
+def test_task_build_context_materializes_linked_corpus_sources() -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks/llm-inference-batching-scheduler"
+    files = {path.relative_to(task): path.read_bytes() for path in task.rglob("*") if path.is_file()}
+    assert any(path.is_symlink() for path in task.rglob("*"))
+    with task_build_context(task) as context:
+        assert context != task
+        assert not any(path.is_symlink() for path in context.rglob("*"))
+        assert {path.relative_to(context): path.read_bytes() for path in context.rglob("*") if path.is_file()} == files
+        staged = context
+    assert not staged.exists()
+
+
+def test_task_build_context_reuses_self_contained_task(tmp_path: Path) -> None:
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    with task_build_context(tmp_path) as context:
+        assert context == tmp_path
+    assert tmp_path.exists()

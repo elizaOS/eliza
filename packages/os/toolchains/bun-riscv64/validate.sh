@@ -23,7 +23,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RM_PATH_RECURSIVE=(node "$REPO_ROOT/scripts/rm-path-recursive.mjs")
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/scripts/rm-path-recursive.ts")
 DIST_DIR="$SCRIPT_DIR/dist"
 REPORT="$DIST_DIR/validate-report.txt"
 mkdir -p "$DIST_DIR"

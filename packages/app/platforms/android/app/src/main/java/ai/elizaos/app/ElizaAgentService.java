@@ -181,7 +181,7 @@ public class ElizaAgentService extends Service {
     private static final long WATCHDOG_INTERVAL_MS = 600_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
     private static final long HEALTH_TIMEOUT_MS = 30_000L;
-    // Keep this aligned with packages/app/scripts/mobile-local-chat-smoke.mjs:
+    // Keep this aligned with packages/app/scripts/mobile-local-chat-smoke.ts:
     // ANDROID_HEALTH_ATTEMPTS (240) × 2000 ms = 480 s.
     private static final long STARTUP_HEALTH_GRACE_MS = 480_000L;
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
@@ -1266,7 +1266,7 @@ public class ElizaAgentService extends Service {
         // Staging is fresh, so copyAssetIfMissing always copies here.
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(stagingRoot, AGENT_BUNDLE_NAME));
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_SCRIPT));
-        // Detached-child half of the launcher (see stage-android-agent.mjs:
+        // Detached-child half of the launcher (see stage-android-agent.ts:
         // LAUNCH_CHILD_SCRIPT) — launch.sh invokes it by path, so it must land
         // in the same atomic stage as launch.sh itself.
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_CHILD_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_CHILD_SCRIPT));
@@ -1514,7 +1514,7 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", trigram);
 
         // Bundled default models (chat + embedding GGUF, staged by
-        // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
+        // scripts/elizaos/stage-default-models.ts at AOSP build time). Land
         // them under $ELIZA_STATE_DIR/local-inference/models/ so the runtime's
         // first-run bootstrap discovers them at canonical paths and registers
         // them as eliza-owned models via the alongside manifest.json. Absent on
@@ -2298,7 +2298,7 @@ public class ElizaAgentService extends Service {
                     + ": fused inference is staged but libelizavoicejni.so is absent "
                     + "(this build skipped the fused-voice JNI bridge); on-device GPU "
                     + "inference via the bionic host is UNAVAILABLE. Rebuild with "
-                    + "stage-elizavoice-lib.mjs to re-enable. Falling back to the "
+                    + "stage-elizavoice-lib.ts to re-enable. Falling back to the "
                     + "non-delegated inference path.");
             }
             if (delegateToBionicHost) {

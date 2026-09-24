@@ -1,5 +1,5 @@
 # Configures GitHub's auto-generated release notes (generate_release_notes: true
-# in packages/scripts/lib/release-github.mjs). Groups merged PRs into readable
+# in packages/scripts/lib/release-github.ts). Groups merged PRs into readable
 # categories and drops noise so the Releases page reads cleanly. Categories use
 # the repository's real PR labels; commit-title prefixes are not visible to
 # GitHub's release-note generator.

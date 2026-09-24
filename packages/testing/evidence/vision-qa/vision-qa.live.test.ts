@@ -3,7 +3,7 @@
  * the model's actual cognition (not our client plumbing) is exercised. Gated:
  * runs only with a real ANTHROPIC_API_KEY AND (ANTHROPIC_LIVE_TEST=1 or
  * TEST_LANE=post-merge), so the PR lane self-skips honestly; registered in
- * packages/scripts/lib/real-live-suites.mjs so the post-merge accounting names
+ * packages/scripts/lib/real-live-suites.ts so the post-merge accounting names
  * it instead of a silent green. Renders a fixture screenshot with known content
  * (an orange "Send" button beside a blank panel) via sharp, asks three
  * questions in one request, and asserts the structured answers land with the

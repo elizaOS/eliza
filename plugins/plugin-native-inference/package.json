@@ -200,9 +200,9 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && bun run check:android-manifest && tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-native-inference && node ../../packages/scripts/copy-package-assets.mjs plugins/plugin-native-inference src/model-catalog/bge src/model-gpu/profiles",
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && bun run check:android-manifest && tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-native-inference && node ../../packages/scripts/copy-package-assets.ts plugins/plugin-native-inference src/model-catalog/bge src/model-gpu/profiles",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo node_modules",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

@@ -3,7 +3,7 @@
 import type { Plugin } from "@elizaos/core";
 
 import { todoAction } from "./actions/todo.js";
-import * as dbSchema from "./db/index.js";
+import * as dbSchema from "./db/schema.js";
 import { currentTodosProvider } from "./providers/current-todos.js";
 import { TodosService } from "./service.js";
 

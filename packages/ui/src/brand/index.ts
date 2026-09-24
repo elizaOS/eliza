@@ -6,7 +6,7 @@
  * and color palette from here so the look stays in sync.
  *
  * Asset *bytes* are duplicated into each consumer's `public/` at sync time
- * (see `scripts/sync-to-public.mjs`). This module exports only the constants
+ * (see `scripts/sync-to-public.ts`). This module exports only the constants
  * needed at runtime: colors, font stacks, and the on-disk paths the sync
  * script will produce.
  */

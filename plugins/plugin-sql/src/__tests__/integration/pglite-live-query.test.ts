@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PGliteClientManager } from "../../pglite/manager";
-import * as schema from "../../schema";
+import { schema } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 
 it("does not load a subscription extension by default", async () => {

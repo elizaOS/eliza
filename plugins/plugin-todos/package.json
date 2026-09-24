@@ -23,47 +23,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./edge": {
-      "types": "./dist/edge.d.ts",
-      "eliza-source": {
-        "types": "./src/edge.ts",
-        "import": "./src/edge.ts",
-        "default": "./src/edge.ts"
-      },
-      "bun": {
-        "types": "./dist/edge.d.ts",
-        "import": "./dist/edge.js",
-        "default": "./dist/edge.js"
-      },
-      "worker": {
-        "types": "./dist/edge.d.ts",
-        "import": "./dist/edge.js",
-        "default": "./dist/edge.js"
-      },
-      "import": "./dist/edge.js",
-      "default": "./dist/edge.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./*.css": "./dist/*.css"
   },
   "files": [
     "registry-entry.json",
@@ -109,7 +69,7 @@
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -138,8 +98,8 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Default export (Node.js)",
-      "edge": "./edge export with injected durable TodoStore"
+      "node": "Root export with runtime-managed TodoStore",
+      "edge": "Root createTodosEdgePlugin factory with injected durable TodoStore"
     }
   }
 }

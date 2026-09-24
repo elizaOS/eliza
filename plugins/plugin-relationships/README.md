@@ -6,6 +6,12 @@ Load the database adapter before this graph plugin. EntityStore, RelationshipSto
 the merge engine are shared owners of identity. Legacy imports require explicit
 ownership mapping; never import records across tenants automatically.
 
+Import graph stores, `KnowledgeGraphService`, and `knowledgeGraphSchema` from
+`@elizaos/plugin-relationships`. Renderer hosts call the root-exported
+`registerRelationshipsApp()` to register the signed page; importing the package
+alone does not register it. The app's manifest loader invokes this function through
+`elizaos.appRegister.export`.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

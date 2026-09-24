@@ -76,6 +76,10 @@ subprojects { subproject ->
                 subproject.delete(generated)
                 def assets = new File(generated, 'assets')
                 assets.mkdirs()
+                subproject.providers.exec {
+                    commandLine 'bun', 'build', new File(fixtures, 'assets/contracts.ts').absolutePath,
+                        '--target=browser', '--outfile=' + new File(assets, 'contracts.js').absolutePath
+                }.result.get().assertNormalExitValue()
                 new File(assets, 'native-plugin.json').text = groovy.json.JsonOutput.toJson(descriptor + [directory: directory])
                 if (!new File(subproject.projectDir, 'src/androidTest/assets/public/index.html').exists()) {
                     new File(assets, 'public').mkdirs()
@@ -96,7 +100,6 @@ subprojects { subproject ->
         }
         subproject.android.sourceSets.androidTest {
             java.srcDir(new File(fixtures, 'java'))
-            assets.srcDir(new File(fixtures, 'assets'))
             assets.srcDir(new File(generated, 'assets'))
             manifest.srcFile(new File(generated, 'AndroidManifest.xml'))
         }

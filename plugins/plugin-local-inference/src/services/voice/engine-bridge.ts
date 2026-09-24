@@ -1124,7 +1124,7 @@ export class EngineVoiceBridge {
 			if (!existsSync(libPath)) {
 				throw new VoiceStartupError(
 					"missing-ffi",
-					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app/scripts/build-llama-cpp-mtp.mjs (omnivoice-fuse target).`,
+					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app/scripts/build-llama-cpp-mtp.ts (omnivoice-fuse target).`,
 				);
 			}
 			ffiHandle = loadElizaInferenceFfi(libPath);

@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 import { testOutputPath } from "../scripts/lib/test-output.ts";
-import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.ts";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");

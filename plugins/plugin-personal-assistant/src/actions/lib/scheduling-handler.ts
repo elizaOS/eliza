@@ -36,14 +36,14 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
 } from "@elizaos/core/contracts/calendar";
 import {
   buildWideLookupRange,
   resolveCalendarMutationCandidates,
-} from "@elizaos/plugin-calendar/actions/calendar-handler";
+} from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { createApprovalQueue } from "../../lifeops/approval-queue.js";
 import type {

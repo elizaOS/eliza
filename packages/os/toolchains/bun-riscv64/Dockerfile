@@ -185,7 +185,7 @@ RUN set -eux; \
 # ----------------------------------------------------------------------------
 # We extract apks rather than running them through apk; the resulting tree
 # at /sysroot is what clang's --sysroot points at. Mirrors the Alpine
-# branch pinned by stage-android-agent.mjs:ALPINE_BRANCH so the ld-musl
+# branch pinned by stage-android-agent.ts:ALPINE_BRANCH so the ld-musl
 # version, libstdc++ ABI, and libgcc_s ABI all line up with what the APK
 # ships at runtime.
 #

@@ -92,6 +92,7 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
+import { installCalendarClient } from "@elizaos/plugin-calendar";
 import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 // Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
 // app/api/client.ts imports this file (LifeOps extension) as a side-effect
@@ -101,10 +102,6 @@ import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-eliz
 // and is the pattern the sibling client extensions use (see
 // plugins/plugin-calendar/src/api/client-calendar.ts).
 import { ElizaClient } from "@elizaos/ui/api/client-base";
-// Calendar client methods (getLifeOpsCalendarFeed / create|update|delete event,
-// …) live in @elizaos/plugin-calendar now; this side-effect import attaches
-// them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
-import "@elizaos/plugin-calendar/api/client-calendar";
 import type { AccountHandoffRetirementCandidate } from "../lifeops/account-handoff-approval-inventory.js";
 import type {
   AccountHandoffCalendarEntry,
@@ -142,10 +139,8 @@ export {
   type LifeOpsSocialHabitSummary,
 } from "@elizaos/core/contracts/personal-assistant";
 
-// Exported for consumers that import `client` from the `@elizaos/ui/api`
-// subpath (headless chunks that must not touch the root barrel): the
-// `declare module "@elizaos/ui"` merge below only covers root-barrel
-// importers, so they re-type their client view with a Pick of this interface.
+installCalendarClient();
+
 export interface LifeOpsElizaClientMethods {
   getLifeOpsFamilyEmailOptions(): Promise<{ options: FamilyEmailOptions }>;
   getLifeOpsHandoffRetirementCandidates(
@@ -193,16 +188,14 @@ export interface LifeOpsElizaClientMethods {
     billsAutoExtract?: boolean;
   }): Promise<{ ok: true }>;
   scanLifeOpsEmailSubscriptions(): Promise<
-    import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
+    import("@elizaos/plugin-inbox").EmailSubscriptionScanResult
   >;
   unsubscribeLifeOpsEmailSender(data: {
     senderEmail: string;
     blockAfter?: boolean;
     trashExisting?: boolean;
     confirmed: boolean;
-  }): Promise<
-    import("../lifeops/email-unsubscribe-types.js").EmailUnsubscribeResult
-  >;
+  }): Promise<import("@elizaos/plugin-inbox").EmailUnsubscribeResult>;
   getLifeOpsScheduleMergedState(
     data?: LifeOpsScheduleMergedStateRequest,
   ): Promise<GetLifeOpsScheduleMergedStateResponse>;

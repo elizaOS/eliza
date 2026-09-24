@@ -4,10 +4,10 @@ HTTP bridge exposing the Eliza runtime to Python benchmark runners.
 
 This directory is part of `packages/benchmarks/suites/lifeops-bench/runner`.
 
-Build from the repository root:
+Typecheck from the repository root:
 
 ```bash
-bun run --cwd packages/benchmarks/suites/lifeops-bench/runner build
+bun run --cwd packages/benchmarks/suites/lifeops-bench/runner typecheck
 ```
 
 Test from the repository root:

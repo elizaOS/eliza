@@ -1,4 +1,4 @@
-// Android companion to `scripts/audit-views-soak.mjs` for #10196.
+// Android companion to `scripts/audit-views-soak.ts` for #10196.
 //
 // This drives the real installed Capacitor WebView against the deterministic
 // host agent (`ELIZA_ANDROID_BACKEND=host`), enumerates the live `/api/views`
@@ -12,8 +12,8 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
-import { resolveAdb } from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-capture.ts";
+import { resolveAdb } from "../../scripts/lib/android-device.ts";
 import { expect, ORIGIN, test, waitForShellReady } from "./android-harness";
 
 const API = process.env.API ?? "http://127.0.0.1:31337";

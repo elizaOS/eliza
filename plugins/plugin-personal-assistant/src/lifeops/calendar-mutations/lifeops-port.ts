@@ -4,32 +4,28 @@
  * claims an external side effect; CRUD remains owned by CalendarService.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsCalendarSummary,
-  type ListLifeOpsCalendarsRequest,
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  ListLifeOpsCalendarsRequest,
 } from "@elizaos/core/contracts/calendar";
 import {
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,
+  buildRecurrenceSplitPlan,
   CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import {
   normalizeCalendarAttendees,
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
-} from "@elizaos/plugin-calendar/internal/calendar-normalize";
-import {
-  buildRecurrenceSplitPlan,
   normalizeRecurrence,
   recurrenceLinesFrom,
   recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
-} from "@elizaos/plugin-calendar/internal/recurrence";
+} from "@elizaos/plugin-calendar";
 import { INTERNAL_URL } from "../access.js";
 import type {
   ApprovalPayload,

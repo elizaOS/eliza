@@ -21,5 +21,5 @@ loopback WebSocket protocol peer. It verifies authentication, RPCs, pushed event
 reconnection, rejected handshakes, and cancellation of pending work.
 
 ```bash
-node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-gateway
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-gateway
 ```

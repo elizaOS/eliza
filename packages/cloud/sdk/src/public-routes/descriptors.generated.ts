@@ -1,4 +1,4 @@
-/** Generated public route contracts. Regenerate with scripts/generate-public-routes.mjs. */
+/** Generated public route contracts. Regenerate with scripts/generate-public-routes.ts. */
 export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/elevenlabs/voices/{id}": {
     method: "DELETE",

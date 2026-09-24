@@ -14,7 +14,6 @@ import {
   PREMADE_VOICES,
   sanitizeApiKey,
 } from "@elizaos/core/voice";
-import { logger } from "@elizaos/ui/logger";
 import {
   type ChangeEvent,
   type ComponentPropsWithoutRef,
@@ -37,6 +36,7 @@ import {
 import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
+import { logger } from "../../logger.ts";
 import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import {

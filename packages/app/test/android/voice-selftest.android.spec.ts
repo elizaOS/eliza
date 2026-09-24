@@ -12,7 +12,7 @@
 // (global-setup pre-grants it). If the on-device ASR is not provisioned the ASR
 // stage reports `skipped` (not `pass`), so this fails loudly rather than
 // false-greening.
-import { resolveAdb } from "../../scripts/lib/android-device.mjs";
+import { resolveAdb } from "../../scripts/lib/android-device.ts";
 import { expect, ORIGIN, test } from "./android-harness";
 
 test.describe("android on-device voice round-trip (real backend)", () => {

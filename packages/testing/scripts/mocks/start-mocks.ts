@@ -37,7 +37,10 @@ import {
 import { MockHttpError } from "./mock-http-error.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ENVS_DIR = path.resolve(__dirname, "../../scenario-runner/test/mocks/environments");
+const ENVS_DIR = path.resolve(
+  __dirname,
+  "../../scenario-runner/test/mocks/environments",
+);
 const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
 
 export const MOCK_PROVIDER_ENVIRONMENTS = [

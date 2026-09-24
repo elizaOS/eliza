@@ -11,7 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
+import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import {
   failureToActionResult,
   readStringParam,

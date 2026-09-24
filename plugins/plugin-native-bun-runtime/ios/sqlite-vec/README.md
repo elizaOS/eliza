@@ -24,6 +24,6 @@ extension is not linked. This build command does not change that host policy or
 automatically add the framework to an app. Link the produced framework into the
 consuming target before claiming vector-search availability.
 
-Llama framework builds use the app's `build-llama-cpp-mtp.mjs` and
-`ios-xcframework/build-xcframework.mjs` with the canonical local-inference
+Llama framework builds use the app's `build-llama-cpp-mtp.ts` and
+`ios-xcframework/build-xcframework.ts` with the canonical local-inference
 submodule. There is no separate llama checkout or shim in this directory.

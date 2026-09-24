@@ -66,7 +66,7 @@ export default defineConfig({
         include: [
             "__tests__/**/*.test.ts",
             "src/**/*.test.{ts,tsx}",
-            "../../packages/scripts/plugins/plugin-elizacloud/**/*.test.mjs",
+            "../../packages/scripts/plugins/plugin-elizacloud/**/*.test.ts",
         ],
         // dist-packaging drives the real build.ts, which is bun-only
         // (import.meta.dir); it runs under `bun test` in the cloud sweep and can

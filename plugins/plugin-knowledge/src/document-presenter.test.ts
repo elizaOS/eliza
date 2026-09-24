@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   getDocumentTitleFromMetadata,
   presentDocument,
-} from "./document-presenter";
+} from "./document-presenter.js";
 
 function docMemory(metadata: Record<string, unknown>): Memory {
   return {

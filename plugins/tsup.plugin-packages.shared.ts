@@ -8,7 +8,7 @@
 
 import { existsSync, promises as fsp, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { rewriteModuleSpecifiers } from "../packages/scripts/lib/rewrite-module-specifiers.mjs";
+import { rewriteModuleSpecifiers } from "../packages/scripts/lib/rewrite-module-specifiers.ts";
 
 type EsbuildOnLoadArgs = {
   path: string;
@@ -87,10 +87,6 @@ function resolveRelativeRuntimeSpecifier(
   if (specifier.endsWith(".ts") || specifier.endsWith(".tsx")) {
     return specifier.replace(/\.tsx?$/, ".js");
   }
-  if (path.extname(specifier)) {
-    return specifier;
-  }
-
   const absoluteBase = path.resolve(path.dirname(importerPath), specifier);
   if (existsSync(`${absoluteBase}.ts`) || existsSync(`${absoluteBase}.tsx`)) {
     return `${specifier}.js`;

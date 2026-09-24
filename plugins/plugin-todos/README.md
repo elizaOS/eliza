@@ -6,6 +6,11 @@ Node and edge hosts share TodoStore and its tenant-scoped implementation. Hosts 
 database migrations. A Todo write does not schedule a notification; use the
 scheduling/reminder domain for timed delivery.
 
+Import all Todos APIs from `@elizaos/plugin-todos`. The root exports the
+runtime plugin, injected-store `createTodosEdgePlugin` factory, SQL store,
+and mutation contracts. The dashboard loads from its separate view bundle.
+Implementation subpaths are private.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

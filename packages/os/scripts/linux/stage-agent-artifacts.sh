@@ -4,7 +4,7 @@ set -euo pipefail
 OS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ELIZA_ROOT="${ELIZAOS_ELIZA_ROOT:-${OS_ROOT}/.eliza-source}"
 LINUX_DIR="${OS_ROOT}/linux/elizaos"
-RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.ts"
 
 ARCH="amd64"
 SKIP_BUILD=0

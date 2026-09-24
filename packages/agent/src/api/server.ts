@@ -3,7 +3,7 @@
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
- * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.mjs).
+ * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -529,7 +529,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
   bindReader();
 }
 // On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
-// (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
+// (scripts/mobile-stubs/null-plugin.ts): the module imports fine but its
 // workspace functions are absent, so calling one throws an uncaught TypeError
 // that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
 // The browser workspace is desktop-only, so resolve the plugin only when it

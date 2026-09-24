@@ -2,7 +2,7 @@
  * OCR engine interface and its concrete backends. Splitting the engine out from
  * the `ocr.*` analyzers lets one analyzer body serve several recognizers that
  * differ only in where the text comes from: `tesseract` (CPU CLI, the ported
- * behaviour from `packages/app/scripts/lib/visual-qa.mjs`), `unlimited` (the GPU
+ * behaviour from `packages/app/scripts/lib/visual-qa.ts`), `unlimited` (the GPU
  * vision lane — an OpenAI-compatible `llama-server` serving Baidu Unlimited-OCR,
  * #14543), and `apple-vision` (macOS on-device Vision, wrapping the swift helper
  * merged in PR #14490).
@@ -17,9 +17,9 @@
  *
  * The `unlimited` endpoint resolves in order: explicit constructor option,
  * `ELIZA_GPU_VISION_URL`, then the discovery record `serve.json` written by
- * `packages/scripts/gpu-vision/serve.mjs` (only after its server answered /health). The
+ * `packages/scripts/gpu-vision/serve.ts` (only after its server answered /health). The
  * OCR prompt is locked byte-for-byte to that service's `OCR_PROMPT`
- * (`packages/scripts/gpu-vision/lib.mjs`) — a drift-guard test compares the two.
+ * (`packages/scripts/gpu-vision/lib.ts`) — a drift-guard test compares the two.
  */
 
 import { execFile, spawn } from "node:child_process";
@@ -96,7 +96,7 @@ function isFetchLikeResponse(value: unknown): value is FetchLikeResponse {
 }
 
 /**
- * Tesseract CLI engine — the exact invocation ported from visual-qa.mjs
+ * Tesseract CLI engine — the exact invocation ported from visual-qa.ts
  * (`tesseract <img> - --psm 6`). `ELIZA_TESSERACT_BIN` overrides the binary,
  * matching the app's OCR resolver so a single env var configures both.
  */
@@ -373,7 +373,7 @@ async function runAppleVision(
 
 /**
  * The exact OCR prompt the GPU vision service is tuned for. MUST stay
- * byte-identical to `OCR_PROMPT` in `packages/scripts/gpu-vision/lib.mjs` — the service
+ * byte-identical to `OCR_PROMPT` in `packages/scripts/gpu-vision/lib.ts` — the service
  * and this client are pinned to one prompt so OCR output is reproducible across
  * runs and across the two entry points. A drift-guard test in `ocr.test.ts`
  * imports the script module and compares the constants.
@@ -445,7 +445,7 @@ function validGroundingBox(box: [number, number, number, number]): boolean {
   );
 }
 
-/** Where `packages/scripts/gpu-vision/serve.mjs` records its ready server (its
+/** Where `packages/scripts/gpu-vision/serve.ts` records its ready server (its
  * `serveStatePath()`): `ELIZA_GPU_VISION_CACHE` override, else the per-user
  * cache. Kept in lockstep with lib.mjs `cacheDir()`. */
 export function defaultServeStatePath(): string {
@@ -463,7 +463,7 @@ const SERVE_SET_KEY = "ocr";
  * GPU vision-lane engine: an OpenAI-compatible chat-completions client against
  * the `llama-server` serving Baidu Unlimited-OCR (#14543). The endpoint
  * resolves from the explicit `baseUrl` option, then `ELIZA_GPU_VISION_URL`,
- * then the `serve.json` discovery record `packages/scripts/gpu-vision/serve.mjs` writes
+ * then the `serve.json` discovery record `packages/scripts/gpu-vision/serve.ts` writes
  * once its server answers /health; when none resolves the engine is
  * unavailable (cpu-tier runs), and when resolved-but-unreachable it reports the
  * transport failure so the analyzer degrades to `skipped-missing-tool` rather
@@ -538,7 +538,7 @@ export class UnlimitedOcrEngine implements OcrEngine {
       return {
         ok: false,
         reason: isEnoent(error)
-          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: node packages/scripts/gpu-vision/serve.mjs)`
+          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: node packages/scripts/gpu-vision/serve.ts)`
           : `ELIZA_GPU_VISION_URL unset and gpu-vision serve.json unreadable at ${statePath}: ${errMessage(error)}`,
       };
     }
@@ -575,7 +575,7 @@ export class UnlimitedOcrEngine implements OcrEngine {
         reason: `gpu-vision serve.json '${SERVE_SET_KEY}' entry has an invalid port (${statePath})`,
       };
     }
-    // serve.mjs always binds 127.0.0.1; the record stores only the port.
+    // serve.ts always binds 127.0.0.1; the record stores only the port.
     return { ok: true, baseUrl: `http://127.0.0.1:${port}` };
   }
 

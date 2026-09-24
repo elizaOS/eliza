@@ -4,7 +4,6 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
@@ -15,22 +14,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -46,12 +30,11 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
   },
-  "sideEffects": [
-    "./src/register.ts",
-    "./dist/register.js"
-  ],
+  "sideEffects": false,
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "export": "registerKnowledgeApp"
+    },
     "app": {
       "heroImage": "assets/hero.png"
     }
@@ -62,7 +45,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

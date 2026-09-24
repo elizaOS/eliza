@@ -13,7 +13,7 @@ import { rendererBuildManifestPlugin } from "../vite/renderer-build-manifest-plu
 
 const cleanupHelperScript = path.resolve(
   import.meta.dirname,
-  "../../scripts/rm-path-recursive.mjs",
+  "../../scripts/rm-path-recursive.ts",
 );
 
 let tmp: string;

@@ -32,15 +32,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Bun's test runner can return empty stdio pipes from node:child_process
 // spawnSync; the captured adapter routes output through files instead.
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const { runContract, classifyTypeRange, isConcretePin } = await import(
-  new URL("../ci-bun-version-contract.mjs", import.meta.url).href
+  new URL("../ci-bun-version-contract.ts", import.meta.url).href
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CONTRACT_CLI_PATH = fileURLToPath(
-  new URL("../ci-bun-version-contract.mjs", import.meta.url),
+  new URL("../ci-bun-version-contract.ts", import.meta.url),
 );
 
 interface InventorySite {
@@ -79,7 +79,7 @@ jobs:
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: \${{ env.BUN_VERSION }}
-      - run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+      - run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bun-runtime-inventory
@@ -428,7 +428,7 @@ jobs:
     expectViolation(
       buildRepo({
         files: {
-          "deploy/generate.mjs": [
+          "deploy/generate.ts": [
             "const script = [",
             '  "if ! command -v bun >/dev/null 2>&1; then",',
             `  '  curl -fsSL https://bun.sh/install | bash -s "bun-v${CANONICAL}"',`,
@@ -590,7 +590,7 @@ jobs:
       buildRepo({
         overrides: {
           "pr-static-smoke.yml": gateStub().replace(
-            /\s+- run: node packages\/scripts\/ci-bun-version-contract\.mjs --inventory[^\n]+/,
+            /\s+- run: node packages\/scripts\/ci-bun-version-contract\.ts --inventory[^\n]+/,
             "",
           ),
         },

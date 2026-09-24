@@ -17,11 +17,8 @@ import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/plugin-sql/database-utils/pglite-storage";
-import {
-  type LiveProviderConfig,
-  type LiveProviderName,
-} from "./live-provider";
+} from "@elizaos/testing";
+import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 // Vite 7's import-analysis resolves string-literal dynamic imports at transform

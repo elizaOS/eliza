@@ -4,6 +4,25 @@
  * Central export point for all database table schemas.
  */
 
+export {
+  agentTable,
+  cacheTable,
+  channelParticipantsTable,
+  channelTable,
+  componentTable,
+  embeddingTable,
+  entityTable,
+  logTable,
+  memoryTable,
+  messageServerAgentsTable,
+  messageServerTable,
+  messageTable,
+  participantTable,
+  relationshipTable,
+  roomTable,
+  taskTable,
+  worldTable,
+} from "@elizaos/plugin-sql";
 export * from "./account-deletion-exports";
 export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";
@@ -92,7 +111,6 @@ export * from "./discord-connections";
 export * from "./discord-guilds";
 export * from "./docker-nodes";
 export * from "./domain-purchase-idempotency";
-export * from "./eliza";
 export * from "./eliza-room-characters";
 export * from "./entity-settings";
 export * from "./generations";

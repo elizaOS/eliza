@@ -21,12 +21,11 @@ import {
   type ScheduledTask,
   SchedulingMigrationService,
 } from "@elizaos/plugin-scheduling";
-
+import { schema as runtimeSchema } from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
 import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
-import * as runtimeSchema from "../../../plugin-sql/src/schema/index.js";
 import type { CaptureLifeOpsActivitySignalRequest } from "../contracts/index.js";
 import {
   activateLifeOpsActivitySignals,

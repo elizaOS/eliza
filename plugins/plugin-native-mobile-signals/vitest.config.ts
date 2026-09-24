@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     include: [
       "src/**/*.test.ts",
-      "../../packages/scripts/plugins/plugin-native-mobile-signals/*.test.mjs",
+      "../../packages/scripts/plugins/plugin-native-mobile-signals/*.test.ts",
     ],
   },
 });

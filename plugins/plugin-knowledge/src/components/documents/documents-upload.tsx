@@ -32,7 +32,7 @@ import {
   DOCUMENT_UPLOAD_ACCEPT,
   type DocumentUploadFile,
   type DocumentUploadOptions,
-} from "./documents-upload.helpers";
+} from "./documents-upload.helpers.js";
 
 const DOCUMENT_UPLOAD_SCOPE_OPTIONS: ReadonlyArray<{
   value: DocumentScope;

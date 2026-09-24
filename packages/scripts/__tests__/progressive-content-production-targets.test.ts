@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROGRESSIVE_CONTENT_SOAK_OBJECT_BYTES,
   selectProgressiveContentSoakObject,
-} from "../lib/progressive-content-production-targets.mjs";
+} from "../lib/progressive-content-production-targets.ts";
 
 function object(id: string, byteLength: number, format = "lf-lines") {
   return { id, family: "document", byteLength, format };

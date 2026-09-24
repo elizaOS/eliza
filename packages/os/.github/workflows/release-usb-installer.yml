@@ -259,7 +259,7 @@ jobs:
           if [ '${{ inputs.require_signing }}' = true ] && [ '${{ matrix.platform }}' = win32 ]; then
             evidence="${evidence},authenticode"
           fi
-          node scripts/create-release-evidence.mjs \
+          node scripts/create-release-evidence.ts \
             --artifact-id '${{ matrix.release-id }}' \
             --source-artifact '${{ matrix.artifact }}' \
             --subject "${payloads[0]}" \

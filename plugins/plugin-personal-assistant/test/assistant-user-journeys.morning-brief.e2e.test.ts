@@ -17,6 +17,7 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import { InboxRepository as InboxTriageRepository } from "@elizaos/plugin-inbox";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
@@ -24,7 +25,6 @@ import {
   saveEnv,
   withTimeout,
 } from "../../../packages/app/test/helpers/test-utils";
-import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
   getLifeOpsLiveSetupWarnings,

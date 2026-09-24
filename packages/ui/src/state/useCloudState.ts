@@ -22,7 +22,6 @@ import {
   replaceStoredStewardTokenIfCurrent,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ANDROID_CLOUD_AUTH_RESULT_EVENT,
@@ -59,6 +58,7 @@ import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
 import {
   isAndroidCloudBuild,
   isAndroidLauncherBuild,

@@ -341,7 +341,7 @@ function applyProviderSettings(
 }
 /**
  * Apply the Cerebras alias for OpenAI-provider live tests. Mirrors the logic
- * in `scripts/test-env.mjs`: when CEREBRAS_API_KEY is present and OPENAI_API_KEY
+ * in `scripts/test-env.ts`: when CEREBRAS_API_KEY is present and OPENAI_API_KEY
  * isn't, populate OPENAI_* env vars so plugin-openai talks to Cerebras.
  *
  * Returns a disposer that restores the previous values.

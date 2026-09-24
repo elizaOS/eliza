@@ -8,8 +8,6 @@
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
@@ -28,9 +26,6 @@
       ],
       "@elizaos/plugin-native-inference/model-catalog/recommendation": [
         "../plugin-native-inference/src/model-catalog/recommendation.ts"
-      ],
-      "@elizaos/plugin-sql/database-utils/sql-compat": [
-        "../plugin-sql/src/database-utils/sql-compat.ts"
       ],
       "@elizaos/plugin-native-inference/model-catalog/catalog": [
         "../plugin-native-inference/src/model-catalog/catalog.ts"
@@ -64,7 +59,8 @@
       ],
       "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
         "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
-      ]
+      ],
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

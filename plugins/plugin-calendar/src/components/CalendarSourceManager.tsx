@@ -33,7 +33,6 @@ import {
   useRef,
   useState,
 } from "react";
-import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
 import { useCalendarSources } from "../hooks/useCalendarSources.js";
 import {

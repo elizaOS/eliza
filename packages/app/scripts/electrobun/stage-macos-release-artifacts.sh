@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/../../../.." && pwd))"
-RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.ts"
 ARTIFACTS_DIR="${1:-$(cd "$SCRIPT_DIR/../../platforms/electrobun" && pwd)/artifacts}"
 SKIP_SIGNATURE_CHECK="${ELECTROBUN_SKIP_CODESIGN:-0}"
 REAL_XCRUN="${ELECTROBUN_REAL_XCRUN:-/usr/bin/xcrun}"

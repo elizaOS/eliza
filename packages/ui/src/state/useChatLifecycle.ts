@@ -7,7 +7,6 @@
 
 import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import {
   type AgentStatus,
@@ -27,6 +26,7 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
 import { enableForceFreshFirstRun } from "../platform";
 import { alertDesktopMessage } from "../utils";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";

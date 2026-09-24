@@ -9,7 +9,7 @@
     "vitest.config.ts",
     "vitest.e2e.config.ts",
     "playwright.*.config.ts",
-    "scripts/**/*.{mjs,ts}",
+    "scripts/**/*.ts",
     "vite/**/*.ts",
     "test/**/*.{ts,tsx}",
     "platforms/**/*.{ts,tsx}",
@@ -17,7 +17,7 @@
   ],
   "project": [
     "src/**/*.{ts,tsx}",
-    "scripts/**/*.{mjs,ts}",
+    "scripts/**/*.ts",
     "vite/**/*.ts",
     "*.ts",
     "test/**/*.{ts,tsx}",
@@ -45,7 +45,7 @@
     "@elizaos/plugin-openai",
     "@elizaos/plugin-wechat"
   ],
-  "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
+  "ignoreUnresolved": ["tsx", "scripts/build.ts"],
   "ignore": ["dist/**", "ios/**", "android/**", "web-dist/**"],
   "vite": false,
   "vitest": false,

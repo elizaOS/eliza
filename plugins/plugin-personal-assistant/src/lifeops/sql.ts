@@ -7,7 +7,7 @@ import {
   executeSql,
   type RuntimeDb,
   type TransactionalDb,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 export {
   asObject,
@@ -29,7 +29,7 @@ export {
   toNumber,
   toText,
   withOptimisticRetry,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 /** The database and tenant identity required by repository SQL operations. */
 export type LifeOpsDatabaseContext = Pick<IAgentRuntime, "agentId"> & {

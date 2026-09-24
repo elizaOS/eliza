@@ -9,13 +9,13 @@ import {
   extractKnownLaneNames,
   isTestLikeFile,
   testShapedScriptNames,
-} from "../audit-test-lane-membership.mjs";
+} from "../audit-test-lane-membership.ts";
 
 import { EXTRA_SCRIPT_NAMES } from "../lib/script-metadata.ts";
 
 const ROOT_SCRIPTS = {
-  "test:server": "node run-all-tests.mjs --lane=server --no-cloud",
-  "test:client": "node run-all-tests.mjs --lane=client --no-cloud",
+  "test:server": "node run-all-tests.ts --lane=server --no-cloud",
+  "test:client": "node run-all-tests.ts --lane=client --no-cloud",
 };
 
 function pkg(dir, scripts, name = dir) {
@@ -88,8 +88,8 @@ describe("known lane extraction and declaration validity", () => {
   test("extracts every --lane=<name> and --lane <name> from root scripts", () => {
     expect(
       extractKnownLaneNames({
-        a: "run-all-tests.mjs --lane=server",
-        b: "run-all-tests.mjs --lane client",
+        a: "run-all-tests.ts --lane=server",
+        b: "run-all-tests.ts --lane client",
         c: "echo unrelated",
       }),
     ).toEqual(["client", "server"]);

@@ -78,7 +78,7 @@ jobs:
           test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
           test "$EXPECTED_TAG" = "v${{ inputs.version }}"
           test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
-          node packages/scripts/store-release-plan.mjs \
+          node packages/scripts/store-release-plan.ts \
             --version "${{ inputs.version }}" \
             --channel "${{ inputs.channel }}" \
             --source-sha "$EXPECTED_SHA" \
@@ -122,7 +122,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          node packages/app/scripts/align-electrobun-version.mjs
+          node packages/app/scripts/align-electrobun-version.ts
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -138,7 +138,7 @@ jobs:
 
       - name: Stage desktop bundle inputs
         run: |
-          node packages/app/scripts/desktop-build.mjs stage --variant=base
+          node packages/app/scripts/desktop-build.ts stage --variant=base
           test -f dist/entry.js
 
       - name: Resolve and build patched Electrobun CLI
@@ -159,12 +159,12 @@ jobs:
           NODE
           )"
           test -n "$package_dir"
-          node packages/app/scripts/build-patched-electrobun-cli.mjs "$package_dir" windows-x64
+          node packages/app/scripts/build-patched-electrobun-cli.ts "$package_dir" windows-x64
 
       - name: Build Store-flavor Electrobun app
         env:
           ELIZA_RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/
-        run: node packages/app/scripts/desktop-build.mjs package --env=stable
+        run: node packages/app/scripts/desktop-build.ts package --env=stable
 
       - name: Inject exact release identity into packaged resources
         shell: pwsh
@@ -233,6 +233,6 @@ jobs:
           MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
           MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
         run: >-
-          node packages/scripts/microsoft-store-submission.mjs
+          node packages/scripts/microsoft-store-submission.ts
           --archive "${{ steps.package.outputs.archive }}"
           --package-file-name "${{ steps.package.outputs.msix_name }}"

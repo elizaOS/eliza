@@ -36,7 +36,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
+import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.ts";
 import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));

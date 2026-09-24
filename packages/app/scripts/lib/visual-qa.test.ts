@@ -20,7 +20,7 @@ import {
   colorFractions,
   dominantPalette,
   evaluateExpectation,
-} from "./visual-qa.mjs";
+} from "./visual-qa.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "visual-qa-"));
 const __dirname = dirname(fileURLToPath(import.meta.url));

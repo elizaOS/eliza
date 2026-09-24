@@ -18,6 +18,8 @@ jobs:
     name: Quality
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -35,21 +37,21 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
       - name: Validate Windows command coverage contract
-        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
+        run: node packages/scripts/ci-windows-command-coverage-contract.ts
       - name: Build core contract
         run: bun run build:core
       - name: Repository verification
         env:
-          RUN_TURBO_CONCURRENCY: "4"
+          RUN_TURBO_CONCURRENCY: "2"
         run: bun run verify
       - name: Formatting
         run: bun run format:check
       - name: Check maintained Markdown link targets
-        run: node packages/scripts/check-markdown-links.mjs
+        run: node packages/scripts/check-markdown-links.ts
       - name: Prompt secret scan
-        run: node packages/scripts/check-prompt-secrets.mjs
+        run: node packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -407,7 +409,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
+        run: node packages/scripts/rm-path-recursive.ts reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

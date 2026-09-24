@@ -24,10 +24,7 @@
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/plugin-sql/database-utils/pglite-storage": [
-        "../plugin-sql/src/database-utils/pglite-storage.ts"
-      ]
+      "@elizaos/core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["./**/*"],

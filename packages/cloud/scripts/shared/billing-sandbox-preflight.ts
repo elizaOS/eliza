@@ -4,9 +4,12 @@ import type Stripe from "stripe";
 import { GENERIC_BILLING_STRIPE_API_VERSION } from "../../shared/src/lib/services/generic-billing-provider";
 export function requireRuntimeSandboxConfiguration(env: NodeJS.ProcessEnv) {
   if (env.GENERIC_BILLING_SANDBOX_RUN !== "1")
-    throw new ElizaError("Set GENERIC_BILLING_SANDBOX_RUN=1 for sandbox mutations", {
-      code: "BILLING_SANDBOX_OPT_IN_REQUIRED",
-    });
+    throw new ElizaError(
+      "Set GENERIC_BILLING_SANDBOX_RUN=1 for sandbox mutations",
+      {
+        code: "BILLING_SANDBOX_OPT_IN_REQUIRED",
+      },
+    );
   const key = env.GENERIC_BILLING_STRIPE_TEST_KEY;
   if (!key || !/^(sk|rk)_test_[A-Za-z0-9]+$/.test(key))
     throw new ElizaError("A dedicated Stripe test credential is required", {
@@ -41,18 +44,30 @@ export function requireRuntimeSandboxConfiguration(env: NodeJS.ProcessEnv) {
     database.search ||
     database.hash
   )
-    throw new ElizaError("Sandbox PostgreSQL must be local and have no connection options", {
-      code: "BILLING_SANDBOX_DATABASE_UNSAFE",
-    });
+    throw new ElizaError(
+      "Sandbox PostgreSQL must be local and have no connection options",
+      {
+        code: "BILLING_SANDBOX_DATABASE_UNSAFE",
+      },
+    );
   const secret = env.GENERIC_BILLING_SANDBOX_WEBHOOK_SECRET;
   if (!secret || !/^whsec_[A-Za-z0-9]+$/.test(secret))
-    throw new ElizaError("A dedicated sandbox forwarding signature secret is required", {
-      code: "BILLING_SANDBOX_WEBHOOK_REQUIRED",
-    });
+    throw new ElizaError(
+      "A dedicated sandbox forwarding signature secret is required",
+      {
+        code: "BILLING_SANDBOX_WEBHOOK_REQUIRED",
+      },
+    );
   return { ...config, databaseUrl: database.toString(), webhookSecret: secret };
 }
-export async function verifyRuntimeSandboxAccount(stripe: Stripe, config: { account: string }) {
-  const options = { stripeAccount: config.account, apiVersion: GENERIC_BILLING_STRIPE_API_VERSION };
+export async function verifyRuntimeSandboxAccount(
+  stripe: Stripe,
+  config: { account: string },
+) {
+  const options = {
+    stripeAccount: config.account,
+    apiVersion: GENERIC_BILLING_STRIPE_API_VERSION,
+  };
   const account = await stripe.accounts.retrieve(null, {}, options);
   if (account.id !== config.account)
     throw new ElizaError("Credential account differs from selected sandbox", {

@@ -19,8 +19,8 @@ import {
   validateRegistry,
   validateSourceRun,
   verifyLedgerPayload,
-} from "../develop-effect-ledger.mjs";
-import { createEvidence } from "../develop-impact-evidence.mjs";
+} from "../develop-effect-ledger.ts";
+import { createEvidence } from "../develop-impact-evidence.ts";
 
 const SOURCE_SHA = "a".repeat(40);
 const PRIOR_SHA = "b".repeat(40);

@@ -17,7 +17,7 @@ const uiSrc = path.resolve(here, "../src");
 const brandAssets = path.resolve(here, "../assets");
 const cleanupHelper = path.resolve(
   repoRoot,
-  "packages/scripts/rm-path-recursive.mjs",
+  "packages/scripts/rm-path-recursive.ts",
 );
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
 // (BRAND_PATHS in @elizaos/ui/brand → packages/ui/assets). Serve those

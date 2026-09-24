@@ -39,7 +39,7 @@
 // ── Production-landing checklist ─────────────────────────────────────
 //
 //   1. zig cross-compile produces non-empty libsigsys-handler.so for
-//      arm64-v8a (see compile-shim.mjs).
+//      arm64-v8a (see compile-shim.ts).
 //   2. After APK build: `unzip -l <apk> | grep libsigsys-handler` lists
 //      the .so under jniLibs/arm64-v8a/ (legacy-packaging on).
 //   3. On the Moto run: `adb logcat -s ElizaAgent` shows

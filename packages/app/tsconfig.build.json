@@ -29,8 +29,6 @@
         "../../plugins/plugin-elizacloud/dist/*"
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/capacitor-canvas": [
         "../../plugins/plugin-native-canvas/dist/esm/index.d.ts"
       ],

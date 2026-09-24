@@ -1,5 +1,5 @@
 /**
- * Pins the run-all-tests.mjs vacuous-green guards (#12342/#13620).
+ * Pins the run-all-tests.ts vacuous-green guards (#12342/#13620).
  *
  * The suite spawns the real runner against temporary workspace packages so a
  * lane that collects no tasks, swallows a failure as "no tests found", or hides
@@ -15,9 +15,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
-const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("../run-all-tests.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // Each case spawns the real runner (workspace discovery over the whole repo),
@@ -129,7 +129,7 @@ describe("root test lane require-work wiring (#13620)", () => {
     for (const file of readdirSync(workflowDir)) {
       if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
       const source = readFileSync(join(workflowDir, file), "utf8");
-      if (!source.includes("run-all-tests.mjs")) continue;
+      if (!source.includes("run-all-tests.ts")) continue;
       expect(
         source,
         `${file} passes the retired --min-tasks flag`,
@@ -312,7 +312,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
               private: true,
               type: "module",
               scripts: {
-                test: "node ../../packages/scripts/run-with-flake-retry.mjs 'never-match' -- node ../../packages/scripts/run-with-deadline.mjs 5000 -- node scripts/run-isolated-tests.mjs",
+                test: "node ../../packages/scripts/run-with-flake-retry.ts 'never-match' -- node ../../packages/scripts/run-with-deadline.ts 5000 -- node scripts/run-isolated-tests.ts",
               },
             },
             null,
@@ -323,7 +323,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
           join(
             ISOLATED_WRAPPER_PACKAGE_DIR,
             "scripts",
-            "run-isolated-tests.mjs",
+            "run-isolated-tests.ts",
           ),
           [
             'import { writeFileSync } from "node:fs";',

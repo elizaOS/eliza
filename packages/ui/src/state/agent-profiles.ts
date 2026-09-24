@@ -5,8 +5,8 @@
  * localStorage so users can manage and switch between multiple agents.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { setStorageValue } from "../bridge/storage-bridge";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";

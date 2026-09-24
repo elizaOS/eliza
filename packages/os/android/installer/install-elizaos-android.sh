@@ -27,7 +27,7 @@ if [[ ! -d "$VALIDATOR_DIR" ]]; then
   VALIDATOR_DIR="$ROOT/scripts"
 fi
 POST_FLASH_VALIDATOR="$VALIDATOR_DIR/validate-post-flash.sh"
-RELEASE_MANIFEST_VALIDATOR="$VALIDATOR_DIR/validate-release-manifest.mjs"
+RELEASE_MANIFEST_VALIDATOR="$VALIDATOR_DIR/validate-release-manifest.ts"
 declare -a IMAGE_SPECS=()
 declare -a PLAN=()
 declare -a VALIDATION_PLAN=()
@@ -673,7 +673,7 @@ main() {
   fi
   if [[ "$CONFIRM_FLASH" -eq 1 || "$signed_contract" -eq 1 ]]; then
     require_tool node
-    exec node "$ROOT/../../scripts/android/install-release.mjs" "${original_args[@]}"
+    exec node "$ROOT/../../scripts/android/install-release.ts" "${original_args[@]}"
   fi
   if [[ "$EXECUTE" -eq 1 ]]; then
     if [[ "$ASSUME_BOOTLOADER" -eq 1 ]]; then require_tool fastboot; else require_tool adb; fi

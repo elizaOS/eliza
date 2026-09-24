@@ -60,7 +60,7 @@ jobs:
 
       - name: Local runtime and WebView bundle
         run: >-
-          node packages/app/scripts/android-e2e.mjs
+          node packages/app/scripts/android-e2e.ts
           --build
           --no-emulator-boot
           --arm64-local-probes

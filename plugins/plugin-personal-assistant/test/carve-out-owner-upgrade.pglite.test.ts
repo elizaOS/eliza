@@ -13,7 +13,7 @@ import { migrateReminderTables } from "@elizaos/plugin-reminders";
 import {
   type CarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+} from "@elizaos/plugin-sql";
 import { afterEach, describe, expect, it } from "vitest";
 
 const domains = [

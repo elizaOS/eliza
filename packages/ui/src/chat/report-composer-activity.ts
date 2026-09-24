@@ -8,9 +8,9 @@ import {
   getElizaApiBase,
   getElizaApiToken,
 } from "@elizaos/core/utils/eliza-globals";
-import { logger } from "@elizaos/ui/logger";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
+import { logger } from "../logger.ts";
 export type ComposerActivityKind =
   | "typing_started"
   | "typing_paused"

@@ -13,7 +13,7 @@ import {
   PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY,
   parseProgressiveContentBenchmarkArgs,
   selectProgressiveContentBenchmarkObject,
-} from "../run-progressive-content-benchmark.mjs";
+} from "../run-progressive-content-benchmark.ts";
 
 const commit = "a".repeat(40);
 const execFileAsync = promisify(execFile);
@@ -60,7 +60,7 @@ describe("progressive content benchmark producer", () => {
 
   it("fails closed before corpus access when PostgreSQL is unavailable", async () => {
     const script = fileURLToPath(
-      new URL("../run-progressive-content-benchmark.mjs", import.meta.url),
+      new URL("../run-progressive-content-benchmark.ts", import.meta.url),
     );
     const baseArguments = [
       script,
@@ -181,7 +181,7 @@ describe("progressive content benchmark producer", () => {
       );
       if (!object) throw new Error("micro corpus lacks a readable FILE object");
       const script = fileURLToPath(
-        new URL("../run-progressive-content-benchmark.mjs", import.meta.url),
+        new URL("../run-progressive-content-benchmark.ts", import.meta.url),
       );
       await execFileAsync(bunExecutable, [
         script,

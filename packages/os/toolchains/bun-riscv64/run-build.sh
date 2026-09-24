@@ -22,7 +22,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_FILE="$HERE/$(basename "${BASH_SOURCE[0]}")"
 cd "$HERE"
 
-RM_PATH_RECURSIVE_HOST="$(cd "$HERE/../.." && pwd)/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE_HOST="$(cd "$HERE/../.." && pwd)/scripts/rm-path-recursive.ts"
 [ -r "$RM_PATH_RECURSIVE_HOST" ] || {
     echo "FATAL: cleanup helper not found at $RM_PATH_RECURSIVE_HOST" >&2
     exit 1
@@ -107,7 +107,7 @@ if [ "$SHELL_MODE" = "1" ]; then
     exec docker run --rm -it \
         --platform "${PLATFORM}" \
         -v "$HERE:/work-host:rw" \
-        -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.mjs:ro" \
+        -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.ts:ro" \
         --entrypoint /bin/bash \
         "${IMAGE_TAG}"
 fi
@@ -128,7 +128,7 @@ DOCKER_RUN_ARGS=(
     --rm
     --platform "${PLATFORM}"
     -v "$HERE/build.sh:/opt/build.sh:ro"
-    -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.mjs:ro"
+    -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.ts:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
     -v "$PATCH_MOUNT:/opt/bun-patches:ro"
     -v "$HERE/webkit-patches:/opt/webkit-patches:ro"

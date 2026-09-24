@@ -6,7 +6,7 @@
 
 import path from "node:path";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
 import { expect, ORIGIN, test } from "./android-harness";
 import {
   ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,

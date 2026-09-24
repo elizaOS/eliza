@@ -1,4 +1,4 @@
-/** Generated public route contracts. Regenerate with scripts/generate-public-routes.mjs. */
+/** Generated public route contracts. Regenerate with scripts/generate-public-routes.ts. */
 import type { CloudRequestOptions } from "../types.js";
 import type { ELIZA_CLOUD_PUBLIC_ENDPOINTS } from "./descriptors.generated.js";
 export type PublicRouteKey = keyof typeof ELIZA_CLOUD_PUBLIC_ENDPOINTS;

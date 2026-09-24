@@ -13,7 +13,7 @@ import {
   runController,
   selectLiveTrajectoryObjects,
   usageOf,
-} from "../produce-content-context-live-trajectories.mjs";
+} from "../produce-content-context-live-trajectories.ts";
 
 const SHA = "a".repeat(40);
 const FAMILIES = [

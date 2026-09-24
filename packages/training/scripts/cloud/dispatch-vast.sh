@@ -179,7 +179,7 @@ git clone --filter=blob:none "$GIT_REMOTE" eliza
 cd eliza
 git checkout "$GIT_SHA"
 bun install --frozen-lockfile || bun install
-ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
+ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
 )"

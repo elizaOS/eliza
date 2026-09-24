@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -53,7 +53,7 @@ function runFixture(mode: "mixed" | "skipped" | "failed") {
     return spawnSync(
       process.execPath,
       [
-        path.join(root, "packages/scripts/run-all-tests.mjs"),
+        path.join(root, "packages/scripts/run-all-tests.ts"),
         "--only=test",
         "--no-cloud",
         `--filter=${name}`,

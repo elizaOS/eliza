@@ -1,6 +1,6 @@
 /**
  * Before/after diff analyzers. `diff.change` ports the size-agnostic
- * change-metric from `packages/app/scripts/lib/visual-qa.mjs`: resize both
+ * change-metric from `packages/app/scripts/lib/visual-qa.ts`: resize both
  * frames onto a common 256px-wide grid and count max-channel deltas over a
  * threshold, returning the changed fraction and a single bounding box.
  * `diff.region` is the finer instrument — pixelmatch on a dimension-matched

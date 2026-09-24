@@ -112,17 +112,17 @@ jobs:
 
       - name: Apply required dependency compatibility patches
         run: |
-          bun packages/scripts/patch-punycode-deprecation.mjs
-          bun packages/scripts/patch-llama-cpp-capacitor.mjs
-          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Test required workflow contracts
         run: >-
           bun test
-          packages/cloud/scripts/shared/messaging-gateway-preflight.test.mjs
+          packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -137,8 +137,8 @@ jobs:
         env:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
         run: |
-          if [[ -f packages/scripts/pr-core-build-scope.mjs ]]; then
-            node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+          if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
+            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
           else
             echo "Candidate predates scoped bootstrap; retaining the full core build."
             echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
@@ -151,7 +151,7 @@ jobs:
       - name: Build affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
 
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
@@ -160,12 +160,12 @@ jobs:
       - name: Lint affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run lint:check --concurrency=4 --affected
+        run: node packages/scripts/run-turbo.ts run lint:check --concurrency=4 --affected
 
       - name: Typecheck affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
+        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=4 --affected
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E

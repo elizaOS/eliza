@@ -1,4 +1,13 @@
 /** Public entry point for `@elizaos/plugin-calendar`: the plugin definition, `CalendarService`, the `CALENDAR` action surface, and the calendar contract types host packages depend on. */
+
+export {
+  buildWideLookupRange,
+  resolveCalendarMutationCandidates,
+} from "./actions/calendar-handler.js";
+export {
+  type CalendarSourcesActionDeps,
+  registerCalendarSourcesHostAdapter,
+} from "./actions/calendar-sources.js";
 export {
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_PLAN_INSTRUCTIONS,
@@ -38,12 +47,22 @@ export {
   registerConflictDetectHostAdapter,
 } from "./actions/index.js";
 export {
+  type CalendarClientMethods,
+  installCalendarClient,
+} from "./api/client-calendar.js";
+export {
   APPLE_CALENDAR_ACCOUNT_LABEL,
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,
   isAppleCalendarEvent,
   isAppleCalendarGrant,
 } from "./apple-calendar.js";
+export {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
+} from "./calendar-action-schema.js";
 export {
   CalendarSection,
   type CalendarSectionProps,
@@ -87,6 +106,12 @@ export {
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
 export {
+  normalizeCalendarAttendees,
+  normalizeCalendarDateOnly,
+  normalizeCalendarTimeZone,
+  resolveCalendarEventRange,
+} from "./internal/calendar-normalize.js";
+export {
   ELIZA_CALENDAR_ACCOUNT_ID,
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
@@ -95,10 +120,22 @@ export {
   isElizaCalendarGrant,
 } from "./internal/eliza-calendar.js";
 export { CalendarServiceError } from "./internal/errors.js";
+export {
+  buildRecurrenceSplitPlan,
+  normalizeRecurrence,
+  recurrenceLinesFrom,
+  recurrenceOriginalStartAtFrom,
+  recurringEventIdFrom,
+} from "./internal/recurrence.js";
 export * from "./meetings/index.js";
 export * from "./microsoft/index.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
 export * from "./providers/index.js";
+export { registerCalendarApp } from "./register.js";
+export {
+  type CalendarRouteService,
+  handleCalendarRoutes,
+} from "./routes/calendar-routes.js";
 export * from "./routes/mutation-gateway.js";
 export * from "./service/index.js";
 export * from "./source-administration/index.js";

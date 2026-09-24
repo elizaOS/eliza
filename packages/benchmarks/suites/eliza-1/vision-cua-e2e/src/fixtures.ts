@@ -10,7 +10,7 @@
  * Each fixture has a `frame.png` (the "before" capture) and a
  * `frame-after.png` (the "after" capture used to detect a state change in
  * stub mode). When the matching PNGs are missing, we synthesise them on the
- * fly by calling `generate-fixtures.mjs`. This keeps the harness runnable on
+ * fly by calling `generate-fixtures.ts`. This keeps the harness runnable on
  * a fresh checkout without committing megabytes of test PNGs.
  */
 

@@ -393,7 +393,7 @@ try {
     "--preload",
     path.join(
       repoRoot,
-      "packages/cloud/scripts/e2e/stability-network-guard.mjs",
+      "packages/cloud/scripts/e2e/stability-network-guard.ts",
     ),
     "packages/cloud/scripts/e2e/stability-scenario-child.ts",
     "run",

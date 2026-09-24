@@ -10,12 +10,12 @@ import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import { expect, test, waitForShellReady } from "./android-harness";
 
 const ARTIFACT_DIR = path.join(

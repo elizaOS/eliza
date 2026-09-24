@@ -15,7 +15,7 @@
  *
  * Inputs (env):
  *   ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR  — fused lib (else the
- *     <stateDir>/local-inference/lib default from stage-desktop-fused-lib.mjs)
+ *     <stateDir>/local-inference/lib default from stage-desktop-fused-lib.ts)
  *   ELIZA_ASR_BUNDLE  — a bundle dir with asr/eliza-1-asr.gguf + -mmproj.gguf
  *   ELIZA_ASR_WAV     — override the test audio (default: bundled freeman.wav)
  */
@@ -30,40 +30,41 @@ import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inferenc
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function skip(msg: string): never {
-	console.log(`[asr-real-smoke] SKIP: ${msg}`);
-	process.exit(2);
+  console.log(`[asr-real-smoke] SKIP: ${msg}`);
+  process.exit(2);
 }
 function fail(msg: string): never {
-	console.error(`[asr-real-smoke] FAIL: ${msg}`);
-	process.exit(1);
+  console.error(`[asr-real-smoke] FAIL: ${msg}`);
+  process.exit(1);
 }
 
 if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
-	skip("not running under bun (bun:ffi required) — invoke with `bun`");
+  skip("not running under bun (bun:ffi required) — invoke with `bun`");
 }
 
 const libPath = resolveFusedLibraryPath(null, process.env);
 if (!libPath) {
-	skip(
-		"fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR, " +
-			"or run `bun run build:fused-desktop` in packages/app)",
-	);
+  skip(
+    "fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR, " +
+      "or run `bun run build:fused-desktop` in packages/app)",
+  );
 }
 
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 if (!bundle || !existsSync(path.join(bundle, "asr"))) {
-	skip(
-		"no ASR bundle (set ELIZA_ASR_BUNDLE to a dir with asr/eliza-1-asr.gguf + -mmproj.gguf)",
-	);
+  skip(
+    "no ASR bundle (set ELIZA_ASR_BUNDLE to a dir with asr/eliza-1-asr.gguf + -mmproj.gguf)",
+  );
 }
 
 const wav =
-	process.env.ELIZA_ASR_WAV?.trim() ||
-	path.resolve(
-		__dirname,
-		"../../../../plugins/plugin-local-inference/native/audio-fixtures/freeman.wav",
-	);
-if (!existsSync(wav)) skip(`test audio not found at ${wav} (set ELIZA_ASR_WAV)`);
+  process.env.ELIZA_ASR_WAV?.trim() ||
+  path.resolve(
+    __dirname,
+    "../../../../plugins/plugin-local-inference/native/audio-fixtures/freeman.wav",
+  );
+if (!existsSync(wav))
+  skip(`test audio not found at ${wav} (set ELIZA_ASR_WAV)`);
 
 console.log(`[asr-real-smoke] lib=${libPath}`);
 console.log(`[asr-real-smoke] bundle=${bundle}`);
@@ -72,40 +73,42 @@ console.log(`[asr-real-smoke] audio=${wav}`);
 const ffi = loadElizaInferenceFfi(libPath);
 console.log(`[asr-real-smoke] compatible ABI v${ffi.libraryAbiVersion}`);
 if (!ffi.timedAsrSupported()) {
-	fail(`ABI v${ffi.libraryAbiVersion} does not provide timed ASR`);
+  fail(`ABI v${ffi.libraryAbiVersion} does not provide timed ASR`);
 }
 const ctx = ffi.create(bundle);
 ffi.mmapAcquire(ctx, "asr");
 try {
-	const { pcm, sampleRate } = decodeMonoPcm16Wav(new Uint8Array(readFileSync(wav)));
-	const t0 = performance.now();
-	const { text, words } = ffi.asrTranscribeTimed({
-		ctx,
-		pcm,
-		sampleRateHz: sampleRate,
-	});
-	const ms = Math.round(performance.now() - t0);
-	const trimmed = (text ?? "").trim();
-	const sentenceCount = (trimmed.match(/[.?!]/g) ?? []).length;
-	console.log(`[asr-real-smoke] (${ms}ms) "${trimmed}"`);
-	console.log(
-		`[asr-real-smoke] words=${words?.length ?? 0} sentences≈${sentenceCount}`,
-	);
+  const { pcm, sampleRate } = decodeMonoPcm16Wav(
+    new Uint8Array(readFileSync(wav)),
+  );
+  const t0 = performance.now();
+  const { text, words } = ffi.asrTranscribeTimed({
+    ctx,
+    pcm,
+    sampleRateHz: sampleRate,
+  });
+  const ms = Math.round(performance.now() - t0);
+  const trimmed = (text ?? "").trim();
+  const sentenceCount = (trimmed.match(/[.?!]/g) ?? []).length;
+  console.log(`[asr-real-smoke] (${ms}ms) "${trimmed}"`);
+  console.log(
+    `[asr-real-smoke] words=${words?.length ?? 0} sentences≈${sentenceCount}`,
+  );
 
-	if (trimmed.length === 0) fail("empty transcript");
-	if ((words?.length ?? 0) < 5) fail(`too few words (${words?.length ?? 0})`);
-	// freeman.wav is several sentences. >=2 sentence-final marks proves the
-	// decode loop runs to completion rather than early-stopping at the first
-	// '.'/'?'/'!'.
-	if (sentenceCount < 2) {
-		fail(
-			`transcript has ${sentenceCount} sentence-final marks — looks truncated ` +
-				`(ASR early-stop regression?)`,
-		);
-	}
-	console.log("[asr-real-smoke] PASS");
+  if (trimmed.length === 0) fail("empty transcript");
+  if ((words?.length ?? 0) < 5) fail(`too few words (${words?.length ?? 0})`);
+  // freeman.wav is several sentences. >=2 sentence-final marks proves the
+  // decode loop runs to completion rather than early-stopping at the first
+  // '.'/'?'/'!'.
+  if (sentenceCount < 2) {
+    fail(
+      `transcript has ${sentenceCount} sentence-final marks — looks truncated ` +
+        `(ASR early-stop regression?)`,
+    );
+  }
+  console.log("[asr-real-smoke] PASS");
 } finally {
-	ffi.mmapEvict(ctx, "asr");
-	ffi.destroy(ctx);
-	ffi.close();
+  ffi.mmapEvict(ctx, "asr");
+  ffi.destroy(ctx);
+  ffi.close();
 }

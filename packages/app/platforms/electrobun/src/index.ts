@@ -967,7 +967,7 @@ async function startRendererServer(): Promise<string> {
 	return `http://127.0.0.1:${port}`;
 }
 async function resolveRendererUrl(): Promise<string> {
-	// Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.mjs watch mode).
+	// Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.ts watch mode).
 	// Why: Vite HMR only works against the dev server; serving pre-built dist from this static
 	// server would force a full rebuild for every UI change.
 	let rendererUrl = resolveRendererUrlFromEnv();

@@ -18,7 +18,7 @@ import {
   bindAuditOcrControls,
   parseAuditReport,
 } from "../../scripts/lib/audit-capture-manifest";
-import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
+import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.ts";
 import {
   authorizedShots,
   type ReportEntry,
@@ -694,7 +694,7 @@ describe("audit runner cleanup", () => {
     const output = execFileSync(
       process.execPath,
       [
-        join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
+        join(APP_DIR, "scripts", "run-ui-playwright.ts"),
         "--config",
         "playwright.ui-smoke.config.ts",
         "--project=audit-app",

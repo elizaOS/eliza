@@ -35,7 +35,7 @@ const VOICE_DUET = path.join(
   "packages",
   "app",
   "scripts",
-  "voice-duet.mjs",
+  "voice-duet.ts",
 );
 
 function timestamp() {

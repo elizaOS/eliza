@@ -297,7 +297,7 @@ async function startStack(): Promise<Stack> {
   const apiChild = spawn(
     "node",
     [
-      path.join(REPO_ROOT, "packages/app/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "packages/app/scripts/run-node-tsx.ts"),
       path.join(REPO_ROOT, "packages/app/scripts/testing/start-eliza-live.ts"),
     ],
     {

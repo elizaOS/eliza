@@ -82,7 +82,7 @@ runs:
   using: "composite"
   steps:
     # Self-hosted (hetzner-robot) runners are not guaranteed to expose `node`
-    # on the step PATH, and the very next step (turbo-cache-key.mjs) invokes
+    # on the step PATH, and the very next step (turbo-cache-key.ts) invokes
     # `node` directly. Without this, jobs that
     # rely solely on this composite for their toolchain fail with
     # "node: command not found" on runners missing a system Node. setup-node is
@@ -111,7 +111,7 @@ runs:
       id: turbo-key
       if: ${{ inputs.cache-turbo == 'true' }}
       shell: bash
-      run: node packages/scripts/turbo-cache-key.mjs --github-output
+      run: node packages/scripts/turbo-cache-key.ts --github-output
 
     - name: Restore and save Turbo cache (GitHub-native)
       id: turbo-cache
@@ -362,7 +362,7 @@ runs:
     - name: Resolve Bun release variant
       id: bun-variant
       shell: bash
-      run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant
+      run: node packages/scripts/ci-fetch-bun-release.ts --print-variant
 
     - name: Restore Bun release zip
       id: bun-zip-cache
@@ -392,16 +392,16 @@ runs:
         server_log="${RUNNER_TEMP}/eliza-bun-release-server.log"
         mkdir -p "$out"
         rm -f "$url_file" "$out/download-url" "$server_log"
-        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
+        node packages/scripts/ci-fetch-bun-release.ts --out-dir "$out"
         # Cache restores only bun.zip. A previous job's download-url (dead
         # localhost port) must not be published as bun-download-url. Detach
         # the server so bash exiting this step does not SIGHUP it.
-        nohup node packages/scripts/ci-fetch-bun-release.mjs \
+        nohup node packages/scripts/ci-fetch-bun-release.ts \
           --out-dir "$out" --serve-only --url-file "$url_file" \
           >"$server_log" 2>&1 &
         server_pid=$!
         disown || true
-        if ! url="$(node packages/scripts/ci-await-bun-release-server.mjs \
+        if ! url="$(node packages/scripts/ci-await-bun-release-server.ts \
           --pid "$server_pid" --url-file "$url_file" --timeout-ms 60000)"; then
           echo "::error::Bun zip local server did not become ready"
           if [ -s "$server_log" ]; then
@@ -463,7 +463,7 @@ runs:
             exit "$install_status"
           fi
           echo "Dependency install failed; retrying once after cleaning Bun's install cache."
-          node packages/scripts/rm-path-recursive.mjs ~/.bun/install/cache
+          node packages/scripts/rm-path-recursive.ts ~/.bun/install/cache
           sleep 5
         done
       env:
@@ -538,4 +538,4 @@ runs:
       # Run it explicitly when an earlier postinstall step could have failed.
       shell: bash
       run: |
-        node packages/scripts/ensure-workspace-symlinks.mjs
+        node packages/scripts/ensure-workspace-symlinks.ts

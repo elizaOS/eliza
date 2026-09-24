@@ -27,7 +27,7 @@ import {
   type CarveOutDatabase,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+} from "@elizaos/plugin-sql";
 
 export const GOALS_MIGRATION_LOG_PREFIX = "[Goals]";
 export const GOALS_MIGRATION_SERVICE_TYPE = "goals_migration";

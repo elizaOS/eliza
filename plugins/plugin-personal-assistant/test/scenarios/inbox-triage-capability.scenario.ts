@@ -153,9 +153,7 @@ async function assertOrganicTriagePersisted(
   if (!runtime) {
     return "inbox-capability outcome: scenario runtime unavailable";
   }
-  const { InboxRepository } = (await import(
-    "@elizaos/plugin-inbox/inbox/repository"
-  )) as {
+  const { InboxRepository } = (await import("@elizaos/plugin-inbox")) as {
     InboxRepository: new (
       rt: unknown,
     ) => {

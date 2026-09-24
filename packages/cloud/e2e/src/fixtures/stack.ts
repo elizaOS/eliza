@@ -5,7 +5,7 @@
  *   1. PGlite TCP bridge (via packages/cloud/scripts/admin/dev/pglite-server.ts)
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
- *   4. cloud-api worker subprocess (cloud-api-e2e-server.mjs)
+ *   4. cloud-api worker subprocess (cloud-api-e2e-server.ts)
  *   5. packages/app (apex) Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
@@ -662,7 +662,7 @@ async function startCloudStackOwned(
         spawnLogged(
           "frontend",
           "node",
-          [join(REPO_ROOT, "packages/cloud/scripts/e2e/frontend.mjs")],
+          [join(REPO_ROOT, "packages/cloud/scripts/e2e/frontend.ts")],
           {
             env: frontendEnv,
             cwd: frontendDir,

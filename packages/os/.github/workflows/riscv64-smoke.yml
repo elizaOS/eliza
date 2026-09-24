@@ -44,7 +44,7 @@ jobs:
 
       - name: Resolve pinned Eliza source
         id: eliza-source
-        run: node scripts/read-eliza-source-lock.mjs --github-output >> "$GITHUB_OUTPUT"
+        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
 
       - name: Checkout application native sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -99,7 +99,7 @@ jobs:
             git -C .eliza-source submodule status --recursive
             git -C .eliza-source ls-files -s \
               packages/native/plugins \
-              packages/app/scripts/aosp/compile-libllama.mjs
+              packages/app/scripts/aosp/compile-libllama.ts
             git ls-files -s \
               scripts/build-riscv64-artifacts.sh \
               toolchains/cmake

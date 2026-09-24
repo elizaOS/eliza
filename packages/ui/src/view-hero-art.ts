@@ -8,7 +8,7 @@
  *
  * The composition is intentionally **no-blue-dominant** (the app surface forbids
  * blue accents — orange/jewel tones only) and **deterministic**: the same input
- * always yields byte-identical output, so `packages/scripts/generate-view-heroes.mjs`
+ * always yields byte-identical output, so `packages/scripts/generate-view-heroes.ts`
  * (which commits real heroes into plugins) and the runtime fallback render the
  * exact same art. This is the single source of truth for that art — the script
  * and the agent both import `renderViewHeroSvg` from here.
