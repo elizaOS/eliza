@@ -2,7 +2,7 @@
  * Live-model scenario: a bedtime-pack request routes through the health-owned
  * sleep planning surface.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

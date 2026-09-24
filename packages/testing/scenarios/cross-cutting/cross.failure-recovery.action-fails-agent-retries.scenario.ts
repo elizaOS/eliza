@@ -4,7 +4,7 @@
  * exception surfacing to the user, no raw stack traces in the response.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

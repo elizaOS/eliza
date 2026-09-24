@@ -1,6 +1,6 @@
 // Defines the persona chained intents LifeOps scenario-runner spec.
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   localWeekdayHourMinute,
   personaDentistFinalChecks,

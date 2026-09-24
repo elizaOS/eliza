@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (LLM-judged): a savings goal must capture amount, horizon, and support strategy before save.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

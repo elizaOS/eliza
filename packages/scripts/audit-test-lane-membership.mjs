@@ -32,9 +32,9 @@ import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.mjs"
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDeclarations,
-} from "./lib/script-metadata.mjs";
+} from "./lib/script-metadata.ts";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { listPackages } from "./lib/workspaces.ts";
 import { computeTestRoots } from "./test-cloud-run.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));

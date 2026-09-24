@@ -9,7 +9,7 @@ import {
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";

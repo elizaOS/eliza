@@ -1,7 +1,6 @@
 /** Scenario fixture for activity per app weekly average; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectTurnToCallAction } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { expectTurnToCallAction, scenario } from "@elizaos/testing";
 import { seedScreenTimeSessions } from "../../../scenario-support/lifeops-seeds.ts";
 
 const WEEKLY_AVERAGE_SESSIONS = Array.from({ length: 7 }, (_, day) => [

@@ -4,11 +4,7 @@
  * actionable alternative (3 slots over email, etc.).
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

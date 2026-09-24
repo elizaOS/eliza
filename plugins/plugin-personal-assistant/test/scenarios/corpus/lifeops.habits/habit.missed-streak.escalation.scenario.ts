@@ -1,6 +1,6 @@
 /** Scenario fixture for habit missed streak escalation; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 

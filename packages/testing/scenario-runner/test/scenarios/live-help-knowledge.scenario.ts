@@ -6,7 +6,7 @@
  * replies stay grounded in the seeded help fragments instead of inventing a
  * deleted screen or screen-relative button flow.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const FORBIDDEN_UI_REFERENCES = [
   /help view/i,

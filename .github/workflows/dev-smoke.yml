@@ -54,7 +54,7 @@ jobs:
           setup-python: "false"
           install-protoc: "false"
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Build core and shared dependencies
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
       - name: Run Vite dependency HMR

@@ -2,7 +2,7 @@
  * Wake-up parity scenario exercises the morning health check-in behavior from
  * the wake-up default pack.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 export default scenario({
   lane: "live-only",
   id: "wake-up-routine",

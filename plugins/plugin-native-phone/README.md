@@ -1,69 +1,15 @@
 # @elizaos/plugin-native-phone
 
-Phone integration for elizaOS — Android dialer overlay and iOS Phone Companion.
+Android dialer overlay + iOS Phone Companion (pairing, chat-mirror, remote-session) for
+Eliza agents.
 
-## What it does
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-This plugin ships two independent surfaces:
+## Development
 
-**Android Phone overlay**
-A full-screen dialer app (Dialer, Recent Calls tabs) that runs as an overlay inside the elizaOS Android shell. It reads call history from the native `READ_CALL_LOG` permission via `@elizaos/plugin-native-phone/bridge` and exposes it to the agent runtime. Tapping a recent-call row places a call through `Phone.placeCall`. The address book lives in the separate Contacts view (`@elizaos/plugin-native-contacts`); the header "Contacts" button links to it through the `eliza:navigate:view` bus rather than embedding a duplicate contacts pane. When another surface (e.g. a Contacts "Call" control) navigates here with a number, the dialer is pre-seeded with it.
-
-**Phone Companion (iOS)**
-A three-screen Capacitor surface (Chat, Pairing, Remote Session) that runs inside the main elizaOS iOS bundle. It pairs with a desktop Eliza agent via a QR code scan, mirrors the agent's chat stream, and can relay touch gestures to a remote VNC/noVNC session running on the paired Mac. APNs push notifications can trigger a Remote Session view automatically when enabled.
-
-## Capabilities added to the agent
-
-| Surface | What the agent gains |
-|---------|---------------------|
-| `phoneCallLog` provider | Complete read-only Android call history injected into the agent's context for questions about prior calls. Requires `ADMIN` role. Available in `contacts` and `messaging` contexts. |
-| `/phone` view | GUI dialer + transcript UI. Supports the `phone-state`, `place-call`, `open-dialer`, and `save-call-transcript` capabilities via `interact()`. |
-| `/phone-companion` nav tab | iOS companion surface (pairing, chat-mirror, remote-session). |
-
-## Enabling the plugin
-
-```ts
-import { appPhonePlugin } from "@elizaos/plugin-native-phone";
-
-// Pass to the elizaOS runtime plugin list:
-const runtime = new AgentRuntime({
-  plugins: [appPhonePlugin],
-  // ...
-});
-```
-
-The Android overlay registers automatically when the host is the elizaOS Android shell (`isElizaOS()` returns true). The Phone Companion page registers unconditionally for iOS and desktop hosts.
-
-## Required permissions (Android)
-
-The native `@elizaos/plugin-native-phone/bridge` plugin requires `READ_CALL_LOG` and `CALL_PHONE` permissions in the host APK's `AndroidManifest.xml`. The plugin surface renders correctly without these permissions, but call-log and call-placement features will fail at runtime.
-
-## Environment / config
-
-All configuration variables are Vite build-time env vars for the companion surface. They do not affect the Android overlay or the agent-side provider.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_ELIZA_AGENT_URL` | — | Pre-configured agent ingress URL shown in the companion Chat view before pairing |
-| `VITE_ELIZA_APNS_ENABLED` | `"0"` | Set to `"1"` to enable APNs push registration on iOS |
-| `VITE_ELIZA_LOG_LEVEL` | — | Log level for the companion surface |
-
-## Building
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd plugins/plugin-native-phone build
+bun run --cwd plugins/plugin-native-phone build  # build
+bun run --cwd plugins/plugin-native-phone test   # tests
 ```
-
-The build produces three outputs: `dist/index.js` (main ESM bundle), `dist/views/bundle.js` (plugin view bundle loaded by the elizaOS view registry), and `dist/index.d.ts` (type declarations).
-
-## Native dependencies
-
-- `@elizaos/plugin-native-phone/bridge` — Android dialer and call-log native bridge (workspace package).
-- `@capacitor/push-notifications` — APNs push registration for the iOS companion.
-- `@capacitor/haptics` — Haptic feedback on companion navigation transitions.
-- `@capacitor/preferences` — Navigation stack persistence for the companion.
-- `@capacitor/barcode-scanner` — QR pairing scan in the companion Pairing view.
-
-## Native bridge
-
-The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-phone/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.

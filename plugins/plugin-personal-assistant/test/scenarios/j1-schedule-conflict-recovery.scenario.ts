@@ -3,7 +3,7 @@
  * It covers a sick-kid disruption on the other parent's day while requiring
  * factual options instead of editorializing about responsibility.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

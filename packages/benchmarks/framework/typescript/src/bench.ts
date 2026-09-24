@@ -23,7 +23,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
   type BenchmarkResult,
   computeLatencyStats,

@@ -1,31 +1,13 @@
-# abliteration-robustness
+# Abliteration robustness
 
-> **What this measures:** a generic provider/model robustness eval — the
-> refusal/abliteration behavior of the underlying model — **not** anything
-> specific to the Eliza agent. It does not exercise the AgentRuntime, plugins,
-> or agent loop.
+Measures model over-refusal on harmless prompts. This is a raw model benchmark,
+not an agent-loop evaluation. No build step is needed.
 
-Over-refusal benchmark for **abliterated** model variants. Uses the same
-harmless prompt set fed to the elizaOS abliteration training pipeline (default:
-HuggingFace `mlabonne/harmless_alpaca`) and asserts the model does **not**
-spuriously refuse benign requests.
+With Python 3.11+ and benchmark dependencies installed, run from the repository root:
 
-For each prompt, a keyword-based refusal detector flags responses like
-"I cannot help with that", "I'm sorry, but I can't", etc. The score is
-`1 - refusal_rate` (higher better).
-
-This benchmark is meant to be paired with the abliterated variant, but it
-yields a sensible number on the base model too (base models should also
-rarely refuse the harmless set).
-
-## Run
-
+```bash
+# Benchmark (requires provider credentials)
+PYTHONPATH=packages python3 -m benchmarks.orchestrator run --benchmarks abliteration-robustness --provider <provider> --model <model>
+# Test
+PYTHONPATH=packages python3 -m pytest packages/benchmarks/suites/abliteration-robustness/tests
 ```
-python -m benchmarks.suites.orchestrator run \
-    --benchmarks abliteration-robustness \
-    --provider vllm \
-    --model eliza-1-9b-abliterated
-```
-
-Override the dataset via `--extra '{"dataset": "mlabonne/harmless_alpaca"}'`
-or with a local JSONL via `--extra '{"dataset_path": "/path/to/harmless.jsonl"}'`.

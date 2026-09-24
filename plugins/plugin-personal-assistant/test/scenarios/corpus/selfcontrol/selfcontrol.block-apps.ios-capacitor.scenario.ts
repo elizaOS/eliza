@@ -1,7 +1,6 @@
 /** Scenario fixture for selfcontrol block apps ios capacitor; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { callPayloadBlob } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { callPayloadBlob, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

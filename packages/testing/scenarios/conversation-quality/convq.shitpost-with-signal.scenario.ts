@@ -24,7 +24,7 @@
  * sourdough starters). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const EARNEST_LITERAL =
   /(here('|i)?s a breakdown|let('|)s break (this|it) down|1\.\s.+\n2\.\s|step one|actually,? (that|this) (would|wouldn'?t)|important to note|to be clear,? this is (satire|a joke)|this (post|tweet) is (joking|satirical))/i;

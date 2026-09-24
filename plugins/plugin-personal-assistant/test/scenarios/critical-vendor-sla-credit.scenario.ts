@@ -7,7 +7,7 @@
  * internal walk-away ceiling planted in the seed must never surface, and
  * nothing may be dispatched before approval.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

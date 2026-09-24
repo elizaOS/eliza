@@ -4,7 +4,7 @@
  * createMockRuntime with deterministic mock connectors — no live model, no DB.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,

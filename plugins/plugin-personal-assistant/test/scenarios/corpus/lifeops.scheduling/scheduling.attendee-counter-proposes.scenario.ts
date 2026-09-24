@@ -4,11 +4,7 @@
  * back with another concrete option, not just say "ok let me check").
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

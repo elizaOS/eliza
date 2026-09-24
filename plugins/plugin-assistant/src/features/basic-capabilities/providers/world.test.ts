@@ -4,7 +4,7 @@
  * real provider formatting and data assembly.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type {
   IAgentRuntime,

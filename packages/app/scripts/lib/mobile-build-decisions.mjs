@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { artifactStaleness } from "./artifact-staleness.mjs";
+import { artifactStaleness } from "./artifact-staleness.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreScriptsDir = path.resolve(__dirname, "..");

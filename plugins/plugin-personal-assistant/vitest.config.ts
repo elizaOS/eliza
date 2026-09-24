@@ -682,15 +682,10 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      // The scenario-corpus gate dynamically imports every scenario file, and the
-      // first-run onboarding helper (test/scenarios/_helpers/first-run-onboarding.ts)
-      // pulls PA's OWN deep modules through the package specifier
-      // (`@elizaos/plugin-personal-assistant/lifeops/first-run/*`). PA is not in
-      // build:core and this lane has no eliza-source condition, so the package
-      // `exports` `./*` wildcard would send those subpaths to a `./dist/*.js` that
-      // never gets built. Anchor PA self-subpaths to source (the base workspace-app
-      // config only source-aliases the barrel, and the exports-alias builder skips
-      // the wildcard entry).
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.join(here, "src", "index.ts"),
@@ -705,38 +700,9 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
-      // imports the real scenario loader from source; loader.ts references its
-      // own package via `@elizaos/testing/scenario-runner/schema`, a self-referencing
-      // package-exports import Vite's resolver does not support. Anchor the
-      // subpath to the prebuilt schema entry the exports map points at.
       {
-        find: /^@elizaos\/testing\/scenario-runner\/schema$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "testing",
-          "scenario-runner",
-          "schema",
-          "index.js",
-        ),
-      },
-      // The scenario corpus imports shared assertion helpers through
-      // `@elizaos/testing/scenario-runner/scenario-assertions` — the same
-      // package-exports subpath shape as `/schema` above, which this lane
-      // cannot resolve (the `./*` exports wildcard points at a `./dist/*.js`
-      // that plugin-tests never builds). Anchor it to source; its only
-      // package import is `/schema`, covered by the alias above.
-      {
-        find: /^@elizaos\/testing\/scenario-runner\/scenario-assertions$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "testing",
-          "scenario-runner",
-          "src",
-          "scenario-assertions.ts",
-        ),
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
       },
       {
         find: /^react\/jsx-dev-runtime$/,
@@ -930,7 +896,15 @@ export default defineConfig({
       ...baseConfig.test?.coverage,
       include: [
         `${packageRootFromRepo}/src/**/*.{ts,tsx}`,
-        `${packageRootFromRepo}/scripts/run-cerebras-journey-eval.mjs`,
+        path
+          .relative(
+            repoRoot,
+            path.join(
+              elizaRoot,
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+            ),
+          )
+          .replaceAll(path.sep, "/"),
       ],
       exclude: [
         `${packageRootFromRepo}/src/**/*.test.{ts,tsx}`,

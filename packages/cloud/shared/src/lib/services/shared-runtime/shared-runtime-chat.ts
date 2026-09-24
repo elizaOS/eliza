@@ -14,7 +14,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
 import {

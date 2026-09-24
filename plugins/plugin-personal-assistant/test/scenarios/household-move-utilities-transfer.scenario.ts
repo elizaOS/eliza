@@ -6,7 +6,7 @@
  * digits stay out of chat. Seeds re-verified via definitionCountDelta; vendor
  * drafts stay staged via a no-external-send predicate.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

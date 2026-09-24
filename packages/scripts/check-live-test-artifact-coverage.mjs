@@ -68,9 +68,9 @@ const NON_MODEL_EXCLUSION_RULES = [
   },
   {
     reason:
-      "Local plugin smoke harness; validates plugin bootstrapping/service wiring, not LLM token/cache behavior.",
+      "Plugin integration tests validate service behavior; model-call artifacts belong to the live runtime lane.",
     matches: (row) =>
-      /run-local-plugin-live-smoke|plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(
+      /plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(
         row.value,
       ),
   },

@@ -3,8 +3,8 @@
  * It verifies automatic recent-context handoff and explicit durable topology
  * discovery for one canonical owner using Discord, Telegram, and X.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 async function verifyTopologyDiscovery(
   ctx: ScenarioContext,

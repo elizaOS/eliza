@@ -28,8 +28,8 @@
  *     settles terminally after retry_1 — the "retry_2" turn fails.
  */
 
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

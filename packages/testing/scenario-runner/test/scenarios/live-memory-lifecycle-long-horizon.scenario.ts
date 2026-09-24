@@ -4,8 +4,8 @@
  * search, correction, supersession, deletion, and an honest post-delete miss via chat.
  */
 import { type Memory, MemoryType, type UUID } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { scoreMemoryRecall } from "../../src/memory-recall-metrics";
 import { prepareOwnerMemoryRuntime } from "./_helpers/history-recall-runtime";
 

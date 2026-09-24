@@ -2,7 +2,7 @@
  * Live-model scenario: a stretch-break request persists a "Stretch" task with
  * the default daytime break cadence.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

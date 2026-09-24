@@ -192,7 +192,7 @@ function hasFinding(report, fragment) {
     root: { build: "tsc -b" },
     files: {
       "packages/scripts/build-thing.ts":
-        "import { listPackages } from './lib/workspaces.mjs';\nexport const set = listPackages();\n",
+        "import { listPackages } from './lib/workspaces.ts';\nexport const set = listPackages();\n",
     },
   });
   assert(
@@ -276,7 +276,7 @@ function hasFinding(report, fragment) {
     files: {
       // Fully decoupled — no plugin tokens left.
       "packages/scripts/dev-thing.ts":
-        "import { listPackages } from './lib/workspaces.mjs';\n",
+        "import { listPackages } from './lib/workspaces.ts';\n",
       "packages/scripts/script-plugin-coupling.allowlist.json": JSON.stringify([
         {
           file: "packages/scripts/dev-thing.ts",

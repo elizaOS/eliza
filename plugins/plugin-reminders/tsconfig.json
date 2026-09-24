@@ -2,10 +2,6 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "types": ["node"],
     "typeRoots": [
       "./node_modules/@types",
@@ -15,8 +11,6 @@
       "../../../node_modules",
       "../../../node_modules/.bun/node_modules"
     ],
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,

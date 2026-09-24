@@ -4,7 +4,7 @@
  * composition across user and agent-tenant boundaries.
  */
 
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
 import { setEntityRoleCas } from "../../../../../packages/core/src/roles.ts";

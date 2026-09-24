@@ -20,7 +20,7 @@
  * the live incident.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";

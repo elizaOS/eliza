@@ -1,11 +1,10 @@
 /**
  * Internal types for the scenario runner. Scenario definitions themselves are
- * imported from `@elizaos/testing/scenario-runner/schema`; this file only models the runner's
+ * imported from `@elizaos/testing`; this file only models the runner's
  * execution & report state.
  */
 
 import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing/deterministic-model-plugin";
 import type {
   ApprovalRequestState,
   CapturedAction,
@@ -14,12 +13,13 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
+  DeterministicModelDiagnostics,
   ScenarioContext,
   ScenarioEvidenceScope,
   ScenarioExecutionProfile,
   ScenarioLane,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 

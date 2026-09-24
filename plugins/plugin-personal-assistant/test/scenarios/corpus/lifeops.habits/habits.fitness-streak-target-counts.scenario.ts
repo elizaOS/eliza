@@ -3,7 +3,7 @@
  * The agent should record the partial completion and not reset the streak.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

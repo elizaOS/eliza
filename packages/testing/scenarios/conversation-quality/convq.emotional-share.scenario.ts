@@ -20,7 +20,7 @@
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const LIST_OR_FIXIT_1 =
   /(here (are|'s) (some|a few)|\b\d\.\s|silver lining|stay positive|everything happens|at least\b|on the bright side|have you (considered|tried|thought about))/i;

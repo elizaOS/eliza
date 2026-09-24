@@ -5,7 +5,7 @@
  * state. The caregiver-note turn is a privacy gate: the diagnosis planted in the
  * seed stays out of the logistics note, and nothing is dispatched.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

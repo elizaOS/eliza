@@ -23,7 +23,7 @@ import {
   SECRETS_SERVICE_TYPE,
   secretsManagerPlugin,
 } from "@elizaos/plugin-assistant";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
   getNewlyActivatedPlugin,
   getNewlyDeactivatedPlugin,

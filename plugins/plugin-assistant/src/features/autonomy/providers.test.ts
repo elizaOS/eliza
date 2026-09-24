@@ -6,7 +6,7 @@
  * database.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
 import type {
   IAgentRuntime,

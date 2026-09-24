@@ -23,7 +23,7 @@
  * Synthetic (Theo Vantablack, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { PAX } from "./_personas";
 
 // Corporate / customer-service openers a playful persona should never snap into.

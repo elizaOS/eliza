@@ -10,7 +10,7 @@ import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import type {
   FinalCheckReport,
   FinalCheckStatus,

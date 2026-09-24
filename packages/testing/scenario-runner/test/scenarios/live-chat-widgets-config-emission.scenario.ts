@@ -16,7 +16,7 @@
  * only correct answer. Needs live model credentials (live-only lane).
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { uiWidgetsGuideSeed } from "./_helpers/chat-widgets";
 
 export default scenario({

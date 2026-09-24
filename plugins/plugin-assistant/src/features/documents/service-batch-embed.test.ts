@@ -3,7 +3,7 @@
  * registry and in-memory persistence, including both serial fallback paths.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, test } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {

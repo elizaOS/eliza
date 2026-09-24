@@ -1,5 +1,5 @@
 // Defines the trust distribution approval LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalResolvedApproved,
   expectPendingApprovalSeeded,

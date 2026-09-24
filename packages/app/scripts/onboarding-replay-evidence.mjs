@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const UI_PORT = process.env.ELIZA_UI_PORT || "2190";
 const BASE = `http://127.0.0.1:${UI_PORT}`;

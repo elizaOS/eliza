@@ -6,7 +6,7 @@
 import { createServer } from "node:http";
 import { ChannelType, type Memory, ModelType, stringToUuid, TaskService } from "@elizaos/core";
 import { EvaluatorService } from "@elizaos/plugin-assistant";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
 

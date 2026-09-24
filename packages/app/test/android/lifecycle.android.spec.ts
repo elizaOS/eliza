@@ -12,7 +12,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,

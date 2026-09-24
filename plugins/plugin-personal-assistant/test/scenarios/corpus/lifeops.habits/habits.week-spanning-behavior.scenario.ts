@@ -4,8 +4,8 @@
  * EU). This scenario verifies the agent surfaces the right week's progress.
  */
 
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 function expectYogaWeeklyProgress(ctx: ScenarioContext): string | undefined {

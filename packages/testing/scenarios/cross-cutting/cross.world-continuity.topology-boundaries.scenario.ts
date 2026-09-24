@@ -3,8 +3,8 @@
  * verified owner accounts converge on one principal while a same-name decoy
  * stays outside world/room discovery, and exercises query and invalid-id paths.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type MessageResult = {
   success?: boolean;

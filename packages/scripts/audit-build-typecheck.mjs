@@ -15,8 +15,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { resolveBuildModelExceptions } from "./lib/script-metadata.ts";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

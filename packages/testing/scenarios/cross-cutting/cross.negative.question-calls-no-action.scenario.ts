@@ -4,9 +4,8 @@
  * no follow-up scheduling, no contact add, no outbound message).
  */
 
-import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 const FORBIDDEN_SIDE_EFFECTS = [
   "MESSAGE",

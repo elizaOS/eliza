@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 // live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to have the
 // verifier drive one real post-onboarding chat turn; the harness then enforces
 // the shared non-stub assertion (`assertLiveReply`) on the reported reply.
-import { testOutputPath } from "../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { assertLiveReply } from "../test/liveness-contract.mjs";
 import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import { assertIosMixedContentSmokeResult } from "./lib/ios-mixed-content-smoke-contract.mjs";

@@ -6,11 +6,7 @@
  * meeting.
  */
 
-import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkPrepBlockCreated(ctx: ScenarioContext): string | undefined {

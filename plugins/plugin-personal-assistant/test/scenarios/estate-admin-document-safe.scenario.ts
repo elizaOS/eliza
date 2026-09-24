@@ -5,7 +5,7 @@
  * planted in the seed never surfaces on any turn, and the scheduling ask lands as
  * a captured scheduled action carrying the seeded work (selectedActionArguments).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

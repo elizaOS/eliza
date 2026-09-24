@@ -4,7 +4,7 @@
  * durable output replay and processor-failure reporting use production code.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {

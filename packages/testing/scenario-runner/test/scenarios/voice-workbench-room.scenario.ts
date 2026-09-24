@@ -6,7 +6,7 @@
  */
 
 import { groundTruthMockServices } from "@elizaos/plugin-local-inference/voice-workbench";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   id: "voice-workbench-room",

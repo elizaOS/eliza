@@ -1,6 +1,6 @@
 /** Incremental evidence is retained until successful storage, with replay-stable IDs. */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type {
   EvaluatorRunOptions,

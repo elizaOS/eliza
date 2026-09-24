@@ -1,33 +1,17 @@
 # @elizaos/bench-eliza-1
 
-Quality and performance benchmark for eliza-1 models. Measures structured-output accuracy and
-decoding throughput across three elizaOS agent tasks — response-handler decision (`should_respond`),
-action planner (`planner`), and per-action parameter extraction (`action:<name>`) — comparing
-eliza-1's unguided, GBNF-guided, and strict-guided decoding modes against a Cerebras reference
-baseline (Llama-3.1-8B for tiers up to 9B; GPT-OSS-120B for the 27B tier).
+Quality and performance benchmark for eliza-1 models.
 
-## Quick Start
+## Development
+
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-# Run all tasks and modes (requires eliza-1 GGUF on disk or CEREBRAS_API_KEY)
-bun run --cwd suites/eliza-1 start
-
-# Run harness tests only — no inference keys or GGUF needed
-bun run --cwd suites/eliza-1 test
-
-# Specific task + mode + tier
-bun run --cwd suites/eliza-1 start \
-  --task should_respond --mode guided --tier eliza-1-9b --n 5
+bun run --cwd packages/benchmarks/suites/eliza-1 typecheck  # static validation
 ```
 
-## Vision CUA sub-harness
+No standalone build script is defined; this package is consumed or executed from source.
 
-The `vision-cua-e2e/` subdirectory is an integration scaffold for the eliza-1 vision +
-`plugin-computeruse` loop (capture → tile → describe → OCR → ground → click → verify). It runs
-fully in stub mode (no inference, no OS mouse) out of the box.
+Run the harness with `bun run --cwd packages/benchmarks/suites/eliza-1 start`. Live runs require the suite’s configured models, credentials, or hardware; offline tests do not establish a benchmark score.
 
-```bash
-bun run --cwd suites/eliza-1/vision-cua-e2e test
-```
-
-See [AGENTS.md](AGENTS.md) for full flag reference, fixture derivation, and real-mode wiring.
+No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

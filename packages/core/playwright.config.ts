@@ -1,7 +1,7 @@
 /** Configures Playwright e2e execution for @elizaos/core runtime smoke tests. */
 
 import { defineConfig } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 process.env.ELIZA_PLAYWRIGHT_E2E = "1";
 

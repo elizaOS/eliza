@@ -1,9 +1,6 @@
 /** Seeds personal-assistant persistence and projections for executable scenarios. */
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  ScenarioCheckResult,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
 import { insertActivityEvent } from "../../src/activity-profile/activity-tracker-repo.ts";
 import {
   recordBrowserFocusWindow,

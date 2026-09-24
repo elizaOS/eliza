@@ -6,7 +6,7 @@
  * appear in any user turn, so an echoed reply cannot pass. Seeds re-verified via
  * definitionCountDelta.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

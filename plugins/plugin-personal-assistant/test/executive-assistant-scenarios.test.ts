@@ -5,7 +5,7 @@
  */
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ScenarioDefinition } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioDefinition } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   discoverScenarios,

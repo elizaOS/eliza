@@ -3,8 +3,8 @@
  * authorize a clarification or grammar-valid scheduling form.
  */
 
+import { scenario } from "@elizaos/testing";
 import { expectMissingInputTerminalRelay } from "@elizaos/testing/scenario-runner/missing-input-terminal-relay";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   id: "live-missing-input-terminal-relay",

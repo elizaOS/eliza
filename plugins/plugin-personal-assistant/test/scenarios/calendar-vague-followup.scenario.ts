@@ -8,7 +8,7 @@
  * seeded outbound flight, and the return question must surface the seeded
  * return flight. The seeded rows are re-verified via `definitionCountDelta`.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

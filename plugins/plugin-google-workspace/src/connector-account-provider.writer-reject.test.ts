@@ -14,7 +14,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

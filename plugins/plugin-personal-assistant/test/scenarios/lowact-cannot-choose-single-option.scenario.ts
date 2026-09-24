@@ -19,7 +19,7 @@
  * definitionCountDelta proves at most the single picked step was scheduled (not
  * multiple options turned into multiple tasks).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

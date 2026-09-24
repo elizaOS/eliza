@@ -13,8 +13,8 @@
  */
 
 import type { Memory, UUID } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { prepareOwnerMemoryRuntime } from "./_helpers/history-recall-runtime";
 
 type RuntimeLike = {

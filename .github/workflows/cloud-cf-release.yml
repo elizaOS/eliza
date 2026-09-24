@@ -3309,7 +3309,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.

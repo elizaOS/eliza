@@ -46,9 +46,6 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../plugins/plugin-elizacloud/src/*"
       ],
-      "@elizaos/plugin-scheduling/edge": [
-        "../../../plugins/plugin-scheduling/src/edge.ts"
-      ],
       "@elizaos/plugin-todos/edge": [
         "../../../plugins/plugin-todos/src/edge.ts"
       ],
@@ -60,10 +57,14 @@
       "drizzle-orm/*": [
         "../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
       ],
-      "@/*": ["../shared/*"]
+      "@/*": ["../shared/*"],
+      "@elizaos/plugin-scheduling": [
+        "../../../plugins/plugin-scheduling/src/index.ts"
+      ]
     }
   },
   "include": [
+    "../scripts/api/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx",
     "../shared/src/db/**/*.ts",

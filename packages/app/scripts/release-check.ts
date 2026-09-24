@@ -825,7 +825,7 @@ function assertBundledAgentOrchestratorInstallFix() {
     )
   ) {
     console.error(
-      "release-check: @elizaos/plugin-agent-orchestrator references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under eliza/plugins/plugin-agent-orchestrator/scripts/.",
+      "release-check: @elizaos/plugin-agent-orchestrator references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under eliza/packages/scripts/plugins/plugin-agent-orchestrator/.",
     );
     process.exit(1);
   }

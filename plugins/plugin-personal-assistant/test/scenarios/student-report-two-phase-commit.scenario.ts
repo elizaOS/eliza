@@ -3,7 +3,7 @@
  * preview/confirmation request; only the second turn gives permission to write
  * the stored report reminder.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

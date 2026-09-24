@@ -6,7 +6,7 @@
  * provider snapshot proves the pre-approval no-write checkpoint.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   id: "provider.duffel-travel.booking",

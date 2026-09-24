@@ -5,11 +5,8 @@
  * edit while revising only the targeted section.
  */
 
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

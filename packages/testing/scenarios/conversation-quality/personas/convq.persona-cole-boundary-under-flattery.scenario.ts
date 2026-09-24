@@ -23,7 +23,7 @@
  * Synthetic (Margot Delacroix, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { COLE } from "./_personas";
 
 // Gushing back at flattery — off-register for a professional assistant.

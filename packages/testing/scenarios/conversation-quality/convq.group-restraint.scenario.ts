@@ -27,7 +27,7 @@
  * Synthetic group (The Porch: Marcus, Dee, Toph + agent). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -18,7 +18,6 @@ import type {
   BatchTextEmbeddingParams,
   IAgentRuntime,
   Plugin,
-  ProcessEnvLike,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -35,14 +34,7 @@ import {
   logResolvedConfig,
 } from "./utils/config";
 
-function getProcessEnv(): ProcessEnvLike {
-  if (typeof process === "undefined" || !process.env) {
-    return {};
-  }
-  return process.env as ProcessEnvLike;
-}
-
-const env = getProcessEnv();
+const env = process.env;
 
 export const embeddingsPlugin: Plugin = {
   name: "embeddings",

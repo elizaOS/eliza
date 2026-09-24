@@ -16,8 +16,8 @@
  * renders queue rows into prompt state, so the "provider surfaces the pending
  * row" check fails (provider missing from the runtime).
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 interface ProviderResultLike {
   text: string;

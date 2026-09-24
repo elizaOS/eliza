@@ -1,12 +1,9 @@
 # Group-room consent and transport fixtures
 
 `coparent-consent-scenario.ts` defines the deterministic co-parent consent
-choreography and evidence ledger. Its tests verify ordering and cross-service
-invariants without contacting a live service.
+choreography and evidence ledger. Use it to drive consent ordering and cross-service invariants in a local stack.
 
-```sh
-bun test packages/cloud/scripts/group-room-sim/coparent-consent-scenario.test.ts
-```
+No separate build or dedicated test suite is defined in this directory.
 
 `mock-blooio-provider.ts` supplies a local provider boundary for transport
 exercises. `gateway-fetch-tap.preload.ts` records gateway fetch observations.

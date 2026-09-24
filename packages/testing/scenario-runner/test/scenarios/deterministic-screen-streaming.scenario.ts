@@ -13,8 +13,8 @@
  */
 
 import { deflateSync } from "node:zlib";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { Brain } from "../../../../../plugins/plugin-computeruse/src/actor/brain.ts";
 import type { DisplayCapture } from "../../../../../plugins/plugin-computeruse/src/platform/capture.ts";
 import type { Scene } from "../../../../../plugins/plugin-computeruse/src/scene/scene-types.ts";

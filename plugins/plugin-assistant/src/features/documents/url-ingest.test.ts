@@ -2,7 +2,7 @@
  * Unit tests for SSRF-safe URL document ingestion and content classification.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {

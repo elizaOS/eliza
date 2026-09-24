@@ -12,7 +12,7 @@ import {
   runWithStreamingContext,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({

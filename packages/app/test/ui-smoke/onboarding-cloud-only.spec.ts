@@ -16,7 +16,7 @@
 
 import { rm } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   expectNoPageDiagnostics,

@@ -25,7 +25,7 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": [
@@ -55,25 +55,31 @@
         "package.json",
         "assets/**",
         "public/**",
+        "$TURBO_ROOT$/plugins/plugin-build.ts",
+        "$TURBO_ROOT$/plugins/plugin-build-externals.ts",
         "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
         "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ]
     },
     "@elizaos/app#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/scripts/lib/workspaces.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.mjs",
         "$TURBO_ROOT$/plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs"
       ],
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/agent#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build",
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -84,7 +90,7 @@
       "outputs": ["dist/**", "web-dist/**"]
     },
     "@elizaos/cloud-api#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/ui#build": {
@@ -104,14 +110,6 @@
       "dependsOn": ["@elizaos/app#build:dist", "^build"],
       "cache": false,
       "outputs": []
-    },
-    "@elizaos/plugin-pdf#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/plugin-wallet#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-sql#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
@@ -159,17 +157,11 @@
       "dependsOn": []
     },
     "typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build",
-        "@elizaos/app#build:dist",
-        "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-wallet#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-agent-orchestrator#build"
-      ],
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/core#typecheck": {
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/agent#typecheck": {
@@ -213,6 +205,14 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@elizaos/plugin-relationships#typecheck": {
+      "dependsOn": ["^build", "@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-scheduling#typecheck": {
+      "dependsOn": ["^build", "@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
     "@elizaos/plugin-calendar#typecheck": {
       "dependsOn": ["@elizaos/ui#build", "@elizaos/plugin-scheduling#build"],
       "outputs": []
@@ -248,7 +248,7 @@
       "outputs": []
     },
     "@elizaos/plugin-native-inference#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "format": {
@@ -282,10 +282,6 @@
       "cache": false,
       "dependsOn": []
     },
-    "@elizaos/plugin-native-inference#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/core#build": {
       "dependsOn": [],
       "env": ["LOG_LEVEL"],
@@ -301,7 +297,7 @@
     "@elizaos/app#build:dist": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/scripts/lib/workspaces.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.mjs",
         "$TURBO_ROOT$/plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs"
       ],
@@ -321,11 +317,15 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@elizaos/app#build:dist", "^build"],
       "outputs": []
     },
     "@elizaos/testing#typecheck": {
-      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
+      "dependsOn": [
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-personal-assistant#build",
+        "^build"
+      ],
       "outputs": []
     }
   }

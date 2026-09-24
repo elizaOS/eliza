@@ -4,7 +4,7 @@
  * voice gate, and connector send handler with only model responses stubbed.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";

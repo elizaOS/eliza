@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-embeddings",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaOS/eliza.git",
@@ -13,23 +13,9 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -129,7 +115,7 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js ESM package entry"
     }
   }
 }

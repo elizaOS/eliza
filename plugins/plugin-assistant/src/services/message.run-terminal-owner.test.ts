@@ -3,7 +3,7 @@
  * deterministic gates so delivery/terminal ordering is asserted without network.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";

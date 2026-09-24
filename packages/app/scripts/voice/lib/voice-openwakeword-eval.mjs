@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { testOutputPath } from "../../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 export const OPENWAKEWORD_SCHEMA = "eliza_voice_openwakeword_eval_v1";
 export const OPENWAKEWORD_ISSUE = "9958";

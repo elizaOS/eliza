@@ -199,5 +199,93 @@
     "file": "packages/scripts/portable-linux-fused-inference.mjs",
     "tokens": ["plugins/plugin-local-inference"],
     "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "Package-owned plugin-coding-tools tooling; relocation preserves its explicit source and test roots."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-workflow/run-isolated-tests.mjs",
+    "tokens": ["plugins/plugin-workflow"],
+    "reason": "Package-owned plugin-workflow tooling; relocation preserves its explicit source and test roots."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
+    "tokens": ["plugins/plugin-agent-orchestrator"],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts",
+    "tokens": ["plugins/plugin-agent-orchestrator"],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts",
+    "tokens": ["plugins/plugin-agent-orchestrator"],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/check-account-readiness.ts",
+    "tokens": ["plugins/plugin-agent-orchestrator"],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-agent-orchestrator/export-ci-account-secrets.ts",
+    "tokens": ["plugins/plugin-agent-orchestrator"],
+    "reason": "Package-owned plugin-agent-orchestrator account readiness and integration tooling; relocation preserves explicit plugin authority."
+  },
+  {
+    "file": "packages/scripts/lib/script-test-inventory.mjs",
+    "tokens": ["plugins/plugin-meetings"],
+    "reason": "The exact script-test exclusion preserves the plugin-meetings test:e2e lane for its browser/audio capture suite after relocation."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/verify-cerebras-wiring.ts",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/verify-live-schedule-data.ts",
+    "tokens": ["@elizaos/plugin-elizacloud"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.mjs",
+    "tokens": [
+      "@elizaos/plugin-personal-assistant",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-personal-assistant/translate-action-examples.mjs",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "Package-owned plugin-personal-assistant evaluation and maintenance tooling; relocation preserves its explicit plugin inputs."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-elizacloud/verify-built-package.mjs",
+    "tokens": ["@elizaos/plugin-elizacloud", "plugins/plugin-elizacloud"],
+    "reason": "Package-owned plugin-elizacloud published export probe verifies the concrete plugin API after a build."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
+    "tokens": ["plugins/plugin-native-inference"],
+    "reason": "Package-owned native-inference build guard inspects its Android bridge manifest."
   }
 ]

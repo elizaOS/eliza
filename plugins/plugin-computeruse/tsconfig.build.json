@@ -8,7 +8,6 @@
     "declaration": true,
     "incremental": false,
     "noEmit": false,
-    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],

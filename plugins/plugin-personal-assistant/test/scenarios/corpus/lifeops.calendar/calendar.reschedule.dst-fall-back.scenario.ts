@@ -30,11 +30,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   judgeRubric,
-} from "@elizaos/testing/scenario-runner/scenario-assertions";
-import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 

@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (LLM-judged): a learning goal must be pushed for an evidence signal before save, not treated as a vague aspiration.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

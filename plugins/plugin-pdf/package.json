@@ -2,8 +2,8 @@
   "name": "@elizaos/plugin-pdf",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "repository": {
@@ -14,18 +14,8 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -71,13 +61,13 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js ESM package entry"
     }
   },
   "elizaos": {
     "scripts": {
       "buildOnInstall": {
-        "sentinel": "dist/node/index.node.js",
+        "sentinel": "dist/index.js",
         "order": 4
       }
     }

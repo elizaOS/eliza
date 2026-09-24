@@ -278,7 +278,7 @@ test.each(
     const evidence = path.join(container, "evidence");
     const copiedScript = path.join(
       repo,
-      "plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs",
+      "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
     );
     try {
       await mkdir(path.dirname(copiedScript), { recursive: true });

@@ -7,7 +7,7 @@
  * still-open item and drops the completed one. Seeds re-verified via
  * definitionCountDelta.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 /**
  * `assertResponse` helper mirroring the legacy JSON fields

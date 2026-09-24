@@ -3,7 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { findWorkspaceRoot } from "./lib/repo-root.ts";
 import { removePathRecursive as removePath } from "./rm-path-recursive.mjs";
 
 const packageDirArg = process.argv[2];

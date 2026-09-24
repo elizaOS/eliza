@@ -6,7 +6,7 @@
  * a calendar-day assumption silently targets the wrong one. The owner's turns
  * never state the rule — the clarifier has to come from the assistant.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

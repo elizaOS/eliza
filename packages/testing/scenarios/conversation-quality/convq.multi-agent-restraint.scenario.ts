@@ -32,7 +32,7 @@
  * Quill, Marble). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const PILE_ON_TELLS =
   /(adding to what|to add to (that|quill)|as quill (said|mentioned)|quill('|i)?s (right|answer)|(also|additionally),? (you|it)|great (point|answer)|i agree with|building on)/i;

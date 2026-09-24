@@ -67,7 +67,7 @@ jobs:
       - name: Check source whitespace
         run: git show --format= --check HEAD
       - name: Install pinned workflow linters
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
       - name: Validate workflow graph before fan-out
         run: '"$RUNNER_TEMP/workflow-linters/actionlint" -config-file .github/actionlint.yaml'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020

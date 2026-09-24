@@ -6,11 +6,8 @@
  */
 
 import { asUUID } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioDefinition } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   type GeneratedMessageCorpus,
   generateMessageCorpus,

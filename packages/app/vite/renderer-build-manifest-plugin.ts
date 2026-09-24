@@ -9,7 +9,7 @@ import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
 } from "../scripts/lib/renderer-build-manifest.mjs";
-import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.mjs";
+import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.ts";
 
 /**
  * Emits `eliza-renderer-build.json` into Vite's resolved output directory for each production renderer

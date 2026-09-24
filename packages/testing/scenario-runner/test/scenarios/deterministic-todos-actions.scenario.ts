@@ -3,16 +3,16 @@
  * provider. Runs on the pr-deterministic lane under the model provider.
  */
 import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+} from "@elizaos/testing";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  scenario,
+} from "@elizaos/testing";
 import todosPlugin, {
   currentTodosProvider,
   TodosService,

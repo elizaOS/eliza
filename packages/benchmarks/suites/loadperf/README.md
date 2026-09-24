@@ -1,88 +1,17 @@
 # Load / Perf KPI Harness
 
-> **What this measures:** app/server load & throughput KPIs (infra
-> performance) — **not** agent task quality. This is a direct KPI harness, not
-> an orchestrator benchmark adapter.
+Four standalone Node ESM KPI scripts that measure app load performance (bundle size, cold-boot time, web vitals, and WebSocket state-sync skew), compare each against `budgets.json`, and exit non-zero on budget failure.
 
-Zero-build performance KPI suite for the app. Each KPI is a standalone Node ESM
-script that measures one dimension, compares against `budgets.json`, records a
-timestamped JSON result under `results/<kpi>/`, and exits non-zero when a hard
-budget is exceeded. Run any of them directly with `node` — no build or install
-step (the optional `playwright` / WebSocket deps degrade to a clearly-marked
-`skipped` result when unavailable).
+This directory is part of `packages/benchmarks`.
 
-All sizes are **brotli**-compressed bytes unless noted (matching what a CDN
-serves). Budget keys live in `budgets.json`.
-
-## KPIs
-
-| KPI | Script | What it measures | Needs |
-| --- | --- | --- | --- |
-| bundle | `bundle-kpi.mjs` | on-disk bundle size: initial entry, total assets, largest chunk, duplicate-lib waste | `packages/app/dist` |
-| boot | `boot-kpi.mjs` | cold-start `readyMs` + peak RSS + steady-state idle RSS of the headless keyless agent | spawns dev-server (or `--attach`) |
-| frontend | `frontend-kpi.mjs` | FCP / LCP / CLS, JS transferred, request count, long-task time | `playwright` + a browser |
-| statesync | `statesync-kpi.mjs` | broadcast skew p50/p95, desync events, reconnect time | a running WS server |
-
-## Running
-
-These KPIs measure the elizaOS app itself, which lives in a separate checkout
-of [elizaOS/eliza](https://github.com/elizaOS/eliza). Set `ELIZA_REPO` to the
-root of that checkout for the `bundle`, `boot`, and (dist-serving) `frontend`
-KPIs; `statesync` and `frontend --url` only need a live server URL.
+Build from the repository root:
 
 ```bash
-export ELIZA_REPO=~/eliza   # your elizaOS/eliza checkout
-
-# Bundle size (off the on-disk build; build first with `bun run --cwd $ELIZA_REPO/packages/app build`)
-node suites/loadperf/bundle-kpi.mjs
-
-# Cold boot (spawns the headless agent, polls /api/health)
-node suites/loadperf/boot-kpi.mjs
-# …against an already-running server:
-LOADPERF_BASE_URL=http://127.0.0.1:31337 node suites/loadperf/boot-kpi.mjs --attach
-
-# Frontend web-vitals (serves dist on an ephemeral port, drives headless Chromium)
-node suites/loadperf/frontend-kpi.mjs
-node suites/loadperf/frontend-kpi.mjs --url=http://127.0.0.1:2138
-
-# State-sync (needs a live WS server)
-LOADPERF_BASE_URL=http://127.0.0.1:31337 node suites/loadperf/statesync-kpi.mjs
-LOADPERF_WS_URL=ws://127.0.0.1:31337/ws node suites/loadperf/statesync-kpi.mjs
-
-# All of them + a consolidated dashboard
-node suites/loadperf/run-all.mjs                       # bundle + boot + frontend
-node suites/loadperf/run-all.mjs --no-boot --no-frontend  # bundle only (CI-light)
-LOADPERF_BASE_URL=http://127.0.0.1:31337 node suites/loadperf/run-all.mjs --statesync
+bun run --cwd packages/benchmarks build:plugin
 ```
 
-`run-all.mjs` writes `results/summary/latest.md` (+ `latest.json` and timestamped
-copies). It exits non-zero only when a KPI that actually ran reports a budget
-failure — `skipped` KPIs (missing browser / no server) do not fail the suite.
+Test from the repository root:
 
-## Environment knobs
-
-| Var | KPI | Default | Meaning |
-| --- | --- | --- | --- |
-| `ELIZA_API_PORT` | boot | `31337` | API port for the spawned/attached server |
-| `LOADPERF_BASE_URL` | boot, statesync | derived | base URL to probe |
-| `LOADPERF_BOOT_TIMEOUT_MS` | boot | `120000` | ready timeout |
-| `LOADPERF_FE_URL` / `--url=` | frontend | serve dist | target URL instead of static dist |
-| `LOADPERF_FE_SETTLE_MS` | frontend | `8000` | settle time before reading metrics |
-| `LOADPERF_CLIENTS` | statesync | `4` | concurrent WS clients |
-| `LOADPERF_WS_URL` | statesync | derived | explicit ws/wss URL |
-| `LOADPERF_WS_PATH` | statesync | `/ws` | path appended to base URL |
-| `LOADPERF_WS_TOKEN` | statesync | — | appended as `?token=…` |
-| `LOADPERF_OBSERVE_MS` | statesync | `14000` | broadcast observation window |
-
-## Exit codes
-
-`0` pass, `1` budget failure, `2` skipped/unavailable. This makes each KPI usable
-directly as a CI gate.
-
-## Budgets as a CI gate
-
-`budgets.json` is the contract. Wire `bundle-kpi.mjs` (and, where a server/browser
-is available, the others) into CI: a budget regression exits non-zero and fails
-the job. The intent is **monotonic improvement** — as optimizations land, ratchet
-the budgets *down* so they can never silently regress. See `BASELINE.md` for the
-current measured numbers and the top optimization targets.
+```bash
+bun run --cwd packages/benchmarks test:py
+```

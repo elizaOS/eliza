@@ -1,12 +1,12 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2024", "DOM"],
     "noEmit": true,
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "types": ["node", "bun-types"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../ui/src/*"],
@@ -177,9 +177,6 @@
       "@elizaos/plugin-local-inference/runtime/*": [
         "../../../plugins/plugin-local-inference/src/runtime/*"
       ],
-      "@elizaos/testing/scenario-runner/scenario-assertions": [
-        "../scenario-runner/src/scenario-assertions.ts"
-      ],
       "@elizaos/testing/scenario-runner/action-families": [
         "../scenario-runner/src/action-families.ts"
       ],
@@ -195,9 +192,6 @@
       "@elizaos/core/edge": ["../../core/src/index.edge.ts"],
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
-      ],
-      "@elizaos/plugin-scheduling/*": [
-        "../../../plugins/plugin-scheduling/src/*"
       ],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/plugin": [

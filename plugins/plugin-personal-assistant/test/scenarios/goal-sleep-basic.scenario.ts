@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (LLM-judged) for the goal grounding loop: an under-specified "stabilize sleep" goal must be pushed for a success definition, previewed once grounded, then confirmed as saved.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

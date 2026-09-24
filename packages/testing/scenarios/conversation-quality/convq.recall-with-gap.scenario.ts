@@ -19,7 +19,7 @@
  * Synthetic persona (Priya Raman, invented). No real data.
  */
 
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const MACHINERY_MISS =
   /(retriev|database|my (memory|records|notes|logs) (show|say|said|don'?t|indicate)|stored|search(ed|ing) (my|the)|nothing (came|comes) up in)/i;

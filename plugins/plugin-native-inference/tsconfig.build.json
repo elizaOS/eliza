@@ -1,8 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
     "paths": {
       "@elizaos/agent": ["./src/type-shims/agent-root.ts"],
       "@elizaos/agent/api": ["./src/type-shims/agent-api.ts"],

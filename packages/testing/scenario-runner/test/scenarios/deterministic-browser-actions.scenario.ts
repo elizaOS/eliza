@@ -4,15 +4,12 @@
  */
 
 import type { Action } from "@elizaos/core";
+import type { CapturedAction, ScenarioTurnExecution } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  scenario,
 } from "@elizaos/testing";
-import type {
-  CapturedAction,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { browserPlugin } from "../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,

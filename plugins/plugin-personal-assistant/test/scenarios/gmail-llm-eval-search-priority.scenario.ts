@@ -1,7 +1,7 @@
 /**
  * Live-model planner-level evals for Gmail routing across cross-account search and priority-triage phrasings, guarding against calendar/send-message misrouting.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

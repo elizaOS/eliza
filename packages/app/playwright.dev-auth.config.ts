@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
@@ -30,10 +30,7 @@ const cloudOnlyLane = process.env.ELIZA_DEV_AUTH_CLOUD_ONLY === "1";
 const stagingLiveAuthLane =
   process.env.ELIZA_DEV_AUTH_STAGING_LIVE_AUTH === "1";
 
-if (
-  Number(cloudOnlyLane) + Number(stagingLiveAuthLane) >
-  1
-) {
+if (Number(cloudOnlyLane) + Number(stagingLiveAuthLane) > 1) {
   throw new Error(
     "ELIZA_DEV_AUTH_CLOUD_ONLY and ELIZA_DEV_AUTH_STAGING_LIVE_AUTH are mutually exclusive",
   );
@@ -42,8 +39,8 @@ if (
 const laneName = cloudOnlyLane
   ? "cloud-only"
   : stagingLiveAuthLane
-      ? "staging-live-auth"
-      : "staging";
+    ? "staging-live-auth"
+    : "staging";
 
 process.env.ELIZA_API_PORT = String(apiPort);
 process.env.ELIZA_UI_PORT = String(uiPort);

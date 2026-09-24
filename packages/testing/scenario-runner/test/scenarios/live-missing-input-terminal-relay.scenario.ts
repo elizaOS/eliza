@@ -2,7 +2,7 @@
  * Live-model proof that a missing-input owner action ends in its explicit
  * clarification or a grammar-valid widget, never a trajectory-limit apology.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { validateSchedulingFormReply } from "./_helpers/chat-widgets";
 
 const SYNTHETIC_FAILURE_RE =

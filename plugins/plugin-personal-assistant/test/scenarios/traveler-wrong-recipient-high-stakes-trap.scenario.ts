@@ -19,11 +19,8 @@
  * effectless, and the judge grades the load-bearing nuance — confirmed the
  * recipient rather than guessing.
  */
-import type {
-  CapturedAction,
-  ScenarioContext,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { CapturedAction, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 function assertNoConnectorEgress(ctx: ScenarioContext): string | undefined {
   const dispatches = ctx.connectorDispatches ?? [];

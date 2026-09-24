@@ -6,10 +6,7 @@
  * Assert: CHECKIN still surfaces brush + water, only workout is paused.
  */
 
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

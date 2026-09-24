@@ -2,7 +2,7 @@
  * no request may leave the test. Live cache/latency acceptance is separate. */
 
 import type { GenerateTextParams } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { buildProviderCachePlan } from "../../plugin-assistant/src/runtime/provider-cache-plan";
 import { handleTextSmall } from "../models/text";

@@ -101,7 +101,7 @@ import {
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDirs,
-} from "./lib/script-metadata.mjs";
+} from "./lib/script-metadata.ts";
 import {
   isParallelSafeTask,
   parseShardSpec,
@@ -110,7 +110,7 @@ import {
   runPool,
   taskBelongsToShard,
 } from "./lib/test-task-pool.mjs";
-import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.mjs";
+import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -856,7 +856,7 @@ function unwrapKnownBunTestSupervisors(command) {
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+  return /^node\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.mjs$/.test(
     unwrapKnownBunTestSupervisors(command),
   );
 }

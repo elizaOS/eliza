@@ -1,5 +1,5 @@
 // Defines the school accommodation privacy LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**

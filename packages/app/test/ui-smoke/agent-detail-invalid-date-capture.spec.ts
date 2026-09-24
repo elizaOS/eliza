@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,

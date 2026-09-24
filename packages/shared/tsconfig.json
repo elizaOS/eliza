@@ -8,8 +8,6 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "strictNullChecks": true,
-    "useUnknownInCatchVariables": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -18,28 +16,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node", "bun-types"],
-    "typeRoots": [
-      "../app/node_modules/@types",
-      "../../node_modules/@types",
-      "../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../node_modules",
-      "../../node_modules/.bun/node_modules",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ],
     "paths": {
-      "@types/*": ["./src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/shared": ["./src/index.ts"],
+      "@elizaos/shared/*": ["./src/*"],
       "@elizaos/shared/browser-contracts": ["./src/browser-contracts.ts"]
     }
   },
-  "exclude": [
-    "../app/src/ui/**/*.stories.ts",
-    "../app/src/ui/**/*.stories.tsx"
-  ],
-  "include": ["src", "../app/src/ui"],
-  "references": []
+  "include": ["src"]
 }

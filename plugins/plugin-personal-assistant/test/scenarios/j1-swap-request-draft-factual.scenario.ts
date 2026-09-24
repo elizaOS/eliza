@@ -2,7 +2,7 @@
  * Co-parenting swap-request draft scenario for LifeOps messaging coverage.
  * It proves a tense cross-household ask stays factual and approval-gated.
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

@@ -9,7 +9,7 @@
  */
 
 import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";

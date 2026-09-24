@@ -6,7 +6,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,

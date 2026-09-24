@@ -1,7 +1,7 @@
 /** Proves meeting scenario cleanup always finalizes its exact provider ledger after service quiescence failures. */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   getMockMeetingProviderLedger,

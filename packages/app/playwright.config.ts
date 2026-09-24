@@ -2,7 +2,7 @@
 
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { testOutputPath } from "../scripts/lib/test-output.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 const storybookPort = Number(process.env.ELIZA_UI_STORYBOOK_PORT || "6106");
 const recording = !!process.env.E2E_RECORD;

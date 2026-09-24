@@ -17,8 +17,8 @@
  * definitions lane) — and the judge grades the load-bearing nuance — held for
  * later, not surfaced now, not dropped.
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const INVESTOR_TITLE = /investor/i;
 

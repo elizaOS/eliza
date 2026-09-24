@@ -12,8 +12,8 @@
  * action options, never in `promptInstructions` (root AGENTS.md — one scheduler,
  * structural fields only).
  */
-import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   expectNoExternalSendDispatch,
   expectPendingApprovalSeeded,

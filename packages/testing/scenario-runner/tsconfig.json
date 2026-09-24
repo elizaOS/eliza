@@ -199,9 +199,6 @@
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-scheduling/*": [
-        "../../../plugins/plugin-scheduling/src/*"
-      ],
       "@elizaos/plugin-telegram": [
         "../../../plugins/plugin-telegram/src/index.ts"
       ],
@@ -215,11 +212,9 @@
       "@elizaos/plugin-local-inference/*": [
         "../../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/*": ["../src/*"],
       "@elizaos/testing/scenario-runner": ["./src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./src/*"],
       "@elizaos/testing/synthetic-world": ["../synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": ["./schema/index.d.ts"],
       "@elizaos/plugin-assistant": [
         "../../../plugins/plugin-assistant/src/index.ts"
       ],

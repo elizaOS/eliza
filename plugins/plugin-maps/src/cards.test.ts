@@ -13,7 +13,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import type { MapsProviderAdapter } from "./adapter.js";

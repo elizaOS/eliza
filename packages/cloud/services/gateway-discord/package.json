@@ -24,7 +24,7 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f gateway-discord",
-    "deploy:railway": "bash scripts/deploy-railway.sh"
+    "deploy:railway": "bash ../../scripts/gateway-discord/deploy-railway.sh"
   },
   "dependencies": {
     "@discordjs/opus": "0.10.0",

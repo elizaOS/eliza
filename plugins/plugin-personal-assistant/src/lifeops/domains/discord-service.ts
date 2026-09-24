@@ -31,7 +31,7 @@ import {
   relaunchDiscordDesktopForCdp,
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
-} from "@elizaos/plugin-discord/user-account-scraper";
+} from "@elizaos/plugin-discord";
 import type {
   LifeOpsBrowserSession,
   LifeOpsConnectorDegradation,

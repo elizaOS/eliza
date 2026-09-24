@@ -5,7 +5,7 @@
  * fail-closed behavior, and retry cleanup can be proven without credentials.
  */
 import { getConnectorAccountManager, type IAgentRuntime, type UUID } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleConnectorAccountProvider,

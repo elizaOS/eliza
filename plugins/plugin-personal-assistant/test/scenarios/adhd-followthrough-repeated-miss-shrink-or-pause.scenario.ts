@@ -13,7 +13,7 @@
  * and the shrink-or-pause offer — a tone judgment the deterministic proxy cannot
  * make. Live-verify deferred to the key boundary (#12781).
  */
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -13,11 +13,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import type {
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/testing/scenario-runner/schema";
-import { scenario } from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import workflowPlugin from "../../../../../plugins/plugin-workflow/src/index.ts";
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,

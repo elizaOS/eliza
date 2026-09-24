@@ -8,10 +8,7 @@
  */
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioSeedStep,
-} from "@elizaos/testing/scenario-runner/schema";
+import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/testing";
 import { isLoopbackUrl } from "./utils.js";
 
 const SEED_REQUEST_TIMEOUT_MS = 30_000;

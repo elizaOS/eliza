@@ -3,7 +3,7 @@
  * DocumentService, and SQLiteDatabaseAdapter with persisted memory records.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
