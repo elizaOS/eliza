@@ -77,6 +77,78 @@ cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
 
 ## Notes
 
+### Exact-three agent stability lane
+
+Controller interruption cancels the active attempt and its nested scenario process
+group before stopping the synthetic authority. It waits for owned teardown,
+preserves the terminating signal, and never starts the remaining attempts or
+publishes a completed exact-three aggregate for an interrupted run.
+
+`stability:keyless` boots the canonical mock Cloud stack once per isolated
+attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
+The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the
+production scheduler through a retained notification sink, and proves
+authenticated Hetzner mock create/read/delete effects through an audit proxy.
+Strict deterministic fixtures are the only model in automatic Cloud validation.
+Develop Full delegates this lane through Cloud Tests; real-model execution
+requires explicit manual dispatch.
+
+`stability:real -- --provider openai|anthropic` runs the identical scenario,
+world, plugins, services, and mock endpoints while replacing only the model.
+The selected provider is forced through a bounded loopback proxy; a pinned-Bun
+preload rejects direct child fetch and Node HTTP(S) egress. The outer adapter
+conveys exactly one selected `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and its
+per-attempt receipt key over a bounded inherited pipe, never the harness
+environment. The trusted attempt harness consumes and closes that descriptor
+before starting the mock stack; the scenario child receives only a dummy SDK
+key. Real service credentials are injected only at the provider proxy. Before
+dispatch, the proxy requires the exact target model, rejects
+provider-hosted context/tools and non-text inputs, and injects or clamps the
+route-specific output cap to the remaining budget. Its conservative input
+envelope charges the larger canonical/original UTF-8 body size plus an 8,192
+token hidden-overhead reserve; this is not provider tokenization, so returned
+OpenAI or Anthropic usage remains the authoritative postflight count. Missing,
+malformed, over-budget, oversized, or unmetered responses fail closed.
+Accepted request evidence binds the exact canonical upstream byte length and
+SHA-256; rejected requests retain structural evidence without a forwarded hash.
+The trusted attempt harness signs the complete real-model receipt with the
+parent-owned, per-attempt HMAC key; the outer adapter verifies that attestation
+before accepting it.
+On Linux the scenario runs as a fresh per-attempt unprivileged host UID, mapped
+to UID 0 only inside a new user namespace, with no capabilities, a new PID and
+`/proc` namespace, a read-only repository, bounded resources,
+AF_INET/AF_INET6-only seccomp, and owner-scoped firewall rules admitting only
+declared loopback proxy ports. The root launcher clears its environment and
+consumes only a strict caller-owned environment file before deleting it. The
+pinned-Bun preload remains application-level diagnostics; private `/run`,
+`/tmp`, and `/var/tmp` mounts plus syscall denial for `socketpair` and all
+io_uring entry points close host AF_UNIX delegation paths. The kernel boundary
+also rejects direct TCP, UDP, DNS, and raw-socket bypasses.
+
+Linux containment requires x86_64, executable Bubblewrap/ACL/firewall tools,
+passwordless sudo for the launcher, and permission for Bubblewrap to create user
+namespaces. Ubuntu 24.04 hosts with restricted unprivileged user namespaces need
+an administrator-provisioned AppArmor policy permitting `/usr/bin/bwrap` to use
+`userns`; installing the binary alone is insufficient. Keep the global namespace
+restriction enabled. Before supplying model credentials, run:
+
+```bash
+ELIZA_STABILITY_LINUX_SANDBOX=1 bun run --cwd packages/cloud/e2e test:containment
+```
+
+The suite exercises the kernel boundary, private caller-home denial,
+pre-existing scenario inputs, and exact ACL/firewall/identity cleanup on success,
+launch failure, and forced teardown.
+
+Attempts retain trajectories, tool receipts, transitions, bounded logs,
+network and mock-service ledgers, and authority hashes. The aggregate retains
+first-attempt success, failure clusters, 3/3 status, a canonical report hash,
+and the asserted three-cycle seed/reset ledger. Failures still upload evidence.
+
+The lane composes #24081, #24136, #24209, and pending #24344. Until those stacks
+land together, source runs need their exact dependency heads; real-model proof
+remains blocking unless an authorized repository secret produced a trajectory.
+
 - The mocks live at `packages/cloud/test-mocks`; the harness imports from
   `@elizaos/cloud-test-mocks/hetzner`.
 - `src/fixtures/mock-llm.ts` can take the same strict core fixture registry used

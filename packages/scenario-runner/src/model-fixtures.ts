@@ -78,6 +78,13 @@ function compileResponse(
     ...(response.finishReason !== undefined
       ? { finishReason: response.finishReason }
       : {}),
+    ...(response.thought !== undefined ? { thought: response.thought } : {}),
+    ...(response.messageToUser !== undefined
+      ? { messageToUser: response.messageToUser }
+      : {}),
+    ...(response.completed !== undefined
+      ? { completed: response.completed }
+      : {}),
     ...(response.usage !== undefined ? { usage: response.usage as never } : {}),
   } as DeterministicModelFixture["response"];
 }
