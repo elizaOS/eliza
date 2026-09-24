@@ -8,9 +8,9 @@ import {
   ContentType,
   type IAgentRuntime,
   type Media,
+  MediaFetchError,
   type UUID,
 } from "@elizaos/core";
-import { MediaFetchError } from "@elizaos/core/media";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processAttachments } from "./index.ts";
 

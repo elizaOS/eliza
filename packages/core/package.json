@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -1024,48 +1024,6 @@
 			"eliza-source": "./src/markdown/ir.ts",
 			"import": "./dist/markdown/ir.js",
 			"default": "./dist/markdown/ir.js"
-		},
-		"./media/attachments": {
-			"types": "./dist/media/attachments.d.ts",
-			"eliza-source": "./src/media/attachments.ts",
-			"import": "./dist/media/attachments.js",
-			"default": "./dist/media/attachments.js"
-		},
-		"./media/fetch": {
-			"types": "./dist/media/fetch.d.ts",
-			"eliza-source": "./src/media/fetch.ts",
-			"import": "./dist/media/fetch.js",
-			"default": "./dist/media/fetch.js"
-		},
-		"./media/image-description-cache": {
-			"types": "./dist/media/image-description-cache.d.ts",
-			"eliza-source": "./src/media/image-description-cache.ts",
-			"import": "./dist/media/image-description-cache.js",
-			"default": "./dist/media/image-description-cache.js"
-		},
-		"./media": {
-			"types": "./dist/media/index.d.ts",
-			"eliza-source": "./src/media/index.ts",
-			"import": "./dist/media/index.js",
-			"default": "./dist/media/index.js"
-		},
-		"./media/local-store": {
-			"types": "./dist/media/local-store.d.ts",
-			"eliza-source": "./src/media/local-store.ts",
-			"import": "./dist/media/local-store.js",
-			"default": "./dist/media/local-store.js"
-		},
-		"./media/mime-sniffer": {
-			"types": "./dist/media/mime-sniffer.d.ts",
-			"eliza-source": "./src/media/mime-sniffer.ts",
-			"import": "./dist/media/mime-sniffer.js",
-			"default": "./dist/media/mime-sniffer.js"
-		},
-		"./media/mime": {
-			"types": "./dist/media/mime.d.ts",
-			"eliza-source": "./src/media/mime.ts",
-			"import": "./dist/media/mime.js",
-			"default": "./dist/media/mime.js"
 		},
 		"./meeting-artifacts": {
 			"types": "./dist/meeting-artifacts.d.ts",

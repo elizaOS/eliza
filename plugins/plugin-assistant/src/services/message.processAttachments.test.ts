@@ -22,8 +22,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // ZERO real outbound requests. importActual preserves the module's other exports
 // (the runtime graph imports more than fetchRemoteMedia from here).
 const fetchRemoteMedia = vi.fn();
-vi.mock("@elizaos/core/media", async (importActual) => ({
-  ...(await importActual<typeof import("@elizaos/core/media")>()),
+vi.mock("@elizaos/core", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core")>()),
   fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMedia(...args),
 }));
 

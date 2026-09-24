@@ -10,13 +10,13 @@
  */
 import { Buffer } from "node:buffer";
 import {
+  fetchRemoteMedia,
   type IMediaGenerationService,
   logger,
   type MediaGenerationRequest,
   ServiceType,
 } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { fetchRemoteMedia } from "@elizaos/core/media";
+import type { Route } from "@elizaos/core/api/http-plugin";
 import {
   persistDataUrl,
   persistMediaBytes,

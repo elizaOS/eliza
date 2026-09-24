@@ -4,8 +4,12 @@
  * remote so the backend's shared SSRF guard remains authoritative.
  */
 
-import { getLocalServerUrl, type IAgentRuntime } from "@elizaos/core";
-import { MediaFetchError, readResponseWithLimit } from "@elizaos/core/media";
+import {
+	getLocalServerUrl,
+	type IAgentRuntime,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "@elizaos/core";
 import type { VisionImageInput } from "./types.js";
 
 export const VISION_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
