@@ -2511,6 +2511,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
         [
+          "@elizaos/plugin-relationships",
+          "plugins/plugin-relationships/src/register.ts",
+        ],
+        [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],
