@@ -35,8 +35,8 @@ The runner builds every Android native module and executes its instrumentation
 and real WebView/Capacitor bridge contracts. Missing tests, skips, crashes, and
 incomplete runs fail. It leases the selected emulator, installs isolated test
 packages, and removes them afterward. Physical phones are rejected because the
-suite seeds SMS, contacts, location, and credential fixtures. Results are under
-repository-root `test-results/android-native-plugins/` and collected by Device E2E.
+suite seeds SMS, contacts, call logs, location, and credential fixtures. Results
+are under repository-root `test-results/android-native-plugins/` and collected by Device E2E.
 The app-blocker lane also installs and removes a separate tap-counter fixture APK.
 Tests can export captured PNG/MP4 artifacts; the report records their paths, sizes,
 and SHA-256 checksums.
@@ -44,8 +44,10 @@ Use `--plugin plugin-native-location` for a focused run. `--no-build` is diagnos
 only and labels the report as not built from the checkout.
 
 Bridge contracts cover registration, native result shapes, selected round trips,
-and error paths; they do not certify cellular delivery, cloud speech services,
-VPN enforcement, embedded agent startup, or all physical camera/audio hardware.
+and error paths. Phone contracts verify six call types, ordering, filtering, and
+transcript persistence across bridge-host recreation. They do not certify cellular
+delivery, cloud speech services, or all physical camera/audio hardware. VPN
+enforcement and embedded agent startup have separate device scenarios.
 
 The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
 RAM and no installed `ai.elizaos.app`. Run
