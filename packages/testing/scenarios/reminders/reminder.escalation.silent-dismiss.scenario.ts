@@ -1,6 +1,6 @@
 /** Scenario fixture for reminder escalation silent dismiss; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/testing";
-import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
+import { cleanupReminderDefinitions, reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
  * Deterministic silent-dismiss control driving the REAL
@@ -230,6 +230,7 @@ export default scenario({
       assertResponse: assertSilentDismissInspection,
     },
   ],
+  cleanup: [cleanupReminderDefinitions(TITLE)],
   finalChecks: [
     {
       type: "reminderIntensity",

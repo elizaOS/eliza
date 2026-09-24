@@ -17,6 +17,10 @@ export default defineConfig({
         conditions: ["eliza-source"],
         alias: [
             {
+                find: /^@elizaos\/plugin-elizacloud\/cloud-config\/(.*)$/,
+                replacement: path.join(here, "src/cloud-config/$1.ts"),
+            },
+            {
                 find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
                 replacement: path.join(here, "src/utils/config.ts"),
             },

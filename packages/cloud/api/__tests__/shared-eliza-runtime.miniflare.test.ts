@@ -590,15 +590,23 @@ describe("Shared Eliza runtime in Workerd", () => {
                 index: 0,
                 message: {
                   role: "assistant",
-                  content: JSON.stringify({
-                    success: true,
-                    decision: "FINISH",
-                    thought: "The untrusted sender cannot use a USER action.",
-                    messageToUser:
-                      "Image generation requires an authenticated Personal Shared user.",
-                  }),
+                  content: null,
+                  tool_calls: [{
+                    id: `workerd-image-${probe}-refusal`,
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        contexts: ["media"],
+                        intents: [],
+                        candidateActionNames: [],
+                        replyEffectStatus: "none",
+                        replyText: "Image generation requires an authenticated Personal Shared user.",
+                      }),
+                    },
+                  }],
                 },
-                finish_reason: "stop",
+                finish_reason: "tool_calls",
               },
             ],
             usage: {
@@ -1145,7 +1153,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       actionResults?: Array<Record<string, unknown>>;
     };
     expect(done.text).toBe(
-      "Image generation requires an authenticated Personal Shared user.",
+      "I can't do that here right now - it needs a capability that isn't available in this setup.",
     );
     // Admission rejects the unavailable tool before dispatch; the refusal
     // must not acquire an execution receipt for an action that never ran.
@@ -1257,7 +1265,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
-    expect(toolNames).toEqual(["HANDLE_RESPONSE", "READ_CONTEXT"]);
+    expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(
