@@ -18,6 +18,12 @@
                 "default": "./dist/index.js"
             }
         },
+        "./keyless-web-search": {
+            "types": "./dist/keyless-web-search.d.ts",
+            "eliza-source": "./src/keyless-web-search.ts",
+            "import": "./dist/keyless-web-search.js",
+            "default": "./dist/keyless-web-search.js"
+        },
         "./edge": {
             "types": "./dist/edge.d.ts",
             "eliza-source": {
