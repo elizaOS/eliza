@@ -1,25 +1,21 @@
 /**
  * Bounded keyless web search shared by Node and Workerd Eliza runtimes. The
  * provider endpoints are fixed, redirects are refused, response bodies are
- * capped while streaming, and Parallel failures fall through to Exa without
+ * capped while streaming, and Parallel failures surface as unavailable without
  * exposing query text in logs or errors.
  */
 
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
-const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
-const DEFAULT_RESULT_COUNT = 6;
-const MAX_RESULT_COUNT = 10;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RESPONSE_BYTES = 256 * 1024;
 
-export type KeylessWebSearchProvider = "parallel" | "exa";
+export type KeylessWebSearchProvider = "parallel";
 export type KeylessWebSearchFetch = (
     input: RequestInfo | URL,
     init?: RequestInit
 ) => Promise<Response>;
 
 export interface KeylessWebSearchOptions {
-    resultCount?: number;
     timeoutMs?: number;
     maxResponseBytes?: number;
     /** @deprecated Search results are always returned in full. */
@@ -150,7 +146,7 @@ async function callMcp(
         const body = await readTextCapped(response, options.maxResponseBytes);
         return body === undefined ? undefined : parseMcpResultText(body);
     } catch {
-        // error-policy:J1 This provider boundary returns a miss so the caller can try the declared fallback.
+        // error-policy:J1 This provider boundary returns a miss so the caller can report search as unavailable.
         return undefined;
     } finally {
         clearTimeout(timeout);
@@ -164,10 +160,6 @@ export async function searchKeylessWeb(
     const normalizedQuery = query.trim();
     if (!normalizedQuery) throw new Error("Web search query is required");
 
-    const resultCount = Math.min(
-        MAX_RESULT_COUNT,
-        Math.max(1, Math.floor(options.resultCount ?? DEFAULT_RESULT_COUNT))
-    );
     const transport = {
         fetchImpl:
             options.fetchImpl ??
@@ -176,32 +168,17 @@ export async function searchKeylessWeb(
         maxResponseBytes: options.maxResponseBytes ?? DEFAULT_RESPONSE_BYTES,
     };
 
-    let provider: KeylessWebSearchProvider = "parallel";
-    let text = await callMcp(
+    const text = await callMcp(
         PARALLEL_MCP_URL,
         "web_search",
         { objective: normalizedQuery, search_queries: [normalizedQuery] },
         transport
     );
-    if (!text || isEmptyParallelResult(text)) {
-        provider = "exa";
-        text = await callMcp(
-            EXA_MCP_URL,
-            "web_search_exa",
-            {
-                query: normalizedQuery,
-                type: "auto",
-                numResults: resultCount,
-                livecrawl: "fallback",
-            },
-            transport
-        );
-    }
-    if (!text) return undefined;
+    if (!text || isEmptyParallelResult(text)) return undefined;
 
     void options.maxResultChars;
     return {
-        provider,
+        provider: "parallel",
         text,
         truncated: false,
     };

@@ -201,6 +201,7 @@ export {
   extractRows,
   type SchedulingSqlExecutor,
 } from "./scheduled-task/sql.ts";
+export { runStandaloneSchedulingTick } from "./scheduled-task/standalone-tick.ts";
 export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,

@@ -50,8 +50,7 @@
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.7.0"
+        "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
         "@biomejs/biome": "2.5.14",
@@ -74,11 +73,6 @@
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
-        "pluginParameters": {
-            "TAVILY_API_KEY": {
-                "type": "string",
-                "description": "Tavily API key for accessing news services"
-            }
-        }
+        "pluginParameters": {}
     }
 }

@@ -340,10 +340,9 @@ test("reports native controls and wrappers without a review ledger or source mut
   }
 });
 
-test("compiler output beside typed source does not change the maintained inventory", () => {
-  const directory = fs.mkdtempSync(
-    fileURLToPath(new URL("../src/inventory-emit-", import.meta.url)),
-  );
+test("compiler output beside typed source does not change the maintained inventory", async () => {
+  const fixture = await isolatedInventory();
+  const directory = fixture.source;
   const source =
     'import { createElement } from "react"; export function View() { return createElement("div", null, "content"); }';
   const typed = path.join(directory, "typed.tsx");
@@ -353,7 +352,8 @@ test("compiler output beside typed source does not change the maintained invento
     fs.writeFileSync(typed, source);
     fs.writeFileSync(authored, source);
     const inventory = () =>
-      listMaintainedSourceFiles()
+      fixture
+        .listMaintainedSourceFiles()
         .filter((file) => file.startsWith(directory))
         .sort();
     const before = inventory();
@@ -361,6 +361,6 @@ test("compiler output beside typed source does not change the maintained invento
     fs.writeFileSync(emitted, source);
     assert.deepEqual(inventory(), before);
   } finally {
-    fs.rmSync(directory, { recursive: true, force: true });
+    fs.rmSync(fixture.root, { recursive: true, force: true });
   }
 });
