@@ -3,7 +3,8 @@
  * persistence, bounded late reads, authorization denial, corruption, restart,
  * atomic publication, and explicit retention cleanup.
  */
-import { type IAgentRuntime, InMemoryDatabaseAdapter, type UUID } from "@elizaos/core/node";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import {
   buildGmailContentPublication,

@@ -1,10 +1,9 @@
 /**
  * Builds and validates immutable UTF-8 document source segments, then
  * reconstructs one bounded byte, line, or fragment page from authorized rows.
- * The module is browser-safe and never materializes source outside the rows a
- * storage adapter already selected.
+ * Source is materialized only from rows a storage adapter already selected.
  */
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { ElizaError } from "../errors";
 import type {
 	Content,
@@ -222,7 +221,7 @@ export function buildDocumentSourceProjection(args: {
 			timestamp: Date.now(),
 		};
 		segments.push({
-			id: uuidv4() as UUID,
+			id: randomUUID() as UUID,
 			agentId: args.agentId,
 			roomId: args.roomId,
 			entityId: args.entityId,

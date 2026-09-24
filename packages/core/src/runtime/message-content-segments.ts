@@ -4,7 +4,6 @@
  * rows. Parent descriptors are content-free commit points; segment identifiers
  * are deterministic for one message, source revision, and ordinal.
  */
-import { v5 as uuidv5 } from "uuid";
 import {
 	artifactDisclosureRecordFromMemory,
 	resolveArtifactDisclosure,
@@ -77,12 +76,13 @@ interface ReconstructedMessageContentPage {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 // elizaOS IDs are UUID-shaped but may be deterministically derived with a
-// non-RFC version nibble. They are valid database identities, but the `uuid`
-// package rejects them as v5 namespaces. Keep one RFC namespace and include
+// non-RFC version nibble. Keep the historical RFC v5 namespace and include
 // the parent identity in the name so every accepted elizaOS UUID remains a
 // deterministic, collision-isolated segment owner.
-const MESSAGE_CONTENT_SEGMENT_NAMESPACE =
-	"6ba7b811-9dad-11d1-80b4-00c04fd430c8";
+const MESSAGE_CONTENT_SEGMENT_NAMESPACE = Buffer.from(
+	"6ba7b8119dad11d180b400c04fd430c8",
+	"hex",
+);
 
 function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
@@ -146,17 +146,23 @@ function sourceSegmentId(args: {
 	ordinal: number;
 	attachmentHash?: string;
 }): UUID {
-	return uuidv5(
-		[
-			"message-content-segment-v1",
-			args.messageId,
-			args.kind,
-			args.attachmentHash ?? "message",
-			args.revision,
-			String(args.ordinal),
-		].join(":"),
-		MESSAGE_CONTENT_SEGMENT_NAMESPACE,
-	) as UUID;
+	const name = [
+		"message-content-segment-v1",
+		args.messageId,
+		args.kind,
+		args.attachmentHash ?? "message",
+		args.revision,
+		String(args.ordinal),
+	].join(":");
+	// RFC v5 bytes must match persisted IDs from the former uuid implementation.
+	const digest = createHash("sha1")
+		.update(MESSAGE_CONTENT_SEGMENT_NAMESPACE)
+		.update(name)
+		.digest();
+	digest[6] = (digest[6] & 0x0f) | 0x50;
+	digest[8] = (digest[8] & 0x3f) | 0x80;
+	const hex = Buffer.from(digest.subarray(0, 16)).toString("hex");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID;
 }
 
 function buildSource(args: {

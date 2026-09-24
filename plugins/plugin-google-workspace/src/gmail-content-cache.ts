@@ -12,7 +12,7 @@ import {
   MemoryType,
   stringToUuid,
   type UUID,
-} from "@elizaos/core/node";
+} from "@elizaos/core";
 
 export const GMAIL_CONTENT_HEAD_TABLE = "gmail_content_heads";
 export const GMAIL_CONTENT_SEGMENT_TABLE = "gmail_content_segments";
