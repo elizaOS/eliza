@@ -38,7 +38,7 @@
     "ai": "^6.0.30",
     "drizzle-orm": "0.45.2",
     "dedent": "^1.7.1",
-    "mammoth": "^1.9.0",
+    "mammoth": "^1.12.3",
     "unpdf": "^1.4.0",
     "@elizaos/prompts": "workspace:*",
     "zod": "^4.6.5",
