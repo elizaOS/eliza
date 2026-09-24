@@ -112,6 +112,7 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
   // View-providing plugins that must resolve their home tiles on every platform.
+  { plugin: "@elizaos/plugin-app-control", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-agent-orchestrator/ui", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },

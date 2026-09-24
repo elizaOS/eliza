@@ -108,6 +108,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-calendar": "workspace:*",
@@ -234,6 +235,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -1381,6 +1383,34 @@
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
       },
+    },
+    "plugins/plugin-app-control": {
+      "name": "@elizaos/plugin-app-control",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.14",
+        "@types/node": "24.12.2",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.0",
+        "vitest": "5.0.1",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+        "puppeteer-core": "^24.39.1",
+      },
+      "optionalPeers": [
+        "puppeteer-core",
+      ],
     },
     "plugins/plugin-assistant": {
       "name": "@elizaos/plugin-assistant",
@@ -3621,6 +3651,8 @@
     "@elizaos/plugin-agent-orchestrator": ["@elizaos/plugin-agent-orchestrator@workspace:plugins/plugin-agent-orchestrator"],
 
     "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:plugins/plugin-anthropic"],
+
+    "@elizaos/plugin-app-control": ["@elizaos/plugin-app-control@workspace:plugins/plugin-app-control"],
 
     "@elizaos/plugin-assistant": ["@elizaos/plugin-assistant@workspace:plugins/plugin-assistant"],
 

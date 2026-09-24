@@ -1,0 +1,76 @@
+{
+  "name": "@elizaos/plugin-app-control",
+  "version": "2.0.3-beta.7",
+  "description": "Authorized app-view navigation and view management for Eliza.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "assets",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck -p tsconfig.json && node ../../packages/scripts/flatten-tsc-package-output.mjs plugins/plugin-app-control",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "test": "vitest run",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "react": "^19.0.0",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "puppeteer-core": "^24.39.1"
+  },
+  "peerDependenciesMeta": {
+    "puppeteer-core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "24.12.2",
+    "tsup": "8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "5.0.1",
+    "vite": "^8.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
