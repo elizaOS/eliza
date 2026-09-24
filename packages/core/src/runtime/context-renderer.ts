@@ -151,6 +151,7 @@ const DIALOGUE_METADATA_FIELDS = new Set([
 	"uiTimeZone",
 	"clientTransport",
 	"uiView",
+	"uiTab",
 	"uiViewCapabilities",
 	"uiViewActionNames",
 	"__responseContext",

@@ -57,6 +57,7 @@ describe("context renderer", () => {
 				text: "  Yeah, that's true.\n",
 				source: "client_chat",
 				channelType: "VOICE_DM",
+				metadata: { uiView: "chat", uiTab: "chat", uiViewPath: "/chat" },
 				chatIdempotency: bookkeeping,
 			};
 			const context = {
