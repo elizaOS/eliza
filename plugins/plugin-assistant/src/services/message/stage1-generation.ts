@@ -237,12 +237,12 @@ export function getStage1RetryReason(
   return "malformed HANDLE_RESPONSE tool call";
 }
 
-/** Opt a directly addressed terminal decision into one shared Stage-1 review. */
+/** Read the explicit terminal-review override; channel policy owns the default. */
 export function readStage1TerminalReaskSetting(
   runtime: IAgentRuntime,
-): boolean {
+): boolean | undefined {
   const raw = runtime.getSetting("ELIZA_STAGE1_TERMINAL_REASK");
-  if (raw === undefined || raw === null) return false;
+  if (raw === undefined || raw === null) return undefined;
   if (typeof raw === "boolean") return raw;
   return /^(?:1|true|yes|on)$/i.test(String(raw).trim());
 }

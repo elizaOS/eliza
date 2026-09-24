@@ -64,13 +64,7 @@ Hosts register ApprovalService explicitly. SQL owns the existing approval tables
 HTTP routes and caller authentication remain in the agent host. Import approval
 contracts from this package without loading agent process code.
 
-Hosts may enable `ELIZA_STAGE1_TERMINAL_REASK` with `true`, `1`, `yes`, or `on`
-to review a directly addressed STOP or IGNORE decision once before terminal
-routing. It is off by default and excludes coding turns. The review
-shares its budget with the existing direct-text IGNORE review, so a repeated
-terminal decision does not start another silence review. Requested context is
-loaded before review; malformed output and conflicting routing retain their
-existing validation paths.
+Direct noncoding conversations review a model STOP or IGNORE once by default before silently ending an addressed request. `ELIZA_STAGE1_TERMINAL_REASK=false` (or `0`) opts out of STOP review (the existing direct IGNORE review remains); `true`, `1`, `yes`, or `on` also enables the existing directly-addressed review on other channels. Unaddressed groups, cancellation and coding bypass retain their gates. The review shares one budget with direct IGNORE review and does not add another review after an empty-answer or routing correction, so a repeated terminal decision does not loop. Ordinary RESPOND turns add no call. Requested context is loaded before review; malformed output and conflicting routing retain their validation paths.
 
 ## File trajectory retention
 

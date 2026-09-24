@@ -4515,15 +4515,18 @@ describe("runV5MessageRuntimeStage1", () => {
 		"Please cease responding",
 		"one line: what's the capital of chile?",
 	])(
-		"keeps a model STOP terminal without a language-dependent retry: %s",
+		"honors an explicit terminal-review opt-out without language matching: %s",
 		async (text) => {
-			const runtime = makeRuntime([
-				stage1Response({ shouldRespond: "STOP", contexts: [] }),
-				stage1Response({
-					contexts: ["simple"],
-					replyText: "This must never be delivered.",
-				}),
-			]);
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: "STOP", contexts: [] }),
+					stage1Response({
+						contexts: ["simple"],
+						replyText: "This must never be delivered.",
+					}),
+				],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "0" },
+			);
 			const handler = vi.fn(async () => ({
 				success: true,
 				text: "Unexpected domain effect",
@@ -4557,6 +4560,55 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"reviews a silent direct follow-up once by default on %s",
+		async (channelType) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Yes, Home is open.",
+				}),
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({
+					text: "Did you open it?",
+					channelType,
+					metadata: { uiViewPath: "/chat" },
+				}),
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe("Yes, Home is open.");
+			expect(useModelCalls(runtime)).toHaveLength(2);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("honors a confirmed direct STOP without a third review", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const callback = vi.fn(async () => []);
+		const result = await runStage1({
+			runtime,
+			callback,
+			message: makeMessage({
+				text: "Please stop responding.",
+				channelType: ChannelType.DM,
+			}),
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[true, "STOP", "STOP", 2],
 		[true, "IGNORE", "IGNORE", 2],
@@ -4572,7 +4624,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					stage1Response({ shouldRespond: first, contexts: [] }),
 					stage1Response({ shouldRespond: repeated, contexts: [] }),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
@@ -14161,7 +14215,9 @@ describe("direct-text silence review", () => {
 						extra: { replyEffectStatus: "none" },
 					}),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const state = makeState();
 			state.data.providers = {
@@ -14219,7 +14275,9 @@ describe("direct-text silence review", () => {
 						extra: { replyEffectStatus: "none" },
 					}),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const state = makeState();
 			state.data.providers = {
@@ -14307,7 +14365,7 @@ describe("direct-text silence review", () => {
 			text: "Stop responding.",
 			channel: ChannelType.DM,
 			bot: false,
-			calls: 1,
+			calls: 2,
 		},
 		{
 			decision: "IGNORE" as const,

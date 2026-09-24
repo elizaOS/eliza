@@ -693,11 +693,12 @@ export async function generateStage1Decision(
   // Terminal review shares a budget with direct IGNORE review below. A
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
-  const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
+  const terminalReaskEnabled =
+    readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
   if (!args.codingMode) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     // A source quotation is an answer even with no model-authored prose.
-    // Terminal decisions retain the same opt-in review and shared budget.
+    // Terminal decisions retain the channel policy and shared review budget.
     const sourceReplyAnswer =
       parsedForRepair?.shouldRespond === "RESPOND" &&
       (sourceReplyRendering ||
@@ -705,7 +706,7 @@ export async function generateStage1Decision(
     const unusableRepair = sourceReplyAnswer
       ? undefined
       : getStage1UnusableDecisionRepair(parsedForRepair, {
-          reaskTerminal: terminalReaskEnabled,
+          reaskTerminal: terminalReaskEnabled && !directMessageChannel,
         });
     if (
       unusableRepair &&
@@ -715,9 +716,7 @@ export async function generateStage1Decision(
         { src: "service:message", roomId: args.message.roomId },
         "[message] Stage 1 decision receives one response-contract review",
       );
-      terminalDecisionReviewed =
-        parsedForRepair?.shouldRespond === "STOP" ||
-        parsedForRepair?.shouldRespond === "IGNORE";
+      terminalDecisionReviewed = true;
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -823,6 +822,7 @@ export async function generateStage1Decision(
     const terminalReview =
       directMessageChannel &&
       !terminalDecisionReviewed &&
+      !routingRepairAttempted &&
       !routingRepair &&
       !repairHistoryIdentity &&
       !repairHistorySourceIds &&
