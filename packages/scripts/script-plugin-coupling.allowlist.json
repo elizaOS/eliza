@@ -77,7 +77,6 @@
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
       "plugins/plugin-form",
-      "plugins/plugin-google-genai",
       "plugins/plugin-health",
       "plugins/plugin-local-inference",
       "plugins/plugin-openai",
