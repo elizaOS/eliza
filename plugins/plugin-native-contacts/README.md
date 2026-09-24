@@ -14,3 +14,11 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-contacts build  # build
 bun run --cwd plugins/plugin-native-contacts test   # tests
 ```
+
+Explicit limits must be positive safe integers; omitted reads are complete.
+Malformed limits reject with INVALID_LIMIT. Missing provider cursors reject with
+CONTACTS_UNAVAILABLE; valid empty cursors remain empty arrays. The isolated
+ContactsBridgeInstrumentedTest exercises create/read/search and numeric limits
+against actual ContactsProvider; null/empty child-query failures inject only the
+provider response into the production reader. Cleanup owns exact synthetic raw
+contact IDs. Inspect terminal instrumentation results, not just shell exit status.
