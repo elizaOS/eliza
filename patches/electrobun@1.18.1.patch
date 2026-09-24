@@ -124,11 +124,15 @@ diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
  			const { id, title, image, template, width, height } = params;
  
  			const trayPtr = native_.symbols.createTray(
-@@ -1646,6 +1646,7 @@
- 				allowsMultipleSelection ? 1 : 0,
- 			);
- 
-+			if (filePath === null) throw new Error("Native file dialog returned no result");
- 			return filePath.toString();
- 		},
- 		showMessageBox: (params: {
+@@ -1633 +1633 @@
+-		}): string => {
++		}): string | null => {
+@@ -1649 +1649 @@
+-			return filePath.toString();
++			return filePath;
+diff --git a/dist/api/bun/core/Utils.ts b/dist/api/bun/core/Utils.ts
+--- a/dist/api/bun/core/Utils.ts
++++ b/dist/api/bun/core/Utils.ts
+@@ -190 +190 @@
+-	const filePaths = result.split(",");
++	const filePaths = result === null || result === "" ? [] : result.split(",");

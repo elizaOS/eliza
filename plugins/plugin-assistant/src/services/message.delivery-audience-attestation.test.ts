@@ -68,6 +68,10 @@ function makeRuntime(seed: {
     startRun: () => RUN_ID,
     runActionsByMode: async () => undefined,
     getMemoryById: async () => null,
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: async (memory: Memory) => memory.id,
     queueEmbeddingGeneration: async () => undefined,
     // Muting the agent ends every turn right after the attestation seam.

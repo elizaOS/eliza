@@ -1043,6 +1043,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     expectManifestIntegrity(fixture.outDir, result);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
     const validReport = fs.readFileSync(report, "utf8");
+    fixture.outDir = path.join(root, "desktop-rejected-revision");
     const abbreviatedRevision = JSON.parse(validReport);
     abbreviatedRevision.packagedRevision = currentHead().slice(0, 10);
     writeJson(report, abbreviatedRevision);
@@ -1067,6 +1068,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     fixture.outDir = path.join(root, "desktop-final-punctuation");
     expect(() => finalizeDesktopVoiceEvidence(fixture)).not.toThrow();
     fs.writeFileSync(report, validReport);
+    fixture.outDir = path.join(root, "desktop-rejected-device");
     const genericCollisionDevice = JSON.parse(validReport);
     genericCollisionDevice.report.stages.find(
       (stage) => stage.stage === "asr",

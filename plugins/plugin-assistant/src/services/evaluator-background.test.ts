@@ -612,7 +612,7 @@ describe("durable background memory", () => {
     [ChannelType.SELF, true],
     [ChannelType.GROUP, true],
     [ChannelType.VOICE_DM, true],
-    [ChannelType.VOICE_GROUP, false],
+    [ChannelType.VOICE_GROUP, true],
   ] as const)(
     "indexes supported progressive-context sources: %s",
     async (channelType, enabled) => {

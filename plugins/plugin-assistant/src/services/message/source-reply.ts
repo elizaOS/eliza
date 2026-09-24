@@ -326,7 +326,10 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
-    if (priorDialogueContent(raw.trim(), speaker) !== event.segment.content)
+    if (
+      priorDialogueContent(raw, speaker) !== event.segment.content &&
+      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+    )
       continue;
     originals.set(id, raw);
     references.set(id, {

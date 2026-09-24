@@ -17,6 +17,7 @@ import {
   getInferenceTimer,
   getUserMessageText,
   type LocalizedActionExampleResolver,
+  normalizeContextId,
   readEnvBool,
   recordInferenceSpan,
   withActiveRoutingContexts,
@@ -27,6 +28,7 @@ import {
 } from "../../runtime/action-catalog";
 import {
   parentAliasesForCandidateAction,
+  preferredOperationNames,
   retrieveActions,
 } from "../../runtime/action-retrieval.ts";
 import { tierActionResults } from "../../runtime/action-tiering.ts";
@@ -44,6 +46,86 @@ import {
   uiViewActionNames,
   uiViewActionPriority,
 } from "./provider-state.ts";
+
+/**
+ * Retrieve complete operation definitions from an already authorized registry.
+ * Search operates on individual operations rather than expanding every matched
+ * parent into its siblings. There is no result cap; unselected operations remain
+ * reachable through explicit discovery and the complete catalog read.
+ */
+export function retrieveContextualPlannerActions(args: {
+  actions: readonly Action[];
+  query: string;
+  /** Model-selected outcomes rank operations; the full request still ranks domains. */
+  intents?: readonly string[];
+  contexts?: readonly string[];
+}): Action[] {
+  const catalog = buildActionCatalog(
+    args.actions.map((action) => ({ ...action, subActions: undefined })),
+  );
+  const retrieval = retrieveActions({
+    catalog,
+    messageText: args.query,
+    selectedContexts: args.contexts,
+  });
+  const actionsByName = new Map(
+    args.actions.map((action) => [action.name, action]),
+  );
+  const matches = retrieval.results.flatMap((result) => {
+    const action = actionsByName.get(result.name);
+    return action && result.score > 0 ? [action] : [];
+  });
+  // Routing narrows the bootstrap, not registry availability. A mistaken or
+  // unknown domain with no matches falls back to the authorized global search;
+  // DISCOVER_ACTIONS also permits explicit searches outside the initial domains.
+  const domains = new Set(
+    args.contexts
+      ?.map(normalizeContextId)
+      .filter((context) => context !== "general" && context !== "simple"),
+  );
+  const domainMatches = matches.filter((action) =>
+    actionDiscoveryContexts(action).some((context) =>
+      domains.has(normalizeContextId(context)),
+    ),
+  );
+  const domainRelevant = domainMatches.length > 0 ? domainMatches : matches;
+  // Narrow each requested domain independently. A recognized notes operation
+  // must not erase a calendar intent whose operation wording has no name match.
+  const searchDomains = domains.size > 0 ? [...domains] : [undefined];
+  const selected = new Set<Action>();
+  const operationQuery =
+    args.intents?.filter((intent) => intent.trim()).join("\n") || args.query;
+  for (const domain of searchDomains) {
+    const candidates =
+      domain === undefined
+        ? domainRelevant
+        : domainRelevant.filter((action) =>
+            actionDiscoveryContexts(action).some(
+              (context) => normalizeContextId(context) === domain,
+            ),
+          );
+    const operationNames = preferredOperationNames(
+      operationQuery,
+      candidates.map((action) => action.name),
+    );
+    for (const action of candidates) {
+      if (operationNames.size === 0 || operationNames.has(action.name))
+        selected.add(action);
+    }
+  }
+  // A selected context with no registry matches must still permit global lookup.
+  const relevant =
+    selected.size > 0
+      ? domainRelevant.filter((action) => selected.has(action))
+      : domainRelevant;
+  const names = new Set(relevant.map((action) => action.name));
+  return relevant.filter(
+    (action) =>
+      !action.subActions?.some((child) =>
+        names.has(typeof child === "string" ? child : child.name),
+      ),
+  );
+}
 
 export type V5PlannerActionSurfaceSummary = {
   mode: "full" | "tiered" | "relay-delivery";
@@ -357,7 +439,7 @@ export async function collectV5PlannerCandidateActions(args: {
       action,
       undefined,
       args.discoverActions
-        ? mergeAgentContexts(args.selectedContexts, action.contexts)
+        ? actionDiscoveryContexts(action, args.selectedContexts)
         : args.selectedContexts,
     );
   }
@@ -416,7 +498,7 @@ export async function collectV5PlannerCandidateActions(args: {
       await appendIfAllowed(
         action,
         undefined,
-        mergeAgentContexts(args.selectedContexts, action.contexts),
+        actionDiscoveryContexts(action, args.selectedContexts),
         candidateName,
       );
     }
@@ -424,9 +506,9 @@ export async function collectV5PlannerCandidateActions(args: {
 
   for (let index = 0; index < selectedActions.length; index += 1) {
     const parentAction = selectedActions[index];
-    const childActiveContexts = mergeAgentContexts(
+    const childActiveContexts = actionDiscoveryContexts(
+      parentAction,
       args.selectedContexts,
-      parentAction.contexts,
     );
     for (const subAction of parentAction.subActions ?? []) {
       const childAction =
@@ -448,7 +530,7 @@ export async function collectV5PlannerCandidateActions(args: {
       await appendIfAllowed(
         childAction,
         parentAction.name,
-        mergeAgentContexts(childActiveContexts, childAction.contexts),
+        actionDiscoveryContexts(childAction, childActiveContexts),
       );
     }
   }
@@ -473,6 +555,24 @@ export function stringArrayProperty(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry.length > 0);
+}
+
+/** Build a discovery candidate's routing terms without weakening its canonical gate.
+ * Optional alternatives forbidden by noneOf are not activated. Required allOf
+ * terms stay intact so contradictory gates fail closed, as do already-active
+ * forbidden contexts. Roles, disclosure and account policy are checked separately.
+ */
+export function actionDiscoveryContexts(
+  action: Action,
+  activeContexts?: readonly AgentContext[],
+): AgentContext[] {
+  const gate = action.contextGate;
+  const denied = new Set((gate?.noneOf ?? []).map(normalizeContextId));
+  const alternatives = [
+    ...(gate?.contexts ?? action.contexts ?? []),
+    ...(gate?.anyOf ?? []),
+  ].filter((context) => !denied.has(normalizeContextId(context)));
+  return mergeAgentContexts(activeContexts, alternatives, gate?.allOf);
 }
 
 export function mergeAgentContexts(

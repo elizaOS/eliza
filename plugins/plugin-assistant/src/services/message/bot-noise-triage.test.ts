@@ -114,10 +114,10 @@ describe("isTriagableBotNoiseMessage — deterministic preconditions", () => {
     expect(isTriagableBotNoiseMessage(missing, false)).toBe(false);
   });
 
-  it("rejects voice group rooms (own turn-taking pipeline)", () => {
+  it("triages bot-authored voice group turns using the shared audience policy", () => {
     const voice = relayEmbedMessage();
     voice.content = { ...voice.content, channelType: ChannelType.VOICE_GROUP };
-    expect(isTriagableBotNoiseMessage(voice, false)).toBe(false);
+    expect(isTriagableBotNoiseMessage(voice, false)).toBe(true);
   });
 
   it("rejects sub-agent completion relays (source and metadata shapes)", () => {

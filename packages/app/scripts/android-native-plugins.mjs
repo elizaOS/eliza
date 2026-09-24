@@ -13,7 +13,11 @@ const root = path.resolve(import.meta.dirname, "../../..");
 export function inventory(repoRoot = root) {
   return fs
     .readdirSync(path.join(repoRoot, "plugins"))
-    .filter((name) => name.startsWith("plugin-native-"))
+    .filter(
+      (name) =>
+        name.startsWith("plugin-native-") &&
+        fs.existsSync(path.join(repoRoot, "plugins", name, "package.json")),
+    )
     .sort()
     .map((directory) => {
       const dir = path.join(repoRoot, "plugins", directory);

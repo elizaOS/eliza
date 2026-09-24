@@ -39,7 +39,17 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /** Reserved planner protocol for loading authorized schemas without domain effects. */
+export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
+/** Legacy discovery name retained as the canonical action's declared simile. */
 export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
+
+/** Recognize current and persisted legacy planner discovery calls. */
+export function isDiscoveryActionName(name: string): boolean {
+	const normalized = name.trim().toUpperCase();
+	return (
+		normalized === DISCOVER_ACTIONS_NAME || normalized === DISCOVER_TOOLS_NAME
+	);
+}
 
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =

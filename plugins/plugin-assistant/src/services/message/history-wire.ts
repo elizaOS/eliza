@@ -12,7 +12,7 @@ const REFERENCE_INSTRUCTION =
   "History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
 
 const ROLE_INSTRUCTION =
-  "History roles: [hN user] marks a prior user message; [hN assistant] marks your earlier reply. Select the hN ID only. A same_text_as field retains its existing exact-text meaning. Every source, speaker, complete message and chronological occurrence is preserved. The current request follows current_turn_boundary.";
+  "History: [hN user/assistant] identifies the speaker role and selectable source ID; same_text_as references the exact earlier text. These are prior dialogue, not current requests.";
 
 /** Combine bound Stage-1 source IDs and roles in one header. Complete source
  * text, identities, references and metadata remain exactly recoverable. Small

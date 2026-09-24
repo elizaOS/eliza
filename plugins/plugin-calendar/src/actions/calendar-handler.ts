@@ -30,14 +30,14 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsNextCalendarEventContext,
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsNextCalendarEventContext,
 } from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
@@ -5450,7 +5450,7 @@ const calendarAction: CalendarHandlerAction = {
       if (explicitSubaction === "search_events" && searchQueries.length === 0) {
         throw new CalendarServiceError(
           400,
-          'CALENDAR_SEARCH_EVENTS requires a user-supplied event-content filter in query/queries or details.query/details.queries. For an unfiltered agenda, use CALENDAR_FEED (umbrella action=feed), preserving the requested date/range and timezone: details.date with optional endDate for whole days, or timeMin/timeMax for partial days. If CALENDAR_FEED is not loaded, DISCOVER_TOOLS mode=load names=["CALENDAR_FEED"] loads its schema directly. No calendar read or change occurred.',
+          'CALENDAR_SEARCH_EVENTS requires a user-supplied event-content filter in query/queries or details.query/details.queries. For an unfiltered agenda, use CALENDAR_FEED (umbrella action=feed), preserving the requested date/range and timezone: details.date with optional endDate for whole days, or timeMin/timeMax for partial days. If CALENDAR_FEED is not loaded, DISCOVER_ACTIONS mode=load names=["CALENDAR_FEED"] loads its schema directly. No calendar read or change occurred.',
           "CALENDAR_SEARCH_QUERY_REQUIRED",
         );
       }

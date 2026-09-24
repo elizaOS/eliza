@@ -8,7 +8,7 @@ import {
   type ContextDefinition,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -27,10 +27,8 @@ import { NOTES_SURFACE } from "./surface.js";
 const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
   label: "Notes",
-  description:
-    "The user's saved Notes records, including temporary or titled notes. All Notes record operations use context notes and a promoted action candidate: create -> NOTES_CREATE; read an exact ID -> NOTES_GET; search, list, or count -> NOTES_LIST; date or period search -> NOTES_LIST with dateRange; edit fields or substitute literal text -> NOTES_PATCH; legacy whole-note replacement -> NOTES_UPDATE; remove -> NOTES_DELETE. Name the matching child instead of the NOTES umbrella so its required fields reach the planner. Explicit Notes records belong here; generic requests to remember durable facts or preferences use memory, and document/file work uses documents. A note is not a todo or calendar event. Add a navigation candidate only when opening the view is also requested: prefer VIEWS_SHOW when available; use VIEWS for layouts or discovery.",
-  descriptionCompressed:
-    "User's saved notes: write down, read back, search, update, delete",
+  description: "Saved notes.",
+  descriptionCompressed: "Saved notes.",
   sensitivity: "personal",
   cacheScope: "agent",
   roleGate: { minRole: "OWNER" },

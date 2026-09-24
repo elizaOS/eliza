@@ -149,6 +149,10 @@ function makeRuntime(opts: RuntimeOptions = {}) {
     getModel: vi.fn(() => null),
     isCheckShouldRespondEnabled: vi.fn(() => false),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     getMemories: vi.fn(async () => []),
     getRoomsByIds: vi.fn(async () => [room]),
     createMemory: vi.fn(async (memory: Memory) => memory.id),

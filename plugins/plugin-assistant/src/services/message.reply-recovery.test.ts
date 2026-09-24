@@ -475,11 +475,8 @@ describe("model-backed final reply recovery", () => {
     // Independently expand the recorded backward reference and its anchor.
     const expanded = recovery.context
       .replace(/^History encoding:.*\n\n/m, "")
-      .replace("prior_message:user:\n[h1]\n", "prior_message:user:\n")
-      .replace(
-        "prior_message:user:\n[h3; same_text_as=h1]",
-        `prior_message:user:\n${history[0]}`,
-      );
+      .replace("[h1]\n", "")
+      .replace("[h3; same_text_as=h1]", history[0]);
     const redactedOriginal = original.replace(
       '"key":"picnic-request"',
       '"key":"[REDACTED]"',
