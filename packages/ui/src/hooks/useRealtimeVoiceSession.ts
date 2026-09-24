@@ -311,6 +311,7 @@ export function useRealtimeVoiceSession(
     useState<RealtimeVoiceFallbackReason | null>(null);
 
   const clientRef = useRef<VoiceSessionClient | null>(null);
+  const teardownRef = useRef<Promise<void> | null>(null);
   // A generation counter so a stale client's async callbacks (a teardown that
   // races a new start) cannot write state for a session the component moved on
   // from.
@@ -411,7 +412,13 @@ export function useRealtimeVoiceSession(
     clientRef.current = null;
     if (client) {
       // error-policy:J6 Socket/microphone teardown is best effort after ownership is cleared.
-      await client.stop().catch(() => {});
+      const pending = client.stop().catch(() => {});
+      teardownRef.current = pending;
+      await pending;
+      if (teardownRef.current === pending) teardownRef.current = null;
+    } else {
+      // Rapid identity changes share the detached client's ongoing teardown.
+      await teardownRef.current;
     }
   }, []);
 
