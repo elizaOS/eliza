@@ -12,7 +12,6 @@ import type { SurfaceManifest, ViewCapability } from "@elizaos/core";
  * controls opt in with `useAgentElement`.
  */
 
-import type { SurfaceManifest } from "@elizaos/core";
 import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import { type ReactNode, useEffect, useRef } from "react";
 import {
