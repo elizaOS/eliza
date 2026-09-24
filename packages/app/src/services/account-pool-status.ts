@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { type LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
 import {
   type AccountPool,
   getDefaultAccountPool,
@@ -729,7 +729,7 @@ export function serializePublicPoolStatus(
 }
 export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
   const now = nowMs();
-  if (cache && now - cache.at < cacheTtlMs()) {
+  if (cache && now >= cache.at && now - cache.at < cacheTtlMs()) {
     return serializePublicPoolStatus(withHealth(cache.status, false));
   }
   if (!inflight) {
@@ -740,8 +740,8 @@ export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
         depsOverride.queryConsumerUsage ?? getAccountPoolConsumerUsageSummary
       )();
       const status = buildStatus(pool, usage, history);
-      cache = { at: nowMs(), status };
       appendSnapshot(status);
+      cache = { at: nowMs(), status };
       return status;
     })()
       .catch((error) => {

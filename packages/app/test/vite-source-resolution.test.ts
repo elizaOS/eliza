@@ -169,6 +169,9 @@ describe("workspace package resolution", () => {
     const output = (Array.isArray(result) ? result[0] : result).output;
     const chunk = output.find((item) => item.type === "chunk");
     if (!chunk) throw new Error("Expected a browser cron bundle");
+    expect(Object.keys(chunk.modules)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("CronFileParser")]),
+    );
     expect(runInNewContext(`${chunk.code}\nCronContract.next()`)).toBe(
       "2026-09-28T09:00:00.000Z",
     );

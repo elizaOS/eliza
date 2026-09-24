@@ -2322,6 +2322,14 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      // The CommonJS barrel eagerly imports CronFileParser (fs/promises).
+      // Renderer scheduling uses the real expression parser directly.
+      {
+        find: /^cron-parser$/,
+        replacement: _require.resolve(
+          "cron-parser/dist/CronExpressionParser.js",
+        ),
+      },
       {
         find: /^@elizaos\/auth$/,
         replacement: path.resolve(elizaRoot, "packages/auth/src/sdk/index.ts"),
