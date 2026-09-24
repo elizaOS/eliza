@@ -65,7 +65,7 @@ jobs:
 
       - name: Install pinned workflow linters
         shell: bash
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
 
       - name: Lint changed workflows
         shell: bash

@@ -330,7 +330,7 @@ jobs:
       - name: Provision Chromium for heavy E2E regression suite
         id: provision-chrome
         run: |
-          .github/scripts/install-playwright-browsers.sh chromium
+          packages/scripts/github/install-playwright-browsers.sh chromium
           chrome_path="$(bun -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
           if [ ! -x "$chrome_path" ]; then
             echo "::error::Pinned Playwright Chromium is not executable at $chrome_path; the heavy E2E gate cannot run." >&2

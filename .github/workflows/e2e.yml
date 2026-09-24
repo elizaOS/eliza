@@ -36,6 +36,6 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
       - name: Install Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Browser authentication through the real API and database
         run: bun run --cwd packages/auth test:browser
