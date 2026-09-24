@@ -39,6 +39,8 @@ interface SiloDefinition {
   producedBy: string;
   lane?: string;
   roots: SiloRoot[];
+  /** Keep a single root distinct from other producers sharing its lane. */
+  namespaceRoot?: boolean;
   /** Per-silo kind override; receives the root-relative posix path. */
   classify?: (relPath: string, defaultKind: ArtifactKind) => ArtifactKind;
 }
@@ -293,7 +295,7 @@ async function ingestSilo(
   if (presentRoots.length === 0) {
     return { silo: definition.silo, status: "absent", artifactCount: 0 };
   }
-  const namespace = definition.roots.length > 1;
+  const namespace = definition.namespaceRoot || definition.roots.length > 1;
   let artifactCount = 0;
   for (const root of presentRoots) {
     const rootDir = path.join(repoRoot, root.dir);
@@ -370,6 +372,14 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "packages/app/scripts/android-native-plugins.mjs",
     lane: "native",
     roots: [{ label: "plugins", dir: "test-results/android-native-plugins" }],
+  },
+  {
+    silo: "android-native-sms",
+    source: "android-native-sms",
+    producedBy: "packages/app/scripts/android-native-sms.mjs",
+    lane: "native",
+    namespaceRoot: true,
+    roots: [{ label: "sms", dir: "test-results/android-native-sms" }],
   },
   {
     silo: "e2e-recordings",

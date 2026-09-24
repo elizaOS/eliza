@@ -7,6 +7,7 @@ import android.os.Looper
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -64,10 +65,6 @@ class MessagesPlugin : Plugin() {
             } else {
                 Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
             }
-            if (!defaultSms) {
-                call.reject("Select Eliza as the default SMS app before sending; this API must persist the sent record", "DEFAULT_SMS_REQUIRED")
-                return@post
-            }
             var request: SmsSendRequest? = null
             try {
                 val manager = SmsManager.getDefault()
@@ -78,10 +75,12 @@ class MessagesPlugin : Plugin() {
                     when (outcome) {
                         SmsSendRequest.Outcome.Sent -> {
                             try {
-                                call.resolve(persistSentSms(address, body))
+                                // Non-default senders use the row Android persisted.
+                                // A duplicate insert may return content://sms/0.
+                                call.resolve(if (defaultSms) persistSentSms(address, body) else sentSmsReceipt(request?.sentMessageUri))
                             } catch (error: RuntimeException) {
                                 // error-policy:J1 Radio success and provider failure must not be mistaken for an unsent SMS.
-                                call.reject("SMS sent but Android SMS provider did not persist the sent row; do not resend", "SMS_SENT_PERSIST_FAILED", error)
+                                call.reject("SMS sent but its persisted message receipt is unavailable; do not resend", "SMS_SENT_RECEIPT_UNAVAILABLE", error)
                             }
                         }
                         is SmsSendRequest.Outcome.Failed -> call.reject(
@@ -168,6 +167,18 @@ class MessagesPlugin : Plugin() {
         call.resolve(result)
     }
 
+    private fun sentSmsReceipt(rawUri: String?): JSObject {
+        val uri = rawUri?.let { Uri.parse(it) }
+        val id = uri?.lastPathSegment
+        check(uri?.scheme == "content" && uri.authority == "sms" && (id?.toLongOrNull() ?: 0) > 0) {
+            "SMS was sent but Android did not supply a persisted message receipt"
+        }
+        return JSObject().apply {
+            put("messageUri", uri.toString())
+            put("messageId", id)
+        }
+    }
+
     private fun persistSentSms(address: String, body: String): JSObject {
         val sentAt = System.currentTimeMillis()
         val values = ContentValues()
@@ -182,9 +193,6 @@ class MessagesPlugin : Plugin() {
         val inserted = context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
             ?: throw IllegalStateException("SMS provider returned no sent row URI")
 
-        val result = JSObject()
-        result.put("messageUri", inserted.toString())
-        result.put("messageId", inserted.lastPathSegment ?: throw IllegalStateException("SMS provider returned a URI without an id"))
-        return result
+        return sentSmsReceipt(inserted.toString())
     }
 }
