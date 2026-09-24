@@ -250,7 +250,7 @@ describe("workspace package resolution", () => {
     },
   );
 
-  test("resolves the shared terminal palette from workspace source while serving", async () => {
+  test("resolves the canonical UI terminal palette from workspace source while serving", async () => {
     const { server } = await createAppResolutionServer("serve");
 
     try {
@@ -260,9 +260,7 @@ describe("workspace package resolution", () => {
           path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
         );
       expect(resolved?.id).toBe(
-        normalizePath(
-          path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
-        ),
+        normalizePath(path.resolve(appRoot, "../ui/src/terminal/palette.ts")),
       );
     } finally {
       await server.close();

@@ -268,8 +268,6 @@ export async function handleCloudPairRoute(
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
     const resp = await fetch(exchangeUrl, {
       method: "POST",
       headers: {
@@ -277,9 +275,8 @@ export async function handleCloudPairRoute(
         origin,
       },
       body: JSON.stringify({ token, agentId }),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
     });
-    clearTimeout(timeoutId);
     status = resp.status;
     if (resp.ok) {
       // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed

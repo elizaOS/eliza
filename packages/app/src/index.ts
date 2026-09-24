@@ -26,7 +26,6 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
-export * from "@elizaos/plugin-github/github-credentials";
 export * from "@elizaos/core/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
@@ -43,15 +42,15 @@ export {
   DEFAULT_APP_CONFIG,
   resolveAppBranding,
 } from "@elizaos/core/config/app-config";
-export {
-  type AllPermissionsState,
-  type PermissionCheckResult,
-  type PermissionManagerConfig,
-  type PermissionState,
-  type PermissionStatus,
-  type Platform,
-  type SystemPermissionDefinition,
-  type SystemPermissionId,
+export type {
+  AllPermissionsState,
+  PermissionCheckResult,
+  PermissionManagerConfig,
+  PermissionState,
+  PermissionStatus,
+  Platform,
+  SystemPermissionDefinition,
+  SystemPermissionId,
 } from "@elizaos/core/contracts/permissions";
 export * from "@elizaos/core/integration-observability";
 export {
@@ -64,6 +63,7 @@ export {
   isDirectBuild,
   isStoreBuild,
 } from "@elizaos/core/platform/build-variant";
+export * from "@elizaos/plugin-github/github-credentials";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
