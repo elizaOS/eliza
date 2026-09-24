@@ -21,6 +21,7 @@ import {
   compareTasksForQuery,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -29,6 +30,8 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRangeReadParams,
+  type DocumentRangeReadResult,
   type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
@@ -74,7 +77,9 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
+  readDocumentSourceProjection,
   readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
   requireFreshWorldMetadataRevision,
   rerankMemories,
   resolveMessageContentSourceDescriptor,
@@ -974,6 +979,89 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }
     const memory = toMemory(stored);
     return isDocumentVisibleToRequester(memory, params) ? memory : null;
+  }
+
+  readonly documentRangeReadCapability = 2 as const;
+
+  async readDocumentRange(
+    params: DocumentRangeReadParams,
+  ): Promise<DocumentRangeReadResult | null> {
+    if (
+      !["line", "fragment", "byte"].includes(params.unit) ||
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
+    ) {
+      throw new ElizaError(
+        "Document range read requires a bounded safe-integer range",
+        { code: "DOCUMENT_READ_INVALID_RANGE" },
+      );
+    }
+    const document = await this.getDocument(params);
+    if (!document) return null;
+    const parent = requireDocumentSourceReadMetadata(
+      (document.metadata ?? {}) as Record<string, unknown>,
+      params.documentId,
+    );
+    const prefix =
+      params.unit === "byte"
+        ? "sourceByte"
+        : params.unit === "line"
+          ? "sourceLine"
+          : "sourceFragment";
+    const total =
+      params.unit === "byte"
+        ? parent.sourceByteLength
+        : params.unit === "line"
+          ? parent.sourceLineCount
+          : parent.sourceFragmentCount;
+    const end = Math.min(params.offset + params.limit, total);
+    const rows =
+      params.offset >= total
+        ? []
+        : await this.storage.getWhere<StoredMemory>(
+            COLLECTIONS.MEMORIES,
+            (memory) => {
+              const metadata = memory.metadata as
+                | Record<string, unknown>
+                | undefined;
+              return (
+                storedMemoryTableName(memory) === "document_fragments" &&
+                memory.agentId === params.agentId &&
+                metadata?.documentId === params.documentId &&
+                metadata.fragmentRole === "source-segment" &&
+                metadata.sourceSegmentVersion === 1 &&
+                typeof metadata[`${prefix}Start`] === "number" &&
+                typeof metadata[`${prefix}End`] === "number" &&
+                Number(metadata[`${prefix}Start`]) < end &&
+                Number(metadata[`${prefix}End`]) > params.offset
+              );
+            },
+          );
+    const segments = rows
+      .sort(
+        (left, right) =>
+          Number(
+            (left.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ) -
+          Number(
+            (right.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ),
+      )
+      .slice(0, DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS)
+      .map(toMemory);
+    return readDocumentSourceProjection({
+      segments,
+      params,
+      parent,
+      documentId: params.documentId,
+      examinedSourceSegments: rows.length,
+      sourceQueryCount: params.offset >= total ? 1 : 2,
+    });
   }
 
   async queryDocumentFragments(
