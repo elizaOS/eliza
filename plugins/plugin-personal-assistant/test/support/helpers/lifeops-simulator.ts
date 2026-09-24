@@ -15,7 +15,7 @@ import {
   LIFEOPS_DISCORD_CAPABILITIES,
   LIFEOPS_TELEGRAM_CAPABILITIES,
 } from "@elizaos/core/contracts/personal-assistant";
-import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugin-telegram/src/local-client.ts";
+import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "@elizaos/plugin-telegram";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,

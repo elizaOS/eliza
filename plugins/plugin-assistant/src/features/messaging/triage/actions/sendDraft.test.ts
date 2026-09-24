@@ -5,13 +5,9 @@
  * its XML is parsed into the draft, and a model failure degrades to no guessed
  * fields.
  */
-import { describe, expect, it, vi } from "vitest";
 
-import type {
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../../packages/core/src/types/index.ts";
+import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { outboundDraftOptionsFromMessage } from "./sendDraft.ts";
 
 /**

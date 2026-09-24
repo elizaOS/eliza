@@ -3,8 +3,7 @@
  * actions emit widgets through the action callback, so every v5 planned-tool
  * path must preserve the message-service callback when it invokes handlers.
  */
-import { describe, expect, it, vi } from "vitest";
-import { executePlannedToolCall } from "../../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
+
 import type {
   Action,
   ActionResult,
@@ -12,7 +11,9 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { executePlannedToolCall } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { __buildV5ExecutorContextForTests } from "../message.ts";
 
 describe("v5 planner executor context", () => {

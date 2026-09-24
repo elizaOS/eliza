@@ -5,12 +5,8 @@
  * non-English request, so op selection stays structured-only.
  */
 
+import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Content,
-  IAgentRuntime,
-  Memory,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { postAction, resolveOp } from "./post.ts";
 
 describe("post resolveOp is i18n-safe (#10471)", () => {

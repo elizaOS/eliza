@@ -15,31 +15,23 @@ const revalidateOwnerExclusiveDisclosure = vi.hoisted(() =>
   })),
 );
 
-vi.mock(
-  "../../../../../../packages/core/src/security/trusted-delivery-audience.ts",
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("../../../../../../packages/core/src/security/trusted-delivery-audience.ts")
-      >();
-    return {
-      ...actual,
-      revalidateOwnerExclusiveDisclosure,
-      markOwnerExclusiveDisclosureUsed: vi.fn(),
-      recordOwnerExclusiveSuppression: vi.fn(),
-    };
-  },
-);
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    revalidateOwnerExclusiveDisclosure,
+    markOwnerExclusiveDisclosureUsed: vi.fn(),
+    recordOwnerExclusiveSuppression: vi.fn(),
+  };
+});
 
 import {
+  addHeader,
   ChannelType,
+  conversationMessagesHeader,
   type IAgentRuntime,
   type Memory,
-} from "../../../../../../packages/core/src/types/index.ts";
-import {
-  addHeader,
-  conversationMessagesHeader,
-} from "../../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
 import { recentMessagesProvider } from "./recentMessages.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";

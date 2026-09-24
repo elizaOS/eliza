@@ -5,12 +5,8 @@
  * runtime + in-process adapter, no live model, no connector, no DB.
  */
 
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
-
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import { triageMessagesAction } from "../actions/triageMessages.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";

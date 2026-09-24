@@ -5,8 +5,8 @@
  * part of the arithmetic contract under test.
  */
 
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../../../packages/core/src/types/index.ts";
 import { type TrustEvidence, TrustEvidenceType } from "../types/trust.ts";
 import { TrustEngine } from "./TrustEngine.ts";
 

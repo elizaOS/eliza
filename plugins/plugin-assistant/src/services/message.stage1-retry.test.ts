@@ -7,9 +7,10 @@
  * recovery path instead. Empty or garbled output that did not hit the cap is
  * still worth one retry.
  */
+
+import type { GenerateTextResult } from "@elizaos/core";
+import { HANDLE_RESPONSE_TOOL_NAME } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { HANDLE_RESPONSE_TOOL_NAME } from "../../../../packages/core/src/actions/to-tool.ts";
-import type { GenerateTextResult } from "../../../../packages/core/src/types/index.ts";
 import { parseMessageHandlerModelOutput } from "./message/stage1-generation";
 import { extractMessageHandlerRawParsed } from "./message/stage1-output";
 import {

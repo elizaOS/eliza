@@ -2,12 +2,9 @@
  * Pins the cheap semantic gate that prevents a second model call after trivial
  * replies while preserving reflection for user memory and executed actions.
  */
+
+import type { Content, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  Content,
-  Memory,
-  State,
-} from "../../../../packages/core/src/types/index.ts";
 import { hasPostTurnSemanticSignal } from "./message.ts";
 
 const reply = { actions: ["REPLY"] } satisfies Pick<Content, "actions">;

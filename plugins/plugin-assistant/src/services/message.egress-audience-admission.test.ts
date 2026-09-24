@@ -22,26 +22,19 @@
  * genuine attestation evidence.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { v4 } from "uuid";
-import { afterEach, describe, expect, it } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
 import {
+  asUUID,
   attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  createCharacter,
   getTrustedDeliveryAudience,
   ownerExclusiveDisclosureWasUsed,
   PRIVACY_DENIED_TEXT,
-} from "../../../../packages/core/src/security/index.ts";
-import type {
-  Content,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import {
-  asUUID,
-  ChannelType,
-} from "../../../../packages/core/src/types/primitives.ts";
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { v4 } from "uuid";
+import { afterEach, describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { enforceTrustedDeliveryAudienceOnResult } from "./message.ts";
 

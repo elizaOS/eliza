@@ -1,9 +1,8 @@
 /** Verifies experience hydration and mutations remain atomic with durable memory writes. */
 
+import type { Memory, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
-import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
 import { ExperienceService } from "./service.ts";
 import { ExperienceType, OutcomeType } from "./types.ts";
 

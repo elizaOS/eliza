@@ -6,13 +6,9 @@
  * (the "tell <name> …" over-routing family). Deterministic mocked runtime.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { entitiesProvider } from "./entities.ts";
 
 describe("ENTITIES provider context gate", () => {

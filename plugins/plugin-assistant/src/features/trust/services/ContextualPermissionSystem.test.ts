@@ -4,11 +4,9 @@
  * runtime or DB: resolveEntityRole is mocked and getWorld is a stub, while the
  * real CANONICAL_ROLE_RANK drives the rank-tier assertions.
  */
+
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 
 // Item 8 test stubs resolveEntityRole so getEntityRoles can be checked without
 // standing up resolveEntityRole's full runtime dependency tree; the real
@@ -16,13 +14,10 @@ import type {
 const { resolveEntityRoleMock } = vi.hoisted(() => ({
   resolveEntityRoleMock: vi.fn(),
 }));
-vi.mock(
-  "../../../../../../packages/core/src/roles.ts",
-  async (importOriginal) => {
-    const actual = await importOriginal<typeof import("@elizaos/core")>();
-    return { ...actual, resolveEntityRole: resolveEntityRoleMock };
-  },
-);
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return { ...actual, resolveEntityRole: resolveEntityRoleMock };
+});
 
 import { ContextualPermissionSystem } from "./ContextualPermissionSystem.ts";
 

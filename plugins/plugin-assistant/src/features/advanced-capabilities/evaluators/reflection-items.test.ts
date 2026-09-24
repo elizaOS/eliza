@@ -6,6 +6,14 @@
  * tests exercise the real parser, processor and SQL helper against in-memory PGlite.
  */
 import { PGlite } from "@electric-sql/pglite";
+import type {
+  Entity,
+  EvaluatorProcessorContext,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import { logger, parseAndValidate } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
@@ -16,15 +24,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { logger } from "../../../../../../packages/core/src/logger.ts";
-import { parseAndValidate } from "../../../../../../packages/core/src/runtime/validated-model-call.ts";
-import type {
-  Entity,
-  EvaluatorProcessorContext,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import {
   factMemoryEvaluator,

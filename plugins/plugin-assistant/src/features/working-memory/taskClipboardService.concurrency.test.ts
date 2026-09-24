@@ -13,11 +13,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
 import {
   type AddTaskClipboardItemInput,
   TaskClipboardService,

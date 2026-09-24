@@ -1,6 +1,7 @@
 /** AddDirectiveOpSchema preserves complete directives while repairing invalid Unicode. */
+
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { toWellFormedUnicode } from "../../../../../../packages/core/src/utils/well-formed.ts";
 import { parsePreferenceOutputTolerant } from "./preferenceExtractor.schema.ts";
 
 function isWellFormed(value: string): boolean {

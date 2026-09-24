@@ -28,15 +28,11 @@
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
       "@elizaos/core": ["./packages/core/src/index.ts"],
       "@elizaos/testing": ["./packages/testing/src/index.ts"],
-      "@elizaos/core/atomic-json": ["./packages/core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/src/index.ts"
       ],
       "@elizaos/plugin-anthropic": ["./plugins/plugin-anthropic/index.ts"],
-      "@elizaos/plugin-anthropic/endpoint-config": [
-        "./plugins/plugin-anthropic/utils/config.ts"
-      ],
       "@elizaos/plugin-browser": ["./plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/src/index.ts"
@@ -66,9 +62,6 @@
         "./plugins/plugin-native-messages/src/index.ts"
       ],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
-      "@elizaos/plugin-openai/endpoint-config": [
-        "./plugins/plugin-openai/utils/config.ts"
-      ],
       "@elizaos/plugin-native-phone": [
         "./plugins/plugin-native-phone/src/index.ts"
       ],

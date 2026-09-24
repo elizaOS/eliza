@@ -4,8 +4,9 @@
  * operation. Exercises the same validateToolArgs boundary the planner loop
  * applies before the handler runs; no runtime or database.
  */
+
+import { validateToolArgs } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args";
 import { calendarAction } from "./calendar";
 
 describe("CALENDAR planner arguments carrying junk preference fields", () => {

@@ -2,11 +2,9 @@
  * Deterministic unit coverage for fact-candidate persistence, including adapter
  * availability, optional fields, SQL escaping, and database failure propagation.
  */
+
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   type FactCandidateRecord,
   recordFactCandidate,

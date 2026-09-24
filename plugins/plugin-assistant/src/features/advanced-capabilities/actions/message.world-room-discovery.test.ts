@@ -4,11 +4,7 @@
  * shared-participant intersection, explicit pagination, world scoping, and
  * fail-closed behavior outside a freshly attested owner-private destination.
  */
-import { describe, expect, it, vi } from "vitest";
-import {
-  attestDeliveryAudienceFromCanonicalRoom,
-  ownerExclusiveDisclosureWasUsed,
-} from "../../../../../../packages/core/src/security/trusted-delivery-audience.ts";
+
 import type {
   ActionResult,
   IAgentRuntime,
@@ -16,8 +12,13 @@ import type {
   Room,
   UUID,
   World,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  ownerExclusiveDisclosureWasUsed,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { enforceTrustedDeliveryAudienceAtEgress } from "../../../services/message.ts";
 import { messageAction } from "./message.ts";
 

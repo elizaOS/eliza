@@ -7,12 +7,8 @@
  * `getMemories` queries from a single sorted message list; no live model or DB.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   normalizeSingleLine,
   replyContextProvider,

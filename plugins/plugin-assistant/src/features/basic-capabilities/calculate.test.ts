@@ -3,8 +3,9 @@
  * integer lane, disclosed float lane), typed rejection of unparseable input,
  * and general-context reachability. Deterministic unit harness; no model.
  */
+
+import type { ActionResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { ActionResult } from "../../../../../packages/core/src/types/index.ts";
 import { inferDirectCurrentRequestCandidateActions } from "../../services/message/direct-action-heuristics.ts";
 import { calculateAction, evaluateArithmetic } from "./actions/calculate.ts";
 import { basicActions } from "./index.ts";

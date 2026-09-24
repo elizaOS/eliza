@@ -8,10 +8,10 @@
 
 import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes";
 import { TrajectoriesService } from "./TrajectoriesService";
 

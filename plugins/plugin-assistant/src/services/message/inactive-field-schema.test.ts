@@ -1,7 +1,8 @@
 /** Verifies inactive schema narrowing without changing the registered contract. */
+
+import type { JSONSchema } from "@elizaos/core";
+import { validateSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { validateSchema } from "../../../../../packages/core/src/actions/validate-tool-args.ts";
-import type { JSONSchema } from "../../../../../packages/core/src/types/model.ts";
 import { withoutInactiveFields } from "./inactive-field-schema.ts";
 
 describe("inactive array field schema", () => {

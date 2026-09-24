@@ -3,9 +3,7 @@
  * the real gates and document handler with controlled storage collaborators.
  * Message and merged app-state routing retain their separate entry contracts.
  */
-import { describe, expect, it, vi } from "vitest";
-import { actionGateRejection } from "../../../../../packages/core/src/runtime/action-gate.ts";
-import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
+
 import type {
   AgentContext,
   HandlerOptions,
@@ -14,11 +12,14 @@ import type {
   SearchCategoryRegistration,
   State,
   UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
 import {
+  actionGateRejection,
   CONTEXT_ROUTING_STATE_KEY,
+  filterByContextGate,
   setContextRoutingMetadata,
-} from "../../../../../packages/core/src/utils/context-routing.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentAction } from "./actions.ts";
 import { documentsProvider } from "./provider.ts";
 import { type DocumentListResult, DocumentService } from "./service.ts";

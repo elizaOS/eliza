@@ -6,13 +6,8 @@
  * fixture rows; no DB, no model calls.
  */
 
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { loadDialogueWindow } from "./group-conversation-signals.ts";
 
 const ROOM_ID = "00000000-0000-0000-0000-0000000000ff" as UUID;

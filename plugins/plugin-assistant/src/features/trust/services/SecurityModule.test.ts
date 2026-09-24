@@ -12,12 +12,10 @@
  * exact IEEE-754 sums the implementation produces (e.g. 3 * 0.1 lands just
  * above 0.3 and IS treated as detected); comments mark those quirks.
  */
+
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElizaError } from "../../../../../../packages/core/src/errors.ts";
-import type {
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   type SecurityContext,
   SecurityEventType,

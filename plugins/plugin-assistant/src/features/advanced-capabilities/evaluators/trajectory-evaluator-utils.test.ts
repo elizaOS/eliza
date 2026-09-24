@@ -6,8 +6,9 @@
  * and the tolerant JSON parser that treats malformed model output as an
  * explicit invalid result.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import {
   formatTrajectoryForPrompt,
   getTrajectoryService,

@@ -6,16 +6,20 @@
  * not in scattered inline `hasRoleAccess` checks invisible in the metadata.
  * Deterministic: `hasRoleAccess` is mocked; no live model or DB.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
-} from "../../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 
 const rolesMock = vi.hoisted(() => ({ hasRoleAccess: vi.fn() }));
-vi.mock("../../../../../../../packages/core/src/roles.ts", () => rolesMock);
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  ...rolesMock,
+}));
 
 import { CHARACTER_OP_ACCESS, characterAction } from "./character.ts";
 

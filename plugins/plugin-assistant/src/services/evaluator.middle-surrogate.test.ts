@@ -7,13 +7,9 @@
  * string handed to `useModel`, since that is the value a provider serializes.
  */
 
+import type { AgentRuntime, Character, Memory } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  Memory,
-} from "../../../../packages/core/src/types/index.ts";
 import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";
 

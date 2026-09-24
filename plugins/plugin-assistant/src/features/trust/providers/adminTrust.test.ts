@@ -3,8 +3,6 @@
  * Uses typed room and world boundary fakes while exercising the real provider.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, test, vi } from "vitest";
 import {
   ChannelType,
   type Memory,
@@ -13,7 +11,9 @@ import {
   type State,
   type UUID,
   type World,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, test, vi } from "vitest";
 import { adminTrustProvider } from "./adminTrust.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;

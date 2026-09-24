@@ -5,8 +5,8 @@
  * `delete()` result — no live model or database.
  */
 
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { ChannelType } from "../../../../../../packages/core/src/types/primitives.ts";
 import { deleteSecretHandler } from "./delete-secret.ts";
 
 function createRuntime(deleteResult: boolean) {

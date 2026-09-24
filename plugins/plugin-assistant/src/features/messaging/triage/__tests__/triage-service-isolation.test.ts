@@ -8,8 +8,8 @@
  * zero results overall (a broken sweep must not masquerade as an empty inbox).
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
 import { searchMessagesAction } from "../actions/searchMessages.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { MessageRefStore } from "../message-ref-store.ts";

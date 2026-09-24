@@ -2,14 +2,13 @@
  * Exercises the narrow CHARACTER authorization notice against FakeRuntime's
  * real role resolver while keeping the action classifier out of this boundary.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  _resetActionRolePolicyCacheForTests,
+  hardenIncomingUserMessage,
+} from "@elizaos/core";
 import { afterEach, describe, expect, test } from "vitest";
-import { _resetActionRolePolicyCacheForTests } from "../../../../../../../packages/core/src/runtime/action-role-policy.ts";
-import { hardenIncomingUserMessage } from "../../../../../../../packages/core/src/security/incoming-message-security.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import { characterAction } from "../actions/character.ts";
 import { characterGateNoticeProvider } from "../providers/character-gate-notice.ts";
 import { makeFakeRuntime, makeMessage } from "./test-helpers.ts";

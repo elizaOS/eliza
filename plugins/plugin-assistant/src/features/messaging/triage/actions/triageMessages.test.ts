@@ -5,16 +5,15 @@
  * projection, and connector failures without live integrations.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
   UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
-import { CONTEXT_ROUTING_STATE_KEY } from "../../../../../../../packages/core/src/utils/context-routing.ts";
+} from "@elizaos/core";
+import { CONTEXT_ROUTING_STATE_KEY } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakeRuntime, fakeContact } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";

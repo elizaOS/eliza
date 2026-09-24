@@ -3,15 +3,14 @@
  * failover/rate-limit classification (including the TEXT_TO_SPEECH fail-closed
  * carve-out) and the transient-failure response-memory skip rule.
  */
-import { describe, expect, it } from "vitest";
+
 import {
   isModelProviderFallbackError,
   isRateLimitError,
-} from "../../../../../packages/core/src/security/model-failure.ts";
-import {
   type Memory,
   ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { shouldSkipResponseMemoryPersistence } from "../message";
 
 function assistantMemory(

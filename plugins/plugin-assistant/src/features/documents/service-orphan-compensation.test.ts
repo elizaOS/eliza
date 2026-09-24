@@ -6,14 +6,10 @@
  * and once succeeding.
  */
 
+import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 import { generateContentBasedId } from "./utils.ts";
 

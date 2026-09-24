@@ -3,11 +3,9 @@
  * with a deterministic relationship store. It follows transitive confirmed
  * links while excluding proposed, rejected, and ordinary social edges.
  */
+
+import type { Relationship, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Relationship,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import { RelationshipsService } from "./relationships.ts";
 
 const AGENT = "00000000-0000-0000-0000-000000000001" as UUID;

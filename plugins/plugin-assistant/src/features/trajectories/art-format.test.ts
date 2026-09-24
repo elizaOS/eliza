@@ -4,8 +4,8 @@
  * trajectories with no steps or no reward; groupTrajectories buckets by scenario.
  */
 
+import type { Trajectory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 import {
   groupTrajectories,
   toARTMessages,

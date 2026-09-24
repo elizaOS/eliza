@@ -7,8 +7,9 @@
  * `contradicts` edges. These tests pin de-duplication while keeping both
  * detection paths intact.
  */
+
+import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
 import type { Experience } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
 import { ExperienceRelationshipManager } from "./experienceRelationships.ts";

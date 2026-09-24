@@ -11,13 +11,9 @@
  * literal objects and messages/state are ordinary DTO literals; every
  * expectation records behavior observed from this implementation.
  */
+
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import {
   computeGroupConversationMetrics,
   humanDirectlyAddressesAgent,

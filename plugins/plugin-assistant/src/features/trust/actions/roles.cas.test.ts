@@ -10,16 +10,10 @@
  * parsed assignments directly through `options.parameters`).
  */
 
+import type { IAgentRuntime, Memory, UUID, World } from "@elizaos/core";
+import { ChannelType, stringToUuid } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-  World,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../../packages/core/src/utils.ts";
 import { updateRoleHandler } from "./roles.ts";
 
 const AGENT_ID = stringToUuid("trust-role-test-agent") as UUID;

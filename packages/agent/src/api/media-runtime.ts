@@ -9,14 +9,14 @@
  */
 
 import {
+  fetchRemoteMedia,
   type IAgentRuntime,
   logger,
   type Memory,
   nodeLookupFn,
   nodePinnedFetch,
 } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { fetchRemoteMedia } from "@elizaos/core/media";
+import type { Route } from "@elizaos/core/api/http-plugin";
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,

@@ -14,12 +14,9 @@
  * mock — no live model, no DB; `useModel` throws unless the test provides
  * semantic results, enforcing that embedding failure never breaks retrieval.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { factsProvider } from "./facts.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;

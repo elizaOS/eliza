@@ -5,10 +5,9 @@
  * — no live model, no connector, no real DB.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { CONTEXT_ROUTING_STATE_KEY } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
-
-import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/index.ts";
-import { CONTEXT_ROUTING_STATE_KEY } from "../../../../../../../packages/core/src/utils/context-routing.ts";
 import { listInboxAction } from "../actions/listInbox.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import {

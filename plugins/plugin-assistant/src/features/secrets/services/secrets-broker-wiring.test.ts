@@ -7,9 +7,9 @@
  * against createMockRuntime with vi-mocked broker clients — no network.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import {
   SECRETS_BROKER_STRICT_KEY,
   SECRETS_BROKER_TOKEN_KEY,
