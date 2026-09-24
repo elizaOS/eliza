@@ -267,7 +267,7 @@ test("bundle review never silently truncates a verified manifest", {
   try {
     const bundleDir = path.join(tmpDir, "bundle");
     const outDir = path.join(tmpDir, "out");
-    await writeBundle(bundleDir, { extraReports: 901 });
+    await writeBundle(bundleDir, { extraReports: 101 });
     const result = runGenerate([
       `--bundle=${bundleDir}`,
       `--out=${outDir}`,
@@ -279,7 +279,7 @@ test("bundle review never silently truncates a verified manifest", {
     const review = JSON.parse(
       await readFile(path.join(outDir, "manifest.json"), "utf8"),
     );
-    assert.equal(review.artifacts.length, 904);
+    assert.equal(review.artifacts.length, 104);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
@@ -562,5 +562,31 @@ test("preserves valid numeric boundary values", async () => {
     assert.deepEqual(manifest.artifacts, []);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("raw-source review rejects limits instead of silently dropping evidence", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "evidence-review-limits-"));
+  try {
+    const source = path.join(root, "source");
+    await mkdir(source);
+    await Promise.all(
+      Array.from({ length: 101 }, (_, i) =>
+        writeFile(path.join(source, `${i}.log`), "evidence"),
+      ),
+    );
+    for (const flag of ["--max-artifacts=100", "--max-files-per-dir=100"]) {
+      const result = runGenerate([
+        `--source=${source}`,
+        `--out=${path.join(root, "out")}`,
+        "--no-open",
+        flag,
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /exceeded.*raise the limit/);
+    }
+    assert.equal(parseArgs([]).ocr, "off");
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

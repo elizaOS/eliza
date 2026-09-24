@@ -91,11 +91,15 @@ export async function writeQaRecord(
     fs.mkdtempSync(path.join(os.tmpdir(), "vision-qa-")),
     "qa.json",
   );
-  fs.writeFileSync(tmpFile, `${canonicalJson(record)}\n`, "utf8");
-  return bundle.addArtifact(tmpFile, {
-    kind: "qa",
-    source: "vision-qa",
-    producedBy: `vision-qa/${result.provenance.backend}`,
-    bundlePath,
-  });
+  try {
+    fs.writeFileSync(tmpFile, `${canonicalJson(record)}\n`, "utf8");
+    return await bundle.addArtifact(tmpFile, {
+      kind: "qa",
+      source: "vision-qa",
+      producedBy: `vision-qa/${result.provenance.backend}`,
+      bundlePath,
+    });
+  } finally {
+    fs.rmSync(path.dirname(tmpFile), { recursive: true, force: true });
+  }
 }
