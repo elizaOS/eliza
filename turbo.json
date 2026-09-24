@@ -459,8 +459,7 @@
       "dependsOn": [
         "typecheck:deps",
         "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/plugin-sqlite#build"
+        "@elizaos/shared#build"
       ]
     },
     "@elizaos/plugin-wallet#typecheck": {
