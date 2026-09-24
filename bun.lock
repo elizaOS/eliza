@@ -850,6 +850,7 @@
       "dependencies": {
         "@elizaos/common": "workspace:*",
         "adze": "^2.2.5",
+        "uuid": "^14.0.0",
         "zod": "^4.6.5",
       },
       "devDependencies": {

@@ -70,7 +70,8 @@
 	"dependencies": {
 		"zod": "^4.6.5",
 		"adze": "^2.2.5",
-		"@elizaos/common": "workspace:*"
+		"@elizaos/common": "workspace:*",
+		"uuid": "^14.0.0"
 	},
 	"publishConfig": {
 		"access": "public"
