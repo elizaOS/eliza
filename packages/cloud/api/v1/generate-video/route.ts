@@ -1,6 +1,10 @@
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
 
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import {

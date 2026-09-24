@@ -6,6 +6,7 @@
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
+import { MODEL_CATALOG } from "@elizaos/shared";
 import {
   act,
   cleanup,
@@ -16,7 +17,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelHubSnapshot } from "../../api/client-local-inference";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 
 const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
@@ -248,9 +248,13 @@ it("keeps an installed unpublished model removable without offering it as a fres
       },
     ],
   };
-  clientMock.getLocalInferenceHub
-    .mockResolvedValueOnce(installedHub)
-    .mockResolvedValue({ ...installedHub, installed: [] });
+  clientMock.getLocalInferenceHub.mockResolvedValue(installedHub);
+  clientMock.uninstallLocalInferenceModel.mockImplementationOnce(async () => {
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...installedHub,
+      installed: [],
+    });
+  });
   render(<LocalInferencePanel />);
   fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
   await waitFor(() =>

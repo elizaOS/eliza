@@ -4,7 +4,7 @@
  * are mocked, and stale mutations must leave both task state and receipts intact.
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { CarveOutDatabase } from "@elizaos/plugin-sql";
+import type { CarveOutDatabase } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { migrateSchedulingTables } from "./migration.js";
 import type { ScheduledTaskStore } from "./runner.js";

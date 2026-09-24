@@ -7,9 +7,9 @@
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  ViewCapability,
   ViewHeaderPolicy,
   ViewKind,
-  ViewCapability,
 } from "@elizaos/core";
 import type { OverlayApp } from "@elizaos/shared";
 import {

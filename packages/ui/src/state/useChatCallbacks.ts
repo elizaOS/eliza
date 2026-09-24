@@ -300,17 +300,14 @@ export async function hydrateInitialConversation(
 
   try {
     const { conversations: rawConversations } = await api.listConversations();
-    if (
-      !Array.isArray(rawConversations) ||
-      !rawConversations.every(isConversationRecord)
-    ) {
+    const invalidRows = Array.isArray(rawConversations)
+      ? rawConversations.filter((row) => !isConversationRecord(row)).length
+      : null;
+    if (invalidRows === null || invalidRows > 0) {
       logger.warn(
         {
           isArray: Array.isArray(rawConversations),
-          invalidRows: Array.isArray(rawConversations)
-            ? rawConversations.filter((row) => !isConversationRecord(row))
-                .length
-            : null,
+          invalidRows,
         },
         "[useChatCallbacks] invalid conversation list during hydration",
       );
