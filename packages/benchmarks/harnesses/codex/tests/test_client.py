@@ -8,6 +8,8 @@ fabricates a response) when the binary or an account credential is absent.
 from __future__ import annotations
 
 import pytest
+import json
+from types import SimpleNamespace
 
 from codex_adapter.accounts import CodexAccount
 from codex_adapter.client import CodexClient, MessageResponse, resolve_codex_binary
@@ -126,3 +128,51 @@ def test_message_response_defaults():
     resp = MessageResponse(text="hi")
     assert resp.actions == []
     assert resp.params == {}
+
+
+def test_turns_preserve_context_and_capture_usage(tmp_path, monkeypatch):
+    inputs = []
+    def run(_cmd, **kwargs):
+        inputs.append(json.loads(kwargs["input"]))
+        return SimpleNamespace(returncode=0, stderr="", stdout="\n".join([
+            json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "recorded"}}),
+            json.dumps({"type": "turn.completed", "usage": {"input_tokens": 100, "output_tokens": 5}}),
+        ]))
+    monkeypatch.setattr("codex_adapter.client.subprocess.run", run)
+    client = CodexClient(accounts=_accounts(tmp_path, "a"), codex_bin="/usr/bin/true")
+    client.reset("task", "memory")
+    first = client.send_message("remember", {"observation": "complete context"})
+    client.send_message("recall")
+    assert inputs[1]["messages"] == [
+        {"role": "user", "text": "remember", "context": {"observation": "complete context"}},
+        {"role": "assistant", "text": "recorded", "events": first.params["events"]},
+        {"role": "user", "text": "recall"},
+    ]
+    assert first.params["usage"]["input_tokens"] == 100
+    assert len(first.params["events"]) == 2
+    client.reset("next", "memory")
+    client.send_message("fresh")
+    assert inputs[2]["messages"] == [{"role": "user", "text": "fresh"}]
+
+
+@pytest.mark.parametrize("event", [
+    {"type": "turn.failed", "error": {"message": "provider unavailable"}},
+    {"type": "item.completed", "item": {"type": "agent_message", "text": "incomplete"}},
+])
+def test_zero_exit_without_successful_terminal_event_is_failure(tmp_path, monkeypatch, event):
+    monkeypatch.setattr("codex_adapter.client.subprocess.run", lambda *_a, **_kw:
+        SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(event)))
+    client = CodexClient(accounts=_accounts(tmp_path, "a"), codex_bin="/usr/bin/true")
+    with pytest.raises(RuntimeError):
+        client.send_message("task")
+    assert client._history == []
+
+
+def test_coding_workspace_and_reasoning_are_explicit(tmp_path):
+    client = CodexClient(accounts=_accounts(tmp_path, "a"), codex_bin="/usr/bin/true",
+                         cwd=tmp_path, reasoning_effort="high")
+    command = client.build_command()
+    assert "--json" in command
+    assert "workspace-write" in command
+    assert 'model_reasoning_effort="high"' in command
+    assert client.cwd == tmp_path.resolve()

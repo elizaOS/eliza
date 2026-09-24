@@ -1,14 +1,3 @@
-/**
- * Implements the DOCUMENT umbrella action for the documents capability. One
- * planner-routed action whose structured `action`/`subaction` enum dispatches to
- * a per-subaction handler (list / search / read / write / edit / delete /
- * import_file / import_url / knowledge pins / named readers), each backed by {@link DocumentService}. Routing
- * goes through {@link resolveActionArgs} on the structured params, never
- * natural-language keyword matching. Enforces the four visibility scopes
- * (global / owner-private / user-private / agent-private) and role-gated
- * write/mutation access, and registers the `documents` search category as a
- * side effect of validate/handler.
- */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -56,6 +45,18 @@ import type {
 } from "./types.ts";
 import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
+
+/**
+ * Implements the DOCUMENT umbrella action for the documents capability. One
+ * planner-routed action whose structured `action`/`subaction` enum dispatches to
+ * a per-subaction handler (list / search / read / write / edit / delete /
+ * import_file / import_url / knowledge pins / named readers), each backed by {@link DocumentService}. Routing
+ * goes through {@link resolveActionArgs} on the structured params, never
+ * natural-language keyword matching. Enforces the four visibility scopes
+ * (global / owner-private / user-private / agent-private) and role-gated
+ * write/mutation access, and registers the `documents` search category as a
+ * side effect of validate/handler.
+ */
 
 // Blob-safe rendering rationale lives in utils/reference-echo.ts.
 const describeQuery = (query: string): string =>
@@ -946,7 +947,7 @@ async function handleSearch(
   });
 }
 
-type DocumentReadUnit = "line" | "fragment";
+type DocumentReadUnit = "line" | "fragment" | "byte";
 
 function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
   const declaredRevision =
@@ -982,6 +983,7 @@ function documentReference(item: StoredDocument): ContentReference | null {
     kind: "document",
     ref: `document:${documentId}`,
     revision,
+    resumability: "restart-safe",
   });
 }
 
@@ -1023,6 +1025,7 @@ function documentReadPage(
         kind: "document",
         ref: `document:${documentId}`,
         revision,
+        resumability: "restart-safe",
       }),
       slice: buildReadSlice({
         range: { unit, start: page.start, end: page.end, total: page.total },
@@ -1052,28 +1055,28 @@ async function handleRead(
   }
 
   const unit: DocumentReadUnit =
-    params.unit === "fragment" ? "fragment" : "line";
+    params.unit === "fragment" || params.unit === "byte" ? params.unit : "line";
   const offset = requiredReadInteger(params.offset, "offset", 0);
   const limit =
     params.limit === undefined
       ? undefined
       : requiredReadInteger(params.limit, "limit", 1);
-  const documentRange = await service.readDocumentRange(
+  const bounded = await service.readDocumentRange(
     documentId,
     { unit, offset, ...(limit === undefined ? {} : { limit }) },
     message,
   );
-  if (!documentRange) {
+  if (!bounded) {
     const text = `No accessible document matched ID ${documentId}. Verify the exact ID in the available document index, or use DOCUMENT list/search to resolve the intended document before retrying. Do not infer that the named document does not exist from this ID lookup. Ask the user only if the intended document remains ambiguous.`;
     return result(false, text, "read", { values: { error: "not_found" } });
   }
-  if (offset > documentRange.total) {
+  if (offset > bounded.total) {
     throw new ElizaError("Document read offset exceeds the source", {
       code: "DOCUMENT_READ_INVALID_RANGE",
-      context: { field: "offset", total: documentRange.total },
+      context: { field: "offset", total: bounded.total },
     });
   }
-  const page = documentReadPage(documentRange, documentId, unit);
+  const page = documentReadPage(bounded, documentId, bounded.unit);
   if (
     page.view.slice.range.start > 0 &&
     (typeof params.expectedRevision !== "string" ||
@@ -1793,9 +1796,9 @@ export const documentAction: Action = {
     {
       name: "unit",
       description:
-        "Exact read unit for action=read: line or fragment. Defaults to line.",
+        "Exact read unit for action=read: line, fragment, or UTF-8 byte. Defaults to line; oversized logical units continue as bounded byte pages.",
       required: false,
-      schema: { type: "string", enum: ["line", "fragment"] },
+      schema: { type: "string", enum: ["line", "fragment", "byte"] },
     },
     {
       name: "expectedRevision",

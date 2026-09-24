@@ -13,6 +13,7 @@
  * (CLI / certify) turns those into an explicit skipped/failed record.
  */
 
+import { canonicalJson } from "../canonical.ts";
 import { EvidenceError } from "../errors.ts";
 import {
   type BackendResponse,
@@ -22,7 +23,7 @@ import {
 import { queryHash, readCache, writeCache } from "./cache.ts";
 import { CliVisionBackend } from "./cli-backend.ts";
 import { createBackendClient, resolveBackend } from "./config.ts";
-import { DEFAULT_MAX_EDGE, prepareImage } from "./image.ts";
+import { DEFAULT_MAX_EDGE, type PreparedImage, prepareImage } from "./image.ts";
 import type {
   AskOptions,
   AskResult,
@@ -122,19 +123,49 @@ export async function askAboutImage(
   options: AskOptions = {},
 ): Promise<AskResult> {
   assertQuestions(questions);
+  const image = await prepareImage(
+    imagePath,
+    options.maxEdge ?? DEFAULT_MAX_EDGE,
+  );
+  return askPreparedImage(image, questions, options);
+}
+
+async function askPreparedImage(
+  image: PreparedImage,
+  questions: VisionQuestion[],
+  options: AskOptions,
+): Promise<AskResult> {
   const now = options.now ?? (() => new Date());
   const fetchImpl = (options.fetchImpl ?? fetch) as unknown as FetchLike;
-  const maxEdge = options.maxEdge ?? DEFAULT_MAX_EDGE;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const backend = resolveBackend(options, options.env);
+  const client = createBackendClient(backend, options, options.env);
 
-  const backend = resolveBackend(options);
-  const client = createBackendClient(backend, options);
-  const image = await prepareImage(imagePath, maxEdge);
-
-  const query = queryHash(client.model, backend, questions, image.dimensions);
+  const endpoint =
+    client instanceof CliVisionBackend
+      ? undefined
+      : client.buildRequest(image, questions, null).url;
+  const query = queryHash(
+    client.model,
+    backend,
+    questions,
+    image.dimensions,
+    endpoint,
+  );
+  // A CLI transport label is not a concrete model identity; its configured
+  // default can change between runs. Do not persistently cache unknown models.
+  const useCache =
+    options.noCache !== true &&
+    !(backend === "cli" && options.model === undefined);
   const cacheRoot = options.cacheDir ?? process.cwd();
-  if (options.noCache !== true) {
-    const hit = readCache(cacheRoot, image.sourceSha256, query, questions);
+  if (useCache) {
+    const hit = readCache(
+      cacheRoot,
+      image.sourceSha256,
+      query,
+      questions,
+      endpoint,
+    );
     if (hit !== null) {
       return { ...hit, provenance: { ...hit.provenance, cached: true } };
     }
@@ -213,7 +244,7 @@ export async function askAboutImage(
       dimensions: image.dimensions,
     },
   };
-  if (options.noCache !== true) {
+  if (useCache) {
     writeCache(cacheRoot, image.sourceSha256, query, result);
   }
   return result;
@@ -231,25 +262,62 @@ export async function askBatch(
   entries: BatchEntry[],
   options: AskOptions & { concurrency?: number } = {},
 ): Promise<BatchResult[]> {
-  const concurrency = Math.max(1, options.concurrency ?? 4);
+  const concurrency = options.concurrency ?? 4;
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new EvidenceError("concurrency must be a positive safe integer", {
+      code: "VISION_CONFIG",
+    });
+  }
+  // Validate all questions before starting any billable work.
+  for (const entry of entries) assertQuestions(entry.questions);
   const results: BatchResult[] = new Array(entries.length);
+  const pending = new Map<string, Promise<AskResult>>();
   let next = 0;
+  let failed = false;
+  let firstError: unknown;
   async function worker(): Promise<void> {
-    while (true) {
-      const index = next;
-      next += 1;
+    while (!failed) {
+      const index = next++;
       if (index >= entries.length) return;
       const entry = entries[index];
-      results[index] = {
-        imagePath: entry.imagePath,
-        result: await askAboutImage(entry.imagePath, entry.questions, options),
-      };
+      try {
+        const image = await prepareImage(
+          entry.imagePath,
+          options.maxEdge ?? DEFAULT_MAX_EDGE,
+        );
+        if (failed) return;
+        const key = canonicalJson({
+          sha256: image.sourceSha256,
+          dimensions: image.dimensions,
+          questions: entry.questions,
+        });
+        let request = options.noCache ? undefined : pending.get(key);
+        const reused = request !== undefined;
+        if (!request) {
+          request = askPreparedImage(image, entry.questions, options);
+          if (!options.noCache) pending.set(key, request);
+        }
+        const result = await request;
+        results[index] = {
+          imagePath: entry.imagePath,
+          result: reused
+            ? { ...result, provenance: { ...result.provenance, cached: true } }
+            : result,
+        };
+      } catch (error) {
+        // error-policy:J1 settle in-flight work before rejecting the batch below.
+        if (!failed) firstError = error;
+        failed = true;
+      }
     }
   }
-  const workers = Array.from(
-    { length: Math.min(concurrency, entries.length) },
-    () => worker(),
+  // Already-started requests settle before returning a failure. No background
+  // worker continues spending tokens after the caller has seen the rejection.
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, entries.length) }, () =>
+      worker(),
+    ),
   );
-  await Promise.all(workers);
+  if (failed) throw firstError;
   return results;
 }

@@ -55,7 +55,7 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14" # pinned to the repository packageManager; match .github/ci-bun-version.json (#15071)
+  BUN_VERSION: "1.4.2" # pinned to the repository packageManager; match .github/ci-bun-version.json (#15071)
   NODE_VERSION: "24.15.0"
 
 jobs:

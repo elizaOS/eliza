@@ -36,8 +36,8 @@ if [[ -z "$runtime_bun" || ! -x "$runtime_bun" ]]; then
 fi
 
 runtime_version="$("$runtime_bun" --version)"
-if [[ "$runtime_version" != "1.3.14" ]]; then
-  echo "Packaged Bun runtime drift: expected 1.3.14, found $runtime_version." >&2
+if [[ "$runtime_version" != "1.4.2" ]]; then
+  echo "Packaged Bun runtime drift: expected 1.4.2, found $runtime_version." >&2
   exit 1
 fi
 

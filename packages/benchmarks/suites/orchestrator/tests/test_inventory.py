@@ -32,6 +32,13 @@ def test_inventory_report_lists_real_adapters_and_operator_contracts() -> None:
     assert "eliza" in bfcl.harnesses
     assert bfcl.result_locator_patterns
     assert bfcl.trajectory_expectations
+    assert bfcl.comparison_disposition == "cohort"
+    replay = next(row for row in report.rows if row.benchmark_id == "eliza_replay")
+    assert replay.comparison_disposition == "non-agent"
+    assert "does not execute" in replay.comparison_notes
+    framework = next(row for row in report.rows if row.benchmark_id == "framework")
+    assert framework.comparison_disposition == "non-agent"
+    assert any(entry["entry_id"] == "lifeops_quality" for entry in report.direct_workloads)
 
     payload = report_to_json(report)
     assert '"benchmark_id": "bfcl"' in payload
@@ -39,6 +46,8 @@ def test_inventory_report_lists_real_adapters_and_operator_contracts() -> None:
     markdown = report_to_markdown(report)
     assert "# Benchmark Inventory Checklist" in markdown
     assert "| bfcl | registry | bfcl |" in markdown
+    assert "dispatch declarations" in markdown
+    assert "## Direct workloads and infrastructure" in markdown
 
 
 def test_inventory_report_surfaces_registry_adapter_and_directory_gaps(monkeypatch) -> None:

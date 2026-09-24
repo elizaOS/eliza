@@ -131,7 +131,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           install-native-deps: "true"
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -146,7 +146,7 @@ jobs:
           bun run build:android:cloud
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@a0102e0972be65f351c307e2d64b9314a57c8073
+        uses: ruby/setup-ruby@e8944e80fb94b20106697132f8c20c665fab29e9
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -240,7 +240,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           install-native-deps: "true"
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -285,7 +285,7 @@ jobs:
         run: bun run preflight:ios:store
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@a0102e0972be65f351c307e2d64b9314a57c8073
+        uses: ruby/setup-ruby@e8944e80fb94b20106697132f8c20c665fab29e9
         with:
           ruby-version: "4.0.3"
           bundler-cache: true

@@ -14,7 +14,7 @@ command -v node >/dev/null || fail_preflight NODE_UNAVAILABLE
 command -v bun >/dev/null || fail_preflight BUN_UNAVAILABLE
 [[ "$(node --version 2>/dev/null)" == "v24.15.0" ]] \
   || fail_preflight NODE_VERSION_INVALID
-[[ "$(bun --version 2>/dev/null)" == "1.3.14" ]] \
+[[ "$(bun --version 2>/dev/null)" == "1.4.2" ]] \
   || fail_preflight BUN_VERSION_INVALID
 [[ "$(node -p 'process.arch' 2>/dev/null)" == "arm64" ]] \
   || fail_preflight NODE_ARCH_INVALID

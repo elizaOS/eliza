@@ -1,3 +1,4 @@
+/** Exercises Android instrumentation completion and native module wiring without replacing device behavior. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

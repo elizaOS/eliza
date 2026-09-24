@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
 from openclaw_adapter import (
     build_bfcl_agent_fn,
     build_clawbench_agent_fn,
@@ -119,7 +118,9 @@ def test_clawbench_agent_fn_executes_synchronously(client: OpenClawClient) -> No
         return _fake_completed(response_payload)
 
     with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
-        result = asyncio.run(agent_fn(history, [{"type": "function", "function": {"name": "T"}}]))
+        result = asyncio.run(
+            agent_fn(history, [{"type": "function", "function": {"name": "T"}}])
+        )
 
     assert result["text"] == "Done"
     assert result["tool_calls"][0]["name"] == "EMAIL_SUMMARY"
@@ -146,6 +147,7 @@ def test_bfcl_agent_fn_returns_first_tool_call(client: OpenClawClient) -> None:
         }
     )
     with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+
         def _fake_bfcl_run(
             _argv: list[str], **kwargs: Any
         ) -> subprocess.CompletedProcess[str]:
@@ -169,7 +171,9 @@ def test_bfcl_agent_fn_returns_first_tool_call(client: OpenClawClient) -> None:
             return _fake_completed(payload)
 
         mock_run.side_effect = _fake_bfcl_run
-        result = asyncio.run(agent_fn("add 1+2", [{"type": "function", "function": {"name": "ADD"}}]))
+        result = asyncio.run(
+            agent_fn("add 1+2", [{"type": "function", "function": {"name": "ADD"}}])
+        )
     assert result["name"] == "ADD"
     assert result["arguments"] == {"a": 1, "b": 2}
     # Only native plugin executions count; payload-only calls cannot bypass the
@@ -177,7 +181,9 @@ def test_bfcl_agent_fn_returns_first_tool_call(client: OpenClawClient) -> None:
     assert len(result["tool_calls"]) == 1
 
 
-def test_lifeops_bench_factory_ignores_missing_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
+def test_lifeops_bench_factory_ignores_missing_snapshot(
+    client: OpenClawClient, tmp_path: Path
+) -> None:
     """Snapshot is no longer loaded by the adapter — missing path is fine.
 
     The LifeOpsBench runner owns the in-memory LifeWorld and exposes it
@@ -197,7 +203,9 @@ def test_lifeops_bench_factory_ignores_missing_snapshot(client: OpenClawClient, 
     assert callable(agent_fn)
 
 
-def test_lifeops_bench_factory_accepts_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
+def test_lifeops_bench_factory_accepts_snapshot(
+    client: OpenClawClient, tmp_path: Path
+) -> None:
     pytest.importorskip(
         "eliza_lifeops_bench.types",
         reason="LifeOpsBench types package not on sys.path",
@@ -211,7 +219,7 @@ def test_lifeops_bench_factory_accepts_snapshot(client: OpenClawClient, tmp_path
     assert callable(agent_fn)
 
 
-def test_lifeops_bench_factory_promotes_calendar_availability_call(
+def test_lifeops_bench_factory_preserves_calendar_call(
     client: OpenClawClient,
 ) -> None:
     pytest.importorskip(
@@ -245,5 +253,27 @@ def test_lifeops_bench_factory_promotes_calendar_availability_call(
 
     assert turn.tool_calls is not None
     tc = turn.tool_calls[0]
-    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
-    assert tc["function"]["arguments"]["subaction"] == "check_availability"
+    assert tc["function"]["name"] == "CALENDAR"
+    assert (
+        tc["function"]["arguments"] == json.loads(payload)["tool_calls"][0]["arguments"]
+    )
+
+
+@pytest.mark.parametrize("arguments", ["{broken", "[]", None, []])
+def test_lifeops_rejects_malformed_arguments(client: OpenClawClient, arguments) -> None:
+    import asyncio
+
+    from openclaw_adapter.client import MessageResponse
+
+    agent_fn = build_lifeops_bench_agent_fn(client=client)
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={"tool_calls": [{"name": "CALENDAR", "arguments": arguments}]},
+    )
+    with (
+        patch.object(OpenClawClient, "send_message", return_value=response),
+        pytest.raises((ValueError, TypeError)),
+    ):
+        asyncio.run(agent_fn([{"role": "user", "content": "Show my calendar"}], []))

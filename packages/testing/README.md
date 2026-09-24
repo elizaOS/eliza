@@ -26,3 +26,10 @@ scenarios verify runtime behavior, not model intelligence or audio quality.
 
 Renderer tests import DOM fixtures from `@elizaos/testing/browser-mocks`; the
 root runtime-fixture entry does not load browser mocks.
+
+Vitest configuration imports path helpers from `@elizaos/testing/package-paths`
+to avoid loading runtime fixtures and their build dependencies during setup.
+
+`tsconfig.workspace.json` owns source aliases shared by the scenario runner,
+scenario corpus, and Cloud E2E. Keep lane-specific compiler options and file
+selection in their owning configs.

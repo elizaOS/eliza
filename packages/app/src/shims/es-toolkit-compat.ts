@@ -194,7 +194,11 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
     timeout = null;
     lastArgs = null;
   };
-  throttled.flush = () => (timeout ? invoke(Date.now()) : lastResult);
+  throttled.flush = () => {
+    if (!timeout) return lastResult;
+    clearTimeout(timeout);
+    return invoke(Date.now());
+  };
 
   return throttled;
 }

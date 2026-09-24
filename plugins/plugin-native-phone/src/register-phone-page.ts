@@ -6,6 +6,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { PHONE_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (Capacitor.getPlatform() === "android") {
   registerAppShellPage({
@@ -17,7 +18,12 @@ if (Capacitor.getPlatform() === "android") {
     tabAffinity: "phone",
     surface: {
       header: "fullscreen",
-      capabilities: ["agent-surface"],
+      capabilities: [],
+    },
+    capabilities: PHONE_VIEW_CAPABILITIES,
+    interact: async (capability, params) => {
+      const { interact } = await import("./components/phone-interact");
+      return interact(capability, params);
     },
     loader: () =>
       import("./components/PhonePage.tsx").then((module) => ({

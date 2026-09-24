@@ -86,22 +86,22 @@
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@types/node": "^25.6.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*"
   },
   "agentConfig": {

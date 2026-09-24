@@ -22,6 +22,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+
 type JsonObject = Record<string, unknown>;
 
 // Structural views of the elizaOS `Action` / `Plugin` types — only the fields
@@ -92,15 +94,18 @@ type CliOptions = {
 };
 
 const scriptPath = fileURLToPath(import.meta.url);
-const benchmarkPackageRoot = resolve(dirname(scriptPath), "../../suites/lifeops-bench");
+const benchmarkPackageRoot = resolve(
+  dirname(scriptPath),
+  "../../suites/lifeops-bench",
+);
 const benchmarksRepoRoot = resolve(benchmarkPackageRoot, "../..");
 const defaultManifestPath = resolve(
   benchmarkPackageRoot,
   "manifests/actions.manifest.json",
 );
-const defaultSummaryPath = resolve(
-  benchmarkPackageRoot,
-  "manifests/actions.summary.md",
+const defaultSummaryPath = testOutputPath(
+  "lifeops-manifest",
+  "actions.summary.md",
 );
 
 function resolveElizaRepoDir(): string {

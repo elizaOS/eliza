@@ -7,6 +7,7 @@
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  ViewCapability,
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
@@ -89,6 +90,13 @@ export interface AppShellPageRegistration {
    * only when `surface.capabilities` also grants `wallpaper`.
    */
   surface?: SurfaceManifest;
+  /** Shares the plugin view's typed authority catalog with the bundled renderer. */
+  capabilities?: readonly ViewCapability[];
+  /** Dispatches declared semantic operations while the owning page is mounted. */
+  interact?: (
+    capability: string,
+    params?: Record<string, unknown>,
+  ) => Promise<unknown>;
   /**
    * Screen background policy for this page. Defaults to `"opaque"`. Superseded
    * by `surface.background` when a manifest is declared.

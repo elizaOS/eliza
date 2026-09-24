@@ -137,8 +137,8 @@ export function createBackendClient(
     }
     case "cli": {
       const cli = resolveCli(env);
-      // The model is recorded for provenance; the CLI's own config picks the
-      // concrete model, so the id names the CLI transport honestly.
+      // Explicit models are forwarded to the CLI; otherwise label its default
+      // selection with the transport id rather than inventing a model name.
       return new CliVisionBackend({
         cli,
         model: options.model ?? `${cli}-cli`,

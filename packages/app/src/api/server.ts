@@ -21,7 +21,6 @@ import {
   type ConversationMeta,
   clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
@@ -77,6 +76,7 @@ import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
+export { injectApiBaseIntoHtml } from "@elizaos/agent";
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
@@ -99,7 +99,6 @@ export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
 } from "./server-cors";
-export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"
 export {
   ensureApiTokenForBindHost,
@@ -178,10 +177,6 @@ import {
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
-import {
-  PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
-  resolveWithinDeadline,
-} from "./plugin-registry-load-deadline";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";

@@ -363,6 +363,10 @@ class BFCLReporter:
         filename = f"bfcl_leaderboard_{timestamp}.md"
         filepath = self.output_dir / filename
 
+        if not LEADERBOARD_SCORES:
+            filepath.write_text("# BFCL Leaderboard Comparison\n\nNo comparable reference runs are configured. No rank is assigned.\n")
+            return str(filepath)
+
         metrics = results.metrics
         position, closest = self.metrics_calculator.calculate_leaderboard_position(metrics)
 

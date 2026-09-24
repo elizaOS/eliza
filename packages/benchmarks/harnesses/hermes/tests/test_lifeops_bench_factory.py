@@ -17,7 +17,6 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
 from hermes_adapter.bfcl import build_bfcl_agent_fn
 from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
@@ -39,7 +38,11 @@ def fake_client(tmp_path: Path) -> HermesClient:
 
 
 def _run(coro: Any) -> Any:
-    return asyncio.get_event_loop().run_until_complete(coro) if False else asyncio.run(coro)
+    return (
+        asyncio.get_event_loop().run_until_complete(coro)
+        if False
+        else asyncio.run(coro)
+    )
 
 
 def test_build_bfcl_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:
@@ -56,7 +59,9 @@ def test_bfcl_agent_fn_forwards_prompt_and_tools(fake_client: HermesClient) -> N
 
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["text"] = text
         captured["context"] = context
         return MessageResponse(
@@ -67,7 +72,11 @@ def test_bfcl_agent_fn_forwards_prompt_and_tools(fake_client: HermesClient) -> N
         )
 
     with patch.object(HermesClient, "send_message", _fake_send):
-        result = _run(agent_fn("what time is it?", [{"type": "function", "function": {"name": "FOO"}}]))
+        result = _run(
+            agent_fn(
+                "what time is it?", [{"type": "function", "function": {"name": "FOO"}}]
+            )
+        )
 
     assert captured["text"] == "what time is it?"
     ctx = captured["context"] or {}
@@ -77,13 +86,17 @@ def test_bfcl_agent_fn_forwards_prompt_and_tools(fake_client: HermesClient) -> N
     assert result["tool_calls"][0]["name"] == "FOO"
 
 
-def test_bfcl_agent_fn_includes_system_prompt_when_set(fake_client: HermesClient) -> None:
+def test_bfcl_agent_fn_includes_system_prompt_when_set(
+    fake_client: HermesClient,
+) -> None:
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_bfcl_agent_fn(client=fake_client, system_prompt="be precise")
 
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["context"] = context
         return MessageResponse(text="", thought=None, actions=[], params={})
 
@@ -100,22 +113,16 @@ def test_bfcl_agent_fn_raises_on_bridge_failure(fake_client: HermesClient) -> No
     def _boom(self: HermesClient, *_: Any, **__: Any) -> MessageResponse:
         raise RuntimeError("subprocess died")
 
-    with patch.object(HermesClient, "send_message", _boom):
-        with pytest.raises(RuntimeError, match="BFCL"):
-            _run(agent_fn("hi", []))
+    with (
+        patch.object(HermesClient, "send_message", _boom),
+        pytest.raises(RuntimeError, match="BFCL"),
+    ):
+        _run(agent_fn("hi", []))
 
 
-
-
-
-
-
-
-
-
-
-
-def test_build_clawbench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:
+def test_build_clawbench_agent_fn_returns_async_callable(
+    fake_client: HermesClient,
+) -> None:
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_clawbench_agent_fn(
             client=fake_client,
@@ -135,14 +142,18 @@ def test_clawbench_agent_fn_reads_last_user_turn(fake_client: HermesClient) -> N
 
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["text"] = text
         captured["context"] = context
         return MessageResponse(
             text="reply",
             thought="thinking",
             actions=["BAR"],
-            params={"tool_calls": [{"name": "BAR", "arguments": '{"x": 1}', "id": "c2"}]},
+            params={
+                "tool_calls": [{"name": "BAR", "arguments": '{"x": 1}', "id": "c2"}]
+            },
         )
 
     history = [
@@ -151,7 +162,9 @@ def test_clawbench_agent_fn_reads_last_user_turn(fake_client: HermesClient) -> N
         {"role": "user", "content": "second message"},
     ]
     with patch.object(HermesClient, "send_message", _fake_send):
-        result = _run(agent_fn(history, [{"type": "function", "function": {"name": "BAR"}}]))
+        result = _run(
+            agent_fn(history, [{"type": "function", "function": {"name": "BAR"}}])
+        )
 
     # The factory picked the last user turn, not the first.
     assert captured["text"] == "second message"
@@ -168,7 +181,9 @@ def test_clawbench_agent_fn_handles_empty_history(fake_client: HermesClient) -> 
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_clawbench_agent_fn(client=fake_client, scenario_yaml={})
 
-    with patch.object(HermesClient, "send_message", side_effect=AssertionError("should not be called")):
+    with patch.object(
+        HermesClient, "send_message", side_effect=AssertionError("should not be called")
+    ):
         result = _run(agent_fn([], []))
 
     assert result["text"] == ""
@@ -181,7 +196,9 @@ def test_clawbench_agent_fn_includes_model_name(fake_client: HermesClient) -> No
             client=fake_client, scenario_yaml={"model_name": "my-model"}
         )
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         return MessageResponse(text="", thought=None, actions=[], params={})
 
     with patch.object(HermesClient, "send_message", _fake_send):
@@ -203,7 +220,7 @@ def _install_lifeops_stub() -> None:
     pkg = types.ModuleType("eliza_lifeops_bench")
     types_mod = types.ModuleType("eliza_lifeops_bench.types")
 
-    class MessageTurn:  # noqa: D401 — minimal stub
+    class MessageTurn:
         def __init__(self, role: str, content: str, tool_calls: Any = None) -> None:
             self.role = role
             self.content = content
@@ -215,7 +232,9 @@ def _install_lifeops_stub() -> None:
     sys.modules["eliza_lifeops_bench.types"] = types_mod
 
 
-def test_build_lifeops_bench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:
+def test_build_lifeops_bench_agent_fn_returns_async_callable(
+    fake_client: HermesClient,
+) -> None:
     _install_lifeops_stub()
     from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
 
@@ -225,7 +244,9 @@ def test_build_lifeops_bench_agent_fn_returns_async_callable(fake_client: Hermes
     assert inspect.iscoroutinefunction(agent_fn)
 
 
-def test_lifeops_agent_fn_maps_tool_calls_to_openai_shape(fake_client: HermesClient) -> None:
+def test_lifeops_agent_fn_maps_tool_calls_to_openai_shape(
+    fake_client: HermesClient,
+) -> None:
     """The factory must convert hermes-adapter tool_call records into the
     OpenAI-style ``{id, type, function: {name, arguments}}`` shape."""
     _install_lifeops_stub()
@@ -234,12 +255,16 @@ def test_lifeops_agent_fn_maps_tool_calls_to_openai_shape(fake_client: HermesCli
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_lifeops_bench_agent_fn(client=fake_client, model_name="m")
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         return MessageResponse(
             text="done",
             thought=None,
             actions=["RUN"],
-            params={"tool_calls": [{"name": "RUN", "arguments": '{"k": 1}', "id": "tc1"}]},
+            params={
+                "tool_calls": [{"name": "RUN", "arguments": '{"k": 1}', "id": "tc1"}]
+            },
         )
 
     with patch.object(HermesClient, "send_message", _fake_send):
@@ -256,7 +281,9 @@ def test_lifeops_agent_fn_maps_tool_calls_to_openai_shape(fake_client: HermesCli
     assert turn.model_name == "m"
 
 
-def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient) -> None:
+def test_lifeops_agent_fn_recovers_json_text_tool_call(
+    fake_client: HermesClient,
+) -> None:
     """Hermes sometimes emits its action channel as JSON text.
 
     LifeOps-style benchmark runners still need to execute that action instead
@@ -268,7 +295,9 @@ def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         return MessageResponse(
             text='{"tool":"get_weather","parameters":{"city":"Paris","when":"tomorrow"}}',
             thought=None,
@@ -298,14 +327,16 @@ def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient
     assert tc["function"]["arguments"] == {"city": "Paris", "when": "tomorrow"}
 
 
-def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: HermesClient) -> None:
+def test_lifeops_agent_fn_preserves_calendar_call(fake_client: HermesClient) -> None:
     _install_lifeops_stub()
     from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
 
     with patch.object(HermesClient, "wait_until_ready", return_value=None):
         agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         return MessageResponse(
             text="",
             thought=None,
@@ -329,6 +360,30 @@ def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: Herme
 
     assert turn.tool_calls is not None
     tc = turn.tool_calls[0]
-    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
-    assert tc["function"]["arguments"]["subaction"] == "check_availability"
-    assert tc["function"]["arguments"]["startAt"] == "2026-05-14T09:00:00Z"
+    assert tc["function"]["name"] == "CALENDAR"
+    assert tc["function"]["arguments"] == (
+        '{"action":"search_events","windowStart":"2026-05-14T09:00:00Z",'
+        '"windowEnd":"2026-05-14T10:00:00Z","intent":"availability"}'
+    )
+
+
+@pytest.mark.parametrize("arguments", ["{broken", "[]", None, []])
+def test_lifeops_rejects_malformed_arguments(
+    fake_client: HermesClient, arguments
+) -> None:
+    _install_lifeops_stub()
+    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={"tool_calls": [{"name": "CALENDAR", "arguments": arguments}]},
+    )
+    with (
+        patch.object(HermesClient, "send_message", return_value=response),
+        pytest.raises((ValueError, TypeError)),
+    ):
+        _run(agent_fn([{"role": "user", "content": "Show my calendar"}], []))

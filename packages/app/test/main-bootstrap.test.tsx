@@ -191,6 +191,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     DeveloperWorkspace: Children,
     DesktopSurfaceNavigationRuntime: () => null,
     DesktopTrayRuntime: () => null,
+    ManagedCloudPage: () => null,
     MarketingHomePage: () => null,
     MarketingDownloadsPage: () => null,
     CloudRouterShell: ({ appElement }: { appElement: React.ReactNode }) =>

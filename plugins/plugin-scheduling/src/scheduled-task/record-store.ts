@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   stableStringify,
 } from "@elizaos/core";
-import type { ScheduledTaskStore } from "./runner.js";
+import type { ScheduledTaskDefinition, ScheduledTaskStore } from "./runner.js";
 import type { ScheduledTaskLogStore } from "./state-log.js";
 import type { ScheduledTask, ScheduledTaskLogEntry } from "./types.js";
 
@@ -49,6 +49,64 @@ function projected(row: TaskRecord): ScheduledTask {
         : row.createdAtIso,
   };
   return task;
+}
+
+interface AdmissionExpectation {
+  expectedState?: ScheduledTask["state"];
+  expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
+  expectedDefinition?: ScheduledTaskDefinition;
+}
+
+function definition(task: ScheduledTaskDefinition): ScheduledTaskDefinition {
+  return {
+    taskId: task.taskId,
+    kind: task.kind,
+    promptInstructions: task.promptInstructions,
+    contextRequest: task.contextRequest,
+    trigger: task.trigger,
+    priority: task.priority,
+    shouldFire: task.shouldFire,
+    completionCheck: task.completionCheck,
+    escalation: task.escalation,
+    output: task.output,
+    pipeline: task.pipeline,
+    subject: task.subject,
+    idempotencyKey: task.idempotencyKey,
+    respectsGlobalPause: task.respectsGlobalPause,
+    source: task.source,
+    createdBy: task.createdBy,
+    ownerVisible: task.ownerVisible,
+    executionProfile: task.executionProfile,
+  };
+}
+
+/** Compare the same projected record callers read, including its creation timestamp. */
+function matchesExpectation(
+  row: TaskRecord,
+  expected: AdmissionExpectation,
+): boolean {
+  const task = projected(row);
+  return (
+    (expected.expectedState === undefined ||
+      stableStringify(task.state) ===
+        stableStringify(expected.expectedState)) &&
+    (expected.expectedMetadata === undefined ||
+      stableStringify(task.metadata ?? {}) ===
+        stableStringify(expected.expectedMetadata)) &&
+    (expected.expectedDefinition === undefined ||
+      stableStringify(definition(task)) ===
+        stableStringify(definition(expected.expectedDefinition)))
+  );
+}
+
+function mutationRaced(taskId: string): ElizaError {
+  return new ElizaError(
+    "Scheduled task changed before the mutation committed; retry against the current task",
+    {
+      code: "SCHEDULED_TASK_MUTATION_RACED",
+      context: { taskId, retryable: true },
+    },
+  );
 }
 
 export function getSchedulingRecordStore(
@@ -136,7 +194,8 @@ export function createSchedulingRecordStores(
         if (
           !existing ||
           existing.transferStatus ||
-          existing.task.state.status !== options.expectedStatus
+          existing.task.state.status !== options.expectedStatus ||
+          !matchesExpectation(existing, options)
         )
           return false;
         await write(task, options.nextFireAtIso, existing);
@@ -144,16 +203,25 @@ export function createSchedulingRecordStores(
       }),
     claimForFire: (args) =>
       transaction(async () => {
+        if (
+          args.claimedMetadata !== undefined &&
+          (args.expectedState === undefined ||
+            args.expectedMetadata === undefined ||
+            args.expectedDefinition === undefined)
+        ) {
+          throw new ElizaError(
+            "Claim metadata requires the observed state, metadata, and definition",
+            {
+              code: "SCHEDULED_TASK_CLAIM_EXPECTATION_REQUIRED",
+              context: { taskId: args.taskId },
+            },
+          );
+        }
         const existing = await storage.get<TaskRecord>(TASKS, args.taskId);
         if (!existing || existing.transferStatus || reserved(existing.task))
           return { kind: "raced" };
         const task = projected(existing);
-        if (
-          args.expectedMetadata !== undefined &&
-          stableStringify(task.metadata ?? {}) !==
-            stableStringify(args.expectedMetadata)
-        )
-          return { kind: "raced" };
+        if (!matchesExpectation(existing, args)) return { kind: "raced" };
         if (
           args.expected
             ? task.state.status !== args.expected.status ||
@@ -166,6 +234,8 @@ export function createSchedulingRecordStores(
           status: "fired",
           firedAt: args.firedAtIso,
         };
+        if (args.claimedMetadata !== undefined)
+          task.metadata = structuredClone(args.claimedMetadata);
         return {
           kind: "fired",
           task: projected(await write(task, null, existing)),
@@ -177,8 +247,14 @@ export function createSchedulingRecordStores(
         if (args.commit.taskId !== args.task.taskId)
           throw failure("Scheduling receipt belongs to another task");
         const existing = await storage.get<TaskRecord>(TASKS, args.task.taskId);
-        if (!existing)
+        const guarded =
+          args.expectedState !== undefined ||
+          args.expectedMetadata !== undefined ||
+          args.expectedDefinition !== undefined;
+        if (!existing) {
+          if (guarded) throw mutationRaced(args.task.taskId);
           throw failure("Cannot commit a receipt for a missing scheduled task");
+        }
         const receipts = object(
           existing.task.metadata?.schedulingApplyReceipts,
         );
@@ -198,6 +274,11 @@ export function createSchedulingRecordStores(
             );
           return { kind: "replayed", task: projected(existing), commit: log };
         }
+        if (
+          !matchesExpectation(existing, args) ||
+          (guarded && existing.transferStatus)
+        )
+          throw mutationRaced(args.task.taskId);
         if (existing.transferStatus || log)
           throw failure(
             "Scheduling receipt conflicts with a transfer or existing log",

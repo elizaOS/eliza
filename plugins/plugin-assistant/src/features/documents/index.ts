@@ -1,3 +1,9 @@
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { documentActions } from "./actions";
+import { pinnedDocumentsProvider } from "./pinned-provider.ts";
+import { documentsProvider } from "./provider.ts";
+import { DocumentService } from "./service.ts";
+
 /**
  * Barrel and plugin factory for the documents capability — elizaOS's native RAG
  * (document ingestion + retrieval). `createDocumentsPlugin` assembles the
@@ -7,14 +13,8 @@
  * The module also re-exports the feature's public API: BM25 scoring, URL
  * ingestion, recall embedding, and the shared types.
  */
-import { pinnedDocumentsProvider } from "./pinned-provider.ts";
 
 export { pinnedDocumentsProvider } from "./pinned-provider.ts";
-
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { documentActions } from "./actions";
-import { documentsProvider } from "./provider.ts";
-import { DocumentService } from "./service.ts";
 
 export interface DocumentsPluginConfig {
   enableActions?: boolean;
@@ -62,6 +62,17 @@ export type {
   SearchMode,
 } from "./service.ts";
 export { DocumentService, resolveDocumentRequester } from "./service.ts";
+export type { DocumentSourceReadMetadata } from "./source-segments.ts";
+export {
+  buildDocumentSourceProjection,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+  DOCUMENT_SOURCE_READ_MAX_SEGMENTS,
+  DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+  DOCUMENT_SOURCE_SEGMENT_VERSION,
+  projectDocumentParentContent,
+  readDocumentSourceProjection,
+  requireDocumentSourceReadMetadata,
+} from "./source-segments.ts";
 export * from "./types.ts";
 export type {
   FetchDocumentFromUrlOptions,

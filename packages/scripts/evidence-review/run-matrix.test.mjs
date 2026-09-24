@@ -19,7 +19,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { UI_E2E_SUITES } from "../e2e-recordings/suites.mjs";
 import {
+  assignContentContextRun,
   captureEvidenceBaseline,
   createVerifiedBundle,
   executeSteps,
@@ -72,6 +74,11 @@ test("selects all real matrix lanes by default", () => {
   assert.deepEqual(steps.find((step) => step.id === "e2e-recordings").command, [
     "node",
     "packages/scripts/e2e-recordings/run-all.mjs",
+    "--skip-sheets",
+    "--skip-viewer",
+    `--packages=${UI_E2E_SUITES.filter((suite) => suite.script)
+      .map((suite) => suite.name)
+      .join(",")}`,
   ]);
   assert.deepEqual(
     steps.map((step) => step.id),
@@ -79,13 +86,14 @@ test("selects all real matrix lanes by default", () => {
       "test-all",
       "e2e-recordings",
       "app-audit",
+      "content-context",
       "ios-sim-capture",
       "android-emu-capture",
     ],
   );
   assert.equal(options.review, true);
   assert.equal(options.open, false);
-  assert.equal(options.reviewOcr, "on");
+  assert.equal(options.reviewOcr, "off");
   assert.equal(options.tier, "cpu");
   assert.deepEqual(
     steps.find((step) => step.id === "ios-sim-capture").command,
@@ -134,11 +142,41 @@ test("can skip device lanes while keeping test and visual evidence lanes", () =>
   const steps = selectMatrixSteps(MATRIX_STEPS, options);
   assert.deepEqual(
     steps.map((step) => step.id),
-    ["test-all", "e2e-recordings", "app-audit"],
+    ["test-all", "e2e-recordings", "app-audit", "content-context"],
   );
 });
 
-test("validates explicit step ids and requires OCR", () => {
+test("matrix assigns the content producer a unique canonical run root", () => {
+  const source = path.join(REPO_ROOT, "tmp", "native-content-evidence");
+  const options = parseMatrixArgs([
+    "--only=content-context",
+    `--content-context-source=${source}`,
+  ]);
+  const steps = assignContentContextRun(
+    selectMatrixSteps(MATRIX_STEPS, options),
+    options,
+    { runId: "matrix-contract-test" },
+  );
+  assert.deepEqual(steps[0].command, [
+    "node",
+    "packages/scripts/run-content-context.mjs",
+    `--source=${source}`,
+    `--run-root=${path.join(REPO_ROOT, "reports", "content-context", "matrix-contract-test")}`,
+  ]);
+  assert.throws(
+    () =>
+      assignContentContextRun(
+        selectMatrixSteps(
+          MATRIX_STEPS,
+          parseMatrixArgs(["--only=content-context"]),
+        ),
+        parseMatrixArgs(["--only=content-context"]),
+      ),
+    /requires --content-context-source/,
+  );
+});
+
+test("validates explicit step ids and optional OCR modes", () => {
   const options = parseMatrixArgs([
     "--only=e2e-recordings,app-audit",
     "--review-ocr=on",
@@ -154,13 +192,12 @@ test("validates explicit step ids and requires OCR", () => {
     () => selectMatrixSteps(MATRIX_STEPS, parseMatrixArgs(["--only=missing"])),
     /unknown matrix step/,
   );
+  for (const mode of ["off", "auto", "on"]) {
+    assert.equal(parseMatrixArgs([`--review-ocr=${mode}`]).reviewOcr, mode);
+  }
   assert.throws(
-    () => parseMatrixArgs(["--review-ocr=off"]),
-    /--review-ocr must be on/,
-  );
-  assert.throws(
-    () => parseMatrixArgs(["--review-ocr=auto"]),
-    /--review-ocr must be on/,
+    () => parseMatrixArgs(["--review-ocr=invalid"]),
+    /--review-ocr must be/,
   );
   assert.equal(parseMatrixArgs(["--tier=full"]).tier, "full");
   assert.throws(() => parseMatrixArgs(["--tier=fast"]), /--tier must be/);
@@ -388,4 +425,25 @@ test("executeSteps writes planned records without running under --dry-run", () =
   assert.equal(results[0].status, "planned");
   assert.equal(results[0].exitCode, null);
   assert.deepEqual(reporter.events, []);
+});
+
+test("skipping devices cannot capture them through the recording sweep", () => {
+  const steps = selectMatrixSteps(
+    MATRIX_STEPS,
+    parseMatrixArgs(["--skip-devices"]),
+  );
+  assert.ok(steps.every((step) => !step.tags.includes("device")));
+  const sweep = steps.find((step) => step.id === "e2e-recordings");
+  const names = sweep.command
+    .find((arg) => arg.startsWith("--packages="))
+    .slice(11)
+    .split(",");
+  assert.ok(names.length > 0);
+  assert.ok(!names.includes("android-emu"));
+  assert.ok(!names.includes("ios-sim"));
+  assert.ok(
+    UI_E2E_SUITES.filter((suite) => suite.script).every((suite) =>
+      names.includes(suite.name),
+    ),
+  );
 });

@@ -1,17 +1,3 @@
-/**
- * MESSAGE — single polymorphic action surface for the messaging domain, and the
- * only messaging action the runtime registers (there are no per-op leaf
- * actions).
- *
- * Dispatches on a switch over MESSAGE_OPS. Connector-backed ops (read_channel,
- * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
- * get_user) call MessageConnector hooks directly. read_with_contact resolves a
- * person via the relationships graph and views their conversations across every
- * connected platform. list_worlds/list_rooms use the durable runtime topology,
- * verified identity clusters, and owner-private disclosure revalidation. Triage /
- * inbox / draft ops delegate to the triage actions in features/messaging/triage.
- */
-
 import type {
   Action,
   ActionExample,
@@ -94,6 +80,41 @@ import {
   trustedConnectorAccountId,
   trustedConnectorSource,
 } from "./connectorActionUtils.ts";
+
+/**
+ * MESSAGE — single polymorphic action surface for the messaging domain, and the
+ * only messaging action the runtime registers (there are no per-op leaf
+ * actions).
+ *
+ * Dispatches on a switch over MESSAGE_OPS. Connector-backed ops (read_channel,
+ * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
+ * get_user) call MessageConnector hooks directly. read_with_contact resolves a
+ * person via the relationships graph and views their conversations across every
+ * connected platform. list_worlds/list_rooms use the durable runtime topology,
+ * verified identity clusters, and owner-private disclosure revalidation. Triage /
+ * inbox / draft ops delegate to the triage actions in features/messaging/triage.
+ */
+
+import type {
+  AccessContext,
+  MessageContentRangeReadResult,
+} from "@elizaos/core";
+/**
+ * MESSAGE — single polymorphic action surface for the messaging domain, and the
+ * only messaging action the runtime registers (there are no per-op leaf
+ * actions).
+ *
+ * Dispatches on a switch over MESSAGE_OPS. Connector-backed ops (read_channel,
+ * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
+ * get_user) call MessageConnector hooks directly. read_with_contact resolves a
+ * person via the relationships graph and views their conversations across every
+ * connected platform. list_worlds/list_rooms use the durable runtime topology,
+ * verified identity clusters, and owner-private disclosure revalidation. Triage /
+ * inbox / draft ops delegate to the triage actions in features/messaging/triage.
+ */
+import { buildAccessContext } from "@elizaos/core";
+
+import { readCompleteMessageContent } from "../../messaging/complete-content-read.ts";
 
 // ---------------------------------------------------------------------------
 // Op taxonomy
@@ -3419,6 +3440,10 @@ async function handleSend(
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
+const _CHANNEL_READ_DEFAULT_LIMIT = 50;
+const _CHANNEL_READ_MAX_LIMIT = 200;
+const MEMORY_READ_MAX_BYTES = 64 * 1024;
+
 function memoryReadFailure(
   code: string,
   text: string,
@@ -3437,6 +3462,27 @@ function memoryReadFailure(
     data: metadata,
     promptData: metadata,
   };
+}
+
+function safeMemoryReadInteger(
+  raw: unknown,
+  label: "offset" | "limit",
+  fallback: number,
+): number | undefined {
+  if (raw === undefined) return fallback;
+  const value = numberParam(raw);
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) return undefined;
+  if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
+    return undefined;
+  }
+  return value;
+}
+
+function isUtf8Boundary(bytes: Uint8Array, offset: number): boolean {
+  return (
+    offset === 0 || offset === bytes.length || (bytes[offset] & 0xc0) !== 0x80
+  );
 }
 
 function memoryScopeAllowsSameRoomRead(
@@ -3464,43 +3510,15 @@ function memoryScopeAllowsSameRoomRead(
     return scopedTo === requesterId;
   }
   if (scope === "agent-private") return requesterId === agentId;
-  // Owner-private needs a live owner-role proof that this narrow same-room
-  // action does not mint. Fail closed rather than infer it from content.
   return false;
 }
 
-function safeMemoryReadInteger(
-  value: number | undefined,
-  label: "offset" | "limit",
-  fallback?: number,
-): number | undefined {
-  if (value === undefined) return fallback;
-  if (!Number.isSafeInteger(value) || value < 0) return undefined;
-  if (label === "limit" && value < 1) return undefined;
-  return value;
-}
-
-function isUtf8Boundary(bytes: Uint8Array, offset: number): boolean {
-  return (
-    offset === 0 || offset === bytes.length || (bytes[offset] & 0xc0) !== 0x80
-  );
-}
-
-async function handleReadStoredMemory(
+async function readAdapterlessStoredMemory(
   runtime: IAgentRuntime,
   message: Memory,
   params: ParamRecord,
-  memoryReference: string,
+  memoryRef: UUID,
 ): Promise<ActionResult> {
-  const memoryRef = memoryReference.startsWith("memory:")
-    ? memoryReference.slice("memory:".length)
-    : memoryReference;
-  if (!isUuidLike(memoryRef)) {
-    return memoryReadFailure(
-      "MESSAGE_MEMORY_INVALID_REFERENCE",
-      "The stored message reference is invalid.",
-    );
-  }
   const stored = await runtime.getMemoryById(memoryRef);
   if (!stored || stored.agentId !== runtime.agentId) {
     return memoryReadFailure(
@@ -3520,8 +3538,6 @@ async function handleReadStoredMemory(
       await runtime.getParticipantsForRoom(stored.roomId)
     ).includes(message.entityId);
   } catch (error) {
-    // error-policy:J1 The action boundary reports authorization lookup failure
-    // without disclosing whether the referenced memory exists in the room.
     runtime.reportError("MESSAGE.readStoredMemory.authorization", error, {
       roomId: stored.roomId,
     });
@@ -3539,40 +3555,36 @@ async function handleReadStoredMemory(
       "The stored message is not readable from this room.",
     );
   }
-
-  const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
-  const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
-  if (
-    offset === undefined ||
-    (params.limit !== undefined && limit === undefined)
-  ) {
+  const offset = safeMemoryReadInteger(params.offset, "offset", 0);
+  const limit = safeMemoryReadInteger(
+    params.limit,
+    "limit",
+    Number.MAX_SAFE_INTEGER - (offset ?? 0),
+  );
+  if (offset === undefined || limit === undefined) {
     return memoryReadFailure(
       "MESSAGE_MEMORY_INVALID_RANGE",
-      "Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
+      `Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
     );
   }
-
-  const sourceText = stored.content.text ?? "";
-  const bytes = new TextEncoder().encode(sourceText);
-  if (offset > bytes.length || !isUtf8Boundary(bytes, offset)) {
+  const sourceBytes = new TextEncoder().encode(stored.content.text ?? "");
+  if (offset > sourceBytes.length || !isUtf8Boundary(sourceBytes, offset)) {
     return memoryReadFailure(
       "MESSAGE_MEMORY_INVALID_RANGE",
       "Stored-message offset is outside the content or splits a UTF-8 code point.",
-      { totalBytes: bytes.length },
+      { totalBytes: sourceBytes.length },
     );
   }
-  let end =
-    limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
-  while (end > offset && !isUtf8Boundary(bytes, end)) end--;
-  if (end === offset && offset < bytes.length) {
+  let end = Math.min(offset + limit, sourceBytes.length);
+  while (end > offset && !isUtf8Boundary(sourceBytes, end)) end--;
+  if (end === offset && offset < sourceBytes.length) {
     return memoryReadFailure(
       "MESSAGE_MEMORY_INVALID_RANGE",
       "Stored-message limit is too small to include the next UTF-8 code point.",
       { minimumLimit: 4 },
     );
   }
-
-  const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+  const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
   const revision = `rev:${sourceSha256}`;
   const expectedRevision = textParam(params.expectedRevision);
   if (offset > 0 && !expectedRevision) {
@@ -3588,20 +3600,205 @@ async function handleReadStoredMemory(
       { currentRevision: revision },
     );
   }
-
-  const pageBytes = bytes.slice(offset, end);
+  const pageBytes = sourceBytes.slice(offset, end);
   const text = new TextDecoder("utf-8", { fatal: true }).decode(pageBytes);
   const readView = {
     reference: buildContentReference({
       kind: "memory",
       ref: `memory:${memoryRef}`,
       revision,
+      resumability: "non-resumable",
     }),
     slice: buildReadSlice({
-      range: { unit: "byte", start: offset, end, total: bytes.length },
-      completeness: end < bytes.length ? "partial-recoverable" : "complete",
+      range: {
+        unit: "byte" as const,
+        start: offset,
+        end,
+        total: sourceBytes.length,
+      },
+      completeness:
+        end < sourceBytes.length
+          ? ("partial-recoverable" as const)
+          : ("complete" as const),
       revision,
       sliceSha256: createHash("sha256").update(pageBytes).digest("hex"),
+      sourceSha256,
+    }),
+  };
+  const metadata = {
+    actionName: "MESSAGE",
+    operation: "read_channel",
+    messageRef: readView.reference.ref,
+    readView,
+  };
+  return {
+    success: true,
+    text,
+    values: { success: true },
+    data: metadata,
+    promptData: metadata,
+  };
+}
+
+async function handleReadStoredMemory(
+  runtime: IAgentRuntime,
+  message: Memory,
+  params: ParamRecord,
+  memoryReference: string,
+): Promise<ActionResult> {
+  const memoryRef = memoryReference.startsWith("memory:")
+    ? memoryReference.slice("memory:".length)
+    : memoryReference;
+  if (!isUuidLike(memoryRef)) {
+    return memoryReadFailure(
+      "MESSAGE_MEMORY_INVALID_REFERENCE",
+      "The stored message reference is invalid.",
+    );
+  }
+  if (!(runtime as Partial<IAgentRuntime>).adapter) {
+    return readAdapterlessStoredMemory(
+      runtime,
+      message,
+      params,
+      memoryRef as UUID,
+    );
+  }
+  if (
+    runtime.adapter.messageContentSegmentCapability !== 1 ||
+    !runtime.adapter.readMessageContentRange
+  ) {
+    return memoryReadFailure(
+      "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+      "The message store cannot perform a bounded authorized read.",
+    );
+  }
+  const offset = safeMemoryReadInteger(params.offset, "offset", 0);
+  const limit = safeMemoryReadInteger(
+    params.limit,
+    "limit",
+    Number.MAX_SAFE_INTEGER - (offset ?? 0),
+  );
+  if (offset === undefined || limit === undefined) {
+    return memoryReadFailure(
+      "MESSAGE_MEMORY_INVALID_RANGE",
+      `Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+    );
+  }
+
+  const expectedRevision = textParam(params.expectedRevision);
+  let read: MessageContentRangeReadResult;
+  try {
+    const readPage = runtime.adapter.readMessageContentRange.bind(
+      runtime.adapter,
+    );
+    read = await readCompleteMessageContent(
+      {
+        offset,
+        ...(params.limit === undefined ? {} : { limit }),
+        ...(expectedRevision ? { expectedRevision } : {}),
+      },
+      async (range) => {
+        let accessContext: AccessContext;
+        try {
+          accessContext = await buildAccessContext(runtime, message);
+        } catch (cause) {
+          // error-policy:J2 Reauthorize each page and preserve authorization failures.
+          runtime.reportError("MESSAGE.readStoredMemory.authorization", cause, {
+            roomId: message.roomId,
+          });
+          throw new ElizaError("Stored-message authorization is unavailable", {
+            code: "MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+            cause,
+          });
+        }
+        return readPage({
+          agentId: runtime.agentId,
+          messageId: memoryRef as UUID,
+          authorizedRoomId: message.roomId,
+          accessContext,
+          source: { kind: "message-text" },
+          ...range,
+        });
+      },
+    );
+  } catch (error) {
+    const code =
+      error instanceof ElizaError ? error.code : "MESSAGE_MEMORY_READ_FAILED";
+    return memoryReadFailure(
+      code,
+      error instanceof Error ? error.message : "Stored-message read failed.",
+    );
+  }
+  if (read.status === "not_found") {
+    return memoryReadFailure(
+      "MESSAGE_MEMORY_NOT_FOUND",
+      "The stored message was not found.",
+    );
+  }
+  if (read.status === "forbidden") {
+    return memoryReadFailure(
+      "MESSAGE_MEMORY_ACCESS_DENIED",
+      "The stored message is not readable from this room.",
+    );
+  }
+  let text: string;
+  let end: number;
+  let total: number;
+  let revision: string;
+  let sourceSha256: string;
+  let sliceSha256: string;
+  if (read.status === "ok") {
+    ({ text, end, total, revision, sourceSha256, sliceSha256 } = read.page);
+  } else {
+    const sourceBytes = new TextEncoder().encode(read.text);
+    if (offset > sourceBytes.length || !isUtf8Boundary(sourceBytes, offset)) {
+      return memoryReadFailure(
+        "MESSAGE_MEMORY_INVALID_RANGE",
+        "Stored-message offset is outside the content or splits a UTF-8 code point.",
+        { totalBytes: sourceBytes.length },
+      );
+    }
+    end = Math.min(offset + limit, sourceBytes.length);
+    while (end > offset && !isUtf8Boundary(sourceBytes, end)) end--;
+    if (end === offset && offset < sourceBytes.length) {
+      return memoryReadFailure(
+        "MESSAGE_MEMORY_INVALID_RANGE",
+        "Stored-message limit is too small to include the next UTF-8 code point.",
+        { minimumLimit: 4 },
+      );
+    }
+    const pageBytes = sourceBytes.slice(offset, end);
+    text = new TextDecoder("utf-8", { fatal: true }).decode(pageBytes);
+    sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+    revision = `rev:${sourceSha256}`;
+    if (offset > 0 && !expectedRevision) {
+      return memoryReadFailure(
+        "MESSAGE_MEMORY_EXPECTED_REVISION_REQUIRED",
+        "Stored-message continuation requires expectedRevision.",
+      );
+    }
+    if (expectedRevision && expectedRevision !== revision) {
+      return memoryReadFailure(
+        "MESSAGE_MEMORY_STALE_REVISION",
+        "The stored message changed before this page could be read.",
+        { currentRevision: revision },
+      );
+    }
+    total = sourceBytes.length;
+    sliceSha256 = createHash("sha256").update(pageBytes).digest("hex");
+  }
+  const readView = {
+    reference: buildContentReference({
+      kind: "memory",
+      ref: `memory:${memoryRef}`,
+      revision,
+      resumability: "restart-safe",
+    }),
+    slice: buildReadSlice({
+      range: { unit: "byte", start: offset, end, total },
+      completeness: end < total ? "partial-recoverable" : "complete",
+      revision,
+      sliceSha256,
       sourceSha256,
     }),
   };
@@ -3638,7 +3835,7 @@ function connectorReadRequest(
 ) {
   return {
     target,
-    ...(limit === undefined ? {} : { limit }),
+    limit,
     cursor: textParam(params.cursor),
     before: textParam(params.before),
     after: textParam(params.after),
@@ -3750,10 +3947,20 @@ async function handleReadChannel(
   const accountId = accountIdFromParams(params, message);
   const channel = textParam(params.channel) ?? textParam(params.target);
   const range = textParam(params.range);
-  const limit = recentReadLimit(
-    range,
-    requestedLimit(numberParam(params.limit)),
-  );
+  const requestedLimit = numberParam(params.limit);
+  if (
+    params.limit !== undefined &&
+    (requestedLimit === undefined ||
+      !Number.isSafeInteger(requestedLimit) ||
+      requestedLimit <= 0)
+  ) {
+    return opFailure(
+      "read_channel",
+      "INVALID_PARAMETERS",
+      "MESSAGE read_channel limit must be a positive safe integer.",
+    );
+  }
+  const limit = recentReadLimit(range, requestedLimit);
 
   // Prefer in-process connector fetchMessages when available.
   const hookConnectors = connectors.filter(
@@ -4015,6 +4222,7 @@ async function handleReadWithContact(
   try {
     const snapshot = await relationships.getGraphSnapshot({
       search: (entityId ?? contact ?? "").trim(),
+      limit: 5,
     });
     const candidates = snapshot.people;
     if (entityId) {
@@ -5276,7 +5484,7 @@ async function handleGetUser(
 
 async function handleReadMessage(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   params: ParamRecord,
 ): Promise<ActionResult> {
   const sourceValue = textParam(params.source) ?? "gmail";
@@ -5312,6 +5520,8 @@ async function handleReadMessage(
         messageId,
         reference,
         worldId: textParam(params.accountId),
+        requesterEntityId: message.entityId,
+        requesterRoomId: message.roomId,
         offset: numberParam(params.offset),
         limit: numberParam(params.limit),
         unit: unitValue as "line" | "fragment" | "byte",
@@ -5320,6 +5530,7 @@ async function handleReadMessage(
     );
     const projection = {
       readView: result.readView,
+      ...(result.sourceWork ? { sourceWork: result.sourceWork } : {}),
       ...(result.control ? { control: result.control } : {}),
     };
     // The exact body page has one carrier. Structured projections contain
@@ -5579,6 +5790,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "edit",
       "delete",
       "pin",
+      "manage_server",
     ],
     schema: { type: "string" },
   },
@@ -5629,7 +5841,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "edit",
       "delete",
       "pin",
-      "manage_server",
     ],
     schema: { type: "string" },
   },

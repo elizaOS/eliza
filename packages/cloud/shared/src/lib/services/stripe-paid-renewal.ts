@@ -1,7 +1,7 @@
 /** Reconciles signed invoice-paid deliveries through current platform provider objects and a single paid-renewal transaction; it never initiates a payment. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
@@ -13,6 +13,7 @@ import {
 import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { requireStripe } from "../stripe";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
 
@@ -48,6 +49,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     .from(billingSubscriptions)
     .where(
       and(
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.provider_environment, event.livemode ? "live" : "test"),
         eq(billingSubscriptions.stripe_subscription_id, event.data.object.subscription),
@@ -71,6 +73,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     await reconcileSubscriptionCheckout(session.id);
     return;
   }
+  assertOrganizationSubscription(source);
   // The first invoice can arrive after Checkout already published its allowance.
   if (event.data.object.billing_reason === "subscription_create") {
     const canonicalInvoice = await requireStripe().invoices.retrieve(event.data.object.id);

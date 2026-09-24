@@ -916,21 +916,6 @@ def _build_delegate_client():
             max_tokens=max_tokens,
             workspace_path=lifecycle_workspace,
         )
-    if harness == "smithers":
-        from smithers_adapter.client import SmithersClient  # noqa: WPS433
-
-        timeout_s = float(os.environ.get("SMITHERS_TIMEOUT_S", "1200"))
-        return SmithersClient(
-            provider=provider,
-            model=model,
-            base_url=base_url,
-            timeout_s=timeout_s,
-            temperature=temperature,
-            reasoning_effort=reasoning_effort.strip()
-            if isinstance(reasoning_effort, str)
-            else None,
-            max_tokens=max_tokens,
-        )
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
@@ -952,6 +937,8 @@ def _build_delegate_client():
             else None,
             max_tokens=max_tokens,
         )
+    if harness not in {"", "eliza"}:
+        raise ValueError(f"Unsupported benchmark harness: {harness!r}")
     return None
 
 

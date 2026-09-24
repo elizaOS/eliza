@@ -2668,6 +2668,531 @@
       "when": 1796083200024,
       "tag": "0397_subscription_checkout_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1796083200025,
+      "tag": "0398_provider_unconfirmed_deletion_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 382,
+      "version": "7",
+      "when": 1796083200026,
+      "tag": "0399_prepared_stop_backup",
+      "breakpoints": true
+    },
+    {
+      "idx": 383,
+      "version": "7",
+      "when": 1796083200027,
+      "tag": "0400_app_billing_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 384,
+      "version": "7",
+      "when": 1796083200028,
+      "tag": "0401_app_billing_scope_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 385,
+      "version": "7",
+      "when": 1796083200029,
+      "tag": "0402_app_billing_registration_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 386,
+      "version": "7",
+      "when": 1796083200030,
+      "tag": "0403_subscription_app_scope_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 387,
+      "version": "7",
+      "when": 1796083200031,
+      "tag": "0404_subscription_app_scope_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 388,
+      "version": "7",
+      "when": 1796083200032,
+      "tag": "0405_subscription_app_scope_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 389,
+      "version": "7",
+      "when": 1796083200033,
+      "tag": "0406_subscription_app_source_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1796083200034,
+      "tag": "0407_app_delegations",
+      "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1796083200035,
+      "tag": "0408_app_billing_command_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1796083200036,
+      "tag": "0409_app_billing_command_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1796083200037,
+      "tag": "0410_app_billing_update_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1796083200038,
+      "tag": "0411_app_billing_merchant_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 395,
+      "version": "7",
+      "when": 1796083200039,
+      "tag": "0412_app_billing_provider_verifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1796083200040,
+      "tag": "0413_app_billing_notification_endpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 397,
+      "version": "7",
+      "when": 1796083200041,
+      "tag": "0414_app_subscription_outbox_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 398,
+      "version": "7",
+      "when": 1796083200042,
+      "tag": "0415_app_billing_webhook_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 399,
+      "version": "7",
+      "when": 1796083200043,
+      "tag": "0416_app_billing_checkout_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1796083200044,
+      "tag": "0417_app_billing_membership_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 401,
+      "version": "7",
+      "when": 1796083200045,
+      "tag": "0418_app_billing_seat_mutations",
+      "breakpoints": true
+    },
+    {
+      "idx": 402,
+      "version": "7",
+      "when": 1796083200046,
+      "tag": "0419_app_billing_application_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 403,
+      "version": "7",
+      "when": 1796083200047,
+      "tag": "0420_app_billing_import_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 404,
+      "version": "7",
+      "when": 1796083200048,
+      "tag": "0421_app_billing_import_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 405,
+      "version": "7",
+      "when": 1796083200049,
+      "tag": "0422_app_billing_import_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 406,
+      "version": "7",
+      "when": 1796083200050,
+      "tag": "0423_app_billing_payment_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 407,
+      "version": "7",
+      "when": 1796083200051,
+      "tag": "0424_app_billing_administrators",
+      "breakpoints": true
+    },
+    {
+      "idx": 408,
+      "version": "7",
+      "when": 1796083200052,
+      "tag": "0425_app_billing_sales_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 409,
+      "version": "7",
+      "when": 1796083200053,
+      "tag": "0426_app_billing_refund_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 410,
+      "version": "7",
+      "when": 1796083200054,
+      "tag": "0427_app_billing_return_destination",
+      "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1796083200055,
+      "tag": "0428_billing_identity_anchors",
+      "breakpoints": true
+    },
+    {
+      "idx": 412,
+      "version": "7",
+      "when": 1796083200056,
+      "tag": "0429_billing_identity_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1796083200057,
+      "tag": "0430_billing_identity_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1796083200058,
+      "tag": "0431_app_billing_deletion_dispositions",
+      "breakpoints": true
+    },
+    {
+      "idx": 415,
+      "version": "7",
+      "when": 1796083200059,
+      "tag": "0432_app_billing_deletion_disposition_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1796083200060,
+      "tag": "0433_app_billing_customer_closures",
+      "breakpoints": true
+    },
+    {
+      "idx": 417,
+      "version": "7",
+      "when": 1796083200061,
+      "tag": "0434_app_billing_customer_closure_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 418,
+      "version": "7",
+      "when": 1796083200062,
+      "tag": "0435_app_billing_resume_payment_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 419,
+      "version": "7",
+      "when": 1796083200063,
+      "tag": "0436_app_billing_paid_resume_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 420,
+      "version": "7",
+      "when": 1796083200064,
+      "tag": "0437_app_billing_deletion_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 421,
+      "version": "7",
+      "when": 1796083200065,
+      "tag": "0438_app_billing_applied_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 422,
+      "version": "7",
+      "when": 1796083200066,
+      "tag": "0439_app_billing_completed_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 423,
+      "version": "7",
+      "when": 1796083200067,
+      "tag": "0440_app_billing_deletion_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1796083200068,
+      "tag": "0441_billing_owner_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 425,
+      "version": "7",
+      "when": 1796083200069,
+      "tag": "0442_billing_owner_subject_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 426,
+      "version": "7",
+      "when": 1796083200070,
+      "tag": "0443_billing_owner_subject_creation",
+      "breakpoints": true
+    },
+    {
+      "idx": 427,
+      "version": "7",
+      "when": 1796083200071,
+      "tag": "0444_billing_owner_source_anchors",
+      "breakpoints": true
+    },
+    {
+      "idx": 428,
+      "version": "7",
+      "when": 1796083200072,
+      "tag": "0445_billing_owner_subject_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 429,
+      "version": "7",
+      "when": 1796083200073,
+      "tag": "0446_billing_financial_history_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 430,
+      "version": "7",
+      "when": 1796083200074,
+      "tag": "0447_app_billing_customer_terminal_obligations",
+      "breakpoints": true
+    },
+    {
+      "idx": 431,
+      "version": "7",
+      "when": 1796083200075,
+      "tag": "0448_app_billing_customer_command_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 432,
+      "version": "7",
+      "when": 1796083200076,
+      "tag": "0449_app_billing_terminal_buyer_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 433,
+      "version": "7",
+      "when": 1796083200077,
+      "tag": "0450_app_billing_customer_command_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 434,
+      "version": "7",
+      "when": 1796083200078,
+      "tag": "0451_app_billing_customer_execution_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 435,
+      "version": "7",
+      "when": 1796083200079,
+      "tag": "0452_app_billing_customer_completion_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 436,
+      "version": "7",
+      "when": 1796083200080,
+      "tag": "0453_app_billing_customer_command_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 437,
+      "version": "7",
+      "when": 1796083200081,
+      "tag": "0454_app_billing_refund_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1796083200082,
+      "tag": "0455_app_billing_refund_recovery_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1796083200083,
+      "tag": "0456_app_billing_refund_observation_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 440,
+      "version": "7",
+      "when": 1796083200084,
+      "tag": "0457_app_billing_customer_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 441,
+      "version": "7",
+      "when": 1796083200085,
+      "tag": "0458_app_billing_refund_actor_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 442,
+      "version": "7",
+      "when": 1796083200086,
+      "tag": "0459_app_billing_observed_customer_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 443,
+      "version": "7",
+      "when": 1796083200087,
+      "tag": "0460_app_billing_refund_phase_obligations",
+      "breakpoints": true
+    },
+    {
+      "idx": 444,
+      "version": "7",
+      "when": 1796083200088,
+      "tag": "0461_app_billing_completion_owner_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 445,
+      "version": "7",
+      "when": 1796083200089,
+      "tag": "0462_app_billing_completion_scope_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 446,
+      "version": "7",
+      "when": 1796083200090,
+      "tag": "0463_app_billing_completion_validations",
+      "breakpoints": true
+    },
+    {
+      "idx": 447,
+      "version": "7",
+      "when": 1796083200091,
+      "tag": "0464_app_billing_completion_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 448,
+      "version": "7",
+      "when": 1796083200092,
+      "tag": "0465_app_billing_completion_validation_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 449,
+      "version": "7",
+      "when": 1796083200093,
+      "tag": "0466_app_billing_completion_validation_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 450,
+      "version": "7",
+      "when": 1796083200094,
+      "tag": "0467_app_billing_completion_commit_validation",
+      "breakpoints": true
+    },
+    {
+      "idx": 451,
+      "version": "7",
+      "when": 1796083200095,
+      "tag": "0468_app_billing_completion_mutation_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 452,
+      "version": "7",
+      "when": 1796083200096,
+      "tag": "0469_app_billing_customer_receipt_digests",
+      "breakpoints": true
+    },
+    {
+      "idx": 453,
+      "version": "7",
+      "when": 1796083200097,
+      "tag": "0470_app_billing_cancellation_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 454,
+      "version": "7",
+      "when": 1796083200098,
+      "tag": "0471_app_billing_checkout_cleanup_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 455,
+      "version": "7",
+      "when": 1796083200099,
+      "tag": "0472_app_billing_checkout_cleanup_evidence",
+      "breakpoints": true
     }
   ]
 }

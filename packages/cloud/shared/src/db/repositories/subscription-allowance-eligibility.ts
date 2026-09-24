@@ -1,6 +1,6 @@
 /** Reads the canonical eligibility for new allowance spending in the caller's transaction and database clock; historical reservations never pass through this gate. */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
 import { readOrganizationQuotaPolicyInTransaction } from "../../lib/services/organization-quota-policy";
 import type { DbTransaction } from "../client";
 import {
@@ -25,6 +25,7 @@ async function findCurrentAllowance(
     .where(
       and(
         eq(subscriptionAllowancePeriods.organization_id, organizationId),
+        isNull(subscriptionAllowancePeriods.billing_scope_id),
         eq(subscriptionAllowancePeriods.state, "open"),
         lte(subscriptionAllowancePeriods.period_start, now),
         gt(subscriptionAllowancePeriods.expires_at, now),

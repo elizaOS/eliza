@@ -22,7 +22,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "@elizaos/testing";
+} from "@elizaos/testing/package-paths";
 import { defineConfig } from "vitest/config";
 import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";

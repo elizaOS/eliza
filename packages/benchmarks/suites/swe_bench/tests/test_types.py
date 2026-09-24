@@ -214,16 +214,5 @@ class TestValidation:
             )
 
 
-class TestLeaderboardScores:
-    """Test leaderboard scores data."""
-
-    def test_leaderboard_has_data(self) -> None:
-        """Test leaderboard scores are populated."""
-        assert "SWE-bench Lite" in LEADERBOARD_SCORES
-        assert len(LEADERBOARD_SCORES["SWE-bench Lite"]) > 0
-
-    def test_leaderboard_score_format(self) -> None:
-        """Test leaderboard scores are valid percentages."""
-        for variant, scores in LEADERBOARD_SCORES.items():
-            for system, score in scores.items():
-                assert 0 <= score <= 100, f"Invalid score for {system}: {score}"
+def test_unverified_reference_scores_are_not_published() -> None:
+    assert LEADERBOARD_SCORES == {}

@@ -1390,7 +1390,7 @@ export class PgApprovalQueue implements ApprovalQueue {
              target === "retryable"
                ? sqlText("provider reconciliation confirmed non-delivery")
                : "NULL"
-},
+           },
            reconciliation_resolved_at = ${timestampLiteral(now)},
            reconciliation_resolved_by = ${sqlText(reconciliation.reconciledBy)},
            reconciliation_reason = ${sqlText(reconciliation.reconciliationReason)},

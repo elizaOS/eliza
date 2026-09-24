@@ -107,6 +107,18 @@ class TestSWEBenchEvaluator:
         assert not result.success
 
     @pytest.mark.asyncio
+    async def test_structural_smoke_never_claims_resolution(
+        self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
+    ) -> None:
+        patch = "diff --git a/file.py b/file.py\n--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-broken\n+still_broken\n"
+        result = await evaluator.evaluate_patch(sample_instance, patch)
+        assert result.status == "smoke_validated"
+        assert result.patch_status == PatchStatus.GENERATED
+        assert result.success is False
+        assert result.tests_passed == []
+        assert "not executed" in result.error
+
+    @pytest.mark.asyncio
     async def test_docker_unavailable_returns_incompatible(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -246,3 +258,22 @@ class TestSWEBenchEvaluatorDocker:
         result = await evaluator.check_docker_available()
         # This depends on the environment
         assert isinstance(result, bool)
+
+
+def test_official_evidence_retained_without_docker_credentials(tmp_path):
+    artifacts = tmp_path / "evidence"
+    evaluator = SWEBenchEvaluator(artifacts_dir=str(artifacts))
+    with evaluator._evaluation_directory() as directory:
+        from pathlib import Path
+        scratch = Path(directory)
+        (scratch / "predictions.jsonl").write_text('{"model_patch":"complete diff"}\n')
+        (scratch / "stdout.log").write_text("complete output")
+        (scratch / "docker-config.json").write_text("private credentials")
+        (scratch / "logs").mkdir()
+        (scratch / "logs" / "report.json").write_text('{"resolved":false}')
+    receipt = next(artifacts.iterdir())
+    assert (receipt / "predictions.jsonl").read_text().endswith("\n")
+    assert (receipt / "stdout.log").read_text() == "complete output"
+    assert (receipt / "logs" / "report.json").exists()
+    assert not (receipt / "docker-config.json").exists()
+    assert not scratch.exists()

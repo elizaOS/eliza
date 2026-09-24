@@ -117,6 +117,8 @@ export interface AppBootConfig {
   apiToken?: string;
   /** Cloud API base URL — replaces window.__ELIZA_CLOUD_API_BASE__. */
   cloudApiBase?: string;
+  /** Host product slot for web-only billing navigation; the server resolves its app and catalog. */
+  applicationBillingSlot?: string;
   /** VRM avatar assets — replaces window.__APP_VRM_ASSETS__. */
   vrmAssets?: BundledVrmAsset[];
   /** First-run style presets — replaces window.__APP_FIRST_RUN_STYLES__. */

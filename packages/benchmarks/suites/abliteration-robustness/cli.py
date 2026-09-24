@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = "mlabonne/harmless_alpaca"
 DEFAULT_DATASET_REVISION = "02c6a92cfcf11bb0c387334f8146d149d65b587f"
 EXPECTED_TEST_PROMPTS = 6_265
-HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
+HARNESS_NAMES = {"eliza", "hermes", "openclaw"}
 OPENAI_COMPAT_DEFAULT_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "groq": "https://api.groq.com/openai/v1",
@@ -223,7 +223,6 @@ def _build_argparser() -> argparse.ArgumentParser:
             "eliza",
             "hermes",
             "openclaw",
-            "smithers",
             "mock",
         ),
     )
@@ -261,6 +260,8 @@ def _selected_harness(provider: str) -> str:
         or os.environ.get("BENCHMARK_HARNESS")
         or ""
     ).strip().lower()
+    if env_harness and env_harness not in HARNESS_NAMES:
+        raise ValueError(f"Unsupported benchmark harness: {env_harness!r}")
     if env_harness in HARNESS_NAMES:
         return env_harness
     provider = provider.strip().lower()
@@ -330,25 +331,6 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             or os.environ.get("CEREBRAS_BASE_URL")
             or None,
             timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "120")),
-            reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
-            or os.environ.get("CEREBRAS_REASONING_EFFORT")
-            or None,
-        )
-        client.wait_until_ready(timeout=120)
-        return client
-    if harness == "smithers":
-        _ensure_adapter_path("smithers")
-        from smithers_adapter.client import SmithersClient  # noqa: WPS433
-
-        client = SmithersClient(
-            provider=provider,
-            model=model,
-            base_url=args.base_url
-            or os.environ.get("BENCHMARK_BASE_URL")
-            or os.environ.get("OPENAI_BASE_URL")
-            or os.environ.get("CEREBRAS_BASE_URL")
-            or None,
-            timeout_s=float(os.environ.get("SMITHERS_TIMEOUT_S", "120")),
             reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
             or os.environ.get("CEREBRAS_REASONING_EFFORT")
             or None,
