@@ -82,6 +82,7 @@ import type {
   DedicatedActivationConfirmationQuote,
   DedicatedActivationConfirmationRequester,
 } from "../api/dedicated-activation-confirmation";
+import { getDesktopRuntimeMode } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
@@ -948,19 +949,20 @@ export function useFirstRunConductor(): void {
     [runtimeChooserEnabled, seedTurn],
   );
 
-  // Explicit, non-finish escape hatch out of onboarding: flip the real gate and
-  // land the user in Settings so they can wire a model provider by hand. Used
-  // ONLY by the error-recovery "Configure in Settings" choice, so a broken
-  // finish never traps the user in the loop. Latched by completedRef so a
-  // double-tap can't flip the gate twice.
+  // Open configuration after a failed finish. Native Settings can recover
+  // setup without marking an uninitialized backend ready for chat.
+  const settingsRecoveryPendingRef = React.useRef(false);
   const exitToSettings = React.useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
     if (isElectrobunRuntime()) {
       void openDesktopSettingsWindow().then(
         () => {
-          completeFirstRun("chat");
-          resumePendingFirstRunText();
+          settingsRecoveryPendingRef.current = true;
+          completedRef.current = false;
+          seedError(
+            "Finish configuring your connection in Settings, then try again.",
+          );
         },
         (error: unknown) => {
           // error-policy:J4 keep onboarding recoverable when the native window cannot open
@@ -1289,6 +1291,64 @@ export function useFirstRunConductor(): void {
       });
   }, [handleOutcome]);
 
+  // Settings can persist a different provider without changing the draft that
+  // failed. Reconcile its actual backend before retrying that obsolete draft.
+  const retryAfterSettings = React.useCallback(() => {
+    busyRef.current = true;
+    void (async () => {
+      const mode = await getDesktopRuntimeMode();
+      const setup = await client.getFirstRunStatus();
+      if (mode?.mode !== "local" || !setup.complete) return false;
+      let status = await client.getStatus();
+      if (
+        status.state === "not_started" ||
+        status.state === "stopped" ||
+        status.state === "error"
+      ) {
+        await client.startAgent();
+        status = await client.getStatus();
+      }
+      setState("agentStatus", status);
+      if (status.state !== "running" || status.canRespond !== true) {
+        seedError(
+          "Your configured agent is not ready to answer yet. Try again once it has started, or check its connection in Settings.",
+        );
+        return true;
+      }
+      pendingCloudResumeRef.current = null;
+      clearCloudLoginPending();
+      activeCloudLoginCancelRef.current?.();
+      settingsRecoveryPendingRef.current = false;
+      provisionedRef.current = true;
+      completedRef.current = true;
+      completeFirstRun("chat");
+      resumePendingFirstRunText();
+      return true;
+    })().then(
+      (handled) => {
+        busyRef.current = false;
+        if (handled) return;
+        settingsRecoveryPendingRef.current = false;
+        if (draftRef.current.runtime === "cloud") startCloudProvisionFlow();
+        else startProviderFinish();
+      },
+      (error: unknown) => {
+        // error-policy:J4 preserve Settings recovery when its backend cannot be reached
+        busyRef.current = false;
+        seedError(
+          `Your configured agent could not start. ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+  }, [
+    completeFirstRun,
+    resumePendingFirstRunText,
+    seedError,
+    setState,
+    startCloudProvisionFlow,
+    startProviderFinish,
+  ]);
+
   // Continue an interrupted cloud/hybrid flow once the connection is present.
   // Shared by (a) the auto-resume effect below — used when the user connects
   // from the retry turn's OAuth block and the store later learns the connection
@@ -1300,6 +1360,7 @@ export function useFirstRunConductor(): void {
       if (
         busyRef.current ||
         bindInFlightRef.current ||
+        settingsRecoveryPendingRef.current ||
         provisionedRef.current
       ) {
         return;
@@ -1416,6 +1477,10 @@ export function useFirstRunConductor(): void {
       }
 
       if (group === "cloud-login" && id === "retry") {
+        if (settingsRecoveryPendingRef.current) {
+          if (!busyRef.current && !completedRef.current) retryAfterSettings();
+          return true;
+        }
         activeCloudLoginCancelRef.current?.();
         startCloudProvisionFlow();
         return true;
@@ -1486,6 +1551,7 @@ export function useFirstRunConductor(): void {
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
+        settingsRecoveryPendingRef.current = false;
         // Switching AWAY from a previously-picked (possibly partially
         // committed) local runtime must unwind it: clear the persisted mode +
         // local active server and stop a service a failed finish may have
@@ -1705,6 +1771,7 @@ export function useFirstRunConductor(): void {
           return true;
         }
         if (id === "restart" && runtimeChooserEnabled) {
+          settingsRecoveryPendingRef.current = false;
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
           // how their agent runs after a failed finish — unwinding whatever
           // the failed local path committed first (#14390), so switching to
@@ -1719,6 +1786,10 @@ export function useFirstRunConductor(): void {
             "first-run:greeting",
             `${GREETING}\n\n${runtimeChoiceBlock()}`,
           );
+          return true;
+        }
+        if (settingsRecoveryPendingRef.current) {
+          retryAfterSettings();
           return true;
         }
         // retry: re-run the SAME finish for the runtime the user last chose.
@@ -1764,6 +1835,7 @@ export function useFirstRunConductor(): void {
       completeFirstRun,
       resumePendingFirstRunText,
       exitToSettings,
+      retryAfterSettings,
       startCloudProvisionFlow,
       startProviderFinish,
       seedError,

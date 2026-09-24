@@ -124,6 +124,11 @@ export interface ScheduledTaskRunnerDepsBundle {
   logStore: ScheduledTaskLogStore;
   dispatcher: ScheduledTaskDispatcher;
   executionBoundary?: ScheduledTaskRunnerDeps["executionBoundary"];
+  prepareMutation?: ScheduledTaskRunnerDeps["prepareMutation"];
+  prepareExecution?: ScheduledTaskRunnerDeps["prepareExecution"];
+  automaticAdmission?: ScheduledTaskRunnerDeps["automaticAdmission"];
+  prepareAutomaticFire?: ScheduledTaskRunnerDeps["prepareAutomaticFire"];
+
   ownerFacts: () => OwnerFactsView | Promise<OwnerFactsView>;
   globalPause: GlobalPauseView;
   activity: ActivitySignalBusView;
@@ -615,6 +620,16 @@ function buildRunner(
     activity: deps.activity,
     subjectStore: deps.subjectStore,
     dispatcher,
+    ...(deps.prepareMutation ? { prepareMutation: deps.prepareMutation } : {}),
+    ...(deps.prepareExecution
+      ? { prepareExecution: deps.prepareExecution }
+      : {}),
+    ...(deps.automaticAdmission
+      ? { automaticAdmission: deps.automaticAdmission }
+      : {}),
+    ...(deps.prepareAutomaticFire
+      ? { prepareAutomaticFire: deps.prepareAutomaticFire }
+      : {}),
     ...(deps.executionBoundary
       ? { executionBoundary: deps.executionBoundary }
       : {}),

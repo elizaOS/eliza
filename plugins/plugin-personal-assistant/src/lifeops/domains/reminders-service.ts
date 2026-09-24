@@ -43,7 +43,6 @@ import {
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
   normalizeHealthSignal,
-  shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
 } from "@elizaos/plugin-health";
 import {
@@ -119,9 +118,11 @@ import {
   windowPolicyMatchesDefaults,
 } from "../defaults.js";
 import { materializeDefinitionOccurrences } from "../engine.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 import {
+  ownerFactsToView,
   resolveOwnerFactStore,
   resolveOwnerTimeZone,
 } from "../owner/fact-store.js";
@@ -148,6 +149,9 @@ import {
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
 } from "../schedule-state.js";
+import { DOSSIER_ACTIVITY_METADATA_KEY } from "../scheduled-task/dossier-activity-policy.js";
+import { admitOwnerDossierActivity } from "../scheduled-task/dossier-activity-runtime.js";
+import { classifyDossierActivitySignal } from "../scheduled-task/dossier-activity-signal.js";
 import {
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
@@ -438,6 +442,13 @@ function appendReminderChoiceChips(
   ].join("\n");
 }
 
+/** Supplied by authenticated owner ingress, independently of the request body. */
+export interface AuthenticatedDossierActivityContext {
+  principalId: string;
+  ownerPrincipalId: string;
+  receivedAtIso: string;
+}
+
 export interface LifeOpsReminderService {
   getReminderPreference(
     definitionId?: string | null,
@@ -447,6 +458,7 @@ export interface LifeOpsReminderService {
   ): Promise<LifeOpsReminderPreference>;
   captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal>;
   captureManualOverride(
     request: CaptureLifeOpsManualOverrideRequest,
@@ -4829,8 +4841,16 @@ export class RemindersDomain {
 
   async captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal> {
     const health = normalizeHealthSignal(request.health, "health");
+    const metadata =
+      request.metadata !== undefined
+        ? requireRecord(request.metadata, "metadata")
+        : {};
+    if (Object.hasOwn(metadata, DOSSIER_ACTIVITY_METADATA_KEY)) {
+      fail(400, "Dossier activity admission metadata is server-owned");
+    }
     const registeredSources = getSignalSourceRegistry(
       this.ctx.runtime,
     )?.sources();
@@ -4854,12 +4874,30 @@ export class RemindersDomain {
       onBattery:
         normalizeOptionalBoolean(request.onBattery, "onBattery") ?? null,
       health,
-      metadata:
-        request.metadata !== undefined
-          ? requireRecord(request.metadata, "metadata")
-          : {},
+      metadata,
     });
     await this.ctx.repository.createActivitySignal(signal);
+    const activityKind = classifyDossierActivitySignal(signal);
+    if (ownerActivity && activityKind !== "other") {
+      await admitOwnerDossierActivity(
+        createFamilySchedulingStores(this.ctx.runtime, this.ctx.agentId())
+          .store,
+        {
+          ...ownerActivity,
+          authenticated: true,
+          signalId: signal.id,
+          kind: activityKind,
+        },
+        {
+          timezone:
+            ownerFactsToView(
+              await resolveOwnerFactStore(this.ctx.runtime).read(),
+              new Date(ownerActivity.receivedAtIso),
+            ).timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      );
+    }
     return signal;
   }
 
@@ -6047,14 +6085,8 @@ export class RemindersDomain {
       await service.persistCheckinReport(report, args.now);
     };
 
-    if (
-      shouldRunMorningCheckinFromSleepCycle({
-        state: currentSchedule,
-        now: args.now,
-      })
-    ) {
-      await dispatch("morning");
-    }
+    // Automatic morning briefs are admitted and claimed by the activity-driven
+    // ScheduledTask; sleep projections must not start a second generation.
     // For irregular-schedule owners, the relative-time resolver leaves
     // `bedtimeTargetAt` null because no projection is trustworthy. Read the
     // owner's configured `nightCheckinTime` (HH:MM local) and pass it as a

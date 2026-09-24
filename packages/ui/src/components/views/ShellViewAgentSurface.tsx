@@ -1,3 +1,4 @@
+import type { ViewCapability } from "@elizaos/core";
 /**
  * ShellViewAgentSurface — makes a shell-rendered builtin view (settings,
  * character, …) agent-controllable, the same way DynamicViewLoader does for
@@ -11,6 +12,7 @@
  * controls opt in with `useAgentElement`.
  */
 
+import { resolveSurfaceManifest, type SurfaceManifest } from "@elizaos/core";
 import { type ReactNode, useEffect, useRef } from "react";
 import {
   AgentElementOverlay,
@@ -23,6 +25,7 @@ import {
 } from "../../agent-surface";
 import type { RegisteredAgentSurfaceKind } from "../../app-shell-registry";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
+import { brokerViewInteract } from "./view-capability-broker";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 function idParam(params: Record<string, unknown> | undefined): string | null {
@@ -38,6 +41,12 @@ export interface ShellViewAgentSurfaceProps {
   surfaceKind?: RegisteredAgentSurfaceKind | "builtin";
   /** Reads an isolated child page rather than the shell's own DOM text. */
   readPage?: (selector?: string) => Promise<unknown>;
+  capabilities?: readonly ViewCapability[];
+  surface?: SurfaceManifest;
+  interact?: (
+    capability: string,
+    params?: Record<string, unknown>,
+  ) => Promise<unknown>;
   children: ReactNode;
 }
 
@@ -46,6 +55,9 @@ export function ShellViewAgentSurface({
   viewType = "gui",
   surfaceKind = "builtin",
   readPage,
+  capabilities,
+  surface,
+  interact,
   children,
 }: ShellViewAgentSurfaceProps) {
   const { views } = useAvailableViews();
@@ -55,7 +67,17 @@ export function ShellViewAgentSurface({
   return (
     <InstalledShellViewAgentSurface
       key={installationId ?? "unbound"}
-      {...{ viewId, viewType, surfaceKind, readPage, children, installationId }}
+      {...{
+        viewId,
+        viewType,
+        surfaceKind,
+        readPage,
+        capabilities,
+        surface,
+        interact,
+        children,
+        installationId,
+      }}
     />
   );
 }
@@ -65,6 +87,9 @@ function InstalledShellViewAgentSurface({
   viewType = "gui",
   surfaceKind,
   readPage,
+  capabilities,
+  surface,
+  interact,
   children,
   installationId,
 }: ShellViewAgentSurfaceProps & { installationId?: string }) {
@@ -73,76 +98,89 @@ function InstalledShellViewAgentSurface({
   pageReader.current = readPage;
 
   useEffect(() => {
+    const handler = async (
+      capability: string,
+      params?: Record<string, unknown>,
+    ) => {
+      if (interact && capabilities?.some((entry) => entry.id === capability)) {
+        return interact(capability, params);
+      }
+      const registry = getViewRegistry(viewId, viewType, installationId);
+      if (isAgentSurfaceCapability(capability)) {
+        if (!registry) {
+          throw new Error(
+            `Shell view "${viewId}" has no agent surface registered yet`,
+          );
+        }
+        return handleAgentSurfaceCapability(registry, capability, params);
+      }
+      switch (capability) {
+        case "get-text":
+          if (pageReader.current) {
+            if (
+              params?.selector !== undefined &&
+              typeof params.selector !== "string"
+            ) {
+              throw new Error("Page text selector must be a string.");
+            }
+            return pageReader.current(params?.selector as string | undefined);
+          }
+          if (params?.nativeOnly === true) {
+            throw new Error(
+              "The requesting view has no mounted native page reader.",
+            );
+          }
+          return containerRef.current?.innerText ?? "";
+        case "get-state":
+          return registry && registry.size() > 0 ? registry.snapshot() : {};
+        case "focus-element": {
+          const id = idParam(params);
+          if (id && registry) {
+            const r = registry.focus(id);
+            return { focused: r.ok, id, reason: r.reason };
+          }
+          return { focused: false, reason: "agentId required" };
+        }
+        case "click-element": {
+          const id = idParam(params);
+          if (id && registry) {
+            const r = registry.click(id);
+            return { clicked: r.ok, id, reason: r.reason };
+          }
+          return { clicked: false, reason: "agentId required" };
+        }
+        case "fill-input": {
+          const id = idParam(params);
+          const value = typeof params?.value === "string" ? params.value : null;
+          if (value === null) {
+            return { filled: false, reason: "value must be a string" };
+          }
+          if (id && registry) {
+            const r = registry.fill(id, value);
+            return { filled: r.ok, id, reason: r.reason, value };
+          }
+          return { filled: false, reason: "agentId required" };
+        }
+        default:
+          throw new Error(
+            `Shell view "${viewId}" does not support capability "${capability}"`,
+          );
+      }
+    };
     return registerViewInteractHandler(
       viewId,
       viewType,
-      async (capability, params) => {
-        const registry = getViewRegistry(viewId, viewType, installationId);
-        if (isAgentSurfaceCapability(capability)) {
-          if (!registry) {
-            throw new Error(
-              `Shell view "${viewId}" has no agent surface registered yet`,
-            );
-          }
-          return handleAgentSurfaceCapability(registry, capability, params);
-        }
-        switch (capability) {
-          case "get-text":
-            if (pageReader.current) {
-              if (
-                params?.selector !== undefined &&
-                typeof params.selector !== "string"
-              ) {
-                throw new Error("Page text selector must be a string.");
-              }
-              return pageReader.current(params?.selector as string | undefined);
-            }
-            if (params?.nativeOnly === true) {
-              throw new Error(
-                "The requesting view has no mounted native page reader.",
-              );
-            }
-            return containerRef.current?.innerText ?? "";
-          case "get-state":
-            return registry && registry.size() > 0 ? registry.snapshot() : {};
-          case "focus-element": {
-            const id = idParam(params);
-            if (id && registry) {
-              const r = registry.focus(id);
-              return { focused: r.ok, id, reason: r.reason };
-            }
-            return { focused: false, reason: "agentId required" };
-          }
-          case "click-element": {
-            const id = idParam(params);
-            if (id && registry) {
-              const r = registry.click(id);
-              return { clicked: r.ok, id, reason: r.reason };
-            }
-            return { clicked: false, reason: "agentId required" };
-          }
-          case "fill-input": {
-            const id = idParam(params);
-            const value =
-              typeof params?.value === "string" ? params.value : null;
-            if (value === null) {
-              return { filled: false, reason: "value must be a string" };
-            }
-            if (id && registry) {
-              const r = registry.fill(id, value);
-              return { filled: r.ok, id, reason: r.reason, value };
-            }
-            return { filled: false, reason: "agentId required" };
-          }
-          default:
-            throw new Error(
-              `Shell view "${viewId}" does not support capability "${capability}"`,
-            );
-        }
-      },
+      capabilities
+        ? brokerViewInteract(
+            viewId,
+            resolveSurfaceManifest({ surface }),
+            handler,
+            capabilities,
+          )
+        : handler,
       installationId,
     );
-  }, [viewId, viewType, installationId]);
+  }, [viewId, viewType, installationId, capabilities, surface, interact]);
 
   return (
     <AgentSurfaceProvider

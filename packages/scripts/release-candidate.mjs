@@ -157,7 +157,7 @@ function usage() {
   return `release-candidate commands:
   inputs --repository <owner/name> --source-ref <refs/heads/name> --source-sha <sha>
          --registry <url> --publisher <npm-user> --version <semver>
-         --channel <beta|latest>
+         --channel <beta|next|latest>
          [--github-output <path>]
   source --repository <owner/name> --source-ref <refs/heads/name>
          --source-sha <sha> --registry <url> --publisher <npm-user>
