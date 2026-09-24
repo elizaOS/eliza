@@ -207,6 +207,10 @@ async function main() {
             "android:get_usage_stats",
             "allow",
           );
+        // CameraX follows the host activity lifecycle; a sleeping emulator stops
+        // the activity even though its WebView can still answer JavaScript.
+        adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+        adb("shell", "wm", "dismiss-keyguard");
         const output = adb(
           "shell",
           "am",

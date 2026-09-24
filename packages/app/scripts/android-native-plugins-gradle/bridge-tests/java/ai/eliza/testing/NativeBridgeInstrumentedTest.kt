@@ -1,6 +1,8 @@
 package ai.eliza.testing
 
 import android.os.Bundle
+import android.view.WindowManager
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -19,6 +21,7 @@ class NativeBridgeTestActivity : BridgeActivity() {
         val descriptor = JSONObject(assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         registerPlugin(Class.forName(descriptor.getString("class")).asSubclass(Plugin::class.java))
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 
@@ -38,6 +41,7 @@ class NativeBridgeInstrumentedTest {
         val descriptor = context.assets.open("native-plugin.json").bufferedReader().use { it.readText() }
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
         ActivityScenario.launch(NativeBridgeTestActivity::class.java).use { scenario ->
+            assertEquals("Bridge host must be foregrounded", Lifecycle.State.RESUMED, scenario.state)
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             while (evaluate(scenario, "Boolean(window.Capacitor && window.Capacitor.nativePromise)") != "true") {
                 assertTrue("Capacitor initialization timed out", System.nanoTime() < deadline)
