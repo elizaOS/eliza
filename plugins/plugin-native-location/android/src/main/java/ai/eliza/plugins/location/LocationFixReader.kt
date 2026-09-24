@@ -10,6 +10,9 @@ import android.os.Build
 import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -18,7 +21,6 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.Task
-import com.google.android.gms.tasks.Tasks
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -61,6 +63,10 @@ class LocationFixReader(private val context: Context) {
         val coords: Coordinates,
         val cached: Boolean,
     )
+
+    val usesFrameworkLocation: Boolean = GoogleApiAvailability.getInstance()
+        .isGooglePlayServicesAvailable(context) != ConnectionResult.SUCCESS
+    internal val framework = AndroidLocationProvider(context)
 
     private val fusedClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context.applicationContext)
@@ -161,7 +167,15 @@ class LocationFixReader(private val context: Context) {
 
     /** The async fused fetch the plugin awaits via its success/failure listeners. */
     fun getCurrentLocation(request: CurrentLocationRequest): Task<Location> =
-        fusedClient.getCurrentLocation(request, null)
+        if (usesFrameworkLocation) framework.current(request.priority, request.durationMillis, request.maxUpdateAgeMillis)
+        else fusedClient.getCurrentLocation(request, null)
+
+    fun lastLocation(): Task<Location> = if (usesFrameworkLocation) {
+        try { Tasks.forResult(framework.lastLocation(Priority.PRIORITY_HIGH_ACCURACY)) }
+        catch (error: Exception) { Tasks.forException(error) }
+    } else fusedClient.lastLocation
+
+    fun close() { framework.close() }
 
     /**
      * Blocking current-location fetch for tests and synchronous callers: issues
@@ -189,6 +203,7 @@ class LocationFixReader(private val context: Context) {
      * since the provider stays active. Returns `null` on timeout.
      */
     fun awaitNextLocation(accuracy: String, timeoutMs: Long, intervalMs: Long = 1000): Location? {
+        if (usesFrameworkLocation) return awaitCurrentLocation(accuracy, timeoutMs)
         val request = buildLocationRequest(mapAccuracyToPriority(accuracy), intervalMs)
         val holder = AtomicReference<Location?>(null)
         val latch = CountDownLatch(1)
