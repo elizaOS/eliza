@@ -3,10 +3,7 @@
  * to shared. Existing domain imports and transaction policies remain stable.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  executeSql,
-  type RuntimeDb,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+import { executeSql, type RuntimeDb } from "@elizaos/plugin-sql";
 
 export {
   asObject,
@@ -22,7 +19,7 @@ export {
   sqlText,
   toBoolean,
   toText,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 
 export type SchedulingSqlExecutor = (
   sqlText: string,

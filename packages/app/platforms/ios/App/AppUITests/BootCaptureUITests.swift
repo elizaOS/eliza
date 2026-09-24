@@ -11,7 +11,7 @@ import XCTest
 ///
 /// Every screenshot is attached with `.keepAlways`, so
 /// `xcrun xcresulttool export attachments` yields the full boot filmstrip even
-/// when the assertion fails. Driven by packages/app/scripts/ios-device-capture.mjs;
+/// when the assertion fails. Driven by packages/app/scripts/ios-device-capture.ts;
 /// knobs arrive as env vars through xcodebuild's TEST_RUNNER_ prefix:
 ///   ELIZA_BOOT_TIMEOUT_SECONDS (default 180)
 ///   ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS (default 15)
@@ -518,7 +518,7 @@ final class BootCaptureUITests: XCTestCase {
         // that matches one of these is an error render / broken pipeline
         // (e.g. the ErrorBoundary "Something went wrong" heading), NOT a genuine
         // model reply — historically the loop went green on it. The list is
-        // generated from packages/app/scripts/lib/chat-failure-strings.mjs into
+        // generated from packages/app/scripts/lib/chat-failure-strings.ts into
         // ChatFailureStrings.generated.swift and parity-tested, so this verifier
         // and the mobile-local-chat-smoke share exactly one source of truth.
         // Returns the matched fragment so the assertion can quote it.

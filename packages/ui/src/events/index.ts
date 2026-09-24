@@ -18,7 +18,7 @@ import {
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/core/events";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "../logger.ts";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
 export {

@@ -11,7 +11,7 @@ import {
   type RuntimeDb,
   sqlQuote,
   toText,
-} from "@elizaos/plugin-sql/database-utils/raw-sql";
+} from "@elizaos/plugin-sql";
 import { z } from "zod";
 import { graphRecordRepository } from "./record-repository.ts";
 

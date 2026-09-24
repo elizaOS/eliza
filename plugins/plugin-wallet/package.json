@@ -61,7 +61,7 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-wallet -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-wallet -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:ui-types && bun run build:views",
     "build:views": "vite build --config vite.config.views.ts",
     "build:ui-types": "tsc6 --noCheck -p tsconfig.ui.json",
@@ -73,7 +73,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist"
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

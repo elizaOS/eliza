@@ -30,8 +30,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-websiteblocker -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-websiteblocker -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "test:android:manual": "cd android && gradle test",
     "prepublishOnly": "bun run build",

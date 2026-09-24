@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Read the host app's `app.config.ts` and extract the `aosp:` variant
-// block via regex. Mirrors `run-mobile-build.mjs:readAppIdentity()` —
+// block via regex. Mirrors `run-mobile-build.ts:readAppIdentity()` —
 // build-time scripts never TS-import `app.config.ts` because they have
 // to run under bare node before any build step has produced the
 // transpiled JS.

@@ -72,7 +72,7 @@ export default defineConfig({
       // #9310 §E: the guarded live suites (rpc-providers opt-in gate,
       // birdeye keyless self-skip, EVM JSON-extraction live-LLM self-skip via
       // ELIZA_LIVE_JSON_TEST/ELIZA_LIVE_TEST) are invocable only in the
-      // post-merge lane, where run-all-tests.mjs sets ELIZA_LIVE_TEST=1 and
+      // post-merge lane, where run-all-tests.ts sets ELIZA_LIVE_TEST=1 and
       // prints a named skip accounting. The unguarded transfer.live file
       // (needs a funded wallet) stays excluded in every lane.
       ...(process.env.VITEST_LANE === "post-merge"

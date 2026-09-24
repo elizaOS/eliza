@@ -21,7 +21,7 @@ import {
   buildStaticAssetManifest,
   validateStaticAssetManifest,
   writeStaticAssetManifest,
-} from "../lib/static-asset-manifest.mjs";
+} from "../lib/static-asset-manifest.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -140,7 +140,7 @@ describe("static asset manifest contract (#16290)", () => {
         })
         .join("\n");
       throw new Error(
-        `static asset manifest is ${result.reason}; run node packages/app/scripts/generate-static-asset-manifest.mjs\n${detail}`,
+        `static asset manifest is ${result.reason}; run node packages/app/scripts/generate-static-asset-manifest.ts\n${detail}`,
       );
     }
     expect(result.ok).toBe(true);

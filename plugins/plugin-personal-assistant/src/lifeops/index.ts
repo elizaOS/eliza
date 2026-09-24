@@ -1,4 +1,40 @@
 /** Barrel for the LifeOps core: owner state, policies, scheduling, connectors, and the assistant engine. */
+
+export {
+  buildEmailCurationPrompt,
+  type CurationBulkReview,
+  type CurationDecision,
+  type CurationReason,
+  calibrateEmailCurationConfidence,
+  compareCurationDecisions,
+  curateEmailCandidates,
+  type EmailCurationAction,
+  type EmailCurationBody,
+  type EmailCurationCandidate,
+  type EmailCurationCitation,
+  type EmailCurationCitationSource,
+  type EmailCurationConfidenceBand,
+  type EmailCurationConfidenceCalibrationInput,
+  type EmailCurationEvidence,
+  type EmailCurationEvidenceEffect,
+  type EmailCurationEvidenceKind,
+  type EmailCurationIdentityContext,
+  type EmailCurationIdentityHook,
+  type EmailCurationIdentityKind,
+  type EmailCurationInput,
+  type EmailCurationMode,
+  type EmailCurationOutput,
+  type EmailCurationPerson,
+  type EmailCurationPolicy,
+  type EmailCurationPolicyEffect,
+  type EmailCurationPolicyHook,
+  type EmailCurationPolicyHookContext,
+  type EmailCurationResolvedIdentity,
+  type EmailCurationSpan,
+  type EmailCurationThreadContext,
+  validateCurationDecisionCitations,
+  wrapUntrustedEmailCurationContent,
+} from "@elizaos/plugin-inbox";
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
 export * from "./briefing/editorial-judgment.js";
@@ -9,7 +45,6 @@ export * from "./creative-draft/index.js";
 export * from "./defaults.js";
 export * from "./delegation-contracts/index.js";
 export * from "./document-review.js";
-export * from "./email-curation.js";
 export * from "./enforcement-windows.js";
 export * from "./engine.js";
 export * from "./family-communications/index.js";

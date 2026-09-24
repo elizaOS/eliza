@@ -13,8 +13,8 @@
   },
   "scripts": {
     "start": "bun run src/index.ts",
-    "fixtures:derive": "node ../../scripts/eliza-1/derive-fixtures.mjs",
-    "fixtures:derive:dry-run": "node ../../scripts/eliza-1/derive-fixtures.mjs --dry-run",
+    "fixtures:derive": "node ../../scripts/eliza-1/derive-fixtures.ts",
+    "fixtures:derive:dry-run": "node ../../scripts/eliza-1/derive-fixtures.ts --dry-run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

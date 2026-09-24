@@ -5,7 +5,6 @@
  */
 
 import { asRecord } from "@elizaos/core/type-guards";
-import { logger } from "@elizaos/ui/logger";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
@@ -19,6 +18,7 @@ import {
   type UiLanguage,
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {

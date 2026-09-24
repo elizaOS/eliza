@@ -569,29 +569,25 @@ function isDuplicateKeyError(error: unknown): boolean {
 import { documentsFromDb } from "./agent-mapping";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
-import {
-  agentTable,
-  cacheTable,
-  channelParticipantsTable,
-  channelTable,
-  componentTable,
-  embeddingTable,
-  entityTable,
-  logTable,
-  memoryTable,
-  messageServerAgentsTable,
-  messageServerTable,
-  messageTable,
-  pairingAllowlistTable,
-  pairingRequestTable,
-  participantTable,
-  relationshipTable,
-  roomTable,
-  taskTable,
-  worldTable,
-} from "./schema/index";
-import { documentSearchTokensExpression } from "./schema/memory";
+import { agentTable } from "./schema/agent";
+import { cacheTable } from "./schema/cache";
+import { channelTable } from "./schema/channel";
+import { channelParticipantsTable } from "./schema/channelParticipant";
+import { componentTable } from "./schema/component";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn, embeddingTable } from "./schema/embedding";
+import { entityTable } from "./schema/entity";
+import { logTable } from "./schema/log";
+import { documentSearchTokensExpression, memoryTable } from "./schema/memory";
+import { messageTable } from "./schema/message";
+import { messageServerTable } from "./schema/messageServer";
+import { messageServerAgentsTable } from "./schema/messageServerAgent";
+import { pairingAllowlistTable } from "./schema/pairingAllowlist";
+import { pairingRequestTable } from "./schema/pairingRequest";
+import { participantTable } from "./schema/participant";
+import { relationshipTable } from "./schema/relationship";
+import { roomTable } from "./schema/room";
+import { taskTable } from "./schema/tasks";
+import { worldTable } from "./schema/world";
 
 type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;

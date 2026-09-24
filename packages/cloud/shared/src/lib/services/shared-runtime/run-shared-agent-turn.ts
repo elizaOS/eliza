@@ -34,8 +34,8 @@ import {
   type ScheduledTaskRunner,
   type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling";
-import type { TodoStore } from "@elizaos/plugin-todos/edge";
-import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
+import type { TodoStore } from "@elizaos/plugin-todos";
+import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import type {
   SharedRuntimePublicGrounding,
   SharedRuntimeReminderActionProvenance,

@@ -170,7 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           args=(
-            node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs
+            node packages/cloud/scripts/admin/arm-headscale-control-plane.ts
             --host "$DEPLOY_HOST"
             --ssh-key "$DEPLOY_SSH_KEY_PATH"
             --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}"

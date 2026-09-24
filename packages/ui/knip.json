@@ -49,7 +49,7 @@
     "src/voice/**/fixtures/**/*.mjs",
     "test/**/*.{ts,tsx,mjs}",
     "stories/**/*.{ts,tsx,mjs}",
-    "scripts/*.mjs"
+    "scripts/*.ts"
   ],
   "paths": {
     "@ui-src/*": ["src/*"]
@@ -62,7 +62,7 @@
     "stories/**/*.{css,mdx}",
     ".storybook/**/*.{css,mdx}",
     "*.config.{ts,mts,mjs}",
-    "scripts/**/*.{ts,mts,mjs}"
+    "scripts/**/*.ts"
   ],
   "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
   "vitest": false

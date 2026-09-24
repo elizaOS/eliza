@@ -16,7 +16,7 @@
 
 # Evidence Gate
 
-Evidence must match the reviewed commit. `packages/scripts/pr-evidence.mjs rows`
+Evidence must match the reviewed commit. `packages/scripts/pr-evidence.ts rows`
 sets the marker from the live PR head; rerun after each push.
 <!-- evidence-head:replace-with-current-40-character-head-sha -->
 

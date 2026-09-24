@@ -69,7 +69,9 @@ const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
 	"packages/agent/src/actions/restart.ts",
 	"packages/core/src/restart.ts",
 	"packages/core/src/self-edit.ts",
+	"scripts/run-node.ts",
 	"scripts/run-node.mjs",
+	"packages/app/scripts/run-node.ts",
 	"packages/app/scripts/run-node.mjs",
 ];
 /**

@@ -40,7 +40,7 @@ import {
   parseContentContextArgs,
   publishContentContextEvidence,
   resolveContentContextPaths,
-} from "../run-content-context.mjs";
+} from "../run-content-context.ts";
 
 const repoRoot = path.resolve(
   fileURLToPath(new URL(".", import.meta.url)),

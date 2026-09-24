@@ -11,7 +11,7 @@ import {
   serializeTodoMutationRecord,
   type Todo,
   type TodoStore,
-} from "@elizaos/plugin-todos/edge";
+} from "@elizaos/plugin-todos";
 import { dbWrite } from "../../../db/client";
 import {
   type SharedTodoSourceScope,

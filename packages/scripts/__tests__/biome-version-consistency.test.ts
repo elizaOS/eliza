@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { collectBiomeVersionProblems } from "../check-biome-version-consistency.mjs";
+import { collectBiomeVersionProblems } from "../check-biome-version-consistency.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

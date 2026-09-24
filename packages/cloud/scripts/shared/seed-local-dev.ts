@@ -15,7 +15,7 @@ async function seedLocalDev() {
   const [{ db }, schema, { agentTable, entityTable }] = await Promise.all([
     import("../../shared/src/db/client"),
     import("../../shared/src/db/schemas"),
-    import("../../shared/src/db/schemas/eliza"),
+    import("@elizaos/plugin-sql"),
   ]);
 
   console.log("🌱 Seeding Local Development Data");

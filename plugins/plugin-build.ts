@@ -105,7 +105,7 @@ const RM_RECURSIVE = resolve(
   "..",
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 
 const REWRITE_DIST_IMPORTS = resolve(
@@ -113,7 +113,7 @@ const REWRITE_DIST_IMPORTS = resolve(
   "..",
   "packages",
   "scripts",
-  "rewrite-dist-relative-imports-node-esm.mjs",
+  "rewrite-dist-relative-imports-node-esm.ts",
 );
 
 /**

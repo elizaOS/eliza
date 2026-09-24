@@ -16,7 +16,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 temporary_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 stage="$(mktemp -d "${temporary_root%/}/elizaos-electrobun-package.XXXXXX")"
 cleanup() {
-  node "$repo_root/scripts/rm-path-recursive.mjs" "$stage"
+  node "$repo_root/scripts/rm-path-recursive.ts" "$stage"
 }
 trap cleanup EXIT
 

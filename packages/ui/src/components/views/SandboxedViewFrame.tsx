@@ -22,8 +22,8 @@
 import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
 import { dispatchNavigateViewEvent } from "@elizaos/core/events";
 import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
-import { logger } from "@elizaos/ui/logger";
 import { useEffect, useMemo, useRef } from "react";
+import { logger } from "../../logger.ts";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { Card } from "../ui/card";
 import { resolveSandboxTokens } from "./sandbox-policy";

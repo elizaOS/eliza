@@ -41,7 +41,7 @@
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.json",
     "test": "vitest run",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

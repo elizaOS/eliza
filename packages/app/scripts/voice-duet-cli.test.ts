@@ -5,9 +5,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseArgs, parsePositiveInteger } from "./voice-duet.mjs";
+import { parseArgs, parsePositiveInteger } from "./voice-duet.ts";
 
-const SCRIPT_PATH = fileURLToPath(new URL("./voice-duet.mjs", import.meta.url));
+const SCRIPT_PATH = fileURLToPath(new URL("./voice-duet.ts", import.meta.url));
 
 describe("voice-duet parseArgs numeric validation", () => {
   it("keeps endless turns and default ringMs when omitted", () => {

@@ -8,8 +8,6 @@
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"

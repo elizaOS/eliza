@@ -16,7 +16,7 @@ Android's device suite verifies the real WebView/Capacitor/Keystore round trip,
 activity recreation, ciphertext persistence, deletion, and invalid/corrupt input:
 
 ```bash
-node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-secure-store
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-secure-store
 ```
 
 Android bridge instances serialize Keystore key creation and AtomicFile operations

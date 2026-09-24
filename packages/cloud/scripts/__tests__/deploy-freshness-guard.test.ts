@@ -6,13 +6,13 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   decideDeployFreshness,
   fetchServedCommit,
   parseServedCommit,
-} from "../deploy-freshness-guard.mjs";
-import { isAncestor } from "../deploy-freshness-guard-cli.mjs";
+} from "../deploy-freshness-guard.ts";
+import { isAncestor } from "../deploy-freshness-guard-cli.ts";
 
 const RUN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SERVED = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";

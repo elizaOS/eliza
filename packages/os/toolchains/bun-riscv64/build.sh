@@ -43,7 +43,7 @@ export CARGO_HOME="/home/builder/.cargo"
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
 
-RM_PATH_RECURSIVE="${RM_PATH_RECURSIVE:-/opt/rm-path-recursive.mjs}"
+RM_PATH_RECURSIVE="${RM_PATH_RECURSIVE:-/opt/rm-path-recursive.ts}"
 remove_path_recursive() {
     [ -r "$RM_PATH_RECURSIVE" ] || die "recursive cleanup helper not mounted at $RM_PATH_RECURSIVE"
     bun "$RM_PATH_RECURSIVE" "$@"

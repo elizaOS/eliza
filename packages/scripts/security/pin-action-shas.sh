@@ -35,7 +35,7 @@ for arg in "$@"; do
 done
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-RM_PATH_RECURSIVE=(node "${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs")
+RM_PATH_RECURSIVE=(node "${REPO_ROOT}/packages/scripts/rm-path-recursive.ts")
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
   shopt -s nullglob
   TARGETS=("${REPO_ROOT}/.github/workflows/"*.yml "${REPO_ROOT}/.github/workflows/"*.yaml)

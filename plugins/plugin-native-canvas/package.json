@@ -37,8 +37,8 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-canvas -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-canvas -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",

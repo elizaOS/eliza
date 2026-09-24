@@ -1,5 +1,5 @@
 /**
- * Tests the cross-process kernel-port handshake in packages/scripts/e2e-ports.mjs
+ * Tests the cross-process kernel-port handshake in packages/scripts/e2e-ports.ts
  * against real files and real child processes — no mocks. Covers the advertise/
  * wait round trip, polling before the file exists, and the three failure paths
  * (child exit, invalid content, timeout) that must never resolve with a
@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { advertisePort, waitForAdvertisedPort } from "../e2e-ports.mjs";
+import { advertisePort, waitForAdvertisedPort } from "../e2e-ports.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "e2e-ports-test-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -114,7 +114,7 @@ describe("advertisePort / waitForAdvertisedPort", () => {
     const portFile = path.join(dir, "real-child.port");
     const helper = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../e2e-ports.mjs",
+      "../e2e-ports.ts",
     );
     // A real consumer: binds port 0 itself, advertises, stays up briefly.
     const child = spawn(process.execPath, [

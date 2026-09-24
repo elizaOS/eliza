@@ -15,7 +15,7 @@
  * host realm without any `globalThis` bridge or import-map indirection.
  *
  * Both the agent bundle route (`views-routes.ts`) and the Playwright UI-smoke
- * stub (`playwright-ui-smoke-api-stub.mjs`) apply the identical transform, so it
+ * stub (`playwright-ui-smoke-api-stub.ts`) apply the identical transform, so it
  * lives here once. Plain ESM (no deps, no build step) so the node-run smoke stub
  * can import it directly by path while the agent bundles it normally. The typed
  * factory/importer contract lives in `@elizaos/core` (`src/views/

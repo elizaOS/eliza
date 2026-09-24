@@ -22,7 +22,7 @@ const SCRIPT = path.join(
 	APP_CORE_ROOT,
 	"scripts",
 	"voice-preset",
-	"build-default-voice-preset.mjs",
+	"build-default-voice-preset.ts",
 );
 const MAX_PLACEHOLDER_DIM = 1_073_741_817;
 
@@ -66,7 +66,7 @@ function runGeneratorExpectFailure(args: string[]): CliFailure {
 	}
 }
 
-describe("build-default-voice-preset.mjs", () => {
+describe("build-default-voice-preset.ts", () => {
 	let dir: string;
 
 	beforeEach(() => {

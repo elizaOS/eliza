@@ -68,7 +68,7 @@ interface ScaleChildReport {
 async function runChild(family: ScaleChildReport["family"]): Promise<ScaleChildReport> {
   const script = fileURLToPath(
     new URL(
-      "../../../../../packages/scripts/plugins/plugin-sql/progressive-content-scale-child.mjs",
+      "../../../../../packages/scripts/plugins/plugin-sql/progressive-content-scale-child.ts",
       import.meta.url
     )
   );

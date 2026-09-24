@@ -18,7 +18,7 @@ import XCTest
 /// Screenshot filmstrip: every leg attaches `walkthrough-NN-<view>-*.png` with
 /// `.keepAlways`, so `xcrun xcresulttool export attachments` yields the whole
 /// tour even on failure. Runs in the AppUITests lane:
-///   node scripts/ios-device-capture.mjs --platform sim \
+///   node scripts/ios-device-capture.ts --platform sim \
 ///     --only-testing AppUITests/ViewWalkthroughUITests   (packages/app)
 final class ViewWalkthroughUITests: XCTestCase {
 

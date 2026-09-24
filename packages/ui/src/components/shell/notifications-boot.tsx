@@ -8,11 +8,11 @@
  * Home.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { useEffect } from "react";
 import { client } from "../../api/client";
 import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import { logger } from "../../logger.ts";
 import { useAppSelector } from "../../state";
 import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
 import { initNotifications } from "../../state/notifications/notification-store";

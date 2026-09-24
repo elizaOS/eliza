@@ -4,11 +4,11 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createProgressiveContentProductionLifecycleContract } from "../lib/progressive-content-production-targets.mjs";
+import { createProgressiveContentProductionLifecycleContract } from "../lib/progressive-content-production-targets.ts";
 import {
   parseSoakArgs,
   produceContentContextSoak,
-} from "../run-content-context-soak.mjs";
+} from "../run-content-context-soak.ts";
 
 describe("content-context soak producer", () => {
   it("requires a corpus root, output, and exact commit", () => {

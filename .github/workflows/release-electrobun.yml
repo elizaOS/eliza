@@ -7,7 +7,7 @@
 #     in eliza (not `packages/app/electrobun/` — that directory only carries a
 #     .gitignore stub). All build artifacts, scripts, and signing helpers live
 #     under that platforms/electrobun/ path.
-#   - Helper scripts that did not exist in upstream eliza (ensure-electrobun-core.mjs,
+#   - Helper scripts that did not exist in upstream eliza (ensure-electrobun-core.ts,
 #     ensure-legacy-electrobun-compat.mjs, patch-release-check-pack-fallback.mjs)
 #     have been removed; the corresponding caching/preflight steps are dropped
 #     and surfaced as TODOs so the user can port them if needed.
@@ -148,7 +148,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          node packages/scripts/electrobun-release-identity.mjs resolve \
+          node packages/scripts/electrobun-release-identity.ts resolve \
             --repository "$REPOSITORY" \
             --input-tag "$INPUT_TAG" \
             --ref-type "$REF_TYPE" \
@@ -264,7 +264,7 @@ jobs:
 
       - name: Align version with release tag
         run: |
-          node packages/app/scripts/align-electrobun-version.mjs
+          node packages/app/scripts/align-electrobun-version.ts
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -281,7 +281,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
 
       - name: Ensure avatar assets
-        run: node packages/app/scripts/ensure-avatars.mjs
+        run: node packages/app/scripts/ensure-avatars.ts
 
       - name: Build core dist (server bundle)
         run: |
@@ -322,10 +322,10 @@ jobs:
           node --import tsx packages/scripts/write-build-info.ts
 
       - name: Regression matrix contract
-        run: node packages/app/scripts/validate-regression-matrix.mjs --workflow release
+        run: node packages/app/scripts/validate-regression-matrix.ts --workflow release
 
       # The heavy suites gate on a real Chromium binary; without one they
-      # self-skip and run-heavy-e2e.mjs fails the lane closed. Install the
+      # self-skip and run-heavy-e2e.ts fails the lane closed. Install the
       # browser revision pinned by the workspace's Playwright lock entry.
       - name: Provision Chromium for heavy E2E regression suite
         id: provision-chrome
@@ -338,7 +338,7 @@ jobs:
           fi
           echo "chrome-path=$chrome_path" >> "$GITHUB_OUTPUT"
 
-      # run-heavy-e2e.mjs fails closed: missing env here turns the step red
+      # run-heavy-e2e.ts fails closed: missing env here turns the step red
       # instead of letting both suites self-skip to a vacuous green.
       - name: Run heavy E2E regression suite
         run: bun run test:e2e:heavy
@@ -384,7 +384,7 @@ jobs:
 
       - name: Generate release validation manifests
         run: |
-          node packages/app/scripts/generate-static-asset-manifest.mjs
+          node packages/app/scripts/generate-static-asset-manifest.ts
 
       - name: Release readiness checks
         env:
@@ -545,7 +545,7 @@ jobs:
 
       - name: Align version with release tag
         run: |
-          node packages/app/scripts/align-electrobun-version.mjs
+          node packages/app/scripts/align-electrobun-version.ts
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -564,9 +564,9 @@ jobs:
       - name: Stage desktop bundle inputs
         run: |
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.mjs stage --variant=base
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.ts stage --variant=base
           else
-            node packages/app/scripts/desktop-build.mjs stage --variant=base
+            node packages/app/scripts/desktop-build.ts stage --variant=base
           fi
 
       - name: Validate Electrobun runtime copy contract
@@ -744,41 +744,41 @@ jobs:
           key: electrobun-core-${{ matrix.platform.artifact-name }}-${{ hashFiles('packages/app/platforms/electrobun/package.json') }}
           restore-keys: electrobun-core-${{ matrix.platform.artifact-name }}-
 
-      # TODO: verify this script exists in eliza. `ensure-electrobun-core.mjs`
+      # TODO: verify this script exists in eliza. `ensure-electrobun-core.ts`
       # was eliza-only and is not present in upstream eliza/packages/app/scripts/.
       # Without it the cache step above is decorative — Electrobun will fall
       # back to its own download flow on first build. Port the script if you
       # want pre-warmed core binaries on the first packaging run.
       - name: Prepare Electrobun core binaries
         run: |
-          if [ -f packages/app/scripts/ensure-electrobun-core.mjs ]; then
-            node packages/app/scripts/ensure-electrobun-core.mjs \
+          if [ -f packages/app/scripts/ensure-electrobun-core.ts ]; then
+            node packages/app/scripts/ensure-electrobun-core.ts \
               --package-dir "${{ steps.resolve-electrobun.outputs.package-dir }}" \
               --target "${{ steps.resolve-electrobun.outputs.core-target }}"
           else
-            echo "::warning::packages/app/scripts/ensure-electrobun-core.mjs not present — Electrobun will download core binaries on demand."
+            echo "::warning::packages/app/scripts/ensure-electrobun-core.ts not present — Electrobun will download core binaries on demand."
           fi
 
       - name: Probe Electrobun bun entry build
         working-directory: packages/app/platforms/electrobun
         run: |
           out_dir="$RUNNER_TEMP/electrobun-entry-probe"
-          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.mjs" "$out_dir"
+          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.ts" "$out_dir"
           bun build src/index.ts --target=bun --packages=external --outdir "$out_dir"
 
       - name: Build patched Electrobun CLI
         shell: bash
         run: |
-          node packages/app/scripts/build-patched-electrobun-cli.mjs "${{ steps.resolve-electrobun.outputs.package-dir }}" "${{ matrix.platform.artifact-name }}"
+          node packages/app/scripts/build-patched-electrobun-cli.ts "${{ steps.resolve-electrobun.outputs.package-dir }}" "${{ matrix.platform.artifact-name }}"
 
       - name: Build Electrobun app
         id: build-electrobun-app
         run: |
           set +e
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.mjs package --env=${{ needs.prepare.outputs.env }}
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
           else
-            node packages/app/scripts/desktop-build.mjs package --env=${{ needs.prepare.outputs.env }}
+            node packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
           fi
           status=$?
           set -e
@@ -908,11 +908,11 @@ jobs:
       - name: Package Linux desktop installers
         if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
         run: |
-          node packages/app/scripts/package-electrobun-linux.mjs \
+          node packages/app/scripts/package-electrobun-linux.ts \
             --version=${{ needs.prepare.outputs.version }} \
             --channel=${{ needs.prepare.outputs.env }} \
             --arch=x64
-          node packages/app/scripts/package-electrobun-flatpak.mjs \
+          node packages/app/scripts/package-electrobun-flatpak.ts \
             --version=${{ needs.prepare.outputs.version }} \
             --arch=x86_64
 
@@ -1834,7 +1834,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          node .release-tooling/packages/scripts/electrobun-release-identity.mjs verify \
+          node .release-tooling/packages/scripts/electrobun-release-identity.ts verify \
             --repository "$REPOSITORY" \
             --tag "$TAG" \
             --expected-commit "$EXPECTED_SHA"
@@ -1948,7 +1948,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          node .release-tooling/packages/scripts/electrobun-release-identity.mjs verify \
+          node .release-tooling/packages/scripts/electrobun-release-identity.ts verify \
             --repository "$REPOSITORY" \
             --tag "$TAG" \
             --expected-commit "$EXPECTED_SHA"

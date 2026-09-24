@@ -4,7 +4,7 @@
  * Single source of truth for app identity. Used by:
  * - capacitor.config.ts (mobile builds)
  * - main.tsx (React boot)
- * - run-mobile-build.mjs (native overlay — reads appId/appName via regex)
+ * - run-mobile-build.ts (native overlay — reads appId/appName via regex)
  * - Electrobun desktop shell (via ELIZA_APP_NAME / ELIZA_APP_ID env vars)
  *
  * To create a new app, copy this file and change the values below.

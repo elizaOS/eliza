@@ -21,10 +21,10 @@ import {
 import { agentsRepository } from "@elizaos/cloud-shared/db/repositories/agents/agents";
 import { CloudSyntheticEnvironmentLeaseStore } from "@elizaos/cloud-shared/db/repositories/synthetic-environment-leases";
 import { CloudSyntheticCommandJournalRepository } from "@elizaos/cloud-shared/db/repositories/synthetic-world-commands";
-import { agentTable } from "@elizaos/cloud-shared/db/schemas/eliza";
 import { syntheticEnvironmentLeases } from "@elizaos/cloud-shared/db/schemas/synthetic-environment-leases";
 import { syntheticWorldCommands } from "@elizaos/cloud-shared/db/schemas/synthetic-world-commands";
-import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { agentTable } from "@elizaos/plugin-sql";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import {

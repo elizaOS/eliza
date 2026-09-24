@@ -4,8 +4,8 @@
  */
 
 import type { NavigateViewDetail } from "@elizaos/core/events";
-import { logger } from "@elizaos/ui/logger";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { logger } from "./logger.ts";
 import { type Tab, tabFromPath } from "./navigation";
 import { shellHistory } from "./surface-realm-channel";
 

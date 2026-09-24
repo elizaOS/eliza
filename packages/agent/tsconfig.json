@@ -9,7 +9,6 @@
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
-    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -35,16 +34,6 @@
         "../../plugins/plugin-scheduling/src/index.ts"
       ],
       "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
-      "@elizaos/plugin-todos/plugin": [
-        "../../plugins/plugin-todos/src/plugin.ts"
-      ],
-      "@elizaos/plugin-todos/edge": ["../../plugins/plugin-todos/src/edge.ts"],
-      "@elizaos/plugin-todos/service": [
-        "../../plugins/plugin-todos/src/service.ts"
-      ],
-      "@elizaos/plugin-todos/db/schema": [
-        "../../plugins/plugin-todos/src/db/schema.ts"
-      ],
       "@elizaos/plugin-native-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],
@@ -122,9 +111,7 @@
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
       "@elizaos/plugin-vision": ["../../plugins/plugin-vision/src/index.ts"],
-      "@elizaos/plugin-notes/plugin": [
-        "../../plugins/plugin-notes/src/plugin.ts"
-      ],
+      "@elizaos/plugin-notes": ["../../plugins/plugin-notes/src/index.ts"],
       "@elizaos/plugin-meetings": [
         "../../plugins/plugin-meetings/src/index.ts"
       ],

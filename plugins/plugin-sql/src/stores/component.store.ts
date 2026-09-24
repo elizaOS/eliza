@@ -5,7 +5,7 @@
  */
 import type { Component, UUID } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
-import { componentTable } from "../schema/index";
+import { componentTable } from "../schema/component";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

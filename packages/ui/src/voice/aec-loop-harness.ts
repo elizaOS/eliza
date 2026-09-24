@@ -29,8 +29,8 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { client } from "../api";
+import { logger } from "../logger.ts";
 
 declare global {
   interface Window {

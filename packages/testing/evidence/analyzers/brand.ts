@@ -3,7 +3,7 @@
  * verdict. The elizaOS brand rule (packages/app/AGENTS.md) is orange-accent-only
  * and no-blue-anywhere: blue over a small ceiling fails, and orange over a large
  * ceiling is flagged as over-accented (accent, not fill). Fractions are ported
- * from `packages/app/scripts/lib/visual-qa.mjs` via the shared colour math so
+ * from `packages/app/scripts/lib/visual-qa.ts` via the shared colour math so
  * this analyzer and `color.corners` classify pixels identically.
  */
 

@@ -1,5 +1,3 @@
-import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
-
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -38,14 +36,15 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
+import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
-import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
+import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
   webSearchEdgeAction,
   webSearchEdgePlugin,
-} from "@elizaos/plugin-web-search/edge";
+} from "@elizaos/plugin-web-search";
 import {
   generateText,
   type JSONSchema7,

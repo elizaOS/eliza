@@ -4,7 +4,7 @@
  * orange is accent-only, no blue anywhere (packages/app/AGENTS.md) — is encoded
  * once here so the fraction analyzer and the corner analyzer agree on exactly
  * what counts as "blue" vs "orange" vs "neutral". Thresholds are ported
- * verbatim from `packages/app/scripts/lib/visual-qa.mjs` so ported analyzers
+ * verbatim from `packages/app/scripts/lib/visual-qa.ts` so ported analyzers
  * reproduce the existing gate's numbers.
  */
 

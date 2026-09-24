@@ -62,9 +62,9 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/core/contracts/cloud-pair";
-import {
-  type AppBlockerSettingsCardProps,
-  type WebsiteBlockerSettingsCardProps,
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
 } from "@elizaos/core/contracts/personal-assistant";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
@@ -324,10 +324,10 @@ function importPersonalAssistant() {
 }
 
 function importAppPhone() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-native-phone",
-    () => import("@elizaos/plugin-native-phone/ui"),
-  );
+  return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
+    const { PhoneCompanionApp } = await import("@elizaos/plugin-native-phone");
+    return { PhoneCompanionApp };
+  });
 }
 
 function importAppTaskCoordinatorRegister() {
@@ -919,7 +919,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
     },
-    { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {

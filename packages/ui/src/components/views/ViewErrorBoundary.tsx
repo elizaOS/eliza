@@ -22,9 +22,9 @@
  * ViewErrorState) pass `renderFallback`.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useRef, useState } from "react";
 import { dispatchNavigateViewEvent } from "../../events";
+import { logger } from "../../logger.ts";
 import { snapshotResourceCounters } from "../../perf/resource-counters";
 import { viewLifecycleController } from "../../state/view-lifecycle";
 import {

@@ -9,13 +9,11 @@
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import {
-  channelParticipantsTable,
-  channelTable,
-  messageServerAgentsTable,
-  messageServerTable,
-  messageTable,
-} from "../schema/index";
+import { channelTable } from "../schema/channel";
+import { channelParticipantsTable } from "../schema/channelParticipant";
+import { messageTable } from "../schema/message";
+import { messageServerTable } from "../schema/messageServer";
+import { messageServerAgentsTable } from "../schema/messageServerAgent";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

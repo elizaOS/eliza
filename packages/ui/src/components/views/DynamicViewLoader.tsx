@@ -418,10 +418,9 @@ function resolveSurfaceRealmScopeForHostExternal(
 async function importUiRootCompat(
   boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
-  // The root package is deliberately limited to design-system primitives. The
-  // brokered navigation and bridge adapters are overlaid for older view bundles
-  // that still request those names from the root specifier; raw shell-global
-  // channels are not part of the root namespace and therefore cannot leak here.
+  // Root UI exports share the host API client and primitives. Navigation and
+  // bridge adapters remain bound to the requesting view; raw shell-global
+  // channels are never exposed to view bundles.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
     importUiAppNavigateViewCompat(boundScope),

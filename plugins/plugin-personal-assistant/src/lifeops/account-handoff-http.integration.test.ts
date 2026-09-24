@@ -3,8 +3,10 @@
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
 import { createApprovalQueue } from "@elizaos/plugin-assistant";
-import { CalendarService } from "@elizaos/plugin-calendar";
-import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
+import {
+  CalendarService,
+  LinkedCalendarRepository,
+} from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createHandoffHttpFixture,

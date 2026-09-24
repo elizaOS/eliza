@@ -1,9 +1,6 @@
 /** Hosted search reuses the bounded Parallel transport shared by Node and Workers. */
 import { ElizaError } from "@elizaos/core";
-import {
-  type KeylessWebSearchProvider,
-  searchKeylessWeb,
-} from "@elizaos/plugin-web-search/keyless-web-search";
+import { type KeylessWebSearchProvider, searchKeylessWeb } from "@elizaos/plugin-web-search";
 
 export interface KeylessSearchResult {
   answer: string;

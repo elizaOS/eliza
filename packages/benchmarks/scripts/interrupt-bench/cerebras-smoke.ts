@@ -11,7 +11,10 @@
  *   bun run ../../scripts/interrupt-bench/cerebras-smoke.ts --model=gemma-4-31b
  */
 
-import { callCerebras, isCerebrasConfigured } from "../../suites/interrupt-bench/src/llm-cerebras.ts";
+import {
+  callCerebras,
+  isCerebrasConfigured,
+} from "../../suites/interrupt-bench/src/llm-cerebras.ts";
 import { buildBenchRegistry } from "../../suites/interrupt-bench/src/registry.ts";
 
 async function main(): Promise<void> {

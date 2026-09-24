@@ -8,8 +8,6 @@
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
@@ -32,14 +30,8 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/plugin-sql/database-utils/carve-out-migration": [
-        "../plugin-sql/src/database-utils/carve-out-migration.ts"
-      ],
       "@elizaos/plugin-native-inference/model-catalog/recommendation": [
         "../plugin-native-inference/src/model-catalog/recommendation.ts"
-      ],
-      "@elizaos/plugin-sql/database-utils/sql-compat": [
-        "../plugin-sql/src/database-utils/sql-compat.ts"
       ],
       "@elizaos/plugin-native-inference/model-catalog/catalog": [
         "../plugin-native-inference/src/model-catalog/catalog.ts"
@@ -59,9 +51,6 @@
       "@elizaos/plugin-native-inference/model-catalog/network-policy": [
         "../plugin-native-inference/src/model-catalog/network-policy.ts"
       ],
-      "@elizaos/plugin-sql/database-utils/raw-sql": [
-        "../plugin-sql/src/database-utils/raw-sql.ts"
-      ],
       "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
         "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
       ],
@@ -76,7 +65,8 @@
       ],
       "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
         "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
-      ]
+      ],
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

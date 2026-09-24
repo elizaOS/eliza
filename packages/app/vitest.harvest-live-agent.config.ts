@@ -13,7 +13,7 @@ import baseConfig from "./vitest.config";
  * one directory over). This config inherits the default config's `@elizaos/*`
  * source aliases + setup (so the runtime resolves to source with dist absent)
  * and overrides ONLY `include`/`exclude` so the harvest driver
- * (packages/scripts/training-harvest/bench-e2e-harvest-runner.mjs --family e2e) can run a
+ * (packages/scripts/training-harvest/bench-e2e-harvest-runner.ts --family e2e) can run a
  * single live-agent lane on gpt-5.5-via-Codex and capture its trajectory. Each
  * lane self-skips (`describeIf`/`CAN_RUN`) unless `ELIZA_LIVE_TEST=1` + a live
  * provider is present, so this config is inert without those.

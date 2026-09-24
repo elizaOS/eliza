@@ -13,7 +13,7 @@ function looksLikeConsumerRoot(dir: string) {
     (existsSync(path.join(dir, "packages", "app", "package.json")) ||
       existsSync(path.join(dir, "apps", "app", "package.json"))) &&
     (existsSync(path.join(dir, "eliza", "packages", "app", "package.json")) ||
-      existsSync(path.join(dir, "scripts", "run-eliza-app-script.mjs")))
+      existsSync(path.join(dir, "scripts", "run-eliza-app-script.ts")))
   );
 }
 
@@ -26,7 +26,7 @@ function looksLikeFlatMonorepoRoot(dir: string) {
   // When the elizaOS workspace is bundled as the `eliza/` subrepo of a
   // consumer like Eliza, the inner `eliza/` directory itself satisfies the
   // flat-monorepo shape. Resolving repoRoot to the inner directory would
-  // then cause `scripts/<name>` step paths in run-repo-setup.mjs to look
+  // then cause `scripts/<name>` step paths in run-repo-setup.ts to look
   // under `eliza/scripts/…` instead of the consumer's own `scripts/…`.
   // Prefer the outer subrepo container in that case.
   if (path.basename(dir) === "eliza") {

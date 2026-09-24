@@ -22,7 +22,7 @@
 #
 # Real builds need a Linux x86_64 host with KVM and a synced AOSP checkout
 # at AOSP_ROOT (default $HOME/aosp); see README.md. riscv64 Cuttlefish runs
-# under QEMU TCG (no KVM) and boots slower — sim.mjs sizes its timeout for
+# under QEMU TCG (no KVM) and boots slower — sim.ts sizes its timeout for
 # that automatically.
 
 ARCH    ?= x86_64
@@ -89,61 +89,61 @@ $(REPO_LAUNCHER):
 	bash $(DISTRO)/provision-repo.sh "$@"
 
 bootstrap: provision-repo
-	node $(DISTRO)/bootstrap-aosp.mjs --repo-bin "$(REPO_LAUNCHER)" --aosp-root $(AOSP_ROOT) --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
+	node $(DISTRO)/bootstrap-aosp.ts --repo-bin "$(REPO_LAUNCHER)" --aosp-root $(AOSP_ROOT) --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
 bootstrap-grizzly: provision-repo
-	node $(DISTRO)/bootstrap-aosp.mjs --lock "$(HERE)pixel11pro.lock.json" --repo-bin "$(REPO_LAUNCHER)" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
+	node $(DISTRO)/bootstrap-aosp.ts --lock "$(HERE)pixel11pro.lock.json" --repo-bin "$(REPO_LAUNCHER)" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
 prepare-grizzly:
-	node $(DISTRO)/prepare-grizzly.mjs --lock "$(HERE)pixel11pro.lock.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)"
+	node $(DISTRO)/prepare-grizzly.ts --lock "$(HERE)pixel11pro.lock.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)"
 
 preflight-grizzly:
-	node $(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.mjs --aosp-root "$(AOSP_GRIZZLY_ROOT)" --preflight-only
+	node $(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.ts --aosp-root "$(AOSP_GRIZZLY_ROOT)" --preflight-only
 
 provision-e1:
-	node $(DISTRO)/provision-cuttlefish-e1.mjs --lock "$(HERE)cuttlefish-e1.lock.json" --aosp-root "$(AOSP_ROOT)"
+	node $(DISTRO)/provision-cuttlefish-e1.ts --lock "$(HERE)cuttlefish-e1.lock.json" --aosp-root "$(AOSP_ROOT)"
 
 build: check-arch native-inference
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" $(if $(filter riscv64,$(ARCH)),,ELIZA_BUN_RISCV64_OPTIONAL=1) node $(DISTRO)/build-aosp.mjs --brand-config $(BRAND_CONFIG) --aosp-root $(AOSP_ROOT) --rebuild-privileged-apk --launch --boot-validate $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" $(if $(filter riscv64,$(ARCH)),,ELIZA_BUN_RISCV64_OPTIONAL=1) node $(DISTRO)/build-aosp.ts --brand-config $(BRAND_CONFIG) --aosp-root $(AOSP_ROOT) --rebuild-privileged-apk --launch --boot-validate $(ARGS)
 
 build-e1: check-arch native-inference provision-e1
 	@test "$(ARCH)" = "riscv64" || (echo "ERROR: E1 simulator is currently supported only on ARCH=riscv64" >&2; exit 64)
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.mjs --brand-config $(DISTRO)/brand.eliza-riscv64-e1.json --aosp-root $(AOSP_ROOT) --rebuild-privileged-apk --launch --boot-validate $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.ts --brand-config $(DISTRO)/brand.eliza-riscv64-e1.json --aosp-root $(AOSP_ROOT) --rebuild-privileged-apk --launch --boot-validate $(ARGS)
 
 native-inference: check-arch
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.ts --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu
 
 native-inference-grizzly:
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.mjs --assets-dir "$(ANDROID_AGENT_ASSETS)" --target android-arm64-cpu-fused
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/aosp/compile-libllama.ts --assets-dir "$(ANDROID_AGENT_ASSETS)" --target android-arm64-cpu-fused
+	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app-core/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu
 
 build-grizzly: prepare-grizzly native-inference-grizzly bootanimation
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.mjs --brand-config $(DISTRO)/brand.eliza-grizzly.json --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.ts --brand-config $(DISTRO)/brand.eliza-grizzly.json --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk $(ARGS)
 
 bundle-grizzly: preflight-grizzly prepare-grizzly native-inference-grizzly bootanimation
 	@test -n "$(BUNDLE_DIR)" || (echo "ERROR: BUNDLE_DIR is required" >&2; exit 64)
 	@test -n "$$SOURCE_DATE_EPOCH" || (echo "ERROR: SOURCE_DATE_EPOCH is required" >&2; exit 64)
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.mjs --brand-config $(DISTRO)/brand.eliza-grizzly.json --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk --skip-build $(ARGS)
-	node $(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.mjs --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node $(DISTRO)/build-aosp.ts --brand-config $(DISTRO)/brand.eliza-grizzly.json --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk --skip-build $(ARGS)
+	node $(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.ts --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
 evidence-grizzly:
-	node $(DISTRO)/grizzly-evidence.mjs $(ARGS)
+	node $(DISTRO)/grizzly-evidence.ts $(ARGS)
 
 attest-grizzly:
-	node $(DISTRO)/verify-grizzly-artifacts.mjs attest --aosp-root "$(AOSP_GRIZZLY_ROOT)" $(ARGS)
+	node $(DISTRO)/verify-grizzly-artifacts.ts attest --aosp-root "$(AOSP_GRIZZLY_ROOT)" $(ARGS)
 
 verify-grizzly:
-	node $(DISTRO)/verify-grizzly-artifacts.mjs check --manifest "$(MANIFEST)" --artifact-dir "$(DIR)"
+	node $(DISTRO)/verify-grizzly-artifacts.ts check --manifest "$(MANIFEST)" --artifact-dir "$(DIR)"
 
 sim: check-arch
-	node $(DISTRO)/sim.mjs --brand-config $(BRAND_CONFIG) --device-dir $(DEVICE_DIR) --aosp-root $(AOSP_ROOT) $(ARGS)
+	node $(DISTRO)/sim.ts --brand-config $(BRAND_CONFIG) --device-dir $(DEVICE_DIR) --aosp-root $(AOSP_ROOT) $(ARGS)
 
 splash:
-	node $(HERE)../scripts/android/generate-eliza-bootanimation.mjs
+	node $(HERE)../scripts/android/generate-eliza-bootanimation.ts
 
 bootanimation: splash
-	node $(HERE)../scripts/android/build-eliza-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
+	node $(HERE)../scripts/android/build-eliza-bootanimation.ts --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
 
 check-arch:
 	@case " $(SUPPORTED_ARCHES) " in \

@@ -1,5 +1,7 @@
 # @elizaos/plugin-web-search
 
-Adds live web search through a full Tavily service on Node and a minimal credential-free `./edge` action on Workers.
+Credential-free public web search for Node and Worker hosts. Import the plugin,
+search action, injected runner, and keyless transport from `@elizaos/plugin-web-search`.
+Provider failures return an explicit unavailable result; preserve complete search output.
 
 Build, test, and setup: [README.md](README.md).

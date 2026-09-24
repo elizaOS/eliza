@@ -1,5 +1,5 @@
 {
-  "description": "Exclusions for the manual keyless diagnostic inventory produced by scripts/ui-smoke-pr-specs.mjs. The develop browser suite uses playwright.ui-smoke.config.ts directly. Categories describe live-only dependencies, dedicated diagnostic tools, or keyless fixture debt.",
+  "description": "Exclusions for the manual keyless diagnostic inventory produced by scripts/ui-smoke-pr-specs.ts. The develop browser suite uses playwright.ui-smoke.config.ts directly. Categories describe live-only dependencies, dedicated diagnostic tools, or keyless fixture debt.",
   "specs": [
     {
       "spec": "cloud-live.spec.ts",
@@ -44,12 +44,12 @@
     {
       "spec": "settings-spacing-audit.spec.ts",
       "category": "dedicated-tool",
-      "reason": "Runs on demand via `ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts`; it measures per-section safe-area/spacing and writes a JSON verdict plus notch-simulated screenshots to reports/settings-spacing, so it is a deliberate layout-audit harness (self-skips unless ELIZA_SETTINGS_SPACING=1)."
+      "reason": "Runs on demand via `ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.ts --config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts`; it measures per-section safe-area/spacing and writes a JSON verdict plus notch-simulated screenshots to reports/settings-spacing, so it is a deliberate layout-audit harness (self-skips unless ELIZA_SETTINGS_SPACING=1)."
     },
     {
       "spec": "settings-theme-audit.spec.ts",
       "category": "dedicated-tool",
-      "reason": "Runs on demand via `ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts`; it flips every settings section through light and dark themes and writes findings to reports/settings-theme, so it is a deliberate visual audit (self-skips unless ELIZA_SETTINGS_THEME=1)."
+      "reason": "Runs on demand via `ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.ts --config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts`; it flips every settings section through light and dark themes and writes findings to reports/settings-theme, so it is a deliberate visual audit (self-skips unless ELIZA_SETTINGS_THEME=1)."
     },
     {
       "spec": "chat-view-memory-stability.spec.ts",

@@ -28,7 +28,7 @@
  */
 
 import { writeStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "../logger.ts";
 
 /** Minimal EIP-1193 surface the login needs. */
 export interface InjectedEthereumProvider {

@@ -14,7 +14,6 @@
  * in a "ready" effect that only cleans up on unmount (not on phase transitions).
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
@@ -22,6 +21,7 @@ import { isElectrobunRuntime } from "../bridge";
 import { getBootConfig } from "../config/boot-config-store";
 import { enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot } from "../first-run/device-ram-gate";
 import { reconcilePersistedMobileRuntimeModeAtBoot } from "../first-run/reconcile-mobile-runtime-mode";
+import { logger } from "../logger.ts";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
 import {
   createAndroidPolicy,

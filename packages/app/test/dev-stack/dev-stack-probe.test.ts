@@ -27,7 +27,7 @@ const HTTP_TIMEOUT_MS = 10_000;
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const stackStatusScript = path.resolve(
   fileDir,
-  "../../scripts/desktop-stack-status.mjs",
+  "../../scripts/desktop-stack-status.ts",
 );
 
 type StackStatusReport = {

@@ -5,7 +5,7 @@
  * shape from `GET /api/dev/stack` gives ports, renderer URL, and which optional hooks (screenshot,
  * console tail) are configured — without scraping terminal output or launcher logs.
  *
- * Env is set by `eliza/packages/app/scripts/dev-platform.mjs` when using `dev:desktop` / `dev:desktop:watch`; the API
+ * Env is set by `eliza/packages/app/scripts/dev-platform.ts` when using `dev:desktop` / `dev:desktop:watch`; the API
  * handler may override `api.listenPort` / `api.baseUrl` from the bound socket so the JSON matches
  * the **accepted** TCP port (WHY: env can lag or describe intent; the socket is authoritative when
  * the request hits this server). Orchestrator-side `allocate-loopback-port` reduces mismatch for

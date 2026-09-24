@@ -8,7 +8,7 @@
 
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { ShellViewAgentSurface } from "@elizaos/ui/components/views/ShellViewAgentSurface";
-import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
+import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 export function KnowledgeView() {
   return (

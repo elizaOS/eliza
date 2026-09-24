@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #
 # Layout (mirrors llama-cpp-capacitor's IMPORTED-prebuilt pattern):
 #   - libelizainference.so is staged into src/main/jniLibs/${ANDROID_ABI}
-#     by stage-elizavoice-lib.mjs (cross-built via the NDK from the fork's
+#     by stage-elizavoice-lib.ts (cross-built via the NDK from the fork's
 #     tools/omnivoice, statically linking ggml/llama/mtmd so it has NO
 #     external NEEDED deps beyond bionic libc/libm/libdl).
 #   - the FFI header lives in the fork tree; we point at it via
@@ -50,14 +50,14 @@ if(NOT EXISTS "${ELIZAVOICE_FFI_INCLUDE_DIR}/eliza-inference-ffi.h")
 endif()
 
 # The prebuilt fused voice library, staged into jniLibs by
-# stage-elizavoice-lib.mjs before the native build runs.
+# stage-elizavoice-lib.ts before the native build runs.
 set(ELIZAVOICE_PREBUILT_SO
     "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libelizainference.so")
 if(NOT EXISTS "${ELIZAVOICE_PREBUILT_SO}")
     message(FATAL_ERROR
         "[elizavoice-jni] prebuilt libelizainference.so missing at "
         "${ELIZAVOICE_PREBUILT_SO}; run "
-        "packages/app/scripts/stage-elizavoice-lib.mjs first.")
+        "packages/app/scripts/stage-elizavoice-lib.ts first.")
 endif()
 
 add_library(elizainference SHARED IMPORTED)

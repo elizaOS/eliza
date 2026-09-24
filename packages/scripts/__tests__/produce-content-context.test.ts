@@ -8,8 +8,8 @@ import {
   parseProductionArgs,
   RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS,
   resolveProductionCommit,
-} from "../produce-content-context.mjs";
-import { parsePostgresEvidenceArgs } from "../produce-content-context-postgres.mjs";
+} from "../produce-content-context.ts";
+import { parsePostgresEvidenceArgs } from "../produce-content-context-postgres.ts";
 
 describe("produce-content-context", () => {
   it("requires the exact run-bound artifact set and canonical run root", () => {
@@ -35,7 +35,7 @@ describe("produce-content-context", () => {
     );
     expect(CANONICAL_DETERMINISTIC_PRODUCER).toEqual({
       command: "bun",
-      args: ["packages/scripts/produce-content-context-deterministic.mjs"],
+      args: ["packages/scripts/produce-content-context-deterministic.ts"],
     });
     expect(() =>
       parseProductionArgs([

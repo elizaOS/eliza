@@ -79,7 +79,7 @@ fi
 ASSISTANT_ARTIFACT_DIR="$GITHUB_WORKSPACE/test-results/app/android-assistant-verify"
 mkdir -p "$ASSISTANT_ARTIFACT_DIR"
 VERIFY_STATUS=0
-node "$GITHUB_WORKSPACE/packages/app/scripts/android-assistant-verify.mjs" \
+node "$GITHUB_WORKSPACE/packages/app/scripts/android-assistant-verify.ts" \
   --require-device --json \
   | tee "$ASSISTANT_ARTIFACT_DIR/verdict.json" || VERIFY_STATUS=$?
 adb shell settings get secure voice_interaction_service \

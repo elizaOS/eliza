@@ -3,10 +3,10 @@
  * Returns view/interaction/message counts for the authed user's character.
  */
 
+import { memoryTable } from "@elizaos/plugin-sql";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/client";
-import { memoryTable } from "@/db/schemas/eliza";
 import { elizaRoomCharactersTable } from "@/db/schemas/eliza-room-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

@@ -246,7 +246,7 @@ int eliza_inference_cancel_tts(
  * reference-audio-token tensor `[K=8, ref_T]` as int32 row-major.
  *
  * This is the encode-only half of the TTS pipeline that the freeze CLI
- * (`packages/app/scripts/omnivoice-fuse/freeze-voice.mjs`) uses to
+ * (`packages/app/scripts/omnivoice-fuse/freeze-voice.ts`) uses to
  * persist a same-locked preset under
  * `<bundle_dir>/cache/voice-preset-same.bin`. At runtime the
  * synthesis path reads the preset back and feeds the persisted tokens

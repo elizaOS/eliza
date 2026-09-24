@@ -19,10 +19,10 @@
  * machinery — console routes have no viewId to feed them.
  */
 
-import { logger } from "@elizaos/ui/logger";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ErrorBoundary } from "../../components/ui/error-boundary";
+import { logger } from "../../logger.ts";
 import {
   isChunkLoadError,
   tryChunkReloadRecovery,

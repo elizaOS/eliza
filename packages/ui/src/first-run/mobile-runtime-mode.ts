@@ -4,8 +4,8 @@
  * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
  */
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/core/runtime-env";
-import { logger } from "@elizaos/ui/logger";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";

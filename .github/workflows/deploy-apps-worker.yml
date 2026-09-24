@@ -165,7 +165,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
-        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+        run: node packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
 
       - name: Fence current staging SHA before host mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}

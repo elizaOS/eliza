@@ -77,6 +77,6 @@
   "gate": {
     "name": "confidential-image-manifest-check",
     "blockedOn": "Real component digests come from the reproducible meta-dstack build (gate confidential-image-reproducibility, OS-5, BLOCKED on a build host). This gate validates schema-conformance + digest shape only.",
-    "provingCommand": "node scripts/check-confidential-image-manifest.mjs --input linux/confidential/image-manifest.example.json"
+    "provingCommand": "node scripts/check-confidential-image-manifest.ts --input linux/confidential/image-manifest.example.json"
   }
 }
