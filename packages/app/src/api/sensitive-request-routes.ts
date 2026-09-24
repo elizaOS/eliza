@@ -413,11 +413,6 @@ async function defaultFulfillSecret(
   });
 }
 
-async function defaultFulfillPrivateInfo(): Promise<void> {
-  // No canonical local private-info persistence API exists yet. Keep the
-  // fulfillment hook-only and emit a redacted typed event.
-}
-
 function eventForSubmission(
   record: LocalSensitiveRequestRecord,
   fields?: Record<string, string>,
@@ -502,7 +497,7 @@ export async function handleSensitiveRequestRoutes(
   }
 
   const store = options.store ?? localSensitiveRequestStore;
-  const now = options.now?.() ?? Date.now();
+  const now = options.now ?? Date.now;
 
   if (pathname === ROUTE_PREFIX) {
     if (method !== "POST") {
@@ -556,7 +551,7 @@ export async function handleSensitiveRequestRoutes(
         typeof body.ttlMs === "number" && Number.isFinite(body.ttlMs)
           ? body.ttlMs
           : undefined,
-      now,
+      now: now(),
     });
     sendJson(res, 201, {
       ok: true,
@@ -587,12 +582,12 @@ export async function handleSensitiveRequestRoutes(
       return true;
     }
     if (!(await ensureCallerAuthorized(req, res, state))) return true;
-    const record = store.get(match.id, now);
+    const record = store.get(match.id, now());
     if (!record) {
       sendJsonError(res, 404, "not found");
       return true;
     }
-    appendViewedAudit(store, record, now);
+    appendViewedAudit(store, record, now());
     sendJson(res, 200, {
       ok: true,
       request: redactLocalSensitiveRequest(record),
@@ -606,9 +601,13 @@ export async function handleSensitiveRequestRoutes(
       return true;
     }
     if (!(await ensureCallerAuthorized(req, res, state))) return true;
-    const record = store.cancel(match.id, now);
+    const record = store.cancel(match.id, now());
     if (!record) {
       sendJsonError(res, 404, "not found");
+      return true;
+    }
+    if (record.status !== "canceled") {
+      sendJsonError(res, 409, "request_not_cancelable");
       return true;
     }
     const event: SensitiveRequestEvent = {
@@ -629,7 +628,7 @@ export async function handleSensitiveRequestRoutes(
     return true;
   }
 
-  const record = store.get(match.id, now);
+  const record = store.get(match.id, now());
   if (!record) {
     sendJsonError(res, 404, "not found");
     return true;
@@ -675,7 +674,12 @@ export async function handleSensitiveRequestRoutes(
     return true;
   }
 
-  const tokenCheck = store.consumeSubmitToken(match.id, submitToken, now);
+  if (record.target.kind === "private_info" && !options.fulfillPrivateInfo) {
+    sendJsonError(res, 503, "private_info_storage_unavailable");
+    return true;
+  }
+
+  const tokenCheck = store.consumeSubmitToken(match.id, submitToken, now());
   if (tokenCheck.ok === false) {
     sendSubmitTokenError(res, tokenCheck.status, tokenCheck.reason);
     return true;
@@ -688,20 +692,19 @@ export async function handleSensitiveRequestRoutes(
         submittedSecret ?? "",
       );
     } else {
-      await (options.fulfillPrivateInfo ?? defaultFulfillPrivateInfo)(
-        record,
-        submittedFields ?? {},
-      );
+      await options.fulfillPrivateInfo?.(record, submittedFields ?? {});
     }
-    const event = eventForSubmission(record, submittedFields);
-    store.fulfill(record.id, event, now);
-    const redacted = redactLocalSensitiveRequest(record);
-    await options.onEvent?.(event, redacted);
-    sendJson(res, 200, { ok: true, request: redacted, event });
   } catch {
-    store.fail(record.id, "fulfillment_failed", now);
+    store.fail(record.id, "fulfillment_failed", now());
     sendJsonError(res, 500, "fulfillment_failed");
+    return true;
   }
+  const event = eventForSubmission(record, submittedFields);
+  store.fulfill(record.id, event, now());
+  const redacted = redactLocalSensitiveRequest(record);
+  // Notification failure must not rewrite an already committed effect as failed.
+  await options.onEvent?.(event, redacted);
+  sendJson(res, 200, { ok: true, request: redacted, event });
   return true;
 }
 

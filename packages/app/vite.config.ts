@@ -753,9 +753,9 @@ function resolvePackageExportTarget(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  for (const condition of ["source", "import", "default"]) {
-    const target = record[condition];
-    if (typeof target === "string") return target;
+  for (const condition of ["eliza-source", "source", "import", "default"]) {
+    const target = resolvePackageExportTarget(record[condition]);
+    if (target !== null) return target;
   }
   return null;
 }
@@ -1911,84 +1911,7 @@ function workspaceJsxInJsPlugin(): Plugin {
     },
   };
 }
-const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
-  [/^cookie$/, "src/shims/cookie.ts"],
-  [
-    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
-    "src/shims/set-cookie-parser.ts",
-  ],
-  [
-    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
-    "src/shims/use-sync-external-store-with-selector.ts",
-  ],
-  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
-  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
-  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
-  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
-  [
-    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-uniqBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sortBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-throttle.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/last(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-last.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-maxBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-minBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/range(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-range.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/omit(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-omit.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sumBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-isPlainObject.ts",
-  ],
-  [
-    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
-    "src/shims/decimal-js-light.ts",
-  ],
-  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
-  [/^react-is$/, "src/shims/react-is.ts"],
-  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
-];
-function devCjsInteropShimAliasesPlugin(): Plugin {
-  return {
-    name: "dev-cjs-interop-shim-aliases",
-    apply: "serve",
-    enforce: "pre",
-    resolveId(source) {
-      const sourceWithoutQuery = source.split("?")[0] ?? source;
-      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
-        if (find.test(sourceWithoutQuery)) {
-          return path.resolve(here, replacement);
-        }
-      }
-      return null;
-    },
-  };
-}
+
 // Builds a Vite/Rolldown plugin that resolves `es-toolkit/compat/<name>` to
 // its ESM `dist/compat/**/<name>.mjs` and re-exports the named binding as
 // default, bypassing the CJS-only export map. Must be registered in both
@@ -2359,7 +2282,6 @@ export const INVALID_TRACER_PROVIDER = {};
     },
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
-    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -2403,6 +2325,14 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      // The CommonJS barrel eagerly imports CronFileParser (fs/promises).
+      // Renderer scheduling uses the real expression parser directly.
+      {
+        find: /^cron-parser$/,
+        replacement: _require.resolve(
+          "cron-parser/dist/CronExpressionParser.js",
+        ),
+      },
       {
         find: /^@elizaos\/auth$/,
         replacement: path.resolve(elizaRoot, "packages/auth/src/sdk/index.ts"),
@@ -2438,32 +2368,8 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: SOLANA_WALLET_CSS_RESOLVED,
       },
       {
-        find: /^fast-redact$/,
-        replacement: path.resolve(here, "src/shims/fast-redact.ts"),
-      },
-      {
-        find: /^cron-parser$/,
-        replacement: path.resolve(here, "src/shims/cron-parser.ts"),
-      },
-      {
         find: /^picocolors$/,
         replacement: path.resolve(here, "src/shims/picocolors.ts"),
-      },
-      {
-        find: /^cookie$/,
-        replacement: path.resolve(here, "src/shims/cookie.ts"),
-      },
-      {
-        find: /^set-cookie-parser$/,
-        replacement: path.resolve(here, "src/shims/set-cookie-parser.ts"),
-      },
-      {
-        find: /^style-to-js(?:\/cjs\/index\.js)?$/,
-        replacement: path.resolve(here, "src/shims/style-to-js.ts"),
-      },
-      {
-        find: /^debug(?:\/src\/browser(?:\.js)?)?$/,
-        replacement: path.resolve(here, "src/shims/debug.ts"),
       },
       {
         find: /^extend$/,
@@ -2483,10 +2389,6 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^unpdf$/,
         replacement: path.resolve(here, "src/shims/unpdf.ts"),
-      },
-      {
-        find: /^handlebars$/,
-        replacement: path.resolve(here, "src/shims/handlebars.ts"),
       },
       {
         find: /^@vercel\/oidc$/,
@@ -2792,6 +2694,7 @@ export const INVALID_TRACER_PROVIDER = {};
       ...createWorkspacePackageExportAliases([
         path.resolve(elizaRoot, "packages/core"),
         path.resolve(elizaRoot, "plugins/plugin-local-inference"),
+        path.resolve(elizaRoot, "plugins/plugin-native-inference"),
         path.resolve(elizaRoot, "plugins/plugin-elizacloud"),
         path.resolve(elizaRoot, "plugins/plugin-assistant"),
       ]),
@@ -2935,6 +2838,16 @@ export const INVALID_TRACER_PROVIDER = {};
       "recharts",
       "nprogress",
       "cookie",
+      "set-cookie-parser",
+      "style-to-js",
+      "debug",
+      "decimal.js-light",
+      "eventemitter3",
+      "react-is",
+      "handlebars",
+      "cron-parser",
+      "fast-redact",
+
       "yaml",
       // MCP JSON-schema validation uses Ajv; its CommonJS entry must be
       // converted to ESM because dependency discovery is disabled in dev.

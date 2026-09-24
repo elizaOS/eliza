@@ -7,6 +7,7 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
 import { normalizeLanguage } from "@elizaos/core/i18n/language";
 import { sendJson as sendJsonResponse } from "./response";
 
@@ -66,14 +67,10 @@ export function handleI18nLocaleRoute(
   }
   let configuredLanguage: unknown;
   try {
-    configuredLanguage = (
-      loadElizaConfig() as {
-        ui?: {
-          language?: unknown;
-        };
-      }
-    ).ui?.language;
-  } catch {
+    configuredLanguage = (loadElizaConfig() as { ui?: { language?: unknown } })
+      .ui?.language;
+  } catch (error) {
+    logger.warn({ error }, "[i18n] Could not load configured UI language");
     configuredLanguage = undefined;
   }
   sendJsonResponse(res, 200, {

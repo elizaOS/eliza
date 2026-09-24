@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
-import { createProgressiveSqlTargetFactory } from "../../../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts";
+import { createProgressiveSqlTargetFactory } from "../../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts";
 
 const PAGE_BYTES = 64 * 1024;
 const MAX_RSS_GROWTH_BYTES = 128 * 1024 * 1024;

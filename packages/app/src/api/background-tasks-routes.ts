@@ -69,6 +69,7 @@ export async function handleBackgroundTasksRoute(
       coalesced: result.coalesced,
     });
   } catch (error) {
+    runtime.reportError("app.backgroundTasks", error, { phase: "runDueTasks" });
     sendJson(res, 500, {
       ok: false,
       error: error instanceof Error ? error.message : String(error),

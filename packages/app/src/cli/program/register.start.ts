@@ -13,7 +13,6 @@ import {
   resolveApiBindHost,
   resolveApiSecurityConfig,
   resolveApiToken,
-  resolveServerOnlyPort,
   setApiToken,
 } from "@elizaos/core/runtime-env";
 import { type Command } from "commander";
@@ -60,10 +59,14 @@ async function startAction() {
     const { ensureAuthPairingCodeForRemoteAccess } = await import(
       "../../api/auth-pairing-routes"
     );
+    let boundPort: number | undefined;
     // Use serverOnly mode: starts API server, no interactive chat loop
     await startEliza({
       serverOnly: true,
-      onServerOnlyHostReady: installServerOnlyProcessOwner,
+      onServerOnlyHostReady: (host) => {
+        boundPort = host.port;
+        installServerOnlyProcessOwner(host);
+      },
       onEmbeddingProgress: (phase, detail) => {
         if (phase === "downloading") {
           console.log(`[eliza] Embedding: ${detail ?? "downloading..."}`);
@@ -72,7 +75,10 @@ async function startAction() {
         }
       },
     });
-    const port = String(resolveServerOnlyPort(process.env));
+
+    if (boundPort === undefined)
+      throw new Error("Server startup completed without a bound host");
+    const port = String(boundPort);
     const pairing = ensureAuthPairingCodeForRemoteAccess();
     console.log("");
     console.log("╭──────────────────────────────────────────╮");

@@ -202,7 +202,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     // GITHUB_TOKEN always wins.
     try {
       const { applySavedTokenToEnv } = await import(
-        "../services/github-credentials.js"
+        "@elizaos/plugin-github/github-credentials"
       );
       const result = await applySavedTokenToEnv();
       if (result.applied) {

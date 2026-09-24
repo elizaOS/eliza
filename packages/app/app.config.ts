@@ -10,8 +10,8 @@
  * To create a new app, copy this file and change the values below.
  */
 
-import { type AppConfig } from "@elizaos/core/config/app-config";
-import { EXTERNAL_URLS } from "@elizaos/ui/brand";
+import type { AppConfig } from "@elizaos/core/config/app-config";
+import { EXTERNAL_URLS } from "@elizaos/core/config/public-endpoints";
 
 interface AppWebConfig {
   shortName: string;
