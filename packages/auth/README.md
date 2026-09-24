@@ -278,7 +278,7 @@ application. Configure the platform's install command accordingly, and use
 `/health` as its startup health check. Keep the existing database and encryption,
 session, provider and relying-party settings when switching the service source.
 The service handles SIGTERM by closing its listener and owned connections before
-exiting; the process integration test guards against leaked event-loop handles.
+exiting.
 
 Railway builds use [`railpack.json`](railpack.json). Keep the repository root as
 the build context, select Railpack, and set `RAILPACK_CONFIG_FILE` to
