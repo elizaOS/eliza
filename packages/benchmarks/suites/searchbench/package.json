@@ -11,7 +11,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "drizzle-orm": "^0.44.0",
+    "drizzle-orm": "^0.45.3",
     "uuid": "^11.0.0"
   }
 }
