@@ -72,7 +72,7 @@ Required Android permissions (runtime-requested by the host app):
 - `ACCESS_WIFI_STATE` — required by `getConnectedNetwork` and `listAvailableNetworks`.
 - `CHANGE_WIFI_STATE` — required by `connectToNetwork` and `disconnectFromNetwork`.
 - `ACCESS_FINE_LOCATION` — required for `WifiManager.scanResults` on API 26+ (Android 8+); without it the plugin rejects `listAvailableNetworks` with an error (does NOT silently return an empty list).
-- `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` — used by the `ConnectivityManager.requestNetwork` path on API 29+.
+- `ACCESS_NETWORK_STATE` supports network-state observation. Connection suggestions do not retain a `ConnectivityManager.requestNetwork` callback.
 
 ## How to extend
 
@@ -100,3 +100,9 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Android 10+ connection requests submit an Internet network suggestion only; they
+do not create a second local-only peer network request or retain callbacks.
+Active-connection security comes from Android security type (API 31+) or a
+matching scan result. If unavailable, `getConnectedNetwork` rejects explicitly
+instead of reporting a protected network as open.

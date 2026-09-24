@@ -38,7 +38,7 @@ Declared in the plugin's `AndroidManifest.xml`; the host app must request runtim
 | `ACCESS_WIFI_STATE` | `getConnectedNetwork`, `listAvailableNetworks` |
 | `CHANGE_WIFI_STATE` | `connectToNetwork`, `disconnectFromNetwork` |
 | `ACCESS_FINE_LOCATION` | `listAvailableNetworks` on Android 8+ (API 26+) — without it the plugin rejects with an error (does NOT silently return an empty list) |
-| `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` | `connectToNetwork` on Android 10+ (`WifiNetworkSuggestion` path) |
+| `ACCESS_NETWORK_STATE` | Network-state observation |
 
 ## Installation
 
@@ -78,3 +78,9 @@ if (!result.success) console.error(result.message);
 - `connectToNetwork` on Android 10+ submits a `WifiNetworkSuggestion`. The call resolving with `success: true` means the suggestion was accepted by the system, not that the device is connected. Poll `getConnectedNetwork()` to observe connection state.
 - Wi-Fi scanning is rate-limited by Android (roughly 4 scans per 2 minutes in the foreground). Use the `maxAge` option to reuse a recent scan and avoid hitting the throttle.
 - The plugin rejects `listAvailableNetworks` with a clear error on API 26+ when `ACCESS_FINE_LOCATION` is not granted, rather than silently returning an empty list.
+
+Android 10+ connection requests submit an Internet network suggestion only; they
+do not create a second local-only peer network request or retain callbacks.
+Active-connection security comes from Android security type (API 31+) or a
+matching scan result. If unavailable, `getConnectedNetwork` rejects explicitly
+instead of reporting a protected network as open.
