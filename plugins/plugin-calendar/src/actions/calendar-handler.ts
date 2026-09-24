@@ -6642,9 +6642,7 @@ const calendarAction: CalendarHandlerAction = {
           const fallback = `I couldn't find a clear trip window for ${tripWindowIntent.location} in your upcoming calendar.`;
           return respond({
             success: true,
-            text: await renderReply("trip_window_not_found", fallback, {
-              location: tripWindowIntent.location,
-            }),
+            text: await renderReply("trip_window_not_found", fallback),
             effectReceipt: calendarFeedReadReceipt({
               feed,
               events: [],
@@ -6666,10 +6664,7 @@ const calendarAction: CalendarHandlerAction = {
         );
         return respond({
           success: true,
-          text: await renderReply("trip_window_results", fallback, {
-            location: tripWindowIntent.location,
-            events: itineraryEvents,
-          }),
+          text: await renderReply("trip_window_results", fallback),
           effectReceipt: calendarFeedReadReceipt({
             feed,
             events: itineraryEvents,
@@ -6753,9 +6748,6 @@ const calendarAction: CalendarHandlerAction = {
               return respond({
                 success: true,
                 text: await renderReply("search_results", fallback, {
-                  query: userReferenceLogView(queryFallback),
-                  queries: [],
-                  events: filteredEvents,
                   label,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
@@ -6797,7 +6789,6 @@ const calendarAction: CalendarHandlerAction = {
                 success: true,
                 text: await renderReply("feed_results", fallback, {
                   label,
-                  events: feed.events,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
                   feed,
@@ -6818,7 +6809,6 @@ const calendarAction: CalendarHandlerAction = {
               success: true,
               text: await renderReply("feed_results", fallback, {
                 label,
-                events: feed.events,
               }),
               effectReceipt: calendarFeedReadReceipt({
                 feed,
@@ -6927,9 +6917,6 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: await renderReply("search_results", fallback, {
-            query: userReferenceLogView(query),
-            queries: queryViews,
-            events: filteredEvents,
             label,
           }),
           effectReceipt: calendarFeedReadReceipt({
@@ -6952,7 +6939,6 @@ const calendarAction: CalendarHandlerAction = {
         success: true,
         text: await renderReply("feed_results", fallback, {
           label,
-          events: feed.events,
         }),
         effectReceipt: calendarFeedReadReceipt({
           feed,

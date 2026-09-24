@@ -112,6 +112,25 @@ describe("next-event read coverage", () => {
       expect(outcome.effectReceipts?.[0].resource.kind).toBe(
         "calendar.next_event",
       );
+      const agenda = await action.handler(
+        runtime,
+        {
+          ...message,
+          content: { text: "List my calendar for September 24." },
+        },
+        undefined,
+        {
+          parameters: {
+            subaction: "feed",
+            details: { date: "2026-09-24", timeZone: "UTC" },
+          },
+        },
+      );
+      if (!agenda || typeof agenda !== "object")
+        throw new Error("Expected agenda result");
+      expect(agenda.data).toMatchObject(feed);
+      expect(agenda.data?.replyContext).not.toHaveProperty("context.events");
+      expect(agenda.effectReceipts?.[0].resource.kind).toBe("calendar.feed");
     },
   );
 });
