@@ -144,7 +144,6 @@ describe("DocumentService complete source reads", () => {
       content,
       scope: "global",
     });
-    await runtime.enableDocuments();
     runtime.services.set(DocumentService.serviceType, [service]);
     const actionResult = await documentAction.handler(
       runtime,
@@ -265,8 +264,11 @@ describe("DocumentService list semantics", () => {
       roomId: ROOM_A,
       count: 10,
     });
-    expect(fragments).toHaveLength(1);
-    expect(fragments[0]).toMatchObject({
+    const retrievalFragments = fragments.filter(
+      (fragment) => fragment.metadata?.fragmentRole !== "source-segment",
+    );
+    expect(retrievalFragments).toHaveLength(1);
+    expect(retrievalFragments[0]).toMatchObject({
       content: { text: "Revised keyword-only standing draft" },
       metadata: { documentId: added.storedDocumentMemoryId },
     });

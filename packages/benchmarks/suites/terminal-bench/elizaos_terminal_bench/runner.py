@@ -460,22 +460,6 @@ class TerminalBenchRunner:
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
             )
-        if harness == "smithers":
-            from smithers_adapter.client import SmithersClient
-            from smithers_adapter.terminal_bench import build_terminal_bench_agent_fn
-
-            provider, client_model = self._provider_model(default_provider="cerebras")
-            client = SmithersClient(
-                provider=provider,
-                model=client_model,
-            )
-            return build_terminal_bench_agent_fn(
-                environment=env,
-                client=client,
-                max_iterations=self.config.max_iterations,
-                model_name=self.config.model_name,
-                verbose=self.config.verbose,
-            )
         if harness == "openclaw":
             from openclaw_adapter.client import OpenClawClient
             from openclaw_adapter.terminal_bench import build_terminal_bench_agent_fn
@@ -492,7 +476,9 @@ class TerminalBenchRunner:
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
             )
-        # Default: elizaOS TS bridge.
+        if harness != "eliza":
+            raise ValueError(f"Unsupported terminal benchmark harness: {harness!r}")
+        # ElizaOS TS bridge.
         from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
 
         return ElizaBridgeTerminalAgent(

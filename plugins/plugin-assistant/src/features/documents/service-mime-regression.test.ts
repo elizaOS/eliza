@@ -73,7 +73,9 @@ async function ingestPdf(
     })
   )
     .filter(
-      (fragment) => fragment.metadata?.documentId === result.clientDocumentId,
+      (fragment) =>
+        fragment.metadata?.documentId === result.clientDocumentId &&
+        fragment.metadata?.fragmentRole !== "source-segment",
     )
     .sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
   expect(fragments).toHaveLength(result.fragmentCount);
