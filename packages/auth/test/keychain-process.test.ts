@@ -41,6 +41,20 @@ it("returns a verified key when the native binding writes verbose diagnostics", 
   expect(readKeychainKeySync("test", "verbose", { binding })).toEqual(key);
 });
 
+it("returns the verified protocol result even when the binding retains an event-loop handle", () => {
+  const key = Buffer.alloc(32, 29);
+  const { binding } = fixture(`
+    setInterval(() => {}, 1000);
+    export class Entry {
+      getPassword() { return ${JSON.stringify(key.toString("base64"))}; }
+      setPassword() { throw new Error("unexpected write"); }
+    }
+  `);
+  expect(
+    readKeychainKeySync("test", "retained-handle", { binding, timeoutMs: 500 }),
+  ).toEqual(key);
+});
+
 it("persists and verifies a newly created key before returning it", () => {
   const { directory, binding } = fixture(`
     import { readFileSync, writeFileSync, existsSync } from "node:fs";

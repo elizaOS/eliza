@@ -33,10 +33,11 @@ try {
     phase = "invalid-key";
     throw new Error("invalid key");
   }
-  process.stdout.write(JSON.stringify({ key: encoded }));
+  // A native binding can retain event-loop handles after a completed read.
+  // Flush the private protocol before terminating this single-operation worker.
+  process.stdout.write(JSON.stringify({ key: encoded }), () => process.exit(0));
 } catch {
-  process.stdout.write(JSON.stringify({ error: phase }));
-  process.exitCode = 1;
+  process.stdout.write(JSON.stringify({ error: phase }), () => process.exit(1));
 }
 `;
 
