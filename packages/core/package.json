@@ -233,12 +233,6 @@
 			"import": "./dist/config/boot-config-store.js",
 			"default": "./dist/config/boot-config-store.js"
 		},
-		"./config/boot-config": {
-			"types": "./dist/config/boot-config.d.ts",
-			"eliza-source": "./src/config/boot-config.ts",
-			"import": "./dist/config/boot-config.js",
-			"default": "./dist/config/boot-config.js"
-		},
 		"./config/brand-env-aliases": {
 			"types": "./dist/config/brand-env-aliases.d.ts",
 			"eliza-source": "./src/config/brand-env-aliases.ts",
@@ -281,23 +275,11 @@
 			"import": "./dist/config/distribution-profile.js",
 			"default": "./dist/config/distribution-profile.js"
 		},
-		"./config": {
-			"types": "./dist/config/index.d.ts",
-			"eliza-source": "./src/config/index.ts",
-			"import": "./dist/config/index.js",
-			"default": "./dist/config/index.js"
-		},
 		"./config/plugin-auto-enable-engine": {
 			"types": "./dist/config/plugin-auto-enable-engine.d.ts",
 			"eliza-source": "./src/config/plugin-auto-enable-engine.ts",
 			"import": "./dist/config/plugin-auto-enable-engine.js",
 			"default": "./dist/config/plugin-auto-enable-engine.js"
-		},
-		"./config/plugin-auto-enable": {
-			"types": "./dist/config/plugin-auto-enable.d.ts",
-			"eliza-source": "./src/config/plugin-auto-enable.ts",
-			"import": "./dist/config/plugin-auto-enable.js",
-			"default": "./dist/config/plugin-auto-enable.js"
 		},
 		"./config/plugin-ui-spec": {
 			"types": "./dist/config/plugin-ui-spec.d.ts",
@@ -364,12 +346,6 @@
 			"eliza-source": "./src/config/types.tools.ts",
 			"import": "./dist/config/types.tools.js",
 			"default": "./dist/config/types.tools.js"
-		},
-		"./config/types": {
-			"types": "./dist/config/types.d.ts",
-			"eliza-source": "./src/config/types.ts",
-			"import": "./dist/config/types.js",
-			"default": "./dist/config/types.js"
 		},
 		"./config/ui-spec": {
 			"types": "./dist/config/ui-spec.d.ts",

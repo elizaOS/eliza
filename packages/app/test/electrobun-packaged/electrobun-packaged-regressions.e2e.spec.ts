@@ -59,10 +59,7 @@ function isPackagedPlatform(): boolean {
 function getApiBaseExpression(): string {
   // The boot config is the single source of truth for the API base; the
   // Electrobun renderer injection seeds its window mirror before renderer JS.
-  return [
-    "window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase",
-    "window.__ELIZAOS_API_BASE__",
-  ].join(" ?? ");
+  return "window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase";
 }
 
 function debugPackagedPhase(label: string): void {

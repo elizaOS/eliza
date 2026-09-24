@@ -242,7 +242,7 @@ function notificationsPayload() {
 // The local first-run path resolves the on-device agent base via
 // resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads the
 // boot-config apiBase, NOT __ELIZA_APP_API_BASE__). Seed the boot-config mirror
-// (and the branded __ELIZAOS_API_BASE__) with the page origin so
+// with the page origin so
 // client.setBaseUrl() in finishLocal keeps every request on the live preview
 // origin (and the route mocks) instead of falling back to
 // DEFAULT_LOCAL_AGENT_API_BASE (http://127.0.0.1:31337), which has no server →
@@ -254,7 +254,6 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
-    win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
     win.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
