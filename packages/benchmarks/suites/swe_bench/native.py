@@ -82,6 +82,19 @@ def validate_native_trajectory(directory: Path, trace_id: str, task: dict) -> di
             "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "status": "finished"}
 
 
+async def _stop_native_process(process) -> None:
+    if process is None or process.returncode is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        pass
+    await process.wait()
+
+
 async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWEBenchConfig, *, provider: str | None = None) -> SWEBenchResult:
     from .cli import _build_subtask_prompt
 
@@ -139,7 +152,17 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
                 cwd=repo, env=env, stdout=stdout, stderr=stderr,
                 start_new_session=os.name == "posix",
             )
-            await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+            try:
+                await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+            except TimeoutError:
+                # Settle the writer before taking a diagnostic diff; it must never
+                # be graded or disappear when the disposable checkout is removed.
+                await _stop_native_process(process)
+                patch = await manager.get_diff()
+                (receipt_dir / "attempted.patch").write_text(patch)
+                raise TimeoutError(
+                    f"Native CLI exceeded {config.timeout_seconds}s; see {receipt_dir}"
+                ) from None
         # Preserve the attempted edit even when the completed CLI reports failure.
         # Failed turns remain ineligible for grading.
         patch = await manager.get_diff()
@@ -164,13 +187,5 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
             error=f"{type(exc).__name__}: {exc}", status=f"execution=native_direct receipt={receipt_dir}",
         )
     finally:
-        if process is not None and process.returncode is None:
-            try:
-                if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGKILL)
-                else:
-                    process.kill()
-            except ProcessLookupError:
-                pass
-            await process.wait()
+        await _stop_native_process(process)
         manager.cleanup_current_repo()

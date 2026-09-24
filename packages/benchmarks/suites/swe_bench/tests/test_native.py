@@ -155,3 +155,66 @@ def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, mon
         assert all(result.patch_status == PatchStatus.GENERATED for result in results)
         expected_error = "Native CLI exited 1" if exit_code else "trajectory is incomplete"
         assert all(expected_error in result.error for result in results)
+
+
+def test_native_timeout_settles_child_and_retains_attempted_patch(tmp_path, monkeypatch):
+    """Real subprocess timeout lifecycle; this is not an agent-quality test."""
+    import asyncio
+    import sys
+    import benchmarks.swe_bench.native as native
+    from benchmarks.swe_bench.types import PatchStatus, SWEBenchConfig, SWEBenchInstance
+
+    processes = []
+    cleaned = []
+    patch = "diff --git a/code.py b/code.py\n--- a/code.py\n+++ b/code.py\n@@ -1 +1 @@\n-bad\n+attempt\n"
+    ready = tmp_path / "attempted.patch"
+    spawn = asyncio.create_subprocess_exec
+
+    class Manager:
+        def __init__(self, workspace):
+            pass
+
+        async def setup_repo(self, instance):
+            return tmp_path
+
+        async def get_diff(self):
+            assert processes[0].returncode is not None
+            return ready.read_text()
+
+        def cleanup_current_repo(self):
+            assert processes[0].returncode is not None
+            cleaned.append(True)
+
+    async def create_process(*args, **kwargs):
+        process = await spawn(
+            sys.executable, "-c",
+            "from pathlib import Path; import time; "
+            f"Path({str(ready)!r}).write_text({patch!r}); time.sleep(30)",
+            **kwargs,
+        )
+        processes.append(process)
+        # Avoid racing Python startup against the runner's deadline.
+        for _ in range(200):
+            if ready.exists():
+                return process
+            await asyncio.sleep(0.01)
+        process.kill()
+        await process.wait()
+        raise AssertionError("Test subprocess did not initialize")
+
+    class Evaluator:
+        async def evaluate_patch(self, *_):
+            raise AssertionError("Timed-out turns must not be graded")
+
+    monkeypatch.setattr(native, "RepositoryManager", Manager)
+    monkeypatch.setattr(native.asyncio, "create_subprocess_exec", create_process)
+    instance = SWEBenchInstance("repo__task-1", "owner/repo", "base", "Fix behavior", "", "", "", "", [], [])
+    config = SWEBenchConfig(output_dir=str(tmp_path / "output"), workspace_dir=str(tmp_path / "work"), model_name="test-model", timeout_seconds=1)
+    result = asyncio.run(native.run_native_instance(instance, Evaluator(), config))
+    assert result.success is False
+    assert result.patch_status == PatchStatus.GENERATED
+    assert result.generated_patch == patch
+    assert "Native CLI exceeded" in result.error
+    assert cleaned == [True]
+    assert processes[0].returncode is not None
+    assert next((tmp_path / "output").rglob("attempted.patch")).read_text() == patch
