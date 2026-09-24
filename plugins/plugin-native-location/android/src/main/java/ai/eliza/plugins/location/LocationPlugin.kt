@@ -11,13 +11,14 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import com.google.android.gms.location.*
+import java.io.Closeable
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * ElizaLocation Capacitor Plugin
  *
- * Provides location services using Google Play Services FusedLocationProviderClient.
+ * Uses fused Google location where available and Android LocationManager on AOSP.
  * Supports foreground one-shot position, continuous watching, and maxAge caching.
  */
 @CapacitorPlugin(
@@ -32,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
 class LocationPlugin : Plugin() {
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
+    private val frameworkWatches = ConcurrentHashMap<String, Closeable>()
     private val watches = ConcurrentHashMap<String, LocationCallback>()
     private val pendingActions = ConcurrentHashMap<String, String>()
 
@@ -45,7 +47,7 @@ class LocationPlugin : Plugin() {
 
     override fun load() {
         super.load()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
+        if (!reader.usesFrameworkLocation) fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
     }
 
     // ── getCurrentPosition ──────────────────────────────────────────────
@@ -64,12 +66,17 @@ class LocationPlugin : Plugin() {
         val accuracy = call.getString("accuracy") ?: "high"
         val timeout = call.getDouble("timeout") ?: 10000.0
         val maxAge = call.getDouble("maxAge") ?: 0.0
+        if (!timeout.isFinite() || timeout <= 0 || timeout > Long.MAX_VALUE.toDouble() ||
+            !maxAge.isFinite() || maxAge < 0 || maxAge > Long.MAX_VALUE.toDouble()) {
+            call.reject("Invalid location timeout or maxAge", "INVALID_INPUT")
+            return
+        }
         val priority = mapAccuracyToPriority(accuracy)
 
         // maxAge > 0: try returning cached location if fresh enough (mirrors classic bestLastKnown)
         if (maxAge > 0) {
             try {
-                fusedLocationClient?.lastLocation?.addOnSuccessListener { cached ->
+                reader.lastLocation().addOnSuccessListener { cached ->
                     if (cached != null) {
                         val age = System.currentTimeMillis() - cached.time
                         if (age <= maxAge.toLong()) {
@@ -137,9 +144,30 @@ class LocationPlugin : Plugin() {
         val accuracy = call.getString("accuracy") ?: "high"
         val minInterval = call.getDouble("minInterval") ?: 0.0
         val minDistance = call.getDouble("minDistance") ?: 0.0
+        if (!minInterval.isFinite() || minInterval < 0 || minInterval > Long.MAX_VALUE.toDouble() ||
+            !minDistance.isFinite() || minDistance < 0 || minDistance > Float.MAX_VALUE) {
+            call.reject("Invalid location watch interval or distance", "INVALID_INPUT")
+            return
+        }
         val priority = mapAccuracyToPriority(accuracy)
 
         val watchId = UUID.randomUUID().toString()
+
+        if (reader.usesFrameworkLocation) {
+            try {
+                frameworkWatches[watchId] = reader.framework.watch(priority, minInterval.toLong(), minDistance.toFloat(), { location ->
+                    lastKnownLocation = location
+                    notifyListeners("locationChange", buildLocationResult(location, cached = false))
+                }, { error ->
+                    notifyListeners("error", buildErrorEvent("POSITION_UNAVAILABLE", error.message ?: "Location unavailable"))
+                })
+                call.resolve(JSObject().apply { put("watchId", watchId) })
+            } catch (error: Exception) {
+                val code = if (error is SecurityException) "PERMISSION_DENIED" else "POSITION_UNAVAILABLE"
+                call.reject(error.message ?: "Location unavailable", code)
+            }
+            return
+        }
 
         val request = LocationRequest.Builder(priority, minInterval.toLong())
             .setMinUpdateDistanceMeters(minDistance.toFloat())
@@ -168,12 +196,12 @@ class LocationPlugin : Plugin() {
                 request,
                 callback,
                 Looper.getMainLooper()
-            )
-
-            watches[watchId] = callback
-            call.resolve(JSObject().apply {
-                put("watchId", watchId)
-            })
+            )?.addOnSuccessListener {
+                watches[watchId] = callback
+                call.resolve(JSObject().apply { put("watchId", watchId) })
+            }?.addOnFailureListener { error ->
+                call.reject(error.message ?: "Location watch failed", "POSITION_UNAVAILABLE")
+            }
         } catch (e: SecurityException) {
             notifyListeners("error", buildErrorEvent("PERMISSION_DENIED", "Location permission required"))
             call.reject("Location permission required")
@@ -190,6 +218,7 @@ class LocationPlugin : Plugin() {
             return
         }
 
+        frameworkWatches.remove(watchId)?.close()
         val callback = watches.remove(watchId)
         if (callback != null) {
             fusedLocationClient?.removeLocationUpdates(callback)
@@ -317,5 +346,8 @@ class LocationPlugin : Plugin() {
             fusedLocationClient?.removeLocationUpdates(callback)
         }
         watches.clear()
+        frameworkWatches.values.forEach { it.close() }
+        frameworkWatches.clear()
+        reader.close()
     }
 }

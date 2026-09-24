@@ -126,7 +126,16 @@ jobs:
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
-          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 && node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+
+      - name: Upload Android native plugin results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-native-plugins-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/android-native-plugins/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Android device bundle
         if: always()

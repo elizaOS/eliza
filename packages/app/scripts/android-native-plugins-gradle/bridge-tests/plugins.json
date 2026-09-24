@@ -1,0 +1,82 @@
+{
+  "plugin-native-agent": {
+    "name": "Agent",
+    "class": "ai.eliza.plugins.agent.AgentPlugin"
+  },
+  "plugin-native-appblocker": {
+    "name": "ElizaAppBlocker",
+    "class": "ai.eliza.plugins.appblocker.AppBlockerPlugin"
+  },
+  "plugin-native-browser-surface": {
+    "name": "ElizaSurfaceManager",
+    "class": "ai.eliza.plugins.browsersurface.ElizaSurfaceManagerPlugin"
+  },
+  "plugin-native-bun-runtime": {
+    "name": "ElizaBunRuntime",
+    "class": "ai.elizaos.plugins.bunruntime.ElizaBunRuntimePlugin"
+  },
+  "plugin-native-camera": {
+    "name": "ElizaCamera",
+    "class": "ai.eliza.plugins.camera.CameraPlugin"
+  },
+  "plugin-native-canvas": {
+    "name": "ElizaCanvas",
+    "class": "ai.eliza.plugins.canvas.CanvasPlugin"
+  },
+  "plugin-native-contacts": {
+    "name": "ElizaContacts",
+    "class": "ai.eliza.plugins.contacts.ContactsPlugin"
+  },
+  "plugin-native-gateway": {
+    "name": "Gateway",
+    "class": "ai.eliza.plugins.gateway.GatewayPlugin"
+  },
+  "plugin-native-inference": {
+    "name": "Tesseract",
+    "class": "ai.eliza.plugins.mlkittext.MlKitTextPlugin"
+  },
+  "plugin-native-location": {
+    "name": "ElizaLocation",
+    "class": "ai.eliza.plugins.location.LocationPlugin"
+  },
+  "plugin-native-messages": {
+    "name": "ElizaMessages",
+    "class": "ai.eliza.plugins.messages.MessagesPlugin"
+  },
+  "plugin-native-mobile-signals": {
+    "name": "MobileSignals",
+    "class": "ai.eliza.plugins.mobilesignals.MobileSignalsPlugin"
+  },
+  "plugin-native-network-policy": {
+    "name": "ElizaNetworkPolicy",
+    "class": "ai.eliza.plugins.networkpolicy.NetworkPolicyPlugin"
+  },
+  "plugin-native-phone": {
+    "name": "ElizaPhone",
+    "class": "ai.eliza.plugins.phone.PhonePlugin"
+  },
+  "plugin-native-secure-store": {
+    "name": "ElizaSecureStore",
+    "class": "ai.eliza.plugins.securestore.SecureStorePlugin"
+  },
+  "plugin-native-swabble": {
+    "name": "Swabble",
+    "class": "ai.eliza.plugins.swabble.SwabblePlugin"
+  },
+  "plugin-native-system": {
+    "name": "ElizaSystem",
+    "class": "ai.eliza.plugins.system.SystemPlugin"
+  },
+  "plugin-native-talkmode": {
+    "name": "TalkMode",
+    "class": "ai.eliza.plugins.talkmode.TalkModePlugin"
+  },
+  "plugin-native-websiteblocker": {
+    "name": "ElizaWebsiteBlocker",
+    "class": "ai.eliza.plugins.websiteblocker.WebsiteBlockerPlugin"
+  },
+  "plugin-native-wifi": {
+    "name": "ElizaWiFi",
+    "class": "ai.eliza.plugins.wifi.WiFiPlugin"
+  }
+}

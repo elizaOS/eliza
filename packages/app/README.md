@@ -17,3 +17,25 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
+
+## Android native plugin verification
+
+With the Android SDK, Java 21, workspace dependencies, and a running emulator:
+
+```bash
+node packages/app/scripts/android-native-plugins.mjs --list
+node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554
+```
+
+The runner builds every Android native module and executes its instrumentation
+and real WebView/Capacitor bridge contracts. Missing tests, skips, crashes, and
+incomplete runs fail. It leases the selected emulator, installs isolated test
+packages, and removes them afterward. Physical phones are rejected because the
+suite seeds SMS, contacts, location, and credential fixtures. Results are under
+repository-root `test-results/android-native-plugins/` and collected by Device E2E.
+Use `--plugin plugin-native-location` for a focused run. `--no-build` is diagnostic
+only and labels the report as not built from the checkout.
+
+Bridge contracts cover registration, native result shapes, selected round trips,
+and error paths; they do not certify cellular delivery, cloud speech services,
+VPN enforcement, embedded agent startup, or all physical camera/audio hardware.
