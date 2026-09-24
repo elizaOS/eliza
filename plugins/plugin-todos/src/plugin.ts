@@ -41,6 +41,20 @@ export const todosPlugin: Plugin = {
       componentExport: "TodosView",
       tags: ["todos", "tasks", "productivity"],
       relatedActions: ["OWNER_TODOS"],
+      scopedActions: [
+        {
+          name: "VIEW_TODOS_ADD",
+          description:
+            "Ask the assistant to add a todo. This opens a request for the missing task details; clicking it does not create a task or prove a durable effect.",
+          steps: [{ kind: "agent-click", target: "add" }],
+        },
+        {
+          name: "VIEW_TODOS_RETRY",
+          description:
+            "Retry the failed owner todo query when the Retry control is visible. This refreshes the board and does not mutate tasks.",
+          steps: [{ kind: "agent-click", target: "retry" }],
+        },
+      ],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
