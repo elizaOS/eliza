@@ -183,13 +183,14 @@ export class RuntimeEmbeddings {
 	private pinnedEmbeddingSpace: string | undefined;
 	private pinnedEmbeddingDimension: number | undefined;
 
-	validateProviderOutput(
+	async validateProviderOutput(
 		modelType: string,
 		params: unknown,
 		embeddingProviderOutput: unknown,
 		result: unknown,
 		provider: string,
-	): void {
+		signal?: AbortSignal,
+	): Promise<void> {
 		const batch = modelType === ModelType.TEXT_EMBEDDING_BATCH;
 		const sources =
 			batch && Array.isArray(embeddingProviderOutput)
@@ -199,6 +200,38 @@ export class RuntimeEmbeddings {
 		const namedSpace = sources
 			.map(getEmbeddingVectorSpace)
 			.find((space) => space !== undefined);
+		// A named vector cannot escape before its adapter representation commits.
+		// Recall may precede the host's deferred probe, so initialize on first use
+		// as well as sharing an in-flight probe. The null probe must never await
+		// its own initialization promise.
+		if (
+			namedSpace !== undefined &&
+			this.pinnedEmbeddingSpace === undefined &&
+			(params !== null || batch)
+		) {
+			signal?.throwIfAborted();
+			const initialization =
+				this.embeddingInitialization ?? this.ensureEmbeddingDimension();
+			if (!signal) await initialization;
+			else {
+				signal.throwIfAborted();
+				let onAbort!: () => void;
+				const cancelled = new Promise<never>((_resolve, reject) => {
+					onAbort = () =>
+						reject(
+							signal.reason ??
+								new Error("Embedding initialization wait aborted"),
+						);
+					signal.addEventListener("abort", onAbort, { once: true });
+				});
+				try {
+					await Promise.race([initialization, cancelled]);
+				} finally {
+					signal.removeEventListener("abort", onAbort);
+				}
+				signal.throwIfAborted();
+			}
+		}
 		const expected = this.pinnedEmbeddingSpace ?? namedSpace;
 		if (expected !== undefined) {
 			if (
@@ -311,7 +344,21 @@ export class RuntimeEmbeddings {
 		);
 	}
 
-	async ensureEmbeddingDimension() {
+	private embeddingInitialization: Promise<void> | undefined;
+
+	ensureEmbeddingDimension(): Promise<void> {
+		if (this.embeddingInitialization) return this.embeddingInitialization;
+		const initialization = Promise.resolve()
+			.then(() => this.initializeEmbeddingDimension())
+			.finally(() => {
+				if (this.embeddingInitialization === initialization)
+					this.embeddingInitialization = undefined;
+			});
+		this.embeddingInitialization = initialization;
+		return initialization;
+	}
+
+	private async initializeEmbeddingDimension(): Promise<void> {
 		if (!this.runtime.adapter) {
 			throw new Error(
 				"Database adapter not initialized before ensureEmbeddingDimension",
