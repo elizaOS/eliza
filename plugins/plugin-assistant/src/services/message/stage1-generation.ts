@@ -26,6 +26,25 @@ import {
   synthesizeSimpleReplyFromPlainText,
 } from "./stage1-reply-policy.ts";
 
+/** A navigation-only operation must declare pending work for this turn. */
+export function hasNavigationWithoutPendingIntent(
+  parsed: Record<string, unknown> | null,
+): boolean {
+  const visual = parsed?.visualContinuation;
+  return (
+    parsed?.shouldRespond === "RESPOND" &&
+    typeof visual === "object" &&
+    visual !== null &&
+    !Array.isArray(visual) &&
+    "disposition" in visual &&
+    visual.disposition === "requested" &&
+    "navigationOnly" in visual &&
+    visual.navigationOnly === true &&
+    Array.isArray(parsed.intents) &&
+    parsed.intents.length === 0
+  );
+}
+
 /** Resolve conflicting completion/action declarations without guessing from reply prose. */
 export function getStage1RoutingRepair(
   parsed: Record<string, unknown> | null,
@@ -42,6 +61,7 @@ export function getStage1RoutingRepair(
       Array.isArray(parsed.candidateActionNames) &&
       parsed.candidateActionNames.includes("VIEWS_SHOW");
     if (
+      hasNavigationWithoutPendingIntent(parsed) ||
       (visual.disposition === "none" && navigationHint) ||
       (visual.disposition === "requested" &&
         visual.navigationOnly === true &&
@@ -49,7 +69,7 @@ export function getStage1RoutingRepair(
     ) {
       return [
         "response_contract_repair:",
-        "Your structured navigation declarations conflict: VIEWS_SHOW names navigation while disposition=none denies it, or navigationOnly=true conflicts with singleViewOnly=false. Nothing has executed. Reconsider the complete current request and standing restrictions, then return consistent fields. Keep forbidden navigation forbidden; preserve every requested read/write and destination. Candidate hints are not permission.",
+        "Your structured navigation declarations conflict: VIEWS_SHOW names navigation while disposition=none denies it, or navigationOnly=true conflicts with singleViewOnly=false or an empty pending intents list. Nothing has executed. Historical outcomes are past facts, never unfinished instructions or permission. Declare a nonempty navigation intent only when the current request calls for it; otherwise keep the conversational answer with disposition=none and no action candidates. Reconsider the complete current request and standing restrictions, then return consistent fields. Keep forbidden navigation forbidden; preserve every requested read/write and destination. Candidate hints are not permission. For requested navigationOnly, keep a nonempty destination-is-open reply held until delivery succeeds, nonempty intents, replyEffectStatus=pending and a non-simple context; do not discard the held confirmation as an early effect claim.",
         "previous_model_response:",
         JSON.stringify(parsed),
       ].join("\n");
@@ -111,7 +131,7 @@ export function getStage1RoutingRepair(
   return [
     "response_contract_repair:",
     "Your previous HANDLE_RESPONSE conflicts: a reply with replyEffectStatus=none or non_applied and no actionable route (simple context, or general context with no action candidate and no navigation) declares a completed conversational answer or a turn-ending preview, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark pending work pending. For requested navigationOnly, preserve a nonempty destination-is-open confirmation held until delivery succeeds; its future wording does not make the action already applied. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
     "previous_model_response:",
     JSON.stringify(parsed),
   ].join("\n");
@@ -217,12 +237,12 @@ export function getStage1RetryReason(
   return "malformed HANDLE_RESPONSE tool call";
 }
 
-/** Opt a directly addressed terminal decision into one shared Stage-1 review. */
+/** Read the explicit terminal-review override; channel policy owns the default. */
 export function readStage1TerminalReaskSetting(
   runtime: IAgentRuntime,
-): boolean {
+): boolean | undefined {
   const raw = runtime.getSetting("ELIZA_STAGE1_TERMINAL_REASK");
-  if (raw === undefined || raw === null) return false;
+  if (raw === undefined || raw === null) return undefined;
   if (typeof raw === "boolean") return raw;
   return /^(?:1|true|yes|on)$/i.test(String(raw).trim());
 }

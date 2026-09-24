@@ -74,19 +74,42 @@ Unicode. It preserves all other filters and returns every match through the same
 pagination contract. Omitted `queryMode` or `keywords` keeps ranked keyword
 recall. Literal queries cannot be empty, and invalid modes fail explicitly.
 
-The default test command runs isolated Vitest batches. The repository runner
+## Tests
+
+Place module-owned tests beside the source as `<module>[.<behavior>].test.ts`.
+Keep package-wide lifecycle scenarios, shared setup, support code, and child
+process fixtures in `test/`. Script tests live beside their scripts. Do not add
+`__tests__` directories or a second `test/api` or `test/runtime` hierarchy.
+Tests of the same module may use separate files when they need different mock
+boundaries; name them for the behavior they protect.
+
+The default test command runs isolated Vitest batches using the same include
+and exclude patterns as direct Vitest. Integration, real-provider, live, and
+end-to-end suites run in their explicit lanes. To run selected default suites:
+
+```bash
+node scripts/run-vitest-batches.mjs src/api/auth-routes.test.ts
+```
+
+`AGENT_TEST_CONCURRENCY` controls concurrent processes (default four, capped by
+available CPUs); `AGENT_TEST_BATCH_SIZE` controls files per process (default one).
+Keep process isolation for suites that alter environment, mocks, or global
+registries. `AGENT_TEST_VERBOSE=1` prints passing child logs as well as failures.
+
+The repository runner
 requests `--reporter=default --reporter=junit --outputFile.junit=<path>` and the
 batch runner validates every report before writing one combined JUnit artifact.
 Missing, malformed or failed batch evidence rejects the run; entirely skipped
 suites do not satisfy the repository's required-work gate.
 
-## Trajectory viewer access
-
-Raw trajectory reads require owner authority at the HTTP boundary. Authenticated
-non-owner sessions and shared gateway credentials do not grant developer-view
-access. Standalone trusted-local access, configured API owner credentials, and
-authorized owner sessions retain the existing read-service contract. Product
-role resolvers must grant both owner authority and route access.
+The `services/agent-backup-restore-v3-candidate-*` modules implement private
+restore staging, durable records, and verified materialization. They are
+unfinished restore-v3 integration tracked in
+[#20726](https://github.com/elizaOS/eliza/issues/20726) and
+[#20732](https://github.com/elizaOS/eliza/issues/20732), with no production caller
+in this package yet. Their filesystem and materializer tests protect that
+implementation; the current backup routes still use the existing snapshot
+restore path.
 
 ## Backup restore generations
 
@@ -775,15 +798,12 @@ An orphan fragment is rejected before graph writes. The encrypted envelope stays
 V1, but older importers reject the newer payload version instead of silently
 reclassifying its records. Current readers retain support for older payloads.
 
+
 ## Native SQLite host persistence
 
 The built-in `eliza` plugin supports the explicit SQLite database selection for
-its canonical graph and pendant sessions. Native records live in the same
-agent-bound database as the runtime. Pendant session revisions, lease digests,
-ordered transcript segments and insight references commit atomically; stale
-writes preserve the revision-conflict response. Reads and writes reject another
-agent and unsupported record schema versions. Owners remain separate inside the
-agent database. Complete transcript text survives restart without truncation.
+its canonical graph. Native records live in the same agent-bound database as
+the runtime.
 
 PostgreSQL/PGlite keeps its normalized tables. SQLite does not import historical
 PostgreSQL data, qualify other domain plugins, provide encrypted storage or

@@ -8,6 +8,7 @@ import {
   TurnAbortedError,
 } from "@elizaos/core";
 import type { EvaluatorService } from "../evaluator";
+import { isProgressiveContextChannel } from "./channel-protocol";
 import { withHistoryReadEvidence } from "./history-discovery.js";
 import {
   getSourceReplyRendering,
@@ -241,6 +242,9 @@ export async function runV5MessageRuntimeStage1(
     args.message.content?.channelType === ChannelType.VOICE_DM ||
     args.message.content?.channelType === ChannelType.API ||
     args.message.content?.channelType === ChannelType.SELF;
+  const progressiveContextChannel =
+    isProgressiveContextChannel(args.message.content?.channelType) &&
+    !args.codingMode;
   // Ambient turn = a positively-identified unaddressed text-group turn
   // (structural classifier only — channel type + addressing + source
   // metadata, never message text; anything uncertain fails open to
@@ -317,7 +321,7 @@ export async function runV5MessageRuntimeStage1(
         agentId: String(args.runtime.agentId ?? "unknown-agent"),
         roomId: args.message.roomId ? String(args.message.roomId) : undefined,
         // Run/scenario correlation the aggregator joins on. The scenario CLI
-        // sets these env vars before each scenario (packages/scenario-runner/
+        // sets these env vars before each scenario (packages/testing/scenario-runner/
         // src/cli.ts); passing them here makes this call site the source of
         // truth so file-recorder trajectories carry the join keys without the
         // recorder inferring them from env buried in its persistence layer.
@@ -378,6 +382,7 @@ export async function runV5MessageRuntimeStage1(
         context,
         availableContexts,
         directMessageChannel,
+        progressiveContextChannel,
         stage1PreprocessStartedAt,
         recorder,
         trajectoryId,

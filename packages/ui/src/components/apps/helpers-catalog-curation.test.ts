@@ -87,7 +87,7 @@ describe("shouldShowAppInAppsView — declared default-hidden + wallet scope", (
   // gate, letting us exercise the defaultHidden + scope branch directly.
   const walletApp = (overrides: Partial<RegistryAppInfo> = {}) =>
     app({
-      name: "@elizaos/plugin-contacts",
+      name: "@elizaos/plugin-native-contacts",
       catalogSection: "finance",
       defaultHidden: true,
       scope: "wallet",
@@ -129,7 +129,7 @@ describe("shouldShowAppInAppsView — declared default-hidden + wallet scope", (
     expect(
       shouldShowAppInAppsView(
         app({
-          name: "@elizaos/plugin-contacts",
+          name: "@elizaos/plugin-native-contacts",
           catalogSection: "finance",
         }),
         { showAllApps: false, walletEnabled: false },

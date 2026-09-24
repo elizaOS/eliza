@@ -1,13 +1,13 @@
 # certification-hosted — runs the certification chain on a GitHub-hosted
 # runner, as the sanctioned fallback for certification-vast when the vast.ai
 # path is unavailable (dead VAST_API_KEY, no offers). Thin caller of
-# scripts/vast/local-certify.mjs, which runs the exact chain the vast onstart
-# runs — packages/evidence bundle:create → certify:rollup → certify:sign —
+# packages/scripts/vast/local-certify.mjs, which runs the exact chain the vast onstart
+# runs — packages/testing bundle:create → certify:rollup → certify:sign —
 # "same commands, same output; the gate cannot tell the difference (by design
 # — the signature is what matters)".
 #
 # The gpu/full-tier vision analyzers resolve their backend from env
-# (packages/evidence/src/vision-qa/config.ts): with ANTHROPIC_API_KEY present
+# (packages/testing/evidence/vision-qa/config.ts): with ANTHROPIC_API_KEY present
 # they use the Anthropic Messages API, so no local GPU is required. A rented
 # GPU only ever served the local llama-server backend.
 #
@@ -120,7 +120,7 @@ jobs:
       # else — box credentials, POSTGRES_URL, TERM/FORCE_COLOR, D-Bus/XDG
       # session state — is dropped. The command also runs inside a private
       # session bus (dbus-run-session) because hosted runners have a per-user
-      # session bus and packages/credentials's keychain-safety heuristic
+      # session bus and packages/auth's keychain-safety heuristic
       # (isKeychainUnsafe) branches on its reachability; without it the vault
       # master-key suite honestly reports the headless-host gap.
       - name: Prepare hermetic runner (robot pool)
@@ -169,7 +169,7 @@ jobs:
       - name: Produce evidence — deterministic scenario lane
         env:
           TZ: UTC
-        run: ${HERMETIC_RUN:-} bun run --cwd packages/scenario-runner test:pr:e2e
+        run: ${HERMETIC_RUN:-} bun run --cwd packages/testing test:pr:e2e
 
       # The orchestrated command is the complete chain — matrix → ingest →
       # analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
@@ -184,7 +184,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: >-
           ${HERMETIC_RUN:-}
-          bun run --cwd packages/evidence certify --
+          bun run --cwd packages/testing certify --
           --tier "${{ inputs.tier }}"
           --reviewer-id "certification-hosted@github-actions"
           --reviewer-kind agent

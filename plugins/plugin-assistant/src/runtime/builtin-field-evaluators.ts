@@ -133,15 +133,15 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
   description:
-    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Empty for complete text-only answers.",
+    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   descriptionCompressed:
-    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Empty for complete text-only answers.",
+    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   priority: 15,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Empty for complete text-only answers.",
+      "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   },
   parse: readCompleteStringHints,
 };
@@ -225,14 +225,14 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
-    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only confirmations name the destination and are held until its receipt, never proving record reads or writes. Exact quotations preserve every character.",
+    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   descriptionCompressed:
-    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only confirmations name the destination and are held until its receipt, never proving record reads or writes. Exact quotations preserve every character.",
+    "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   priority: 20,
   schema: {
     type: "string",
     description:
-      "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only confirmations name the destination and are held until its receipt, never proving record reads or writes. Exact quotations preserve every character.",
+      "Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   },
   parse(value) {
     if (typeof value !== "string") return "";
@@ -260,15 +260,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   {
     name: "replyEffectStatus",
     description:
-      "Classify current-request work in the reply: pending=work still to perform; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+      "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
     descriptionCompressed:
-      "Classify current-request work in the reply: pending=work still to perform; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+      "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
     priority: 25,
     schema: {
       type: "string",
       enum: ["none", "applied", "non_applied", "pending"],
       description:
-        "Classify current-request work in the reply: pending=work still to perform; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+        "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
     },
     parse: normalizeReplyEffectStatus,
   };

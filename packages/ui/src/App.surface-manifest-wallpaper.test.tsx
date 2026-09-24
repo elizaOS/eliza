@@ -171,12 +171,7 @@ vi.mock("./hooks", () => ({
     <>{children}</>
   ),
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => false,
   useDocumentVisibility: () => true,
   useRenderGuard: vi.fn(),
@@ -291,9 +286,6 @@ vi.mock("./components/shell/SystemWarningBanner", () => ({
 }));
 vi.mock("./components/shell/ShellOverlays", () => ({
   ShellOverlays: () => null,
-}));
-vi.mock("./components/chat/SaveCommandModal", () => ({
-  SaveCommandModal: () => null,
 }));
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,

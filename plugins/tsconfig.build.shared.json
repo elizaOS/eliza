@@ -31,14 +31,14 @@
       "@elizaos/ui/spatial": ["../packages/ui/dist/spatial/index.d.ts"],
       "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
-      "@elizaos/plugin-task-coordinator": [
-        "./plugin-task-coordinator/dist/index.d.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "./plugin-agent-orchestrator/dist/ui/index.d.ts"
       ],
-      "@elizaos/plugin-task-coordinator/*": [
-        "./plugin-task-coordinator/dist/*"
+      "@elizaos/plugin-agent-orchestrator/ui/*": [
+        "./plugin-agent-orchestrator/dist/ui/*"
       ],
-      "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
-      "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
+      "@elizaos/app": ["../packages/app/dist/index.d.ts"],
+      "@elizaos/app/*": ["../packages/app/dist/*"],
       "@elizaos/agent": ["../packages/agent/dist/index.d.ts"],
       "@elizaos/agent/*": ["../packages/agent/dist/*"],
       "@elizaos/plugin-discord": ["./plugin-discord/dist/index.d.ts"],
@@ -47,8 +47,8 @@
       "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
       "@elizaos/plugin-elizacloud": ["./plugin-elizacloud/dist/index.d.ts"],
       "@elizaos/cloud-sdk": ["../packages/cloud/sdk/dist/index.d.ts"],
-      "@elizaos/scenario-runner": [
-        "../packages/scenario-runner/dist/index.d.ts"
+      "@elizaos/testing/scenario-runner": [
+        "../packages/testing/scenario-runner/src/index.ts"
       ]
     }
   }

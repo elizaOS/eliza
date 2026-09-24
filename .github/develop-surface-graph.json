@@ -32,32 +32,23 @@
       "workspacePatterns": [
         "packages/core",
         "packages/agent",
-        "packages/credentials",
-        "packages/logger",
-        "packages/prompts",
+        "packages/auth",
         "packages/shared",
-        "packages/synthetic-world",
-        "packages/skills",
-        "packages/credentials",
+        "packages/testing/synthetic-world",
         "plugins/**",
         "packages/app",
-        "packages/app-core",
-        "packages/homepage",
         "packages/ui",
-        "packages/scenario-runner",
-        "packages/test",
-        "plugins/plugin-app-control",
+        "packages/testing/scenario-runner",
+        "packages/testing",
         "plugins/plugin-computeruse",
         "packages/**"
       ],
       "inputs": [
         "packages/scripts/**",
-        "scripts/**",
         "*.md",
         "**/*.md",
-        "packages/docs/**",
         "packages/scripts/audit-*.mjs",
-        "packages/scenario-runner/test/**",
+        "packages/testing/scenario-runner/test/**",
         "packages/scripts/run-all-tests.mjs",
         "vitest*.ts",
         "vitest*.mts"
@@ -66,12 +57,8 @@
     {
       "id": "cloud",
       "workflow": ".github/workflows/cloud-tests.yml",
-      "workspacePatterns": [
-        "packages/cloud/**",
-        "plugins/plugin-cloud-apps",
-        "plugins/plugin-elizacloud"
-      ],
-      "inputs": ["scripts/cloud/**"],
+      "workspacePatterns": ["packages/cloud/**", "plugins/plugin-elizacloud"],
+      "inputs": ["packages/scripts/cloud/**"],
       "dependsOn": ["canonical"]
     },
     {
@@ -91,7 +78,6 @@
       "workspacePatterns": [
         "packages/agent",
         "packages/app",
-        "packages/app-core",
         "packages/core",
         "packages/shared",
         "packages/ui"
@@ -115,13 +101,6 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "secrets",
-      "workflow": ".github/workflows/gitleaks.yml",
-      "catchAll": true,
-      "workspacePatterns": [],
-      "inputs": ["**", ".gitleaks.toml"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core", "packages/shared"],
@@ -136,7 +115,6 @@
       "workflow": ".github/workflows/ui-e2e-gate.yml",
       "workspacePatterns": [
         "packages/app",
-        "packages/app-core",
         "packages/core",
         "packages/shared",
         "packages/ui"
@@ -151,12 +129,7 @@
     {
       "id": "ui-stories",
       "workflow": ".github/workflows/ui-story-gate.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/app-core",
-        "packages/shared",
-        "packages/ui"
-      ],
+      "workspacePatterns": ["packages/app", "packages/shared", "packages/ui"],
       "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
       "dependsOn": ["ui-core"]
     }

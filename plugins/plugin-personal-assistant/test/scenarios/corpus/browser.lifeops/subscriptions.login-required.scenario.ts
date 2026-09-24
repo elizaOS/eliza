@@ -1,7 +1,7 @@
 /** Scenario fixture for subscriptions login required; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectScenarioBrowserTask } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectScenarioBrowserTask } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,

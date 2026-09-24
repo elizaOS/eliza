@@ -7,9 +7,9 @@
  * layer is a pure no-op when disabled.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	GazetteerEntityRecognizer,
 	MAX_PII_PSEUDONYM_WALK_NODES,
@@ -22,13 +22,13 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "PiiSwapAgent",
 			bio: "test",
 			settings: { ELIZA_PII_SWAP_ENABLED: enabled },
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 }
@@ -87,7 +87,6 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		const runtime = makeRuntime(true);
 		const trajectoryRoomId = "11111111-1111-4111-8111-111111111111";
 		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
-		const createLogs = vi.spyOn(runtime.adapter, "createLogs");
 		runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async (_rt, params: { prompt: string }) => `ack ${params.prompt}`,
@@ -106,14 +105,17 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 				}),
 		);
 
-		expect(createLogs).toHaveBeenCalledTimes(1);
-		const call = createLogs.mock.calls[0]?.[0]?.[0] as {
-			body?: { prompt?: string };
-			roomId?: string;
-		};
-		expect(call.roomId).toBe(trajectoryRoomId);
-		expect(call.body?.prompt).not.toContain("Dana Whitfield");
-		expect(call.body?.prompt).toMatch(/^Email .+ about the renewal\.$/);
+		// Model diagnostics persist asynchronously; stop drains those writes.
+		await runtime.stop();
+		const logs = await runtime.adapter.getLogs({
+			roomId: trajectoryRoomId,
+			type: `useModel:${ModelType.TEXT_SMALL}`,
+		});
+		await runtime.close();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].roomId).toBe(trajectoryRoomId);
+		expect(logs[0].body.prompt).not.toContain("Dana Whitfield");
+		expect(logs[0].body.prompt).toMatch(/^Email .+ about the renewal\.$/);
 	});
 
 	it("swaps named entities using a pre-seeded turn session (reused across the turn)", async () => {
@@ -323,7 +325,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 	});
 
 	it("composes with the secret-swap layer (both enabled): secret → placeholder, name → surrogate", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: {
 				name: "PiiSwapAgent",
 				bio: "test",
@@ -333,7 +335,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 					ELIZA_SECRET_SWAP_ENABLED: true,
 				},
 			} as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 		});
 		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);

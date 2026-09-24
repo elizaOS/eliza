@@ -16,8 +16,8 @@ const targetFiles = [
   "node_modules/.bun/tr46@0.0.3/node_modules/tr46/index.js",
   "dist/node_modules/node-fetch/node_modules/whatwg-url/lib/url-state-machine.js",
   "dist/node_modules/node-fetch/node_modules/whatwg-url/node_modules/tr46/index.js",
-  "packages/app-core/platforms/electrobun/build/dev-macos-arm64/Eliza-dev.app/Contents/Resources/app/eliza-dist/node_modules/node-fetch/node_modules/whatwg-url/lib/url-state-machine.js",
-  "packages/app-core/platforms/electrobun/build/dev-macos-arm64/Eliza-dev.app/Contents/Resources/app/eliza-dist/node_modules/node-fetch/node_modules/whatwg-url/node_modules/tr46/index.js",
+  "packages/app/platforms/electrobun/build/dev-macos-arm64/Eliza-dev.app/Contents/Resources/app/eliza-dist/node_modules/node-fetch/node_modules/whatwg-url/lib/url-state-machine.js",
+  "packages/app/platforms/electrobun/build/dev-macos-arm64/Eliza-dev.app/Contents/Resources/app/eliza-dist/node_modules/node-fetch/node_modules/whatwg-url/node_modules/tr46/index.js",
 ];
 
 let patched = 0;

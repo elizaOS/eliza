@@ -115,11 +115,11 @@ No central list edit is needed. The plugin lives under the repo `plugins/*` work
 - **THROW, never fabricate.** Any failure throws so the runtime falls through to another provider instead of persisting a corrupt vector.
 - **Browser key safety.** The `Authorization` header is suppressed in browser builds unless `EMBEDDING_BROWSER_URL` is set (the proxy injects auth server-side).
 - **Dual build (node + browser).** `dist/node/index.node.js` and `dist/browser/index.browser.js`.
-- See the repo-root `CLAUDE.md` for logger-only, ESM, naming, and architecture rules.
+- See the repo-root `AGENTS.md` for logger-only, ESM, naming, and architecture rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

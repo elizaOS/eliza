@@ -69,7 +69,6 @@ export {
   type ZeroDeliveryRecoverySource,
 } from "./message/reply-policy.ts";
 export { withActionResultsForPrompt } from "./message/response-state.ts";
-export { runShortcutGate } from "./message/shortcut-turn.ts";
 export {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   type EligibleDirectActionRoute,

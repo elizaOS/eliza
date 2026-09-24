@@ -7,8 +7,8 @@
  * is the only way to change the outcome (the red→green the acceptance requires).
  */
 
-import type { SurfaceManifest } from "@elizaos/common";
-import { resolveSurfaceManifest } from "@elizaos/common";
+import type { SurfaceManifest } from "@elizaos/core";
+import { resolveSurfaceManifest } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { deriveSurfacePlacement } from "./native-surface-shell";
 

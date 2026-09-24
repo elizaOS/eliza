@@ -1,7 +1,7 @@
 /**
  * Canonical UI language codes and BCP-47 → supported-language normalization.
  * Pure, React-free, and dependency-free so Node route handlers (content
- * negotiation in `@elizaos/app-core`) can normalize `Accept-Language` without
+ * negotiation in `@elizaos/app`) can normalize `Accept-Language` without
  * pulling the renderer's message dictionaries. `@elizaos/ui/i18n` re-exports
  * these and layers the message-dictionary lookup on top.
  */

@@ -11,7 +11,7 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claimRendererReply } from "../__tests__/view-renderer-test-utils.ts";
+import { claimRendererReply } from "../../test/view-renderer-test-utils.ts";
 import { getActiveViewContext } from "../runtime/view-action-affinity.ts";
 import { closeViewInteractionHost } from "./view-interaction-host.ts";
 import {

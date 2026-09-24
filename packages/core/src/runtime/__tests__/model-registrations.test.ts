@@ -6,9 +6,9 @@
  * adapter registers noop handlers — no live model.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	type Character,
 	EventType,
@@ -17,12 +17,12 @@ import {
 } from "../../types";
 
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "ModelRegistrationsAgent",
 			bio: "test",
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 		settings,
 	});

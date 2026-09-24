@@ -101,7 +101,7 @@ Android uses reflection to call `ElizaAgentService` (resolved by scanning regist
 
 ## Conventions / gotchas
 
-- **Not an elizaOS action plugin.** This is a Capacitor plugin. There is no `Plugin` object from `@elizaos/core`; do not add one. The root CLAUDE.md architecture rules apply to surrounding elizaOS code, not to this package.
+- **Not an elizaOS action plugin.** This is a Capacitor plugin. There is no `Plugin` object from `@elizaos/core`; do not add one. The root AGENTS.md architecture rules apply to surrounding elizaOS code, not to this package.
 - **Android uses reflection.** `AgentPlugin.kt` locates `ElizaAgentService` via reflection to avoid a Gradle cycle. If the service class is renamed or not registered in `AndroidManifest.xml`, all Android calls will fail at runtime.
 - **iOS local mode uses WebView ITTP, not a TCP listener.** When `mode=local` (or equivalent), the iOS plugin dispatches `Agent.request` and `Agent.chat` through `window.__ELIZA_BRIDGE__?.iosLocalAgentRequest` — a JS handler installed by the app's WebView bridge. If that handler is not present, all local-mode requests return HTTP 503.
 - **`Agent.request` is path-only.** All implementations reject absolute URLs and paths starting with `//`. Only paths starting with `/` are accepted.
@@ -113,7 +113,7 @@ Android uses reflection to call `ElizaAgentService` (resolved by scanning regist
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

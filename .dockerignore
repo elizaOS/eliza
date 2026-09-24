@@ -8,8 +8,6 @@ eliza-e2e
 upstreams
 docs
 # Runtime plugin closure is resolved from workspace manifests inside each image.
-packages/app
-!packages/app
 packages/steward
 packages/native
 packages/homepage

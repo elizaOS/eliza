@@ -47,7 +47,7 @@ Lanes: `--mock` PASS (plumbing), `--logic` PASS (real decision logic, 12 scenari
 |---|---|---|
 | VoiceScenario schema + labeled corpus (multi-voice, pauses, respond/no, multi-speaker, entity, voice→entity, diarization, EOT, transcription, multi-agent, long-form **+ robustness, echo, owner-security, overlapping**) | ✅ | `voice-scenario.ts`, `workbench-scenarios.ts` (12 scenarios) |
 | All scoring in one shared module; no duplicate WER | ✅ | `e2e-harness.ts` + `@elizaos/shared/voice-wer`; respond/echo now also single-source |
-| Headless runner over real services + scenario-runner `voice` turn kind | ✅ | `workbench-headless-runner.ts`, `packages/scenario-runner/src/voice-turn.ts` |
+| Headless runner over real services + scenario-runner `voice` turn kind | ✅ | `workbench-headless-runner.ts`, `packages/testing/scenario-runner/src/voice-turn.ts` |
 | Headful scenario player + per-turn DOM verdict + specs per class | ✅ (mocked) | `VoiceWorkbenchShell`, 10 `voice-workbench-*.spec.ts` |
 | Single `voice:workbench` JSON+MD report with baselines | ✅ | `voice-workbench-report.ts`, `scripts/voice-workbench.ts` |
 | CI: mocked always, real where provisioned, `skipped` (never `pass`) when absent | ✅ | `--mock`/`--logic` run+pass; `--real` skips |

@@ -50,7 +50,7 @@ export function defaultIosScreenTimeValidationPaths({
     entitlementsPath: path.join(
       repoRootValue,
       "packages",
-      "app-core",
+      "app",
       "platforms",
       "ios",
       "App",
@@ -60,7 +60,7 @@ export function defaultIosScreenTimeValidationPaths({
     projectPath: path.join(
       repoRootValue,
       "packages",
-      "app-core",
+      "app",
       "platforms",
       "ios",
       "App",
@@ -70,7 +70,7 @@ export function defaultIosScreenTimeValidationPaths({
     appRootPath: path.join(
       repoRootValue,
       "packages",
-      "app-core",
+      "app",
       "platforms",
       "ios",
       "App",

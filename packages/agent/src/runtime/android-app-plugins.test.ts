@@ -25,9 +25,9 @@ import {
 import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
-const WIFI = "@elizaos/plugin-wifi";
-const CONTACTS = "@elizaos/plugin-contacts";
-const PHONE = "@elizaos/plugin-phone";
+const WIFI = "@elizaos/plugin-native-wifi";
+const CONTACTS = "@elizaos/plugin-native-contacts";
+const PHONE = "@elizaos/plugin-native-phone";
 const SENTINEL = "__android-app-plugins-coverage-sentinel__";
 
 const STOPPED_STATUSES = ["stopped", "offline", "error", "failed"] as const;
@@ -102,9 +102,9 @@ beforeAll(async () => {
   STATIC_ELIZA_PLUGINS[SENTINEL] = { keep: true };
   // `/plugin` is the ungated plugin object the SUT wraps.
   [rawWifi, rawContacts, rawPhone] = await Promise.all([
-    import("@elizaos/plugin-wifi/plugin"),
-    import("@elizaos/plugin-contacts/plugin"),
-    import("@elizaos/plugin-phone/plugin"),
+    import("@elizaos/plugin-native-wifi/plugin"),
+    import("@elizaos/plugin-native-contacts/plugin"),
+    import("@elizaos/plugin-native-phone/plugin"),
   ]);
   android = await import("./android-app-plugins.ts");
 });
@@ -205,8 +205,10 @@ describe("STATIC_ELIZA_PLUGINS registration", () => {
     expect(mod.phoneCallLogProvider).toBe(rawPhone.phoneCallLogProvider);
   });
 
-  it("does not invent a registry entry for a missing / never-assigned name", () => {
-    expect(STATIC_ELIZA_PLUGINS["@elizaos/plugin-native-wifi"]).toBeUndefined();
+  it("does not register the device bridge as a runtime plugin", () => {
+    expect(
+      STATIC_ELIZA_PLUGINS["@elizaos/plugin-native-wifi/bridge"],
+    ).toBeUndefined();
     expect(STATIC_ELIZA_PLUGINS[""]).toBeUndefined();
   });
 

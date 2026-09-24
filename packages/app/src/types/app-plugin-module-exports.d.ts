@@ -9,13 +9,13 @@ declare module "@elizaos/plugin-personal-assistant" {
   export default personalAssistantPlugin;
 }
 
-declare module "@elizaos/plugin-phone" {
+declare module "@elizaos/plugin-native-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>
   >;
 }
 
-declare module "@elizaos/plugin-task-coordinator" {
+declare module "@elizaos/plugin-agent-orchestrator" {
   export const CodingAgentControlChip: import("react").ComponentType<
     Record<string, never>
   >;

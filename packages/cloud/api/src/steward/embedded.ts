@@ -745,7 +745,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message: "Set LOGIN_API_URL to the owned @elizaos/login service.",
+        message: "Set LOGIN_API_URL to the owned @elizaos/auth service.",
       },
       503,
     );

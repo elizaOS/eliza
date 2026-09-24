@@ -8,7 +8,8 @@
  * make accidental remote work observable.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { advancedProviders } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/index.ts";
 import { basicProviders } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/index.ts";
@@ -22,7 +23,10 @@ const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
 async function makeRuntime(): Promise<AgentRuntime> {
-	const adapter = new InMemoryDatabaseAdapter();
+	const adapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("purity-guard"),
+	);
 	const runtime = await createInitializedRuntime({
 		character: { name: "purity-guard" } as Character,
 		adapter,

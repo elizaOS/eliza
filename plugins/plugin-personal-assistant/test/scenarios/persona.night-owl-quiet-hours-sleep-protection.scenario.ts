@@ -30,8 +30,8 @@
  *     during quiet hours — the "high priority breaks through" turn fails.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 type JsonRecord = Record<string, unknown>;
 

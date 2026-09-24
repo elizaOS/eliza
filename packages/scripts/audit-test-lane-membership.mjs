@@ -58,7 +58,7 @@ const PLUGINS_DIR = "plugins";
  */
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
-    "packages/app-core/platforms/electrobun",
+    "packages/app/platforms/electrobun",
     "full `test` script (vitest, unfiltered config) is not lane-tagged; ci.yml's desktop-contract job owns the supported deterministic desktop subset during full branch validation. Native/macOS-only tests require their platform owner rather than inclusion in the shared Linux lane.",
   ],
   [

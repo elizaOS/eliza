@@ -77,7 +77,6 @@ import type {
 	SearchCategoryRegistration,
 } from "./search";
 import type { Service, ServiceTypeName } from "./service";
-import type { ShortcutDefinition } from "./shortcut";
 import type { State } from "./state";
 import type {
 	Task,
@@ -866,9 +865,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
-	registerShortcut(shortcut: ShortcutDefinition): void;
-	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
-	unregisterShortcut(id: string): void;
 	registerChatPreHandler(handler: ChatPreHandler): void;
 	registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void;
 	unregisterChatPreHandler(id: string): void;

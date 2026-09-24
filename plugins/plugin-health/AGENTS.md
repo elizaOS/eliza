@@ -179,11 +179,11 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
 - **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `@elizaos/plugin-personal-assistant` while signal-bus ownership remains split across the two plugins.
 - **Token encryption.** `src/util/token-encryption.ts` is a compatibility re-export of the Node-only `@elizaos/shared/crypto/token-encryption` implementation; do not fork the ciphertext, key-file, or environment contract.
-- See root `CLAUDE.md` for global architecture rules, logger conventions, and ESM/naming requirements.
+- See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

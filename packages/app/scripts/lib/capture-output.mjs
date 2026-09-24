@@ -279,7 +279,7 @@ export function captureBackendLog(
  * Print a skip-with-reason line and exit.
  *
  * Default (evidence NOT required): exit 0 — capture is non-fatal when the
- * platform/tooling is absent, matching scripts/e2e-recordings/run-all.mjs.
+ * platform/tooling is absent, matching packages/scripts/e2e-recordings/run-all.mjs.
  *
  * When evidence WAS explicitly required (`--require-evidence`, or auto-on under
  * CI — see resolveRequireEvidence): print a distinct failure line and exit

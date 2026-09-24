@@ -26,7 +26,7 @@ import {
 } from "@elizaos/core";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { runLifeOperationHandler } from "../src/actions/life.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 

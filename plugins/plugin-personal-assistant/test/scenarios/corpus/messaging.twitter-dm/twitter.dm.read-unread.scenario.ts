@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { seedXReadFixtures } from "../../../scenario-support/x-seeds.ts";
 
 export default scenario({
@@ -15,7 +15,7 @@ export default scenario({
   tags: ["messaging", "twitter", "happy-path", "smoke"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

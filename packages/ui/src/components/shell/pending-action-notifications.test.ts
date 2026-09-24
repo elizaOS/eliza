@@ -3,8 +3,7 @@
  * without replacing the canonical agent read model with notification events.
  */
 
-import type { AgentNotification } from "@elizaos/common";
-import type { PendingUserAction } from "@elizaos/core";
+import type { AgentNotification, PendingUserAction } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { orderDashboardNotifications } from "./notification-shade-content";
 import {

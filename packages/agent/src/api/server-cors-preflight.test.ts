@@ -19,7 +19,7 @@ const execFileAsync = promisify(execFile);
 
 const HARNESS_PATH = join(
   import.meta.dirname,
-  "__fixtures__",
+  "../../test/fixtures",
   "stream-cors-preflight-harness.ts",
 );
 

@@ -4,8 +4,7 @@
  * pending without preventing the caller from observing a terminal result.
  */
 import { describe, expect, it } from "bun:test";
-import type { Memory } from "@elizaos/common";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { drainPostDeliveryTasks, EventType } from "@elizaos/core";
 import { CloudBootstrapMessageService } from "./service";
 

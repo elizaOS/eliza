@@ -90,8 +90,6 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
-import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   CHAT_PREFILL_EVENT,
   ELIZA_BACK_INTENT_EVENT,
@@ -388,57 +386,20 @@ describe("ChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("keeps natural-language view requests model-owned", () => {
-    const controller = makeController();
-    const navigateView = vi.fn();
-    const command: SlashCommandCatalogItem = {
-      key: "views",
-      nativeName: "views",
-      description: "Open views",
-      textAliases: ["/views"],
-      scope: "both",
-      acceptsArgs: true,
-      args: [
-        {
-          name: "view",
-          description: "view",
-          dynamicChoices: "views",
-        },
-      ],
-      requiresAuth: false,
-      requiresElevated: false,
-      target: { kind: "navigate", tab: "views", path: "/views" },
-      source: "builtin",
-    };
-    const slash: SlashCommandController = {
-      commands: [command],
-      loading: false,
-      error: false,
-      // Ordinary prose stays model-owned, including exact route requests.
-      naturalShortcutsEnabled: true,
-      resolveChoices: () => ["notes", "calendar"],
-      describeChoice: () => "",
-      resolveSection: () => undefined,
-      isAuthorized: true,
-      isElevated: false,
-      navigateTab: vi.fn(),
-      navigateSettings: vi.fn(),
-      navigateView,
-      clearChat: vi.fn(),
-      openCommandPalette: vi.fn(),
-    };
-
-    render(<ChatOverlay controller={controller} slash={slash} />);
-    const input = screen.getByLabelText("message") as HTMLInputElement;
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "open notes" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(navigateView).not.toHaveBeenCalled();
-    expect(controller.send).toHaveBeenCalledWith("open notes");
-    expect(input.value).toBe("");
-    expect(document.activeElement).toBe(input);
-  });
+  it.each(["open notes", "/settings model", "/commands"])(
+    "sends %s as ordinary chat without a command menu",
+    (text) => {
+      const controller = makeController();
+      render(<ChatOverlay controller={controller} />);
+      const input = screen.getByLabelText("message") as HTMLInputElement;
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: text } });
+      expect(screen.queryByRole("listbox")).toBeNull();
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(controller.send).toHaveBeenCalledWith(text);
+      expect(input.value).toBe("");
+    },
+  );
 
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
     const controller = makeController();
@@ -3650,6 +3611,63 @@ describe("ChatOverlay", () => {
       expect(label.textContent).toBe("Waking the agent");
       expect(label.className).toContain("shimmer");
       expect(screen.queryByTestId("typing-dots")).toBeNull();
+    });
+
+    it("shows transient voice progress and replaces it with the saved final reply", () => {
+      const { rerender } = render(
+        <ChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            messages: [
+              { id: "u", role: "user", content: "read my note", createdAt: 1 },
+            ],
+            turnStatus: { kind: "speaking", label: "Checking your note." },
+            realtimeVoice: {
+              enabled: true,
+              active: true,
+              connecting: false,
+              paused: false,
+              microphoneMuted: false,
+              status: "speaking",
+              error: null,
+              progressText: "Checking your note.",
+              toggleMicrophoneMute: vi.fn(),
+            },
+          } as Partial<ShellController>)}
+        />,
+      );
+      openSheetToFull();
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Checking your note.",
+      );
+      const progressRegion = screen
+        .getByTestId("turn-status-label")
+        .closest('[role="status"]');
+      expect(progressRegion).not.toBeNull();
+      expect(
+        progressRegion?.parentElement?.closest('[role="status"]'),
+      ).toBeNull();
+      rerender(
+        <ChatOverlay
+          controller={makeController({
+            phase: "summoned",
+            responding: false,
+            turnStatus: null,
+            messages: [
+              { id: "u", role: "user", content: "read my note", createdAt: 1 },
+              {
+                id: "a",
+                role: "assistant",
+                content: "Your note says hello.",
+                createdAt: 2,
+              },
+            ],
+          } as Partial<ShellController>)}
+        />,
+      );
+      expect(screen.queryByText("Checking your note.")).toBeNull();
+      expect(screen.getByText("Your note says hello.")).toBeTruthy();
     });
 
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {

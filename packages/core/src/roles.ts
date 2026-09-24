@@ -49,9 +49,13 @@ import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 import { stringToUuid, validateUuid } from "./utils.ts";
 
-export type { RoleName } from "@elizaos/common";
+export type { RoleName } from "./access-control/role-primitives.js";
 
-import { isAdminRank, ROLE_RANK, type RoleName } from "@elizaos/common";
+import {
+	isAdminRank,
+	ROLE_RANK,
+	type RoleName,
+} from "./access-control/role-primitives.js";
 
 /**
  * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
@@ -82,7 +86,7 @@ export {
 	hasAtLeastRole,
 	isAdminRank,
 	ROLE_RANK,
-} from "@elizaos/common";
+} from "./access-control/role-primitives.js";
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };
 	roles?: Record<string, RoleName>;
@@ -441,7 +445,7 @@ export function deterministicOwnerEntityId(agentId: string): UUID {
 
 /**
  * The single owner-entity derivation shared by the client-chat write path, the
- * pendant and personal-assistant routes, LifeOps reads and the scheduler, the
+ * personal-assistant routes, LifeOps reads and the scheduler, the
  * outbound owner target, and connector ownership metadata: the configured
  * canonical owner (`ELIZA_ADMIN_ENTITY_ID` / owner contacts) when it is a
  * UUID, otherwise {@link deterministicOwnerEntityId}. Surfaces that derive the

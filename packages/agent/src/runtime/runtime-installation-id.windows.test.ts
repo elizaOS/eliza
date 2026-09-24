@@ -15,7 +15,7 @@ const entries: Array<{ deletePassword(): void }> = [];
 const require = createRequire(import.meta.url);
 function credential(root: string) {
   const credentialRequire = createRequire(
-    require.resolve("@elizaos/credentials/package.json"),
+    require.resolve("@elizaos/auth/package.json"),
   );
   const { Entry } = credentialRequire("@napi-rs/keyring");
   const entry = new Entry(

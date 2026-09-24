@@ -20,7 +20,7 @@ import {
   type EnabledViewKinds,
   isViewVisible,
   type ViewKind,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import type { RegistryAppInfo } from "../api";
 import { resolveViewIconId } from "../components/views/view-icon-aliases";
 import { viewIconDataUri } from "../components/views/view-icons.generated";

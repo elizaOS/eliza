@@ -11,7 +11,7 @@ rows are length-filtered against its 4096-token training window.
 Task mix (benchmark-aligned with ``scripts/eval/eliza1_eval_suite.py`` text gate
 and the structural ``format_ok`` gate in ``benchmarks/eliza1_gates.yaml``):
 
-  * ``action_selection`` — from ``packages/app-core/test/benchmarks/
+  * ``action_selection`` — from ``packages/app/test/benchmarks/
     action-selection-cases.ts``: a user turn → the action the agent should pick
     (or a plain reply for ``expectedAction: null``). This is the structured
     agent-loop behavior the action-selection benchmark measures, taught in two
@@ -74,7 +74,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 LOG = logging.getLogger("build-eliza1-sft-2b")
 
 OUT_DIR = TRAINING_ROOT / "datasets" / "eliza1-sft-2b"
-ACTION_CASES_TS = REPO_ROOT / "packages" / "app-core" / "test" / "benchmarks" / "action-selection-cases.ts"
+ACTION_CASES_TS = REPO_ROOT / "packages" / "app" / "test" / "benchmarks" / "action-selection-cases.ts"
 
 # gemma-4-E2B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
 # heuristic keeps us conservative without a tokenizer dependency at build time.

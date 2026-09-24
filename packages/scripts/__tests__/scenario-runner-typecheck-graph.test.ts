@@ -14,10 +14,10 @@ const UI_PACKAGE_JSON = fileURLToPath(
   new URL("../../ui/package.json", import.meta.url),
 );
 const IOS_LOCAL_AGENT_TRANSPORT = fileURLToPath(
-  new URL("../../ui/src/api/ios-local-agent-transport.ts", import.meta.url),
+  new URL("../../src/ui/api/ios-local-agent-transport.ts", import.meta.url),
 );
 const CAPACITOR_BUN_RUNTIME = "@elizaos/capacitor-bun-runtime";
-const SCENARIO_RUNNER_TYPECHECK = "@elizaos/scenario-runner#typecheck";
+const SCENARIO_RUNNER_TYPECHECK = "@elizaos/testing#typecheck";
 
 describe("scenario-runner filtered typecheck graph", () => {
   test("builds optional native runtime declarations before typechecking", () => {

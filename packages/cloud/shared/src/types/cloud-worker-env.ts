@@ -340,7 +340,7 @@ export interface Bindings {
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- First-party login ----
-  /** Authoritative base URL of the owned @elizaos/login service. */
+  /** Authoritative base URL of the owned @elizaos/auth service. */
   LOGIN_API_URL?: string;
   /** Legacy upstream binding accepted during deployment migration. */
   STEWARD_API_URL?: string;

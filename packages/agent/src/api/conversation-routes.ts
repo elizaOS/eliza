@@ -90,6 +90,11 @@ import {
 } from "@elizaos/shared";
 import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import {
+  conversationClientUserMemoryId,
+  type DurableConversationChatMarker,
+  readDurableConversationChatMarker,
+} from "@elizaos/shared/conversation-chat-marker";
+import {
   parseSharedTodoCutoverSnapshot,
   TodoCutoverContractError,
 } from "@elizaos/shared/todo-cutover";
@@ -101,10 +106,6 @@ import {
   deleteConversationMessage,
   truncateConversationMessages,
 } from "../services/conversation-message-service.ts";
-import {
-  createPendantSessionRepository,
-  type PendantSessionRepository,
-} from "../services/pendant-session/repository.ts";
 import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
@@ -129,7 +130,6 @@ import {
   isIntentionalNoResponseResult,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
-  normalizeClientMessageId,
   persistAssistantConversationMemory,
   persistConversationMemory,
   persistExactConversationMemory,
@@ -1490,23 +1490,6 @@ export function buildPersistedAssistantContent(
       };
 }
 
-function conversationClientUserMemoryId(
-  scope: string,
-  clientMessageId: string,
-): UUID {
-  return stringToUuid(`conversation-user:${scope}:${clientMessageId}`) as UUID;
-}
-
-interface DurableConversationChatMarker {
-  version: 1;
-  scope: string;
-  clientMessageId: string;
-  fingerprint: string;
-  outcomeJson?: string;
-  /** Private evidence owned by this exact user turn, never a public outcome. */
-  replyRecoveryJson?: string;
-}
-
 type DurableConversationReplyRecovery = NonNullable<
   ChatGenerationResult["replyRecovery"]
 > & {
@@ -1967,41 +1950,6 @@ function parseDurableConversationChatOutcome(
   };
 }
 
-function readDurableConversationChatMarker(
-  value: unknown,
-): DurableConversationChatMarker | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    record.version !== 1 ||
-    typeof record.scope !== "string" ||
-    record.scope.length === 0 ||
-    typeof record.clientMessageId !== "string" ||
-    normalizeClientMessageId(record.clientMessageId) !==
-      record.clientMessageId ||
-    typeof record.fingerprint !== "string" ||
-    !/^[a-f0-9]{64}$/.test(record.fingerprint) ||
-    (record.outcomeJson !== undefined &&
-      typeof record.outcomeJson !== "string") ||
-    (record.replyRecoveryJson !== undefined &&
-      typeof record.replyRecoveryJson !== "string")
-  ) {
-    return null;
-  }
-  return {
-    version: 1,
-    scope: record.scope,
-    clientMessageId: record.clientMessageId,
-    fingerprint: record.fingerprint,
-    ...(typeof record.outcomeJson === "string"
-      ? { outcomeJson: record.outcomeJson }
-      : {}),
-    ...(typeof record.replyRecoveryJson === "string"
-      ? { replyRecoveryJson: record.replyRecoveryJson }
-      : {}),
-  };
-}
-
 function buildRecoveredConversationChatOutcome(
   memory: Memory & { id: UUID },
   userMessageId: UUID,
@@ -2320,139 +2268,6 @@ async function persistClientUserMemory(
     roomHandlerLease,
     assertCurrent,
   );
-}
-
-interface CanonicalPendantProvenance {
-  ownerId: UUID;
-  agentId: UUID;
-  sessionId: string;
-  segmentId: string;
-  segmentRevision: number;
-}
-
-function readRequiredMetadataString(
-  metadata: Record<string, unknown>,
-  key: string,
-): string {
-  const value = metadata[key];
-  if (typeof value !== "string" || !value.trim()) {
-    throw new ElizaError(`Pendant transcript metadata is missing ${key}`, {
-      code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
-      context: { key },
-    });
-  }
-  return value.trim();
-}
-
-export async function verifyCanonicalPendantProvenance(
-  runtime: AgentRuntime,
-  caller: { entityId: UUID; role: WaifuChatWorldRole },
-  prompt: string,
-  metadata: Record<string, unknown> | undefined,
-  repository?: PendantSessionRepository,
-): Promise<CanonicalPendantProvenance | null> {
-  if (metadata?.voiceSource !== "pendant") return null;
-  if (caller.role !== "OWNER") {
-    throw new ElizaError(
-      "Only the authenticated owner may submit a pendant transcript",
-      {
-        code: "PENDANT_TRANSCRIPT_OWNER_REQUIRED",
-        context: { callerRole: caller.role },
-      },
-    );
-  }
-
-  const ownerId = readRequiredMetadataString(
-    metadata,
-    "pendantOwnerId",
-  ) as UUID;
-  const agentId = readRequiredMetadataString(
-    metadata,
-    "pendantAgentId",
-  ) as UUID;
-  const sessionId = readRequiredMetadataString(metadata, "pendantSessionId");
-  const segmentId = readRequiredMetadataString(metadata, "pendantSegmentId");
-  const segmentRevision = metadata.pendantSegmentRevision;
-  if (!Number.isSafeInteger(segmentRevision) || Number(segmentRevision) < 0) {
-    throw new ElizaError(
-      "Pendant transcript metadata has an invalid segment revision",
-      {
-        code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
-        context: { key: "pendantSegmentRevision" },
-      },
-    );
-  }
-  if (ownerId !== caller.entityId || agentId !== runtime.agentId) {
-    throw new ElizaError(
-      "Pendant transcript identity does not match the authenticated runtime",
-      {
-        code: "PENDANT_TRANSCRIPT_IDENTITY_MISMATCH",
-        context: { ownerId, agentId },
-      },
-    );
-  }
-
-  const store = repository ?? createPendantSessionRepository(runtime);
-  const stored = await store.load({
-    ownerId,
-    agentId,
-    sessionId,
-  });
-  const segment = stored?.segments.find(
-    (candidate) => candidate.id === segmentId,
-  );
-  if (
-    !stored ||
-    !segment ||
-    segment.sessionId !== sessionId ||
-    segment.status !== "resolved" ||
-    segment.revision !== segmentRevision ||
-    segment.text.trim() !== prompt.trim()
-  ) {
-    throw new ElizaError(
-      "Pendant transcript does not match a canonical resolved segment",
-      {
-        code: "PENDANT_TRANSCRIPT_SEGMENT_MISMATCH",
-        context: { sessionId, segmentId, segmentRevision },
-      },
-    );
-  }
-
-  return { ownerId, agentId, sessionId, segmentId, segmentRevision };
-}
-
-export function stampCanonicalPendantMemory(
-  messages: Awaited<ReturnType<typeof buildUserMessages>>,
-  provenance: CanonicalPendantProvenance,
-): void {
-  for (const memory of [messages.userMessage, messages.messageToStore]) {
-    memory.metadata = {
-      ...memory.metadata,
-      type: "message",
-      provider: "pendant",
-      accountId: provenance.agentId,
-      platformMessageId: provenance.segmentId,
-      sourceId: provenance.segmentId,
-      chatType: "dm",
-      scope: "owner-private",
-      scopedToEntityId: provenance.ownerId,
-      addedBy: provenance.ownerId,
-      addedByRole: "OWNER",
-      base: {
-        type: "message",
-        source: "pendant",
-        scope: "owner-private",
-      },
-      pendant: {
-        userId: provenance.ownerId,
-        accountId: provenance.agentId,
-        messageId: provenance.segmentId,
-        sessionId: provenance.sessionId,
-        segmentId: provenance.segmentId,
-        segmentRevision: provenance.segmentRevision,
-      },
-    };
-  }
 }
 
 function writeConversationDoneSse(
@@ -5381,12 +5196,6 @@ async function streamConversationMessage(
       }
       let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
       try {
-        const pendantProvenance = await verifyCanonicalPendantProvenance(
-          runtime,
-          caller,
-          prompt,
-          chatMetadata,
-        );
         if (
           !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
         ) {
@@ -5399,16 +5208,13 @@ async function streamConversationMessage(
           agentId: runtime.agentId,
           roomId: conv.roomId,
           channelType,
-          messageSource: pendantProvenance ? "pendant" : source,
+          messageSource: source,
           metadata: chatMetadata,
         });
         if (
           !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
         ) {
           return failStream("Local voice agent runtime changed");
-        }
-        if (pendantProvenance) {
-          stampCanonicalPendantMemory(userMessages, pendantProvenance);
         }
       } catch (err) {
         const handled = failStream(
@@ -6421,12 +6227,6 @@ async function sendConversationMessage(
 
       let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
       try {
-        const pendantProvenance = await verifyCanonicalPendantProvenance(
-          runtime,
-          caller,
-          prompt,
-          restMetadata,
-        );
         userMessages = await buildUserMessages({
           images,
           prompt,
@@ -6434,12 +6234,9 @@ async function sendConversationMessage(
           agentId: runtime.agentId,
           roomId: conv.roomId,
           channelType,
-          messageSource: pendantProvenance ? "pendant" : source,
+          messageSource: source,
           metadata: restMetadata,
         });
-        if (pendantProvenance) {
-          stampCanonicalPendantMemory(userMessages, pendantProvenance);
-        }
       } catch (err) {
         releaseTurnReservation();
         error(

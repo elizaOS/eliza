@@ -20,7 +20,12 @@
  * decoding path, no live model.
  */
 
-import { REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/shared";
+import { stringToUuid } from "@elizaos/core";
+import {
+  normalizeCompletedActionHandoffId,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+  type VoiceUiContext,
+} from "@elizaos/shared";
 import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
 import { logger } from "../utils/logger";
 
@@ -208,6 +213,13 @@ export async function streamElizaConversation(
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
   const fetchStartedAt = performance.now();
+  // VoiceSession keeps one trace ID across retries and mints another for each
+  // ordinary/overlap turn. The fixed-size key fits the host replay contract;
+  // the complete trace still travels in headers. Transient controls stay unkeyed
+  // unless their caller supplies the existing explicit lifecycle identity.
+  const clientMessageId =
+    request.clientMessageId ||
+    (request.transientInput ? undefined : `voice:${stringToUuid(request.traceId)}`);
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -238,7 +250,7 @@ export async function streamElizaConversation(
         text: request.transcript,
         channelType: VOICE_CHANNEL_TYPE,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
-        ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
+        ...(clientMessageId ? { clientMessageId } : {}),
         ...(request.historyCutoffAt !== undefined
           ? { historyCutoffAt: request.historyCutoffAt }
           : {}),
@@ -331,12 +343,29 @@ export async function streamElizaConversation(
   let progressTimer: ReturnType<typeof setTimeout> | null = null;
   let progressActive = false;
   let progressInFlight = false;
+  let planningAcknowledgmentSeen = false;
+  let replyAuthorized = false;
   const progressIntervalMs = request.progressIntervalMs ?? 6_000;
   const clearProgress = (): void => {
     progressActive = false;
     if (progressTimer !== null) {
       clearTimeout(progressTimer);
       progressTimer = null;
+    }
+  };
+  const emitProgress = async (text: string): Promise<void> => {
+    if (request.signal.aborted || replyAuthorized || progressInFlight) return;
+    progressInFlight = true;
+    try {
+      await request.onProgress?.(text);
+    } catch (error) {
+      // error-policy:J7 progress egress must not kill the canonical turn.
+      logger.warn("[eliza-sse-bridge] progress observer failed", {
+        traceId: request.traceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      progressInFlight = false;
     }
   };
   const scheduleProgress = (): void => {
@@ -350,20 +379,7 @@ export async function streamElizaConversation(
     progressActive = true;
     const tick = async (): Promise<void> => {
       if (!progressActive || request.signal.aborted) return;
-      if (!progressInFlight) {
-        progressInFlight = true;
-        try {
-          await request.onProgress?.("Still working on that.");
-        } catch (error) {
-          // error-policy:J7 progress telemetry/egress must not kill the canonical turn.
-          logger.warn("[eliza-sse-bridge] progress observer failed", {
-            traceId: request.traceId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        } finally {
-          progressInFlight = false;
-        }
-      }
+      await emitProgress("Still working on that.");
       if (progressActive && !request.signal.aborted) {
         progressTimer = setTimeout(() => void tick(), progressIntervalMs);
       }
@@ -376,6 +392,7 @@ export async function streamElizaConversation(
     onDelta(text);
   };
   const authorizeText = (authoritativeText: string): void => {
+    replyAuthorized = true;
     clearProgress();
     pendingProvisionalText = null;
     if (!authoritativeText.startsWith(emittedText)) {
@@ -431,6 +448,7 @@ export async function streamElizaConversation(
       // multiple `data:` lines. We process line-by-line and only act on
       // `data:` payloads, which is what the OpenAI-shaped stream emits.
       while ((newlineIndex = buffered.indexOf("\n")) !== -1) {
+        if (request.signal.aborted) return { completed: false, aborted: true };
         const line = buffered.slice(0, newlineIndex).trimEnd();
         buffered = buffered.slice(newlineIndex + 1);
         if (line === "") {
@@ -463,6 +481,21 @@ export async function streamElizaConversation(
         if (payloadType === "reply_ready") {
           finishAuthoritativeText(payload);
           request.onReplyReady?.();
+          continue;
+        }
+        if (payloadType === "status" && !planningAcknowledgmentSeen && !replyAuthorized) {
+          // The canonical route attaches the already-admitted acknowledgement
+          // to thinking status and repeats it through later phases. It is
+          // transient speech, never an authoritative reply prefix.
+          const status = JSON.parse(payload) as { kind?: unknown; label?: unknown };
+          if (
+            status.kind === "thinking" &&
+            typeof status.label === "string" &&
+            status.label.trim()
+          ) {
+            planningAcknowledgmentSeen = true;
+            await emitProgress(status.label);
+          }
           continue;
         }
         const update = extractTextUpdate(payload);
@@ -726,6 +759,13 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     // has no authoritative ordering contract. Fail closed instead of choosing
     // whichever array position an adapter happened to serialize last.
     if (successfulNavigationResults > 1) return null;
+    // A confirmed targeted transport already owns this navigation. Keep the
+    // speech turn alive without sending a second terminal navigation frame.
+    if (
+      candidate.values.completedActionDelivered === true &&
+      normalizeCompletedActionHandoffId(candidate.values.completedActionHandoffId)
+    )
+      continue;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
     if (isAppBrowserHandoff && (!viewPath || !isCanonicalBrowserLaunchPath(viewPath))) {

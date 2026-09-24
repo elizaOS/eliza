@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ElizaError } from "@elizaos/common";
-import { redactLogArgs } from "@elizaos/core";
+import { ElizaError, redactLogArgs } from "@elizaos/core";
 import { describeUnhandledError } from "./unhandled-error-detail";
 
 /**

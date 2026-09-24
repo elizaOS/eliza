@@ -8,9 +8,9 @@ view instrumentation, GenUI, voice, and platform/bridge glue.
 
 A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
-shell), `@elizaos/app-core`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
+shell), `@elizaos/app`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
 homepage, and many plugin UI packages (`plugin-wallet`,
-`plugin-messages`, `plugin-notes`, etc.).
+`plugin-native-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 **peer** deps (19.2.7) — the host owns React; plugin view bundles externalise
@@ -47,7 +47,7 @@ src/
     composites/               Higher-level pieces (sidebar, page-panel, ...)
     shell/                    ChatSurface, AssistantOverlay, HomePill, shell-state reducer
     apps/                     Overlay/game app surfaces + registries + AppWindowRenderer
-    cockpit/                  Coding-cockpit deck primitives (CockpitView, CockpitModePicker, CockpitTierToggle, CockpitNewSessionForm) — barrel-exported for plugin-task-coordinator's /cockpit route
+    cockpit/                  Coding-cockpit deck primitives (CockpitView, CockpitModePicker, CockpitTierToggle, CockpitNewSessionForm) — barrel-exported for plugin-agent-orchestrator's /cockpit route
     character/ chat/ config-ui/ pages/ settings/ steward/ voice/ voice-pill/ ...
   cloud-ui/                   Cloud-frontend component set (@elizaos/ui/cloud-ui):
                               dashboard, docs, data-list, monetization, analytics,
@@ -345,7 +345,7 @@ This package mostly reads config injected by the host, not raw env vars:
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

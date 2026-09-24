@@ -16,7 +16,7 @@ describe("Apple secure-store bridge contract", () => {
     const podfile = readFileSync(
       resolve(
         new URL(".", import.meta.url).pathname,
-        "../../../packages/app-core/platforms/ios/App/Podfile",
+        "../../../packages/app/platforms/ios/App/Podfile",
       ),
       "utf8",
     );
@@ -83,7 +83,7 @@ describe("Apple secure-store bridge contract", () => {
   it("does not grant Keychain Sharing to the app or its extensions", () => {
     const iosAppRoot = resolve(
       new URL(".", import.meta.url).pathname,
-      "../../../packages/app-core/platforms/ios/App/App",
+      "../../../packages/app/platforms/ios/App/App",
     );
     const entitlementPaths = [
       resolve(iosAppRoot, "App.entitlements"),

@@ -186,7 +186,7 @@ export interface InboxRouteCallerAuthorization {
 
 /**
  * A single message in the inbox response. Shape mirrors
- * ConversationMessage on the client (see packages/app-core/src/api/
+ * ConversationMessage on the client (see packages/app/src/api/
  * client-types-chat.ts) so ChatView can render the same component for
  * both feeds without a type dance.
  */

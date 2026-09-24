@@ -8,7 +8,7 @@
  * authorize-return module are doubled to isolate the mount.
  */
 
-import { LoginApiError } from "@elizaos/login";
+import { LoginApiError } from "@elizaos/auth";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";

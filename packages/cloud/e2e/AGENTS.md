@@ -25,7 +25,6 @@ src/helpers/
                        `stack` fixture and the per-test `seededUser`/`authenticatedPage`
   wallet-login.ts      loginWithTestWallet / loginAsSeededUser — real SIWE handshake
   provisioning.ts, monetization.ts, seed-pricing.ts  flow helpers
-docs/                  coverage write-ups and live-operation runbooks
 ```
 
 Specs import `{ test, expect }` from `src/helpers/test-fixtures`, not from
@@ -46,8 +45,8 @@ bun run --cwd packages/cloud/e2e test:ui        # Playwright UI mode
 bun run --cwd packages/cloud/e2e typecheck
 
 # real-wallet SIWE login gate (dev/CI), separate from the suite
-bun scripts/cloud/siwe-test-login.mjs            # defaults to https://api.eliza.app
-bun scripts/cloud/siwe-test-login.mjs --base <local-stack-url>
+bun packages/scripts/cloud/siwe-test-login.mjs            # defaults to https://api.eliza.app
+bun packages/scripts/cloud/siwe-test-login.mjs --base <local-stack-url>
 ```
 
 ## Conventions / gotchas
@@ -89,11 +88,11 @@ bun scripts/cloud/siwe-test-login.mjs --base <local-stack-url>
 - Mocks live in `packages/cloud/test-mocks`
   (`@elizaos/cloud-test-mocks`).
 
-Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../CLAUDE.md).
+Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../../AGENTS.md).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

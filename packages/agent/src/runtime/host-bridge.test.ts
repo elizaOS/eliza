@@ -24,7 +24,7 @@ describe("agent host bridge (downward injection seam)", () => {
     const bridge = getAgentHostBridge();
     expect(bridge).toBe(defaultAgentHostBridge);
 
-    // Mirrors the mobile `app-core-runtime.cjs` stub behavior exactly.
+    // Mirrors the mobile `app-runtime.cjs` stub behavior exactly.
     expect(bridge.getDefaultAccountPool()).toBeNull();
     await expect(bridge.runVaultBootstrap()).resolves.toEqual({
       migrated: 0,
@@ -90,7 +90,7 @@ describe("agent host bridge (downward injection seam)", () => {
     };
     setAgentHostBridge(installed);
 
-    // Desktop app-core can load the Bun source export while the packaged agent
+    // Desktop app can load the Bun source export while the packaged agent
     // server executes the compiled module. The injected capability is process
     // state, so those module instances must observe the same bridge.
     vi.resetModules();

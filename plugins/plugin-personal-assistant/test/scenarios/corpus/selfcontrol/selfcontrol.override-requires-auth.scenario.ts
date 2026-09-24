@@ -4,8 +4,8 @@ import {
   describeCalls,
   successfulCalls,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -17,7 +17,7 @@ export default scenario({
     "When the user asks for a quick unblock without enough context, the assistant checks active block state and asks whether X is currently blocked before proceeding.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -123,7 +123,7 @@ bun run --cwd plugins/plugin-anthropic test
 bun run --cwd plugins/plugin-anthropic typecheck
 ```
 
-For agent-facing documentation (file layout, how to add handlers, extension steps), see [CLAUDE.md](CLAUDE.md).
+For agent-facing documentation (file layout, how to add handlers, extension steps), see [AGENTS.md](AGENTS.md).
 
 The runtime provider is Node-only and publishes one ESM root with bundled TypeScript
 declarations. Hosts can import the separate `endpoint-config` entry. Browser/CJS

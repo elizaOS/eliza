@@ -178,7 +178,6 @@ export * from "./chat/ConnectorAccountPicker";
 export * from "./chat/connector-send-as";
 export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
-export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export {
   OrchestratorAccountsView,
@@ -216,7 +215,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ConfigPageView";
-// DatabasePageView omitted — App.tsx lazy-loads it by path and app-core imports
+// DatabasePageView omitted — App.tsx lazy-loads it by path and app imports
 // the direct subpath; re-exporting it here forms a barrel cycle with
 // DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";

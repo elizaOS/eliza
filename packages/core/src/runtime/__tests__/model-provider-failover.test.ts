@@ -7,10 +7,10 @@
  * throw the live subscription-limit envelope — no network model call.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import {
@@ -25,13 +25,13 @@ import {
 import { runWithActionRoutingContext } from "../action-routing-context";
 
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "ProviderFailoverAgent",
 			bio: "test",
 			settings,
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 }

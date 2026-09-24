@@ -90,7 +90,7 @@ real `AgentRuntime`, real stores, plugin routes, or live model trajectories.
 Use scenario-runner `pr-deterministic` only when the behavior is scheduler or
 `tick` drivable, keyless under the strict LLM proxy, and valuable enough to join
 the pinned PR corpus. Adding one requires updating
-`packages/scenario-runner/src/corpus-assertion-guard.test.ts`.
+`packages/testing/scenario-runner/src/corpus-assertion-guard.test.ts`.
 
 ## Catalog Workflow
 

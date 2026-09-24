@@ -144,11 +144,11 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **Sensitive request adapter**: `registerTelegramDmSensitiveRequestAdapter` (called in `init()`) wires Telegram DM delivery for secret / OAuth link-out requests, mirroring the Discord DM adapter.
 - **DM access fails closed by default.** With no `TELEGRAM_ALLOWED_CHATS` allowlist, private chats are gated by `TELEGRAM_DM_POLICY` (default `pairing` through the core PairingService; the code reply is issued at most once per sender per request TTL, and pending requests are rejected — never evicted — at the queue cap). `TELEGRAM_DM_POLICY=open` restores the legacy default-open behavior; non-private chats are unaffected because a bot only sees groups it was invited to. The standalone poller applies the same gate via `src/dm-policy.ts`.
 - **Inbound attachment URLs are token-free capability references.** `MessageManager` persists `telegram-file:<file_id>` on `content.attachments`, never the telegraf `getFileLink` URL (which embeds the operator's bot token). Bytes are resolved transiently at enrichment time (`enrichFileRefAttachments`, reply path only) and at outbound send time (`sendMedia` re-sends by bare file id); model handlers receive inline data URLs, never the token URL. Memories written before this change may still hold token URLs — rotate the bot token to remediate.
-- See repo root `CLAUDE.md` for architecture rules, logging standards, and git workflow.
+- See repo root `AGENTS.md` for architecture rules, logging standards, and git workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

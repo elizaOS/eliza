@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain

@@ -2,8 +2,8 @@
  * Shared type definitions for message content structures
  */
 
-import type { BaseMetadata, Media } from "@elizaos/common";
-import { MemoryType } from "@elizaos/common";
+import type { BaseMetadata, Media } from "@elizaos/core";
+import { MemoryType } from "@elizaos/core";
 
 /**
  * Message content with text, attachments, and source metadata

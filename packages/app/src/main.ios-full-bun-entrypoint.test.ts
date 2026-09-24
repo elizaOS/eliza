@@ -4,7 +4,7 @@
  * process boundaries are substituted by the shared jsdom bridge mocks.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app/desktop-shell";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const entrypoint = vi.hoisted(() => ({
@@ -23,7 +23,7 @@ vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
 vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
   initializeCapacitorBridge: entrypoint.initializeCapacitor,
 }));
-vi.mock("@elizaos/app-core/api/ios-local-agent-transport", () => ({
+vi.mock("@elizaos/app/api/ios-local-agent-transport", () => ({
   installIosLocalAgentNativeRequestBridge: entrypoint.installNativeRequest,
   installIosLocalAgentFetchBridge: entrypoint.installFetch,
 }));

@@ -12,7 +12,7 @@ const APPS_SECTION_PARTS = APPS_SECTION_VISIBILITY_KEY.split("/");
 
 export function buildAppsSectionVisibilityCandidate(): WidgetVisibilityCandidate {
   return {
-    pluginId: APPS_SECTION_PARTS[0] ?? "app-core",
+    pluginId: APPS_SECTION_PARTS[0] ?? "app",
     id: APPS_SECTION_PARTS[1] ?? "apps.section",
     defaultEnabled: true,
     label: "Apps",

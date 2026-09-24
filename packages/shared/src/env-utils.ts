@@ -1,1 +1,1 @@
-export { isTruthyEnvValue } from "@elizaos/common";
+export { isTruthyEnvValue } from "@elizaos/core";

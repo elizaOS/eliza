@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Replays the headless pre-init/post-init bridge order against a real runtime,
  * proving the local boot hook reuses the canonical service without a dead loader.
@@ -29,7 +29,7 @@ afterAll(() => {
 describe("device bridge service ownership", () => {
 	it("keeps the env-only provider unregistered through the post-init hook", async () => {
 		const bridge = await import(
-			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+			"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
 		);
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 

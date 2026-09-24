@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   comparePixels,
   summarizeDiff,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import { analyzeImageFile } from "../mvp-visual-verify/ocr.mjs";
 import {

@@ -127,19 +127,3 @@ loopback fixture; it never opens an existing profile or logs the credential.
 
 File operations live on the FILE action; shell / terminal access lives
 on the SHELL action. They are **not** exposed by this plugin.
-
-## Further reading
-
-- [`docs/MULTI_MONITOR.md`](./docs/MULTI_MONITOR.md) — multi-display
-  capture and coordinate translation.
-- [`docs/CODEX_COMPUTER_PARITY.md`](./docs/CODEX_COMPUTER_PARITY.md) —
-  evidence-bounded parity matrix and macOS app-control limitations.
-- Scene composition — how windows, a11y, screen, and OCR are composed into a
-  single `Scene` (the separate design note was never committed).
-- [`docs/IOS_CONSTRAINTS.md`](./docs/IOS_CONSTRAINTS.md) /
-  [`docs/ANDROID_CONSTRAINTS.md`](./docs/ANDROID_CONSTRAINTS.md) —
-  honest scope on mobile.
-- [`docs/MOBILE_ASSISTANT_ROUTING.md`](./docs/MOBILE_ASSISTANT_ROUTING.md)
-  — mobile request routing.
-- [`docs/AOSP_SYSTEM_APP.md`](./docs/AOSP_SYSTEM_APP.md) — AOSP
-  system-app deployment notes.

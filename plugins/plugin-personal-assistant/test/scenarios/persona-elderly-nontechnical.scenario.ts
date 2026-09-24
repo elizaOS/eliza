@@ -1,5 +1,5 @@
 // Defines the persona elderly nontechnical LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { personaDentistFinalChecks } from "./_helpers/persona-dentist-outcome";
 
 /**
@@ -20,7 +20,7 @@ export default scenario({
   tags: ["lifeops", "tasks", "persona", "robustness"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

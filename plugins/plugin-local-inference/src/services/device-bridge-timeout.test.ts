@@ -1,6 +1,6 @@
 /**
  * ELIZA_DEVICE_GENERATE_TIMEOUT_MS is also read by the independent
- * plugin-capacitor-bridge device bridge (see its
+ * plugin-native-inference device bridge (see its
  * mobile-device-bridge-bootstrap.timeout-validation.test.ts /
  * .timeout-wiring.test.ts). This file proves the same input is accepted or
  * rejected consistently here too - resolveDeviceTimeoutMs() runs before any

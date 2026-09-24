@@ -112,7 +112,7 @@ bun run --cwd plugins/plugin-discord test        # vitest run (unit tests)
 bun run --cwd plugins/plugin-discord typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-discord lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-discord format      # biome format --write
-bun run --cwd plugins/plugin-discord test:e2e    # live smoke test via app-core runner
+bun run --cwd plugins/plugin-discord test:e2e    # live smoke test via app runner
 bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated .d.ts files
 ```
 
@@ -167,11 +167,11 @@ All settings can also be provided in the character file under `settings.discord`
 - **Voice requires ffmpeg.** The `fluent-ffmpeg` dep expects a system `ffmpeg` binary on `PATH` for audio processing.
 - **Multi-account mode** is activated by setting `DISCORD_BOT_TOKENS` (comma-separated) instead of `DISCORD_API_TOKEN`. See `accounts.ts` for resolution order.
 - **`autoReply` is true by default** in `DiscordSettings` — the agent auto-answers inbound messages. Set `DISCORD_AUTO_REPLY=false` (or `character.settings.discord.autoReply=false`, or the per-account `autoReply`) to ingest messages into memory without replying.
-- See root `CLAUDE.md` for repo-wide architecture rules, logger-only logging, ESM conventions, and naming standards.
+- See root `AGENTS.md` for repo-wide architecture rules, logger-only logging, ESM conventions, and naming standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

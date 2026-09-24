@@ -7,7 +7,7 @@ against each step's expectation row in [`JOURNEY.md`](./JOURNEY.md).
   with #9298 mobile fixes hand-reviewed against the current-source
   `2026-07-01_18-34-52_mock` mobile capture.
 - Method: hand-reviewed by vision-capable agents. The automated reviewer
-  (`scripts/ai-qa/review-walkthrough.mjs`) is wired and ran 50 real
+  (`packages/scripts/ai-qa/review-walkthrough.mjs`) is wired and ran 50 real
   `api.anthropic.com` calls, but the host key is unfunded (HTTP 400 billing),
   so verdicts were produced by human/agent review against the same criteria.
 - Totals: **50 good · 0 needs-work · 0 broken** (of 50).

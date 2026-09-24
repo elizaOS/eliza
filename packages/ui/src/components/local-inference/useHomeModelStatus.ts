@@ -5,7 +5,7 @@
  */
 
 import { normalizeServiceRoutingConfig } from "@elizaos/shared/contracts/service-routing";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
@@ -21,6 +21,7 @@ import {
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
+import { observeModelRoute } from "./model-route-recovery";
 
 const NOT_REQUIRED: HomeModelStatus = {
   kind: "not-required",
@@ -74,8 +75,6 @@ function supportsLocalInferenceStatus(): boolean {
  */
 export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const routingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mobileRuntimeMode = useSyncExternalStore(
     subscribeToMobileRuntimeMode,
     readPersistedMobileRuntimeMode,
@@ -102,126 +101,75 @@ export function useHomeModelStatus(): HomeModelStatus {
       return;
     }
 
-    let cancelled = false;
     let eventSource: ReturnType<typeof openEventSource> = null;
-    let activeRouteResolved = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const stopLocalStatusTracking = (nextStatus: HomeModelStatus) => {
-      activeRouteResolved = true;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      if (routingTimerRef.current) {
-        clearTimeout(routingTimerRef.current);
-        routingTimerRef.current = null;
-      }
+    const stopLocalTracking = () => {
+      clearTimeout(refreshTimer);
       eventSource?.close();
       eventSource = null;
-      if (!cancelled) setStatus(nextStatus);
     };
 
-    const probeActiveRoute = async (): Promise<
-      "active" | "pending" | "error"
-    > => {
-      try {
-        const modelConfig = await client.getModelsConfig();
-        if (cancelled) return "pending";
+    const recovery = observeModelRoute(
+      async (signal) => {
+        if (!supportsLocalInferenceStatus()) {
+          stopLocalTracking();
+          setStatus(NOT_REQUIRED);
+          return null;
+        }
+        const modelConfig = await client.getModelsConfig({ signal });
+        if (signal.aborted) return null;
         if (modelConfig.activeChat) {
-          stopLocalStatusTracking(NOT_REQUIRED);
-          return "active";
+          stopLocalTracking();
+          setStatus(NOT_REQUIRED);
+          return null;
         }
-        return "pending";
-      } catch {
-        // error-policy:J4 The composer distinguishes an unavailable routing
-        // probe from both a healthy external route and local-model readiness.
-        stopLocalStatusTracking(ROUTING_STATUS_ERROR);
-        return "error";
-      }
-    };
 
-    const scheduleCloudRouteRecheck = () => {
-      if (cancelled || activeRouteResolved || routingTimerRef.current) return;
-      routingTimerRef.current = setTimeout(() => {
-        routingTimerRef.current = null;
-        void probeActiveRoute().then((result) => {
-          if (result === "pending") scheduleCloudRouteRecheck();
-        });
-      }, CLOUD_ROUTE_RECHECK_MS);
-    };
-
-    const refresh = async () => {
-      if (!supportsLocalInferenceStatus()) {
-        if (!cancelled) setStatus(NOT_REQUIRED);
-        return;
-      }
-      try {
-        const hub = await client.getLocalInferenceHub();
-        if (!cancelled && !activeRouteResolved) {
-          setStatus(deriveHomeModelStatus(hub.textReadiness));
-        }
-      } catch {
-        // Keep the last good status; the stream will trigger another refresh.
-      }
-    };
-
-    const start = async () => {
-      const routeState = await probeActiveRoute();
-      if (routeState !== "pending" || cancelled) return;
-
-      try {
         const config = await client.getConfig();
-        if (cancelled) return;
+        if (signal.aborted) return null;
         const textRoute = normalizeServiceRoutingConfig(
           config.serviceRouting,
         )?.llmText;
-        if (
+        const waitingForCloudRoute =
           textRoute?.backend === "elizacloud" &&
-          textRoute.transport === "cloud-proxy"
-        ) {
-          scheduleCloudRouteRecheck();
+          textRoute.transport === "cloud-proxy";
+
+        try {
+          const hub = await client.getLocalInferenceHub();
+          if (!signal.aborted) {
+            setStatus(deriveHomeModelStatus(hub.textReadiness));
+          }
+        } catch {
+          // error-policy:J4 Retain the last readiness state. A download event
+          // or transport recovery can retry the unavailable local hub.
         }
-      } catch {
-        // error-policy:J4 Without the configured-route snapshot the composer
-        // cannot safely decide whether local readiness is relevant.
-        stopLocalStatusTracking(ROUTING_STATUS_ERROR);
-        return;
-      }
+        if (signal.aborted) return null;
 
-      await refresh();
-      if (cancelled || !supportsLocalInferenceStatus()) return;
-
-      const url = appendTokenParam(
-        resolveApiUrl("/api/local-inference/downloads/stream"),
-      );
-      // On-device runtimes are addressed via the native IPC base, which
-      // EventSource cannot open — fall back to the one-shot `refresh()` above.
-      eventSource = getElizaApiToken()
-        ? null
-        : openEventSource(url, { withCredentials: false });
-      if (eventSource) {
-        eventSource.onmessage = () => {
-          // The stream carries download/active deltas but not recomputed
-          // readiness, so debounce a hub refetch to pick up the fresh
-          // `textReadiness` rather than recomputing it client-side.
-          if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-          refreshTimerRef.current = setTimeout(() => void refresh(), 400);
-        };
-      }
-    };
-    void start();
+        if (!eventSource && !getElizaApiToken()) {
+          eventSource = openEventSource(
+            appendTokenParam(
+              resolveApiUrl("/api/local-inference/downloads/stream"),
+            ),
+            { withCredentials: false },
+          );
+          if (eventSource) {
+            eventSource.onmessage = () => {
+              clearTimeout(refreshTimer);
+              refreshTimer = setTimeout(recovery.refresh, 400);
+            };
+          }
+        }
+        return waitingForCloudRoute ? CLOUD_ROUTE_RECHECK_MS : null;
+      },
+      () => {
+        stopLocalTracking();
+        setStatus(ROUTING_STATUS_ERROR);
+      },
+    );
 
     return () => {
-      cancelled = true;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      if (routingTimerRef.current) {
-        clearTimeout(routingTimerRef.current);
-        routingTimerRef.current = null;
-      }
-      eventSource?.close();
+      recovery.close();
+      stopLocalTracking();
     };
   }, [
     authenticated,

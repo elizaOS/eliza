@@ -47,8 +47,8 @@
  * `App.surface-mutation-fuzz.test.tsx`.
  */
 
-import type { ResolvedSurfaceManifest } from "@elizaos/common";
-import { surfaceGrants } from "@elizaos/common";
+import type { ResolvedSurfaceManifest } from "@elizaos/core";
+import { surfaceGrants } from "@elizaos/core";
 import {
   THEME_CSS_VAR_MAP,
   THEME_FONT_CSS_VARS,

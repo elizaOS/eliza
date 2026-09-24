@@ -385,11 +385,9 @@ describe("build-agent-image workflow", () => {
     expect(extractTurboFilters(runBlock)).toEqual([
       "@elizaos/agent",
       "@elizaos/app",
-      "@elizaos/plugin-agent-skills",
       "@elizaos/plugin-browser",
-      "@elizaos/plugin-capacitor-bridge",
+      "@elizaos/plugin-native-inference",
       "@elizaos/plugin-coding-tools",
-      "@elizaos/plugin-commands",
       "@elizaos/plugin-computeruse",
       "@elizaos/plugin-discord",
       "@elizaos/plugin-elizacloud",

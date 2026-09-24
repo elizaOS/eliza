@@ -45,7 +45,7 @@ function runFakeBatches(
     const root = ${JSON.stringify(packageRoot)};
     const options = ${JSON.stringify(options)};
     const inventory = new Map([
-      [path.join(root, "src"), ["a.test.ts", "b.test.ts", "c.test.ts", "excluded.live.test.ts", "not-a-test.ts"]],
+      [path.join(root, "src"), ["a.test.ts", "b.test.ts", "c.test.ts", "excluded.live.test.ts", "excluded.cloud-smoke.test.ts", "excluded.provider-smoke.test.ts", "excluded.integration.test.ts", "excluded.real.test.ts", "excluded.e2e.test.ts", "unsupported.test.mts", "not-a-test.ts"]],
       [path.join(root, "test"), ["crash-restart-supervisor.test.ts"]],
       [path.join(root, "scripts"), []],
     ]);
@@ -191,9 +191,15 @@ describe("agent Vitest batch orchestration", () => {
     "src/missing.test.ts",
     "src/*.test.ts",
     "src/excluded.live.test.ts",
+    "src/excluded.cloud-smoke.test.ts",
+    "src/excluded.provider-smoke.test.ts",
+    "src/excluded.integration.test.ts",
+    "src/excluded.real.test.ts",
+    "src/excluded.e2e.test.ts",
+    "src/unsupported.test.mts",
     "src/not-a-test.ts",
     "test/crash-restart-supervisor.test.ts",
-    "../ui/src/a.test.ts",
+    "../src/ui/a.test.ts",
     path.join(path.dirname(packageRoot), "ui/src/a.test.ts"),
   ])(
     "rejects invalid selection %j before spawning even a valid sibling",

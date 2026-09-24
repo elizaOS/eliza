@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -20,7 +20,7 @@ export default scenario({
     "Three follow-ups are overdue: a low-priority newsletter draft (oldest), a VIP customer (medium age), and a board member (youngest). The list must lead with VIP/board, not the oldest.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

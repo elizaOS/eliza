@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -20,7 +20,7 @@ export default scenario({
     "Three mentors have 90-day cadences. Two crossed the threshold; one is still inside. Agent must surface only the two overdue ones.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -443,6 +443,7 @@ function makeLocalTokenFetch(
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
+  enqueueStatus: (label: string) => void;
   enqueueReplyReady: (fullText: string) => void;
   finish: (donePayload?: Record<string, unknown>) => void;
   fail: () => void;
@@ -467,6 +468,13 @@ function makeControlledCanonicalChunkFetch(): {
         headers: { "Content-Type": "text/event-stream" },
       });
     }) as unknown as typeof fetch,
+    enqueueStatus(label: string) {
+      controller?.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "status", kind: "thinking", label })}\n\n`,
+        ),
+      );
+    },
     enqueueChunk(chunk: string) {
       controller?.enqueue(
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
@@ -926,6 +934,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       channelType: "VOICE_DM",
+      clientMessageId: expect.any(String),
       metadata: {
         clientTransport: "realtime_voice",
         uiViewPath: "/notes",
@@ -1889,40 +1898,102 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("speaking_end");
   });
 
-  test("terminal confirmation sends a provisional turnComplete acknowledgement to Cartesia once", async () => {
-    const client = new FakeClientSocket();
-    await connectSession({
-      client,
-      fetchImpl: makeLocalTokenFetch(
-        [{ fullText: "Opened Notes.", provisional: true }],
-        {
-          fullText: "Opened Notes.",
-          actionResults: [
-            {
-              actionName: "VIEWS",
-              success: true,
-              values: { mode: "show", viewId: "notes", viewPath: "/notes" },
-            },
-          ],
-        },
-      ),
-    });
+  test.each([false, true])(
+    "terminal voice confirmation speaks once and avoids confirmed navigation replay: delivered=%s",
+    async (delivered) => {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeLocalTokenFetch(
+          [{ fullText: "Opened Notes.", provisional: true }],
+          {
+            fullText: "Opened Notes.",
+            actionResults: [
+              {
+                actionName: "VIEWS",
+                success: true,
+                values: {
+                  mode: "show",
+                  viewId: "notes",
+                  viewPath: "/notes",
+                  ...(delivered
+                    ? {
+                        completedActionDelivered: true,
+                        completedActionHandoffId: "voice-navigation-1",
+                      }
+                    : {}),
+                },
+              },
+            ],
+          },
+        ),
+      });
 
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "open notes");
+      await flush();
+      await flush();
+
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      const synthesisTexts = cartesia.sent
+        .map((frame) => JSON.parse(frame) as { transcript?: unknown })
+        .flatMap((frame) =>
+          typeof frame.transcript === "string" && frame.transcript.length > 0
+            ? [frame.transcript]
+            : [],
+        );
+      expect(synthesisTexts).toEqual(["Opened Notes."]);
+      expect(client.controlTypes()).not.toContain("error");
+      cartesia.emitDone();
+      await flush();
+      expect(client.controlTypes()).toContain("speaking_end");
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toHaveLength(delivered ? 0 : 1);
+    },
+  );
+
+  test("canonical planning acknowledgement is audible before final text without becoming the reply", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: controlled.fetchImpl });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "open notes");
+    ink.emitTurn("turn.end", "read my note");
+    await controlled.ready;
+    controlled.enqueueStatus("Checking your note.");
+    controlled.enqueueStatus("Checking your note.");
     await flush();
-    await flush();
-
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    const synthesisTexts = cartesia.sent
-      .map((frame) => JSON.parse(frame) as { transcript?: unknown })
-      .flatMap((frame) =>
-        typeof frame.transcript === "string" && frame.transcript.length > 0
-          ? [frame.transcript]
-          : [],
-      );
-    expect(synthesisTexts).toEqual(["Opened Notes."]);
+    expect(cartesia.sentText()).toBe("Checking your note.");
+    const progress = client.controlFrames.filter(
+      (frame) => frame.t === "progress",
+    );
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({
+      text: "Checking your note.",
+      traceId: expect.any(String),
+    });
+    expect(client.controlTypes().indexOf("progress")).toBeLessThan(
+      client.controlTypes().indexOf("speaking_start"),
+    );
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(client.controlTypes()).not.toContain("llm_first_text");
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("reply_complete");
+    controlled.enqueueChunk("Your note says hello.");
+    controlled.finish({ text: "Your note says hello." });
+    await flush();
+    const phrases = cartesia.sent
+      .map((frame) => JSON.parse(frame) as { transcript?: string })
+      .flatMap((frame) => (frame.transcript ? [frame.transcript] : []));
+    expect(phrases).toEqual(["Checking your note.", "Your note says hello."]);
+    expect(
+      client.controlTypes().filter((type) => type === "reply_complete"),
+    ).toHaveLength(1);
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).toContain("llm_first_text");
     expect(client.controlTypes()).not.toContain("error");
     cartesia.emitDone();
     await flush();

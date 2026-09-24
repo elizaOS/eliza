@@ -76,7 +76,7 @@ None: Automated tests are acceptable.
 
 # Evidence Gate
 
-Evidence must match the exact commit reviewed. `scripts/pr-evidence.mjs rows`
+Evidence must match the exact commit reviewed. `packages/scripts/pr-evidence.mjs rows`
 sets this marker from the live PR head; rerun it after every push.
 <!-- evidence-head:replace-with-current-40-character-head-sha -->
 
@@ -123,7 +123,7 @@ For agent/action/provider/prompt/model changes, use a real live-model run, not
 the deterministic proxy. Produce with:
 
 ```bash
-  packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
+  packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
 ```
 
 Link the JSON report, run viewer, native jsonl, or write `N/A - <reason>`.

@@ -3,7 +3,7 @@
  * browser callback into the narrow payload Steward verifies server-side.
  */
 
-import type { LoginTelegramLoginPayload } from "@elizaos/login";
+import type { LoginTelegramLoginPayload } from "@elizaos/auth";
 import { useEffect, useRef, useState } from "react";
 
 const TELEGRAM_WIDGET_SCRIPT = "https://telegram.org/js/telegram-widget.js?22";

@@ -6,7 +6,7 @@
  * while the private history stays out of the organizer note. Seeds re-verified via
  * definitionCountDelta; the note stays staged via a no-external-send predicate.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -25,7 +25,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

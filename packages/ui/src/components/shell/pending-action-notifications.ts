@@ -5,8 +5,11 @@
  * hide work that still blocks the agent.
  */
 
-import type { AgentNotification } from "@elizaos/common";
-import type { PendingUserAction, PendingUserActionOption } from "@elizaos/core";
+import type {
+  AgentNotification,
+  PendingUserAction,
+  PendingUserActionOption,
+} from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";

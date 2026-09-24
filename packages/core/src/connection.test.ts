@@ -3,7 +3,7 @@
  * including durable shared-world role metadata across sequential callers.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { ensureConnection } from "./connection";
 import { recordOwnerGrant, recordRoleGrant } from "./roles";
@@ -11,8 +11,9 @@ import { stringToUuid } from "./utils";
 
 describe("ensureConnection", () => {
 	it("persists an exact Discord server binding on the room", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("discord-binding-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("discord-binding-requester");
 		const roomId = stringToUuid("discord-binding-room");
 		const worldId = stringToUuid("discord-binding-world");
@@ -42,8 +43,9 @@ describe("ensureConnection", () => {
 	});
 
 	it("preserves existing role grants when another caller reconciles", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("connection-role-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const ownerId = stringToUuid("connection-role-owner");
 		const firstCallerId = stringToUuid("connection-role-first-caller");
 		const secondCallerId = stringToUuid("connection-role-second-caller");
@@ -89,8 +91,9 @@ describe("ensureConnection", () => {
 	});
 
 	it("preserves the entity's per-source identity when a later connection omits identity fields", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("connection-identity-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const ownerEntityId = stringToUuid("connection-identity-owner");
 		const worldId = stringToUuid("connection-identity-world");
 		const base = {
@@ -125,8 +128,9 @@ describe("ensureConnection", () => {
 	});
 
 	it("merges per-source identity field-by-field instead of replacing the record", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("connection-merge-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("connection-merge-entity");
 		const base = {
 			agentId,
@@ -155,8 +159,9 @@ describe("ensureConnection", () => {
 	});
 
 	it("keeps identity records from different sources side by side", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("connection-sources-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("connection-sources-entity");
 		const shared = {
 			agentId,

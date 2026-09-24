@@ -1,102 +1,88 @@
-# @elizaos/capacitor-wifi
+# @elizaos/plugin-native-wifi
 
-Android Wi-Fi (WifiManager) bridge for elizaOS — a Capacitor plugin.
+Android-only overlay app that lets an Eliza agent scan, inspect, and connect to nearby Wi-Fi networks.
 
 ## Purpose / role
 
-This is a Capacitor plugin (not an elizaOS runtime plugin). It exposes Android `WifiManager` / `ConnectivityManager` APIs to a Capacitor-hosted elizaOS app running on Android. It is NOT a runtime action/provider/service registered with `AgentRuntime`; it is a native bridge consumed by JavaScript code in the host app. On web/desktop it loads a safe fallback (`WiFiWeb`) that resolves with empty data and logs one warning.
-
-Package: `@elizaos/capacitor-wifi`. Must be explicitly installed and integrated into a Capacitor Android project. Not auto-enabled.
+Adds a Wi-Fi management surface to the elizaOS mobile agent on Android. It registers a `wifiNetworks` provider that injects nearby network context into the agent's planner, and a full-screen overlay UI (`WifiAppView`) that the user can open from the app catalog. The plugin is opt-in: it is only registered in the overlay app catalog when `isElizaOS()` returns true (i.e., running inside the elizaOS Android host). On all other platforms (iOS, desktop, web) the side-effect entry leaves the overlay app catalog unchanged.
 
 ## Plugin surface
 
-This is a Capacitor plugin, not an elizaOS runtime plugin. It does not register actions, providers, services, or evaluators. It exposes one Capacitor plugin object:
+The `/plugin` export (`src/plugin.ts`) registers:
+
+| Kind | Name | Description |
+|------|------|-------------|
+| Provider | `wifiNetworks` | Dynamic, read-only nearby Wi-Fi networks (ssid, bssid, rssi, frequency, secured). Context gate: `system`. Cache scope: `turn`. Calls `@elizaos/plugin-native-wifi/bridge` `WiFi.listAvailableNetworks`. |
+
+No actions, evaluators, routes, or events are registered.
+
+The overlay UI surface (registered via `src/register.ts` side-effect):
 
 | Export | Description |
 |--------|-------------|
-| `WiFi` | Capacitor plugin instance registered as `"ElizaWiFi"`. Call its methods from JS. |
-| `WiFiPlugin` | TypeScript interface declaring all five methods. |
-| `WiFiNetwork`, `ConnectedNetworkResult`, `WifiStateResult`, `ListNetworksResult`, `ConnectResult`, `ListNetworksOptions`, `ConnectOptions` | All DTO types. |
-
-### `WiFiPlugin` methods
-
-| Method | Returns | Notes |
-|--------|---------|-------|
-| `getWifiState()` | `WifiStateResult` | Radio enabled, connected bool, active RSSI (dBm or null). |
-| `getConnectedNetwork()` | `ConnectedNetworkResult` | Active connection details or null. Requires `ACCESS_WIFI_STATE`. |
-| `listAvailableNetworks(opts?)` | `ListNetworksResult` | Triggers or reuses a scan; de-duplicates by SSID; sorted by signal strength. Requires `ACCESS_WIFI_STATE` + `ACCESS_FINE_LOCATION` on API 26+. |
-| `connectToNetwork(opts)` | `ConnectResult` | Uses `WifiNetworkSuggestion` on API 29+; `WifiConfiguration` (deprecated) on API 23–28. |
-| `disconnectFromNetwork()` | `ConnectResult` | Calls `WifiManager.disconnect()`. Requires `CHANGE_WIFI_STATE`. |
+| `wifiApp` | `OverlayApp` descriptor (name, displayName, category: "system", androidOnly: true). |
+| `registerWifiApp()` | Registers `wifiApp` with the shared overlay app registry. Called automatically on elizaOS Android. |
+| `WifiAppView` | React component. Full-screen overlay: shows connected network, scans for nearby networks, connects/disconnects with optional password entry. |
 
 ## Layout
 
 ```
-plugins/plugin-native-wifi/
-  src/
-    definitions.ts          All TypeScript interfaces and DTO types (WiFiPlugin, WiFiNetwork, …)
-    index.ts                registerPlugin("ElizaWiFi") + re-exports definitions
-    web.ts                  WiFiWeb: explicit WebPlugin fallback used in browser/Node environments
-    web.test.ts             Vitest tests for the WiFiWeb fallback
-  android/
-    src/main/
-      AndroidManifest.xml   Declares required permissions (ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, ACCESS_FINE_LOCATION, …)
-      java/ai/eliza/plugins/wifi/
-        WiFiPlugin.kt       Kotlin implementation; all five @PluginMethod handlers + helpers
-    build.gradle            Android library config (namespace ai.eliza.plugins.wifi, minSdk 23, compileSdk 34)
-  rollup.config.mjs         Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js
-  tsconfig.json             TypeScript config for the TS→ESM step
+src/
+  index.ts              Public barrel — re-exports everything below
+  plugin.ts             appWifiPlugin: Plugin — registers wifiNetworks provider
+  register.ts           Side-effect entry — calls registerWifiApp() if isElizaOS()
+  ui.ts                 UI barrel — re-exports WifiAppView + wifi-app helpers
+  providers/
+    networks.ts         wifiNetworksProvider — calls WiFi.listAvailableNetworks losslessly
+  components/
+    wifi-app.ts         wifiApp OverlayApp descriptor + registerWifiApp()
+    WifiAppView.tsx     Full-screen React overlay UI (scan, connect, disconnect)
+assets/
+  hero.png              App catalog hero image
 ```
 
 ## Commands
 
-Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
-
 ```bash
-bun run --cwd plugins/plugin-native-wifi clean           # remove build output
-bun run --cwd plugins/plugin-native-wifi build           # build package artifacts
-bun run --cwd plugins/plugin-native-wifi typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-wifi lint            # mutating Biome check
-bun run --cwd plugins/plugin-native-wifi lint:check      # read-only Biome check
-bun run --cwd plugins/plugin-native-wifi format          # write formatting
-bun run --cwd plugins/plugin-native-wifi format:check    # read-only formatting check
-bun run --cwd plugins/plugin-native-wifi test            # run package tests
-bun run --cwd plugins/plugin-native-wifi prepublishOnly  # publish-time build hook
-bun run --cwd plugins/plugin-native-wifi build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-wifi typecheck   # tsc type-check only (no emit)
+bun run --cwd plugins/plugin-native-wifi lint        # biome check src/
+bun run --cwd plugins/plugin-native-wifi test        # vitest run
+bun run --cwd plugins/plugin-native-wifi build       # tsup + tsc declarations → dist/
+bun run --cwd plugins/plugin-native-wifi clean       # rm -rf dist
 ```
 
 ## Config / env vars
 
-None. This plugin reads no environment variables and has no elizaOS config keys. Android permissions are declared in `AndroidManifest.xml` and must be granted at runtime by the host app.
-
-Required Android permissions (runtime-requested by the host app):
-- `ACCESS_WIFI_STATE` — required by `getConnectedNetwork` and `listAvailableNetworks`.
-- `CHANGE_WIFI_STATE` — required by `connectToNetwork` and `disconnectFromNetwork`.
-- `ACCESS_FINE_LOCATION` — required for `WifiManager.scanResults` on API 26+ (Android 8+); without it the plugin rejects `listAvailableNetworks` with an error (does NOT silently return an empty list).
-- `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` — used by the `ConnectivityManager.requestNetwork` path on API 29+.
+No env vars or settings keys. The plugin reads no process environment at runtime. `@elizaos/plugin-native-wifi/bridge` talks directly to the Android WifiManager via Capacitor; Android `ACCESS_FINE_LOCATION` permission must be granted at the OS level for scans to succeed.
 
 ## How to extend
 
-To add a new method to this Capacitor plugin:
+**Add a provider:** Create `src/providers/<name>.ts` exporting a `Provider` object, then add it to the `providers` array in `src/plugin.ts`. Re-export it from `src/index.ts`.
 
-1. **Define the TypeScript signature** in `src/definitions.ts` — add the method to `WiFiPlugin` and any new DTOs.
-2. **Add the web fallback** in `src/web.ts` inside `WiFiWeb`. It must satisfy the new interface and should resolve with empty/false data and call `warnOnce()`.
-3. **Implement in Kotlin** in `android/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt` — annotate the method with `@PluginMethod`. Reject with a clear string on missing permissions rather than letting the platform silently return empty data.
-4. Add any new Android permissions to `android/src/main/AndroidManifest.xml` with a comment explaining why they are needed.
-5. Rebuild: `bun run --cwd plugins/plugin-native-wifi build`.
+**Add an action:** Create `src/actions/<name>.ts` exporting an `Action` object. Add an `actions` array to `appWifiPlugin` in `src/plugin.ts` and push the new action into it. Re-export from `src/index.ts`.
+
+**Add a service:** Create `src/services/<name>.ts` extending `Service`. Register it in `appWifiPlugin.services`. Ensure it is exported from `src/index.ts`.
 
 ## Conventions / gotchas
 
-- **Android-only native functionality.** The web fallback intentionally returns empty results; do not make it throw. Consumers on non-Android platforms receive empty results, not errors.
-- **Scan rate-limiting.** `WifiManager.startScan()` is throttled by Android (typically 4 scans per 2 minutes in foreground). The `maxAge` option lets callers reuse a recent scan result. `startScan()` returning `false` is expected on modern Android — use the returned `scanResults` regardless.
-- **API level branching in `connectToNetwork`.** API 29+ uses `WifiNetworkSuggestion` (the system controls the actual connection; success means the suggestion was accepted, not that the device is connected). API 23–28 uses the deprecated `WifiConfiguration` path, which only works for privileged system apps. Poll `getConnectedNetwork()` to observe actual connection state after calling `connectToNetwork`.
-- **`ACCESS_FINE_LOCATION` is required for scans.** The plugin rejects `listAvailableNetworks` with an explicit error on API 26+ if the permission is not granted, instead of silently returning an empty list. The host app must prompt the user and retry.
-- **Build requires Android SDK.** The Kotlin plugin only compiles as part of an Android Gradle project; running `bun run build` builds only the TypeScript/JS artifacts. The Kotlin source is compiled by Gradle when the Capacitor plugin is synced into an Android project. The Wi-Fi state read is covered by an **instrumented test** (`android/src/androidTest/.../WiFiStateReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-wifi:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967); the read lives in `WiFiStateReader` so it is exercisable without a Capacitor `Bridge`/WebView.
-- **Capacitor peer dep.** `@capacitor/core ^8.3.1` must be present in the host app. This package declares it as both a `peerDependency` and a `devDependency`.
+- **Android-only.** `WifiAppView` and `registerWifiApp()` are safe to import on non-Android platforms but `@elizaos/plugin-native-wifi/bridge` methods will reject or return empty results everywhere except Android. The `register.ts` entry guards registration behind `isElizaOS()`.
+- **No server routes.** `WifiAppView` owns all its data by calling the Capacitor plugin directly; there is no backend API involved.
+- **Complete scans.** `wifiNetworksProvider` and `WifiAppView` omit the native
+  bridge's optional `limit`, so every deduplicated Android scan result remains
+  available to the planner and UI.
+- **Location permission.** Android requires `ACCESS_FINE_LOCATION` for `WifiManager.startScan`. If the permission is denied, scans succeed silently with an empty list or throw; the provider maps errors to `wifiNetworksError` in `values`.
+- **Provider context gate.** `wifiNetworksProvider` uses `contextGate: { anyOf: ["system"] }` — it only fires in system-context conversations, not every agent turn.
+- **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`displayName: "WiFi"`, `category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.
+- **Root AGENTS.md.** Repo-wide architecture rules, logger conventions, ESM requirements, and naming rules live in the root `AGENTS.md`. This file covers only plugin-native-wifi specifics.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Native bridge ownership
+
+This workspace also owns `src/bridge.ts`, `src/definitions.ts`, `src/web.ts`, and `android/`. Import the device API through `/bridge` to avoid loading the application barrel. Preserve Capacitor registration names and Android permissions. Native device tests remain under `android/src/androidTest`; the package test command includes web fallback tests.

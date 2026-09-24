@@ -51,6 +51,39 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("preserves complete sources and the selected embedding space across restarts", async () => {
+    const adapter = await open();
+    const record = memory(
+      "complete source before representation selection ".repeat(1000),
+    );
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createMemories([{ memory: record, tableName: "messages" }]);
+    expect(await adapter.ensureEmbeddingSpace("fixture:space-v1")).toContain(
+      record.id,
+    );
+    expect((await adapter.getMemoriesByIds([record.id]))[0]).toMatchObject({
+      content: record.content,
+    });
+    expect(
+      (await adapter.getMemoriesByIds([record.id]))[0].embedding,
+    ).toBeUndefined();
+    await adapter.updateMemories([{ id: record.id, embedding: [1, 0, 0] }]);
+    await adapter.close();
+    const reopened = await open();
+    expect(
+      await reopened.ensureEmbeddingSpace("fixture:space-v1"),
+    ).not.toContain(record.id);
+    expect((await reopened.getMemoriesByIds([record.id]))[0].embedding).toEqual(
+      [1, 0, 0],
+    );
+    await expect(
+      reopened.ensureEmbeddingSpace("fixture:space-v2"),
+    ).rejects.toMatchObject({ code: "EMBEDDING_SPACE_CHANGED" });
+    await expect(reopened.ensureEmbeddingDimension(4)).rejects.toMatchObject({
+      code: "EMBEDDING_SPACE_CHANGED",
+    });
+  });
+
   it("reopens runtime records, full content and semantic search without an in-memory singleton", async () => {
     const adapter = await open();
     const worldId = id();
@@ -263,6 +296,7 @@ describe("durable SQLite agent adapter", () => {
   it("restores document permissions and commits only one concurrent revision", async () => {
     const adapter = await open();
     const document = memory("private original");
+    await adapter.createRoomParticipants([entityId], roomId);
     const documentMetadata = {
       type: MemoryType.DOCUMENT,
       timestamp: 1,

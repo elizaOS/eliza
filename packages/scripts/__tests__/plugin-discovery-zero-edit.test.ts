@@ -122,7 +122,6 @@ function snapshotScriptSources(): Map<string, string> {
     }
   };
   walk(path.join(REPO_ROOT, "packages", "scripts"));
-  walk(path.join(REPO_ROOT, "scripts"));
   return snapshot;
 }
 

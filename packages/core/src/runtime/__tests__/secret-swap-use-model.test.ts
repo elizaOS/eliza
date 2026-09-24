@@ -6,9 +6,9 @@
  * in-memory adapter with a registered fake model handler; deterministic.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	MAX_SECRET_SWAP_WALK_NODES,
 	SECRET_SWAP_UNBOUNDED,
@@ -20,7 +20,7 @@ import {
 } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "SecretSwapAgent",
 			bio: "test",
@@ -29,7 +29,7 @@ function makeRuntime(enabled: boolean): AgentRuntime {
 				ELIZA_SECRET_SWAP_ENABLED: enabled,
 			},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 }

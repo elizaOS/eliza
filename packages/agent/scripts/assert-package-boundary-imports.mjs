@@ -14,7 +14,7 @@
  * entry (e.g. "@elizaos/core"), which resolves to its built dist.
  *
  * Runs ahead of tsc in `build:dist` / `build:docker-dist`; the same walker is
- * asserted clean by src/__tests__/package-boundary-imports.test.ts.
+ * asserted clean by scripts/assert-package-boundary-imports.test.ts.
  */
 
 import { readdirSync, readFileSync } from "node:fs";

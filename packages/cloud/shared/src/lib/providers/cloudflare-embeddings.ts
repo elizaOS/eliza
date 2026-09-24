@@ -1,5 +1,5 @@
 /** Serves the canonical BGE CLS representation through Workers AI with the shared source-tail policy. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { APICallError, type EmbeddingModel } from "ai";
 import { z } from "zod";
 import { createBgeEmbeddingModel } from "./bge-embeddings";

@@ -12,11 +12,11 @@ const mocks = vi.hoisted(() => ({
   resolve: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-core/api/auth", () => ({
+vi.mock("@elizaos/app/api/auth", () => ({
   resolveAuthorizedRouteRole: mocks.auth,
 }));
 
-vi.mock("@elizaos/app-core/services/auth-store", () => ({
+vi.mock("@elizaos/app/services/auth-store", () => ({
   authStoreForRuntime: () => null,
 }));
 

@@ -39,7 +39,7 @@ and returns a real API key for a free account. The stack runs the worker with
 `MOCK_REDIS=1` (shared in-process store), so the SIWE nonce survives between the
 two requests. `asSeededUser(login)` adapts the result to the `SeededUser` shape.
 
-The same flow is available as a dev/CI gate: `bun scripts/cloud/siwe-test-login.mjs`
+The same flow is available as a dev/CI gate: `bun packages/scripts/cloud/siwe-test-login.mjs`
 (defaults to `https://api.eliza.app`; pass `--base <url>` for a local stack).
 It exits non-zero if login or the authenticated probe fails.
 
@@ -63,7 +63,7 @@ secondary identities (attacker / other-user / end-user).
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |
 | `tests/stuck-cleanup.spec.ts` | aged `provisioning` row with no job → cleanup cron → sandbox `error`          |
 | `tests/domain-purchase-harness.spec.ts` | harness-logic verification for the money-gated domain-purchase lane against the registrar dev stub: full chain, price ceiling, ledger, 402/409/502-refund/idempotency negatives |
-| `tests/domain-purchase.real.spec.ts` | **money-gated LIVE lane (#10691)** — real Cloudflare registration + credit debit; skips loudly unless `ELIZA_LIVE_DOMAIN_PURCHASE=1` + base URL + key are set. Operator runbook: [docs/domain-purchase-live.md](docs/domain-purchase-live.md) |
+| `tests/domain-purchase.real.spec.ts` | **money-gated LIVE lane (#10691)** — real Cloudflare registration + credit debit; skips loudly unless `ELIZA_LIVE_DOMAIN_PURCHASE=1` + base URL + key are set. |
 
 ## Live domain purchase (real money, operator-gated)
 
@@ -72,8 +72,7 @@ ceiling, enforced BEFORE buying) against staging/prod, proves it goes active
 and serves, and appends every attempt to the append-only purchase ledger
 (`domain-purchase-ledger/ledger.jsonl`, inspect with
 `bun run domains:ledger`). CI never runs it — the whole suite honest-skips
-unless the operator sets the money guard. Command, env matrix, ledger and
-cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
+unless the operator sets the money guard.
 
 ## Notes
 

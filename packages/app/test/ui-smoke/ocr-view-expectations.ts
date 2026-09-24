@@ -90,14 +90,6 @@ export const VIEW_OCR_POLICIES = {
   "builtin-stream": expected({
     requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
   }),
-  "builtin-pendant-transcript": expected({
-    requireAll: ["Pendant Transcript"],
-    requireAny: [
-      "No transcript segments yet",
-      "Local offline cache",
-      "Connect",
-    ],
-  }),
   "builtin-apps": expected({
     requireAll: ["Apps"],
     requireAny: [
@@ -347,7 +339,7 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Launch checklist", "Follow up"],
     requireAny: ["Cloud agent", "demo recording"],
   }),
-  "plugin-task-coordinator-gui": expected({
+  "plugin-agent-orchestrator-tasks-gui": expected({
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
   }),
   "plugin-orchestrator-gui": expected({

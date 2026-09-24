@@ -6,8 +6,7 @@
  * These are REAL tests: they import and CALL `createElizaPlugin`, then assert
  * the returned plugin's structure and behavior, and drive the `init`/`dispose`
  * lifecycle against a REAL {@link AgentRuntime} (constructed with `logLevel:
- * "fatal"`, no database) — not a cast-fabricated runtime. Agent Skills owns its
- * command lifecycle in plugin-agent-skills and has a separate real-runtime test.
+ * "fatal"`, no database).
  *
  * Companion to eliza-plugin-services.test.ts (which asserts the *source text*
  * of the services array as a fail-closed guard); this file proves the *runtime
@@ -52,7 +51,7 @@ function serviceNamesOf(
 }
 
 describe("createElizaPlugin — structure & service wiring", () => {
-  it("registers the knowledge-graph and pendant tables for SQL migration", () => {
+  it("registers the knowledge-graph tables for SQL migration", () => {
     const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
     expect(Object.keys(plugin.schema ?? {})).toEqual(
       expect.arrayContaining([
@@ -62,9 +61,6 @@ describe("createElizaPlugin — structure & service wiring", () => {
         "lifeRelationshipsV2",
         "lifeRelationshipAuditEvents",
         "coreRelationshipsSourceRecords",
-        "pendantSessions",
-        "pendantSessionSegments",
-        "pendantSessionInsightRefs",
       ]),
     );
   });

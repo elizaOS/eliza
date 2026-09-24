@@ -113,11 +113,10 @@ export enum EventType {
 	FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
 	FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
 
-	// UI interaction events (#8792) — the agent observes shortcuts, slash
-	// commands, and view switches (agent- or user-initiated) so a proactive
+	// UI interaction events — the agent observes shortcuts
+	// and view switches (agent- or user-initiated) so a proactive
 	// decider can comment on them. Connect-once contract every surface emits.
 	VIEW_SWITCHED = "VIEW_SWITCHED",
-	SLASH_COMMAND_INVOKED = "SLASH_COMMAND_INVOKED",
 	SHORTCUT_FIRED = "SHORTCUT_FIRED",
 	USER_TYPING_STARTED = "USER_TYPING_STARTED",
 	USER_TYPING_PAUSED = "USER_TYPING_PAUSED",
@@ -566,23 +565,6 @@ export interface ViewSwitchedPayload extends EventPayload {
 }
 
 /**
- * Payload for {@link EventType.SLASH_COMMAND_INVOKED} — a slash command ran
- * (e.g. `/settings`, `/wallet`). Carries the resolved target so a decider knows
- * whether intent was already expressed (and should usually stay quiet).
- */
-export interface SlashCommandInvokedPayload extends EventPayload {
-	/** Canonical command name (without the leading slash). */
-	command: string;
-	args?: string[];
-	/** Resolved target kind: navigation, an agent action, or a client behavior. */
-	targetKind?: "navigate" | "agent" | "client";
-	/** Target view id when the command navigates to a view. */
-	viewId?: string;
-	initiatedBy: InteractionInitiator;
-	roomId?: UUID;
-}
-
-/**
  * Payload for {@link EventType.SHORTCUT_FIRED} — a keyboard/UI shortcut fired.
  */
 export interface ShortcutFiredPayload extends EventPayload {
@@ -835,7 +817,6 @@ export interface EventPayloadMap {
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
 	// UI interaction event payloads (#8792)
 	[EventType.VIEW_SWITCHED]: ViewSwitchedPayload;
-	[EventType.SLASH_COMMAND_INVOKED]: SlashCommandInvokedPayload;
 	[EventType.SHORTCUT_FIRED]: ShortcutFiredPayload;
 	[EventType.USER_TYPING_STARTED]: ComposerActivityPayload;
 	[EventType.USER_TYPING_PAUSED]: ComposerActivityPayload;

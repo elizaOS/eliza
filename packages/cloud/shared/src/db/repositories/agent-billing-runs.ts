@@ -4,7 +4,7 @@
  * only claims invocation identity and records aggregate terminal outcomes.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";

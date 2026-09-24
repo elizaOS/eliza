@@ -6,15 +6,15 @@
  * estimates remain diagnostic because they are not provider tokenization.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: { name: "FinalWireBudget", bio: "test" } as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 }

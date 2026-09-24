@@ -17,7 +17,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
@@ -42,11 +42,11 @@ afterEach(async () => {
 
 async function createRuntime(): Promise<{
   runtime: AgentRuntime;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
 }> {
   const character = createCharacter({ name: "RecentConversationAccessAgent" });
   const agentId = stringToUuid("recent-conversations-access-agent");
-  const adapter = new InMemoryDatabaseAdapter(agentId);
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   const runtime = new AgentRuntime({
     character,
     agentId,

@@ -4,9 +4,9 @@ import type { JsonValue } from "@elizaos/core";
 import {
   activeCommittedEffectReceipts,
   composeToolDiagnosticRedactor,
-  projectCompleteToolArgsForModel,
   ModelType,
   normalizeEffectReceipts,
+  projectCompleteToolArgsForModel,
 } from "@elizaos/core";
 import { matchesScenarioInput } from "./deterministic-action-fixtures";
 import type { DeterministicModelFixture } from "./deterministic-model-plugin";

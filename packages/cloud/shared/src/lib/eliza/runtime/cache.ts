@@ -4,8 +4,13 @@
  * work before closing adapters, including those retained after completed eviction.
  */
 import { createHash } from "node:crypto";
-import { ElizaError, type UUID } from "@elizaos/common";
-import { type AgentRuntime, elizaLogger, type IDatabaseAdapter } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  elizaLogger,
+  type IDatabaseAdapter,
+  type UUID,
+} from "@elizaos/core";
 import type { DbAdapterPool } from "./database/adapter-pool";
 import { safeClose, stopRuntimeServices } from "./lifecycle";
 import { stableSerialize } from "./stable-serialize";

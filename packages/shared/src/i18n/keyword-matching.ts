@@ -1,9 +1,10 @@
 /** Applies application locale normalization to the canonical prompt keyword matcher. */
+
+import { normalizeCharacterLanguage } from "../character-language.js";
 import {
   getValidationKeywordLocaleTerms as getLocaleTerms,
   getValidationKeywordTerms as getTerms,
-} from "@elizaos/prompts/keyword-matching";
-import { normalizeCharacterLanguage } from "../character-language.js";
+} from "./keyword-matching-core.js";
 
 export {
   collectKeywordTermMatches,
@@ -16,7 +17,7 @@ export {
   splitKeywordDoc,
   textIncludesKeywordTerm,
   VALIDATION_KEYWORD_DOCS,
-} from "@elizaos/prompts/keyword-matching";
+} from "./keyword-matching-core.js";
 export function getValidationKeywordTerms(
   key: string,
   options?: { includeAllLocales?: boolean; locale?: unknown },

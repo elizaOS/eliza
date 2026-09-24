@@ -1,18 +1,9 @@
 /** Selects a pinned runtime's native SQLite driver behind the same synchronous SQL contract. */
 import { ElizaError } from "@elizaos/core";
 
-export type SqlValue = string | number | bigint | Uint8Array | null;
-export type SqlRow = Record<string, SqlValue>;
-export interface SqlStatement {
-  get(...values: SqlValue[]): SqlRow | undefined;
-  all(...values: SqlValue[]): SqlRow[];
-  run(...values: SqlValue[]): { changes: number | bigint };
-}
-export interface SqlDatabase {
-  exec(sql: string): void;
-  prepare(sql: string): SqlStatement;
-  close(): void;
-}
+import type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
+
+export type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
 
 export function assertSupportedRuntime(): void {
   const supported = process.versions.bun
@@ -53,3 +44,9 @@ export async function openSqlite(path: string): Promise<SqlDatabase> {
     },
   };
 }
+
+export const nativeSQLiteDriver = {
+  supportsFileSystem: true,
+  assertSupportedRuntime,
+  open: openSqlite,
+};

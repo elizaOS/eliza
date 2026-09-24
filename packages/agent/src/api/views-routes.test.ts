@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   bindCatalogAssetRequest,
   claimRendererReply,
-} from "../__tests__/view-renderer-test-utils.ts";
+} from "../../test/view-renderer-test-utils.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   beginViewInstallation,

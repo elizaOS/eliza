@@ -2491,6 +2491,71 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"reviews navigation with no pending intent before effects (%s)",
+		async (channelType) => {
+			const conflict = stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: ["VIEWS_SHOW"],
+				replyText: "Hey. What's up?",
+				facts: ["Unaccepted draft extraction"],
+				extra: {
+					replyEffectStatus: "applied",
+					visualContinuation: {
+						disposition: "requested",
+						viewId: "chat",
+						singleViewOnly: true,
+						navigationOnly: true,
+					},
+				},
+			});
+			const corrected = stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				replyText: "Hey. What's up?",
+				extra: {
+					replyEffectStatus: "none",
+					visualContinuation: { disposition: "none" },
+				},
+			});
+			const runtime = makeRuntime([conflict, corrected]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({ text: "Hey.", channelType }),
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe("Hey. What's up?");
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const repeated = makeRuntime([conflict, conflict]);
+			const repeatedDispatch = vi.spyOn(
+				repeated.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			await expect(
+				runStage1({
+					runtime: repeated,
+					message: makeMessage({
+						text: "A new conversational turn.",
+						channelType,
+					}),
+				}),
+			).rejects.toMatchObject({ code: "STAGE1_ROUTING_CONFLICT" });
+			expect(repeatedDispatch).not.toHaveBeenCalled();
+			expect(useModelCalls(repeated)).toHaveLength(2);
+		},
+	);
+
 	it("cancels a routing repair before further generation or field dispatch", async () => {
 		const abort = new AbortController();
 		const runtime = makeRuntime([]);
@@ -2620,7 +2685,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each([ChannelType.GROUP])(
+	it.each([ChannelType.GROUP, ChannelType.VOICE_GROUP, undefined])(
 		"omits unsupported contexts and action metadata for %s",
 		async (channelType) => {
 			const description =
@@ -2631,7 +2696,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
 			]);
 			runtime.actions = [
-				{ name: "CUSTOM_ACTION", description, similes: ["CUSTOM_ALIAS"] },
+				{
+					name: "CUSTOM_ACTION",
+					description: "Complete tool-only reference text. ".repeat(250),
+					similes: ["CUSTOM_ALIAS"],
+				},
 			];
 			runtime.contexts = new ContextRegistry([
 				{ id: "custom_catalog", description },
@@ -2652,81 +2721,100 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("keeps the system prefix identical when loading a stable provider reference", async () => {
-		const full =
-			"Complete character preferences: use plain language and address the user as Sam.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["userPersonalityPreferences"],
-				contexts: ["simple"],
-			}),
-			stage1Response({ contexts: ["simple"], replyText: "Here is the form." }),
-		]);
-		runtime.providers = [
-			{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
-		];
-		const state = makeState();
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-			state,
-		});
-		const calls = useModelCalls(runtime).map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					providerOptions: {
-						eliza: { prefixHash: string };
-						cerebras: { prompt_cache_key: string };
-						openai: { parallelToolCalls: boolean };
-					};
+	it.each([ChannelType.DM, ChannelType.VOICE_DM, ChannelType.GROUP])(
+		"keeps the system prefix identical when loading a stable provider reference on %s",
+		async (channelType) => {
+			const full =
+				"Complete character preferences: use plain language and address the user as Sam.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contextRequests: ["userPersonalityPreferences"],
+					contexts: ["simple"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Here is the form.",
+				}),
+			]);
+			runtime.providers = [
+				{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
+			];
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
 				},
-		);
-		expect(calls).toHaveLength(2);
-		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
-		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
-			calls[0]?.providerOptions.cerebras.prompt_cache_key,
-		);
-		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
-		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
-			calls[1]?.providerOptions.eliza.prefixHash,
-		);
-		expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
-		expect(
-			calls[1]?.messages.find((message) => message.role === "user")?.content,
-		).toContain(full);
-	});
-	it("advertises optional provider discovery equally for voice", async () => {
-		const runtime = makeRuntime([
-			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
-		]);
-		const state = makeState();
-		const full =
-			"A complete saved character preference body for the existing voice contract.";
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.VOICE_DM }),
-			state,
-		});
-		expect(useModelCalls(runtime)).toHaveLength(1);
-		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
-		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(
-			"context_discovery: userPersonalityPreferences",
-		);
-	});
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			await runStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state,
+			});
+			const calls = useModelCalls(runtime).map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						providerOptions: {
+							eliza: { prefixHash: string };
+							cerebras: { prompt_cache_key: string };
+							openai: { parallelToolCalls: boolean };
+						};
+					},
+			);
+			expect(calls).toHaveLength(2);
+			expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+			expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+				calls[0]?.providerOptions.cerebras.prompt_cache_key,
+			);
+			expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
+			expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
+				calls[1]?.providerOptions.eliza.prefixHash,
+			);
+			expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
+			expect(
+				calls[1]?.messages.find((message) => message.role === "user")?.content,
+			).toContain(full);
+		},
+	);
+	it.each([
+		ChannelType.DM,
+		ChannelType.VOICE_DM,
+		ChannelType.GROUP,
+		ChannelType.THREAD,
+		ChannelType.WORLD,
+		ChannelType.FORUM,
+		ChannelType.FEED,
+	])(
+		"keeps provider references discoverable without an automatic extra call on %s",
+		async (channelType) => {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			]);
+			const state = makeState();
+			const full =
+				"A complete saved character preference body for the existing voice contract.";
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			await runStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state,
+			});
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(
+				full,
+			);
+			expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(
+				"context_discovery: userPersonalityPreferences",
+			);
+		},
+	);
 
 	it("stops a requested context read before another model call when cancelled during recomposition", async () => {
 		const abort = new AbortController();
@@ -4053,15 +4141,18 @@ describe("runV5MessageRuntimeStage1", () => {
 		"Please cease responding",
 		"one line: what's the capital of chile?",
 	])(
-		"keeps a model STOP terminal without a language-dependent retry: %s",
+		"honors an explicit terminal-review opt-out without language matching: %s",
 		async (text) => {
-			const runtime = makeRuntime([
-				stage1Response({ shouldRespond: "STOP", contexts: [] }),
-				stage1Response({
-					contexts: ["simple"],
-					replyText: "This must never be delivered.",
-				}),
-			]);
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: "STOP", contexts: [] }),
+					stage1Response({
+						contexts: ["simple"],
+						replyText: "This must never be delivered.",
+					}),
+				],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "0" },
+			);
 			const handler = vi.fn(async () => ({
 				success: true,
 				text: "Unexpected domain effect",
@@ -4095,6 +4186,55 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"reviews a silent direct follow-up once by default on %s",
+		async (channelType) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Yes, Home is open.",
+				}),
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({
+					text: "Did you open it?",
+					channelType,
+					metadata: { uiViewPath: "/chat" },
+				}),
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe("Yes, Home is open.");
+			expect(useModelCalls(runtime)).toHaveLength(2);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("honors a confirmed direct STOP without a third review", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const callback = vi.fn(async () => []);
+		const result = await runStage1({
+			runtime,
+			callback,
+			message: makeMessage({
+				text: "Please stop responding.",
+				channelType: ChannelType.DM,
+			}),
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[true, "STOP", "STOP", 2],
 		[true, "IGNORE", "IGNORE", 2],
@@ -4110,7 +4250,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					stage1Response({ shouldRespond: first, contexts: [] }),
 					stage1Response({ shouldRespond: repeated, contexts: [] }),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
@@ -4420,52 +4562,63 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("uses active native fields without a separate voice instruction manual", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				shouldRespond: "RESPOND",
-				contexts: ["simple"],
-				replyText: "Hello.",
-			}),
-		]);
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.VOICE_DM,
-				text: "uh huh",
-			}),
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "terminal") {
-			expect(result.action).toBe("IGNORE");
-		}
-		const firstCall = useModelCalls(runtime)[0];
-		expect(firstCall).toBeDefined();
-		if (!firstCall) {
-			throw new Error("Expected the voice Stage-1 model call to be captured");
-		}
-		const params = firstCall[1] as {
-			tools?: Array<{ parameters?: { required?: string[] } }>;
-			responseSkeleton?: { spans?: Array<{ key?: string }> };
-			messages?: Array<{ content?: unknown }>;
+	it("uses identical direct text and voice schemas, source handling and stable cache prefixes", async () => {
+		type CapturedStage1 = {
+			tools: Array<{ name: string; parameters: object }>;
+			messages: Array<{ role: string; content: string }>;
+			providerOptions: {
+				eliza: { prefixHash: string; promptCacheKey: string; thinking: string };
+				cerebras: object;
+			};
 		};
-		const required = params.tools?.[0]?.parameters?.required ?? [];
-		expect(required).toContain("shouldRespond");
-		expect(required).toContain("contexts");
-		expect(required).toContain("facts");
+		const calls: CapturedStage1[] = [];
+		for (const channelType of [ChannelType.DM, ChannelType.VOICE_DM]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			]);
+			runtime.providers.push({
+				name: "uiWidgetCapabilities",
+				get: async () => ({ text: "Widget reference." }),
+			});
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: "Complete standing preference body.",
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			const result = await runStage1({
+				runtime,
+				state,
+				message: makeMessage({ channelType, text: "Hello." }),
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			calls.push(useModelCalls(runtime)[0][1] as CapturedStage1);
+		}
+		const [text, voice] = calls;
+		expect(voice.tools).toEqual(text.tools);
+		expect(voice.messages[0].content).not.toContain("voice engagement rules:");
+		expect(voice.messages[0].content).not.toContain("### facts");
+		expect(voice.messages[0]).toEqual(text.messages[0]);
 		expect(
-			params.responseSkeleton?.spans?.some(
-				(span) => span.key === "shouldRespond",
+			voice.messages[1].content.replaceAll(
+				'"channelType":"VOICE_DM"',
+				'"channelType":"DM"',
 			),
-		).toBe(true);
-		const systemContent = String(params.messages?.[0]?.content ?? "");
-		expect(systemContent).not.toContain("voice engagement rules:");
-		expect(systemContent).toContain("Plan a response to this direct message.");
-		expect(systemContent).not.toContain("response_precedence:");
-
-		expect(systemContent).not.toContain("### facts");
+		).toBe(text.messages[1].content);
+		expect(voice.providerOptions.eliza.prefixHash).toBe(
+			text.providerOptions.eliza.prefixHash,
+		);
+		expect(voice.providerOptions.eliza.promptCacheKey).toBe(
+			text.providerOptions.eliza.promptCacheKey,
+		);
+		expect(voice.providerOptions.cerebras).toEqual(
+			text.providerOptions.cerebras,
+		);
+		expect(voice.providerOptions.eliza.thinking).toBe(
+			text.providerOptions.eliza.thinking,
+		);
 	});
 
 	it("preserves complete eligible voice dialogue in the actual Stage-1 request", async () => {
@@ -13651,7 +13804,9 @@ describe("direct-text silence review", () => {
 						extra: { replyEffectStatus: "none" },
 					}),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const state = makeState();
 			state.data.providers = {
@@ -13709,7 +13864,9 @@ describe("direct-text silence review", () => {
 						extra: { replyEffectStatus: "none" },
 					}),
 				],
-				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+				optIn
+					? { ELIZA_STAGE1_TERMINAL_REASK: "1" }
+					: { ELIZA_STAGE1_TERMINAL_REASK: "0" },
 			);
 			const state = makeState();
 			state.data.providers = {
@@ -13797,7 +13954,7 @@ describe("direct-text silence review", () => {
 			text: "Stop responding.",
 			channel: ChannelType.DM,
 			bot: false,
-			calls: 1,
+			calls: 2,
 		},
 		{
 			decision: "IGNORE" as const,

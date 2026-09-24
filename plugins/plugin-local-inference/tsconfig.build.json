@@ -11,11 +11,11 @@
 			"@elizaos/core/*": ["../../packages/core/dist/*"],
 			"@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/dist/*"],
-			"@elizaos/plugin-capacitor-bridge": [
-				"../plugin-capacitor-bridge/dist/index.d.ts"
+			"@elizaos/plugin-native-inference/host-bridge": [
+				"../plugin-native-inference/dist/bridge.d.ts"
 			],
-			"@elizaos/plugin-capacitor-bridge/*": [
-				"../plugin-capacitor-bridge/dist/*"
+			"@elizaos/plugin-native-inference/*": [
+				"../plugin-native-inference/dist/*"
 			],
 			"@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],
 			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"]

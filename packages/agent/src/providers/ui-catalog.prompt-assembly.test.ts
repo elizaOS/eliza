@@ -12,15 +12,16 @@
  * real `selectV5PlannerStateProviderNames`, and rendered by the real
  * `composeState` — no provider mocks. Deterministic; no model or database.
  */
+
 import {
-  AgentRuntime,
+  type AgentRuntime,
   ChannelType,
   type Memory,
   type RoleGateRole,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   uiGenerativeProvider,
@@ -46,9 +47,9 @@ function schedulingMessage(channelType: ChannelType = ChannelType.DM): Memory {
 let runtime: AgentRuntime;
 
 beforeAll(async () => {
-  runtime = new AgentRuntime({
+  runtime = createSQLiteTestRuntime({
     character: { name: "ui-catalog-prompt-assembly-test", bio: [] },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   await runtime.initialize({ skipMigrations: true });

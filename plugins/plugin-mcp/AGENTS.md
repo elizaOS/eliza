@@ -133,11 +133,11 @@ Add a branch in `src/routes-mcp.ts` `handleMcpRoutes`. The host server passes a 
 - **Security validation is blocking.** `validateMcpServerConfig` from `@elizaos/agent` runs before every connection and spawn. Servers that fail validation are silently skipped (logged at error level).
 - **Marketplace is read-only.** `mcp-marketplace.ts` queries `https://registry.modelcontextprotocol.io` to browse and discover MCP servers; it does not install them.
 - **`promoteSubactionsToActions`** is applied to `mcpAction` in `index.ts`, so any sub-action expansion follows the elizaOS core convention.
-- For architecture rules, logger conventions, ESM requirements, and naming standards, see the root `CLAUDE.md`.
+- For architecture rules, logger conventions, ESM requirements, and naming standards, see the root `AGENTS.md`.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

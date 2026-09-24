@@ -57,7 +57,7 @@ describe("iOS renderer stamp", () => {
   it("compares a candidate app bundle against the freshly built dist manifest", () => {
     const repoRoot = tempDir();
     const appPath = path.join(repoRoot, "Candidate.app");
-    const dist = path.join(repoRoot, "packages", "app", "dist");
+    const dist = path.join(repoRoot, "packages", "app", "web-dist");
     mkdirSync(dist, { recursive: true });
     writeAppManifest(appPath, "same");
     writeFileSync(
@@ -134,13 +134,13 @@ describe("freshRendererManifestPath", () => {
       }),
     ).toBe(path.join("/custom", "dist", "eliza-renderer-build.json"));
   });
-  it("defaults to packages/app/dist under the repo root", () => {
+  it("defaults to packages/app/web-dist under the repo root", () => {
     expect(freshRendererManifestPath({ repoRoot: "/repo" })).toBe(
       path.join(
         "/repo",
         "packages",
         "app",
-        "dist",
+        "web-dist",
         "eliza-renderer-build.json",
       ),
     );

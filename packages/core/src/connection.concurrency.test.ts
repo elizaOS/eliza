@@ -11,7 +11,8 @@
  * entity or a world overlap freely.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { ElizaError } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureConnection, ensureConnections } from "./connection";
 import { logger } from "./logger";
@@ -28,7 +29,7 @@ function deferred<T = void>() {
 	return { promise, reject, resolve };
 }
 
-class HoldingEntityAdapter extends InMemoryDatabaseAdapter {
+class HoldingEntityAdapter extends SQLiteDatabaseAdapter {
 	readonly entityWriteStarted = deferred();
 	readonly releaseEntityWrite = deferred();
 
@@ -46,8 +47,9 @@ afterEach(() => {
 
 describe("ensureConnection under concurrency", () => {
 	it("preserves both connections' per-source entity identity", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-entity-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("concurrent-entity-person");
 		const messageServerId = stringToUuid("concurrent-entity-server");
 
@@ -81,8 +83,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("preserves world metadata contributed by a concurrent caller", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-world-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const worldId = stringToUuid("concurrent-world");
 		const messageServerId = stringToUuid("concurrent-world-server");
 
@@ -111,8 +114,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("keeps sequential reconciliation unchanged", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("sequential-entity-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const entityId = stringToUuid("sequential-entity-person");
 		const messageServerId = stringToUuid("sequential-entity-server");
 
@@ -160,8 +164,9 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("still creates room participants for every concurrent connection", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("concurrent-participants-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const worldId = stringToUuid("concurrent-participants-world");
 		const messageServerId = stringToUuid("concurrent-participants-server");
 		const roomIds = ["a", "b", "c"].map((suffix) =>
@@ -192,7 +197,10 @@ describe("ensureConnection under concurrency", () => {
 	it("warns when a reconciliation holds a record lock past the diagnostic threshold", async () => {
 		vi.useFakeTimers();
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-		const adapter = new HoldingEntityAdapter();
+		const adapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("stuck-lock-agent"),
+		);
 		const entityId = stringToUuid("stuck-lock-entity");
 		const reconciliation = ensureConnection(adapter, {
 			agentId: stringToUuid("stuck-lock-agent"),
@@ -222,8 +230,14 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("does not serialize identical record ids across independent adapters", async () => {
-		const firstAdapter = new HoldingEntityAdapter();
-		const secondAdapter = new InMemoryDatabaseAdapter();
+		const firstAdapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("adapter-scope-agent"),
+		);
+		const secondAdapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			stringToUuid("adapter-scope-agent"),
+		);
 		const secondWriteStarted = deferred();
 		const originalSecondUpsert =
 			secondAdapter.upsertEntities.bind(secondAdapter);
@@ -256,19 +270,24 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("allows a successor reconciliation after the predecessor rejects", async () => {
-		class RejectFirstEntityWriteAdapter extends InMemoryDatabaseAdapter {
+		class RejectFirstEntityWriteAdapter extends SQLiteDatabaseAdapter {
 			private entityWrites = 0;
 
 			override async upsertEntities(entities: Entity[]): Promise<void> {
 				this.entityWrites += 1;
 				if (this.entityWrites === 1) {
-					throw new Error("injected first entity write failure");
+					throw new ElizaError("injected first entity write failure", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
 				}
 				await super.upsertEntities(entities);
 			}
 		}
 
-		const adapter = new RejectFirstEntityWriteAdapter();
+		const adapter = RejectFirstEntityWriteAdapter.create(
+			":memory:",
+			stringToUuid("reject-successor-agent"),
+		);
 		const shared = {
 			agentId: stringToUuid("reject-successor-agent"),
 			entityId: stringToUuid("reject-successor-entity"),
@@ -288,14 +307,17 @@ describe("ensureConnection under concurrency", () => {
 
 		expect(results[0]).toMatchObject({
 			status: "rejected",
-			reason: new Error("injected first entity write failure"),
+			reason: new ElizaError("injected first entity write failure", {
+				code: "TEST_STORAGE_UNAVAILABLE",
+			}),
 		});
 		expect(results[1]).toMatchObject({ status: "fulfilled" });
 	});
 
 	it("acquires reverse-overlap batches in sorted order without deadlock", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("reverse-overlap-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
 		const firstEntityId = stringToUuid("reverse-overlap-first-entity");
 		const secondEntityId = stringToUuid("reverse-overlap-second-entity");
 		const firstWorldId = stringToUuid("reverse-overlap-first-world");
@@ -345,7 +367,10 @@ describe("ensureConnection under concurrency", () => {
 		expect(typeof getRegistrySize).toBe("function");
 		if (typeof getRegistrySize !== "function") return;
 
-		const adapter = new HoldingEntityAdapter();
+		const adapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("registry-retirement-agent"),
+		);
 		const reconciliation = ensureConnection(adapter, {
 			agentId: stringToUuid("registry-retirement-agent"),
 			entityId: stringToUuid("registry-retirement-entity"),

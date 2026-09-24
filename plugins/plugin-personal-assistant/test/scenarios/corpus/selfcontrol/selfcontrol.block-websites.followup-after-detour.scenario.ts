@@ -1,8 +1,8 @@
 /** Scenario fixture for selfcontrol block websites followup after detour; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { callPayloadBlob } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { callPayloadBlob } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function expectFollowupBlockRecoveredSites(
   ctx: ScenarioContext,
@@ -24,7 +24,7 @@ export default scenario({
     "The blocker should recover the websites from recent conversation even after the user talks about something else before confirming.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

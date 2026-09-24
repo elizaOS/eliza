@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { ConnectorSetupService } from "../services/connector-setup-service.ts";

@@ -1,7 +1,7 @@
 /** Exercises generated Markdown output against delimiter and line-break injection. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildVerdictMarkdown } from "../../scripts/ai-qa/review-walkthrough.mjs";
+import { buildVerdictMarkdown } from "./ai-qa/review-walkthrough.mjs";
 import { encodeMarkdownTableCell } from "./markdown-table-cell.mjs";
 
 test("Markdown cells escape syntax before normalizing every line separator", () => {

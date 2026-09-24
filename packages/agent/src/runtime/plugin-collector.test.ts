@@ -91,9 +91,6 @@ describe("resolvePluginPackageAlias", () => {
     expect(
       resolvePluginPackageAlias("@elizaos/plugin-telegram-standalone"),
     ).toBe("@elizaos/plugin-telegram");
-    expect(resolvePluginPackageAlias("@homunculuslabs/plugin-zai")).toBe(
-      "@elizaos/plugin-zai",
-    );
   });
 
   it("passes through unknown names, including the empty string", () => {
@@ -500,16 +497,29 @@ describe("collectPluginNames Google Workspace and calendar companion", () => {
 });
 
 describe("collectPluginNames orchestrator and gitpathologist", () => {
+  it("migrates a legacy coordinator configuration without enabling local execution", () => {
+    const names = collectPluginNames({
+      agents: { defaults: { agentOrchestrator: false } },
+      plugins: { allow: ["@elizaos/plugin-task-coordinator"] },
+    } as ElizaConfig);
+    expect(names.has("@elizaos/plugin-task-coordinator")).toBe(false);
+    expect(names.has("@elizaos/plugin-agent-orchestrator/ui")).toBe(true);
+    expect(names.has("agent-orchestrator")).toBe(false);
+    expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
+  });
+
   it("loads the orchestrator from agents.list[0] when that field is a boolean", () => {
     const enabled = collectPluginNames({
       agents: { list: [{ agentOrchestrator: true }] },
     } as ElizaConfig);
     expect(enabled.has("agent-orchestrator")).toBe(true);
+    expect(enabled.has("@elizaos/plugin-agent-orchestrator/ui")).toBe(false);
 
     const disabled = collectPluginNames({
       agents: { list: [{ agentOrchestrator: false }] },
     } as ElizaConfig);
     expect(disabled.has("agent-orchestrator")).toBe(false);
+    expect(disabled.has("@elizaos/plugin-agent-orchestrator/ui")).toBe(true);
   });
 
   it("falls through to agents.defaults when the first entry omits the field", () => {
@@ -589,7 +599,7 @@ describe("collectPluginNames cloud-container and inference policy", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     const names = collectPluginNames(emptyConfig());
     expect(names.has("@elizaos/plugin-pty")).toBe(true);
-    expect(names.has("@elizaos/plugin-cli-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-personal-assistant")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(true);

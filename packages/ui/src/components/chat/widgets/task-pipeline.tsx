@@ -10,7 +10,7 @@
 import type {
   SwarmActivityPlanEntry,
   SwarmActivityStatus,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import {
   CircleAlert,
   CircleCheck,

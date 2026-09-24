@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   type AccountBillingAggregateSource,
   requireAccountBillingAggregateRow,

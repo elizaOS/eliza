@@ -16,7 +16,7 @@ import type { Plugin } from "esbuild";
 
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols
- * the shell reads (`isViewVisible`, `dedupeModalities`, `matchShortcut`,
+ * the shell reads (`isViewVisible`, `dedupeModalities`,
  * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and proxies
  * everything else, so core's Node graph is never bundled.
  */
@@ -60,7 +60,6 @@ export function stubElizaCore(): Plugin {
             // Fixture chat messages must fall through to the mocked transport.
             // Keep this as an own property so esbuild can materialize the named
             // ESM import reached through slash-menu.ts.
-            matchShortcut: () => null,
             findInteractionRegions: () => [],
             // The stub reports no claimed interaction regions, so preserve the
             // fixture text. This must be a concrete own property: esbuild's ESM

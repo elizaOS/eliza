@@ -7,8 +7,8 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
-import { startAgentSourceWatcher } from "../app-core/scripts/lib/agent-source-watcher.mjs";
-import { signalSpawnedProcessTree } from "../app-core/scripts/lib/kill-process-tree.mjs";
+import { startAgentSourceWatcher } from "../app/scripts/lib/agent-source-watcher.mjs";
+import { signalSpawnedProcessTree } from "../app/scripts/lib/kill-process-tree.mjs";
 
 const repoRoot = process.cwd();
 const bunBin = process.env.BUN_BIN || "bun";

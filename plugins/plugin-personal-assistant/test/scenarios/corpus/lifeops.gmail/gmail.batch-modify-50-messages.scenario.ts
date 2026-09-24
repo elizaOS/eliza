@@ -9,11 +9,11 @@
  * Cited: 03-coverage-gap-matrix.md — batch-modify scale.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 function checkBatchedNotIndividual(ctx: ScenarioContext): string | undefined {
   // Walk Gmail mock requests if exposed via ctx — fall back to action count.
@@ -44,7 +44,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

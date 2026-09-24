@@ -2,6 +2,7 @@
  * Proves the Biome consistency guard accepts the repository and rejects drift in every governed layer.
  */
 
+import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -177,3 +178,16 @@ describe("Biome version consistency", () => {
     expect(problems).toContain("bun.lock override");
   });
 });
+
+// Deleted workspaces remain in the Git index until the cleanup is committed.
+it(
+  "ignores tracked files removed from the current working tree",
+  () => {
+    const root = makeFixture();
+    execFileSync("git", ["init", "--quiet"], { cwd: root });
+    execFileSync("git", ["add", "."], { cwd: root });
+    rmSync(path.join(root, "nested"), { recursive: true });
+    expect(collectBiomeVersionProblems(root)).toEqual([]);
+  },
+  DISK_FIXTURE_TIMEOUT_MS,
+);

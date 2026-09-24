@@ -15,7 +15,9 @@
     "noEmit": true,
     "paths": {
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"]
     },
     "types": ["node", "bun"]
   },

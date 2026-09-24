@@ -283,8 +283,8 @@ describe("taskBelongsToShard", () => {
 
   test("membership is deterministic for the same key + config", () => {
     const cfg = { index: 2, total: 5 };
-    const a = taskBelongsToShard("packages/app-core", cfg);
-    const b = taskBelongsToShard("packages/app-core", cfg);
+    const a = taskBelongsToShard("packages/app", cfg);
+    const b = taskBelongsToShard("packages/app", cfg);
     expect(a).toBe(b);
   });
 

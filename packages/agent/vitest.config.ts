@@ -4,7 +4,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/scripts/vitest/default.config";
+import baseConfig from "../scripts/vitest/default.config";
+import {
+  agentTestExclude,
+  agentTestInclude,
+} from "./scripts/run-vitest-batches.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -189,13 +193,6 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
       },
       {
-        // Vitest deliberately omits Vite's `module` condition. Resolve this
-        // workspace package explicitly so parallel builds cannot remove its
-        // dist entry while an agent test imports core's prompt re-export.
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
         replacement: path.join(
           monorepoRoot,
@@ -226,27 +223,17 @@ export default defineConfig({
           "plugins/plugin-openai/utils/config.ts",
         ),
       },
-      {
-        // Core's src re-exports `@elizaos/prompts`, which ships no dist in
-        // this lane — anchor it to source so suites importing @elizaos/core
-        // load (same fix plugin-app-control's config carries).
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
       ...baseAliases,
       {
-        find: /^@elizaos\/credentials\/vault$/,
+        find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           monorepoRoot,
-          "packages/credentials/src/vault/index.ts",
+          "packages/auth/src/vault/index.ts",
         ),
       },
       {
-        find: /^@elizaos\/credentials\/vault\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/credentials/src/vault/$1",
-        ),
+        find: /^@elizaos\/auth\/vault\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/auth/src/vault/$1"),
       },
     ],
   },
@@ -272,20 +259,11 @@ export default defineConfig({
         inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
-    include: [
-      "src/**/*.test.{ts,tsx}",
-      "test/**/*.test.{ts,tsx}",
-      "scripts/**/*.test.{ts,tsx}",
-    ],
-    exclude: [
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.live.e2e.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*-real.test.{ts,tsx}",
-    ],
+    include: agentTestInclude,
+    exclude: agentTestExclude.filter((pattern) =>
+      process.env.RUN_CRASH_RESTART_E2E === "1"
+        ? pattern !== "test/crash-restart-supervisor.test.ts"
+        : true,
+    ),
   },
 });

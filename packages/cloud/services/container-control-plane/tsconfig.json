@@ -35,7 +35,8 @@
       ],
       "drizzle-orm": ["../../../node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
-      "@/*": ["../../../*"]
+      "@/*": ["../../../*"],
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"]
     }
   },
   "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],

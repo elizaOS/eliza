@@ -45,8 +45,11 @@
  * row.
  */
 
-import type { AgentNotification } from "@elizaos/common";
-import type { PendingUserAction, PendingUserActionOption } from "@elizaos/core";
+import type {
+  AgentNotification,
+  PendingUserAction,
+  PendingUserActionOption,
+} from "@elizaos/core";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {

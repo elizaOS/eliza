@@ -5,11 +5,11 @@
  * and answer with the actual answer, not "yes" by default.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkAgentReadCalendar(ctx: ScenarioContext): string | undefined {
@@ -38,7 +38,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "free-busy", "availability"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

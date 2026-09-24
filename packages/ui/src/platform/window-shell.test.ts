@@ -12,7 +12,7 @@ import {
 describe("parseWindowShellRoute", () => {
   it("parses the connectors surface window (?shell=surface&tab=connectors)", () => {
     // The desktop "New Connectors Window" opens with this query
-    // (packages/app-core .../surface-windows.ts buildSurfaceShellQuery). It must
+    // (packages/app .../surface-windows.ts buildSurfaceShellQuery). It must
     // resolve to a scoped surface route, NOT fall through to `{ mode: "main" }`
     // (which renders a full second dashboard).
     expect(parseWindowShellRoute("?shell=surface&tab=connectors")).toEqual({

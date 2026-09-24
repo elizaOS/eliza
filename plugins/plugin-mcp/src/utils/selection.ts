@@ -12,7 +12,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,

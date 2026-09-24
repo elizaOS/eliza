@@ -1,9 +1,9 @@
 /** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   ActionResult,
@@ -105,7 +105,7 @@ async function createHarness(
   rewriteText = "The provider did not submit the transfer.",
   options: { providers?: StateData["providers"]; directReply?: boolean } = {},
 ): Promise<Harness> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       id: AGENT_ID,
@@ -113,7 +113,7 @@ async function createHarness(
       bio: "Exercises the real message-service delivery boundary.",
       settings: { ELIZA_ADMIN_ENTITY_ID: USER_ID },
     }),
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

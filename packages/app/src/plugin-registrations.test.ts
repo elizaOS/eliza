@@ -34,24 +34,24 @@ const SCAN_ROOTS = [
 const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-calendar#register",
   "@elizaos/plugin-computeruse#register",
-  "@elizaos/plugin-contacts#register",
-  "@elizaos/plugin-documents#register",
   "@elizaos/plugin-elizacloud#register",
+  "@elizaos/plugin-knowledge#register",
   "@elizaos/plugin-maps#register",
-  "@elizaos/plugin-messages#register",
+  "@elizaos/plugin-native-contacts#register",
+  "@elizaos/plugin-native-messages#register",
+  "@elizaos/plugin-native-phone#register",
   "@elizaos/plugin-native-settings#register",
+  "@elizaos/plugin-native-wifi#register",
   "@elizaos/plugin-notes#register",
   "@elizaos/plugin-personal-assistant#register",
-  "@elizaos/plugin-phone#register",
   "@elizaos/plugin-relationships#register",
   "@elizaos/plugin-trajectory-logger#register",
   "@elizaos/plugin-wallet#register",
-  "@elizaos/plugin-wifi#register",
 ] as const;
 
 // Imported directly by the app shell (main.tsx), not via the manifest scan.
 const FIRST_RENDER_REGISTRATION_MODULES = [
-  "@elizaos/plugin-task-coordinator/register",
+  "@elizaos/plugin-agent-orchestrator/ui/register",
   "@elizaos/plugin-relationships/register",
 ] as const;
 

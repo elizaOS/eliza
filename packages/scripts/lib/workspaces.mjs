@@ -299,7 +299,7 @@ export function listPackages(opts) {
 
 /**
  * Resolve workspace directories and name maps from an explicit pattern set.
- * Absolute paths preserve the historical app-core script contract while all
+ * Absolute paths preserve the historical app script contract while all
  * discovery and manifest parsing stays centralized in this module.
  */
 export function collectWorkspaceMaps(repoRoot, patterns) {

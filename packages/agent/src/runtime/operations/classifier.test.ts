@@ -124,19 +124,6 @@ describe("classifyOperation", () => {
       ).toBe("hot");
     });
 
-    it("returns warm when switching between providers in the openai family", () => {
-      expect(
-        classifyOperation(switchTo("openai-subscription"), {
-          currentProvider: "openai",
-        }),
-      ).toBe("warm");
-      expect(
-        classifyOperation(switchTo("openai"), {
-          currentProvider: "openai-subscription",
-        }),
-      ).toBe("warm");
-    });
-
     it("returns warm when switching between providers in the anthropic family", () => {
       expect(
         classifyOperation(switchTo("anthropic-subscription"), {

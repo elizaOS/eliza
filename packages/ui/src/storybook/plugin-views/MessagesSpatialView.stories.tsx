@@ -4,7 +4,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, fn, userEvent, within } from "storybook/test";
-import { MessagesSpatialView } from "../../../../../plugins/plugin-messages/src/components/MessagesSpatialView";
+import { MessagesSpatialView } from "../../../../../plugins/plugin-native-messages/src/components/MessagesSpatialView";
 import { SpatialSurface } from "../../spatial";
 
 const meta = {

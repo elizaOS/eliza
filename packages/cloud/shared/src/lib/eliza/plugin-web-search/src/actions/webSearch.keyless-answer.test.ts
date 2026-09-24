@@ -3,8 +3,7 @@
 // the user instead of being reported as "no relevant results". The action runs
 // real; only fetch and the runtime surface are stubbed.
 import { afterEach, describe, expect, it } from "bun:test";
-import type { Memory } from "@elizaos/common";
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { webSearch } from "./webSearch";
 
 const realFetch = globalThis.fetch;

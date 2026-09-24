@@ -15,6 +15,22 @@ import {
 } from "./shared-runtime-storage-identity";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
+const stopRuntime = AgentRuntime.prototype.stop;
+const closeRuntime = AgentRuntime.prototype.close;
+
+// Inject boundary failures after real teardown so later cases cannot inherit timers or databases.
+async function failAfterRuntimeStop(
+  this: AgentRuntime,
+  ...args: Parameters<AgentRuntime["stop"]>
+): Promise<void> {
+  await stopRuntime.apply(this, args);
+  throw new Error("stop teardown failed");
+}
+async function failAfterRuntimeClose(this: AgentRuntime): Promise<void> {
+  await closeRuntime.call(this);
+  throw new Error("close teardown failed");
+}
+
 const scheduledInputs: Array<Record<string, unknown>> = [];
 function testPublicGroundingEvidence(url: string, text: string) {
   return {
@@ -297,9 +313,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
   test("preserves a successful turn when stop fails and still attempts close", async () => {
     globalThis.fetch = (async () => successfulRuntimeResponse()) as typeof fetch;
-    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(async () => {
-      throw new Error("stop teardown failed");
-    });
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(failAfterRuntimeStop);
     const closeSpy = spyOn(AgentRuntime.prototype, "close");
     const reportSpy = spyOn(AgentRuntime.prototype, "reportError");
     try {
@@ -318,9 +332,9 @@ describe("Shared Eliza Workerd runtime", () => {
 
   test("preserves a successful turn when close alone fails", async () => {
     globalThis.fetch = (async () => successfulRuntimeResponse()) as typeof fetch;
-    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(async () => {
-      throw new Error("close teardown failed");
-    });
+    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(
+      failAfterRuntimeClose,
+    );
     try {
       await expect(runTeardownTestTurn()).resolves.toMatchObject({ reply: "teardown-safe reply" });
       expect(closeSpy).toHaveBeenCalledTimes(1);
@@ -334,12 +348,10 @@ describe("Shared Eliza Workerd runtime", () => {
       throw new Error("authoritative provider failure");
     }) as typeof fetch;
     const baseline = await runTeardownTestTurn();
-    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(async () => {
-      throw new Error("stop teardown failed");
-    });
-    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(async () => {
-      throw new Error("close teardown failed");
-    });
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(failAfterRuntimeStop);
+    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(
+      failAfterRuntimeClose,
+    );
     try {
       await expect(runTeardownTestTurn()).resolves.toMatchObject({
         reply: baseline.reply,

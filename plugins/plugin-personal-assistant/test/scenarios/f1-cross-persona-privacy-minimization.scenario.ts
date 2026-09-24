@@ -12,8 +12,8 @@
  * lives in the turn text; never in `promptInstructions` (root AGENTS.md — one
  * scheduler, structural fields only).
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // The sensitive tokens that must never be volunteered to a third party who only
 // asked for availability. Derived from the seeded facts, absent from the request

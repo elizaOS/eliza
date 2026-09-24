@@ -21,12 +21,10 @@ const expectedShortIdPluginMap = {
   elizacloud: "@elizaos/plugin-elizacloud",
   evm: "@elizaos/plugin-wallet",
   form: "@elizaos/plugin-form",
-  ollama: "@elizaos/plugin-zerollama",
   selfcontrol: "@elizaos/plugin-personal-assistant",
   solana: "@elizaos/plugin-wallet",
   vision: "@elizaos/plugin-vision",
   wallet: "@elizaos/plugin-wallet",
-  zerollama: "@elizaos/plugin-zerollama",
 };
 
 describe("short-id plugin map generation", () => {

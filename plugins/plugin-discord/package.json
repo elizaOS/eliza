@@ -65,7 +65,7 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+		"test:e2e": "node ../../packages/app/scripts/run-local-plugin-live-smoke.mjs",
 		"test:live": "bun run test:e2e"
 	},
 	"dependencies": {
@@ -79,7 +79,6 @@
 		"@discordjs/ws": "^1.2.3",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
-		"@elizaos/plugin-commands": "workspace:*",
 		"@elizaos/plugin-meetings": "workspace:*",
 		"@sapphire/snowflake": "3.5.5",
 		"discord-api-types": "^0.38.0",

@@ -6,7 +6,7 @@ Unified cross-channel inbox triage with unresolved-item tracking, snooze, archiv
 
 Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar connected channels into one triage queue.
 
-**Out of scope:** Android SMS — that remains in `@elizaos/plugin-messages`.
+**Out of scope:** Android SMS — that remains in `@elizaos/plugin-native-messages`.
 
 ## Plugin surface
 
@@ -109,7 +109,7 @@ None. Channel credentials are read from each provider plugin (`plugin-discord`, 
 
 - **`GET /api/lifeops/inbox` lives in `plugin-personal-assistant`.** The `InboxView` fetches from this route (served by PA). The triage domain (classify/persist/search) lives here and is imported by PA.
 - **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on `runtime.db`.
-- **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
+- **No Android SMS.** SMS routing intentionally stays in `plugin-native-messages`. Do not add SMS channel handling here.
 - **Schema name is `app_inbox`** to avoid collision with any host-app `inbox` table the runtime might also surface.
 - **Snooze is additive.** `snoozed_until` is added to `life_inbox_triage_entries`; the migration repairs old targets and maps legacy `app_lifeops` rows with `NULL AS snoozed_until`.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. Both must be run for a complete build.

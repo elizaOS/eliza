@@ -291,13 +291,12 @@ Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provid
 - **Scene is per-turn**: `sceneProvider` calls `SceneBuilder.onAgentTurn()` once per turn. Code that needs the scene outside a provider turn should call `ComputerUseService.getCurrentScene()` or `refreshScene("active")`.
 - **WS7 trajectory events**: `COMPUTER_USE_AGENT` emits `logger.info` lines with `evt: "computeruse.agent.step"`. These are picked up by plugin-trajectory-logger via log capture — no direct dependency.
 - **Platform evidence**: `docs/ios-device-validation.json`, `docs/android-device-validation.json`, `docs/android-aosp-validation.json`, `docs/macos-desktop-validation.json`, `docs/linux-desktop-validation.json`, and `docs/windows-desktop-validation.json` are the release evidence manifests. Keep incomplete live-device checks in `requires_device_evidence`; use `validate:platform-evidence -- --require-complete` only for release gates that truly have artifacts for every required platform check.
-- **Mobile surface**: `src/mobile/` is real but constrained. Read `docs/IOS_CONSTRAINTS.md` and `docs/ANDROID_CONSTRAINTS.md` before touching mobile code.
+- **Mobile surface**: `src/mobile/` is real but constrained.
 - **Parity matrix (#9170 M14)**: `src/parity/parity-matrix.ts` is the machine-checkable trycua/cua capability map. `validateParityMatrix(actionNames)` is asserted in the test suite — adding a verb to the matrix without registering it (or renaming a promoted action) fails CI, so the map can't silently drift.
-- **Further reading**: `docs/MULTI_MONITOR.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`, and `docs/TEST_LANES_COMPUTERUSE_VISION.md` (unit vs real-driver lanes, per-OS requirements, and the Windows non-interactive-session input constraint).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

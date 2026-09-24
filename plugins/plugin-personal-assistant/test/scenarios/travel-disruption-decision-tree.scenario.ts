@@ -2,7 +2,7 @@
  * Live-model scenario asserting the assistant lays out a travel-disruption
  * decision tree before taking any booking action.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "travel", "calendar"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

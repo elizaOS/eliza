@@ -10,7 +10,7 @@ import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
-} from "../../app-core/test/helpers/browser-mocks";
+} from "./helpers/browser-mocks";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
@@ -47,7 +47,7 @@ function ensureStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Mock @elizaos/app-core bridge modules — the real electrobun RPC module
+// Mock @elizaos/app bridge modules — the real electrobun RPC module
 // relies on native Electrobun bindings that are unavailable in the test
 // environment.
 // ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ function createBridgeMock(extraExports: Record<string, unknown> = {}) {
   };
 }
 
-vi.mock("@elizaos/app-core", () =>
+vi.mock("@elizaos/app", () =>
   createBridgeMock({
     platform: "web",
     isNative: false,
@@ -209,7 +209,7 @@ vi.mock("@elizaos/app-core", () =>
   }),
 );
 
-vi.mock("@elizaos/app-core/desktop-shell", () => ({
+vi.mock("@elizaos/app/desktop-shell", () => ({
   buildLocalizedTrayMenu: vi.fn(() => []),
   DesktopSurfaceNavigationRuntime: class {},
   DesktopTrayRuntime: class {},

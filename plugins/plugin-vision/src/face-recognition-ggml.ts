@@ -38,17 +38,7 @@ function defaultLibraryPath(): string {
         : "so";
   return (
     process.env.ELIZA_FACE_CPP_LIB ??
-    path.join(
-      __dirname,
-      "..",
-      "..",
-      "..",
-      "packages",
-      "native-plugins",
-      "face-cpp",
-      "build",
-      `libface.${ext}`,
-    )
+    path.join(__dirname, "..", "native", "face-cpp", "build", `libface.${ext}`)
   );
 }
 
@@ -306,7 +296,7 @@ export class FaceEmbedGgmlRecognizer {
     this.bindings = await loadBindings();
     if (!this.bindings) {
       throw new Error(
-        `${MODULE_TAG} face-cpp library unavailable; build packages/native/plugins/face-cpp first.`,
+        `${MODULE_TAG} face-cpp library unavailable; build plugins/plugin-vision/native/face-cpp first.`,
       );
     }
     const ggufPath = this.cfg.modelPath ?? defaultEmbedWeightsPath();

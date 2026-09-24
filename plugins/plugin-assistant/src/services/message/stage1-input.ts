@@ -21,8 +21,7 @@ import {
   resolveOptimizedPromptForRuntime,
   segmentBlock,
 } from "@elizaos/core";
-import { messageHandlerTemplate } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/prompts/rendering";
+import { composePrompt } from "@elizaos/shared/text/template-rendering";
 import { v4 } from "uuid";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
@@ -45,6 +44,7 @@ import {
   labelHistorySources,
   shortenHistoryRoleLabels,
 } from "./history-wire.js";
+import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
   composeResponseState,
@@ -156,6 +156,7 @@ export function renderMessageHandlerModelInput(
     voiceDirectMessage?: boolean;
     nativeTools?: boolean;
     groupTriage?: boolean;
+    progressiveContext?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
@@ -170,11 +171,13 @@ export function renderMessageHandlerModelInput(
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
   );
-  const directAudience = options?.directMessage && !options.groupTriage;
+  const progressiveContextInput =
+    options?.progressiveContext ??
+    (options?.directMessage && !options.groupTriage);
   const history =
-    directAudience &&
-    options.history?.sourceSetId === completionSources?.sourceSetId
-      ? options.history
+    progressiveContextInput &&
+    options?.history?.sourceSetId === completionSources?.sourceSetId
+      ? options?.history
       : undefined;
   const instructions = renderMessageHandlerInstructions(
     runtime,
@@ -216,21 +219,31 @@ export function renderMessageHandlerModelInput(
     ),
     completionSourceIds,
   );
+  // Past effects remain complete historical evidence, before the instruction
+  // that establishes the current request. They cannot become pending work by
+  // being regrouped into the current turn's tool/result tail.
+  const historicalNavigationSegments = remainingDynamicSegments.filter(
+    (segment) =>
+      segment.label === "runtime:historical_navigation" ||
+      segment.label === "runtime:historical_navigation_scope",
+  );
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,
   );
   const turnTailSegments = remainingDynamicSegments.filter(
     (segment) =>
       segment.label?.startsWith("prior_message:") !== true &&
-      segment.label?.startsWith("provider:") !== true,
+      segment.label?.startsWith("provider:") !== true &&
+      !historicalNavigationSegments.includes(segment),
   );
   // The boundary follows untrusted dialogue so stored messages cannot supersede
   // it with structural-looking text. Providers remain adjacent after that
   // boundary, preserving their reusable prefix before the current message.
   const orderedDynamicSegments = [
-    ...(directAudience
+    ...(progressiveContextInput
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
+    ...historicalNavigationSegments,
     ...currentTurnBoundary,
     ...(completionSources?.sources.length
       ? [
@@ -252,7 +265,8 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ?? (directAudience ? options?.historyReadEvidence : undefined),
+      history ??
+        (progressiveContextInput ? options?.historyReadEvidence : undefined),
       history?.loadedSourceIds.size
         ? new Set(
             priorDialogueSegments.flatMap((segment) =>

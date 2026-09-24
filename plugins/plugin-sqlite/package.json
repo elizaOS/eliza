@@ -16,7 +16,13 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./portable": {
+      "types": "./dist/portable.d.ts",
+      "eliza-source": "./portable.ts",
+      "import": "./dist/portable.js",
+      "default": "./dist/portable.js"
+    }
   },
   "sideEffects": false,
   "files": [
@@ -25,8 +31,9 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*",
-    "devalue": "6.0.1"
+    "devalue": "6.0.1",
+    "@elizaos/shared": "workspace:*",
+    "sql.js": "1.14.2"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

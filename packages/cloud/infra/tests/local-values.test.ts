@@ -46,7 +46,7 @@ describe("values-pg-local.yaml (CNPG local PostgreSQL)", () => {
     expect(initdb.owner).toBe("app");
   });
 
-  test("seeds the vector + uuid-ossp extensions used by app-core", () => {
+  test("seeds the vector + uuid-ossp extensions used by app", () => {
     const cluster = doc.cluster as Record<string, unknown>;
     const initdb = cluster.initdb as Record<string, unknown>;
     const sql = initdb.postInitApplicationSQL as string[];

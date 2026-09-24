@@ -147,7 +147,7 @@ const mockState = vi.hoisted(
   }),
 );
 
-vi.mock("@elizaos/capacitor-llama", () => ({
+vi.mock("@elizaos/plugin-native-inference/llama", () => ({
   capacitorLlama: {
     getHardwareInfo: vi.fn(async () => ({
       platform: "ios",

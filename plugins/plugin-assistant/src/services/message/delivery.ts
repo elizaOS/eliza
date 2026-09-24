@@ -34,7 +34,7 @@ import {
   sanitizeOutboundTextWithLiterals,
   stripReasoningBlocks,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import { v4 } from "uuid";
 import { PASSIVE_TURN_ACTIONS } from "./action-ownership.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
@@ -133,9 +133,9 @@ export function buildTextToSpeechParams(
  * First-sentence cloud-TTS delivery for streaming turns: synthesize the
  * sentence and hand the audio to the callback as a data-URI attachment. The
  * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
- * (packages/app-core/src/services/local-inference/voice/scheduler.ts) — this
+ * (packages/app/src/services/local-inference/voice/scheduler.ts) — this
  * is not duplicated, it's the cloud-deployment counterpart (packages/core
- * can't import packages/app-core; the two paths live at different layers and
+ * can't import packages/app; the two paths live at different layers and
  * only one is active per deployment).
  *
  * Guarded before synthesis: for an envelope echo the "first sentence" IS the

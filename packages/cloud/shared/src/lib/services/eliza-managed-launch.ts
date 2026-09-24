@@ -3,7 +3,7 @@
  * onboarding behind Cloud route handlers.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AgentSandbox,
   CONTAINER_BACKED_EXECUTION_TIERS,

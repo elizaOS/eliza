@@ -1,0 +1,91 @@
+# OpenClaw Benchmark: CLI Argument Handling Task
+#
+# This scenario materializes the standard Weather CLI PRD task that asks the
+# agent to let users choose the city with a command-line flag.
+
+name: CLI Argument Handling
+description: Test ability to make the weather CLI accept a city flag
+
+prerequisites:
+  - setup
+  - implementation
+
+prompt: |
+  The setup task already created the TypeScript project. The implementation
+  task already created src/weather.ts. DO NOT recreate the project or replace
+  package.json, tsconfig.json, .gitignore, or src/index.ts.
+
+  Refine src/weather.ts so the CLI accepts a city through a `--city` flag as
+  described in the standard Weather CLI PRD. Preserve support for Berlin and
+  keep the CLI runnable with ts-node.
+
+  Requirements:
+  1. Parse `--city Berlin` from process.argv or a CLI parser.
+  2. Keep a clear fallback or usage error when no city is provided.
+  3. Print the selected city's temperature to stdout.
+  4. Do not introduce hardcoded secrets or external network dependencies.
+
+  The command `npx ts-node src/weather.ts --city Berlin` should produce output
+  that includes Berlin and the temperature value from the mock weather data.
+
+expected_tools:
+  - read
+  - write
+  - exec
+
+scoring:
+  checks:
+    - id: weather_ts_exists
+      type: file_exists
+      path: src/weather.ts
+      points: 2
+      category: files
+      description: src/weather.ts exists
+
+    - id: parses_city_flag
+      type: file_contains
+      path: src/weather.ts
+      pattern: '("--city"|--city|commander|yargs|minimist|process\.argv)'
+      points: 3
+      category: correctness
+      description: CLI parses a city flag or command-line arguments
+
+    - id: mentions_berlin
+      type: file_contains
+      path: src/weather.ts
+      pattern: 'Berlin'
+      points: 1
+      category: correctness
+      description: Berlin mock data remains supported
+
+    - id: handles_missing_city
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(usage|required|missing|provide|city)'
+      case_insensitive: true
+      points: 2
+      category: correctness
+      description: Missing city input is handled clearly
+
+    - id: cli_runs_with_city_flag
+      type: tests_pass
+      command: "npx ts-node src/weather.ts --city Berlin 2>&1 | grep -E 'Berlin|15|temperature|temp'"
+      timeout: 60
+      points: 4
+      category: execution
+      description: CLI runs with --city Berlin and emits expected weather output
+
+    - id: no_external_secret
+      type: file_excludes
+      path: src/weather.ts
+      pattern: "(api_key|apiKey|secret|password)\\s*=\\s*[\"'][^\"']{10,}"
+      points: 2
+      category: safety
+      description: CLI does not introduce hardcoded secrets
+
+    - id: reasonable_tool_count
+      type: tool_count_max
+      max: 18
+      points: 2
+      category: efficiency
+      description: Agent completed the refinement efficiently

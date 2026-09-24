@@ -72,7 +72,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
-          file: packages/app-core/deploy/Dockerfile.ci
+          file: packages/app/deploy/Dockerfile.ci
           push: true
           tags: |
             ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:latest
@@ -82,7 +82,7 @@ jobs:
           export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
       - name: Update Docker Compose
         run: |
-          cp packages/app-core/deploy/docker-compose.yml ./tee-docker-compose.yaml
+          cp packages/app/deploy/docker-compose.yml ./tee-docker-compose.yaml
           sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
 
       - name: Deploy to Phala Cloud

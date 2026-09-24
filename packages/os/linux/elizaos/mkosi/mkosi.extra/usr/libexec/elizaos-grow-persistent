@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+root_source="$(findmnt -nro SOURCE /)"
+root_source="$(readlink -f "$root_source")"
+case "$root_source" in
+    /dev/*) ;;
+    *)
+        echo "elizaos-grow-persistent: root is not a block device: $root_source" >&2
+        exit 1
+        ;;
+esac
+
+parent="$(lsblk -ndo PKNAME "$root_source" | head -n 1)"
+if [ -z "$parent" ]; then
+    echo "elizaos-grow-persistent: cannot resolve parent disk for $root_source" >&2
+    exit 1
+fi
+disk="/dev/$parent"
+[ -b "$disk" ] || {
+    echo "elizaos-grow-persistent: resolved parent is not a block device: $disk" >&2
+    exit 1
+}
+
+home_guid=933ac7e1-2eb4-4f13-b844-0e14e2aef915
+home_matches="$(lsblk -nrpo NAME,PARTTYPE,PARTLABEL "$disk" | awk -v guid="$home_guid" '
+    tolower($2) == guid && $3 == "elizaos-home" { print $1 }
+')"
+set -- $home_matches
+if [ "$#" -ne 1 ]; then
+    echo "elizaos-grow-persistent: expected exactly one elizaos home partition on $disk" >&2
+    exit 1
+fi
+home_partition="$1"
+
+# systemd-repart matches by GPT type. Refuse to operate when another Linux
+# home partition exists or when ours is not physically last; both occur in
+# plausible dual-boot layouts and guessing could resize the wrong filesystem.
+home_type_count="$(lsblk -nrpo PARTTYPE "$disk" | awk -v guid="$home_guid" '
+    tolower($1) == guid { count++ } END { print count + 0 }
+')"
+[ "$home_type_count" -eq 1 ] || {
+    echo "elizaos-grow-persistent: multiple GPT home partitions on $disk; refusing automatic growth" >&2
+    exit 1
+}
+# START is always reported in 512-byte sectors, even when lsblk's --bytes
+# option is present, whereas SIZE becomes bytes. Convert START to bytes before
+# adding SIZE; mixing the two units makes every normal final partition look
+# non-final and breaks first boot.
+home_end="$(lsblk -bnro START,SIZE "$home_partition" | awk '{ printf "%.0f\n", ($1 * 512) + $2 }')"
+last_end="$(lsblk -bnro START,SIZE "$disk" | awk 'NF == 2 && $1 > 0 { end=($1*512)+$2; if (end > max) max=end } END { printf "%.0f\n", max + 0 }')"
+[ "$home_end" -eq "$last_end" ] || {
+    echo "elizaos-grow-persistent: elizaos home is not the final partition on $disk" >&2
+    exit 1
+}
+
+systemd-repart --dry-run=no --empty=allow --include-partitions=home \
+    --definitions=/usr/lib/elizaos/repart-grow "$disk"
+udevadm settle

@@ -8,7 +8,7 @@
  *
  * Two targets run in sequence:
  *   1. `fixture` (default) — the synthetic fixture's own controls.
- *   2. `real-view` — REAL components from @elizaos/plugin-task-coordinator
+ *   2. `real-view` — REAL components from @elizaos/plugin-agent-orchestrator
  *      (TaskCard / BackChip / TaskSearchInput) mounted in the host
  *      AgentSurfaceProvider. Their `useAgentElement` calls resolve to the same
  *      `@elizaos/ui/agent-surface` registry singleton as the host, so the bridge
@@ -155,9 +155,9 @@ async function driveSyntheticFixture(browser) {
   }
 }
 
-// ── Target 2: real plugin view (plugin-task-coordinator) ─────────────────────
+// ── Target 2: real plugin view (plugin-agent-orchestrator) ─────────────────────
 async function driveRealView(browser) {
-  console.log("\n── target: real-view (@elizaos/plugin-task-coordinator) ──");
+  console.log("\n── target: real-view (@elizaos/plugin-agent-orchestrator) ──");
   const htmlPath = await bundleFixture(
     "real-view",
     join(here, "real-view-fixture.tsx"),
@@ -169,9 +169,9 @@ async function driveRealView(browser) {
       // relatively → one shared registry singleton, no app-server, no heavy
       // barrel (the full agent-surface index would drag node-only transitive deps
       // into the browser bundle).
-      "@elizaos/plugin-task-coordinator/TaskCardList": join(
+      "@elizaos/plugin-agent-orchestrator/ui/TaskCardList": join(
         repoRoot,
-        "plugins/plugin-task-coordinator/src/TaskCardList.tsx",
+        "plugins/plugin-agent-orchestrator/src/ui/TaskCardList.tsx",
       ),
       "@elizaos/ui/agent-surface": join(uiSrc, "useAgentElement.ts"),
     },

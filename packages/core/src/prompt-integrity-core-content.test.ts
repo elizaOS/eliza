@@ -7,10 +7,10 @@
  * completeness. Deterministic: pure functions, no runtime and no model.
  */
 
-import { stableStringify } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { formatEntityMetadata } from "../../../plugins/plugin-assistant/src/entities.ts";
 import { completeAttachmentContent } from "../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts";
+import { stableStringify } from "./utils/deterministic.js";
 
 describe("prompt integrity — no caps on model-facing core content", () => {
 	it("attachment content reaches the model complete past the old 32000 cap", () => {

@@ -61,4 +61,6 @@ The expected endpoint is `api-development.eliza.app`, matching the development i
 
 ## Agent docs
 
-`CLAUDE.md` / `AGENTS.md` in this directory describe the package for AI coding agents (where code lives, how to extend it).
+`AGENTS.md` in this directory describes the package for AI coding agents (where code lives, how to extend it).
+
+Realtime voice progress cues are sent to both TTS and the client as transient `progress` control frames carrying text and the current trace ID. They remain separate from final response content and persistence.

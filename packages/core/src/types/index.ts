@@ -1,7 +1,7 @@
 /**
  * Canonical barrel for the core type system: re-exports every `types/*` module
  * plus the public prompt/util helpers, forming the `@elizaos/core` type surface
- * that `@elizaos/agent`, `@elizaos/app-core`, and every plugin import.
+ * that `@elizaos/agent`, `@elizaos/app`, and every plugin import.
  *
  * Most modules are re-exported via `export *`, but a few whose runtime values
  * must survive tree-shaking (e.g. view-kind) are re-exported explicitly — see
@@ -22,7 +22,7 @@ export * from "./channel-config";
 export * from "./chat-pre-handler";
 export * from "./coding";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
-// concrete registry lives in @elizaos/plugin-commands and re-exports these.
+// Runtime command-service implementations share these public contracts.
 export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)
@@ -72,7 +72,6 @@ export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";
 // Setup types
-export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
 export type {

@@ -82,7 +82,7 @@ const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
   },
   "task-coordinator": {
     path: "/task-coordinator",
-    sources: ["plugins/plugin-task-coordinator/src/index.ts"],
+    sources: ["plugins/plugin-agent-orchestrator/src/ui/plugin.ts"],
   },
 };
 

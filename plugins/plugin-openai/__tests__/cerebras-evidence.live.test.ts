@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildLiveHarness,
   type LiveAgentHarness,
-} from "../../../packages/app-core/test/helpers/live-agent-test";
+} from "../../../packages/app/test/helpers/live-agent-test";
 import {
   type CapturedWireCall,
   type CerebrasWireCapture,

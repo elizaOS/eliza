@@ -1,6 +1,6 @@
 /** Verifies the patched Steward SDK reaches the real agent-scoped approvals contract with session authority. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { LoginApiError, LoginClient } from "@elizaos/login";
+import { LoginApiError, LoginClient } from "@elizaos/auth";
 
 const originalFetch = globalThis.fetch;
 

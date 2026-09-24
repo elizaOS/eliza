@@ -5,7 +5,7 @@
  * no-JIT Bun engine — i.e. whether the shipped IPA can actually start the local
  * agent, or is a thin client that hard-fails "start local agent".
  *
- * This MIRRORS `shouldIncludeIosFullBunEngine()` in app-core's
+ * This MIRRORS `shouldIncludeIosFullBunEngine()` in app's
  * `run-mobile-build.mjs` (the stager that actually copies the engine in). The
  * preflight gate (`mobile-release-preflight.mjs`, run as `preflight:ios:store`,
  * which FAILS the build when the engine would be missing) imports this so the

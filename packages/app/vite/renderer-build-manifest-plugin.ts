@@ -8,11 +8,11 @@ import type { Plugin } from "vite";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
-import { viteRendererBuildNeeded } from "../../app-core/scripts/lib/vite-renderer-dist-stale.mjs";
+} from "../scripts/lib/renderer-build-manifest.mjs";
+import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.mjs";
 
 /**
- * Emits `dist/eliza-renderer-build.json` at the end of EVERY production renderer
+ * Emits `eliza-renderer-build.json` into Vite's resolved output directory for each production renderer
  * build (mobile, desktop, web). The file is a content-derived build stamp that:
  *   - ships on-device (cap sync copies the whole webDir; the desktop Electrobun
  *     copy carries dist/), giving an asserted in-app "which renderer is this",
@@ -92,6 +92,7 @@ export function rendererBuildManifestPlugin(): Plugin {
           viteRendererBuildNeeded(
             root,
             path.resolve(import.meta.dirname, "../../.."),
+            { distDir: outDir },
           )
         ) {
           throw new Error(

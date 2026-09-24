@@ -35,7 +35,7 @@
  * The TTS/STT backends themselves (ElevenLabs cloud, local ASR, omnivoice)
  * are NOT exercised here — those are integration territory and require
  * credentials + heavy local models (see
- * `packages/app-core/src/services/phrase-chunked-tts.test.ts` for the
+ * `packages/app/src/services/phrase-chunked-tts.test.ts` for the
  * backend adapter's contract; `plugins/plugin-local-inference` for the
  * native ASR/TTS subsystem). This spec is about wiring: did the app call
  * the right endpoint with the right payload, and did the response flow back

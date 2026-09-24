@@ -15,7 +15,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { toolReasoningTemplate } from "../templates/toolReasoningTemplate";
 import type { McpProviderData, McpResourceContent } from "../types";

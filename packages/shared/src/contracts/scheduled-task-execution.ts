@@ -1,6 +1,6 @@
 /**
  * Scheduled-task execution profiles shared by hosts and runners.
- * The scheduling runner and app-core capability probe consume this vocabulary
+ * The scheduling runner and app capability probe consume this vocabulary
  * so persisted tasks and host capability reports cannot drift.
  */
 

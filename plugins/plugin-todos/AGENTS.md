@@ -154,7 +154,7 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
 
 ## Verification
 
-Follow the repository-wide evidence standard in the root `CLAUDE.md`. At a
+Follow the repository-wide evidence standard in the root `AGENTS.md`. At a
 minimum run the package build, typecheck, lint, full Vitest suite, real-PGlite
 tests, and packed edge-export test. Host integrations must additionally prove a
 genuine Worker/AgentRuntime action, exact transport replay, tenant isolation,

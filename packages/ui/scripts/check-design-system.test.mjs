@@ -135,7 +135,7 @@ test("generated mobile platform bundles and staging roots are outside governed s
     isGovernedSource(
       fileURLToPath(
         new URL(
-          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          "../../app/platforms/electrobun/src/Widget.tsx",
           import.meta.url,
         ),
       ),

@@ -2,24 +2,22 @@
  * Proves late plugin schemas materialize in an isolated PGlite database before the
  * runtime publishes the plugin or starts services that query those tables.
  */
+
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
-import {
-  AgentRuntime,
-  createCharacter,
-  type JsonValue,
-  stringToUuid,
-} from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import type { UUID } from "@elizaos/core";
+import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
 import { INBOX_MIGRATION_SERVICE_TYPE } from "../../../../plugins/plugin-inbox/src/inbox/migration.ts";
 import { inboxPlugin } from "../../../../plugins/plugin-inbox/src/plugin.ts";
+import { PgliteDatabaseAdapter } from "../../../../plugins/plugin-sql/src/pglite/adapter.ts";
+import { PGliteClientManager } from "../../../../plugins/plugin-sql/src/pglite/manager.ts";
 import { RuntimeMigrator } from "../../../../plugins/plugin-sql/src/runtime-migrator/runtime-migrator.ts";
 import * as sqlSchema from "../../../../plugins/plugin-sql/src/schema/index.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
@@ -49,7 +47,7 @@ function deferred(): {
   };
 }
 
-class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
+class PGliteMigrationAdapter extends PgliteDatabaseAdapter {
   readonly pglite: PGlite;
   readonly pgliteDb: PgliteDatabase;
   readonly inboxMigrationEntered = deferred();
@@ -63,9 +61,13 @@ class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
   maxConcurrentTransactions = 0;
   transactionReceiverWasAdapterDb = true;
 
-  constructor(dataDir: string) {
-    super();
-    this.pglite = new PGlite(dataDir, { extensions: { vector } });
+  constructor(dataDir: string, agentId: UUID) {
+    const manager = new PGliteClientManager({
+      dataDir,
+      extensions: { vector },
+    });
+    super(agentId, manager);
+    this.pglite = manager.getConnection();
     this.pgliteDb = drizzle(this.pglite);
     const adapterDb = this.db;
     const thisAdapter = this;
@@ -101,15 +103,8 @@ class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
   }
 
   override async runPluginMigrations(
-    plugins: Array<{
-      name: string;
-      schema?: Record<string, JsonValue | object>;
-    }> = [],
-    options?: {
-      verbose?: boolean;
-      force?: boolean;
-      dryRun?: boolean;
-    },
+    plugins: Parameters<PgliteDatabaseAdapter["runPluginMigrations"]>[0] = [],
+    options?: Parameters<PgliteDatabaseAdapter["runPluginMigrations"]>[1],
   ): Promise<void> {
     this.activeMigrations += 1;
     this.migrationBatches.push(plugins.map((plugin) => plugin.name));
@@ -139,7 +134,6 @@ class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
 
   override async close(): Promise<void> {
     await super.close();
-    await this.pglite.close();
   }
 }
 
@@ -153,7 +147,7 @@ describe("late plugin schema ordering", () => {
   }> {
     dataDir = await mkdtemp(path.join(tmpdir(), "eliza-late-schema-"));
     const agentId = stringToUuid("late-schema-integration");
-    const adapter = new PGliteMigrationAdapter(dataDir);
+    const adapter = new PGliteMigrationAdapter(dataDir, agentId);
     await adapter.initialize();
     runtime = new AgentRuntime({
       character: createCharacter({
@@ -169,6 +163,9 @@ describe("late plugin schema ordering", () => {
       schema: sqlSchema,
     });
     await runtime.initialize();
+    adapter.transactionCalls = 0;
+    adapter.maxConcurrentTransactions = 0;
+    adapter.transactionReceiverWasAdapterDb = true;
     installRuntimePluginLifecycle(runtime);
     return { runtime, adapter };
   }

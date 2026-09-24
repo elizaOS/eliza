@@ -5,6 +5,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
 	FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT,
@@ -57,6 +58,71 @@ async function productionRegistrationSites(): Promise<
 				/\bregisterMessageConnector\s*\(/g,
 			)?.length;
 			if (registrations) {
+				const site = normalizeRelativePath(path.relative(pluginsRoot, file));
+				// Personal Telegram accounts only retrieve messages. They do
+				// not acquire the bot connector's interactive delivery profile.
+				if (site === "plugin-telegram/src/account-client-service.ts") {
+					const ast = ts.createSourceFile(
+						file,
+						source,
+						ts.ScriptTarget.Latest,
+						true,
+					);
+					const calls: ts.CallExpression[] = [];
+					const visit = (node: ts.Node): void => {
+						if (
+							ts.isCallExpression(node) &&
+							ts.isPropertyAccessExpression(node.expression) &&
+							node.expression.name.text === "registerMessageConnector"
+						)
+							calls.push(node);
+						ts.forEachChild(node, visit);
+					};
+					visit(ast);
+					expect(calls).toHaveLength(1);
+					const config = calls[0]?.arguments[0];
+					if (!config || !ts.isObjectLiteralExpression(config))
+						throw new Error(
+							"Read-only connector registration must be inspectable",
+						);
+					if (
+						config.properties.some(
+							(property) =>
+								ts.isSpreadAssignment(property) ||
+								ts.isComputedPropertyName(property.name),
+						)
+					) {
+						throw new Error(
+							"Computed connector configuration requires interaction-profile review",
+						);
+					}
+					const capabilityFields = config.properties.filter(
+						(property) =>
+							ts.isPropertyAssignment(property) &&
+							(ts.isIdentifier(property.name) ||
+								ts.isStringLiteral(property.name)) &&
+							property.name.text === "capabilities",
+					);
+					expect(capabilityFields).toHaveLength(1);
+					const capabilities = capabilityFields[0];
+					if (
+						!capabilities ||
+						!ts.isPropertyAssignment(capabilities) ||
+						!ts.isArrayLiteralExpression(capabilities.initializer)
+					)
+						throw new Error(
+							"Read-only connector capabilities must be explicit",
+						);
+					const names = capabilities.initializer.elements.map((element) => {
+						if (!ts.isStringLiteral(element))
+							throw new Error(
+								"Computed capabilities require interaction-profile review",
+							);
+						return element.text;
+					});
+					expect(names.sort()).toEqual(["read_messages", "search_messages"]);
+					continue;
+				}
 				found.push({
 					site: normalizeRelativePath(path.relative(pluginsRoot, file)),
 					registrations,
@@ -80,7 +146,7 @@ describe("first-party interaction capability matrix", () => {
 		);
 	});
 
-	it("covers every production registration site and invocation", async () => {
+	it("covers interactive registrations and separately verifies the read-only account registration", async () => {
 		const declared = [
 			...new Set(
 				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(

@@ -16,8 +16,8 @@ import type {
 import type {
   ScenarioCheckResult,
   ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // Stable source-message ids so the seed adapters and the finalCheck readback
 // agree.
@@ -199,7 +199,7 @@ export default scenario({
   tags: ["lifeops", "inbox", "inbox_triage", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

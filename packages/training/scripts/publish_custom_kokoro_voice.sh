@@ -176,7 +176,7 @@ Staged voice "$VOICE_NAME" into $DEST.
 
 Next steps:
   1. Append the \`voice\` block from \`$DEST/manifest-fragment.json\` to
-     packages/app-core/src/services/local-inference/voice/kokoro/voice-presets.ts
+     packages/app/src/services/local-inference/voice/kokoro/voice-presets.ts
      (code-review step — this script intentionally does not edit it).
   2. Re-run packages/training/scripts/publish_all_eliza1.sh \\
        --bundles-root "$BUNDLES_ROOT" --filter-tier "$TIER"

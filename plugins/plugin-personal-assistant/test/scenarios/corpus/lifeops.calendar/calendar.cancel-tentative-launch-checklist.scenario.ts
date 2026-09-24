@@ -6,11 +6,11 @@
  * The agent must call CALENDAR with a delete/cancel intent.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkCancelIntent(ctx: ScenarioContext): string | undefined {
@@ -40,7 +40,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "cancel"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

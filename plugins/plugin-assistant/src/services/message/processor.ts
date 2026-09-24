@@ -90,7 +90,6 @@ import { shouldSkipResponseMemoryPersistence } from "./processor-policy.js";
 import { composeResponseState } from "./provider-state.ts";
 import { candidateActionsIncludeAsyncHandoff } from "./reply-policy.ts";
 import { withInferredContextRoutingFallback } from "./response-state.ts";
-import { runShortcutGate } from "./shortcut-turn.ts";
 import { hasTextGenerationHandler } from "./trajectory-stages.ts";
 import {
   clearLatestResponseId,
@@ -780,35 +779,6 @@ export class MessageProcessor {
       isAutonomous,
       setTranslatedUserText,
     });
-
-    // #8791: the explicit-protocol shortcut gate runs first so slash/`!`
-    // commands cannot be pre-empted by another handler. Ordinary language is
-    // never eligible here and always reaches the planner.
-    if (!strategyResult) {
-      // Reuse the role resolved once per turn in handleMessage (stamped on the
-      // trajectory context) — resolving again here costs a room+world lookup.
-      const shortcutSenderRole =
-        getTrajectoryContext()?.userRole ??
-        (await resolveStage1SenderRole(runtime, message));
-      const shortcutOutcome = await runShortcutGate({
-        runtime,
-        message,
-        state,
-        responseId,
-        senderRole: shortcutSenderRole,
-        ...(opts.onSettledActionResult
-          ? { onSettledActionResult: opts.onSettledActionResult }
-          : {}),
-      });
-      if (shortcutOutcome && shortcutOutcome.kind === "direct_reply") {
-        strategyResult = shortcutOutcome.result;
-        _usedV5Runtime = true;
-        runtime.logger?.debug?.(
-          { src: "service:message", agentId: runtime.agentId },
-          "Message resolved via pre-LLM shortcut gate",
-        );
-      }
-    }
 
     if (!strategyResult && hasTextGenerationHandler(runtime)) {
       let hasSettledEffectEvidence = false;

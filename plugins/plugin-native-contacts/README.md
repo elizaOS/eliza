@@ -1,109 +1,66 @@
-# @elizaos/capacitor-contacts
+# @elizaos/plugin-native-contacts
 
-Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides an explicit unsupported-platform fallback: reads, writes and permission operations reject with Capacitor code `UNAVAILABLE`.
+Android address-book overlay app and agent context provider for elizaOS.
 
 ## What it does
 
-- **List contacts** — query the device address book with optional text search and result limit.
-- **Create a contact** — insert a new contact with a display name, phone numbers, and email addresses.
-- **Import vCard** — parse RFC 6350 vCard text and bulk-insert the contacts.
+This plugin adds two capabilities to an Eliza agent running on Android:
 
-## Platform support
+1. **Address-book context** — a dynamic provider (`androidContacts`) reads all contacts from the device and injects them into the agent's planning context when a conversation involves contacts or messaging. Each entry includes id, display name, phone numbers, email addresses, and starred status.
 
-| Platform | `listContacts` | `createContact` | `importVCard` |
-|----------|---------------|----------------|---------------|
-| Android  | Full          | Full           | Full          |
-| Web/Node | Unavailable   | Unavailable    | Unavailable   |
+2. **Full-screen Contacts app-shell page** — a React UI registered with the elizaOS app-shell system. Supports:
+   - Browsing and searching the address book
+   - Viewing contact details (phone numbers, email addresses)
+   - Creating new contacts (display name, phone, email)
+   - Importing contacts from a `.vcf` vCard file
 
-## Requirements
+The plugin is **Android-only**. On other platforms the overlay app is not registered and the provider reports an explicit unavailable/error result from the unsupported native bridge.
 
-- `@capacitor/core ^8.3.1` in the host app.
-- Android runtime permissions must be granted by the host app:
-  - `READ_CONTACTS` — required for `listContacts`.
-  - `WRITE_CONTACTS` — required for `createContact` and `importVCard`.
+## Capabilities added to an Eliza agent
 
-The permissions are declared in the plugin's `AndroidManifest.xml` and are merged automatically by the Android build system.
+| Surface | Name | What it does |
+|---------|------|-------------|
+| Provider | `androidContacts` | Injects the complete read-only address book into the planner for `contacts` and `messaging` conversation contexts. Requires ADMIN role session. |
+| App-shell page (UI) | Contacts | Full-screen address-book UI: list, detail, create, import vCard. |
+
+Note: live dialling is not part of this plugin. Placing a call remains in the Phone app (`PLACE_CALL` action).
 
 ## Installation
 
-```bash
-bun add @elizaos/capacitor-contacts
-```
+`@elizaos/plugin-native-contacts` is an elizaOS plugin. Add it to your agent's plugin list:
 
-Then sync Capacitor:
+```ts
+import { appContactsPlugin } from "@elizaos/plugin-native-contacts/plugin";
 
-```bash
-npx cap sync android
-```
-
-## Usage
-
-```typescript
-import { Contacts } from "@elizaos/capacitor-contacts";
-
-// List contacts (optionally filtered)
-const { contacts } = await Contacts.listContacts({ query: "Alice", limit: 50 });
-
-// Create a contact
-const { id } = await Contacts.createContact({
-  displayName: "Alice Example",
-  phoneNumber: "+15555550100",
-  emailAddress: "alice@example.com",
+const agent = new AgentRuntime({
+  plugins: [appContactsPlugin],
+  // ...
 });
-
-// Import from vCard text
-const { imported } = await Contacts.importVCard({ vcardText: myVCardString });
 ```
 
-## API
+The `./plugin` export is the runtime adapter entry point. The full package entry (`@elizaos/plugin-native-contacts`) additionally exports the UI components and a legacy overlay-app registration helper for explicit consumers.
 
-### `listContacts(options?)`
+To register the canonical app-shell page (done automatically by the host on elizaOS):
 
-| Option  | Type     | Default | Description |
-|---------|----------|---------|-------------|
-| `query` | `string` | —       | Case-insensitive search across name, phone, and email. |
-| `limit` | `number` | all matches | Optional positive caller-requested result limit. |
-
-Returns `{ contacts: ContactSummary[] }`.
-
-### `createContact(options)`
-
-| Option           | Type       | Required | Description |
-|------------------|------------|----------|-------------|
-| `displayName`    | `string`   | Yes      | Contact display name. |
-| `phoneNumber`    | `string`   | No       | Single phone number (convenience alias). |
-| `phoneNumbers`   | `string[]` | No       | Multiple phone numbers. |
-| `emailAddress`   | `string`   | No       | Single email address (convenience alias). |
-| `emailAddresses` | `string[]` | No       | Multiple email addresses. |
-
-Returns `{ id: string }` (the new contact's `ContactsContract` ID).
-
-### `importVCard(options)`
-
-| Option      | Type     | Required | Description |
-|-------------|----------|----------|-------------|
-| `vcardText` | `string` | Yes      | Raw vCard text (vCard 2.1 / 3.0 / 4.0). |
-
-Parses `FN`, `N`, `TEL`, and `EMAIL` fields. Photo data is not imported. Returns `{ imported: ImportedContactSummary[] }`.
-
-### `ContactSummary`
-
-```typescript
-interface ContactSummary {
-  id: string;
-  lookupKey: string;
-  displayName: string;
-  phoneNumbers: string[];
-  emailAddresses: string[];
-  photoUri?: string;
-  starred: boolean;
-}
+```ts
+import "@elizaos/plugin-native-contacts/register"; // leaves the app shell unchanged on non-elizaOS
 ```
 
-## Building
+## Required permissions
 
-```bash
-bun run --cwd plugins/plugin-native-contacts build
-```
+No environment variables are needed. The plugin requires the following Android permissions to be granted at the OS level:
 
-Runs TypeScript compilation and Rollup to produce `dist/esm/` (ESM) and `dist/plugin.cjs.js` (CJS).
+- `READ_CONTACTS`
+- `WRITE_CONTACTS`
+
+These are requested by `@elizaos/plugin-native-contacts/bridge` at runtime.
+
+## Limitations
+
+- **Android only.** The native Contacts API is not available on iOS, web, or desktop.
+- **Read-mostly.** The native layer does not expose contact update or delete. The detail view is read-only; create and import (vCard) are the only write operations.
+- **Prompt integrity.** The `androidContacts` provider does not request a result limit; it preserves the complete address book for planner context.
+
+## Native bridge
+
+The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-contacts/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.

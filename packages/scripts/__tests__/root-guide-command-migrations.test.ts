@@ -56,7 +56,7 @@ function parseMigrationTargets(guide: string): MigrationTarget[] {
 }
 
 describe("root guide removed-command migrations", () => {
-  const guide = readFileSync(path.join(REPO_ROOT, "CLAUDE.md"), "utf8");
+  const guide = readFileSync(path.join(REPO_ROOT, "AGENTS.md"), "utf8");
   const targets = parseMigrationTargets(guide);
 
   it("validates annotated replacements and commands with arguments", () => {

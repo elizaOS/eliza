@@ -6,7 +6,7 @@
  * or an appropriate error/auth event.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/shared/character-presets";
 import { logger } from "@elizaos/shared/logger";
 import type { FirstRunOptions } from "../api";

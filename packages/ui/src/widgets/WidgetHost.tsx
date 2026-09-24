@@ -10,7 +10,7 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { isViewVisible } from "@elizaos/common";
+import { isViewVisible } from "@elizaos/core";
 import type * as React from "react";
 import {
   Component,

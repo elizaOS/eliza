@@ -413,7 +413,7 @@ describe("parseFirstRunRemoteConnectDeepLink", () => {
   // api|apiBase|url|host, so a `token`/`accessToken` param is dropped and never
   // becomes an unattended credential against a pairing-enabled remote agent.
   // Documented in packages/app/docs/TEST_AUTH.md and asserted end-to-end in
-  // packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts.
+  // packages/app/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts.
   it.each(["token", "accessToken"])(
     "drops a smuggled %s credential param, surfacing only the address (#13692)",
     (credentialKey) => {

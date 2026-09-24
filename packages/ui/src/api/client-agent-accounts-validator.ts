@@ -5,7 +5,7 @@
  * provider and linked-account fields are required and must fail closed.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,

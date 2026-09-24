@@ -8,7 +8,7 @@
  *      scheduled tasks so a sustained run proves steady-state RSS is flat.
  *
  * This closes the hole documented in
- * `packages/agent/src/__tests__/plugin-lifecycle-leaks.test.ts`: a leak that the
+ * `packages/agent/test/plugin-lifecycle-leaks.test.ts`: a leak that the
  * lifecycle system does not catch is caught here as unbounded heap slope.
  *
  * @module memory-soak

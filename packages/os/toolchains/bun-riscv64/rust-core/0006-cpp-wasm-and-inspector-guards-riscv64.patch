@@ -1,0 +1,91 @@
+Subject: [PATCH] riscv64 Rust-core bun: C++ guards for no-wasm + no-inspector WebKit
+
+The riscv64 JSCOnly C_LOOP WebKit is built with ENABLE_WEBASSEMBLY=0 (C_LOOP
+forbids wasm) and ENABLE_REMOTE_INSPECTOR=0 (cmakeconfig.h confirms both). Two
+Bun C++ translation units reference symbols that don't exist in that config.
+0001 carried the Zig-era guards for ZigGlobalObject.cpp + the four Inspector*
+agents + the JSWasmStreamingCompiler.cpp glob-exclude, but two were missed:
+
+- src/runtime/bake/BakeGlobalObject.cpp — the "bake" framework moved from
+  src/bake/ to src/runtime/bake/ in the Rust-core tree, so the Zig
+  bun-patches/0009 hunk did not rebase. Its GlobalObjectMethodTable inherits
+  compileStreaming/instantiateStreaming, which are not members of
+  JSC::GlobalObjectMethodTable when ENABLE(WEBASSEMBLY)=0. Guard them with
+  `#if ENABLE(WEBASSEMBLY)` / nullptr, mirroring the parent ZigGlobalObject
+  table (the exact bun-patches/0009 pattern, at the new path).
+
+- src/jsc/bindings/BunDebugger.cpp — defines a class inheriting
+  JSC::JSGlobalObjectDebuggable and uses JSGlobalObject::inspectorController(),
+  both REMOTE_INSPECTOR-only. Wrap the whole TU in `#if defined(__riscv) &&
+  __riscv_xlen == 64` no-op stubs for the C ABI surface the rest of Bun links
+  against (mirrors bun-patches/0010; the rust-core file adds one extra symbol,
+  Bun__InspectorConnection__disconnectAllOnExit, included in the stub set).
+
+All additive guards; no behavioral change off riscv64.
+
+diff --git a/src/jsc/bindings/BunDebugger.cpp b/src/jsc/bindings/BunDebugger.cpp
+index 07de46c8..357e269d 100644
+--- a/src/jsc/bindings/BunDebugger.cpp
++++ b/src/jsc/bindings/BunDebugger.cpp
+@@ -1,3 +1,34 @@
++#if defined(__riscv) && __riscv_xlen == 64
++// riscv64 builds the JSCOnly C_LOOP WebKit with ENABLE_REMOTE_INSPECTOR=0, so
++// JSC::JSGlobalObjectDebuggable and JSGlobalObject::inspectorController() do not
++// exist and this translation unit cannot compile. The remote inspector /
++// debugger is dev-tooling; the runtime functions without it. Replace the whole
++// TU with no-op stubs for the C ABI surface the rest of Bun links against
++// (mirrors the Zig-era bun-patches/0010 approach; adds the rust-core-only
++// Bun__InspectorConnection__disconnectAllOnExit symbol).
++#include "root.h"
++#include "headers-handwritten.h"
++
++namespace JSC {
++class JSGlobalObject;
++}
++namespace Zig {
++class GlobalObject;
++}
++
++using ScriptExecutionContextIdentifier = uint32_t;
++
++extern "C" unsigned int Bun__createJSDebugger(Zig::GlobalObject*) { return 0; }
++extern "C" void Bun__ensureDebugger(ScriptExecutionContextIdentifier, bool) { }
++extern "C" void BunDebugger__willHotReload() { }
++extern "C" void Bun__startJSDebuggerThread(Zig::GlobalObject*, ScriptExecutionContextIdentifier, BunString*, int, bool) { }
++extern "C" void Debugger__didScheduleAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t, bool) { }
++extern "C" void Debugger__didCancelAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++extern "C" void Debugger__didDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++extern "C" void Debugger__willDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++extern "C" void Bun__InspectorConnection__disconnectAllOnExit(Zig::GlobalObject*) { }
++
++#else
+ #include "root.h"
+
+ #include "ZigGlobalObject.h"
+@@ -751,3 +782,4 @@ extern "C" void Bun__InspectorConnection__disconnectAllOnExit(Zig::GlobalObject*
+     globalObject->m_inspectorController = makeUnique<Inspector::JSGlobalObjectInspectorController>(*globalObject, Bun::BunInjectedScriptHost::create());
+ }
+ }
++#endif // defined(__riscv) && __riscv_xlen == 64
+diff --git a/src/runtime/bake/BakeGlobalObject.cpp b/src/runtime/bake/BakeGlobalObject.cpp
+index ec57b163..495b65b9 100644
+--- a/src/runtime/bake/BakeGlobalObject.cpp
++++ b/src/runtime/bake/BakeGlobalObject.cpp
+@@ -222,8 +222,17 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+         INHERIT_HOOK_METHOD(scriptExecutionStatus),
+         INHERIT_HOOK_METHOD(reportViolationForUnsafeEval),
+         INHERIT_HOOK_METHOD(defaultLanguage),
++#if ENABLE(WEBASSEMBLY)
+         INHERIT_HOOK_METHOD(compileStreaming),
+         INHERIT_HOOK_METHOD(instantiateStreaming),
++#else
++        // WebAssembly is compiled out of the riscv64 C_LOOP WebKit, so the
++        // GlobalObjectMethodTable has no compile/instantiateStreaming slots to
++        // inherit. Mirror the parent table (ZigGlobalObject) which emits nullptr
++        // for these under ENABLE(WEBASSEMBLY)=0.
++        nullptr,
++        nullptr,
++#endif
+         INHERIT_HOOK_METHOD(deriveShadowRealmGlobalObject),
+         INHERIT_HOOK_METHOD(codeForEval),
+         INHERIT_HOOK_METHOD(canCompileStrings),

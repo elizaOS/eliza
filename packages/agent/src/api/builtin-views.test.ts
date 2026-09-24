@@ -25,7 +25,6 @@ const SOURCE_ORDER_IDS = [
   "memories",
   "files",
   "stream",
-  "pendant-transcript",
   "database",
   "logs",
   "vault",
@@ -88,7 +87,6 @@ describe("BUILTIN_VIEWS", () => {
       "memories",
       "files",
       "stream",
-      "pendant-transcript",
       "database",
       "logs",
       "vault",
@@ -146,7 +144,6 @@ describe("BUILTIN_VIEWS", () => {
       "transcripts",
       "files",
       "stream",
-      "pendant-transcript",
     ]);
   });
 

@@ -2,7 +2,7 @@
  * AppBootConfig — typed runtime configuration that replaces window.__* globals.
  *
  * The hosting app (e.g. apps/app) creates an AppBootConfig and passes it via
- * <AppBootProvider>. All app-core code reads from this config instead of
+ * <AppBootProvider>. All app code reads from this config instead of
  * reaching for window globals.
  *
  * React context lives in `boot-config-react.hooks.ts` so Bun/Node can import

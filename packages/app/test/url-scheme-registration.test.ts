@@ -27,7 +27,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 const androidMain = path.resolve(
   here,
-  "../../app-core/platforms/android/app/src/main",
+  "../../app/platforms/android/app/src/main",
 );
 
 const read = (p: string): string => readFileSync(p, "utf8");

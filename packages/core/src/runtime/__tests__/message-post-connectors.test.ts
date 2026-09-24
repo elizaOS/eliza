@@ -6,23 +6,23 @@
  * handlers — no live model or network.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
 	getMessageConnectorsWithHook,
 	selectConnector,
 } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/connectorActionUtils.ts";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import type { Character, Content, Memory, TargetInfo } from "../../types";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "Connector Test Agent",
 			bio: "test",
 			settings: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 }

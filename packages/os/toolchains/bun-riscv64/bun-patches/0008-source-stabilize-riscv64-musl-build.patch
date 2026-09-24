@@ -1,0 +1,226 @@
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index 64f50f9..38b24ea 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -749,6 +749,13 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const zigCommit = partial.zigCommit ?? versionDefaults.zigCommit;
+   const webkitVersion = partial.webkitVersion ?? versionDefaults.webkitVersion;
+ 
++  const riscv64Tool = (envName: string, fallback: string): string => {
++    if (!riscv64) return fallback;
++    const value = process.env[envName];
++    if (!value) return fallback;
++    return resolve(cwd, value);
++  };
++
+   // ─── macOS SDK ───
+   // Must be passed to nested cmake builds or they'll pick the wrong SDK.
+   // Requires BOTH host and target to be darwin — xcode only exists on
+@@ -812,13 +819,13 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     codegenDir,
+     cacheDir,
+     vendorDir,
+-    cc: toolchain.cc,
+-    cxx: toolchain.cxx,
++    cc: riscv64Tool("BUN_CC", toolchain.cc),
++    cxx: riscv64Tool("BUN_CXX", toolchain.cxx),
+     clangVersion: toolchain.clangVersion,
+-    ar: toolchain.ar,
+-    ranlib: toolchain.ranlib,
+-    ld: toolchain.ld,
+-    strip: toolchain.strip,
++    ar: riscv64Tool("BUN_AR", toolchain.ar),
++    ranlib: riscv64Tool("BUN_RANLIB", toolchain.ranlib ?? ""),
++    ld: riscv64Tool("BUN_LD", toolchain.ld),
++    strip: riscv64Tool("BUN_STRIP", toolchain.strip),
+     dsymutil: toolchain.dsymutil,
+     zig: toolchain.zig,
+     bun: toolchain.bun,
+diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
+index 6490635..09d7876 100644
+--- a/scripts/build/deps/webkit.ts
++++ b/scripts/build/deps/webkit.ts
+@@ -216,6 +216,12 @@ export const webkit: Dependency = {
+       return { kind: "none" };
+     }
+ 
++    // The riscv64 artifact driver builds WebKit out-of-band in C_LOOP mode
++    // and symlinks the completed build into build/<profile>/deps/WebKit.
++    if (cfg.riscv64) {
++      return { kind: "none" };
++    }
++
+     // Local: nested cmake, target=jsc.
+     //
+     // CMAKE_C_FLAGS/CMAKE_CXX_FLAGS: overrides the global dep flags source.ts
+diff --git a/scripts/build/source.ts b/scripts/build/source.ts
+index 869c18c..4f1586f 100644
+--- a/scripts/build/source.ts
++++ b/scripts/build/source.ts
+@@ -839,9 +839,13 @@ export function resolveDep(
+   } else {
+     // No build step. Source stamp is the only output. For deps with
+     // provides.sources (picohttpparser), emitBun adds a phony pointing at
+-    // the compiled .o files so `--target <name>` actually compiles them.
+-    libs = [];
+-    outputs = [sourceStamp];
++    // the compiled .o files so `--target <name>` actually compiles them. Some
++    // deps can also point at externally built libs, such as riscv64 WebKit.
++    const buildDir = depBuildDir(cfg, dep.name);
++    libs = provides.libs.map(lib =>
++      lib.includes(".") ? resolve(buildDir, lib) : resolve(buildDir, `${cfg.libPrefix}${lib}${cfg.libSuffix}`),
++    );
++    outputs = libs.length > 0 ? libs : [sourceStamp];
+   }
+ 
+   // ─── Resolve include paths ───
+@@ -1129,6 +1133,13 @@ function emitNestedCmake(
+     args.push(`-DCMAKE_EXE_LINKER_FLAGS=--ld-path=${cfg.ld}`);
+     args.push(`-DCMAKE_SHARED_LINKER_FLAGS=--ld-path=${cfg.ld}`);
+   }
++  if (cfg.linux && cfg.riscv64) {
++    args.push(`-DCMAKE_SYSTEM_NAME=Linux`);
++    args.push(`-DCMAKE_SYSTEM_PROCESSOR=riscv64`);
++    args.push(`-DCMAKE_SYSROOT=${process.env.BUN_SYSROOT ?? "/sysroot"}`);
++    args.push(`-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-riscv64-static;-L;${process.env.BUN_SYSROOT ?? "/sysroot"}`);
++  }
++
+   if (cfg.windows) {
+     // Windows-specific toolchain forwarding. When CMAKE_C_COMPILER is
+     // an explicit path, cmake's find_program for the supporting tools
+diff --git a/src/bun_core/env.zig b/src/bun_core/env.zig
+index 59f64e6..57e6057 100644
+--- a/src/bun_core/env.zig
++++ b/src/bun_core/env.zig
+@@ -23,6 +23,7 @@ pub const isKqueue = isMac or isFreeBSD;
+ pub const isAarch64 = builtin.target.cpu.arch.isAARCH64();
+ pub const isX86 = builtin.target.cpu.arch.isX86();
+ pub const isX64 = builtin.target.cpu.arch == .x86_64;
++pub const isRiscv64 = builtin.target.cpu.arch == .riscv64;
+ pub const isMusl = builtin.target.abi.isMusl();
+ pub const isAndroid = builtin.target.abi.isAndroid();
+ pub const isGlibc = isLinux and builtin.target.abi.isGnu();
+@@ -158,6 +159,7 @@ else
+ pub const Architecture = enum {
+     x64,
+     arm64,
++    riscv64,
+     wasm,
+ 
+     /// npm package name, `@oven-sh/bun-{os}-{arch}`
+@@ -165,6 +167,7 @@ pub const Architecture = enum {
+         return switch (this) {
+             .x64 => "x64",
+             .arm64 => "aarch64",
++            .riscv64 => "riscv64",
+             .wasm => "wasm",
+         };
+     }
+@@ -175,6 +178,7 @@ pub const Architecture = enum {
+         .{ "amd64", .x64 },
+         .{ "aarch64", .arm64 },
+         .{ "arm64", .arm64 },
++        .{ "riscv64", .riscv64 },
+         .{ "wasm", .wasm },
+     });
+ };
+@@ -185,6 +189,8 @@ else if (isX64)
+     .x64
+ else if (isAarch64)
+     .arm64
++else if (isRiscv64)
++    .riscv64
+ else
+     @compileError("Please add your architecture to the Architecture enum");
+ 
+diff --git a/src/crash_handler/CPUFeatures.zig b/src/crash_handler/CPUFeatures.zig
+index 29e4a6e..eae96a8 100644
+--- a/src/crash_handler/CPUFeatures.zig
++++ b/src/crash_handler/CPUFeatures.zig
+@@ -28,6 +28,10 @@ pub const Flags = switch (@import("builtin").cpu.arch) {
+ 
+         padding: u1 = 0,
+     },
++    .riscv64 => packed struct(u8) {
++        none: bool,
++        padding: u7 = 0,
++    },
+     else => unreachable,
+ };
+ 
+@@ -52,6 +56,7 @@ pub fn isEmpty(features: CPUFeatures) bool {
+ }
+ 
+ pub fn hasAnyAVX(features: CPUFeatures) bool {
++    if (comptime !bun.Environment.isX64) return false;
+     return features.flags.avx or features.flags.avx2 or features.flags.avx512;
+ }
+ 
+diff --git a/src/crash_handler/crash_handler.zig b/src/crash_handler/crash_handler.zig
+index f641d38..5ecba2a 100644
+--- a/src/crash_handler/crash_handler.zig
++++ b/src/crash_handler/crash_handler.zig
+@@ -1137,6 +1137,7 @@ const Platform = enum(u8) {
+     linux_x86_64 = 'l',
+     linux_x86_64_baseline = 'B',
+     linux_aarch64 = 'L',
++    linux_riscv64 = 'R',
+ 
+     mac_x86_64_baseline = 'b',
+     mac_x86_64 = 'm',
+diff --git a/src/install/npm.zig b/src/install/npm.zig
+index c65a70d..ffaf0c2 100644
+--- a/src/install/npm.zig
++++ b/src/install/npm.zig
+@@ -735,17 +735,20 @@ pub const Architecture = enum(u16) {
+     pub const s390x: u16 = 1 << 9;
+     pub const x32: u16 = 1 << 10;
+     pub const x64: u16 = 1 << 11;
++    pub const riscv64: u16 = 1 << 12;
+ 
+-    pub const all_value: u16 = arm | arm64 | ia32 | mips | mipsel | ppc | ppc64 | s390 | s390x | x32 | x64;
++    pub const all_value: u16 = arm | arm64 | ia32 | mips | mipsel | ppc | ppc64 | s390 | s390x | x32 | x64 | riscv64;
+ 
+     pub const current: Architecture = switch (Environment.arch) {
+         .arm64 => @enumFromInt(arm64),
++        .riscv64 => @enumFromInt(riscv64),
+         .x64 => @enumFromInt(x64),
+         .wasm => @compileError("Specify architecture: " ++ Environment.arch),
+     };
+ 
+     pub const current_name = switch (Environment.arch) {
+         .arm64 => "arm64",
++        .riscv64 => "riscv64",
+         .x64 => "x64",
+         .wasm => @compileError("Unsupported architecture: " ++ @tagName(current)),
+     };
+@@ -758,6 +761,7 @@ pub const Architecture = enum(u16) {
+         .{ "mipsel", mipsel },
+         .{ "ppc", ppc },
+         .{ "ppc64", ppc64 },
++        .{ "riscv64", riscv64 },
+         .{ "s390", s390 },
+         .{ "s390x", s390x },
+         .{ "x32", x32 },
+diff --git a/src/options_types/CompileTarget.zig b/src/options_types/CompileTarget.zig
+index 1a942e3..ca51f40 100644
+--- a/src/options_types/CompileTarget.zig
++++ b/src/options_types/CompileTarget.zig
+@@ -471,7 +471,7 @@ pub fn defineValues(this: *const CompileTarget) []const []const u8 {
+     // Use inline else to avoid extra allocations.
+     switch (this.os) {
+         inline else => |os| switch (this.arch) {
+-            inline .arm64, .x64 => |arch| switch (this.libc) {
++            inline .arm64, .riscv64, .x64 => |arch| switch (this.libc) {
+                 inline else => |libc| return struct {
+                     pub const values = &.{
+                         // process.platform: Node reports "android" on Android, not "linux".
+@@ -480,6 +480,7 @@ pub fn defineValues(this: *const CompileTarget) []const []const u8 {
+                         switch (arch) {
+                             .x64 => "\"x64\"",
+                             .arm64 => "\"arm64\"",
++                            .riscv64 => "\"riscv64\"",
+-                            .wasm => @compileError("TODO"),
++                            .wasm => @compileError("unsupported wasm compile target"),
+                         },
+ 

@@ -26,9 +26,11 @@
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
-      "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
+      "@elizaos/capacitor-*": [
+        "../../plugins/plugin-native-*/dist/esm/index.d.ts"
+      ],
       "@elizaos/native-activity-tracker": [
-        "../native-plugins/activity-tracker/dist/index.d.ts"
+        "../../plugins/plugin-native-activity-tracker/dist/index.d.ts"
       ]
     }
   },

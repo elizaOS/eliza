@@ -84,6 +84,7 @@ interface RawEvaluatorOutput {
   nextRecommendedTool?: unknown;
   messageToUser?: unknown;
   effectReceiptIds?: unknown;
+  replyEffectStatus?: unknown;
   copyToClipboard?: unknown;
   recommendedToolCallId?: unknown;
   contextRequest?: unknown;
@@ -105,6 +106,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
   "nextRecommendedTool",
   "messageToUser",
   "effectReceiptIds",
+  "replyEffectStatus",
   "copyToClipboard",
   "recommendedToolCallId",
   "contextRequest",
@@ -267,7 +269,7 @@ function finalizeEvaluatorOutput(
   context: ContextObject,
   trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
-  return sanitizeOutputMessage(
+  const output = sanitizeOutputMessage(
     repairFinishWithUnservedDeclaredIntents(
       repairFinishWithProgressPromise(
         repairFinishedToolTurnWithoutUserMessage(
@@ -293,6 +295,32 @@ function finalizeEvaluatorOutput(
       trajectory,
     ),
   );
+  if (output.replyEffectStatus !== "applied") return output;
+  const available = new Set(
+    activeCommittedEffectReceipts(
+      [...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+        (step) => step.result?.effectReceipts ?? [],
+      ),
+    ).map((receipt) => receipt.receiptId),
+  );
+  const selected =
+    output.effectReceiptIds ??
+    (output.messageToUser === output.plannerReply?.text
+      ? output.plannerReply?.effectReceiptIds
+      : undefined);
+  if (selected?.length && selected.every((id) => available.has(id)))
+    return output;
+  return {
+    ...output,
+    success: false,
+    decision: "CONTINUE",
+    messageToUser: undefined,
+    copyToClipboard: undefined,
+    effectReceiptIds: undefined,
+    plannerReply: undefined,
+    thought:
+      "The reply claims a completed change without committed receipt evidence. Check the original request against recorded results; continue only authorized remaining work or report the unresolved outcome without claiming completion. Do not repeat settled effects.",
+  };
 }
 
 function evaluatorQueuedCallIds(
@@ -396,6 +424,7 @@ export async function runEvaluator(
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
     clipboardAvailable,
+    requiresReplyField,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -510,6 +539,7 @@ export async function runEvaluator(
       trajectory: params.trajectory,
       redactText: redactDiagnosticText,
       clipboardAvailable,
+      requiresReplyField,
     });
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
@@ -808,6 +838,7 @@ async function recordEvaluationStage(args: {
         thought: args.output.thought,
         messageToUser: args.output.messageToUser,
         effectReceiptIds: args.output.effectReceiptIds,
+        replyEffectStatus: args.output.replyEffectStatus,
         copyToClipboard: args.output.copyToClipboard,
         recommendedToolCallId: args.output.recommendedToolCallId,
         protocolFailure: args.output.protocolFailure,
@@ -916,6 +947,7 @@ function renderEvaluatorModelInput(params: {
   trajectory: PlannerTrajectory;
   template?: string;
   clipboardAvailable?: boolean;
+  requiresReplyField?: boolean;
   redactText: ToolDiagnosticTextRedactor;
 }): {
   messages: ChatMessage[];
@@ -954,6 +986,7 @@ function renderEvaluatorModelInput(params: {
     evaluatorTemplateForQueue(
       evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
       params.clipboardAvailable,
+      params.requiresReplyField,
     );
   const instructions = (
     template.split("context_object:")[0] ?? template
@@ -1128,6 +1161,12 @@ export function parseEvaluatorOutput(
     ...(Array.isArray(parsed.effectReceiptIds)
       ? { effectReceiptIds: parsed.effectReceiptIds as string[] }
       : {}),
+    ...(typeof parsed.replyEffectStatus === "string"
+      ? {
+          replyEffectStatus:
+            parsed.replyEffectStatus as EvaluatorOutput["replyEffectStatus"],
+        }
+      : {}),
     copyToClipboard: normalizeClipboard(parsed.copyToClipboard),
     recommendedToolCallId:
       typeof parsed.recommendedToolCallId === "string"
@@ -1140,6 +1179,12 @@ export function parseEvaluatorOutput(
 function evaluatorEnvelopeProtocolError(
   output: RawEvaluatorOutput,
 ): string | undefined {
+  if (
+    output.replyEffectStatus !== undefined &&
+    (typeof output.replyEffectStatus !== "string" ||
+      !["none", "applied", "non_applied"].includes(output.replyEffectStatus))
+  )
+    return "replyEffectStatus must be none, applied or non_applied";
   const unknownKey = Object.keys(output).find(
     (key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
   );

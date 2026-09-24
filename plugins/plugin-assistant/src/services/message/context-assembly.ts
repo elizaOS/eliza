@@ -111,7 +111,10 @@ export async function createV5MessageContextObject(args: {
   const channelType = args.message.content.channelType;
   if (
     responseDecision &&
-    (!channelType || channelType === "DM" || channelType === "API") &&
+    (!channelType ||
+      channelType === "DM" ||
+      channelType === "VOICE_DM" ||
+      channelType === "API") &&
     args.runtime.providers?.some(
       (provider) =>
         ["uiWidgetCapabilities", "uiWidgets", "uiGenerative"].includes(

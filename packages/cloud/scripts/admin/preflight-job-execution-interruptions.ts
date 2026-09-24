@@ -11,8 +11,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
-import { ElizaError } from "@elizaos/common";
-import { redactSensitiveText } from "@elizaos/core";
+import { ElizaError, redactSensitiveText } from "@elizaos/core";
 import pg, { type ClientConfig } from "pg";
 import {
   type CleanupFailure,

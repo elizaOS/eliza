@@ -30,7 +30,6 @@ import {
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
-  handleCommandsRoutes,
   handleConfigRoutes,
   handleConnectorRoutes,
   handleConversationRouteGroup,
@@ -301,7 +300,6 @@ describe("lazy handle* path guards", () => {
     { name: "handleAuthRoutes", handle: handleAuthRoutes },
     { name: "handleAvatarRoutes", handle: handleAvatarRoutes },
     { name: "handleInteractionsRoutes", handle: handleInteractionsRoutes },
-    { name: "handleCommandsRoutes", handle: handleCommandsRoutes },
     { name: "handleBackgroundTasksRoute", handle: handleBackgroundTasksRoute },
     { name: "handleBugReportRoutes", handle: handleBugReportRoutes },
     { name: "handleCharacterRoutes", handle: handleCharacterRoutes },
@@ -400,9 +398,6 @@ describe("lazy handle* path guards", () => {
     );
     await expect(
       handleInteractionsRoutes(asCtx("GET", "/api/interactions")),
-    ).resolves.toBe(false);
-    await expect(
-      handleCommandsRoutes(asCtx("GET", "/api/commands/")),
     ).resolves.toBe(false);
     await expect(
       handleConfigRoutes(asCtx("GET", "/api/config/foo")),

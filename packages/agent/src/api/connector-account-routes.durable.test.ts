@@ -5,7 +5,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getConnectorAccountManager } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConnectorAccountRouteContext,
@@ -14,7 +14,7 @@ import {
 
 type Captured = { status: number; body: unknown };
 
-function createRuntime(adapter?: InMemoryDatabaseAdapter) {
+function createRuntime(adapter?: SQLiteDatabaseAdapter) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     adapter,
@@ -64,9 +64,12 @@ describe("connector account route durability (real core manager)", () => {
     const bootManager = getConnectorAccountManager(bootRuntime as never);
 
     // plugin-sql finishes and attaches the adapter to the runtime.
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-0000-0000-000000000001",
+    );
     await adapter.initialize();
-    (bootRuntime as { adapter?: InMemoryDatabaseAdapter }).adapter = adapter;
+    (bootRuntime as { adapter?: SQLiteDatabaseAdapter }).adapter = adapter;
 
     // OAuth completion writes the connected account through the manager.
     await bootManager.upsertAccount("google", {

@@ -27,3 +27,24 @@ Back up an existing version 1 database with the previous Node adapter before upg
 After a successful migration, close the source runtime before moving the database or a consistent backup to the other runtime. Preserve the agent UUID and validate the restored state before accepting traffic. This is transfer, not concurrent replication or encrypted transport. Codec parsing and runtime guards do not replace backup freshness, key management or grant revocation policies.
 
 Node/Bun process tests on a development host are not Android qualification. The selected Android build still needs actual-device proof for native SQLite availability, filesystem protection, power-loss/restart, background execution and conversational performance. Unqualified hardware and unpinned runtimes remain unsupported deployment profiles.
+
+For isolated temporary storage, call `SQLiteDatabaseAdapter.create(":memory:", agentId)`
+and then `initialize()`. This uses the native SQLite engine with the same
+transaction and ownership checks as durable storage. Close the adapter after
+use; temporary databases are independent and disappear when closed.
+
+Cloudflare Workers with Node compatibility use the real portable SQLite engine
+through `@elizaos/plugin-sqlite/portable`. Its `SQLiteDatabaseAdapter` accepts only
+`:memory:` and keeps the same record codec, transactions and agent ownership
+checks. It initializes lazily on its first operation or explicitly with
+`initialize()`. State lasts only for that adapter's lifetime; durable Cloud state
+continues to belong to the host's external storage. File paths and backups are
+rejected by the portable entry point.
+
+The pinned sql.js dependency has a narrow patch for Workers without a browser
+`location`; the portable build includes that patched engine with static Node-compatible
+builtin imports, so consumers do not need a separate patch. The real Workerd runtime boot test covers this entry point. Named
+embedding representations are persisted with the database. Selecting a name
+for legacy vectors clears those vectors while preserving their complete source
+records for regeneration; changing an established name or its dimension requires
+an explicit migration or a separate database.

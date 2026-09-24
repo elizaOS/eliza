@@ -1,4 +1,5 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import type { UUID } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Proves the POST /api/snapshot HTTP boundary's transient/terminal split
  * against a real AgentRuntime and TCP API host: a PGlite closing-race failure
@@ -13,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
@@ -80,12 +81,13 @@ async function seedState(root: string): Promise<void> {
  * Real in-memory adapter widened with the bounded PGlite export surface the
  * snapshot capture path reads; materialization behavior is injected per test.
  */
-class PgliteFacadeAdapter extends InMemoryDatabaseAdapter {
+class PgliteFacadeAdapter extends SQLiteDatabaseAdapter {
   constructor(
+    agentId: UUID,
     private readonly dataDir: string,
     private readonly materialize: () => Promise<unknown>,
   ) {
-    super();
+    super(":memory:", agentId);
   }
 
   getPgliteDataDir(): string {
@@ -119,7 +121,11 @@ async function withSnapshotServer(
     // Register before initialize() so the runtime does not fall back to a
     // plain in-memory adapter without the raw-connection facade.
     runtime.registerDatabaseAdapter(
-      new PgliteFacadeAdapter(path.join(root, "state", "pglite"), dumpDataDir),
+      new PgliteFacadeAdapter(
+        runtime.agentId,
+        path.join(root, "state", "pglite"),
+        dumpDataDir,
+      ),
     );
     await initializeTestRuntime(runtime, { skipMigrations: true });
 

@@ -3,8 +3,7 @@
  * This process-local fence does not stop database work already in flight;
  * migrations must separately establish durable write exclusion and quiescence.
  */
-import { ElizaError, type UUID } from "@elizaos/common";
-import { elizaLogger, type IDatabaseAdapter } from "@elizaos/core";
+import { ElizaError, elizaLogger, type IDatabaseAdapter, type UUID } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { getStaticEmbeddingDimension } from "../../../cache/edge-runtime-cache";
 import { resolveRuntimeDatabaseAdapterConfig } from "../../database-adapter-config";

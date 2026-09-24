@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
-const iosAppRoot = path.join(repoRoot, "packages/app-core/platforms/ios/App");
+const iosAppRoot = path.join(repoRoot, "packages/app/platforms/ios/App");
 const appIntentsSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaAppIntents.swift"),
   "utf8",
@@ -148,7 +148,7 @@ const iosDeviceCapture = readFileSync(
   "utf8",
 );
 const appCoreIosPlist = readFileSync(
-  path.join(repoRoot, "packages/app-core/scripts/mobile/ios-plist.mjs"),
+  path.join(repoRoot, "packages/app/scripts/mobile/ios-plist.mjs"),
   "utf8",
 );
 const appPatchIosPlist = readFileSync(
@@ -158,112 +158,112 @@ const appPatchIosPlist = readFileSync(
 const androidAssistActivity = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAssistActivity.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAssistActivity.java",
   ),
   "utf8",
 );
 const androidShareActivity = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaShareActivity.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaShareActivity.java",
   ),
   "utf8",
 );
 const androidVoiceTileService = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceTileService.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceTileService.java",
   ),
   "utf8",
 );
 const androidQuickActionsWidgetProvider = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaQuickActionsWidgetProvider.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaQuickActionsWidgetProvider.java",
   ),
   "utf8",
 );
 const androidManifest = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
   ),
   "utf8",
 );
 const androidWidgetProviderXml = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/xml/eliza_quick_actions_widget.xml",
+    "packages/app/platforms/android/app/src/main/res/xml/eliza_quick_actions_widget.xml",
   ),
   "utf8",
 );
 const androidWidgetLayoutXml = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/layout/eliza_quick_actions_widget.xml",
+    "packages/app/platforms/android/app/src/main/res/layout/eliza_quick_actions_widget.xml",
   ),
   "utf8",
 );
 const androidVoiceInteractionServiceXml = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/xml/eliza_voice_interaction_service.xml",
+    "packages/app/platforms/android/app/src/main/res/xml/eliza_voice_interaction_service.xml",
   ),
   "utf8",
 );
 const androidRecognitionServiceXml = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/xml/eliza_recognition_service.xml",
+    "packages/app/platforms/android/app/src/main/res/xml/eliza_recognition_service.xml",
   ),
   "utf8",
 );
 const androidVoiceInteractionService = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionService.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionService.java",
   ),
   "utf8",
 );
 const androidVoiceInteractionSessionService = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSessionService.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSessionService.java",
   ),
   "utf8",
 );
 const androidVoiceInteractionSession = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSession.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSession.java",
   ),
   "utf8",
 );
 const androidRecognitionService = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaRecognitionService.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaRecognitionService.java",
   ),
   "utf8",
 );
 const androidVoiceImeMethodXml = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/xml/method.xml",
+    "packages/app/platforms/android/app/src/main/res/xml/method.xml",
   ),
   "utf8",
 );
 const androidVoiceImeService = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInputMethodService.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInputMethodService.java",
   ),
   "utf8",
 );
 const androidVoiceImeLayout = readFileSync(
   path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/res/layout/eliza_voice_ime.xml",
+    "packages/app/platforms/android/app/src/main/res/layout/eliza_voice_ime.xml",
   ),
   "utf8",
 );

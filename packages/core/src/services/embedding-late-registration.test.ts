@@ -3,7 +3,10 @@
  * service starts, using the real runtime registry, event bus, queue and adapter.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import {
+	createSQLiteTestRuntime,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing/sqlite-adapter";
 import { expect, test } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
@@ -14,13 +17,14 @@ import { EmbeddingGenerationService } from "./embedding";
 test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 	"persists a new memory after late %s registration and detaches on stop",
 	async (modelType) => {
-		const adapter = new InMemoryDatabaseAdapter();
 		const runtime = new AgentRuntime({
 			character: createCharacter({ name: "Late embedding registration" }),
-			adapter,
+
 			logLevel: "fatal",
 			enableAutonomy: false,
 		});
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+		runtime.registerDatabaseAdapter(adapter);
 		const service = (await EmbeddingGenerationService.start(
 			runtime,
 		)) as EmbeddingGenerationService;
@@ -116,9 +120,9 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 );
 
 test("a stopped waiting service never activates when a provider arrives", async () => {
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: createCharacter({ name: "Stopped embedding waiter" }),
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});
@@ -146,9 +150,9 @@ test.each([
 ] as const)(
 	"discards late %s results after source %s without retry or completion",
 	async (modelType, mutation) => {
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: createCharacter({ name: "Source race" }),
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 			enableAutonomy: false,
 		});

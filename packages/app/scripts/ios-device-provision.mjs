@@ -718,7 +718,7 @@ export function discoverAppBundleIds(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
     "..",
-    "app-core",
+    "app",
     "platforms",
     "ios",
     "App",

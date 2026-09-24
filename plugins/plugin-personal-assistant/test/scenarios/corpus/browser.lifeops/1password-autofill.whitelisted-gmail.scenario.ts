@@ -7,8 +7,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 
@@ -22,7 +22,7 @@ export default scenario({
     "User asks the agent to log into Gmail. The request should route to the whitelisted browser-extension autofill action and target gmail.com or google.com.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     credentials: ["1password:eliza-e2e-autofill"],
   },
 

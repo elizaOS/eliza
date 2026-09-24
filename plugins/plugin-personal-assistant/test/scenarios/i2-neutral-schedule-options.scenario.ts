@@ -2,7 +2,7 @@
  * I2 structural separation plan. The assistant converts a disagreement into
  * neutral schedule options and never decides who deserves the better slot.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

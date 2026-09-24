@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ScenarioCheckResult,
   ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { insertActivityEvent } from "../../src/activity-profile/activity-tracker-repo.ts";
 import {
   recordBrowserFocusWindow,

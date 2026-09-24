@@ -3,7 +3,7 @@
  * voice_duet_sweep.mjs — the scientific latency grind for the two-agents-
  * talking-endlessly path.
  *
- * Runs `packages/app-core/scripts/voice-duet.mjs --turns N --report …` across
+ * Runs `packages/app/scripts/voice-duet.mjs --turns N --report …` across
  * a grid of the latency knobs (MTP `--parallel` / `--draft-max` /
  * `--ctx-size-draft`, the phrase-chunker word threshold, `--prewarm-lead-ms`,
  * the cross-ring size `--ring-ms`, the KV-cache type, the backend), collects
@@ -47,7 +47,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const VOICE_DUET = path.join(
   REPO_ROOT,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "voice-duet.mjs",
 );

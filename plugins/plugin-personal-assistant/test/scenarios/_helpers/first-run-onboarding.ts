@@ -33,7 +33,7 @@ import {
 } from "@elizaos/plugin-personal-assistant/lifeops/first-run/service";
 import { getScheduledTaskRunner } from "@elizaos/plugin-personal-assistant/lifeops/scheduled-task/service";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
 
 function asRuntime(ctx: ScenarioContext): IAgentRuntime {
   return ctx.runtime as IAgentRuntime;

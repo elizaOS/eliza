@@ -423,7 +423,7 @@ describe("provisioning worker deployment contract", () => {
     );
     const coreBuild = script.indexOf("bun run build:core");
     const runtimeProbe = script.indexOf(
-      'await import("@elizaos/core"); await import("@elizaos/prompts")',
+      'await import("@elizaos/core"); await import("@elizaos/shared/text/template-rendering")',
     );
     const firstRestart = script.indexOf(
       'sudo systemctl restart "$SYSTEMD_UNIT"',

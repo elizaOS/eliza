@@ -225,6 +225,75 @@ describe("lossless history references", () => {
     }
     expect(context).toEqual(before);
   });
+  it("keeps complete historical receipts before the current-turn boundary", () => {
+    const receipt = JSON.stringify({
+      requestSourceEventId: "history:prior",
+      navigation: [
+        {
+          success: true,
+          receipt: JSON.stringify({
+            effect: "view_navigation",
+            status: "delivered",
+            viewId: "chat",
+            handoffId: "complete-receipt-".repeat(1000),
+          }),
+        },
+      ],
+    });
+    const context: ContextObject = {
+      id: "current",
+      events: [
+        {
+          id: "old-receipt",
+          type: "segment",
+          segment: {
+            id: "old-receipt",
+            label: "runtime:historical_navigation",
+            content: receipt,
+            stable: false,
+          },
+        },
+        {
+          id: "current-turn-boundary",
+          type: "instruction",
+          source: "message-service",
+          content:
+            "current_turn_boundary: only the final request authorizes work",
+          stable: false,
+        },
+        {
+          id: "current",
+          type: "segment",
+          segment: {
+            id: "current",
+            label: "message:user",
+            content: "A new conversational turn.",
+            stable: false,
+          },
+        },
+      ],
+    };
+    const before = structuredClone(context);
+    for (const directMessage of [true, false]) {
+      const wire = String(
+        renderMessageHandlerModelInput(
+          { character: { name: "Eliza" } },
+          context,
+          [],
+          { directMessage },
+        ).messages[1].content,
+      );
+      expect(wire).toContain(receipt);
+      expect(wire.indexOf(receipt)).toBeLessThan(
+        wire.indexOf("current_turn_boundary:"),
+      );
+      expect(wire.indexOf("current_turn_boundary:")).toBeLessThan(
+        wire.indexOf("message:user:"),
+      );
+    }
+    expect(context).toEqual(before);
+  });
+
   it("saves repeated text among hundreds of short unique messages without labeling every unique source", () => {
     const history = [
       source("Exact reusable source. ".repeat(60), 1),

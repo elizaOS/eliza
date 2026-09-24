@@ -1,13 +1,13 @@
 /**
  * Exercises GET /api/memories/stats at the real route boundary against a real
- * InMemoryDatabaseAdapter, pinning the exact-count invariant: the route must
+ * SQLiteDatabaseAdapter, pinning the exact-count invariant: the route must
  * report true per-table counts even past any fetch window, never a capped
  * getMemories(limit).length, and must signal exactness like its sibling
  * browse/by-entity routes signal inexactness.
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import {
   handleMemoryRoutes,
@@ -18,18 +18,18 @@ import {
 const AGENT_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 const OTHER_AGENT = "00000000-0000-0000-0000-0000000000c2" as UUID;
 
-function makeRuntime(adapter: InMemoryDatabaseAdapter): AgentRuntime {
+function makeRuntime(adapter: SQLiteDatabaseAdapter): AgentRuntime {
   return {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
     async ensureConnection() {
       /* connection bookkeeping is irrelevant to the count invariant */
     },
-    getMemories(params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0]) {
+    getMemories(params: Parameters<SQLiteDatabaseAdapter["getMemories"]>[0]) {
       return adapter.getMemories(params);
     },
     countMemories(
-      params: Parameters<InMemoryDatabaseAdapter["countMemories"]>[0],
+      params: Parameters<SQLiteDatabaseAdapter["countMemories"]>[0],
     ) {
       return adapter.countMemories(params);
     },
@@ -37,7 +37,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): AgentRuntime {
 }
 
 async function insertMessages(
-  adapter: InMemoryDatabaseAdapter,
+  adapter: SQLiteDatabaseAdapter,
   count: number,
   agentId: UUID = AGENT_ID,
 ): Promise<void> {
@@ -88,7 +88,7 @@ async function stats(runtime: AgentRuntime): Promise<{
 
 describe("GET /api/memories/stats", () => {
   it("counts exactly past the previous 10,000-row fetch cap", async () => {
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await insertMessages(adapter, 10_050);
 
     const body = await stats(makeRuntime(adapter));
@@ -101,9 +101,26 @@ describe("GET /api/memories/stats", () => {
     // No-over-rejection corpus: mixed tables and a foreign-agent partition,
     // all under the old 10,000 fetch cap where both implementations must
     // agree with the store's ground truth.
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await insertMessages(adapter, 137);
-    await insertMessages(adapter, 23, OTHER_AGENT);
+    const foreignAdapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      OTHER_AGENT,
+    );
+    try {
+      await insertMessages(foreignAdapter, 23, OTHER_AGENT);
+      expect(
+        await foreignAdapter.countMemories({
+          agentId: OTHER_AGENT,
+          tableName: "messages",
+        }),
+      ).toBe(23);
+      await expect(
+        insertMessages(adapter, 1, OTHER_AGENT),
+      ).rejects.toMatchObject({ code: "SQLITE_AGENT_MISMATCH" });
+    } finally {
+      await foreignAdapter.close();
+    }
     await adapter.createMemories([
       {
         memory: {
@@ -145,7 +162,7 @@ describe("GET /api/memories/stats", () => {
   });
 
   it("signals exactness explicitly like sibling browse routes signal inexactness", async () => {
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await insertMessages(adapter, 3);
 
     const body = await stats(makeRuntime(adapter));

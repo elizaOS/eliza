@@ -2,8 +2,9 @@
  * Tests for the explicitly registered benchmark provider's metadata
  * handling. The real provider runs against deterministic inputs without mocks.
  */
-import { describe, expect, it } from "vitest";
+
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { contextBenchProvider } from "./benchmark-context-provider.ts";
 
 const runtime = {} as IAgentRuntime;

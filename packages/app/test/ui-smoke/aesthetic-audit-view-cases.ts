@@ -11,7 +11,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   tasks: "/apps/tasks",
   browser: "/browser",
   stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
   apps: "/apps",
   views: "/views",
   character: "/character",
@@ -68,7 +67,10 @@ export function buildAuditViewCases(): AuditViewCase[] {
     ...VIEW_CASES.flatMap((view): AuditViewCase[] => {
       const base: AuditViewCase = {
         id: view.id,
-        slug: `plugin-${view.id}-${view.viewType}`,
+        slug:
+          view.id === "task-coordinator"
+            ? "plugin-agent-orchestrator-tasks-gui"
+            : `plugin-${view.id}-${view.viewType}`,
         path: view.path,
         viewType: view.viewType,
         kind: "plugin",

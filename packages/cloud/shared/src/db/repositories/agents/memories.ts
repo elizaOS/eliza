@@ -4,7 +4,7 @@
  * Handles all database operations for memories without spinning up runtime.
  */
 
-import type { Content, ContentValue, Memory } from "@elizaos/common";
+import type { Content, ContentValue, Memory } from "@elizaos/core";
 import { and, desc, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../helpers";
 import { memoryTable } from "../../schemas/eliza";

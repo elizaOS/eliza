@@ -1,15 +1,17 @@
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+/** Verifies real SQLite diagnostic writes are drained and reported during runtime shutdown. */
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import { ModelType } from "../../types";
 
 function fixture() {
-	const adapter = new InMemoryDatabaseAdapter();
 	const runtime = new AgentRuntime({
 		character: { name: "DiagnosticShutdown", bio: "test" },
-		adapter,
+
 		logLevel: "fatal",
 	});
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+	runtime.registerDatabaseAdapter(adapter);
 	runtime.registerModel(ModelType.TEXT_LARGE, async () => "answer", "fixture");
 	return { runtime, adapter };
 }
@@ -61,9 +63,13 @@ describe("model diagnostic ownership", () => {
 		write.reject(failure);
 		await shutdown;
 		expect(close).toHaveBeenCalledOnce();
-		expect(report).toHaveBeenCalledWith("AgentRuntime.modelCallLog", failure, {
-			model: "TEXT_LARGE",
-			diagnosticOnly: true,
-		});
+		expect(report).toHaveBeenCalledWith(
+			"AgentRuntime.modelCallLog",
+			expect.objectContaining({
+				code: "SQLITE_TRANSACTION_FAILED",
+				cause: failure,
+			}),
+			{ model: "TEXT_LARGE", diagnosticOnly: true },
+		);
 	});
 });

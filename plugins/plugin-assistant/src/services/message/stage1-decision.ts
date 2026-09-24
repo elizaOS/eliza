@@ -97,6 +97,7 @@ import {
   getStage1RetryReason,
   getStage1RoutingRepair,
   getStage1UnusableDecisionRepair,
+  hasNavigationWithoutPendingIntent,
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
@@ -160,6 +161,7 @@ export async function generateStage1Decision(
     context,
     availableContexts,
     directMessageChannel,
+    progressiveContextChannel,
     stage1PreprocessStartedAt,
     recorder,
     trajectoryId,
@@ -168,6 +170,7 @@ export async function generateStage1Decision(
     context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
     availableContexts: Awaited<ReturnType<typeof listAvailableContextsForTurn>>;
     directMessageChannel: boolean;
+    progressiveContextChannel: boolean;
     stage1PreprocessStartedAt: number;
     recorder: TrajectoryRecorder | undefined;
     trajectoryId: ReturnType<TrajectoryRecorder["startTrajectory"]> | undefined;
@@ -210,8 +213,7 @@ export async function generateStage1Decision(
   const canonicalResponseHandlerSchema =
     args.runtime.responseHandlerFieldRegistry.composeSchema(fieldSelection);
   const loadedContext = new Set<string>();
-  const discoveryEnabled = directMessageChannel && !args.codingMode;
-
+  const discoveryEnabled = progressiveContextChannel;
   let history: HistoryDiscovery | undefined;
   let historyReadEvidence: HistoryDiscovery | undefined;
   if (
@@ -280,6 +282,7 @@ export async function generateStage1Decision(
     {
       directMessage: directMessageChannel,
       nativeTools: true,
+      progressiveContext: discoveryEnabled,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
       history,
@@ -724,11 +727,12 @@ export async function generateStage1Decision(
   // Terminal review shares a budget with direct IGNORE review below. A
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
-  const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
+  const terminalReaskEnabled =
+    readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
   if (!args.codingMode) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     // A source quotation is an answer even with no model-authored prose.
-    // Terminal decisions retain the same opt-in review and shared budget.
+    // Terminal decisions retain the channel policy and shared review budget.
     const sourceReplyAnswer =
       parsedForRepair?.shouldRespond === "RESPOND" &&
       (sourceReplyRendering ||
@@ -736,7 +740,7 @@ export async function generateStage1Decision(
     const unusableRepair = sourceReplyAnswer
       ? undefined
       : getStage1UnusableDecisionRepair(parsedForRepair, {
-          reaskTerminal: terminalReaskEnabled,
+          reaskTerminal: terminalReaskEnabled && !directMessageChannel,
         });
     if (
       unusableRepair &&
@@ -746,9 +750,7 @@ export async function generateStage1Decision(
         { src: "service:message", roomId: args.message.roomId },
         "[message] Stage 1 decision receives one response-contract review",
       );
-      terminalDecisionReviewed =
-        parsedForRepair?.shouldRespond === "STOP" ||
-        parsedForRepair?.shouldRespond === "IGNORE";
+      terminalDecisionReviewed = true;
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -852,7 +854,9 @@ export async function generateStage1Decision(
           contentMetadata.isAutonomous === true)) ||
       (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
     const terminalReview =
+      directMessageChannel &&
       !terminalDecisionReviewed &&
+      !routingRepairAttempted &&
       !routingRepair &&
       !repairHistoryIdentity &&
       !repairHistorySourceIds &&
@@ -992,7 +996,7 @@ export async function generateStage1Decision(
       );
       const refreshedContext = await createV5MessageContextObject({
         ...args,
-        includeActionDiscovery: discoveryEnabled ? "index" : true,
+        includeActionDiscovery: false,
         userRoles: [refreshedRole],
         availableContexts,
       });
@@ -1112,6 +1116,7 @@ export async function generateStage1Decision(
         {
           directMessage: directMessageChannel,
           nativeTools: true,
+          progressiveContext: discoveryEnabled,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
           history,
@@ -1222,12 +1227,13 @@ export async function generateStage1Decision(
   }
   if (
     routingRepairAttempted &&
-    (rawFieldParsed?.replyEffectStatus === "non_applied" ||
+    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+      rawFieldParsed?.replyEffectStatus === "non_applied" ||
       rawFieldParsed?.shouldRespond === "STOP" ||
       rawFieldParsed?.shouldRespond === "IGNORE") &&
     getStage1RoutingRepair(rawFieldParsed)
   ) {
-    // A repeated preview/pending-work conflict cannot authorize effects or a
+    // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
     // terminal reply. Keep the recorded model attempts and reject before fields.
     throw new ElizaError(
       "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",

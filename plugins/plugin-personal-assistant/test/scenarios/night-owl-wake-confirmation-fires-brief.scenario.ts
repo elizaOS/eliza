@@ -18,8 +18,8 @@
  * brief definition and the fired-content assertion are confirmed at live capture;
  * live-verify defers to the key boundary.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const BRIEF_TITLE = /brief|agenda|on deck/i;
 

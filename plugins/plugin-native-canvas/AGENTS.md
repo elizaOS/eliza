@@ -129,11 +129,11 @@ This plugin reads no environment variables. Configuration is entirely call-time 
 - **Build outputs two formats.** `rollup.config.mjs` produces `dist/plugin.js` (IIFE, for `<script>` tags / unpkg) and `dist/plugin.cjs.js` (CJS). The ESM build (`dist/esm/`) comes from `tsc` directly.
 - **peerDependency: `@capacitor/core ^8.3.1`.** The host project must install this. It is not bundled.
 - **iOS deployment target: 15.0. Swift 5.9. Frameworks: UIKit, CoreGraphics, WebKit.**
-- See the root [CLAUDE.md](../../CLAUDE.md) for repo-wide architecture rules, logging conventions, and git workflow.
+- See the root [AGENTS.md](../../AGENTS.md) for repo-wide architecture rules, logging conventions, and git workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

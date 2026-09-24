@@ -45,7 +45,7 @@ describe("prepare-package-dist", () => {
       private: true,
       workspaces: ["packages/*"],
     });
-    writeJson(root, "packages/prompts/package.json", {
+    writeJson(root, "packages/template-fixture/package.json", {
       name: "@fixture/prompts",
       version: "1.0.0",
       main: "./src/index.ts",
@@ -71,7 +71,7 @@ describe("prepare-package-dist", () => {
 
     const prepared = preparePackageDist({
       repositoryRoot: root,
-      packageDirectory: "packages/prompts",
+      packageDirectory: "packages/template-fixture",
       optionalPluginFallbackVersions: new Map(),
     });
     const expectedExports = {
@@ -95,7 +95,10 @@ describe("prepare-package-dist", () => {
 
     expect(prepared.exports).toEqual(expectedExports);
     const written = JSON.parse(
-      readFileSync(join(root, "packages/prompts/dist/package.json"), "utf8"),
+      readFileSync(
+        join(root, "packages/template-fixture/dist/package.json"),
+        "utf8",
+      ),
     );
     expect(written.exports).toEqual(expectedExports);
   });

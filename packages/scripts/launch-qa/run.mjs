@@ -11,7 +11,7 @@ const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
-  "app-core-focused",
+  "app-focused",
   "agent-focused",
   "lifeops-focused",
   "cloud-api-key-client",
@@ -57,10 +57,10 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
     ],
     requiredFiles: [
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
     ],
     description: "Focused agent vault runtime tests",
   },
@@ -90,10 +90,10 @@ const TASKS = [
     description: "Host app typecheck",
   },
   {
-    id: "app-core-typecheck",
+    id: "app-typecheck",
     tier: 1,
     command: "bun",
-    args: ["run", "--cwd", "packages/app-core", "typecheck"],
+    args: ["run", "--cwd", "packages/app", "typecheck"],
     description: "App-core typecheck",
   },
   {

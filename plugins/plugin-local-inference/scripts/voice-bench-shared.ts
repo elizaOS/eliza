@@ -86,7 +86,7 @@ export function bootFusedFfi(gates: BenchGates): {
 	if (!libPath) {
 		gates.skip(
 			"fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR, " +
-				"or run `bun run build:fused-desktop` in packages/app-core)",
+				"or run `bun run build:fused-desktop` in packages/app)",
 		);
 	}
 	const ffi = loadElizaInferenceFfi(libPath);

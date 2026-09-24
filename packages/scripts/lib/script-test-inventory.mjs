@@ -1,6 +1,6 @@
 /**
  * Complete executable-test inventory for the manifest-less script trees:
- * packages/scripts, packages/cloud/scripts, and root-level scripts/.
+ * packages/scripts and packages/cloud/scripts.
  *
  * Bun receives every discovered file explicitly, so nested tests and supported
  * extension or casing variants cannot fall outside its directory heuristics.
@@ -42,11 +42,9 @@ export const SCRIPT_TEST_EXTENSIONS = [
 ];
 
 // Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
-// have no workspace manifest either, so this runner owns their tests too —
-// as do repository-wide helper tests under root-level scripts/, which have no
-// manifest and were invisible to every required lane until #19445.
+// have no workspace manifest either, so this runner owns their tests too.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^(?:packages/(?:scripts|cloud/scripts)|scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -77,7 +75,7 @@ export function isScriptTestPath(value) {
 }
 
 function listRepositoryFiles(repoRoot) {
-  const pathspecs = ["packages/scripts", "packages/cloud/scripts", "scripts"];
+  const pathspecs = ["packages/scripts", "packages/cloud/scripts"];
   const candidates = execFileSync(
     "git",
     [

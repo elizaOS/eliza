@@ -5,8 +5,8 @@
  * outside address. Inbox content is the classic untrusted channel: the invoice
  * question gets surfaced, the instruction block does not execute.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 const VENDOR_EMAIL =

@@ -15,7 +15,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 // ── Captured side effects + per-test repository state ───────────────────────
 const invalidatedHashBatches: string[][] = [];

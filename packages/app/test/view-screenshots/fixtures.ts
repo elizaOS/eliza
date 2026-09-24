@@ -467,7 +467,7 @@ const todosFixtures: Record<string, () => Record<string, unknown>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Documents (plugin-documents) — prop `fetchers`, four states.
+// Documents (plugin-knowledge) — prop `fetchers`, four states.
 // ---------------------------------------------------------------------------
 
 function presentedDocument(overrides: Record<string, unknown> = {}) {

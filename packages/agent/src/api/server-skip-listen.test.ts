@@ -1,45 +1,18 @@
 /**
- * Verifies `startApiServer`'s `skipListen` guard (local-agent IPC transport,
- * #12180) across the API composition root and listener adapter, plus a real
- * Bun-subprocess boot that confirms the TCP port binds only when skipListen is
- * unset. See the block below for harness realism.
+ * Boots the real API in Bun child processes to verify optional TCP binding
+ * and rejection of invalid connector-health configuration before listening.
  */
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-/**
- * `skipListen` guard for the local-agent IPC transport (#12180).
- *
- * `startApiServer` cannot be imported directly into THIS vitest lane: `server.ts`
- * imports `@elizaos/app-core` subpaths that the package's test alias rewrites to
- * a non-directory path (ENOTDIR), so its module graph fails to load in-process —
- * the same documented constraint that keeps every other agent test from
- * importing `server.ts` (see `health-routes.canRespond-ws.test.ts`).
- *
- * Under a plain Bun runtime (no vitest alias), the module graph DOES load, so the
- * real behavioral guarantee is exercised by booting `startApiServer` in a Bun
- * child process (`__fixtures__/skip-listen-boot-harness.ts`) and asserting the
- * agent port is NOT bound with `skipListen: true` and IS bound without it (the
- * non-vacuous control). That subprocess boot additionally needs the built dist +
- * generated i18n data; when those are absent (a sparse checkout), the harness
- * reports a load failure and the behavioral case is skipped explicitly rather
- * than false-failing — the source-level assertions below still hold either way.
- */
-
 const execFileAsync = promisify(execFile);
-
-const SERVER_SRC = readFileSync(join(import.meta.dirname, "server.ts"), "utf8");
-const HTTP_LISTENER_SRC = readFileSync(
-  join(import.meta.dirname, "http-listener.ts"),
-  "utf8",
-);
 
 const HARNESS_PATH = join(
   import.meta.dirname,
-  "__fixtures__",
+  "../../test/fixtures",
   "skip-listen-boot-harness.ts",
 );
 
@@ -125,101 +98,12 @@ async function runBootHarness(
   }
 }
 
-describe("startApiServer skipListen — source-level guard (#12180)", () => {
-  it("offers explicit host middleware without patching Node's HTTP factory", () => {
-    expect(SERVER_SRC).toMatch(/requestMiddleware\?:\s*ApiRequestMiddleware/);
-    expect(SERVER_SRC).toContain(
-      "await opts.requestMiddleware(req, res, dispatch)",
-    );
-    expect(SERVER_SRC).not.toMatch(/http\.createServer\s*=/);
-  });
-
-  it("configures protocol extensions on the concrete server", () => {
-    const createIndex = SERVER_SRC.indexOf("const server = http.createServer");
-    const configureIndex = SERVER_SRC.indexOf(
-      "await opts?.configureServer?.(server)",
-    );
-    const listenIndex = SERVER_SRC.indexOf(
-      "const listener = await listenHttpServer",
-    );
-    expect(createIndex).toBeGreaterThan(-1);
-    expect(configureIndex).toBeGreaterThan(createIndex);
-    expect(listenIndex).toBeGreaterThan(configureIndex);
-  });
-
-  it("declares an optional skipListen boolean on the options object", () => {
-    expect(SERVER_SRC).toMatch(/skipListen\?:\s*boolean/);
-  });
-
-  it("short-circuits on opts?.skipListen before binding a TCP listener", () => {
-    const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
-    expect(guardIndex).toBeGreaterThan(-1);
-
-    // The skip branch must return before the listener adapter is invoked.
-    const listenerIndex = SERVER_SRC.indexOf(
-      "const listener = await listenHttpServer",
-    );
-    expect(listenerIndex).toBeGreaterThan(-1);
-    expect(guardIndex).toBeLessThan(listenerIndex);
-
-    // Between the guard and listener invocation there is no transport call, so
-    // the skip path cannot open a socket through the extracted adapter.
-    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
-    expect(branchBody).not.toContain("listenHttpServer(");
-  });
-
-  it("returns the full server contract from the skip-listen branch", () => {
-    const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
-    const listenerIndex = SERVER_SRC.indexOf(
-      "const listener = await listenHttpServer",
-    );
-    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
-
-    // Same public shape the listening path resolves with, so callers (and the
-    // in-process dispatchRoute kernel) are unaffected by the bind being skipped.
-    expect(branchBody).toMatch(/return\s*\{/);
-    expect(branchBody).toMatch(/\bport\b/);
-    expect(branchBody).toMatch(/close:/);
-    expect(branchBody).toMatch(/updateRuntime,/);
-    expect(branchBody).toMatch(/updateStartup,/);
-  });
-
-  it("still runs deferred startup work in skip mode unless explicitly skipped", () => {
-    const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
-    const listenerIndex = SERVER_SRC.indexOf(
-      "const listener = await listenHttpServer",
-    );
-    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
-    expect(branchBody).toContain("startDeferredStartupWork()");
-    expect(branchBody).toContain("skipDeferredStartupWork");
-  });
-
-  it("keeps the listening path (default) binding via server.listen", () => {
-    // The composition root delegates after the guard, and the transport owner
-    // performs the concrete bind.
-    expect(SERVER_SRC).toContain("const listener = await listenHttpServer");
-    expect(HTTP_LISTENER_SRC).toContain(
-      "options.server.listen(options.port, options.host)",
-    );
-  });
-});
-
 describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)", () => {
-  it("has a boot harness fixture", () => {
-    expect(existsSync(HARNESS_PATH)).toBe(true);
-  });
-
   it("binds NO TCP port when skipListen is true, and DOES bind when it is unset", async () => {
     // Two distinct free ports so the two boots never collide.
     const skipResult = await runBootHarness("skip", 39321);
     if (!skipResult.ok) {
-      // Sparse checkout: server.ts's module graph needs the built dist +
-      // generated i18n data to boot under Bun. Do NOT claim behavioral
-      // coverage we didn't get — surface the reason and skip explicitly.
-      console.warn(
-        `[server-skip-listen] behavioral boot unavailable in this environment: ${skipResult.error}`,
-      );
-      return;
+      throw new Error(`skip-listen harness failed: ${skipResult.error}`);
     }
 
     expect(skipResult.mode).toBe("skip");
@@ -229,7 +113,9 @@ describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)",
     // assertion above is a real guarantee, not a port that was never going to
     // bind anyway.
     const bindResult = await runBootHarness("bind", 39323);
-    expect(bindResult.ok).toBe(true);
+    if (!bindResult.ok) {
+      throw new Error(`binding harness failed: ${bindResult.error}`);
+    }
     if (bindResult.ok) {
       expect(bindResult.bound).toBe(true);
     }
@@ -237,7 +123,9 @@ describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)",
 
   it("rejects malformed connector-health configuration before binding", async () => {
     const result = await runBootHarness("invalid", 39325);
-    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(`invalid-config harness failed: ${result.error}`);
+    }
     if (result.ok) {
       expect(result.bound).toBe(false);
       expect(result).toMatchObject({ mode: "invalid", rejected: true });

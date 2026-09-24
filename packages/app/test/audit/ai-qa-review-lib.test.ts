@@ -9,7 +9,7 @@ import {
   gateFailures,
   imageBlock,
   parseVisionVerdict,
-} from "../../../../scripts/ai-qa/review-lib.mjs";
+} from "../../../scripts/ai-qa/review-lib.mjs";
 
 describe("buildReviewPrompt (#9304 vision screenshot review)", () => {
   it("names the page + viewport + theme and asks for the strict JSON shape", () => {

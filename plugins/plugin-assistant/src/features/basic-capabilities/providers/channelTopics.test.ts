@@ -6,7 +6,11 @@
  * database adapter; no model call is involved.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import {
+  createSQLiteTestRuntime,
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
@@ -25,11 +29,14 @@ function makeRoom(): Room {
   return { id: ROOM, source: "test", type: "GROUP" as Room["type"] };
 }
 
-class FailingRoomReadAdapter extends InMemoryDatabaseAdapter {
+class FailingRoomReadAdapter extends SQLiteDatabaseAdapter {
   failReads = false;
 
   override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
-    if (this.failReads) throw new Error("room read unavailable");
+    if (this.failReads)
+      throw new ElizaError("room read unavailable", {
+        code: "TEST_STORAGE_UNAVAILABLE",
+      });
     return super.getRoomsByIds(roomIds);
   }
 }
@@ -38,11 +45,16 @@ const activeRuntimes: AgentRuntime[] = [];
 
 async function makeRuntimeWithService(
   rooms?: Room[],
-  adapter?: InMemoryDatabaseAdapter,
+  adapter?: SQLiteDatabaseAdapter,
 ): Promise<{ runtime: AgentRuntime; service: ChannelTopicsService }> {
   const runtime = new AgentRuntime({
     character: createCharacter({ name: "ChannelTopicsProviderAgent" }),
-    adapter: adapter ?? new InMemoryDatabaseAdapter(),
+    adapter:
+      adapter ??
+      SQLiteDatabaseAdapter.create(
+        ":memory:",
+        sqliteTestAgentId("ChannelTopicsProviderAgent"),
+      ),
     logLevel: "fatal",
     enableAutonomy: false,
   });
@@ -59,9 +71,9 @@ async function makeRuntimeWithService(
 }
 
 async function makeRuntimeWithoutService(): Promise<AgentRuntime> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: createCharacter({ name: "NoChannelTopicsProviderAgent" }),
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
     enableAutonomy: false,
   });
@@ -216,7 +228,10 @@ describe("CHANNEL_TOPICS provider", () => {
   });
 
   it("renders unavailable when persisted topics cannot be loaded", async () => {
-    const adapter = new FailingRoomReadAdapter();
+    const adapter = FailingRoomReadAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("ChannelTopicsProviderAgent"),
+    );
     const { runtime: failingRuntime } = await makeRuntimeWithService(
       [makeRoom()],
       adapter,

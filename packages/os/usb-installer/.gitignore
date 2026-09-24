@@ -1,0 +1,9 @@
+dist/
+node_modules/
+.turbo/
+
+# Playwright diff artifacts. Visual regression baselines under
+# tests/**/*-snapshots/ are tracked as the source of truth.
+test-results/
+playwright-report/
+build/

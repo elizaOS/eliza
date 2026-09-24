@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
   "version": "2.0.3-beta.7",
-  "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
+  "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports \u2014 combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -37,6 +37,24 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "eliza-source": "./src/ui/index.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    },
+    "./ui/*": {
+      "types": "./dist/ui/*.d.ts",
+      "eliza-source": "./src/ui/*.ts",
+      "import": "./dist/ui/*.js",
+      "default": "./dist/ui/*.js"
+    },
+    "./ui/register": {
+      "types": "./dist/ui/register.d.ts",
+      "eliza-source": "./src/ui/register.ts",
+      "import": "./dist/ui/register.js",
+      "default": "./dist/ui/register.js"
     }
   },
   "files": [
@@ -45,13 +63,18 @@
     "CHANGELOG.md",
     "PROJECT.md",
     "LICENSE",
-    "docs"
+    "docs",
+    "ui/assets"
   ],
   "sideEffects": [
     "./src/register-routes.ts",
     "./src/register-routes.js",
     "./dist/node/index.node.js",
-    "./dist/cjs/index.node.cjs"
+    "./dist/cjs/index.node.cjs",
+    "./src/ui/register.ts",
+    "./src/ui/register-slots.ts",
+    "./dist/ui/register.js",
+    "./dist/ui/register-slots.js"
   ],
   "keywords": [
     "elizaos",
@@ -78,9 +101,16 @@
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.105",
     "smol-toml": "^1.8.0",
-    "@elizaos/credentials": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "lucide-react": "^1.0.0",
+    "marked": "^18.0.13",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -95,7 +125,10 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "@elizaos/testing": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "playwright": "^1.62.1",
+    "tsup": "^8.5.1",
+    "vite": "^8.3.0"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -104,9 +137,9 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.live-harness.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.live-harness.json && bun run typecheck:ui",
     "typecheck:live-harness": "tsc --noEmit -p tsconfig.live-harness.json",
-    "test": "bunx vitest run --config vitest.config.ts",
+    "test": "bunx vitest run --config vitest.config.ts && bun run test:ui",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
     "test:e2e:native": "bun run build && node tests/e2e/live-native-acp-smoke.mjs",
@@ -115,11 +148,17 @@
     "test:e2e:multi-account:live": "ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun --conditions=eliza-source scripts/live-multi-account-e2e.ts",
     "check:account-readiness": "bun scripts/check-account-readiness.ts",
     "export:ci-account-secrets": "bun scripts/export-ci-account-secrets.ts",
-    "test:scenarios": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane pr-deterministic",
-    "test:scenarios:live": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane live-only",
+    "test:scenarios": "bun --conditions=eliza-source ../../packages/testing/scenario-runner/src/cli.ts run test/scenarios --lane pr-deterministic",
+    "test:scenarios:live": "bun --conditions=eliza-source ../../packages/testing/scenario-runner/src/cli.ts run test/scenarios --lane live-only",
     "test:watch": "bunx vitest --config vitest.config.ts",
-    "build": "bun run build.ts",
-    "build:ts": "bun run build.ts"
+    "build": "bun run build.ts && bun run build:ui",
+    "build:ts": "bun run build.ts",
+    "build:views": "vite build --config vite.config.views.ts",
+    "build:ui": "tsc6 --noCheck -p ui/tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-agent-orchestrator && bun run build:views",
+    "test:ui": "vitest run --config ui/vitest.config.ts",
+    "typecheck:ui": "tsc --noEmit -p ui/tsconfig.build.json",
+    "test:e2e:cockpit-browser": "node ui/test/browser-e2e/run-cockpit-browser-e2e.mjs",
+    "test:e2e:ui": "vitest run --root ui --config vitest.live.config.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -308,6 +347,9 @@
     "scripts": {
       "coreBuild": true,
       "testSerial": true
+    },
+    "app": {
+      "heroImage": "ui/assets/hero.png"
     }
   }
 }

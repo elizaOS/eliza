@@ -3,11 +3,11 @@
  * must distinguish virtual from in-person.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import {
   seedCalendarCache,
   seedMeetingPreferences,
@@ -41,7 +41,7 @@ export default scenario({
   domain: "lifeops.travel-buffer",
   tags: ["lifeops", "travel-buffer", "virtual"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

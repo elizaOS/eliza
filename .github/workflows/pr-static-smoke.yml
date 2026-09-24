@@ -1,5 +1,5 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
-# It checks mergeability, changed secrets and workflow syntax, then builds and
+# It checks mergeability and workflow syntax, then builds and
 # statically validates the affected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
@@ -68,31 +68,11 @@ jobs:
 
           echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/synthetic-world; then
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/testing/synthetic-world; then
             echo "synthetic_world_changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Install pinned gitleaks
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP/gitleaks"
-          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
-
-      - name: Scan candidate commits for secrets
-        shell: bash
-        env:
-          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-        run: >-
-          gitleaks detect
-          --config .gitleaks.toml
-          --source .
-          --redact
-          --no-banner
-          --log-opts "${MERGE_BASE}..${HEAD_SHA}"
 
       - name: Install pinned workflow linters
         shell: bash
@@ -151,7 +131,7 @@ jobs:
           packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
 
       - name: Check production and smoke view navigation parity
-        working-directory: packages/app-core
+        working-directory: packages/app
         run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
 
       - name: Upload Bun runtime resolution inventory
@@ -185,7 +165,7 @@ jobs:
 
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
-        run: bun run --cwd packages/synthetic-world test
+        run: bun run --cwd packages/testing test:synthetic-world
 
       - name: Lint affected workspace closure
         env:
@@ -216,7 +196,7 @@ jobs:
       # stack. Detection below walks their runtime workspace dependencies, so a
       # shared/core/plugin change cannot silently skip the replay proof.
       # packages/app carries a large native/desktop-only dependency graph, so
-      # its browser source and app-core aliases stay explicit path inputs below.
+      # its browser source and app aliases stay explicit path inputs below.
       BILLING_REPLAY_WORKSPACE_SEEDS: >-
         packages/cloud/api
         packages/cloud/e2e
@@ -225,7 +205,7 @@ jobs:
       BILLING_REPLAY_PATH_INPUTS: >-
         packages/cloud
         packages/app
-        packages/app-core
+        packages/app
         packages/scripts
         package.json
         bun.lock

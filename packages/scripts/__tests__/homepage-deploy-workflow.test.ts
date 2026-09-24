@@ -20,7 +20,7 @@ const releaseWorkflowPath = path.join(
 const qualityWorkflowPath = path.join(workflowsDirectory, "ci.yml");
 const contactPath = path.join(
   repositoryRoot,
-  "packages/homepage/src/lib/contact.ts",
+  "packages/cloud/shared/src/lib/public-telegram-identity.ts",
 );
 
 interface WorkflowStep {
@@ -357,46 +357,12 @@ function runTelegramAuthorityGuard(
 }
 
 describe("homepage deployment workflow", () => {
-  const homepagePackage = JSON.parse(
-    readFileSync(
-      path.join(repositoryRoot, "packages/homepage/package.json"),
-      "utf8",
-    ),
-  ) as { name?: string; scripts?: Record<string, string> };
   const appPackage = JSON.parse(
     readFileSync(
       path.join(repositoryRoot, "packages/app/package.json"),
       "utf8",
     ),
   ) as { scripts?: Record<string, string> };
-  const devAll = readFileSync(
-    path.join(repositoryRoot, "packages/scripts/dev-all.mjs"),
-    "utf8",
-  );
-
-  it("retires every standalone homepage application lifecycle", () => {
-    expect(
-      existsSync(path.join(workflowsDirectory, "deploy-homepage.yml")),
-    ).toBe(false);
-    expect(homepagePackage.name).toBe("@elizaos/homepage-source");
-    for (const script of [
-      "predev",
-      "dev",
-      "prebuild",
-      "build",
-      "postbuild",
-      "preview",
-      "deploy:production",
-      "deploy:preview",
-    ]) {
-      expect(homepagePackage.scripts?.[script]).toBeUndefined();
-    }
-    expect(workflow).not.toContain("eliza-app-home");
-    expect(releaseWorkflow).not.toContain("eliza-app-home");
-    expect(devAll).not.toContain("packages/homepage");
-    expect(devAll).not.toContain("DEV_ALL_HOMEPAGE_PORT");
-  });
-
   it("keeps preview work out of the manual canonical entry workflow", () => {
     expect(Object.keys(parsedWorkflow.on ?? {})).toEqual(["workflow_dispatch"]);
     expect(
@@ -687,7 +653,7 @@ describe("homepage deployment workflow", () => {
       TELEGRAM_ATTESTATION_CONTEXT: "production",
     });
     expect(productionRuntimeAttestation.run).toContain(
-      "packages/homepage/src/lib/contact.ts",
+      "packages/cloud/shared/src/lib/public-telegram-identity.ts",
     );
     expect(productionRuntimeAttestation.run).toContain(
       "packages/cloud/scripts/verify-telegram-bot-identity.mjs",
@@ -1241,11 +1207,10 @@ describe("homepage deployment workflow", () => {
     );
   });
 
-  it("builds homepage changes into the single eliza-app artifact", () => {
+  it("builds the single eliza-app artifact", () => {
     expect(appPackage.scripts?.["prebuild:web"]).toBe(
       "bun run --cwd ../cloud/sdk build && bun run prebuild",
     );
-    expect(qualityWorkflow).toContain("working-directory: packages/homepage");
     expect(qualityWorkflow).toContain("Build the only deployable frontend");
     expect(workflow).not.toContain("Build consolidated frontend artifact");
     expect(workflow).not.toContain("Upload consolidated frontend artifact");
@@ -1258,25 +1223,7 @@ describe("homepage deployment workflow", () => {
     expect(releaseWorkflow).toContain("https://cloud-staging.eliza.app");
   });
 
-  it("validates homepage source while building only packages/app in quality CI", () => {
-    expect(qualityWorkflow).toContain("frontend-build:");
-    expect(qualityWorkflow).toContain("Validate homepage source contracts");
-    expect(qualityWorkflow).toContain("working-directory: packages/homepage");
-    expect(qualityWorkflow).toContain(
-      "run: bun run test && bun run check:snapshot-inventory",
-    );
-    expect(qualityWorkflow).toContain("Build the only deployable frontend");
-    expect(qualityWorkflow).toContain("working-directory: packages/app");
-    expect(qualityWorkflow).toContain("run: bun run build:web");
-    expect(qualityWorkflow).not.toContain(
-      "working-directory: packages/homepage\n        run: bun run build",
-    );
-    expect(qualityWorkflow).not.toContain(
-      "PLAYWRIGHT_INSTALL_CWD=packages/homepage",
-    );
-  });
-
-  it("builds the default-condition workspace chain before homepage validation", () => {
+  it("builds the default-condition workspace chain before the frontend", () => {
     const frontend = (Bun.YAML.parse(qualityWorkflow) as WorkflowFile).jobs?.[
       "frontend-build"
     ];
@@ -1292,12 +1239,8 @@ describe("homepage deployment workflow", () => {
     expect(commands.indexOf("bun run --cwd packages/ui build")).toBeGreaterThan(
       coreBuild,
     );
-    const validationIndex = steps.findIndex(
-      (step) => step.name === "Validate homepage source contracts",
-    );
-    expect(validationIndex).toBeGreaterThan(buildIndex);
     expect(
       steps.findIndex((step) => step.run === "bun run build:web"),
-    ).toBeGreaterThan(validationIndex);
+    ).toBeGreaterThan(buildIndex);
   });
 });

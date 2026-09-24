@@ -189,7 +189,7 @@ jobs:
         run: bun run build:core
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
-        run: bun run --cwd packages/scenario-runner test:live:e2e
+        run: bun run --cwd packages/testing test:live:e2e
       - name: Group-chat evaluation
         if: inputs.suite == 'group-chat'
         id: group-chat-evaluation
@@ -197,10 +197,10 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: bun packages/scripts/run-scenarios-isolated.mjs packages/test/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
+        run: bun packages/scripts/run-scenarios-isolated.mjs packages/testing/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
       - name: Validate complete independently judged group-chat evidence
         if: inputs.suite == 'group-chat'
-        run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/test/scenarios/group-chat --provider ${{ inputs.planner_provider }}
+        run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/testing/scenarios/group-chat --provider ${{ inputs.planner_provider }}
       - name: Upload group-chat evaluation evidence
         if: always() && inputs.suite == 'group-chat'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -214,7 +214,7 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run packages/test/scenarios --scenario cross.live-information-routing --lane live-only --provider ${{ inputs.planner_provider }} --run-dir reports/scenarios/live-information/run --report-dir reports/scenarios/live-information/report --export-native reports/scenarios/live-information/native.jsonl
+        run: bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run packages/testing/scenarios --scenario cross.live-information-routing --lane live-only --provider ${{ inputs.planner_provider }} --run-dir reports/scenarios/live-information/run --report-dir reports/scenarios/live-information/report --export-native reports/scenarios/live-information/native.jsonl
       - name: Upload live information evidence
         if: always() && inputs.suite == 'live-information'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -228,7 +228,7 @@ jobs:
         run: bun run test:cloud:e2e
       - name: Voice service
         if: inputs.suite == 'all' || inputs.suite == 'voice'
-        run: bun run --cwd packages/scenario-runner test:real-service:voice
+        run: bun run --cwd packages/testing test:real-service:voice
       - name: Railway voice contract
         if: inputs.suite == 'all' || inputs.suite == 'voice'
         env:

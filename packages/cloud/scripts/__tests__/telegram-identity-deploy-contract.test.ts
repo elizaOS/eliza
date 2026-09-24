@@ -86,7 +86,9 @@ describe("protected Telegram identity workflow contract", () => {
         "inputs.telegram_runtime_authority",
       ),
     });
-    expect(select.run).toContain("packages/homepage/src/lib/contact.ts");
+    expect(select.run).toContain(
+      "packages/cloud/shared/src/lib/public-telegram-identity.ts",
+    );
     expect(select.run).toContain("TELEGRAM_AUTHORITY_RUN_ATTEMPT");
     expect(select.run).toContain("TELEGRAM_RUNTIME_AUTHORITY");
     expect(select.run).toContain("ADMITTED_TELEGRAM_BOT_ID");
@@ -177,7 +179,9 @@ describe("protected Telegram identity workflow contract", () => {
     );
     const receipt = namedStep(deploy, "Write exact deployment receipt");
 
-    expect(select.run).toContain("packages/homepage/src/lib/contact.ts");
+    expect(select.run).toContain(
+      "packages/cloud/shared/src/lib/public-telegram-identity.ts",
+    );
     expect(select.run).toContain("STAGING_TELEGRAM_BOT_ID");
     expect(verify.env).toMatchObject({
       WORKER_ELIZA_APP_TELEGRAM_BOT_TOKEN: expect.stringContaining(

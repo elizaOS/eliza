@@ -37,7 +37,6 @@ export { familyWorkflowsAction } from "./actions/family-workflows.js";
 export { householdCoordinationAction } from "./actions/household-coordination.js";
 export {
   ownerAlarmsAction,
-  ownerFinancesAction,
   ownerGoalsAction,
   ownerHealthAction,
   ownerRemindersAction,

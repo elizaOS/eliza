@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { KeyNotFoundError, KmsError } from "@elizaos/credentials/kms";
+import { KeyNotFoundError, KmsError } from "@elizaos/auth/kms";
 import {
   realAeadDecryptError,
   realKeyRotatedAwayError,

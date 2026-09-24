@@ -619,7 +619,7 @@ describe("view related action names resolve to declared actions in source", () =
           "-hoE",
           // Accept both an inline `name: "X"` and an action name pulled from a
           // hoisted const (`const ACTION_NAME = "X"` then `name: ACTION_NAME`,
-          // as plugin-documents does). The leading `name:`/`=` keeps this from
+          // as plugin-knowledge does). The leading `name:`/`=` keeps this from
           // matching the relatedActions arrays themselves (`["X"]`).
           `(name:|=) "(${escaped.join("|")})"`,
           "--",

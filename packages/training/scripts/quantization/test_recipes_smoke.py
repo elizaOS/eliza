@@ -261,7 +261,7 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
 #
 # These tests pin the recipes to the canonical kernel references in
 # eliza/plugins/plugin-local-inference/native/{reference,verify}/ and
-# eliza/packages/native/plugins/{qjl-cpu,polarquant-cpu}/.
+# eliza/plugins/plugin-local-inference/native/{qjl-cpu,polarquant-cpu}/.
 #
 # Per packages/training/AGENTS.md §3:
 #   "Bit-exact with kernels — when a quantization recipe and a kernel
@@ -311,7 +311,7 @@ _TURBO_H = (
 
 
 # Canonical 4-bit Lloyd-Max centroids for N(0,1), bit-exact match required
-# against eliza/packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
+# against eliza/plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h
 # and eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c.
 _C_POLAR_Q4_CENTROIDS = (
     -2.754354807,

@@ -1,4 +1,5 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import type { UUID } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Proves the POST /api/restore HTTP boundary rebuilds the live runtime after
  * replacing PGlite files, using a real snapshot, TCP API host, and PGlite dump.
@@ -16,7 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AgentRuntime } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApiServer } from "./server.ts";
 
@@ -34,12 +35,13 @@ const touchedEnv = [
 ] as const;
 const originalEnv = new Map<string, string | undefined>();
 
-class PgliteDumpAdapter extends InMemoryDatabaseAdapter {
+class PgliteDumpAdapter extends SQLiteDatabaseAdapter {
   constructor(
+    agentId: UUID,
     private readonly dataDir: string,
     private readonly dump: Blob,
   ) {
-    super();
+    super(":memory:", agentId);
   }
 
   getPgliteDataDir(): string {
@@ -135,7 +137,9 @@ describe("POST /api/restore runtime lifecycle", () => {
       vi.spyOn(process, "availableMemory").mockReturnValue(512 * 1024 * 1024);
 
       runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
-      runtime.registerDatabaseAdapter(new PgliteDumpAdapter(sourceDir, dump));
+      runtime.registerDatabaseAdapter(
+        new PgliteDumpAdapter(runtime.agentId, sourceDir, dump),
+      );
       await initializeTestRuntime(runtime, { skipMigrations: true });
 
       let restartCalls = 0;
@@ -158,7 +162,9 @@ describe("POST /api/restore runtime lifecycle", () => {
             plugins: [],
           });
           replacementRuntimes.push(replacement);
-          replacement.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+          replacement.registerDatabaseAdapter(
+            SQLiteDatabaseAdapter.create(":memory:", replacement.agentId),
+          );
           await initializeTestRuntime(replacement, { skipMigrations: true });
           return replacement;
         },

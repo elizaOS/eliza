@@ -5,7 +5,8 @@
  * uses AgentRuntime and the real in-memory database adapter.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
 import { AgentRuntime } from "../../runtime.ts";
@@ -22,24 +23,33 @@ const ROOM_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
 const activeRuntimes: AgentRuntime[] = [];
 
-class FailingRoomAdapter extends InMemoryDatabaseAdapter {
+class FailingRoomAdapter extends SQLiteDatabaseAdapter {
 	failReads = false;
 	failWrites = false;
 
 	override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
-		if (this.failReads) throw new Error("room read unavailable");
+		if (this.failReads)
+			throw new ElizaError("room read unavailable", {
+				code: "TEST_STORAGE_UNAVAILABLE",
+			});
 		return super.getRoomsByIds(roomIds);
 	}
 
 	override async updateRooms(rooms: Room[]): Promise<void> {
-		if (this.failWrites) throw new Error("room write unavailable");
+		if (this.failWrites)
+			throw new ElizaError("room write unavailable", {
+				code: "TEST_STORAGE_UNAVAILABLE",
+			});
 		return super.updateRooms(rooms);
 	}
 }
 
 async function makeRuntime(
 	seed: Room[] = [],
-	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("ChannelTopicsIntegrationAgent"),
+	),
 ): Promise<AgentRuntime> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({ name: "ChannelTopicsIntegrationAgent" }),
@@ -414,7 +424,10 @@ describe("ChannelTopicsService", () => {
 	});
 
 	it("recovers the room queue after a failed write", async () => {
-		const adapter = new FailingRoomAdapter();
+		const adapter = FailingRoomAdapter.create(
+			":memory:",
+			sqliteTestAgentId("ChannelTopicsIntegrationAgent"),
+		);
 		const failingRuntime = await makeRuntime([makeRoom(ROOM_A)], adapter);
 		const svc = await ChannelTopicsService.start(failingRuntime);
 		adapter.failWrites = true;
@@ -483,7 +496,10 @@ describe("ChannelTopicsService", () => {
 	});
 
 	it("reports hydration failure and retries the unhydrated room", async () => {
-		const adapter = new FailingRoomAdapter();
+		const adapter = FailingRoomAdapter.create(
+			":memory:",
+			sqliteTestAgentId("ChannelTopicsIntegrationAgent"),
+		);
 		const failingRuntime = await makeRuntime(
 			[makeRoom(ROOM_A, ["persisted"])],
 			adapter,
@@ -508,7 +524,10 @@ describe("ChannelTopicsService", () => {
 	});
 
 	it("reports and propagates a failed room update", async () => {
-		const adapter = new FailingRoomAdapter();
+		const adapter = FailingRoomAdapter.create(
+			":memory:",
+			sqliteTestAgentId("ChannelTopicsIntegrationAgent"),
+		);
 		const failingRuntime = await makeRuntime([makeRoom(ROOM_A)], adapter);
 		const svc = await ChannelTopicsService.start(failingRuntime);
 		adapter.failWrites = true;

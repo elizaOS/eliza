@@ -1,0 +1,162 @@
+diff --git a/scripts/glob-sources.ts b/scripts/glob-sources.ts
+index ff819eb..41c0fc4 100644
+--- a/scripts/glob-sources.ts
++++ b/scripts/glob-sources.ts
+@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
+ import { assert } from "./build/error.ts";
+ 
+ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const forceRiscv64CLoop = process.env.BUN_RISCV64_FORCE_CLOOP === "1";
+ 
+ interface SourcePattern {
+   paths: string[];
+@@ -95,6 +96,7 @@ const patterns = {
+       "src/jsc/bindings/vm/*.cpp",
+       "packages/bun-usockets/src/crypto/*.cpp",
+     ],
++    exclude: forceRiscv64CLoop ? ["src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp"] : [],
+   },
+   /** all `*.c` compiled into bun (usockets, llhttp, uv polyfills) */
+   c: {
+diff --git a/src/bake/BakeGlobalObject.cpp b/src/bake/BakeGlobalObject.cpp
+index 6bb3b32..b63e21b 100644
+--- a/src/bake/BakeGlobalObject.cpp
++++ b/src/bake/BakeGlobalObject.cpp
+@@ -220,8 +220,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+         INHERIT_HOOK_METHOD(scriptExecutionStatus),
+         INHERIT_HOOK_METHOD(reportViolationForUnsafeEval),
+         INHERIT_HOOK_METHOD(defaultLanguage),
++#if ENABLE(WEBASSEMBLY)
+         INHERIT_HOOK_METHOD(compileStreaming),
+         INHERIT_HOOK_METHOD(instantiateStreaming),
++#else
++        nullptr,
++        nullptr,
++#endif
+         INHERIT_HOOK_METHOD(deriveShadowRealmGlobalObject),
+         INHERIT_HOOK_METHOD(codeForEval),
+         INHERIT_HOOK_METHOD(canCompileStrings),
+diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
+index 18ad46c..d8354ec 100644
+--- a/src/jsc/bindings/ZigGlobalObject.cpp
++++ b/src/jsc/bindings/ZigGlobalObject.cpp
+@@ -139,7 +139,9 @@
+ #include "JSTransformStreamDefaultController.h"
+ #include "JSURLPattern.h"
+ #include "JSURLSearchParams.h"
++#if ENABLE(WEBASSEMBLY)
+ #include "JSWasmStreamingCompiler.h"
++#endif
+ #include <JavaScriptCore/WebAssemblyCompileOptions.h>
+ #include "JSWebSocket.h"
+ #include "JSWorker.h"
+@@ -918,8 +920,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+         &scriptExecutionStatus,
+         &unsafeEvalNoop, // reportViolationForUnsafeEval
+         nullptr, // defaultLanguage
++#if ENABLE(WEBASSEMBLY)
+         &compileStreaming,
+         &instantiateStreaming,
++#else
++        nullptr,
++        nullptr,
++#endif
+         &Zig::deriveShadowRealmGlobalObject,
+         &codeForEval, // codeForEval
+         &canCompileStrings, // canCompileStrings
+@@ -946,8 +953,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
+         &scriptExecutionStatus,
+         &unsafeEvalNoop, // reportViolationForUnsafeEval
+         nullptr, // defaultLanguage
++#if ENABLE(WEBASSEMBLY)
+         &compileStreaming,
+         &instantiateStreaming,
++#else
++        nullptr,
++        nullptr,
++#endif
+         &Zig::deriveShadowRealmGlobalObject,
+         &codeForEval, // codeForEval
+         &canCompileStrings, // canCompileStrings
+@@ -2129,10 +2141,12 @@ void GlobalObject::finishCreation(VM& vm)
+             init.set(JSC::JSFunction::create(init.vm, init.owner, utilInspectStylizeWithNoColorCodeGenerator(init.vm), init.owner));
+         });
+ 
++#if ENABLE(WEBASSEMBLY)
+     m_wasmStreamingConsumeStreamFunction.initLater(
+         [](const Initializer<JSFunction>& init) {
+             init.set(JSC::JSFunction::create(init.vm, init.owner, wasmStreamingConsumeStreamCodeGenerator(init.vm), init.owner));
+         });
++#endif
+ 
+     m_nativeMicrotaskTrampoline.initLater(
+         [](const Initializer<JSFunction>& init) {
+@@ -3622,6 +3636,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
+     return result;
+ }
+ 
++#if ENABLE(WEBASSEMBLY)
+ extern "C" JSC::EncodedJSValue Zig__GlobalObject__getBodyStreamOrBytesForWasmStreaming(JSGlobalObject*, EncodedJSValue response, JSC::Wasm::StreamingCompiler* compiler);
+ 
+ extern "C" void JSC__Wasm__StreamingCompiler__addBytes(JSC::Wasm::StreamingCompiler* compiler, const uint8_t* spanPtr, size_t spanSize)
+@@ -3677,6 +3692,7 @@ JSC::JSPromise* GlobalObject::instantiateStreaming(JSGlobalObject* globalObject,
+ {
+     return handleResponseOnStreamingAction(globalObject, source, JSC::Wasm::CompilerMode::FullCompile, importObject, WTF::move(compileOptions));
+ }
++#endif
+ 
+ GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction handler)
+ {
+diff --git a/src/jsc/bindings/ZigGlobalObject.h b/src/jsc/bindings/ZigGlobalObject.h
+index ec74c45..ce8a96c 100644
+--- a/src/jsc/bindings/ZigGlobalObject.h
++++ b/src/jsc/bindings/ZigGlobalObject.h
+@@ -201,8 +201,10 @@ public:
+     static JSC::JSPromise* moduleLoaderFetch(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, RefPtr<JSC::ScriptFetchParameters>, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSObject* moduleLoaderCreateImportMetaProperties(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, JSC::JSModuleRecord*, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSValue moduleLoaderEvaluate(JSGlobalObject*, JSC::JSModuleLoader*, JSValue key, JSValue moduleRecordValue, RefPtr<JSC::ScriptFetcher>, JSValue sentValue, JSValue resumeMode);
++#if ENABLE(WEBASSEMBLY)
+     static JSC::JSPromise* compileStreaming(JSGlobalObject*, JSC::JSValue source, std::optional<JSC::WebAssemblyCompileOptions>&&);
+     static JSC::JSPromise* instantiateStreaming(JSGlobalObject*, JSC::JSValue source, JSC::JSObject* importObject, std::optional<JSC::WebAssemblyCompileOptions>&&);
++#endif
+ 
+     static ScriptExecutionStatus scriptExecutionStatus(JSGlobalObject*, JSObject*);
+     static void promiseRejectionTracker(JSGlobalObject*, JSC::JSPromise*, JSC::JSPromiseRejectionOperation);
+diff --git a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
+index befcdaa..f7fca9d 100644
+--- a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
++++ b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
+@@ -9,6 +9,8 @@
+ 
+ #include "ErrorCode.h"
+ 
++#if ENABLE(WEBASSEMBLY)
++
+ namespace WebCore {
+ 
+ using namespace JSC;
+@@ -236,3 +238,5 @@ Wasm::StreamingCompiler* JSWasmStreamingCompiler::toWrapped(VM& vm, JSValue valu
+ }
+ 
+ }
++
++#endif // ENABLE(WEBASSEMBLY)
+diff --git a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
+index d40eb99..3f607af 100644
+--- a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
++++ b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
+@@ -4,6 +4,8 @@
+ #include "JavaScriptCore/WasmStreamingCompiler.h"
+ #include <wtf/NeverDestroyed.h>
+ 
++#if ENABLE(WEBASSEMBLY)
++
+ namespace WebCore {
+ 
+ class JSWasmStreamingCompiler : public JSDOMWrapper<JSC::Wasm::StreamingCompiler> {
+@@ -71,3 +73,5 @@ template<> struct JSDOMWrapperConverterTraits<JSC::Wasm::StreamingCompiler> {
+ };
+ 
+ } // namespace WebCore
++
++#endif // ENABLE(WEBASSEMBLY)

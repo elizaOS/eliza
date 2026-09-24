@@ -4,12 +4,12 @@
  * These prove the worldId-mapping scoping contract as pure logic AND against a
  * faithful store stub that implements EXACTLY the documented `getMemories`
  * worldId filter line (`if (params.worldId && m.worldId !== params.worldId)
- * return false;` — see plugins/plugin-inmemorydb/adapter.ts:572). That stub is
+ * return false;` — see plugins/plugin-sqlite/adapter.ts:572). That stub is
  * the *store contract*, not a mock of the code under test: the functions under
  * test are the real `project-memory-scope` helpers; the stub only stands in for
  * the database's already-shipped worldId filter so the roundtrip runs without a
  * PGlite/adapter boot in a core unit test. (A real-adapter roundtrip lives in
- * plugins/plugin-inmemorydb/project-memory-scope.roundtrip.test.ts.)
+ * plugins/plugin-sqlite/project-memory-scope.roundtrip.test.ts.)
  */
 
 import { describe, expect, it } from "vitest";

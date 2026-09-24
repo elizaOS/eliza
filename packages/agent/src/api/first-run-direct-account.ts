@@ -4,14 +4,14 @@
  */
 
 import nodeCrypto from "node:crypto";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   createRuntimeAccountStoragePolicy,
   deleteAccount,
   saveAccount,
-} from "@elizaos/credentials/auth/account-storage";
-import { probeDirectApiKey } from "@elizaos/credentials/auth/direct-api-probe";
+} from "@elizaos/auth/auth/account-storage";
+import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

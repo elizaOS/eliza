@@ -37,11 +37,6 @@ vi.mock("../bridge", () => ({
   },
 }));
 
-vi.mock("../chat", () => ({
-  loadSavedCustomCommands: () => [],
-  appendSavedCustomCommand: vi.fn(),
-}));
-
 import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import type { AppContextValue } from "../state/internal";

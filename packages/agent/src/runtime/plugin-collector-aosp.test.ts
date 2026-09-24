@@ -102,9 +102,9 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_LOCAL_LLAMA = "1";
     const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-wifi")).toBe(true);
-    expect(names.has("@elizaos/plugin-contacts")).toBe(true);
-    expect(names.has("@elizaos/plugin-phone")).toBe(true);
+    expect(names.has("@elizaos/plugin-native-wifi")).toBe(true);
+    expect(names.has("@elizaos/plugin-native-contacts")).toBe(true);
+    expect(names.has("@elizaos/plugin-native-phone")).toBe(true);
   });
 
   it("respects features.shellEnabled=false on AOSP — removes coding-tools (shell lives inside it)", () => {

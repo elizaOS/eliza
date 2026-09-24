@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: a screen-time recap proposes exactly one focus adjustment.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["health", "screentime", "focus", "screentime_recap"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-health", "@elizaos/plugin-agent-skills"],
+    plugins: ["@elizaos/plugin-health"],
   },
   turns: [
     {

@@ -8,13 +8,13 @@ From the repository root:
 
 ```bash
 bun run --cwd plugins/plugin-personal-assistant test:scenarios:list
-bun run --cwd packages/scenario-runner test:lifeops:pr:e2e
+bun run --cwd packages/testing test:lifeops:pr:e2e
 ```
 
 The first command lists this corpus; the second executes its deterministic lane.
 The personal-assistant package's separate `test:scenarios` command runs the
-reminder scenarios in `packages/test/scenarios/reminders/` and the scheduled-task
-spine in `packages/scenario-runner/test/scenarios/`.
+reminder scenarios in `packages/testing/scenarios/reminders/` and the scheduled-task
+spine in `packages/testing/scenario-runner/test/scenarios/`.
 
 Run changed scenarios in their declared lane and inspect their final state and
 receipts. Listing metadata proves discovery, not successful execution.

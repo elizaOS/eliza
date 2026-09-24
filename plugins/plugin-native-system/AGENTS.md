@@ -111,11 +111,11 @@ Use `notifyListeners("eventName", data)` in the Kotlin plugin and `System.addLis
 - **WRITE_SETTINGS is a special permission** — it cannot be requested via `requestPermissions`; the user must be redirected to `openWriteSettings()`. Check `canWriteSettings` in the `DeviceSettingsStatus` response before calling `setScreenBrightness`.
 - **Role queries require Android 10+** — `getStatus()` returns an empty `roles` array on Android < 10 (it does not reject). `requestRole()` rejects on Android < 10.
 - **Build output** — `dist/esm/` is produced by `tsc`, then Rollup bundles it to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The Android AAR is built separately by Gradle inside the host Capacitor project.
-- **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer (`bun run --cwd plugins/plugin-native-system test`). The Android Kotlin device reads are covered by an **instrumented test**, `android/src/androidTest/.../SystemDeviceReaderInstrumentedTest.kt`, run on a real device/emulator via `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967). The reads live in `SystemDeviceReader` precisely so they are exercisable without a Capacitor `Bridge`/WebView; `SystemPlugin` delegates to it and marshals the result into the unchanged JS shape.
+- **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer (`bun run --cwd plugins/plugin-native-system test`). The Android Kotlin device reads are covered by an **instrumented test**, `android/src/androidTest/.../SystemDeviceReaderInstrumentedTest.kt`, run on a real device/emulator via `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest` from `packages/app/platforms/android` (issue #9967). The reads live in `SystemDeviceReader` precisely so they are exercisable without a Capacitor `Bridge`/WebView; `SystemPlugin` delegates to it and marshals the result into the unchanged JS shape.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

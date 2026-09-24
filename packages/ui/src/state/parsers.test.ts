@@ -1,6 +1,6 @@
 /** Verifies isRecord through the package's configured test harness. */
 // Unit coverage for the pure chat-input/streaming parsers in state/parsers.ts.
-// These drive slash commands, custom-action argument binding, streamed-text
+// These drive custom-action argument binding, streamed-text
 // reconciliation, and startup-error formatting — all chat-surface behavior with
 // real branching. Pure functions, no harness.
 
@@ -19,7 +19,6 @@ import {
   parseConversationMessageEvent,
   parseCustomActionParams,
   parseProactiveMessageEvent,
-  parseSlashCommandInput,
   parseStreamEventEnvelopeEvent,
   shouldApplyFinalStreamText,
 } from "./parsers";
@@ -53,28 +52,6 @@ describe("isRecord", () => {
     expect(isRecord(null)).toBe(false);
     expect(isRecord(5)).toBe(false);
     expect(isRecord("x")).toBe(false);
-  });
-});
-
-describe("parseSlashCommandInput", () => {
-  it("returns null for non-slash or empty bodies", () => {
-    expect(parseSlashCommandInput("hello")).toBeNull();
-    expect(parseSlashCommandInput("/")).toBeNull();
-    expect(parseSlashCommandInput("/   ")).toBeNull();
-  });
-
-  it("parses a bare command and lowercases/prefixes the name", () => {
-    expect(parseSlashCommandInput("/Help")).toEqual({
-      name: "/help",
-      argsRaw: "",
-    });
-  });
-
-  it("splits the name from the args at the first whitespace", () => {
-    expect(parseSlashCommandInput("/Send  hi   there")).toEqual({
-      name: "/send",
-      argsRaw: "hi   there",
-    });
   });
 });
 

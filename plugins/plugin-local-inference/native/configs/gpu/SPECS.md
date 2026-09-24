@@ -2,7 +2,7 @@
 
 Source of truth for the per-GPU JSON configs in this directory
 (`3090.json`, `4090.json`, `5090.json`, `h200.json`) and for the
-`gpu-autotune.ts` helper in `packages/app-core/src/services/local-inference/`.
+`gpu-autotune.ts` helper in `packages/app/src/services/local-inference/`.
 
 Scope: **one GPU per host**. No tensor parallelism, no NVLink splits,
 no multi-tenant scheduling. The product target is "one conversation at

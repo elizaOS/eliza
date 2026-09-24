@@ -8,7 +8,7 @@ Standalone elizaOS agent + HTTP backend server. Wraps `@elizaos/core`'s `AgentRu
 - Owns runtime boot, plugin resolution/lifecycle, the HTTP API + route dispatch, character/config loading, trajectory persistence, triggers/scheduling, permission brokering, and provider-neutral TEE policy/key-release paths.
 
 Repository-wide conventions and evidence requirements are inherited from the
-root [`CLAUDE.md`](../../CLAUDE.md).
+root [`AGENTS.md`](../../AGENTS.md).
 
 ## Layout
 
@@ -72,7 +72,6 @@ src/
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
 scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
-  docs/                     capability-router-remote-plugins.md, remote-coding-runner.md, tee-agent-implementation-plan.md
 ```
 
 ## Key exports / surface
@@ -95,7 +94,7 @@ bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # deterministic Vitest batches
 bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)
-bun run --cwd packages/agent lint             # biome check --write across src/
+bun run --cwd packages/agent lint             # biome check --write across source and test tooling
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write
 bun run --cwd packages/agent format:check     # biome format read-only
@@ -110,6 +109,12 @@ The package test runner keeps one file per isolated Vitest process and runs up
 to four processes concurrently by default. Set `AGENT_TEST_CONCURRENCY` to a
 positive integer to tune process parallelism, `AGENT_TEST_BATCH_SIZE` to group
 files deliberately, or `AGENT_TEST_VERBOSE=1` to print every passing child log.
+
+Colocate module-owned tests beside their source and script tests beside their
+scripts. Reserve `test/` for package-wide scenarios, fixtures, support code,
+and setup. Do not create `__tests__`, `test/api`, or `test/runtime` trees.
+The default runner and Vitest share the discovery patterns exported by
+`scripts/run-vitest-batches.mjs`.
 
 `build:docker-dist`, `build:ios-jsc`, `clean`, `pack:dry-run`, `test:remote-capabilities:{docker,cloud-live,provider-live,source-build}` also exist in `package.json`.
 
@@ -136,7 +141,7 @@ Verified audio redaction:
 - `ELIZA_AUDIO_REDACTION_VERIFY_STT_URL` and `ELIZA_AUDIO_REDACTION_VERIFY_STT_MODEL` — optional second OpenAI-compatible STT verifier; configure both or neither.
 - `ELIZA_AUDIO_REDACTION_VERIFY_STT_API_KEY` — optional bearer credential for that independent verifier. The guarded client never follows redirects.
 
-Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
+Capability router (remote plugins):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 
 Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
@@ -144,7 +149,7 @@ Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on
 it by requesting a clean restart through the existing `requestRestart()` seam
-(host exits `RESTART_EXIT_CODE=75`, the `packages/app-core/scripts/run-node.mjs`
+(host exits `RESTART_EXIT_CODE=75`, the `packages/app/scripts/run-node.mjs`
 supervisor relaunches) — never a silent `process.exit`.
 - `ELIZA_MEMORY_WATCHDOG` — `1`/`true` enables it (default **off**).
 - `ELIZA_MEMORY_WATCHDOG_RSS_MB` — RSS restart threshold in MB (default `1536`, floor `128`).
@@ -171,18 +176,19 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
 - `bin.ts` statically imports `node:fs` and pins AOSP/mobile bootstrap symbols onto `globalThis` to defeat tree-shaking in the mobile bundle — do not remove those guards.
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
-- `lint`/`lint:check` and `format` cover the complete `src/` tree.
+- Typechecking includes source, package scenarios, and script suites. Lint and
+  format cover `src/`, `test/`, `scripts/`, and the Vitest configurations.
 - Post-turn evidence must wait for the current room lease's delivery settlement:
   both JSON and SSE routes reconcile the final assistant text, reply correlation,
   and action callback history before extraction snapshots are frozen. Failed
   reconciliation cancels extraction; it must not deadlock the route or advance a
   memory checkpoint. Keep the paired transport cases in
-  `api/__tests__/conversation-idempotency.test.ts` when changing this boundary.
+  `api/conversation-idempotency.test.ts` when changing this boundary.
 - Standalone grounded action replies pass complete conversation memories, action results,
   trajectories, character context, and model output without trimming, deduping,
   summarizing, or silently falling back from a partial prompt. Missing or invalid
   context is an explicit failure; final-wire model limits are enforced by core.
-- Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment; see `docs/tee-agent-implementation-plan.md`.
+- Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>.<ext>` with `nosniff` and a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves through `runtime.getService(ServiceType.REMOTE_FILES)` for `store`/`getUrl`/`list`/`delete`; authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` tool both use it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs on authenticated outgoing paths through the SSRF guard and runs the reference-aware orphan GC. Do not add a second file store, a `files` table, or a second refcount/GC engine; see issue #8876 and the root media invariant.
 - **Trajectory metadata is append-complete.** Persist every extracted insight and
   observation in source order, including duplicates. Page sizes may bound a
@@ -240,15 +246,15 @@ Preserve original author, room, identity and text, including hash-memory source
 presentation and partial/withheld notices. The metadata is a quotation aid, not
 a new access grant or a way to recover text removed during provider redaction.
 
+Caller-scoped voice navigation may request the existing completed-action handoff receipt while retaining originating-client delivery. Return literal delivery confirmation and the validated handoff ID only from actual targeted WebSocket delivery; disconnected voice callers get no global or terminal fallback and cannot commit a new current-view state. This confirms server transport delivery, not a browser-mounted acknowledgement.
+
+The relevant-conversations provider requests semantic results without returned embedding vectors and excludes its current room before vector ranking. Current-room dialogue remains owned by RECENT_MESSAGES; the existing audience/provenance gate and final access filtering remain in force. This restores retrieval I/O optimizations without shortening model-facing memory text.
+
 ## Native SQLite host persistence
 
 The built-in `eliza` plugin supports the explicit SQLite database selection for
-its canonical graph and pendant sessions. Native records live in the same
-agent-bound database as the runtime. Pendant session revisions, lease digests,
-ordered transcript segments and insight references commit atomically; stale
-writes preserve the revision-conflict response. Reads and writes reject another
-agent and unsupported record schema versions. Owners remain separate inside the
-agent database. Complete transcript text survives restart without truncation.
+its canonical graph. Native records live in the same agent-bound database as
+the runtime.
 
 PostgreSQL/PGlite keeps its normalized tables. SQLite does not import historical
 PostgreSQL data, qualify other domain plugins, provide encrypted storage or

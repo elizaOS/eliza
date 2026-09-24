@@ -12,7 +12,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 type RecordValue = Record<string, unknown>;
 function isRecord(value: unknown): value is RecordValue {

@@ -444,25 +444,21 @@
     "./*.css": "./dist/*.css"
   },
   "peerDependencies": {
-    "@capacitor-community/bluetooth-le": ">=8.0.0",
     "@capacitor/app": "^8.0.0",
     "@elizaos/capacitor-agent": "workspace:*",
-    "@elizaos/capacitor-llama": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
     "llama-cpp-capacitor": "^0.1.5",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
   "peerDependenciesMeta": {
-    "@capacitor-community/bluetooth-le": {
-      "optional": true
-    },
     "@capacitor/app": {
       "optional": true
     },
     "@elizaos/capacitor-agent": {
       "optional": true
     },
-    "@elizaos/capacitor-llama": {
+    "@elizaos/plugin-native-inference": {
       "optional": true
     },
     "llama-cpp-capacitor": {
@@ -515,7 +511,7 @@
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "1.98.4",
-    "@elizaos/login": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
     "@xyflow/react": "^12.10.2",
     "chalk": "^6.0.0",
@@ -528,7 +524,6 @@
     "lucide-react": "^1.0.0",
     "motion": "^12.38.0",
     "nprogress": "^0.2.0",
-    "opus-decoder": "0.7.11",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.74.0",
     "react-router-dom": "^7.0.0",
@@ -546,11 +541,9 @@
     "ws": "^8.21.3",
     "@solana/wallet-adapter-coinbase": "^0.1.23",
     "@solana/wallet-adapter-trust": "^0.1.17",
-    "@solana/wallet-adapter-coin98": "^0.5.24",
-    "@elizaos/common": "workspace:*"
+    "@solana/wallet-adapter-coin98": "^0.5.24"
   },
   "devDependencies": {
-    "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/preferences": "^8.0.1",

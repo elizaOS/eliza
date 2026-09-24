@@ -410,12 +410,8 @@ describe("FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT", () => {
 			gmail: "email",
 			"google-chat": "room",
 			imessage: "user",
-			instagram: "thread",
-			matrix: "room",
 			slack: "channel",
 			telegram: "room",
-			wechat: "room",
-			whatsapp: "phone",
 			x: "user",
 		});
 	});

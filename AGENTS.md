@@ -9,12 +9,11 @@ Bootable Linux and AOSP distributions are maintained separately in
 ## How repository instructions work
 
 - Read this guide before changing the repository.
-- Before working in a package or plugin, read the nearest `CLAUDE.md` and its
+- Before working in a package or plugin, read the nearest `AGENTS.md` and its
   `README.md`. A local guide adds package-specific architecture, commands, and
   validation requirements; repository-wide rules in this guide remain binding.
-- `CLAUDE.md` and `AGENTS.md` in the same directory must be byte-for-byte
-  identical. Author `CLAUDE.md`, copy the finished content to `AGENTS.md`, and
-  run `bun run check:agents-claude`.
+- `AGENTS.md` is the canonical repository instruction file. Maintain it directly;
+  do not generate duplicate instruction files.
 - The `AGENTS.md` files under
   `packages/elizaos/src/migrate/__tests__/fixtures/` are migration inputs, not
   repository instructions. They are intentionally unpaired and must change only
@@ -69,7 +68,7 @@ bun install            # install workspaces, prepare submodules, patches, and fu
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
-bun run verify         # parity, dependency, type, lint, and repository audit gates
+bun run verify         # dependency, type, lint, and repository audit gates
 bun run lint           # workspace lint tasks
 bun run format         # workspace formatting tasks
 bun run typecheck      # workspace TypeScript checks
@@ -126,10 +125,10 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run audit:e2e-coverage:test` | retired with the historical coverage baseline; use the diagnostic coverage report |
 | `bun run test:browser-bridge` | `bun run --cwd packages/browser-bridge-extension test:smoke:installed` (requires installed browsers) |
 | `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-bridge-extension test:smoke:safari` (requires installed Safari) |
-| `bun run voice:latency-report` | `bun run --cwd packages/app-core voice:latency-report` |
-| `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
-| `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
-| `bun run voice:create-profile` | `bun run --cwd packages/app-core voice:create-profile` |
+| `bun run voice:latency-report` | `bun run --cwd packages/app voice:latency-report` |
+| `bun run voice:interactive` | `bun run --cwd packages/app voice:interactive` |
+| `bun run voice:duet` | `bun run --cwd packages/app voice:duet` |
+| `bun run voice:create-profile` | `bun run --cwd packages/app voice:create-profile` |
 | `bun run test:ci:live` | `bun run test:live` |
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
 | `bun run lint:all` | `bun run verify` |
@@ -148,20 +147,15 @@ verification and publication sequence.
 packages/
   core/             @elizaos/core: AgentRuntime, authorization, lifecycle, memory, models
   agent/            @elizaos/agent: standalone runtime assembly and HTTP backend
-  app-core/         shared application host, APIs, startup, build, and platform tooling
-  app/              Eliza web, desktop, and mobile UI application
-  credentials/      account authentication, OAuth, encrypted storage, optional backends
+  app/              Eliza host, APIs, renderer, and native platform tooling
+  auth/             login, account sessions, OAuth, encrypted storage, optional backends
   ui/               shared React primitives and product surfaces
   elizaos/          the elizaos CLI and packaged project/plugin templates
   prompts/          shared prompt templates across supported languages
   shared/           cross-package utilities, contracts, and brand assets
-  common/           pure errors, redaction, Unicode and environment primitives
-  testing/          private runtime and deterministic inference fixtures
+  testing/          fixtures, scenario runner, synthetic worlds, evidence and certification
   skills/           bundled runtime skills and loading utilities
   browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
-  scenario-runner/  real-runtime scenario execution and report generation
-  test/             repository-wide scenarios and test corpus
-  evidence/         evidence manifest, bundle, verification, and ingestion foundation
   docs/             documentation site source
   homepage/         public Eliza product and download site
   training/         Eliza-1 training, evaluation, conversion, and release tooling
@@ -176,7 +170,7 @@ plugins/
   plugin-native-*/   platform and device bridges
   plugin-*/          domain capabilities, app views, storage, tools, and orchestration
 
-scripts/            repository-wide checks, CI helpers, evidence, security, and release tools
+packages/scripts/   repository-wide checks, CI helpers, evidence, security, and release tools
 patches/            dependency patches applied during installation
 ```
 
@@ -196,7 +190,7 @@ depth.
 - `@elizaos/agent` assembles a runnable backend around core. It owns the
   standalone process, plugin loading policy, HTTP/WebSocket surfaces, and
   host-level services.
-- `@elizaos/app-core` hosts Eliza application targets and their compatibility
+- `@elizaos/app` owns the renderer and hosts Eliza application targets and their compatibility
   APIs, startup flow, platform integration, and build orchestration.
 - `@elizaos/app` and `@elizaos/ui` render product state. Business values belong
   in use-cases and DTOs, not recomputed in view or proxy layers.
@@ -398,7 +392,7 @@ kinds from `mimeType` at read time.
 ## Testing and verification
 
 Run focused checks while iterating, then expand in proportion to the affected
-surface. At minimum, documentation changes must pass guide parity and link/path
+surface. At minimum, documentation changes must pass link/path
 validation; code changes must pass the owning package's tests, typecheck, and
 lint plus the root `bun run verify` gate.
 
@@ -428,7 +422,7 @@ canonical integrity verifier, and reviews that exact run. Standalone
 are never scanned implicitly. `--source=<dir>` is only for deliberate archived
 or ad-hoc compatibility review.
 
-`packages/evidence/src/ingest.ts` is the normal producer inventory. A new or
+`packages/testing/evidence/ingest.ts` is the normal producer inventory. A new or
 moved producer must have a named ingestor, producer-to-bundle regression test,
 and real generated-bundle inspection. Do not add another scan-root list or let
 a coordinated command discover its run by recency.
@@ -446,7 +440,7 @@ states. No touched view may retain a computed `needs-work` or `broken` verdict.
 Run at least five audit/inspection/iteration cycles for a meaningful redesign.
 Orange is the accent; do not introduce blue, and use darker orange—not black—
 for an orange resting control's hover state. The full visual contract lives in
-`packages/app/CLAUDE.md`.
+`packages/app/AGENTS.md`.
 
 ## GitHub workflow and definition of done
 
@@ -486,3 +480,5 @@ Post-turn evaluators may provide `resolveOutput` only when their prepared runtim
 Direct-text provider discovery remains active through planning and completion: explicit provider-owned indexes replace only their complete reference bodies. Stage-1 reads carry forward. RESTORE_CONTEXT or evaluator contextRequest=full recompose through normal permissions before supplying complete bodies; no accompanying effects execute. Current requests, system instructions, standing constraints and current receipts stay inline. Original contexts and recordings remain intact. Full tool family descriptions are retrievable using DISCOVER_TOOLS names=[]; an inline index retains every authorized name. A progressive direct-text turn with selected nonterminal domain schemas, every Stage-1 hint resolved to a selected action or declared alias, and no explicit discovery request may instead use a shorter deferred-index notice. The same names=[] read retrieves the complete freshly authorized catalog; selected schemas, original context, receipts and admission remain unchanged. Other discovery callers retain the inline index.
 
 Progressive tool discovery must not eagerly refill unrelated context families after exact Stage-1 candidates resolve; other authorized families remain discoverable. Foreground context restoration supports history, providers, or full scope: restore only the requested source class, retain the other projection, and run no accompanying effects. Legacy full reads remain supported.
+
+Direct voice messages share the canonical direct-message handler schema, context discovery, source selection, planner reasoning preference, response review and transient acknowledgement path with typed messages. Speech capture, speaker attribution, turn-taking and playback remain transport responsibilities. Acknowledgements never enter the authoritative reply buffer or durable assistant history; cancellation prevents later speech from the same turn. Equivalent model inputs use the same stable cache prefix and conversation/stage key, with cache hits reported only from provider usage.

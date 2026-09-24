@@ -7,12 +7,59 @@
  * operators retain the explicit force-injection contract.
  */
 
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildServedDashboardHtml,
   injectApiBaseIntoHtml,
   resolveInjectedDashboardToken,
 } from "./static-file-server.ts";
+
+it("serves the renderer artifact independently of the application host output", () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), "app-renderer-serving-"));
+  const renderer = path.join(fixture, "packages/app/web-dist");
+  const host = path.join(fixture, "packages/app/dist");
+  try {
+    mkdirSync(renderer, { recursive: true });
+    mkdirSync(host, { recursive: true });
+    writeFileSync(path.join(renderer, "index.html"), "<html>renderer</html>");
+    writeFileSync(
+      path.join(host, "index.html"),
+      "<html>host documentation</html>",
+    );
+    const entry = pathToFileURL(
+      path.join(import.meta.dirname, "static-file-server.ts"),
+    ).href;
+    const output = execFileSync(
+      "bun",
+      [
+        "--eval",
+        `import { resolveUiDir } from ${JSON.stringify(entry)}; process.stdout.write(JSON.stringify({ renderer: resolveUiDir() }));`,
+      ],
+      {
+        cwd: fixture,
+        env: { ...process.env, NODE_ENV: "production" },
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    );
+    expect(output).toContain(
+      JSON.stringify({ renderer: realpathSync(renderer) }),
+    );
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
 
 const TOKEN_ENV = "ELIZA_API_TOKEN";
 const FORCE_ENV = "ELIZA_FORCE_INJECT_TOKEN";

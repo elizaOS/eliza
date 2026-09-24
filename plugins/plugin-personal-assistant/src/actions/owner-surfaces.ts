@@ -32,13 +32,6 @@ import {
   OWNER_OPERATION_VALIDATE,
   runLifeOperationHandler,
 } from "./life.js";
-import {
-  MONEY_CONTEXTS,
-  MONEY_PARAMETERS,
-  MONEY_TAGS,
-  OWNER_FINANCE_SIMILES,
-  runMoneyHandler,
-} from "./money.js";
 import { runScheduleHandler } from "./schedule.js";
 import {
   createOwnerScreenTimeAction,
@@ -638,34 +631,6 @@ export const ownerScreenTimeAction: Action = createOwnerScreenTimeAction({
       callback,
     ),
 });
-
-export const ownerFinancesAction: Action = {
-  name: "OWNER_FINANCES",
-  similes: ["FINANCES", ...OWNER_FINANCE_SIMILES],
-  description:
-    "Owner finances: sources, imports, spending, recurring charges, subscriptions.",
-  descriptionCompressed:
-    "owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
-  routingHint:
-    "owner finance records, spending, payments, and subscriptions -> OWNER_FINANCES; owner-only LifeOps",
-  tags: [...MONEY_TAGS],
-  contexts: [...MONEY_CONTEXTS],
-  roleGate: OWNER_OPERATION_ROLE_GATE,
-  suppressPostActionContinuation:
-    OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
-  parameters: [
-    {
-      name: "action",
-      description: "Owner finance op.",
-      required: false,
-      schema: { type: "string" as const, enum: [...OWNER_FINANCE_ACTIONS] },
-    },
-    ...MONEY_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
-  ],
-  validate: OWNER_OPERATION_VALIDATE,
-  handler: (runtime, message, state, options, _callback) =>
-    runMoneyHandler(runtime, message, state, mirrorActionToSubaction(options)),
-};
 
 const PERSONAL_ASSISTANT_ACTIONS = [
   "book_travel",

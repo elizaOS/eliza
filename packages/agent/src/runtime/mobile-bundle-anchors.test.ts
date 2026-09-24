@@ -71,7 +71,7 @@ describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
       'import(/* @vite-ignore */ "@elizaos/plugin-native-inference")',
     );
     expect(binSource).toContain(
-      '"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"',
+      '"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"',
     );
   });
 

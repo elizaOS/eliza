@@ -31,7 +31,7 @@
  * `native-webview` to a `sandboxed-iframe`; cloud shows a server snapshot.
  */
 
-import type { SurfaceIsolationLevel } from "@elizaos/common";
+import type { SurfaceIsolationLevel } from "@elizaos/core";
 import type { BrowserWorkspaceMode } from "./api/browser-contracts";
 
 /**

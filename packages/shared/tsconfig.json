@@ -19,7 +19,7 @@
     "noEmit": true,
     "types": ["node", "bun-types"],
     "typeRoots": [
-      "../app-core/node_modules/@types",
+      "../app/node_modules/@types",
       "../../node_modules/@types",
       "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",
@@ -36,9 +36,9 @@
     }
   },
   "exclude": [
-    "../app-core/src/ui/**/*.stories.ts",
-    "../app-core/src/ui/**/*.stories.tsx"
+    "../app/src/ui/**/*.stories.ts",
+    "../app/src/ui/**/*.stories.tsx"
   ],
-  "include": ["src", "../app-core/src/ui"],
+  "include": ["src", "../app/src/ui"],
   "references": []
 }

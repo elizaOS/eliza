@@ -65,7 +65,7 @@ export function resolveElizaOwnerEntityId(runtime: IAgentRuntime): string {
 		return configuredOwnerId;
 	}
 
-	// Unconfigured rigs: core's agent-id seed, shared with the chat, pendant,
+	// Unconfigured rigs: core's agent-id seed, shared with the chat,
 	// and LifeOps owner scopes so Discord world ownership names the same entity.
 	return deterministicOwnerEntityId(runtime.agentId);
 }

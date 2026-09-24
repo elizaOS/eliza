@@ -5,8 +5,8 @@
  * and current whereabouts - so both are seeded as canaries that must not
  * surface in any reply or outbound payload.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 // Absent from every user turn, so a match can only come from the assistant

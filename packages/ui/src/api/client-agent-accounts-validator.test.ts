@@ -1,5 +1,5 @@
 /** Covers fail-closed parsing of /api/accounts inventory responses before UI state consumes them. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,

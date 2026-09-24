@@ -6,8 +6,8 @@
 > | ------------ | ---------------------------------------------------------------- | ---------------------------------- | ------------------------- | ---------------------- |
 > | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe; rerun via MoltenVK on Apple M4 Max after TBQ4 update |
 > | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
-> | QJL          | `metal/qjl.metal`, `vulkan/qjl.comp` plus fallback `vulkan/qjl{_get_rows,_mul_mv}.comp` | YES (against `qjl_score_qk_ref` in `packages/native/plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan score: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) and on Intel ARL Mesa ANV 25.2.8. Fallback `qjl_mul_mv`: YES — 8/8 PASS on Intel ARL Mesa ANV (hard gate, reduction-based QJL-score parity); fallback `qjl_get_rows`: PASS on lavapipe, intermittent few-element `0.0` read-back on Mesa ANV (informational, `-`-guarded; ANV strided-store codegen quirk, not a logic bug) |
-> | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp`, `vulkan/polar_preht.comp` plus fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native/plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max, including pre-Hadamard query entrypoint. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 and on Intel ARL Mesa ANV 25.2.8, including `polar_preht.spv`. Fallback `polar_get_rows` (informational): PASS on lavapipe; on Mesa ANV a small varying handful of the 128 elements intermittently read back `0.0` (ANV strided-store codegen quirk, not a logic bug; `-`-guarded in the Makefile). Both `use_qjl` modes affected; the reduction-based `polar.comp`/`polar_preht.comp` share the same decode and are clean |
+> | QJL          | `metal/qjl.metal`, `vulkan/qjl.comp` plus fallback `vulkan/qjl{_get_rows,_mul_mv}.comp` | YES (against `qjl_score_qk_ref` in `plugins/plugin-local-inference/native/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan score: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) and on Intel ARL Mesa ANV 25.2.8. Fallback `qjl_mul_mv`: YES — 8/8 PASS on Intel ARL Mesa ANV (hard gate, reduction-based QJL-score parity); fallback `qjl_get_rows`: PASS on lavapipe, intermittent few-element `0.0` read-back on Mesa ANV (informational, `-`-guarded; ANV strided-store codegen quirk, not a logic bug) |
+> | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp`, `vulkan/polar_preht.comp` plus fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `plugins/plugin-local-inference/native/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max, including pre-Hadamard query entrypoint. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 and on Intel ARL Mesa ANV 25.2.8, including `polar_preht.spv`. Fallback `polar_get_rows` (informational): PASS on lavapipe; on Mesa ANV a small varying handful of the 128 elements intermittently read back `0.0` (ANV strided-store codegen quirk, not a logic bug; `-`-guarded in the Makefile). Both `use_qjl` modes affected; the reduction-based `polar.comp`/`polar_preht.comp` share the same decode and are clean |
 > | Fused attention (QJL-K + TBQ-V / Polar-V) | `vulkan/fused_attn_qjl_tbq.comp`, `vulkan/fused_attn_qjl_polar.comp`; `metal/fused_attn_qjl_tbq.metal`, `metal/fused_attn_qjl_polar.metal`; `cuda/fused-attn-qjl-tbq.cu` + `verify/cuda_verify.cu` harness | YES (against `eliza_fused_attn_qjl_tbq3` / `eliza_fused_attn_qjl_polar` in `reference/`; Metal/CUDA are byte-faithful mirrors of the hardware-verified Vulkan ports) | YES (Vulkan glslc SPIR-V 1.3 / Vulkan 1.1; Metal runtime JIT; CUDA nvcc gated) | Vulkan: YES — 1920/1920 outputs PASS on Intel ARL Mesa ANV 25.2.8 across all four cases (n_kv 64/512/256/128, GQA 1/2/4), max diff 6.3e-7 (`make vulkan-verify-fused`); built-fork `GGML_OP_FUSED_ATTN_QJL_TBQ` graph dispatch verified (`vulkan-dispatch-smoke` 7/7, max diff 4.5e-8). Metal standalone: YES — 1920/1920 outputs PASS on Apple M4 Max via `make metal-verify-fused`, max diff 7.2e-7; Metal fused graph dispatch still needs a built-fork smoke before `fusedAttn.runtimeStatus.metal` can flip runtime-ready. CUDA: AUTHORED — hardware-verify pending (no NVIDIA HW; `verify/cuda_runner.sh` on a CUDA host; build the fork with `-DGGML_CUDA_FUSED_ATTN_QJL=ON`) |
 > | PolarQuant pre-Hadamard-query score | `metal/polar_preht.metal` (`kernel_attn_score_q4_polar_preht_f32` + `_multi`), `vulkan/polar_preht.comp` | YES (`dot(H·x, q) == dot(x, H·q)`; same reference as PolarQuant) | YES (Metal runtime JIT; Vulkan glslc) | Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 + Intel ARL Mesa ANV 25.2.8 (the mat-vec ABI). Metal attention-score ABI: YES — 8/8 PASS for `kernel_attn_score_q4_polar_preht_f32` and `_multi` on Apple M4 Max via `make metal-verify-fused`, max diff 5.8e-6. Metal mat-vec ABI (`kernel_mul_mv_q4_polar_preht_f32` in `polar.metal`): YES — 8/8 PASS on Apple M4 Max |
 > | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-mtp/eliza-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in the `elizaOS/llama.cpp` fork; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
@@ -30,7 +30,7 @@
 >
 >   * The five Metal patch hooks have been collapsed into one
 >     `patchMetalKernels` implementation in
->     `packages/app-core/scripts/kernel-patches/metal-kernels.mjs`. It
+>     `packages/app/scripts/kernel-patches/metal-kernels.mjs`. It
 >     copies the verified standalones from `packages/inference/metal/` into
 >     the fork at `ggml/src/ggml-metal/eliza-shipped/<name>.metal`, then
 >     patches `ggml/src/ggml-metal/CMakeLists.txt` so each standalone is
@@ -138,10 +138,10 @@ CUDA originals: `https://github.com/spiritbuun/buun-llama-cpp.git` at commit
 ### QJL (1-bit JL transform K-cache compression)
 Reference impl in this repo:
 
-- `packages/native/plugins/qjl-cpu/include/qjl/qjl.h` — public API + `block_qjl1_256` layout
-- `packages/native/plugins/qjl-cpu/src/qjl_score_ref.c` — scalar GQA score (the `kernel_attn_score_qjl1_256` mirror target)
-- `packages/native/plugins/qjl-cpu/src/qjl_quantize_ref.c` — quantize one row
-- `packages/native/plugins/qjl-cpu/src/qjl_dispatch.c` — runtime dispatch (NEON / AVX2 / scalar)
+- `plugins/plugin-local-inference/native/qjl-cpu/include/qjl/qjl.h` — public API + `block_qjl1_256` layout
+- `plugins/plugin-local-inference/native/qjl-cpu/src/qjl_score_ref.c` — scalar GQA score (the `kernel_attn_score_qjl1_256` mirror target)
+- `plugins/plugin-local-inference/native/qjl-cpu/src/qjl_quantize_ref.c` — quantize one row
+- `plugins/plugin-local-inference/native/qjl-cpu/src/qjl_dispatch.c` — runtime dispatch (NEON / AVX2 / scalar)
 
 Original CUDA reference (training-side, not the on-device target):
 `packages/training/scripts/quantization/qjl/csrc/{qjl_quant_kernel.cu, qjl_gqa_score_kernel.cu}`. The on-fork CPU side that lands `block_qjl1_256` in `ggml-common.h` is W1-A's responsibility; this directory only ports the Metal half.
@@ -149,13 +149,13 @@ Original CUDA reference (training-side, not the on-device target):
 ### PolarQuant (`block_q4_polar`)
 Reference impl in this repo:
 
-- `packages/native/plugins/polarquant-cpu/include/polarquant/polarquant.h` — public API + 5-step decode contract
-- `packages/native/plugins/polarquant-cpu/include/polarquant/polar_block.h` — `block_q4_polar` packed layout
-- `packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h` — `POLAR_Q4_CENTROIDS[16]` Lloyd-Max LUT (the Metal shader inlines the same constants)
-- `packages/native/plugins/polarquant-cpu/src/polar_dequantize_ref.c` — scalar decoder (the `kernel_get_rows_q4_polar` mirror target)
-- `packages/native/plugins/polarquant-cpu/src/polar_dot_ref.c` — scalar `q4_polar · q8_0` dot product (template for `kernel_mul_mv_q4_polar_f32`, except our verification path uses fp32 activations not q8_0)
-- `packages/native/plugins/polarquant-cpu/src/polar_qjl.c` — xorshift32 sign vector for the optional QJL residual
-- `packages/native/plugins/polarquant-cpu/src/polar_hadamard.c` — in-place 128-element Walsh-Hadamard butterfly
+- `plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polarquant.h` — public API + 5-step decode contract
+- `plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_block.h` — `block_q4_polar` packed layout
+- `plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h` — `POLAR_Q4_CENTROIDS[16]` Lloyd-Max LUT (the Metal shader inlines the same constants)
+- `plugins/plugin-local-inference/native/polarquant-cpu/src/polar_dequantize_ref.c` — scalar decoder (the `kernel_get_rows_q4_polar` mirror target)
+- `plugins/plugin-local-inference/native/polarquant-cpu/src/polar_dot_ref.c` — scalar `q4_polar · q8_0` dot product (template for `kernel_mul_mv_q4_polar_f32`, except our verification path uses fp32 activations not q8_0)
+- `plugins/plugin-local-inference/native/polarquant-cpu/src/polar_qjl.c` — xorshift32 sign vector for the optional QJL residual
+- `plugins/plugin-local-inference/native/polarquant-cpu/src/polar_hadamard.c` — in-place 128-element Walsh-Hadamard butterfly
 
 The on-fork CPU side that adds `block_q4_polar` to `ggml-common.h` is W1-B's
 responsibility; this directory only ports the Metal half.
@@ -322,15 +322,15 @@ make metal
 
 # 5) Optional: build the patched llama-server. Metal kernel patching is
 #    unconditional for Metal targets; there are no opt-in env vars.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --backend metal
 
 # 6) Optional: build the iOS Capacitor static archive that the
 #    LlamaCpp.xcframework patch in
-#    packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
+#    patches/llama-cpp-capacitor@0.1.5.patch consumes.
 #    Requires macOS host with Xcode installed.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-simulator-metal
 ```
 
@@ -374,7 +374,7 @@ make android-vulkan-smoke
 # 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
 #    default-on. The build still refuses publishable artifacts until graph
 #    dispatch capabilities are runtime-ready, not merely symbol-shipped.
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend vulkan
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -515,9 +515,9 @@ The MTP/TBQ/QJL/Polar/Metal fork ships in-tree as a git submodule at
 `bun install` runs `git submodule update --init --recursive`, so a fresh
 checkout has it. Both build paths default to this checkout:
 
-- `packages/app-core/scripts/build-llama-cpp-mtp.mjs` — desktop / server /
+- `packages/app/scripts/build-llama-cpp-mtp.mjs` — desktop / server /
   Windows / iOS.
-- `packages/app-core/scripts/aosp/compile-libllama.mjs` — Android cross-compile
+- `packages/app/scripts/aosp/compile-libllama.mjs` — Android cross-compile
   (same pinned commit, so both paths land on identical kernels).
 
 The build re-applies the kernel patches (`kernel-patches/*`) on top of the
@@ -533,8 +533,8 @@ SWA-based bodies can silently run target-only after `--spec-type mtp`.
 
 Source-of-truth: the verified `.metal` and `.comp` files in this
 directory (`plugins/plugin-local-inference/native/{metal,vulkan}/`). The build script
-`packages/app-core/scripts/build-llama-cpp-mtp.mjs` calls into
-`packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
+`packages/app/scripts/build-llama-cpp-mtp.mjs` calls into
+`packages/app/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
 during `applyForkPatches()` and the helpers do the actual work:
 
 ### Metal (darwin desktop)
@@ -636,7 +636,7 @@ ggml-metal-ops dispatch work flagged above.
 The on-device path consumes
 [`@elizaos/llama-cpp-capacitor`](https://www.npmjs.com/package/@elizaos/llama-cpp-capacitor)
 (currently v0.1.5 from npm), an opaque prebuilt framework. The patch at
-`packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch` switches the
+`patches/llama-cpp-capacitor@0.1.5.patch` switches the
 plugin to consume a vendored `LlamaCpp.xcframework` so we can ship a
 custom-built static archive against the patched fork.
 
@@ -645,8 +645,8 @@ targets (compile-only on this machine — they require macOS host with
 Xcode):
 
 ```bash
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
+bun run packages/app/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
 ```
 
 Both pass `-DGGML_METAL=ON -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64`
@@ -664,7 +664,7 @@ packaging and verifier path are not wired here yet. Those spellings fail
 with explicit diagnostics instead of falling through to a generic unsupported
 target list. Android system-agent fused artifacts, including emulator
 `android-x86_64-*-fused`, are owned by
-`packages/app-core/scripts/aosp/compile-libllama.mjs`.
+`packages/app/scripts/aosp/compile-libllama.mjs`.
 
 Server fused CUDA on arm64 Linux is supported as
 `linux-aarch64-cuda-fused`. It uses the same CUDA fused-attention CMake flags

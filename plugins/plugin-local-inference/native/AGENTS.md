@@ -1,10 +1,10 @@
-# @elizaos/inference
+# Native inference kernels
 
-Private native-kernel workspace for the local-inference stack: Metal, Vulkan, CUDA, and scalar reference implementations plus hardware verification.
+Native-kernel source tree for the local-inference stack: Metal, Vulkan, CUDA, and scalar reference implementations plus hardware verification.
 
 ## Role
 
-This directory owns reusable kernel sources and the verification harness used to prove elizaOS/llama.cpp integrations. It is not a second TypeScript inference runtime. Production model loading and FFI dispatch live in the parent `@elizaos/plugin-local-inference`; build orchestration and target packaging live in app-core scripts and the managed llama.cpp fork.
+This directory owns reusable kernel sources and the verification harness used to prove elizaOS/llama.cpp integrations. It is not a second TypeScript inference runtime. Production model loading and FFI dispatch live in the parent `@elizaos/plugin-local-inference`; build orchestration and target packaging live in app scripts and the managed llama.cpp fork.
 
 `verify/kernel-contract.json` is the authoritative, machine-checked statement of kernel names, required runtime capability keys, fixtures, backend status, hardware evidence, and graph-smoke gates. Do not infer readiness from the presence of a shader, a successful compiler invocation, or prose reports.
 
@@ -13,7 +13,6 @@ The current Gemma text path uses TurboQuant Q4 weights, stock Q8_0/F16 KV, Gemma
 ## Layout
 
 ```
-package.json                 private package scripts
 metal/                       Metal kernels
 vulkan/                      Vulkan compute shaders
 cuda/                        CUDA kernels
@@ -57,14 +56,14 @@ Fused attention is an optimization over the required score/softmax/value-mix pat
 
 ## Commands
 
-Package scripts provide the portable entry points:
+The parent plugin scripts provide the portable entry points:
 
 ```bash
-bun run --cwd plugins/plugin-local-inference/native verify:contract
-bun run --cwd plugins/plugin-local-inference/native verify:reference
-bun run --cwd plugins/plugin-local-inference/native verify:vulkan
-bun run --cwd plugins/plugin-local-inference/native verify:metal
-bun run --cwd plugins/plugin-local-inference/native clean
+bun run --cwd plugins/plugin-local-inference native:verify:contract
+bun run --cwd plugins/plugin-local-inference native:verify:reference
+bun run --cwd plugins/plugin-local-inference native:verify:vulkan
+bun run --cwd plugins/plugin-local-inference native:verify:metal
+bun run --cwd plugins/plugin-local-inference native:clean
 ```
 
 The Makefile exposes narrower and hardware-dependent gates:
@@ -113,6 +112,6 @@ Reference tests establish numerical truth; dispatch smoke proves the optimized f
 
 ## Verification
 
-Start with `verify:contract` and `verify:reference`. Run every backend fixture and built-fork graph gate affected by the change on real target hardware, then inspect the generated evidence and numerical diffs. For model-path changes, also run the parent plugin's real inference or voice workflow.
+Start with the parent plugin commands `native:verify:contract` and `native:verify:reference`. Run every backend fixture and built-fork graph gate affected by the change on real target hardware, then inspect the generated evidence and numerical diffs. For model-path changes, also run the parent plugin's real inference or voice workflow.
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Hardware claims must be reproducible and manually reviewed; authored code, mocked dispatch, or a skipped fixture is not proof.
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Hardware claims must be reproducible and manually reviewed; authored code, mocked dispatch, or a skipped fixture is not proof.

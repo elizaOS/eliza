@@ -1,3 +1,4 @@
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { createAssistantPlugin } from "../index.ts";
 
 /**
@@ -11,13 +12,12 @@ import { createAssistantPlugin } from "../index.ts";
  * (deterministic — no live model, no network).
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type { Room } from "../../../../packages/core/src/types/environment.ts";
 import type {
   Character,
@@ -165,14 +165,14 @@ function makeTransportRuntime(gateModel: ReturnType<typeof vi.fn>): {
   target: TargetInfo;
   sent: Content[];
 } {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: {
       name: `Voice Gate Transport ${v4()}`,
       bio: "test",
       settings: {},
     } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   const sent: Content[] = [];
@@ -193,32 +193,35 @@ describe("voice-gate provenance end to end (#14873)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("delivers a genuine model reply through sendMessageToTarget with NO re-voice model call", async () => {
-    const replyText = `The build finished clean, 981 tests green. probe-${v4()}`;
-    const deliveries = await runTurn(
-      makeMessage("how did the build go?"),
-      vi.fn(async () => stage1DirectReply(replyText)),
-    );
+  it.each(["how did the build go?", "/settings model", "/commands"])(
+    "delivers the model reply for %s without a second voice call",
+    async (text) => {
+      const replyText = `The build finished clean, 981 tests green. probe-${v4()}`;
+      const deliveries = await runTurn(
+        makeMessage(text),
+        vi.fn(async () => stage1DirectReply(replyText)),
+      );
 
-    // The pipeline marked the model's own reply as already-voiced.
-    expect(deliveries).toHaveLength(1);
-    expect(deliveries[0].text).toBe(replyText);
-    expect(deliveries[0].agentVoiced).toBe(true);
+      // The pipeline marked the model's own reply as already-voiced.
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0].text).toBe(replyText);
+      expect(deliveries[0].agentVoiced).toBe(true);
 
-    // At the transport chokepoint the gate short-circuits: the reply is
-    // delivered verbatim and useModel is NEVER called — this is the
-    // ~771ms-per-turn TEXT_SMALL that used to sit between reply generation
-    // and delivery.
-    const gateModel = vi.fn(async () => {
-      throw new Error("voice gate must not re-voice a genuine model reply");
-    });
-    const { runtime, target, sent } = makeTransportRuntime(gateModel);
-    await runtime.sendMessageToTarget(target, deliveries[0]);
+      // At the transport chokepoint the gate short-circuits: the reply is
+      // delivered verbatim and useModel is NEVER called — this is the
+      // ~771ms-per-turn TEXT_SMALL that used to sit between reply generation
+      // and delivery.
+      const gateModel = vi.fn(async () => {
+        throw new Error("voice gate must not re-voice a genuine model reply");
+      });
+      const { runtime, target, sent } = makeTransportRuntime(gateModel);
+      await runtime.sendMessageToTarget(target, deliveries[0]);
 
-    expect(gateModel).not.toHaveBeenCalled();
-    expect(sent).toHaveLength(1);
-    expect(sent[0].text).toBe(replyText);
-  });
+      expect(gateModel).not.toHaveBeenCalled();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].text).toBe(replyText);
+    },
+  );
 
   it("still voices a synthetic transient-failure template through the gate", async () => {
     // Every model call fails with a generic transient error, so the pipeline

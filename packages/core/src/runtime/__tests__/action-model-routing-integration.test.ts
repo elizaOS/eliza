@@ -6,9 +6,9 @@
  * `runtime.useModel(...)`. Closes W1-R2.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	type Action,
 	type Character,
@@ -40,9 +40,9 @@ describe("action model routing — runtime integration", () => {
 	let anthropicLargeHandler: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
-		runtime = new AgentRuntime({
+		runtime = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 		});
 		runtime.composeState = async () => ({ values: {}, data: {}, text: "" });
@@ -165,9 +165,9 @@ describe("action model routing — runtime integration", () => {
 
 	it("fallback: LOCAL with no local handler registered falls through to the cloud TEXT_SMALL", async () => {
 		// Re-create runtime with NO local handler.
-		const runtime2 = new AgentRuntime({
+		const runtime2 = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 		});
 		runtime2.composeState = async () => ({ values: {}, data: {}, text: "" });
@@ -204,9 +204,9 @@ describe("action model routing — runtime integration", () => {
 	});
 
 	it("fallback: handler error escalates one step up the chain", async () => {
-		const runtime3 = new AgentRuntime({
+		const runtime3 = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 		});
 		runtime3.composeState = async () => ({ values: {}, data: {}, text: "" });

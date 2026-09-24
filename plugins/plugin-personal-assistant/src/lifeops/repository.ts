@@ -34,16 +34,6 @@ export {
 
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
-import type {
-  LifeOpsPaymentSource,
-  LifeOpsPaymentTransaction,
-} from "@elizaos/plugin-finances/payment-types";
-import type {
-  LifeOpsSubscriptionAudit,
-  LifeOpsSubscriptionCancellation,
-  LifeOpsSubscriptionCandidate,
-} from "@elizaos/plugin-finances/subscriptions-types";
 import { GoalsRepository } from "@elizaos/plugin-goals/db/goals-repository";
 import {
   type EntityStore,
@@ -167,22 +157,6 @@ export class LifeOpsRepository {
   private readonly workThreads: WorkThreadRepository;
   private readonly briefEngagements: BriefEngagementRepository;
   private readonly workflows: WorkflowRepository;
-  /**
-   * Per-agent counter for telemetry-mirror failures inside
-   * {@link createActivitySignal}. The live signal insert is the primary
-   * source of truth; mirror failures must not block persistence, but we
-   * still want visibility when the mirror is broken. First failure logs,
-   * then we throttle to once every 100 failures so a broken backend
-   * doesn't flood logs.
-   */
-
-  /**
-   * Finance back-end repository. The finance tables (payment sources /
-   * transactions, subscription audits / candidates / cancellations) moved to
-   * @elizaos/plugin-finances; the finance methods below delegate here so the
-   * subscriptions mixin keeps reaching them through `this.repository`.
-   */
-  private readonly financesRepo: FinancesRepository;
 
   constructor(private readonly runtime: IAgentRuntime) {
     this.browserSessions = new BrowserSessionRepository(runtime);
@@ -206,7 +180,6 @@ export class LifeOpsRepository {
     this.workThreads = new WorkThreadRepository(runtime);
     this.briefEngagements = new BriefEngagementRepository(runtime);
     this.workflows = new WorkflowRepository(runtime);
-    this.financesRepo = new FinancesRepository(runtime);
   }
 
   /**
@@ -571,160 +544,6 @@ export class LifeOpsRepository {
     ...args: Parameters<AuditLedgerRepository["listDelegationContracts"]>
   ): ReturnType<AuditLedgerRepository["listDelegationContracts"]> {
     return this.auditLedger.listDelegationContracts(...args);
-  }
-
-  // ---------------------------------------------------------------------
-  // Finance (subscription) delegations → @elizaos/plugin-finances.
-  // The raw SQL lives in FinancesRepository; these wrappers keep the
-  // subscriptions mixin reaching the finance tables through `this.repository`.
-  // ---------------------------------------------------------------------
-
-  async createSubscriptionAudit(
-    audit: LifeOpsSubscriptionAudit,
-  ): Promise<void> {
-    return this.financesRepo.createSubscriptionAudit(audit);
-  }
-
-  async updateSubscriptionAudit(
-    audit: LifeOpsSubscriptionAudit,
-  ): Promise<void> {
-    return this.financesRepo.updateSubscriptionAudit(audit);
-  }
-
-  async getSubscriptionAudit(
-    agentId: string,
-    auditId: string,
-  ): Promise<LifeOpsSubscriptionAudit | null> {
-    return this.financesRepo.getSubscriptionAudit(agentId, auditId);
-  }
-
-  async getLatestSubscriptionAudit(
-    agentId: string,
-  ): Promise<LifeOpsSubscriptionAudit | null> {
-    return this.financesRepo.getLatestSubscriptionAudit(agentId);
-  }
-
-  async createSubscriptionCandidate(
-    candidate: LifeOpsSubscriptionCandidate,
-  ): Promise<void> {
-    return this.financesRepo.createSubscriptionCandidate(candidate);
-  }
-
-  async listSubscriptionCandidatesForAudit(
-    agentId: string,
-    auditId: string,
-  ): Promise<LifeOpsSubscriptionCandidate[]> {
-    return this.financesRepo.listSubscriptionCandidatesForAudit(
-      agentId,
-      auditId,
-    );
-  }
-
-  async getSubscriptionCandidate(
-    agentId: string,
-    candidateId: string,
-  ): Promise<LifeOpsSubscriptionCandidate | null> {
-    return this.financesRepo.getSubscriptionCandidate(agentId, candidateId);
-  }
-
-  async createSubscriptionCancellation(
-    cancellation: LifeOpsSubscriptionCancellation,
-  ): Promise<void> {
-    return this.financesRepo.createSubscriptionCancellation(cancellation);
-  }
-
-  async updateSubscriptionCancellation(
-    cancellation: LifeOpsSubscriptionCancellation,
-  ): Promise<void> {
-    return this.financesRepo.updateSubscriptionCancellation(cancellation);
-  }
-
-  async getSubscriptionCancellation(
-    agentId: string,
-    cancellationId: string,
-  ): Promise<LifeOpsSubscriptionCancellation | null> {
-    return this.financesRepo.getSubscriptionCancellation(
-      agentId,
-      cancellationId,
-    );
-  }
-
-  async getLatestSubscriptionCancellation(
-    agentId: string,
-    serviceSlug?: string,
-  ): Promise<LifeOpsSubscriptionCancellation | null> {
-    return this.financesRepo.getLatestSubscriptionCancellation(
-      agentId,
-      serviceSlug,
-    );
-  }
-
-  // Email-unsubscribe persistence (the `app_lifeops.life_email_unsubscribes`
-  // table this schema still registers) moved to `@elizaos/plugin-inbox`'s
-  // `InboxUnsubscribeRepository`. PA's email-unsubscribe mixin now delegates to
-  // the inbox service, so LifeOpsRepository no longer carries those reads/writes.
-
-  // ---------------------------------------------------------------------
-  // Finance (payment) delegations → @elizaos/plugin-finances.
-  // ---------------------------------------------------------------------
-
-  async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
-    return this.financesRepo.upsertPaymentSource(source);
-  }
-
-  async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {
-    return this.financesRepo.listPaymentSources(agentId);
-  }
-
-  async getPaymentSource(
-    agentId: string,
-    sourceId: string,
-  ): Promise<LifeOpsPaymentSource | null> {
-    return this.financesRepo.getPaymentSource(agentId, sourceId);
-  }
-
-  async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
-    return this.financesRepo.deletePaymentSource(agentId, sourceId);
-  }
-
-  async deletePaymentTransactionById(
-    agentId: string,
-    transactionId: string,
-  ): Promise<void> {
-    return this.financesRepo.deletePaymentTransactionById(
-      agentId,
-      transactionId,
-    );
-  }
-
-  async insertPaymentTransaction(
-    transaction: LifeOpsPaymentTransaction,
-  ): Promise<boolean> {
-    return this.financesRepo.insertPaymentTransaction(transaction);
-  }
-
-  async listPaymentTransactions(
-    agentId: string,
-    args: {
-      sourceId?: string | null;
-      sinceAt?: string | null;
-      untilAt?: string | null;
-      limit?: number | null;
-      merchantContains?: string | null;
-      onlyDebits?: boolean | null;
-    } = {},
-  ): Promise<LifeOpsPaymentTransaction[]> {
-    return this.financesRepo.listPaymentTransactions(agentId, args);
-  }
-
-  async countPaymentTransactionsForSource(
-    agentId: string,
-    sourceId: string,
-  ): Promise<number> {
-    return this.financesRepo.countPaymentTransactionsForSource(
-      agentId,
-      sourceId,
-    );
   }
   createActivitySignal(
     ...args: Parameters<ActivityTelemetryRepository["createActivitySignal"]>

@@ -3,34 +3,14 @@
  * and dispatches actions into the app state.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
 } from "../bridge";
-import {
-  appendSavedCustomCommand,
-  loadSavedCustomCommands,
-  type SavedCustomCommand,
-} from "../chat";
 import { dispatchChatPrefill } from "../events";
 import { useAppSelectorShallow } from "../state/app-store";
-
-export type CustomCommand = SavedCustomCommand;
-
-/** Read saved custom commands from localStorage. */
-export function loadCustomCommands(): CustomCommand[] {
-  return loadSavedCustomCommands();
-}
-
-export interface ContextMenuState {
-  saveCommandModalOpen: boolean;
-  saveCommandText: string;
-  customCommands: CustomCommand[];
-  closeSaveCommandModal: () => void;
-  confirmSaveCommand: (name: string) => void;
-}
 
 function getSelectedText(target: EventTarget | null): string {
   if (
@@ -65,29 +45,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.isContentEditable;
 }
 
-export function useContextMenu(): ContextMenuState {
-  const { setState, handleChatSend, setActionNotice } = useAppSelectorShallow(
-    (s) => ({
-      setState: s.setState,
-      handleChatSend: s.handleChatSend,
-      setActionNotice: s.setActionNotice,
-    }),
-  );
+export function useContextMenu(): void {
+  const { setState, handleChatSend } = useAppSelectorShallow((s) => ({
+    setState: s.setState,
+    handleChatSend: s.handleChatSend,
+  }));
   const desktopRuntime = isElectrobunRuntime();
 
-  const [saveCommandModalOpen, setSaveCommandModalOpen] = useState(false);
-  const [saveCommandText, setSaveCommandText] = useState("");
-  const [customCommands, setCustomCommands] =
-    useState<CustomCommand[]>(loadCustomCommands);
-
   useEffect(() => {
-    const onSaveAsCommand = (payload: unknown) => {
-      const command = payload as { text: string } | undefined;
-      if (!command?.text) return;
-      setSaveCommandText(command.text);
-      setSaveCommandModalOpen(true);
-    };
-
     const onAskAgent = (payload: unknown) => {
       const command = payload as { text: string } | undefined;
       if (!command?.text) return;
@@ -116,11 +81,6 @@ export function useContextMenu(): ContextMenuState {
     };
 
     const unsubscribers = [
-      subscribeDesktopBridgeEvent({
-        rpcMessage: "contextMenuSaveAsCommand",
-        ipcChannel: "contextMenu:saveAsCommand",
-        listener: onSaveAsCommand,
-      }),
       subscribeDesktopBridgeEvent({
         rpcMessage: "contextMenuAskAgent",
         ipcChannel: "contextMenu:askAgent",
@@ -178,33 +138,4 @@ export function useContextMenu(): ContextMenuState {
       window.removeEventListener("contextmenu", onContextMenu);
     };
   }, [desktopRuntime]);
-
-  const closeSaveCommandModal = useCallback(() => {
-    setSaveCommandModalOpen(false);
-    setSaveCommandText("");
-  }, []);
-
-  const confirmSaveCommand = useCallback(
-    (name: string) => {
-      const cmd: CustomCommand = {
-        name,
-        text: saveCommandText,
-        createdAt: Date.now(),
-      };
-      appendSavedCustomCommand(cmd);
-      setCustomCommands(loadCustomCommands());
-      setSaveCommandModalOpen(false);
-      setSaveCommandText("");
-      setActionNotice(`Saved /${name} command`, "success");
-    },
-    [saveCommandText, setActionNotice],
-  );
-
-  return {
-    saveCommandModalOpen,
-    saveCommandText,
-    customCommands,
-    closeSaveCommandModal,
-    confirmSaveCommand,
-  };
 }

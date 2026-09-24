@@ -35,7 +35,6 @@ import {
   handleMeetingJoinDispatch,
   MEETING_JOIN_CHANNEL_KEY,
 } from "@elizaos/plugin-calendar";
-import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
@@ -89,7 +88,6 @@ import { householdCoordinationAction } from "./actions/household-coordination.js
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
   ownerAlarmsAction,
-  ownerFinancesAction,
   ownerGoalsAction,
   ownerHealthAction,
   ownerRemindersAction,
@@ -556,23 +554,6 @@ export async function ensureLifeOpsPdfPluginRegistered(
 }
 
 /**
- * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
- * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
- * into the finances plugin's `app_finances` schema; PA's finance repository
- * methods read/write those tables via raw SQL, so the finances plugin (which
- * owns the schema + the non-destructive data copy) MUST be loaded whenever PA
- * is. Hard dependency, so a static import is sufficient.
- */
-export async function ensureLifeOpsFinancesPluginRegistered(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (runtime.plugins.some((plugin) => plugin.name === financesPlugin.name)) {
-    return;
-  }
-  await runtime.registerPlugin(financesPlugin);
-}
-
-/**
  * Register `@elizaos/plugin-reminders` if it is not already in the runtime. The
  * reminder tables (life_reminder_plans / life_reminder_attempts /
  * life_escalation_states) moved out of LifeOps into the reminders plugin's
@@ -734,7 +715,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
     // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
     ...promoteSubactionsToActions(blockAction),
-    ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
     ...promoteSubactionsToActions(
       calendarAction,
@@ -995,8 +975,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsPdfPluginRegistered(runtime);
-
-    await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);

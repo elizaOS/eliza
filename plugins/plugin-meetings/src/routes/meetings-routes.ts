@@ -1,7 +1,7 @@
 /**
  * Meeting HTTP routes — `/api/meetings*`, served as rawPath plugin routes
  * (registered on `runtime.routes`, dispatched by both the upstream agent
- * server and app-core), following the exact pattern of the transcripts routes
+ * server and app), following the exact pattern of the transcripts routes
  * in plugin-local-inference. Private routes: the host dispatcher answers 401
  * for unauthenticated callers.
  *

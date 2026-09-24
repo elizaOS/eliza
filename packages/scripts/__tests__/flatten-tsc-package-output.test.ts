@@ -170,10 +170,14 @@ describe("recursive cleanup CLI", () => {
     const target = join(root, "target.txt");
     writeFileSync(target, "retained until the complete request is valid");
     await expect(
-      execFileAsync(process.execPath, [linkedScript, target, "."], { cwd: root }),
+      execFileAsync(process.execPath, [linkedScript, target, "."], {
+        cwd: root,
+      }),
     ).rejects.toThrow("Refusing to remove the current working directory");
     expect(existsSync(target)).toBe(true);
-    await execFileAsync(process.execPath, [linkedScript, target], { cwd: root });
+    await execFileAsync(process.execPath, [linkedScript, target], {
+      cwd: root,
+    });
     expect(existsSync(target)).toBe(false);
   });
 });

@@ -9342,7 +9342,18 @@ function hasInFlightActionClaim(candidate: string): boolean {
         /^\s*(?:(?:just|please)\s+)?(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b[\s\S]*\band\s*$/i.test(
           before,
         );
-      return !precedingRequest && !followingRequest && !requestedInput;
+      // Only a user-owned prerequisite in this same clause qualifies; quoted
+      // text, another sentence or a second promise cannot authorize work.
+      const requestedConnection =
+        /(?:^|,\s*(?:or\s+)?)\s*(?:(?:you\s+(?:can|could)|please)\s+)?(?:reconnect|connect|sign in|log in)\b[^;.!?]*\band\s*$/i.test(
+          before,
+        );
+      return (
+        !precedingRequest &&
+        !followingRequest &&
+        !requestedInput &&
+        !requestedConnection
+      );
     });
   });
 }

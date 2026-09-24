@@ -169,9 +169,7 @@ describe("public release input contract", () => {
         "--github-output",
         outputPath,
       ]);
-      expect(readFileSync(outputPath, "utf8")).toContain(
-        "tag=v3.0.0-beta.1\n",
-      );
+      expect(readFileSync(outputPath, "utf8")).toContain("tag=v3.0.0-beta.1\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

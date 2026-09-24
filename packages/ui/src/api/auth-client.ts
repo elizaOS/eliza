@@ -8,7 +8,7 @@
  * can be used in auth-gated components before the main client is initialised.
  */
 
-import type { RoleGateRole } from "@elizaos/common";
+import type { RoleGateRole } from "@elizaos/core";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,

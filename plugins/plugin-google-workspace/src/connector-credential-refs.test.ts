@@ -15,7 +15,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
@@ -330,7 +330,7 @@ describe("accountId 'default' resolution", () => {
 describe("manager-path durability across restart (real core manager + adapter)", () => {
   function createManagerRuntime(
     services: Record<string, unknown>,
-    adapter?: InMemoryDatabaseAdapter
+    adapter?: SQLiteDatabaseAdapter
   ): IAgentRuntime {
     return {
       agentId: AGENT_ID,
@@ -362,9 +362,9 @@ describe("manager-path durability across restart (real core manager + adapter)",
     const bootRuntime = createManagerRuntime(bootServices);
     const bootManager = getConnectorAccountManager(bootRuntime);
 
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
-    (bootRuntime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter = adapter;
+    (bootRuntime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter = adapter;
 
     // OAuth completion writes the connected account with its credential refs.
     await bootManager.upsertAccount("google", {

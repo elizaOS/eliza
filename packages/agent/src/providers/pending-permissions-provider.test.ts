@@ -9,8 +9,9 @@
  * position -5, and retained across narrow planner-context routing).
  * Deterministic: the registry and runtime are in-memory vi fakes.
  */
+
 import {
-  AgentRuntime,
+  type AgentRuntime,
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   type IAgentRuntime,
@@ -19,7 +20,7 @@ import {
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPendingPermissionsContext,
@@ -49,9 +50,9 @@ const ROOM_ID = "00000000-0000-4000-8000-000000000004" as UUID;
 
 const activeRuntimes: AgentRuntime[] = [];
 async function initializedRuntime(name: string): Promise<AgentRuntime> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: { name, bio: [] },
-    adapter: new InMemoryDatabaseAdapter(),
+
     settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
     logLevel: "fatal",
   });

@@ -14,7 +14,7 @@ vi.mock("../utils/eliza-globals", () => ({
   getElizaApiToken: () => "test-token",
 }));
 
-import { reportShortcutFired } from "./useSlashCommandController";
+import { reportShortcutFired } from "./shortcut-report";
 
 const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
 

@@ -8,7 +8,7 @@
         "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarItem",
         "packages/ui/src/components/settings/settings-layout.tsx:SettingsRow",
         "packages/ui/src/components/shared/ActionListRow.tsx:ActionListRow",
-        "plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:ReasoningCell"
+        "plugins/plugin-agent-orchestrator/src/ui/orchestrator-reasoning.tsx:ReasoningCell"
       ],
       "semanticFingerprint": "sha256:982159e726ae366cad541734d281ae30c74bbff4c06577ae8203a7786d25581c"
     },

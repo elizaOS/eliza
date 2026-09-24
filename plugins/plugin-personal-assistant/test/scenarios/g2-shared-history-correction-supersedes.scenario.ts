@@ -5,7 +5,7 @@
  * one reads as fabricated, which is precisely the failure a grounded draft is
  * supposed to avoid.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

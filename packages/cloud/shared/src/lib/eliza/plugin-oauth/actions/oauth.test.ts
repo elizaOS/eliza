@@ -1,7 +1,6 @@
 // Exercises oauth behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
-import type { Memory } from "@elizaos/common";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { oauthAction } from "./oauth";
 
 function message(content: Record<string, unknown>): Memory {

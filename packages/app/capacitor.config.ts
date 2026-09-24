@@ -165,7 +165,7 @@ export function resolveAndroidProjectPath(
 ): string {
   return useAppDir === "1" || appId !== "ai.elizaos.app"
     ? "android"
-    : "../app-core/platforms/android";
+    : "../app/platforms/android";
 }
 
 export function resolveCapacitorAppId(
@@ -207,7 +207,7 @@ const capacitorHttpEnabled = resolveCapacitorHttpEnabled(
 const config: CapacitorConfig = {
   appId: capacitorAndroidIdentity.appId,
   appName: appConfig.appName,
-  webDir: "dist",
+  webDir: "web-dist",
   loggingBehavior: resolveCapacitorLoggingBehavior(),
   server: {
     androidScheme: "https",
@@ -276,7 +276,7 @@ const config: CapacitorConfig = {
   },
   android: {
     // Keep `cap sync` pointed at the same Android tree run-mobile-build will
-    // package. Upstream elizaOS owns the shared app-core tree; white-label or
+    // package. Upstream elizaOS owns the shared app tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
     path: capacitorAndroidIdentity.projectPath,
     // Android owns the fused app runtime. Keep iOS's llama-cpp-capacitor

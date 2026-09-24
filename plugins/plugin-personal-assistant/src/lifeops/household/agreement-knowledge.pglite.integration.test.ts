@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
-import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import { AuthStore } from "@elizaos/app/services/auth-store";
 import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
@@ -60,7 +60,7 @@ import { LocalFileStorageService } from "../../../../../packages/agent/src/servi
 import {
   createBrowserSession,
   createMachineSession,
-} from "../../../../../packages/app-core/src/api/auth/sessions.ts";
+} from "../../../../../packages/app/src/api/auth/sessions.ts";
 import {
   composeResponseState,
   selectV5PlannerStateProviderNames,

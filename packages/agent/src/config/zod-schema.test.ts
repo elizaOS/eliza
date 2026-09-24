@@ -180,17 +180,6 @@ describe("ElizaSchema root", () => {
     expectOk(ElizaSchema, {});
   });
 
-  it("applies CommandsSchema defaults when commands is omitted", () => {
-    const result = ElizaSchema.safeParse({});
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.commands).toEqual({
-        native: "auto",
-        nativeSkills: "auto",
-      });
-    }
-  });
-
   it("rejects a non-object root", () => {
     expectFail(ElizaSchema, null);
     expectFail(ElizaSchema, undefined);

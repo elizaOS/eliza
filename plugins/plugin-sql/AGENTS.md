@@ -135,10 +135,12 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 The base plugin has no Electric sync, cloud write forwarding, or Neon serverless driver. Use ordinary PostgreSQL connections for hosted Postgres. PGlite local live queries are available only through explicitly supplied extensions.
+
+Semantic search intersects excludeRoomIds with every existing scope predicate before distance ordering and pagination. includeEmbedding:false selects no returned vector payload while retaining the vector join, similarity calculation, threshold behavior and text reranking. Omission preserves the existing full-vector result contract; storage is never changed by projection.

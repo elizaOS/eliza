@@ -3,7 +3,7 @@
  * report reminder, then re-asks with a narrower version; the assistant should
  * respect the cancellation and store only the confirmed replacement.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

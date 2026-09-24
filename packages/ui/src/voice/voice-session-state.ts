@@ -41,6 +41,10 @@ export type VoiceSessionPhase =
 
 export interface VoiceSessionMachineState {
   phase: VoiceSessionPhase;
+  /** Ephemeral acknowledgement for this turn; not conversation history. */
+  progressText?: string;
+  /** Suppress delayed progress from a locally cancelled turn. */
+  progressCancelledTraceId?: string | null;
   /** Session id from the server `ready` event, once known. */
   sessionId: string | null;
   /** Trace id of the CURRENT turn (from the latest server event carrying one). */
@@ -94,9 +98,18 @@ export function applyClientAction(
       // immediately and return to listening. The authoritative `interrupted`
       // event still arrives and reconciles (see applyServerEvent).
       if (state.phase === "speaking") {
-        return { ...state, phase: "listening" };
+        return {
+          ...state,
+          phase: "listening",
+          progressText: undefined,
+          progressCancelledTraceId: state.traceId,
+        };
       }
-      return state;
+      return {
+        ...state,
+        progressText: undefined,
+        progressCancelledTraceId: state.traceId,
+      };
   }
 }
 
@@ -124,6 +137,7 @@ export function applyServerEvent(
       return {
         ...state,
         phase: "ready",
+        progressText: undefined,
         sessionId: event.sessionId,
         traceId: event.traceId,
         lastError: null,
@@ -132,6 +146,7 @@ export function applyServerEvent(
       return {
         ...state,
         phase: "transcribing",
+        progressText: undefined,
         traceId: event.traceId,
         interimTranscript: event.text,
       };
@@ -166,14 +181,34 @@ export function applyServerEvent(
         phase: state.phase === "speaking" ? "speaking" : "thinking",
         traceId: event.traceId,
         finalTranscript: event.text,
+        progressText: undefined,
         interimTranscript: "",
       };
+    case "progress":
+      return state.traceId === event.traceId &&
+        state.progressCancelledTraceId !== event.traceId &&
+        (state.phase === "thinking" || state.phase === "speaking")
+        ? { ...state, progressText: event.text }
+        : state;
+    case "reply_complete":
+      // Transcript reconciliation is separate from audible playback state.
+      return state;
     case "llm_first_text":
-      return { ...state, phase: "thinking", traceId: event.traceId };
+      return {
+        ...state,
+        phase: "thinking",
+        traceId: event.traceId,
+        progressText: undefined,
+      };
     case "speaking_start":
       return { ...state, phase: "speaking", traceId: event.traceId };
     case "speaking_end":
-      return { ...state, phase: "complete", traceId: event.traceId };
+      return {
+        ...state,
+        phase: "complete",
+        traceId: event.traceId,
+        progressText: undefined,
+      };
     case "navigate_view":
       // Navigation is a shell side effect; the voice phase remains unchanged.
       return { ...state, traceId: event.traceId };
@@ -181,6 +216,7 @@ export function applyServerEvent(
       return {
         ...state,
         phase: "interrupted",
+        progressText: undefined,
         traceId: event.traceId,
         interruptionReason: event.reason,
       };
@@ -188,6 +224,7 @@ export function applyServerEvent(
       return {
         ...state,
         lastError: { code: event.code, retryable: event.retryable },
+        progressText: undefined,
       };
     case "usage":
       // finishTurn emits usage even when the model deliberately stays silent.
@@ -195,8 +232,8 @@ export function applyServerEvent(
       // delayed receipts must not complete a newer utterance or cut off audio.
       if (state.traceId !== event.traceId) return state;
       return state.phase === "thinking"
-        ? { ...state, phase: "complete" }
-        : state;
+        ? { ...state, phase: "complete", progressText: undefined }
+        : { ...state, progressText: undefined };
     case "assistant_playing":
     case "human_double_talk":
     case "echo_rejected":
@@ -230,6 +267,7 @@ export function loopToListening(
       ...state,
       phase: "listening",
       interruptionReason: null,
+      progressText: undefined,
     };
   }
   return state;
@@ -243,7 +281,7 @@ export function beginListening(
   state: VoiceSessionMachineState,
 ): VoiceSessionMachineState {
   if (state.phase === "ready" || state.phase === "complete") {
-    return { ...state, phase: "listening" };
+    return { ...state, phase: "listening", progressText: undefined };
   }
   return state;
 }

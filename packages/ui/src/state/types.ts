@@ -210,11 +210,6 @@ export function shouldAwaitAgentReadiness(
   );
 }
 
-export type SlashCommandInput = {
-  name: string;
-  argsRaw: string;
-};
-
 export type StartupPhase = "starting-backend" | "initializing-agent" | "ready";
 
 export type StartupErrorReason =

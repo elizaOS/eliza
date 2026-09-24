@@ -9,10 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { createHash, createHmac } from "node:crypto";
-import {
-  BGE_SMALL_VECTOR_SPACE,
-  identifyEmbeddingVector,
-} from "@elizaos/common";
+import { BGE_SMALL_VECTOR_SPACE, identifyEmbeddingVector } from "@elizaos/core";
 import type { PlatformAdapter } from "../../services/gateway-webhook/src/adapters/types";
 import type { GatewayRedis } from "../../services/gateway-webhook/src/redis";
 import { pushSchema } from "../../shared/node_modules/drizzle-kit/api.mjs";

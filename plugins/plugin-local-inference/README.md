@@ -20,7 +20,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 
 | Capability | How it appears |
 |---|---|
-| `GENERATE_MEDIA` action | Agent responds to "draw me a ...", "say ...", "speak ...", etc. by calling the local image or TTS backend. |
+| Media model handlers | The assistant-owned `GENERATE_MEDIA` action uses this provider's image and speech handlers; this plugin registers no competing media action. |
 | `TEXT_SMALL` / `TEXT_LARGE` handler | Agent uses the active Eliza-1 text model for all reasoning and response generation. |
 | `TEXT_EMBEDDING` handler | Agent embeds memories using the local embedding GGUF; avoids cloud API calls for RAG. |
 | `TEXT_TO_SPEECH` handler | Agent converts text to audio using the selected local TTS backend. |
@@ -143,7 +143,7 @@ The plugin exposes these subpath exports (see `package.json` `exports`):
 - `@elizaos/plugin-local-inference` — plugin object, `GENERATE_MEDIA` action, `handleLocalInferenceRoutes`, embedding presets.
 - `@elizaos/plugin-local-inference/runtime` — boot-time handler registration (`ensureLocalInferenceHandler`), embedding warm-up policy, mobile gate.
 - `@elizaos/plugin-local-inference/runtime/embedding-presets` — `detectEmbeddingPreset`, `EMBEDDING_PRESETS`.
-- `@elizaos/plugin-local-inference/routes` — HTTP route handlers (`handleLocalInferenceCompatRoutes`, TTS/ASR, voice) mounted by app-core.
+- `@elizaos/plugin-local-inference/routes` — HTTP route handlers (`handleLocalInferenceCompatRoutes`, TTS/ASR, voice) mounted by app.
 - `@elizaos/plugin-local-inference/services` — full service surfaces (engine, arbiter, catalog, recommendation, voice) for deep integrations.
 
 The **MemoryArbiter** (`services/memory-arbiter.ts`) is the single coordination point for all model handles across modalities. On memory-constrained devices (mobile, low-RAM desktop), the arbiter evicts models by priority before loading a new one. Cross-plugin consumers (vision, image-gen) register capabilities via `arbiter.registerCapability(...)` rather than loading models independently.
@@ -198,7 +198,7 @@ entity-match, first-audio/TTFT latency — via `workbench-entrypoint.ts` +
 - **Headless runner** — `workbench-headless-runner.ts` drives each scenario class
   through the real services and scores it; an absent corpus/backend yields
   `skipped`, never `pass`.
-- **scenario-runner audio turn** — `packages/scenario-runner/src/voice-turn.ts`
+- **scenario-runner audio turn** — `packages/testing/scenario-runner/src/voice-turn.ts`
   adds a `voice` turn kind so voice scenarios are first-class `.scenario.ts`
   files over a real `AgentRuntime`.
 - **Headful specs** — `packages/app/test/ui-smoke/voice-workbench-*.spec.ts` (one
@@ -244,7 +244,7 @@ bun install
 bun run --cwd packages/core prebuild
 
 # 1. Build + stage the fused lib with Kokoro folded in.
-bun packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
+bun packages/app/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
 
 # 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
 DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"
@@ -261,7 +261,7 @@ ELIZA_INFERENCE_LIB_DIR=/tmp/fused-lib LD_LIBRARY_PATH=/tmp/fused-lib \
 This is an explicit hardware/operator smoke rather than a pull-request check.
 Run it on the Linux host that owns the staged fused library and model assets.
 
-For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.
+For agent-facing documentation see `AGENTS.md` in this directory.
 
 ### Complete Kokoro speech
 

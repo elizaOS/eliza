@@ -5,7 +5,7 @@
  * that every decoded-audio provider must follow.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import {
   type PlaybackFramePump,

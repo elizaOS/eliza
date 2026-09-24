@@ -14,7 +14,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
 import {
@@ -78,7 +78,7 @@ function makeRuntime(store: Store) {
 }
 
 async function makeAdapterRuntime() {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
   const runtime = {
     agentId: AGENT_ID,
@@ -86,7 +86,7 @@ async function makeAdapterRuntime() {
     roomHandlerQueue: new RoomHandlerQueue(),
     ensureConnection: vi.fn(async () => undefined),
     getMemories: vi.fn(
-      async (params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0]) =>
+      async (params: Parameters<SQLiteDatabaseAdapter["getMemories"]>[0]) =>
         adapter.getMemories(params),
     ),
     countMemories: vi.fn(

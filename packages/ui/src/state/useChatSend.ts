@@ -5,11 +5,11 @@
  * streaming, stop, retry, edit, clear, and queue management.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/shared/logger";
 import { asRecord } from "@elizaos/shared/type-guards";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import type { Conversation, CustomActionDef } from "../api";
+import type { Conversation } from "../api";
 import {
   type ChatActionResultSummary,
   type ChatToolCallEvent,
@@ -34,11 +34,6 @@ import {
   readPendingCapabilityReadyAgentId,
   rememberCapabilityHandoff,
 } from "../capability-handoff";
-import {
-  expandSavedCustomCommand,
-  loadSavedCustomCommands,
-  normalizeSlashCommandName,
-} from "../chat";
 import {
   captureCompletedActionNavigationFence,
   dispatchCompletedActionNavigation,
@@ -74,9 +69,6 @@ import {
   formatSearchBullet,
   type LoadConversationMessagesResult,
   mergeStreamingText,
-  normalizeCustomActionName,
-  parseCustomActionParams,
-  parseSlashCommandInput,
   type StreamingTextModification,
   shouldApplyFinalStreamText,
 } from "./internal";
@@ -1358,97 +1350,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           conversationId,
           ownershipGeneration,
         );
-      const slash = parseSlashCommandInput(rawText);
-      if (slash) {
-        const savedCommand = loadSavedCustomCommands().find(
-          (command) => normalizeSlashCommandName(command.name) === slash.name,
-        );
-        if (savedCommand) {
-          const rewrittenText = expandSavedCustomCommand(
-            savedCommand.text,
-            slash.argsRaw,
-          );
-          if (!rewrittenText.trim()) {
-            commitLocalCommandTurn(
-              rawText,
-              `Saved command "/${slash.name}" is empty.`,
-            );
-            return { handled: true };
-          }
-          return { handled: false, rewrittenText };
-        }
-
-        if (slash.name === "/commands") {
-          const customActions = (await client.listCustomActions()).filter(
-            (action) => action.enabled,
-          );
-          const customCommandNames = customActions
-            .map((action) => `/${action.name.toLowerCase()}`)
-            .sort();
-          const savedCommandNames = loadSavedCustomCommands()
-            .map((command) => `/${normalizeSlashCommandName(command.name)}`)
-            .sort();
-          const lines = [
-            formatSearchBullet("Saved / commands", savedCommandNames),
-            formatSearchBullet("Custom action / commands", customCommandNames),
-            "Use #remember ... to save memory notes. Use #memory or #documents to target retrieval.",
-            "Use $query for a quick, non-persistent context answer.",
-          ];
-          commitLocalCommandTurn(rawText, lines.join("\n\n"));
-          return { handled: true };
-        }
-
-        let customActions: CustomActionDef[] = [];
-        try {
-          customActions = (await client.listCustomActions()).filter(
-            (action) => action.enabled,
-          );
-        } catch (err) {
-          // error-policy:J4 designed degrade: a broken custom-action catalog
-          // must not block the send — the slash text falls through to normal
-          // chat routing, and the failure is logged so it stays observable.
-          logger.warn(
-            `[useChatSend] listCustomActions failed; falling back to normal slash routing: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          return { handled: false };
-        }
-
-        const customAction = customActions.find(
-          (action) =>
-            `/${normalizeCustomActionName(action.name).toLowerCase()}` ===
-            slash.name,
-        );
-        if (customAction) {
-          const { params, missingRequired } = parseCustomActionParams(
-            customAction,
-            slash.argsRaw,
-          );
-          if (missingRequired.length > 0) {
-            commitLocalCommandTurn(
-              rawText,
-              `Missing required parameter(s): ${missingRequired.join(", ")}`,
-            );
-            return { handled: true };
-          }
-
-          const result = await client.testCustomAction(customAction.id, params);
-          if (!result.ok) {
-            commitLocalCommandTurn(
-              rawText,
-              `Custom action "${customAction.name}" failed: ${
-                result.error ?? "unknown error"
-              }`,
-            );
-            return { handled: true };
-          }
-
-          commitLocalCommandTurn(
-            rawText,
-            result.output?.trim() || `(no output from ${customAction.name})`,
-          );
-          return { handled: true };
-        }
-      }
 
       if (rawText.startsWith("#")) {
         const commandBody = rawText.slice(1).trim();

@@ -16,7 +16,7 @@ Those handlers call `getPtyConsoleBridge(state)`, which resolves
 `PTY_SERVICE`, that bridge is `null` and the terminal is inert.**
 
 This plugin supplies that service. Consumers: the app web terminal
-(`PtyTerminalPane` + agent-server WS handlers), the `@elizaos/plugin-task-coordinator`
+(`PtyTerminalPane` + agent-server WS handlers), the `@elizaos/plugin-agent-orchestrator`
 cockpit interactive terminal, and the agent swarm helpers in `packages/agent`.
 It is independent of `@elizaos/plugin-agent-orchestrator`, which spawns its
 coding agents as ACP subprocesses directly rather than through `PTY_SERVICE`.
@@ -164,11 +164,11 @@ from loading the orchestrator and recursively spawning sub-agents.
 - Never log the spawn request body — it can carry an API key.
 - PTY child processes do **not** inherit the full server `process.env`; only a
   small runtime allowlist plus explicit eliza-code spec env is passed through.
-- See the root `CLAUDE.md` for repo-wide conventions.
+- See the root `AGENTS.md` for repo-wide conventions.
 
 ## Verification
 
-The binding standard is the root [CLAUDE.md](../../CLAUDE.md). The unit suite
+The binding standard is the root [AGENTS.md](../../AGENTS.md). The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
 `pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips

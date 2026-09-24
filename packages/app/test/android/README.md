@@ -70,7 +70,7 @@ bun run --cwd packages/app test:e2e:android:routes
   ELIZA_WEBVIEW_DEBUG=1 \
   ELIZA_BUN_RISCV64_OPTIONAL=1 \
   bun run --cwd packages/app build:android
-  # → packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+  # → packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
   ```
 
   - `ELIZA_MOBILE_REPO_ROOT` pins repo-root resolution to the eliza checkout
@@ -112,7 +112,7 @@ bun run --cwd packages/app test:e2e:android:routes
 | `--build` | Build the APK before installing |
 | `--skip-local-chat` | Skip the on-device agent/chat bring-up |
 | `--skip-route-coverage` | Skip the Playwright WebView sweep |
-| `--start-host-agent` | Start and health-check the deterministic app-core host agent, then stop it in runner teardown (host backend only) |
+| `--start-host-agent` | Start and health-check the deterministic app host agent, then stop it in runner teardown (host backend only) |
 | `--host-emulator-probes` | Run only onboarding, route rendering, and native-plugin bridge specs; requires host backend + `--skip-local-chat` |
 | `--arm64-local-probes` | Run local chat plus local-runtime and route-rendering WebView specs; requires local backend and an ARM64 device |
 | `--cloud` | Also run the real Cloud runtime probe (shared by default; not dedicated/Hetzner ingress proof) |
@@ -125,7 +125,7 @@ bun run --cwd packages/app test:e2e:android:routes
 The scheduled and `ci:device`-label-gated Android job in
 `.github/workflows/device-e2e.yml` is a load-bearing x86_64 host-emulator lane:
 
-1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on a
+1. Start `packages/app/scripts/serve-real-local-agent.ts` on a
    kernel-assigned host port with pairing disabled and deterministic model handlers.
 2. Boot/install the WebView-debuggable APK on the Android emulator.
 3. Run `test/android/onboarding-to-home.android.spec.ts` with
@@ -176,7 +176,7 @@ With a healthy on-device agent, the WebView still gates the shell behind the
 app's **device-pairing** screen ("Pairing Required — generate a code on the
 server, paste it here"). For unattended e2e the agent should run with
 `ELIZA_PAIRING_DISABLED=1` (skips `pairingEnabled()` in
-`app-core/src/api/auth-pairing-routes.ts`), or the harness must complete the
+`app/src/api/auth-pairing-routes.ts`), or the harness must complete the
 `GET /api/auth/pair-code` → `POST /api/auth/pair` handshake and seed the
 resulting session. Until then, route coverage needs a backend that's already
 "connected" — a cloud-onboarded agent (`ELIZA_ANDROID_BACKEND` + a cloud token)
@@ -302,10 +302,10 @@ and makes later runs look less like a first run. Before rerunning a SIWE lane,
 reconcile the org with the cleanup lane from the repo root:
 
 ```bash
-bun scripts/cloud/e2e-agent-cleanup.mjs --report /tmp/cloud-agent-dry-run.json
+bun packages/scripts/cloud/e2e-agent-cleanup.mjs --report /tmp/cloud-agent-dry-run.json
 
 # Review the dry-run identity and candidate rows, then bind mutation to them:
-bun scripts/cloud/e2e-agent-cleanup.mjs \
+bun packages/scripts/cloud/e2e-agent-cleanup.mjs \
   --apply --wait \
   --candidate <reviewed-agent-id> \
   --expected-address <siwe-wallet-address> \
@@ -320,4 +320,4 @@ request is conditionally bound to the listed name, creation timestamp, and
 execution tier; success also requires a fresh list proving absence. Omit an
 active run's ID or pass `--protect <agentId>`. `--keep <n>` retains the newest
 eligible rows when preparing the candidate set. See
-`scripts/cloud/e2e-agent-cleanup.mjs`.
+`packages/scripts/cloud/e2e-agent-cleanup.mjs`.

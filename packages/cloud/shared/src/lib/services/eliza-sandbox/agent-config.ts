@@ -1,6 +1,6 @@
 /** Builds trusted sandbox records and enforces execution-tier, image, and organization admission policies. */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../../db/client";
 import { type AgentSandbox } from "../../../db/repositories/agent-sandboxes";

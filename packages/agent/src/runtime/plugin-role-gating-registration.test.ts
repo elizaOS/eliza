@@ -6,7 +6,7 @@
  */
 import type { Plugin, Provider } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { createTestRuntime } from "../__tests__/plugin-lifecycle-test-utils.ts";
+import { createTestRuntime } from "../../test/plugin-lifecycle-test-utils.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 
 /**

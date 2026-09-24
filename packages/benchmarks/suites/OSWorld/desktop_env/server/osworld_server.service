@@ -1,0 +1,19 @@
+[Unit]
+Description=osworld service
+StartLimitIntervalSec=60
+StartLimitBurst=4
+After=network.target auditd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /home/user/server/main.py
+User=user
+WorkingDirectory=/home/user
+Environment="DISPLAY=:0"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

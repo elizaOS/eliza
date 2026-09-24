@@ -198,13 +198,13 @@ Local cluster service env vars (copy from `.env.*.example`):
 - **Data-plane cores are not in Terraform.** Dedicated robot nodes (`eliza-core-{env}-N`, OS host `eliza-{env}-robot-N`) live in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty); autoscaled burst nodes (`eliza-core-<hex>`) are runtime-provisioned by `node-autoscaler.ts`. Only the control-plane VM is managed here.
 - **Remote state uses Cloudflare R2**, not an S3 bucket — export the R2 token as `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
 - **Production secrets are not in docker-compose.** The compose file only serves local dev. Real secrets live where each runtime reads them: `wrangler secret put` for the Worker (published on deploy by `cloud-cf-deploy.yml`), the `staging`/`production` GitHub Environments for deploy workflows, per-service Railway env vars (see each `railway.toml` header), and `/opt/eliza/cloud/.env.local` on the control-plane VM. Nothing production runs on Kubernetes, so there is no cluster secret store.
-- **`cloud/local/setup.sh` installs the `vector` and `uuid-ossp` Postgres extensions** via `postInitApplicationSQL` in `values-pg-local.yaml` — these are required by `packages/app-core`.
+- **`cloud/local/setup.sh` installs the `vector` and `uuid-ossp` Postgres extensions** via `postInitApplicationSQL` in `values-pg-local.yaml` — these are required by `packages/app`.
 - **`user_data` and `image` changes do not recreate the Hetzner VM** — `lifecycle { ignore_changes }` is set in `main.tf`. To rebuild with a new image, use `terraform taint`.
 - **Tests in `tests/` are pure YAML-parse smoke tests** — they do not require a running cluster or any cloud credentials.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

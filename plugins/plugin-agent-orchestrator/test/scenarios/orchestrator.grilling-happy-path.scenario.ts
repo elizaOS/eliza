@@ -6,7 +6,7 @@
  * loop is asserted deterministically in `orchestrator-scenario-logic` for CI.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { runGrillingHappyPathCheck } from "./_helpers/grilling-scenario";
 
 let capturedRuntime: IAgentRuntime | undefined;

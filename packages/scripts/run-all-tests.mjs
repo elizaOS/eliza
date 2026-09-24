@@ -77,7 +77,7 @@
  * TEST_TASK_TIMEOUT_MS (0 = off) bounds each child, the cloud stage included;
  * a timed-out child is a failure, never a skip.
  *
- * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
+ * See `.env.example` and `packages/scripts/test-env.mjs` for live env setup.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -284,7 +284,7 @@ if (helpFlag) {
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
       "",
-      "See `.env.test.example` for deterministic PR and live lane env setup.",
+      "See `.env.example` for deterministic PR and live lane env setup.",
       "",
     ].join("\n"),
   );
@@ -435,7 +435,7 @@ const TEST_FILE_SKIP_DIRS = new Set([
   "target",
 ]);
 const ADDITIONAL_PACKAGE_DIRS = [
-  path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
+  path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
 ];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
 const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([

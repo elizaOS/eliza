@@ -37,7 +37,6 @@ import {
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
-import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
@@ -1205,7 +1204,6 @@ export const localInferencePlugin: Plugin = {
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [
 		localInferenceManagementAction,
-		generateMediaAction,
 		identifySpeakerAction,
 		manageTranscriptPrivacyAction,
 		redactTranscriptAction,

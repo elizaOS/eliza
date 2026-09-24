@@ -1,93 +1,117 @@
-# @elizaos/capacitor-messages
+# @elizaos/plugin-native-messages
 
-Capacitor plugin that gives an Eliza agent on Android the ability to send and read native SMS/MMS messages via the Android Telephony API.
+Android SMS overlay plugin for elizaOS — provides an SMS inbox and compose surface backed by the native `@elizaos/plugin-native-messages/bridge` bridge.
 
 ## Purpose / role
 
-This is a [Capacitor](https://capacitorjs.com/) plugin — not an elizaOS `Plugin` object. It bridges the Android `SmsManager` and `content://sms` provider into a typed JavaScript API. It is consumed by any Capacitor-based Eliza app running on Android; the web fallback throws on `sendSms` and returns an empty list from `listMessages`. It is opt-in: register it in your Capacitor Android project, request the required runtime permissions, and import `Messages` from `@elizaos/capacitor-messages`.
+Adds a Messages GUI view to elizaOS on Android. It lets an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-native-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaOS app metadata and self-registers its bundled page through `src/register.ts`.
 
 ## Plugin surface
 
-This plugin does **not** register elizaOS actions, providers, evaluators, or services. It exposes a Capacitor plugin interface named `ElizaMessages` with two methods:
+This plugin registers **views only** — no actions, providers, evaluators, services, or routes:
 
-| Method | Description |
-|---|---|
-| `Messages.sendSms({ address, body })` | Sends an SMS (multipart if needed); waits for radio confirmation; persists to Android sent folder. Returns `{ messageId, messageUri }`. |
-| `Messages.listMessages({ limit?, threadId? })` | Reads up to `limit` messages (default 100, max 500) from the system SMS store, optionally filtered by `threadId`. Returns `{ messages: SmsMessageSummary[] }`. |
+| View ID | Label | View type | Component export | Path |
+|---|---|---|---|---|
+| `messages` | Messages | `gui` | `MessagesView` | `/messages` |
+
+The view bundle path points to `dist/views/bundle.js` (built by `build:views`).
 
 ## Layout
 
 ```
-plugins/plugin-native-messages/
-  src/
-    index.ts          Entry point — calls registerPlugin("ElizaMessages", { web: loadWeb })
-    definitions.ts    TypeScript interfaces: MessagesPlugin, SendSmsOptions, SendSmsResult,
-                      ListMessagesOptions, SmsMessageSummary
-    web.ts            Web fallback — sendSms throws; listMessages returns []
-    web.test.ts       Vitest unit tests for the web fallback
-  android/
-    src/main/
-      AndroidManifest.xml               READ_SMS / SEND_SMS / RECEIVE_SMS / RECEIVE_MMS / RECEIVE_WAP_PUSH permission declarations
-      java/ai/eliza/plugins/messages/
-        MessagesPlugin.kt               Capacitor @CapacitorPlugin("ElizaMessages"); implements
-                                        sendSms (SmsManager + BroadcastReceiver delivery receipt)
-                                        and listMessages (ContentResolver query on content://sms)
-  rollup.config.mjs   Bundles dist/esm → dist/plugin.js (IIFE) and dist/plugin.cjs.js
-  tsconfig.json
-  package.json
+src/
+  plugin.ts              Plugin object — defines the three views registered with @elizaos/core
+  index.ts               Public package entry — re-exports plugin and ui
+  register.ts            Registers the bundled page with the app shell
+  ui.ts                  Re-exports MessagesPage and MessagesView
+  components/
+    MessagesPage.tsx     Fullscreen page chrome and launcher back affordance
+    MessagesView.tsx     GUI data wrapper and Android bridge owner
+    messages-view-helpers.ts  Shared helper functions for MessagesView
+    messages-interact.ts  interact() capability handler for the view bundle
+    MessagesSpatialView.tsx  Spatial SMS surface retained for future modality adapters
+    messages-view-bundle.ts  View bundle entry — re-exports interact and view components for Vite bundle
+    MessagesView.test.tsx             GUI-level tests for MessagesView
+    messages-view-helpers.test.ts     Tests for helpers
+    messages-bridge-contract.test.ts  Contract tests for the Capacitor bridge
 ```
+
+### Key exports
+
+- `appMessagesPlugin` / `default` — the `Plugin` object; import this to register the plugin.
+- `MessagesPage` — app-shell page wrapper with the shared launcher back button.
+- `MessagesView` — GUI React component used by the plugin view declaration.
+- `interact(capability, params?)` — programmatic view API for agents; see capabilities below. Defined in `src/components/messages-interact.ts`; re-exported via `src/components/messages-view-bundle.ts`. Not re-exported from the package root.
+
+### `interact()` capabilities
+
+| Capability | Params | Returns |
+|---|---|---|
+| `list-threads` | `{ limit?: number }` | Thread list + `ownsSmsRole`, `smsRoleHolder` |
+| `send-sms` | `{ address: string, body: string }` | `{ sent, address, bodyLength }` |
+| `request-sms-role` | — | `{ requested, ownsSmsRole, smsRoleHolder }` |
 
 ## Commands
 
-Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+Scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-native-messages clean           # remove build output
-bun run --cwd plugins/plugin-native-messages build           # build package artifacts
-bun run --cwd plugins/plugin-native-messages typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-messages lint            # mutating Biome check
-bun run --cwd plugins/plugin-native-messages lint:check      # read-only Biome check
-bun run --cwd plugins/plugin-native-messages format          # write formatting
-bun run --cwd plugins/plugin-native-messages format:check    # read-only formatting check
-bun run --cwd plugins/plugin-native-messages test            # run package tests
-bun run --cwd plugins/plugin-native-messages prepublishOnly  # publish-time build hook
-bun run --cwd plugins/plugin-native-messages build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-messages build          # tsup JS + vite view bundle + type declarations
+bun run --cwd plugins/plugin-native-messages build:js       # tsup library build only
+bun run --cwd plugins/plugin-native-messages build:views    # vite bundle for dist/views/bundle.js
+bun run --cwd plugins/plugin-native-messages build:types    # tsc declarations
+bun run --cwd plugins/plugin-native-messages clean          # rm -rf dist
+bun run --cwd plugins/plugin-native-messages typecheck      # tsc --noEmit
+bun run --cwd plugins/plugin-native-messages lint           # biome check src
+bun run --cwd plugins/plugin-native-messages test           # vitest run
 ```
 
 ## Config / env vars
 
-No environment variables or elizaOS config keys. The plugin reads no `.env` values. All behaviour is determined at call time:
+This plugin reads **no environment variables** directly. All SMS and system-role operations go through the Capacitor plugin bridge:
 
-- `SEND_SMS` Android runtime permission — required for `sendSms`.
-- `READ_SMS` Android runtime permission — required for `listMessages`.
+- `@elizaos/plugin-native-messages/bridge` — `Messages.listMessages({ limit })`, `Messages.sendSms({ address, body })`
+- `@elizaos/capacitor-system` — `System.getStatus()`, `System.requestRole({ role: "sms" })`
 
-Both permissions are declared in `android/src/main/AndroidManifest.xml`. The host app must request them at runtime before calling either method.
+The Android **default SMS role** (`android.app.role.SMS`) must be granted to the elizaOS app for full read/send capability. The UI surfaces a "Set default SMS" prompt when the role is not held.
 
 ## How to extend
 
-**Add a new Capacitor method (e.g., `deleteSms`):**
+**Add a new view:**
+1. Define the React component in `src/components/`.
+2. Export it from a view component module and re-export it from `src/ui.ts`.
+3. Add a view entry to the `views` array in `src/plugin.ts` with the correct `bundlePath`, `componentExport`, and modality metadata.
+4. If the component needs to be in the view bundle, ensure it is reachable from `src/components/messages-view-bundle.ts` (the Vite entry; see `vite.config.views.ts`).
 
-1. Add the method signature to `MessagesPlugin` in `src/definitions.ts`.
-2. Add a web fallback in `src/web.ts` that throws `"deleteSms is only available on Android."`.
-3. Implement `@PluginMethod fun deleteSms(call: PluginCall)` in `android/src/main/java/ai/eliza/plugins/messages/MessagesPlugin.kt` using the ContentResolver.
-4. If the new method needs an Android permission, declare it in `AndroidManifest.xml` and check it with `hasPermission(Manifest.permission.*)` before proceeding.
-5. Run `bun run --cwd plugins/plugin-native-messages build` to regenerate `dist/`.
+**Add a new interact capability:**
+1. Extend the `interact()` function in `src/components/messages-interact.ts` with a new `if (capability === "...")` branch.
+2. Add a corresponding test case for the interact handler.
+
+**Register the plugin in an agent:**
+```ts
+import messagesPlugin from "@elizaos/plugin-native-messages";
+// pass in the plugins array when constructing the AgentRuntime
+```
 
 ## Conventions / gotchas
 
-- **Android only.** The web fallback exists solely to satisfy Capacitor's plugin registration contract. Do not add real web logic here.
-- **Instrumented test (issue #9967).** The `content://sms` query lives in `MessagesReader`; an on-device read test (`android/src/androidTest/.../MessagesReaderInstrumentedTest.kt`, `GrantPermissionRule`) reads back a marker SMS. It is **emulator-orchestrated** (`adb -s <emulator> emu sms send <number> "…Eliza-9967-SMS-roundtrip…"` then `connectedDebugAndroidTest`/`am instrument`) and `Assume`-skips when the marker is absent, so it never reads a real device's private inbox. `listMessages` delegates to the reader (JS shape unchanged).
-- **Multipart SMS.** `sendSms` uses `SmsManager.divideMessage` and tracks one `BroadcastReceiver` delivery intent per part; the call resolves only after all parts confirm. Do not assume a single `sendTextMessage` call for long messages.
-- **Delivery receipt vs. sent receipt.** The BroadcastReceiver listens for `SENT` status only. Delivery receipts (`DELIVERED`) are not tracked.
-- **Limit clamp.** `listMessages` rejects if `limit` is outside `[1, 500]`. The Android SMS provider can be large; do not request unbounded results.
-- **Plugin name.** The Capacitor plugin name is `"ElizaMessages"` (set in both `index.ts` and the Kotlin `@CapacitorPlugin` annotation). The npm package name is `@elizaos/capacitor-messages`. The directory is `plugin-native-messages`. All three differ — keep them in sync if renaming.
-- **Build output.** `tsc` emits to `dist/esm/`; rollup then bundles `dist/esm/index.js` into `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js`. The `exports` field in package.json uses `dist/esm/index.js` for ESM consumers and `dist/plugin.cjs.js` for CJS.
-- **Peer dep.** `@capacitor/core ^8.3.1` is a peer dependency; the host Capacitor app owns the exact version.
+- **Android-only.** Package metadata marks the view app as `androidOnly: true`, and the plugin view declaration sets `nativeOs: true`. The renderer side-effect module is declared with `elizaos.appRegister: "register"` and guards registration to the ElizaOS fork.
+- **View bundle is separate from the library bundle.** `build:js` (tsup) produces `dist/index.js` for the npm package. `build:views` (vite) produces `dist/views/bundle.js` which is loaded at runtime by the plugin view system. Both must be built for a full build.
+- **Capacitor bridge in tests.** `vitest.config.ts` aliases `@elizaos/plugin-native-messages/bridge` → `plugins/plugin-native-messages/src/bridge.ts` and `@elizaos/capacitor-system` → `plugins/plugin-native-system/src/index.ts`. Tests mock both via `vi.mock`.
+- **SMS role vs bridge mode.** The UI shows two modes: "Default SMS app" (owns the role, full inbox) and "Android SMS bridge" (read-only via the capacitor bridge, no role held). Agents can request the role via the interact handler.
+- **Interact state.** Agent-driven tests should use the explicit interact handler
+  and view snapshot seams instead of parsing renderer-specific DOM.
+- **Cross-view recipient handoff.** `MessagesView` consumes a one-shot `{ recipient }` payload via `consumeNavigateViewPayload("messages")` from `@elizaos/ui/app-navigate-view` on mount, opening the composer with the "To" field pre-seeded. Callers dispatch `eliza:navigate:view` with `{ viewId: "messages", viewPath: "/messages", payload: { recipient } }`; the shared UI module must stay generic and contain no Messages-specific pending state.
+- **Spatial view.** `MessagesSpatialView` is a presentational component retained for future modality adapters. It is purely presentational (a snapshot + action callback in, spatial primitives out) and does not import Capacitor runtime code.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Native bridge ownership
+
+This workspace also owns `src/bridge.ts`, `src/definitions.ts`, `src/web.ts`, and `android/`. Import the device API through `/bridge` to avoid loading the application barrel. Preserve Capacitor registration names and Android permissions. Native device tests remain under `android/src/androidTest`; the package test command includes web fallback tests.

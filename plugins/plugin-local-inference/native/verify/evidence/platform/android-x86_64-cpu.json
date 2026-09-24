@@ -28,7 +28,7 @@
   "requirements": {
     "ndk": "android-ndk r29.0.13113456 (linux-x86_64 host)",
     "compiler": "Android Clang 20.0.0 (b718bcaf8c198c82f3021447d943401e3ab5bd54), target x86_64-unknown-linux-android24",
-    "buildScript": "packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-x86_64-cpu (NDK + cmake; -DANDROID_ABI=x86_64; AVX/AVX2/FMA/F16C forced)",
+    "buildScript": "packages/app/scripts/build-llama-cpp-mtp.mjs --target android-x86_64-cpu (NDK + cmake; -DANDROID_ABI=x86_64; AVX/AVX2/FMA/F16C forced)",
     "verifyHarness": "packages/inference/verify/gen_fixture.c + verify/qjl_polar_ref.c + reference/turbo_kernels.c cross-compiled with the NDK clang as a static x86_64-linux-android24 ELF; pushed to /data/local/tmp/eliza-x86_64-verify and run via adb shell"
   },
   "target_artifact": {

@@ -15,9 +15,9 @@
  * is the one defined on the elizaOS Plugin contract for config-only updates.
  */
 
+import type { SecretsManager } from "@elizaos/auth/vault";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { SecretsManager } from "@elizaos/credentials/vault";
 import { formatErrorWithStack } from "@elizaos/shared";
 import { reconcileDirectTextModelSettings } from "../runtime-settings.ts";
 import type {

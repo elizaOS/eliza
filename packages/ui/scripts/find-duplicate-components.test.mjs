@@ -86,7 +86,7 @@ test("local Eliza runtime artifacts are outside maintained source", () => {
   assert.equal(
     isMaintainedSource(
       new URL(
-        "../../scenario-runner/.eliza/smthrs/session/generated-view.tsx",
+        "../../testing/scenario-runner/.eliza/smthrs/session/generated-view.tsx",
         import.meta.url,
       ).pathname,
     ),
@@ -110,7 +110,7 @@ test("generated mobile platform bundles and staging roots are outside maintained
     isMaintainedSource(
       fileURLToPath(
         new URL(
-          "../../app-core/platforms/android/app/src/main/assets/agent/Widget.tsx",
+          "../../app/platforms/android/app/src/main/assets/agent/Widget.tsx",
           import.meta.url,
         ),
       ),
@@ -162,7 +162,7 @@ test("generated mobile platform bundles and staging roots are outside maintained
     isMaintainedSource(
       fileURLToPath(
         new URL(
-          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          "../../app/platforms/electrobun/src/Widget.tsx",
           import.meta.url,
         ),
       ),

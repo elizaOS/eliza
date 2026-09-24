@@ -1,5 +1,5 @@
 /** Atomic claim and binding authority for Personal Shared provider groups. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import {
   and,
   desc,

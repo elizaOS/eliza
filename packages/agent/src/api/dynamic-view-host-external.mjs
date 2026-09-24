@@ -3,7 +3,7 @@
  *
  * A plugin view bundle is built with `@elizaos/ui`, `react`, three, … left as
  * *external* bare imports. Those specifiers must resolve to the host shell's own
- * singletons (one React instance, the live app-core client, plugins registered
+ * singletons (one React instance, the live app client, plugins registered
  * at runtime), not to a second copy the browser fetches on its own. A separately
  * imported ES module cannot reach the shell's live modules by itself, so at
  * serve time the bundle is wrapped into a **factory**: its bare host-external

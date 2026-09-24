@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Real-runtime coverage for the SAVED_NOTES provider: a note written through
  * the durable service must come back out through `composeState`, which is the

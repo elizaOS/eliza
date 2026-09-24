@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
-import { ChannelType } from "@elizaos/common";
+import { ChannelType } from "@elizaos/core";
 
 const directBridge = mock(() => {
   throw new Error("direct bridge must not run");

@@ -45,7 +45,7 @@
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
     "linkify-it": "5.0.2",
-    "@elizaos/credentials": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {

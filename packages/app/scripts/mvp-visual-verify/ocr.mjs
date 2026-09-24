@@ -13,4 +13,4 @@ export {
   resetTesseractProbe,
   resolveOcrEngine,
   resolveTesseract,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";

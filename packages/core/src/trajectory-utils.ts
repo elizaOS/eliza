@@ -20,6 +20,7 @@
  * `ELIZA_TRAJECTORY_STRICT`; embeddings, tokenizers, and speech/media models are
  * exempt from the generative-call guards.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 import { ElizaError } from "./errors";
@@ -549,31 +550,7 @@ type TrajectoryContextWithLlmGuard = {
 	[RECORD_LLM_CALL_DEPTH_KEY]?: number;
 };
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
-function supportsAsyncLocalStorage(): boolean {
-	return isNodeEnvironment() && typeof process.getBuiltinModule === "function";
-}
-
 function createLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
-	const { AsyncLocalStorage } = process.getBuiltinModule(
-		"node:async_hooks",
-	) as typeof import("node:async_hooks");
 	const storage = new AsyncLocalStorage<
 		LlmInputSubstringAttestationStore | undefined
 	>();
@@ -679,9 +656,6 @@ function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
  * with usage telemetry.
  */
 export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
-	// Attestation is an opt-in Node/Bun server capability. Ordinary browser/edge
-	// model calls do not initialize a request-scope manager.
-	if (!supportsAsyncLocalStorage()) return;
 	const store = getLlmInputSubstringAttestationContextManager().active();
 	if (!store) return;
 
@@ -737,15 +711,6 @@ export async function runWithLlmInputSubstringAttestation<T>(
 	expectedText: string,
 	fn: () => Promise<T> | T,
 ): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
 	if (!expectedText) {
 		throw new ElizaError(
 			"LLM input attestation requires a non-empty expected instruction",
@@ -805,13 +770,6 @@ function isTrajectoryLoggerCandidate(
 }
 
 function readProcessEnv(name: string): string | undefined {
-	if (
-		typeof process === "undefined" ||
-		!process ||
-		typeof process.env !== "object"
-	) {
-		return undefined;
-	}
 	return process.env[name];
 }
 
@@ -1036,70 +994,10 @@ function getModelCallRecordingStorage(): ModelCallRecordingStorage {
 }
 
 function createModelCallRecordingStorage(): ModelCallRecordingStorage {
-	if (supportsAsyncLocalStorage()) {
-		const { AsyncLocalStorage } = process.getBuiltinModule(
-			"node:async_hooks",
-		) as typeof import("node:async_hooks");
-		const storage = new AsyncLocalStorage<ModelCallRecordingState>();
-		return {
-			getStore: () => storage.getStore(),
-			run: (store, fn) => storage.run(store, fn),
-		};
-	}
-	// Synchronous fallback for browser/edge. The store is a mutable object
-	// passed by reference, so `runWithModelCallRecordingScope` can read the
-	// `recorded` flag after `fn` settles. The run wrapper awaits async `fn`
-	// before restoring the previous slot, so marks made during async work
-	// (e.g. recordLlmCall) are captured.
-	//
-	// LIMITATION: This fallback does NOT support concurrent async useModel
-	// calls — without AsyncLocalStorage, overlapping scopes corrupt the
-	// single mutable slot. The corruption direction is asymmetric and
-	// dangerous: call A opens, call B opens (saving A as prev), A's provider
-	// finalizer marks — and mutates B's store. B then observes
-	// `recorded === true` and suppresses its generic fallback record, while
-	// A observes `false` and records. Net effect: one call double-counted
-	// and another silently dropped. Because the PR's goal is preventing
-	// duplicate accounting, converting duplicates into ABSENT records (which
-	// read as healthy zero-cost calls) is the wrong failure direction.
-	//
-	// Node always uses the AsyncLocalStorage path above; this only affects
-	// browser/edge runtimes, where concurrent model calls are rare.
-	// AsyncLocalStorage is a Node built-in, NOT available in browsers.
-	// The nearest browser equivalent is the TC39 AsyncContext proposal,
-	// which is not yet shipped. If browser/edge concurrent calls become
-	// common, either adopt AsyncContext when available or thread per-call
-	// recording state explicitly through provider recording APIs.
-	let syncStore: ModelCallRecordingState | undefined;
+	const storage = new AsyncLocalStorage<ModelCallRecordingState>();
 	return {
-		getStore: () => syncStore,
-		run: (store, fn) => {
-			const prev = syncStore;
-			syncStore = store;
-			const restore = () => {
-				syncStore = prev;
-			};
-			try {
-				const result = fn();
-				if (result instanceof Promise) {
-					return result.then(
-						(v) => {
-							restore();
-							return v;
-						},
-						(e) => {
-							restore();
-							throw e;
-						},
-					);
-				}
-				restore();
-				return result;
-			} catch (e) {
-				restore();
-				throw e;
-			}
-		},
+		getStore: () => storage.getStore(),
+		run: (store, fn) => storage.run(store, fn),
 	};
 }
 

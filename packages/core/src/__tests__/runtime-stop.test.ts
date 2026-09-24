@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Exercises `AgentRuntime.stop` fast-shutdown paths: not hanging on an
  * unresolved service start, capping already-started stop waits, and surviving a

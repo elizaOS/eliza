@@ -1,5 +1,5 @@
 /** Coordinates cloud phone-gateway registration, authentication, and presence state. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { type Database, type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import {

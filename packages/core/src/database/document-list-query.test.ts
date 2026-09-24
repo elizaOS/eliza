@@ -3,7 +3,7 @@
  * without allowing legacy pagination behavior to fabricate exact results.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
@@ -53,7 +53,7 @@ function document(index: number): Memory {
 
 describe("document-list capability contract", () => {
 	it("fails before reading a legacy adapter whose 50-row cap would truncate 125 rows", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
 			value: undefined,
@@ -72,7 +72,7 @@ describe("document-list capability contract", () => {
 	});
 
 	it("does not enter a scan that can change underneath a concurrent insert", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
 			value: undefined,
@@ -106,7 +106,7 @@ describe("document-list capability contract", () => {
 	});
 
 	it("rejects malformed cursors before invoking a native adapter", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
 
 		await expect(
@@ -121,7 +121,7 @@ describe("document-list capability contract", () => {
 	});
 
 	it("rejects wrong capability versions even when a query method exists", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
 			value: 3,
@@ -141,7 +141,7 @@ describe("document-list capability contract", () => {
 	});
 
 	it("rejects v4 adapters missing the direct-grant CAS before reading", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		Object.defineProperty(adapter, "updateDocumentDirectGrants", {
 			configurable: true,
 			value: undefined,
@@ -555,8 +555,8 @@ describe("document-list capability contract", () => {
 	});
 });
 
-it("rechecks current in-memory membership for grants while preserving owner authority", async () => {
-	const adapter = new InMemoryDatabaseAdapter();
+it("rechecks current SQLite membership for grants while preserving owner authority", async () => {
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 	const source = document(900);
 	const grantee = "00000000-0000-0000-0000-00000000c0df" as UUID;
 	await adapter.createEntities([
@@ -577,12 +577,19 @@ it("rechecks current in-memory membership for grants while preserving owner auth
 	};
 	const first = await adapter.updateDocumentDirectGrants(request);
 	expect(first.status).toBe("updated");
+	await expect(adapter.getDocument(request)).resolves.toMatchObject({
+		id: source.id,
+	});
 	if (first.status !== "updated") throw new Error("Initial grant failed");
 	const reviewed = readDocumentMutationSnapshot(first.document);
 	if (!reviewed) throw new Error("Updated document is invalid");
 	await adapter.deleteParticipants([
 		{ entityId: REQUESTER_ID, roomId: ROOM_ID },
 	]);
+	await expect(adapter.getDocument(request)).resolves.toBeNull();
+	await expect(
+		adapter.queryDocuments({ ...request, limit: 25, offset: 0 }),
+	).resolves.toMatchObject({ documents: [], totalVisible: 0, totalMatched: 0 });
 	await expect(
 		adapter.updateDocumentDirectGrants({
 			...request,
@@ -610,4 +617,5 @@ it("rechecks current in-memory membership for grants while preserving owner auth
 		}),
 	).resolves.toMatchObject({ status: "updated" });
 	await expect(adapter.getDocument(reader)).resolves.toBeNull();
+	await adapter.close();
 });

@@ -5,8 +5,8 @@
  * rejection for an unknown provider.
  */
 
+import type { SecretsManager } from "@elizaos/auth/vault";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import type { SecretsManager } from "@elizaos/credentials/vault";
 import { describe, expect, it } from "vitest";
 import { createHotStrategy } from "./reload-hot.ts";
 import type {

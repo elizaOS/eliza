@@ -68,7 +68,7 @@ export async function validateCloudBaseUrl(
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
-export * from "@elizaos/credentials/auth";
+export * from "@elizaos/auth/auth";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   CONNECTOR_PLUGINS,
@@ -106,7 +106,7 @@ export {
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";
 // Runtime-mode contract (mode resolution, route-visibility gate, remote-mode
-// forwarder). `api/server.ts` enforces it in its own dispatch; the app-core
+// forwarder). `api/server.ts` enforces it in its own dispatch; the app
 // compat pipeline calls the same pre-dispatch hook so every host shares one
 // gate.
 export {
@@ -381,6 +381,6 @@ export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-// `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
+// `types/index.js` aggregates `config-like` and `trajectory`.
 export * from "./types/index.ts";
 export * from "./version-resolver.ts";

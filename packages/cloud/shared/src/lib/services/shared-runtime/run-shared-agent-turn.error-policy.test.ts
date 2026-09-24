@@ -6,8 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ChannelType } from "@elizaos/common";
-import { stableStringify } from "@elizaos/core";
+import { ChannelType, stableStringify } from "@elizaos/core";
 import type {
   RunSharedAgentTurnInput,
   SharedReminderOperation,

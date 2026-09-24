@@ -8,7 +8,7 @@
  * observability, not end-user product UI).
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export type DevSettingsRow = {
   setting: string;

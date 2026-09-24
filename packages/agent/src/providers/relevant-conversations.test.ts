@@ -750,14 +750,14 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     expect(embedRecallQuery).not.toHaveBeenCalled();
   });
 
-  it("omits owner-private pendant memories from a non-owner recall", async () => {
+  it("omits owner-private conversation memories from a non-owner recall", async () => {
     embedRecallQuery.mockResolvedValue([0.1, 0.2]);
     const searchMemories = vi.fn(async () => [
       {
         id: "00000000-0000-0000-0000-0000000000p1",
         roomId: OTHER_ROOM,
         entityId: "00000000-0000-0000-0000-0000000000e0",
-        content: { text: "owner pendant canary" },
+        content: { text: "owner conversation canary" },
         metadata: {
           type: "message",
           scope: "owner-private",
@@ -783,7 +783,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     );
 
     expect(result.text).toContain("shared launch note");
-    expect(result.text).not.toContain("owner pendant canary");
+    expect(result.text).not.toContain("owner conversation canary");
   });
 
   it("resolves recall-result room tags with one batched getRoomsByIds read", async () => {
@@ -886,7 +886,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     expect(result.text).toContain("earlier relevant message");
   });
 
-  it("allows the authenticated owner to recall owner-private pendant memory", async () => {
+  it("allows the authenticated owner to recall owner-private conversation memory", async () => {
     buildAccessContext.mockResolvedValue({
       requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
       isOwner: true,
@@ -898,7 +898,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         id: "00000000-0000-0000-0000-0000000000p1",
         roomId: OTHER_ROOM,
         entityId: "00000000-0000-0000-0000-0000000000e0",
-        content: { text: "owner pendant canary" },
+        content: { text: "owner conversation canary" },
         metadata: {
           type: "message",
           scope: "owner-private",
@@ -915,7 +915,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain("owner pendant canary");
+    expect(result.text).toContain("owner conversation canary");
   });
   it("preserves exact recalled bodies and reference restoration without inventing source authority", async () => {
     embedRecallQuery.mockResolvedValue([0.1, 0.2]);

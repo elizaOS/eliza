@@ -570,7 +570,7 @@ machine authorization, stopped/starting backend, or running without an IP.
 
 The staging image path was then re-audited from the publishing workflow rather
 than inferred from similarly named Dockerfiles. `build-agent-image.yml` builds
-`packages/app-core/deploy/Dockerfile.ci`: the full `@elizaos/agent` host started
+`packages/app/deploy/Dockerfile.ci`: the full `@elizaos/agent` host started
 through `docker-entrypoint.sh`, with `packages/agent/dist/bin.js start` as the
 runtime command. `Dockerfile.cloud-agent` is not the source of the protected
 `ELIZA_AGENT_IMAGE` used by this Hetzner path. Its readiness and ESM fixes remain
@@ -808,7 +808,7 @@ share runtime identity, storage ownership, health, or fallback semantics.
    `33596412886` established this boundary.
 2. **The active agent image was initially misidentified.** The protected
    `ELIZA_AGENT_IMAGE` is built by `build-agent-image.yml` from
-   `packages/app-core/deploy/Dockerfile.ci`, not the similarly named dormant
+   `packages/app/deploy/Dockerfile.ci`, not the similarly named dormant
    Dockerfile. Build `33630300533` produced and pull-tested
    `ghcr.io/elizaos/eliza-demo@sha256:b4077a84eaa372f0b8b2d640f966869ae8d614009a6191bb8ed3df238cfa7897`.
 3. **Headscale error reporting collapsed distinct causes.** Merge

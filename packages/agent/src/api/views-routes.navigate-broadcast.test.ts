@@ -1,11 +1,3 @@
-import { AgentRuntime, createCharacter } from "@elizaos/core";
-import { closeRuntimeViewRegistry } from "./view-installations.ts";
-import { closeViewInteractionHost } from "./view-interaction-host.ts";
-
-let runtime: AgentRuntime;
-let hostKey: object;
-let scope: { hostKey: object; clientId: string };
-
 /**
  * Server half of the agent view-switch contract: POST /api/views/:id/navigate
  * resolves a view (builtin registry, body path override, or synthetic ids) and
@@ -15,6 +7,14 @@ let scope: { hostKey: object; clientId: string };
  * server-backed interact. Focused route unit tests with real body parsing — no
  * PGLite, runtime, or LLM.
  */
+import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
+
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
@@ -39,7 +39,7 @@ import {
 //
 // This is a focused route unit test: real request body parsing, no PGLite, no
 // runtime, no LLM. The agent-turn → action → navigate path (real AgentRuntime)
-// is exercised by packages/scenario-runner/test/scenarios/
+// is exercised by packages/testing/scenario-runner/test/scenarios/
 // deterministic-view-switching.scenario.ts.
 
 type NavigateBody = Record<string, unknown>;
@@ -203,6 +203,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(
       getCurrentViewState(runtime, { hostKey, clientId: "speaking-seeker" }),
     ).toMatchObject({ viewId: "notes" });
+    const response = json.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(response).not.toHaveProperty("completedActionDelivered");
+    expect(response).not.toHaveProperty("completedActionHandoffId");
   });
 
   it("rejects voice navigation to a disconnected renderer without global fallback", async () => {
@@ -210,6 +213,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       makeNavigateCtx("notes", {
         delivery: "originating-client",
         clientId: "disconnected-seeker",
+        completedActionHandoffId: "voice-disconnected-step",
       });
     broadcastWsToClientId.mockReturnValue(0);
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
@@ -221,6 +225,12 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       409,
     );
     expect(getCurrentViewState(runtime, scope)).toBeNull();
+    expect(
+      getCurrentViewState(runtime, {
+        hostKey,
+        clientId: "disconnected-seeker",
+      }),
+    ).toBeNull();
   });
 
   it("best-effort delivers completed-action navigation before its acknowledgement", async () => {
@@ -260,49 +270,55 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
-  it("reports when the originating renderer accepted completed-action delivery", async () => {
-    const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
-      clientId: "seeker-rest-client",
-      delivery: "completed-action",
-      completedActionHandoffId: "handoff-1234",
-    });
-
-    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
-
-    expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
-    expect(broadcastWsToClientId).toHaveBeenCalledWith(
-      "seeker-rest-client",
-      expect.objectContaining({ completedActionHandoffId: "handoff-1234" }),
-    );
-    expect(json).toHaveBeenCalledWith(
-      ctx.res,
-      expect.objectContaining({
-        completedActionDelivered: true,
+  it.each(["completed-action", "originating-client"])(
+    "returns a scoped receipt after targeted %s delivery",
+    async (delivery) => {
+      const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
+        clientId: "seeker-rest-client",
+        delivery,
         completedActionHandoffId: "handoff-1234",
-      }),
-    );
-    expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
-      json.mock.invocationCallOrder[0],
-    );
-  });
+      });
 
-  it("drops an invalid completed-action handoff id at the HTTP boundary", async () => {
-    const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
-      clientId: "seeker-rest-client",
-      delivery: "completed-action",
-      completedActionHandoffId: "not valid because spaces",
-    });
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
-    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+      expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
+      expect(broadcastWsToClientId).toHaveBeenCalledWith(
+        "seeker-rest-client",
+        expect.objectContaining({ completedActionHandoffId: "handoff-1234" }),
+      );
+      expect(json).toHaveBeenCalledWith(
+        ctx.res,
+        expect.objectContaining({
+          completedActionDelivered: true,
+          completedActionHandoffId: "handoff-1234",
+        }),
+      );
+      expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
+        json.mock.invocationCallOrder[0],
+      );
+    },
+  );
 
-    const frame = broadcastWsToClientId.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
-    expect(frame).not.toHaveProperty("completedActionHandoffId");
-    const response = json.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(response).not.toHaveProperty("completedActionHandoffId");
-  });
+  it.each(["completed-action", "originating-client"])(
+    "drops an invalid %s handoff id at the HTTP boundary",
+    async (delivery) => {
+      const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
+        clientId: "seeker-rest-client",
+        delivery,
+        completedActionHandoffId: "not valid because spaces",
+      });
+
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+      const frame = broadcastWsToClientId.mock.calls[0]?.[1] as Record<
+        string,
+        unknown
+      >;
+      expect(frame).not.toHaveProperty("completedActionHandoffId");
+      const response = json.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(response).not.toHaveProperty("completedActionHandoffId");
+    },
+  );
 
   it("keeps the completed-action fallback when targeted delivery throws", async () => {
     const { ctx, json, error, broadcastWs, broadcastWsToClientId } =

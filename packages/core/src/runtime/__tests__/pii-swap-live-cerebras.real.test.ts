@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkSenderRole } from "../../roles";
 import { AgentRuntime } from "../../runtime";
@@ -88,8 +88,6 @@ for (const mode of ["deterministic", "live"] as const) {
 				const ownerId = randomUUID() as UUID;
 				const worldId = randomUUID() as UUID;
 				const roomId = randomUUID() as UUID;
-				const adapter = new InMemoryDatabaseAdapter();
-				await adapter.init();
 				const runtime = new AgentRuntime({
 					character: {
 						name: "PiiLiveAgent",
@@ -99,9 +97,15 @@ for (const mode of ["deterministic", "live"] as const) {
 							ELIZA_ADMIN_ENTITY_ID: ownerId,
 						},
 					} as Character,
-					adapter,
+
 					logLevel: "fatal",
 				});
+				const adapter = SQLiteDatabaseAdapter.create(
+					":memory:",
+					runtime.agentId,
+				);
+				runtime.registerDatabaseAdapter(adapter);
+				await adapter.init();
 
 				runtimes.push(runtime);
 				await runtime.createWorlds([

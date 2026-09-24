@@ -6,7 +6,7 @@
  *   POLL_PLUGIN_CONFIG_STATUS, ACTIVATE_PLUGIN_IF_READY.
  *
  * Composition (probe → deliver → poll → activate) is done by the planner.
- * The cloud / app-core `PluginConfigClient` implementation is registered by
+ * The cloud / app `PluginConfigClient` implementation is registered by
  * sibling waves and resolved here via `runtime.getService(...)`.
  *
  * This plugin is intentionally NOT auto-enabled.

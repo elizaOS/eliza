@@ -1,5 +1,5 @@
 /**
- * Cross-platform buffer abstraction (Node Buffer / browser Uint8Array). The
+ * Node/Bun buffer operations accepting Buffer and Uint8Array. The
  * encoding round-trips and byte ops must agree across representations, since
  * crypto/secret code depends on these for hex/base64 conversions.
  */
@@ -35,6 +35,15 @@ describe("hex / string round-trips", () => {
 
 	it("hex via bufferToString", () => {
 		expect(bufferToString(fromBytes([1, 2, 3]), "hex")).toBe("010203");
+	});
+
+	it("encodes typed-array views without including surrounding bytes", () => {
+		const bytes = new Uint8Array([0, 72, 105, 255]).subarray(1, 3);
+		expect(bufferToString(bytes)).toBe("Hi");
+		expect(bufferToString(bytes, "base64")).toBe("SGk=");
+		expect(toHex(bytes)).toBe("4869");
+		expect(toHex(concat([bytes, fromBytes([33])]))).toBe("486921");
+		expect(equals(bytes, fromString("Hi"))).toBe(true);
 	});
 });
 

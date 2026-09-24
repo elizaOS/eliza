@@ -17,7 +17,7 @@
 // Default base is a local `vite preview` (http://localhost:4173). Run a static
 // preview of the web build first, e.g.:
 //   bun run --cwd packages/app build:web
-//   bunx serve packages/app/dist -s -l 4173   # or any SPA-fallback static server
+//   bunx serve packages/app/web-dist -s -l 4173   # or any SPA-fallback static server
 //
 // Note: a plain `vite preview` does NOT apply the Cloudflare `_redirects` SPA
 // fallback, so unknown paths can 404 there. For a faithful test of the served

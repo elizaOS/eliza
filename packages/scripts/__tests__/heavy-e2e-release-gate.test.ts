@@ -64,7 +64,7 @@ describe("root test:e2e:heavy script", () => {
   });
 
   test("still names the config and both release-gated suites for the matrix validator", () => {
-    expect(heavy).toStartWith("cd packages/app-core && ");
+    expect(heavy).toStartWith("cd packages/app && ");
     expect(heavy).toContain("--config vitest.app-real-e2e.config.ts");
     for (const file of HEAVY_SUITE_FILES) {
       expect(heavy).toContain(file);
@@ -187,7 +187,7 @@ describe("evaluateHeavyPreflight", () => {
 });
 
 describe("assertExecutedHeavyRun", () => {
-  const cwd = "/repo/packages/app-core";
+  const cwd = "/repo/packages/app";
   const files = HEAVY_SUITE_FILES;
 
   function summaryWith(statusesByFile: Record<string, string[]>) {

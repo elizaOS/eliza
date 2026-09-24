@@ -37,9 +37,9 @@ function makeOverlayApp(name: string, androidOnly: boolean): OverlayApp {
 describe("overlay-app-registry AOSP gating", () => {
   beforeEach(() => {
     resetUiRegistryHostForTests();
-    registerOverlayApp(makeOverlayApp("@elizaos/plugin-phone", true));
-    registerOverlayApp(makeOverlayApp("@elizaos/plugin-contacts", true));
-    registerOverlayApp(makeOverlayApp("@elizaos/plugin-wifi", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-native-phone", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-native-contacts", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-native-wifi", true));
     registerOverlayApp(makeOverlayApp("@elizaos/plugin-feed", false));
   });
 
@@ -77,10 +77,10 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: ELIZAOS_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-feed",
-      "@elizaos/plugin-phone",
-      "@elizaos/plugin-wifi",
+      "@elizaos/plugin-native-phone",
+      "@elizaos/plugin-native-wifi",
     ]);
   });
 
@@ -90,10 +90,10 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: WHITE_LABEL_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-feed",
-      "@elizaos/plugin-phone",
-      "@elizaos/plugin-wifi",
+      "@elizaos/plugin-native-phone",
+      "@elizaos/plugin-native-wifi",
     ]);
   });
 

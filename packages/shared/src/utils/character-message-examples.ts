@@ -4,8 +4,7 @@
  * the runtime expects, tolerating the many hand-authored formats found in configs.
  */
 
-import type { Content } from "@elizaos/common";
-import type { MessageExampleGroup } from "@elizaos/core";
+import type { Content, MessageExampleGroup } from "@elizaos/core";
 
 type MessageRecord = {
   content?: Content | string;

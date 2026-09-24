@@ -869,7 +869,7 @@ export async function handleViewsRoutes(
     // caller-scoped terminal handoff by id after one path is actually handled.
     const shouldTargetCompletedAction =
       body?.delivery === "completed-action" && Boolean(originatingClientId);
-    const completedActionHandoffId = shouldTargetCompletedAction
+    const completedActionHandoffId = callerOwnedDelivery
       ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
       : undefined;
     let completedActionDelivered = false;
@@ -950,7 +950,11 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
-      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
+      ...(shouldTargetCompletedAction
+        ? { completedActionDelivered }
+        : body?.delivery === "originating-client" && completedActionHandoffId
+          ? { completedActionDelivered: originatingClientDelivered }
+          : {}),
       ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
     });
     return true;

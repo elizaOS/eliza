@@ -30,12 +30,6 @@
       "@elizaos/core": [
         "../../packages/core/dist"
       ],
-      "@elizaos/prompts": [
-        "../../packages/prompts/src/index.ts"
-      ],
-      "@elizaos/prompts/*": [
-        "../../packages/prompts/src/*"
-      ]
     }
   },
   "include": [

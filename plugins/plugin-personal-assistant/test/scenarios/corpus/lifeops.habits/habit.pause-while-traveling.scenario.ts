@@ -1,6 +1,6 @@
 /** Scenario fixture for habit pause while traveling; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
@@ -44,7 +44,7 @@ export default scenario({
   tags: ["lifeops", "habits", "smoke"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

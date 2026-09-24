@@ -4,7 +4,7 @@
  * Device pairing mints a revocable machine-session id as the client's bearer —
  * never the static connection key — so both WebSocket auth paths must accept a
  * live session id through the same host-bridge seam REST uses
- * (`resolveSessionTokenAuthorization` → app-core `resolveSessionTokenRole` →
+ * (`resolveSessionTokenAuthorization` → app `resolveSessionTokenRole` →
  * `findActiveSession`), while staying fail-closed for everything else:
  *
  *  - in-band `{type:"auth", token:<session-id>}` → `auth-ok`;
@@ -18,8 +18,8 @@
  * credential boundary instead of trusted same-machine access. The host
  * bridge is substituted at its documented injection seam
  * (`setAgentHostBridge`) with a session resolver that recognizes one active
- * session id — the session-store internals themselves are app-core's contract
- * and are covered by app-core's auth tests.
+ * session id — the session-store internals themselves are app's contract
+ * and are covered by app's auth tests.
  */
 
 import { mkdtemp, rm } from "node:fs/promises";

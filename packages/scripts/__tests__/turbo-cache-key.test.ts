@@ -7,7 +7,7 @@ const cacheKey = await import(
 
 const workspaceDirs = [
   "packages/core",
-  "packages/prompts",
+  "packages/shared",
   "plugins/plugin-openai",
 ];
 
@@ -39,7 +39,7 @@ describe("turbo-cache-key input selection", () => {
     ).toBe(true);
     expect(
       cacheKey.isTurboCacheInputFile(
-        "packages/prompts/specs/actions/core.json",
+        "packages/shared/src/catalog/generated.json",
         workspaceDirs,
       ),
     ).toBe(true);

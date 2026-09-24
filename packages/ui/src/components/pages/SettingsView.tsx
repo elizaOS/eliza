@@ -9,7 +9,7 @@
  * section. Also reusable in modal form (`inModal`).
  */
 
-import { isViewVisible } from "@elizaos/common";
+import { isViewVisible } from "@elizaos/core";
 import {
   isPermissionId,
   type PermissionId,

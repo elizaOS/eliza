@@ -116,7 +116,6 @@ function existsAsDirFrom(bases, token) {
 // hold plugin-agnostic build/test/dev automation that must discover plugins via
 // the shared seam + per-package metadata, not by naming plugin sets inline.
 const PLUGIN_COUPLING_SCAN_DIRS = [
-  "scripts",
   path.join("packages", "scripts"),
   path.join("packages", "cloud", "scripts"),
 ];

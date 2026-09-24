@@ -1,13 +1,12 @@
 /**
  * Registry and builder for automation-catalog node contributors. Plugins
- * register contributors here so the app-core automation-catalog route can
+ * register contributors here so the app automation-catalog route can
  * collect plugin-owned `AutomationNodeDescriptor`s without those plugins
- * depending on app-core. `buildRuntimeCapabilityNodes` turns declarative
+ * depending on app. `buildRuntimeCapabilityNodes` turns declarative
  * runtime capability specs into descriptors gated by the loaded actions/plugins.
  */
 
-import type { UUID } from "@elizaos/common";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import type { ElizaConfig } from "./config/types.js";
 import type { AutomationNodeDescriptor } from "./contracts/automation-nodes.js";
 

@@ -103,11 +103,11 @@ const content = await bridge.read("notes/checklist.md");
 - iOS users need `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` in the host app's `Info.plist` for files to be visible in Files.app. That change belongs in the host app repo, not here.
 - Android requires no manifest changes for `Directory.Documents` — Capacitor Filesystem handles scoped storage (Android 10+) internally.
 - Log prefix for all messages: `[device-filesystem]` (`DEVICE_FILESYSTEM_LOG_PREFIX`).
-- See root [CLAUDE.md](../../CLAUDE.md) for repo-wide conventions (logger-only, ESM, naming, architecture rules).
+- See root [AGENTS.md](../../AGENTS.md) for repo-wide conventions (logger-only, ESM, naming, architecture rules).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

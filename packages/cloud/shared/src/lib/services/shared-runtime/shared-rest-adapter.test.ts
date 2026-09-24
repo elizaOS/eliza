@@ -15,7 +15,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "../../utils/logger";
 
 class InsufficientCreditsError extends Error {}

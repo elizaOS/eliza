@@ -1,5 +1,5 @@
 // Guards against the ELIZA_BUILD_STAMP passthrough regression: the tester
-// BuildBadge stamp (`packages/app/dist/build-info.json`) is written by
+// BuildBadge stamp (`packages/app/web-dist/build-info.json`) is written by
 // `packages/app/scripts/build.mjs` via `shouldSkipBuildStamp()`, which reads
 // ELIZA_BUILD_STAMP / ELIZA_BUILD_VARIANT / VITE_ENVIRONMENT /
 // ELIZA_RELEASE_AUTHORITY. The app is built through turbo (`build:client` ->
@@ -15,7 +15,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const TURBO_JSON = fileURLToPath(new URL("../../../turbo.json", import.meta.url));
+const TURBO_JSON = fileURLToPath(
+  new URL("../../../turbo.json", import.meta.url),
+);
 const BUILD_STAMP_MJS = fileURLToPath(
   new URL("../../app/scripts/build-stamp.mjs", import.meta.url),
 );

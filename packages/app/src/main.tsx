@@ -44,17 +44,17 @@ import "./cloud-apps-view";
 import "./renderer-build-stamp";
 
 import { BackgroundRunner } from "@capacitor/background-runner";
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 // #18056: desktop shell is loaded only via dynamic import / React.lazy so the
-// cold anonymous /login entry does not static-import app-core/ui browser graphs.
+// cold anonymous /login entry does not static-import app/ui browser graphs.
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
-} from "@elizaos/app-core/api/ios-local-agent-transport";
-import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
+} from "@elizaos/app/api/ios-local-agent-transport";
+import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { getStylePresets } from "@elizaos/shared/character-presets";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
@@ -229,6 +229,7 @@ import {
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
+  assertSupportedIosRuntimeConfig,
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
@@ -321,22 +322,22 @@ function importPersonalAssistant() {
 
 function importAppPhone() {
   return cachedDynamicImport(
-    "@elizaos/plugin-phone",
-    () => import("@elizaos/plugin-phone"),
+    "@elizaos/plugin-native-phone",
+    () => import("@elizaos/plugin-native-phone"),
   );
 }
 
 function importAppTaskCoordinator() {
   return cachedDynamicImport(
-    "@elizaos/plugin-task-coordinator",
-    () => import("@elizaos/plugin-task-coordinator"),
+    "@elizaos/plugin-agent-orchestrator",
+    () => import("@elizaos/plugin-agent-orchestrator/ui"),
   );
 }
 
 function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
-    "@elizaos/plugin-task-coordinator/register",
-    () => import("@elizaos/plugin-task-coordinator/register"),
+    "@elizaos/plugin-agent-orchestrator/ui/register",
+    () => import("@elizaos/plugin-agent-orchestrator/ui/register"),
   );
 }
 
@@ -384,18 +385,18 @@ const ShellViewAgentSurface = lazyNamedComponent<{
 const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
   Record<string, never>
 >(async () => {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.DesktopSurfaceNavigationRuntime;
 });
 const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("@elizaos/app/desktop-shell");
     return mod.DesktopTrayRuntime;
   },
 );
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("@elizaos/app/desktop-shell");
     return mod.DetachedShellRoot;
   },
 );
@@ -405,16 +406,16 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
 );
 
 async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.runIosFullBunSmokeIfRequested();
 }
 
 async function buildLocalizedTrayMenuAsync(
   ...args: Parameters<
-    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
+    typeof import("@elizaos/app/desktop-shell").buildLocalizedTrayMenu
   >
 ) {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("@elizaos/app/desktop-shell");
   return mod.buildLocalizedTrayMenu(...args);
 }
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
@@ -530,8 +531,6 @@ const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let cameraBridgeResponderStop: (() => void) | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
-let mobileAgentTunnelListener: PluginListenerHandle | null = null;
-let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let iosOnboardingSmokeStarted = false;
 let iosCloudOnboardingSmokeStarted = false;
@@ -938,24 +937,27 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       key: "@elizaos/plugin-personal-assistant",
       load: importPersonalAssistant,
     },
-    { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
     {
-      key: "@elizaos/plugin-task-coordinator/register",
+      key: "@elizaos/plugin-agent-orchestrator",
+      load: importAppTaskCoordinator,
+    },
+    {
+      key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
     },
     {
       key: "@elizaos/plugin-relationships/register",
       load: importAppRelationshipsRegister,
     },
-    { key: "@elizaos/plugin-phone", load: importAppPhone },
+    { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (() => {
-    // app-core owns the AppBootConfig singleton and is already evaluated: this
+    // app owns the AppBootConfig singleton and is already evaluated: this
     // module statically imports its desktop bindings, so the whole package
     // loads with the entry chunk before main() runs. A dynamic
-    // import("@elizaos/app-core") here would be a runtime no-op, but its
+    // import("@elizaos/app") here would be a runtime no-op, but its
     // escaping namespace would force Rollup to retain every export of the
     // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
     // entry chunk (#13187). Everything else exposed through the boot config is
@@ -1927,7 +1929,6 @@ async function initializePlatform(): Promise<void> {
     await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
     void initializeMobileDeviceBridge();
-    void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
   }
 
@@ -2808,21 +2809,6 @@ const CloudRouterShell = lazy(async () => {
   return { default: mod.CloudRouterShell };
 });
 
-/** Approved marketing surfaces bundled only into the hosted web shell. */
-const MarketingHomePage = lazy(async () => {
-  if (__ELIZA_WEB_SHELL__ !== true) {
-    throw new Error("MarketingHomePage is web-build-only");
-  }
-  return import("@homepage/embedded-home");
-});
-
-const MarketingDownloadsPage = lazy(async () => {
-  if (__ELIZA_WEB_SHELL__ !== true) {
-    throw new Error("MarketingDownloadsPage is web-build-only");
-  }
-  return import("@homepage/embedded-downloads");
-});
-
 /**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
@@ -2905,8 +2891,6 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
-        marketingHomeElement={<MarketingHomePage />}
-        downloadsElement={<MarketingDownloadsPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -3184,17 +3168,25 @@ function injectDetachedShellApiBase(): void {
 }
 
 function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
-  if (typeof window === "undefined") return IOS_RUNTIME_ENV_CONFIG;
-  try {
-    const mode = normalizeMobileRuntimeMode(
-      window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
-    );
-    if (!mode) return IOS_RUNTIME_ENV_CONFIG;
-    return { ...IOS_RUNTIME_ENV_CONFIG, mode };
-  } catch {
-    // error-policy:J3 unavailable storage — build-time runtime config
-    return IOS_RUNTIME_ENV_CONFIG;
+  let config = IOS_RUNTIME_ENV_CONFIG;
+  if (typeof window !== "undefined") {
+    try {
+      const mode = normalizeMobileRuntimeMode(
+        window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
+      );
+      if (mode) config = { ...config, mode };
+    } catch (error) {
+      // error-policy:J4 unavailable browser storage — retain explicit build-time configuration.
+      if (!(error instanceof DOMException) || error.name !== "SecurityError")
+        throw error;
+      console.warn(
+        `${APP_LOG_PREFIX} Runtime preference storage unavailable`,
+        error,
+      );
+    }
   }
+  assertSupportedIosRuntimeConfig(config);
+  return config;
 }
 
 function applyBuildTimeIosConnection(): void {
@@ -3380,7 +3372,7 @@ async function initializeMobileDeviceBridge(): Promise<void> {
   mobileDeviceBridgeStartPromise = (async () => {
     try {
       const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-llama"),
+        import("@elizaos/plugin-native-inference/llama"),
         getOrCreateDeviceBridgeId(),
       ]);
       const pairingToken =
@@ -3436,114 +3428,24 @@ function stopMobileDeviceBridge(): void {
   mobileDeviceBridgeClient = null;
 }
 
-async function initializeMobileAgentTunnel(): Promise<void> {
-  const runtimeConfig = getCurrentIosRuntimeConfig();
-  if (!isNative || (!isIOS && !isAndroid)) return;
-  if (runtimeConfig.mode !== "tunnel-to-mobile") return;
-  if (mobileAgentTunnelStartPromise) return;
-  const relayUrl = runtimeConfig.tunnelRelayUrl;
-  if (!relayUrl) {
-    console.warn(
-      `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
-    );
-    return;
-  }
-  if (!isTrustedNativeWebSocketUrl(relayUrl)) {
-    console.warn(`${APP_LOG_PREFIX} Rejected unsafe mobile tunnel relay URL`);
-    return;
-  }
-
-  mobileAgentTunnelStartPromise = (async () => {
-    try {
-      const [{ MobileAgentBridge }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-mobile-agent-bridge"),
-        getOrCreateDeviceBridgeId(),
-      ]);
-
-      if (!mobileAgentTunnelListener) {
-        mobileAgentTunnelListener = await MobileAgentBridge.addListener(
-          "stateChange",
-          (event) => {
-            console.info(
-              `${APP_LOG_PREFIX} Mobile agent tunnel ${event.state}`,
-              event.reason ?? "",
-            );
-          },
-        );
-      }
-
-      const status = await MobileAgentBridge.startInboundTunnel({
-        relayUrl,
-        deviceId,
-        ...(runtimeConfig.tunnelPairingToken
-          ? { pairingToken: runtimeConfig.tunnelPairingToken }
-          : {}),
-        ...(isAndroid
-          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
-          : {}),
-      });
-      console.info(
-        `${APP_LOG_PREFIX} Mobile agent tunnel ${status.state}`,
-        status.lastError ?? "",
-      );
-    } catch (error) {
-      // error-policy:J4 optional native module — absence logged, app degrades
-      console.warn(
-        `${APP_LOG_PREFIX} Mobile agent tunnel unavailable:`,
-        error instanceof Error ? error.message : error,
-      );
-    } finally {
-      mobileAgentTunnelStartPromise = null;
-    }
-  })();
-
-  await mobileAgentTunnelStartPromise;
-}
-
-async function stopMobileAgentTunnel(): Promise<void> {
-  mobileAgentTunnelStartPromise = null;
-  try {
-    const { MobileAgentBridge } = await import(
-      "@elizaos/capacitor-mobile-agent-bridge"
-    );
-    await MobileAgentBridge.stopInboundTunnel();
-  } catch (error) {
-    // error-policy:J6 teardown — stop failure is logged
-    console.warn(
-      `${APP_LOG_PREFIX} Mobile agent tunnel stop failed:`,
-      error instanceof Error ? error.message : error,
-    );
-  }
-  try {
-    await mobileAgentTunnelListener?.remove();
-  } catch {
-    // error-policy:J6 teardown — the native tunnel stop above is
-    // authoritative
-  }
-  mobileAgentTunnelListener = null;
-}
-
 function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, () => {
-    const mode = getCurrentIosRuntimeConfig().mode;
-    if (mode === "cloud-hybrid" || mode === "local") {
+    try {
+      const mode = getCurrentIosRuntimeConfig().mode;
+      if (mode === "cloud-hybrid" || mode === "local") {
+        stopMobileDeviceBridge();
+        void initializeMobileDeviceBridge();
+        void configureMobileBackgroundRunner();
+        return;
+      }
       stopMobileDeviceBridge();
-      void stopMobileAgentTunnel();
-      void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
-      return;
+    } catch (error) {
+      // error-policy:J1 runtime-mode UI boundary — expose unsupported persisted modes.
+      renderBootFailure(error);
     }
-    if (mode === "tunnel-to-mobile") {
-      stopMobileDeviceBridge();
-      void initializeMobileAgentTunnel();
-      void configureMobileBackgroundRunner();
-      return;
-    }
-    stopMobileDeviceBridge();
-    void stopMobileAgentTunnel();
-    void configureMobileBackgroundRunner();
   });
 }
 

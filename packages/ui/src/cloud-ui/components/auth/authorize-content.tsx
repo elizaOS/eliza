@@ -1,6 +1,6 @@
 "use client";
 
-import type { LoginProviders } from "@elizaos/login";
+import type { LoginProviders } from "@elizaos/auth";
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */

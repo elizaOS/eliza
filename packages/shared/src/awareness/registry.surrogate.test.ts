@@ -3,7 +3,7 @@
  * now preserves complete summaries while repairing malformed Unicode.
  */
 
-import { toWellFormedUnicode } from "@elizaos/common";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { normalizeSummaryLine } from "./registry";
 

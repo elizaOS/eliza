@@ -1,4 +1,3 @@
-import { resolveEnvAlias } from "@elizaos/common";
 /**
  * App boot configuration plus the non-mutating brand<->ELIZA env-alias reader,
  * shared across every bundled copy of `@elizaos/core`. The boot-config store is
@@ -18,6 +17,7 @@ import {
 	peekAmbientSingleton,
 	setAmbientSingleton,
 } from "./ambient-context.js";
+import { resolveEnvAlias } from "./utils/env-alias.js";
 
 interface AppBootConfig {
 	envAliases?: readonly (readonly [string, string])[];
@@ -81,19 +81,6 @@ export function getBootConfigEnvAliases():
 	return getBootConfig().envAliases;
 }
 
-function getProcessEnv(): Record<string, string | undefined> | null {
-	try {
-		const p = (globalThis as Record<string, unknown>).process as
-			| { env?: Record<string, string | undefined> }
-			| undefined;
-		return p?.env ?? null;
-	} catch {
-		// error-policy:J4 browser and edge runtimes may expose a hostile process
-		// shim; environment aliases are explicitly unavailable there.
-		return null;
-	}
-}
-
 /**
  * Additive, NON-mutating alias-aware env reader (arch-audit #12251).
  *
@@ -116,7 +103,7 @@ export function resolveAliasedEnvValue(
 	key: string,
 	aliases: readonly (readonly [string, string])[] | undefined = getBootConfig()
 		.envAliases,
-	env: Record<string, string | undefined> | null = getProcessEnv(),
+	env: Record<string, string | undefined> | null = process.env,
 ): string | undefined {
 	return resolveEnvAlias(key, aliases, env);
 }

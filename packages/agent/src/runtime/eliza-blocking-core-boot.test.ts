@@ -144,21 +144,16 @@ describe("blocking core runtime boot", () => {
   });
   it("finishes a dependency before starting its dependent and registers no unresolved plugins", async () => {
     const harness = createBootHarness();
-    const skills = "@elizaos/plugin-agent-skills";
-    const tools = "@elizaos/plugin-coding-tools";
     await preregisterCorePluginsInDependencyWaves({
       runtime: harness.runtime as never,
-      resolvedPlugins: [skills, tools].map((name) => ({
-        name,
-        plugin: { name, description: "Dependency-wave fixture" },
-      })),
+      resolvedPlugins: harness.resolvedPlugins,
       alreadyPreRegistered: new Set(),
     });
     expect(harness.events).toEqual([
-      `register:${tools}`,
-      `ready:${tools}`,
-      `register:${skills}`,
-      `ready:${skills}`,
+      "register:@elizaos/plugin-sql",
+      "ready:@elizaos/plugin-sql",
+      "register:@elizaos/plugin-scheduling",
+      "ready:@elizaos/plugin-scheduling",
     ]);
   });
 

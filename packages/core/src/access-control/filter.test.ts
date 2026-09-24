@@ -154,7 +154,7 @@ describe("canReadScope", () => {
 
 	// Regression guard: for the four DOCUMENT scopes, canReadScope must be
 	// byte-identical to the documents plugin's canReadDocumentMemory ladder
-	// (plugins/plugin-documents/src/routes.ts:408-430), so documents can delegate
+	// (plugins/plugin-knowledge/src/routes.ts:408-430), so documents can delegate
 	// here without behavior change.
 	it("matches the documents read ladder verbatim for document scopes", () => {
 		const docLadder = (

@@ -1,7 +1,7 @@
 """Eliza-1 manifest generator + validator (Python side).
 
 Mirror of the TS module under
-``eliza/packages/app-core/src/services/local-inference/manifest/``. The
+``eliza/packages/app/src/services/local-inference/manifest/``. The
 publish flow (``publish_all_eliza1.sh`` and friends) calls
 ``build_manifest`` after assembling files, running quantization, hardware
 verification, and evals. The function refuses to emit

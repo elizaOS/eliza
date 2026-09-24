@@ -4,9 +4,10 @@
  * requiring several output tokens must complete without a probe-imposed limit;
  * genuinely incomplete output and rejected credentials still block activation.
  */
+
 import { createServer } from "node:http";
-import { AgentRuntime, ModelType } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../../../plugins/plugin-openai/models/text";
 import { providerSmokeCheck } from "./health-checks";
@@ -92,10 +93,9 @@ it.each(["complete", "length", "unauthorized"] as const)(
       vi.stubEnv("OPENAI_API_KEY", "loopback-test-key");
       vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
       vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
-      const runtime = new AgentRuntime({
+      const runtime = createSQLiteTestRuntime({
         character: { name: "HealthWire", bio: ["test"] },
         logLevel: "fatal",
-        adapter: new InMemoryDatabaseAdapter(),
       });
       runtime.registerModel(
         ModelType.TEXT_SMALL,

@@ -17,21 +17,19 @@ describe("release plugin policy", () => {
   it("ships runtime support packages without marking them as bundled registry plugins", () => {
     const availableDependencies = [
       "@elizaos/core",
-      "@elizaos/prompts",
-      "@elizaos/plugin-app-manager",
+      "@elizaos/shared",
       "@elizaos/plugin-imessage",
       "@elizaos/ui",
       "@elizaos/plugin-openai",
     ];
 
     expect(BASELINE_BUNDLED_RUNTIME_PACKAGES).toEqual(
-      expect.arrayContaining(["@elizaos/core", "@elizaos/prompts"]),
+      expect.arrayContaining(["@elizaos/core", "@elizaos/shared"]),
     );
     expect(getBundledRuntimePackages(availableDependencies)).toEqual(
       expect.arrayContaining([
         "@elizaos/core",
-        "@elizaos/prompts",
-        "@elizaos/plugin-app-manager",
+        "@elizaos/shared",
         "@elizaos/plugin-imessage",
         "@elizaos/ui",
         "@elizaos/plugin-openai",

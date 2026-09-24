@@ -48,7 +48,7 @@ vi.mock("../../../cloud/billing-console", () => ({
 }));
 // useWidgetNavigation → reportUserViewSwitch; stub it so the click test isolates
 // the navigation call.
-vi.mock("../../../chat/useSlashCommandController", () => ({
+vi.mock("../../../chat/shortcut-report", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
 vi.mock("./home-widget-card", async () => {

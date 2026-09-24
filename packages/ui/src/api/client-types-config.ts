@@ -8,7 +8,7 @@ import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
   ViewKind,
-} from "@elizaos/common";
+} from "@elizaos/core";
 import type { PluginParamDef } from "@elizaos/shared/api/agent-api-types";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/first-run-options";
 import type { ConfigUiHint } from "../types";
@@ -187,7 +187,7 @@ export interface PluginInfo {
   /**
    * App metadata declared by the plugin (`Plugin.app`). Surfaces nav-tab
    * registrations, developer-mode gating, and app-store visibility so the
-   * shell can wire pages dynamically without app-core hard-coding them.
+   * shell can wire pages dynamically without app hard-coding them.
    */
   app?: {
     displayName?: string;

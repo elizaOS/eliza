@@ -30,11 +30,11 @@ can lift the engine here behind the `@elizaos/plugin-scheduling` tick-hook ports
   source; it copies missing rows, fails on same-key drift, and verifies
   completeness before recording success.
 
-See the root `CLAUDE.md` for repo-wide architecture rules.
+See the root `AGENTS.md` for repo-wide architecture rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

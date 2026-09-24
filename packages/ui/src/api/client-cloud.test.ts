@@ -10,7 +10,7 @@
  * contract. Hand-built tokens, deterministic, no network, additive only.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   CloudAgentWakeError,

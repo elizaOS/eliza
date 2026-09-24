@@ -228,11 +228,6 @@ const POSSESSIVES = [
 
 // Per-view multilingual noun synonyms. Order = match priority.
 const VIEW_NOUNS: Record<string, readonly string[]> = {
-  "pendant-transcript": [
-    "pendant transcript",
-    "pendant voice transcript",
-    "pendant recording transcript",
-  ],
   files: [
     "stored files",
     "stored attachments",
@@ -889,7 +884,6 @@ const VIEW_PRIORITY = [
   "cockpit",
   "projects",
   "task-coordinator",
-  "pendant-transcript",
   "finances",
   "relationships",
   "automations",

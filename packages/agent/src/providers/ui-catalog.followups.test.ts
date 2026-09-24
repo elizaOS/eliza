@@ -12,8 +12,8 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
+import { findChoiceRegions } from "@elizaos/ui/components/chat/message-choice-parser";
 import { describe, expect, it, vi } from "vitest";
-import { findChoiceRegions } from "../../../ui/src/components/chat/message-choice-parser.ts";
 
 // The followups/form instructions live behind the provider's admin gate; force
 // it open so these tests focus on instruction delivery + channel gating.

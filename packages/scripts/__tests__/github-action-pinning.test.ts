@@ -168,21 +168,12 @@ function assertUiCoreFixtureCoreBootstrap(source: string): void {
       step.run === "bun run --cwd packages/ui test:frontend-hosting-e2e",
   );
 
-  if (
-    setupIndex < 0 ||
-    buildIndex < 0 ||
-    cloudFixtureIndex < 0
-  ) {
+  if (setupIndex < 0 || buildIndex < 0 || cloudFixtureIndex < 0) {
     throw new Error(
       "UI core fixtures must retain setup, core build, and cloud E2E steps",
     );
   }
-  if (
-    !(
-      setupIndex < buildIndex &&
-      buildIndex < cloudFixtureIndex
-    )
-  ) {
+  if (!(setupIndex < buildIndex && buildIndex < cloudFixtureIndex)) {
     throw new Error(
       "UI core fixtures must generate data and build the edge contract before cloud E2E",
     );

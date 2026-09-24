@@ -585,8 +585,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("relationships", { viewKind: "system" }),
     entry("memories", { viewKind: "system" }),
     entry("stream"),
-    // Builtin tab with no declared kind — curation must still force preview.
-    entry("pendant-transcript", { builtin: true, label: "Pendant Transcript" }),
     entry("settings", { viewKind: "system" }),
     // Native-OS (AOSP fork only).
     entry("phone", { builtin: true }),
@@ -628,7 +626,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "documents",
       "memories",
       "stream",
-      "pendant-transcript",
       "trajectories",
       "database",
       "runtime",
@@ -662,7 +659,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("forces stream/pendant to preview while relationships stays inside Character", () => {
+  it("forces stream to preview while relationships stays inside Character", () => {
     // Preview on, developer off: the preview surfaces return while developer
     // tools remain hidden and relationships stays inside Character.
     const previewOnly = ids(
@@ -672,9 +669,7 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["stream", "pendant-transcript"]) {
-      expect(previewOnly).toContain(id);
-    }
+    expect(previewOnly).toContain("stream");
     expect(previewOnly).not.toContain("trajectories");
     expect(previewOnly).not.toContain("relationships");
 
@@ -689,9 +684,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     );
     // relationships is a Character section, never a tile — even developer-on.
     expect(developerOnly).not.toContain("relationships");
-    for (const id of ["stream", "pendant-transcript"]) {
-      expect(developerOnly).not.toContain(id);
-    }
+    expect(developerOnly).not.toContain("stream");
   });
 
   it("hides Stream when its build feature is disabled without hiding other preview apps", () => {
@@ -704,7 +697,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       }),
     );
     expect(page).not.toContain("stream");
-    expect(page).toContain("pendant-transcript");
     expect(page).toContain("trajectories");
   });
 
@@ -761,7 +753,7 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
   it("canonicalizes an internal-tool app package name to its declared targetTab", () => {
     // The task-coordinator package name collapses onto the tasks tile via its
     // declaration (the short `task-coordinator` alias keeps its legacy row).
-    expect(canonicalLauncherId("@elizaos/plugin-task-coordinator")).toBe(
+    expect(canonicalLauncherId("@elizaos/plugin-agent-orchestrator")).toBe(
       "tasks",
     );
     expect(canonicalLauncherId("task-coordinator")).toBe("tasks");
@@ -772,7 +764,7 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
     // IS the package name (appToEntry uses `id: app.name`). Curation must fold
     // it onto the owning tab tile from the declaration alone.
     const targetTab = getInternalToolAppTargetTab(
-      "@elizaos/plugin-task-coordinator",
+      "@elizaos/plugin-agent-orchestrator",
     );
     expect(targetTab).toBe("tasks");
     const page = curateLauncherPages(
@@ -780,7 +772,7 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
         entry("chat"),
         entry("tasks", { viewKind: "system" }),
         // Catalog card for the same surface, keyed by package name.
-        entry("@elizaos/plugin-task-coordinator", {
+        entry("@elizaos/plugin-agent-orchestrator", {
           kind: "app",
           state: "available",
           viewKind: "system",
@@ -790,7 +782,7 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
     );
     // One tasks tile, no stray package-name tile.
     expect(ids(page).filter((id) => id === "tasks")).toHaveLength(1);
-    expect(ids(page)).not.toContain("@elizaos/plugin-task-coordinator");
+    expect(ids(page)).not.toContain("@elizaos/plugin-agent-orchestrator");
   });
 });
 

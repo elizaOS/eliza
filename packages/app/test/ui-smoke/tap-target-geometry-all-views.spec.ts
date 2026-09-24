@@ -51,10 +51,7 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
-const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {
-  "pendant-transcript":
-    "Designed disconnected pendant transcript state has no standalone controls when no pendant session is paired.",
-};
+const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {};
 
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control

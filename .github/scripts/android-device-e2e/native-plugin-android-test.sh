@@ -3,7 +3,7 @@
 
 set -euo pipefail
 adb wait-for-device
-ANDROID_DIR="$GITHUB_WORKSPACE/packages/app-core/platforms/android"
+ANDROID_DIR="$GITHUB_WORKSPACE/packages/app/platforms/android"
 GRADLEW="$ANDROID_DIR/gradlew"
 chmod +x "$GRADLEW"
 
@@ -25,11 +25,11 @@ adb shell settings put secure location_mode 3 || true
 "$GRADLEW" -p "$ANDROID_DIR" --no-daemon \
   :app:connectedDebugAndroidTest \
   :elizaos-capacitor-system:connectedDebugAndroidTest \
-  :elizaos-capacitor-wifi:connectedDebugAndroidTest \
-  :elizaos-capacitor-phone:connectedDebugAndroidTest \
+  :elizaos-plugin-native-wifi:connectedDebugAndroidTest \
+  :elizaos-plugin-native-phone:connectedDebugAndroidTest \
   :elizaos-capacitor-camera:connectedDebugAndroidTest \
-  :elizaos-capacitor-contacts:connectedDebugAndroidTest \
-  :elizaos-capacitor-messages:connectedDebugAndroidTest \
+  :elizaos-plugin-native-contacts:connectedDebugAndroidTest \
+  :elizaos-plugin-native-messages:connectedDebugAndroidTest \
   :elizaos-capacitor-mobile-signals:connectedDebugAndroidTest \
   :elizaos-capacitor-location:connectedDebugAndroidTest
 
@@ -69,7 +69,7 @@ printf '%s\n' "$MS_OUT" | grep -qE 'OK \([0-9]+ test' || {
 # state rather than requiring a transcript. All other assertions
 # (registration, role, IME selection, deep-link landing) still gate
 # the job.
-APP_APK="$GITHUB_WORKSPACE/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
+APP_APK="$GITHUB_WORKSPACE/packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
 if [ -f "$APP_APK" ]; then
   adb install -r -t "$APP_APK"
 else

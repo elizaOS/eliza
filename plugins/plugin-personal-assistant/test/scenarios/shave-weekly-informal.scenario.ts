@@ -2,7 +2,7 @@
  * Live-model scenario: casual texting-slang phrasing still persists a weekly
  * "Shave" habit definition.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

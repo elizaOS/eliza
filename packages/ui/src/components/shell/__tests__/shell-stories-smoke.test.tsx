@@ -18,7 +18,6 @@ smokeStoryModules("shell", modules, {
     "ChatOverlay/Listening",
     "ChatOverlay/Responding",
     "ChatOverlay/Booting",
-    "ChatOverlay/SlashCommands",
     "StartupScreen/Pairing",
   ],
 });

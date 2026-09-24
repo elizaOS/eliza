@@ -80,11 +80,11 @@ Same pattern: create `src/providers/my-provider.ts`, export a `Provider`, and ad
 - **Transcription fallback requires `ServiceType.TRANSCRIPTION`.** If no subtitles or captions exist and the video is not categorised as Music, `VideoService` calls `runtime.getService<ITranscriptionService>(ServiceType.TRANSCRIPTION)`. Load a plugin that registers an `ITranscriptionService` under `ServiceType.TRANSCRIPTION`, or this path throws "Transcription service not found".
 - **Direct MP4 URLs** are detected by extension and bypass yt-dlp for metadata; they use a simple HEAD check and fall back to yt-dlp if unreachable.
 - **`BinaryResolver` is a singleton** (`BinaryResolver.instance()`). In tests, call `BinaryResolver.resetForTests()` between cases to avoid state leakage.
-- See root `CLAUDE.md` for repo-wide rules (logger-only logging, ESM, architecture commandments, naming).
+- See root `AGENTS.md` for repo-wide rules (logger-only logging, ESM, architecture commandments, naming).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

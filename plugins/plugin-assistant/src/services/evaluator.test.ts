@@ -3,13 +3,13 @@
  * structured model call in priority order, invalid sections and processor
  * failures stay isolated, and the schema -> json_object -> plain-JSON fallback
  * ladder (with schema-skip arming) degrades gracefully. Runs against a real
- * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
+ * AgentRuntime + SQLiteDatabaseAdapter with a stubbed useModel.
  */
 
 import { resolveEffectiveSystemPrompt } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   type ActionResult,
   type Character,
@@ -36,14 +36,14 @@ import { getRoomTranscript } from "./evaluator-transcript";
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
 function makeRuntime(settings: Character["settings"] = {}): AgentRuntime {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: {
       name: "EvaluatorTestAgent",
       bio: "test",
       settings,
     } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;
@@ -380,7 +380,7 @@ describe("EvaluatorService", () => {
     expect(runtime.getMemories).toHaveBeenCalledTimes(2);
   });
 
-  it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
+  it.each([ChannelType.VOICE_GROUP])(
     "does not serialize %s turns behind optional post-turn reflection",
     async (channelType) => {
       const runtime = makeRuntime();

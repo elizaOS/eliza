@@ -70,19 +70,18 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   wallet: "plugin-wallet",
   health: "plugin-health",
   focus: "plugin-blocker",
-  finances: "plugin-finances",
   inbox: "plugin-inbox",
   goals: "plugin-goals",
   todos: "plugin-todos",
   relationships: "plugin-relationships",
-  documents: "plugin-documents",
-  orchestrator: "plugin-task-coordinator",
+  documents: "plugin-knowledge",
+  orchestrator: "plugin-agent-orchestrator",
 };
 
 /**
  * Audited views whose `ViewDeclaration` is owned by the HOST registry rather
  * than by the plugin that ships the view `.tsx`. `documents` is the standing
- * case: `plugins/plugin-documents` deliberately registers no view of its own
+ * case: `plugins/plugin-knowledge` deliberately registers no view of its own
  * (a second `documents` declaration collided with the shell's built-in
  * Knowledge view and presented a smaller duplicate surface at `/documents`),
  * so its relatedActions live on the built-in entry while its spatial source —
@@ -105,7 +104,6 @@ const SPATIAL_VIEWS: readonly string[] = [
   "inbox",
   "goals",
   "health",
-  "finances",
   "todos",
   "focus",
 ];

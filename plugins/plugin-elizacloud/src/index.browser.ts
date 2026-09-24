@@ -10,7 +10,7 @@ export const elizaOSCloudPlugin: Plugin = {
 // entry. The renderer needs the names to statically resolve so the bundler
 // doesn't fail with MISSING_EXPORT. These functions are never executed in
 // the browser since the consumers are server-side routes; in eliza local-mode
-// the bundled `app-core/dist/api/server.js` imports them at module-load time.
+// the bundled `app/dist/api/server.js` imports them at module-load time.
 const unavailableBrowserExport = (): undefined => undefined;
 
 export function getCloudSecret(

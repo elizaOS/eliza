@@ -16,8 +16,8 @@ import {
 
 describe("CORE_PLUGINS", () => {
   it("loads the documents route plugin for web and hosted agent defaults", () => {
-    expect(CORE_PLUGINS).toContain("@elizaos/plugin-documents");
-    expect(DEFERRED_CORE_PLUGINS).toContain("@elizaos/plugin-documents");
+    expect(CORE_PLUGINS).toContain("@elizaos/plugin-knowledge");
+    expect(DEFERRED_CORE_PLUGINS).toContain("@elizaos/plugin-knowledge");
   });
 
   it("keeps plugin-google-workspace and plugin-personal-assistant out of the static core sets", () => {

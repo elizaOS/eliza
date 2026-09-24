@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { DrizzleQueryError } from "drizzle-orm";
 import type { PrimaryAccountBillingReadModel } from "../../db/repositories/account-billing-snapshot";
 import {

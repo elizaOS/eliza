@@ -28,13 +28,13 @@ without restarting the provider chain. The planner follows the same boundary,
 including required-tool generation errors. Cancellation remains terminal.
 
 Action catalogs and search-keyword selection are owned here. Matching uses the
-canonical prompts keyword module; core supplies only localization contracts.
+shared keyword module; core supplies only localization contracts.
 Retrieval uses one default ranking policy; process-wide MODEL_TIER presets no
 longer change its weights. Callers can supply explicit retrieval weights.
 
 Conversational entity resolution and entity prompt formatting are owned here.
 Core enforces component visibility using resolved roles and preserves stable
-agent-scoped IDs. Template rendering is imported from prompts.
+agent-scoped IDs. Template rendering is imported from shared.
 
 See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
 for deleted retry/compatibility paths, consolidated miss handling, retained
@@ -64,13 +64,7 @@ Hosts register ApprovalService explicitly. SQL owns the existing approval tables
 HTTP routes and caller authentication remain in the agent host. Import approval
 contracts from this package without loading agent process code.
 
-Hosts may enable `ELIZA_STAGE1_TERMINAL_REASK` with `true`, `1`, `yes`, or `on`
-to review a directly addressed STOP or IGNORE decision once before terminal
-routing. It is off by default and excludes coding turns. The review
-shares its budget with the shared direct-conversation IGNORE review, so a repeated
-terminal decision does not start another silence review. Requested context is
-loaded before review; malformed output and conflicting routing retain their
-existing validation paths.
+Direct noncoding conversations review a model STOP or IGNORE once by default before silently ending an addressed request. `ELIZA_STAGE1_TERMINAL_REASK=false` (or `0`) opts out of STOP review (the existing direct IGNORE review remains); `true`, `1`, `yes`, or `on` also enables the existing directly-addressed review on other channels. Unaddressed groups, cancellation and coding bypass retain their gates. The review shares one budget with direct IGNORE review and does not add another review after an empty-answer or routing correction, so a repeated terminal decision does not loop. Ordinary RESPOND turns add no call. Requested context is loaded before review; malformed output and conflicting routing retain their validation paths.
 
 ## File trajectory retention
 

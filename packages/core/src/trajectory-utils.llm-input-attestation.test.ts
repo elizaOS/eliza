@@ -27,23 +27,6 @@ function details(
 	};
 }
 
-function withProcessUnavailable<T>(fn: () => T): T {
-	const descriptor = Object.getOwnPropertyDescriptor(globalThis, "process");
-	Object.defineProperty(globalThis, "process", {
-		configurable: true,
-		value: undefined,
-	});
-	try {
-		return fn();
-	} finally {
-		if (descriptor) {
-			Object.defineProperty(globalThis, "process", descriptor);
-		} else {
-			Reflect.deleteProperty(globalThis, "process");
-		}
-	}
-}
-
 describe("final LLM input substring attestation", () => {
 	it("attests final message-bearing inputs without counting prompt aliases", async () => {
 		const hint = "exact shared lifecycle instruction";
@@ -188,26 +171,11 @@ describe("final LLM input substring attestation", () => {
 		});
 	});
 
-	it("fails closed when request-local async isolation is unavailable", async () => {
-		const callback = vi.fn(async () => "unreachable");
-		const rejection = withProcessUnavailable(() =>
-			runWithLlmInputSubstringAttestation("expected instruction", callback),
+	it("keeps unscoped model calls usable without requiring attestation", async () => {
+		const provider = vi.fn(async () => "unscoped");
+		await expect(recordLlmCall(null, details(), provider)).resolves.toBe(
+			"unscoped",
 		);
-
-		await expect(rejection).rejects.toMatchObject({
-			code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-			severity: "fatal",
-		});
-		expect(callback).not.toHaveBeenCalled();
-	});
-
-	it("keeps ordinary unscoped model calls usable without async isolation", async () => {
-		const provider = vi.fn(async () => "browser-safe");
-		const result = withProcessUnavailable(() =>
-			recordLlmCall(null, details(), provider),
-		);
-
-		await expect(result).resolves.toBe("browser-safe");
 		expect(provider).toHaveBeenCalledTimes(1);
 	});
 

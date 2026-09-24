@@ -1,13 +1,15 @@
 // Wires hosted Eliza agent processing behavior for cloud runtime services.
 
-import { ContentType, type Media, type Memory } from "@elizaos/common";
 import {
+  ContentType,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  type Media,
+  type Memory,
   ModelType,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { createMcpMemory } from "./mcp";
 

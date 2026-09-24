@@ -1,13 +1,15 @@
+/** Declares renderer plugin surfaces while retaining exact types for shared host exports. */
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared/contracts/personal-assistant";
 import type { CodingAgentTasksPanelProps } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
+import type { sanitizeCompletionRelay as SanitizeCompletionRelay } from "../../../../plugins/plugin-agent-orchestrator/src/services/transcript-sanitizer";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
 
-declare module "@elizaos/app-core" {
+declare module "@elizaos/app" {
   export const AppWindowRenderer: ComponentType<{ slug: string }>;
   export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
     id: string;
@@ -91,7 +93,7 @@ declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: EmptyComponent;
 }
 
-declare module "@elizaos/plugin-phone" {
+declare module "@elizaos/plugin-native-phone" {
   export * from "@elizaos/app-phone";
 }
 
@@ -101,7 +103,8 @@ declare module "@elizaos/app-task-coordinator" {
   export const CodingAgentTasksPanel: ComponentType<CodingAgentTasksPanelProps>;
 }
 
-declare module "@elizaos/plugin-task-coordinator" {
+declare module "@elizaos/plugin-agent-orchestrator" {
+  export const sanitizeCompletionRelay: typeof SanitizeCompletionRelay;
   export * from "@elizaos/app-task-coordinator";
 }
 

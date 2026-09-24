@@ -7,12 +7,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { main as accessMain } from "../../../scripts/release-set-public-access.mjs";
 import {
   replaceWorkspaceReferences,
   restoreWorkspaceReferences,
   setPublicAccess,
 } from "../lib/release-manifests.mjs";
+import { main as accessMain } from "../release-set-public-access.mjs";
 import { main as replaceMain } from "../replace-workspace-versions.js";
 import { main as restoreMain } from "../restore-workspace-refs.js";
 

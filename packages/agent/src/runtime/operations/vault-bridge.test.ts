@@ -13,7 +13,7 @@ import {
   inMemoryMasterKey,
   PgliteVaultImpl,
   VaultDecryptionError,
-} from "@elizaos/credentials/vault";
+} from "@elizaos/auth/vault";
 import { describe, expect, it, vi } from "vitest";
 import { resolveOptimizedPromptIntegrityKey } from "./vault-bridge.ts";
 

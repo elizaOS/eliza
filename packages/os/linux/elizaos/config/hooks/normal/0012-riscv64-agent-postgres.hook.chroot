@@ -1,0 +1,98 @@
+#!/bin/sh
+set -eu
+
+ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
+[ "${ARCH}" = "riscv64" ] || exit 0
+
+# Runtime contract markers consumed by scripts/test_riscv64_agent_staging.py:
+# ELIZA_PLATFORM=android
+# ELIZA_MOBILE_PLATFORM=android
+
+install -d -m 0750 -o elizaos -g elizaos /var/lib/elizaos
+cat >/var/lib/elizaos/eliza.json <<'JSON'
+{
+  "database": {
+    "provider": "postgres",
+    "connectionString": "postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos"
+  },
+  "runtime": {
+    "ELIZA_PLATFORM": "android",
+    "ELIZA_MOBILE_PLATFORM": "android"
+  }
+}
+JSON
+chown elizaos:elizaos /var/lib/elizaos/eliza.json
+chmod 0640 /var/lib/elizaos/eliza.json
+
+install -d -m 0755 /usr/local/sbin
+cat >/usr/local/sbin/elizaos-riscv64-postgres-init <<'SH'
+#!/bin/sh
+set -eu
+
+if command -v pg_isready >/dev/null 2>&1; then
+    for _ in $(seq 1 60); do
+        pg_isready -q && break
+        sleep 1
+    done
+fi
+
+su - postgres -c "psql -v ON_ERROR_STOP=1 <<'SQL'
+DO \$\$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'elizaos') THEN
+      CREATE ROLE elizaos LOGIN PASSWORD 'elizaos';
+   END IF;
+END
+\$\$;
+SELECT 'CREATE DATABASE elizaos OWNER elizaos'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'elizaos')\\gexec
+\\c elizaos
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+SQL"
+SH
+chmod 0755 /usr/local/sbin/elizaos-riscv64-postgres-init
+
+cat >/etc/systemd/system/elizaos-riscv64-postgres-init.service <<'UNIT'
+[Unit]
+Description=Initialize elizaOS riscv64 Postgres extensions
+After=postgresql.service
+Requires=postgresql.service
+Before=elizaos-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/elizaos-riscv64-postgres-init
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+install -d -m 0755 /etc/systemd/system/elizaos-first-boot.service.d
+cat >/etc/systemd/system/elizaos-first-boot.service.d/10-riscv64-timeout.conf <<'UNIT'
+[Service]
+Environment=ELIZA_AGENT_HEALTH_TIMEOUT_SECONDS=600
+TimeoutStartSec=900
+UNIT
+
+# The agent reads its Postgres DSN from $POSTGRES_URL / $DATABASE_URL (the
+# bundle's pg-connection-string parser falls back to host "base" when neither
+# is set — getaddrinfo EAI_AGAIN base — so migrations fail and /api/health
+# never comes up). The shared elizaos-agent.service carries no DSN (the riscv64
+# image is the only arch using this native-Postgres path), so inject it here via
+# a riscv64-only drop-in pointing at the role/db this hook provisions, and order
+# the agent after Postgres + the extension-init oneshot.
+install -d -m 0755 /etc/systemd/system/elizaos-agent.service.d
+cat >/etc/systemd/system/elizaos-agent.service.d/10-riscv64-postgres.conf <<'UNIT'
+[Unit]
+After=postgresql.service elizaos-riscv64-postgres-init.service
+Wants=postgresql.service elizaos-riscv64-postgres-init.service
+
+[Service]
+Environment=POSTGRES_URL=postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos
+Environment=DATABASE_URL=postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos
+UNIT
+
+systemctl enable postgresql.service >/dev/null 2>&1 || true
+systemctl enable elizaos-riscv64-postgres-init.service >/dev/null 2>&1 || true

@@ -3,7 +3,7 @@
   "target": "darwin-arm64-metal-fused",
   "generatedAt": "2026-05-11T09:22:47Z",
   "build": {
-    "command": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal-fused --jobs 10",
+    "command": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH node packages/app/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal-fused --jobs 10",
     "status": "pass",
     "builtAt": "2026-05-11T09:22:10.415Z",
     "forkCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",

@@ -1,7 +1,7 @@
 # @elizaos/plugin-calendar
 
 First-class calendar plugin for elizaOS agents. See `README.md` for the surface
-overview and `../../CLAUDE.md` (repo root) for monorepo-wide rules.
+overview and `../../AGENTS.md` (repo root) for monorepo-wide rules.
 
 ## Role
 
@@ -71,7 +71,7 @@ bun run --cwd plugins/plugin-calendar typecheck
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
@@ -122,3 +122,5 @@ Typed Calendar searches derive their read window from explicit date/timestamp/wi
 Conversational attendee display names or mailbox names are not evidence of an email address. An explicit address in authoritative user text can be retained; a named guest with only a model-proposed address pauses creation with CALENDAR_ATTENDEE_IDENTITY_REQUIRED. Do not silently create an attendee-free event for that unresolved guest. Every proposed guest without explicit address evidence, including an apparently unrelated model-invented guest, pauses before any write. Malformed attendees cannot be silently discarded. This pause has rejected acceptance and awaits user input. Contact resolution must supply independently grounded address evidence before it can bypass clarification.
 
 Conversational guest/recurrence evidence may reuse the action-local original user messages from selectedActionConversation. Accept only prior-dialogue user segments matching the current room and requester; assistant recaps, other speakers/rooms and malformed optional evidence cannot establish authority. Append the current message last so explicit cadence corrections win. This supplies source evidence, not a new semantic permission verdict: planner/extractor and final receipt evaluation still resolve the requested event and current edits. Unselected/raw recent-message prose is not an authorization fallback.
+
+Next-event contexts carry their actual readScope window and mark the selected projection non-exhaustive. calendarFeedState reports source freshness, not a day-wide inventory. Preserve that distinction in model results and read-receipt identity; use a complete scoped feed for agenda counts or availability, never infer them from one next event.

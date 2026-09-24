@@ -4,6 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -425,4 +426,23 @@ describe("dynamic-view build inventory", () => {
       inventory.targets.length,
     );
   });
+});
+
+test("ignores tracked view configs deleted with their workspace", () => {
+  const root = makeRoot();
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  const retired = addWorkspace(root, "plugins/retired", {
+    config: "vite.config.views.ts",
+    buildScript: "vite build --config vite.config.views.ts",
+  });
+  const live = addWorkspace(root, "plugins/live", {
+    config: "vite.config.views.ts",
+    buildScript: "vite build --config vite.config.views.ts",
+  });
+  execFileSync("git", ["add", "."], { cwd: root });
+  fs.rmSync(path.join(root, retired.dir), { recursive: true });
+  expect(
+    discoverViewBundleInventory({ repoRoot: root, workspacePackages: [live] })
+      .targets,
+  ).toHaveLength(1);
 });

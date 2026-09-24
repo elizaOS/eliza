@@ -1,6 +1,6 @@
 /** Defines deterministic provider-protocol fixtures and conformance observations. */
 
-import type { EffectReceipt } from "@elizaos/common";
+import type { EffectReceipt } from "@elizaos/core";
 
 export const PROVIDER_CONTRACT_SCENARIOS = [
   "oauth-state-pkce",

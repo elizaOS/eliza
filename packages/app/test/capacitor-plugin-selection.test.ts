@@ -67,7 +67,7 @@ describe("Android Capacitor plugin selection", () => {
       resolveCapacitorAndroidIdentity({ ELIZA_APP_ID: " " }, "ai.elizaos.app"),
     ).toEqual({
       appId: "ai.elizaos.app",
-      projectPath: "../app-core/platforms/android",
+      projectPath: "../app/platforms/android",
     });
     expect(
       resolveCapacitorAndroidIdentity(

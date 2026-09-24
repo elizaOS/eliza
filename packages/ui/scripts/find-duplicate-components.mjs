@@ -173,7 +173,7 @@ export function isMaintainedSource(file) {
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
-    !/^packages\/app-core\/platforms\/android\/app\/src\/main\/assets(\/|$)/.test(
+    !/^packages\/app\/platforms\/android\/app\/src\/main\/assets(\/|$)/.test(
       rel,
     ) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
@@ -224,7 +224,7 @@ function* walk(directory) {
       }
       // Mobile builds stage compiled JavaScript here; it is not maintained
       // React source and is absent from clean CI checkouts.
-      if (rel === "packages/app-core/platforms/android/app/src/main/assets") {
+      if (rel === "packages/app/platforms/android/app/src/main/assets") {
         continue;
       }
       yield* walk(full);
@@ -379,7 +379,7 @@ function classifyRawHostFile({ atom, file, imports }) {
   }
   if (rel.startsWith("plugins/")) return "plugin-raw-host";
   if (rel.startsWith("packages/homepage/")) return "product-package-raw-host";
-  if (rel.startsWith("packages/app-core/")) return "runtime-host-control";
+  if (rel.startsWith("packages/app/")) return "runtime-host-control";
   return "ui-raw-host";
 }
 

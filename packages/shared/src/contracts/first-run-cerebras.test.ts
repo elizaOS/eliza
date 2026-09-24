@@ -33,9 +33,9 @@ describe("Cerebras first-run provider", () => {
 });
 
 describe("first-run provider normalization", () => {
-  it("normalizes legacy local-provider aliases identically", () => {
-    expect(normalizeFirstRunProviderId("llama_local")).toBe("ollama");
-    expect(normalizeFirstRunProviderId("llama-local")).toBe("ollama");
+  it("rejects retired local-provider aliases", () => {
+    expect(normalizeFirstRunProviderId("llama_local")).toBeNull();
+    expect(normalizeFirstRunProviderId("llama-local")).toBeNull();
   });
 
   it("subscription request storage ids are driven by the selection registry", () => {
