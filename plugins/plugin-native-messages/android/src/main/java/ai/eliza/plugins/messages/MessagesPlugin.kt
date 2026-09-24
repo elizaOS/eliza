@@ -1,13 +1,12 @@
+/** Dispatches Android SMS effects and translates provider and radio completion to Capacitor. */
 package ai.eliza.plugins.messages
 
-import android.app.Activity
-import android.app.PendingIntent
+import android.app.role.RoleManager
+import android.os.Handler
+import android.os.Looper
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -18,8 +17,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 // Declares the `sms` alias so the Capacitor base Plugin auto-provides
 // checkPermissions()/requestPermissions() — SMS read/send is requested on first
@@ -37,82 +34,89 @@ import java.util.concurrent.atomic.AtomicInteger
     ],
 )
 class MessagesPlugin : Plugin() {
-    private val requestCounter = AtomicInteger(1)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val sends = mutableSetOf<SmsSendRequest>()
+    private var destroyed = false
 
     @PluginMethod
     fun sendSms(call: PluginCall) {
         if (!hasPermission(Manifest.permission.SEND_SMS)) {
-            call.reject("SEND_SMS permission is required")
+            call.reject("SEND_SMS permission is required", "PERMISSION_DENIED")
             return
         }
         val address = call.getString("address")?.trim()
-        val body = call.getString("body")?.trim()
+        val body = call.getString("body")
         if (address.isNullOrEmpty()) {
-            call.reject("address is required")
+            call.reject("address is required", "INVALID_ARGUMENT")
             return
         }
-        if (body.isNullOrEmpty()) {
-            call.reject("body is required")
+        if (body.isNullOrBlank()) {
+            call.reject("body is required", "INVALID_ARGUMENT")
             return
         }
-
-        val smsManager = SmsManager.getDefault()
-        val parts = smsManager.divideMessage(body)
-        if (parts.isEmpty()) {
-            call.reject("body is required")
-            return
-        }
-
-        val requestId = requestCounter.getAndIncrement()
-        val action = "${context.packageName}.ELIZA_SMS_SENT.$requestId"
-        val remaining = AtomicInteger(parts.size)
-        val failed = AtomicBoolean(false)
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context, intent: Intent) {
-                if (resultCode != Activity.RESULT_OK) {
-                    failed.set(true)
-                }
-                if (remaining.decrementAndGet() == 0) {
-                    receiverContext.unregisterReceiver(this)
-                    if (failed.get()) {
-                        call.reject("SMS send failed with result code $resultCode")
-                    } else {
-                        try {
-                            call.resolve(persistSentSms(address, body))
-                        } catch (error: RuntimeException) {
-                            call.reject("SMS sent but Android SMS provider did not persist the sent row", error)
+        mainHandler.post {
+            if (destroyed) {
+                call.reject("SMS plugin was destroyed", "CANCELLED")
+                return@post
+            }
+            val defaultSms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_SMS) == true
+            } else {
+                Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+            }
+            if (!defaultSms) {
+                call.reject("Select Eliza as the default SMS app before sending; this API must persist the sent record", "DEFAULT_SMS_REQUIRED")
+                return@post
+            }
+            var request: SmsSendRequest? = null
+            try {
+                val manager = SmsManager.getDefault()
+                val parts = manager.divideMessage(body)
+                require(parts.isNotEmpty()) { "SMS body could not be divided into parts" }
+                val send = SmsSendRequest(context, parts.size) { outcome ->
+                    sends.remove(request)
+                    when (outcome) {
+                        SmsSendRequest.Outcome.Sent -> {
+                            try {
+                                call.resolve(persistSentSms(address, body))
+                            } catch (error: RuntimeException) {
+                                // error-policy:J1 Radio success and provider failure must not be mistaken for an unsent SMS.
+                                call.reject("SMS sent but Android SMS provider did not persist the sent row; do not resend", "SMS_SENT_PERSIST_FAILED", error)
+                            }
                         }
+                        is SmsSendRequest.Outcome.Failed -> call.reject(
+                            "SMS send failed with result code ${outcome.resultCode}; some parts may have been sent",
+                            "SMS_SEND_FAILED",
+                        )
+                        is SmsSendRequest.Outcome.Unknown -> call.reject(outcome.reason, "SMS_SEND_STATUS_UNKNOWN")
                     }
                 }
+                request = send
+                sends.add(send)
+                val receipts = send.start()
+                if (parts.size == 1) {
+                    manager.sendTextMessage(address, null, parts.first(), receipts.first(), null)
+                } else {
+                    manager.sendMultipartTextMessage(address, null, parts, receipts, null)
+                }
+            } catch (error: RuntimeException) {
+                // error-policy:J1 The bridge settles dispatch failures and releases any registered receipt receiver.
+                val send = request
+                if (send != null) {
+                    sends.remove(send)
+                    send.cancel("SMS dispatch interrupted; send status is unknown: ${error.message}")
+                } else {
+                    call.reject("SMS dispatch failed: ${error.message}", "SMS_DISPATCH_FAILED", error)
+                }
             }
         }
+    }
 
-        val filter = IntentFilter(action)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
-
-        val pendingIntents = ArrayList<PendingIntent>()
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        for (index in parts.indices) {
-            val sentIntent = Intent(action).setPackage(context.packageName)
-            pendingIntents.add(
-                PendingIntent.getBroadcast(context, requestId + index, sentIntent, flags)
-            )
-        }
-
-        try {
-            if (parts.size == 1) {
-                smsManager.sendTextMessage(address, null, parts.first(), pendingIntents.first(), null)
-            } else {
-                smsManager.sendMultipartTextMessage(address, null, parts, pendingIntents, null)
-            }
-        } catch (error: RuntimeException) {
-            context.unregisterReceiver(receiver)
-            call.reject("SMS send failed before radio handoff", error)
-        }
+    override fun handleOnDestroy() {
+        destroyed = true
+        for (send in sends.toList()) send.cancel("SMS plugin destroyed; send status is unknown")
+        sends.clear()
+        super.handleOnDestroy()
     }
 
     @PluginMethod
@@ -121,10 +125,16 @@ class MessagesPlugin : Plugin() {
             call.reject("READ_SMS permission is required")
             return
         }
-        val limit = call.getInt("limit") ?: 100
-        if (limit <= 0 || limit > 500) {
-            call.reject("limit must be between 1 and 500")
-            return
+        val rawLimit = call.data.opt("limit")
+        val limit = if (!call.data.has("limit")) null else {
+            if (rawLimit !is Number || !rawLimit.toDouble().isFinite() ||
+                rawLimit.toDouble() < 1 || rawLimit.toDouble() > Int.MAX_VALUE ||
+                rawLimit.toDouble() != rawLimit.toInt().toDouble()
+            ) {
+                call.reject("limit must be a positive 32-bit integer", "INVALID_ARGUMENT")
+                return
+            }
+            rawLimit.toInt()
         }
         // The content://sms query is delegated to MessagesReader so it can be
         // exercised by an instrumented androidTest without a Capacitor Bridge
@@ -144,8 +154,13 @@ class MessagesPlugin : Plugin() {
                     },
                 )
             }
+        } catch (error: SecurityException) {
+            // error-policy:J1 Permission may be revoked during the provider query.
+            call.reject("READ_SMS permission is required", "PERMISSION_DENIED", error)
+            return
         } catch (error: IllegalStateException) {
-            call.reject(error.message ?: "SMS provider returned no cursor")
+            // error-policy:J1 A provider failure rejects instead of returning an empty inbox.
+            call.reject(error.message ?: "SMS provider returned no cursor", "PROVIDER_UNAVAILABLE", error)
             return
         }
         val result = JSObject()
@@ -169,7 +184,7 @@ class MessagesPlugin : Plugin() {
 
         val result = JSObject()
         result.put("messageUri", inserted.toString())
-        result.put("messageId", inserted.lastPathSegment ?: "")
+        result.put("messageId", inserted.lastPathSegment ?: throw IllegalStateException("SMS provider returned a URI without an id"))
         return result
     }
 }

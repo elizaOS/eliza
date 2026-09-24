@@ -13,7 +13,7 @@ This plugin does **not** register elizaOS actions, providers, evaluators, or ser
 | Method | Description |
 |---|---|
 | `Messages.sendSms({ address, body })` | Sends an SMS (multipart if needed); waits for radio confirmation; persists to Android sent folder. Returns `{ messageId, messageUri }`. |
-| `Messages.listMessages({ limit?, threadId? })` | Reads up to `limit` messages (default 100, max 500) from the system SMS store, optionally filtered by `threadId`. Returns `{ messages: SmsMessageSummary[] }`. |
+| `Messages.listMessages({ limit?, threadId? })` | Reads every matching message unless a positive integer `limit` is supplied from the system SMS store, optionally filtered by `threadId`. Returns `{ messages: SmsMessageSummary[] }`. |
 
 ## Layout
 
@@ -76,10 +76,11 @@ Both permissions are declared in `android/src/main/AndroidManifest.xml`. The hos
 ## Conventions / gotchas
 
 - **Android only.** The web fallback exists solely to satisfy Capacitor's plugin registration contract. Do not add real web logic here.
-- **Instrumented test (issue #9967).** The `content://sms` query lives in `MessagesReader`; an on-device read test (`android/src/androidTest/.../MessagesReaderInstrumentedTest.kt`, `GrantPermissionRule`) reads back a marker SMS. It is **emulator-orchestrated** (`adb -s <emulator> emu sms send <number> "…Eliza-9967-SMS-roundtrip…"` then `connectedDebugAndroidTest`/`am instrument`) and `Assume`-skips when the marker is absent, so it never reads a real device's private inbox. `listMessages` delegates to the reader (JS shape unchanged).
+- **Instrumented tests.** `MessagesReaderInstrumentedTest` inserts and removes only test-owned SMS rows, then exercises complete reads beyond 500 records and explicit limits. `SmsSendRequestInstrumentedTest` delivers real PendingIntents to exercise multipart completion, failure, duplicate receipts, timeout and teardown. Run `:elizaos-capacitor-messages:connectedDebugAndroidTest` from the Android host. Modem injection is a separate end-to-end check: on Cuttlefish use `cvd_send_sms --instance_number=<instance> --sender_number=+15555550100 <marker>` in the owning container, then read back the marker through the installed app bridge.
 - **Multipart SMS.** `sendSms` uses `SmsManager.divideMessage` and tracks one `BroadcastReceiver` delivery intent per part; the call resolves only after all parts confirm. Do not assume a single `sendTextMessage` call for long messages.
 - **Delivery receipt vs. sent receipt.** The BroadcastReceiver listens for `SENT` status only. Delivery receipts (`DELIVERED`) are not tracked.
-- **Limit clamp.** `listMessages` rejects if `limit` is outside `[1, 500]`. The Android SMS provider can be large; do not request unbounded results.
+- **Complete reads.** Omitted limits return all matching records. Explicit limits must be positive 32-bit integers, matching Android cursor indexing; malformed values reject before provider access.
+- **Send settlement.** Sending requires the default SMS role because this API returns the persisted row. Each request owns its sent receivers and a 60-second confirmation deadline. Timeout or teardown reports unknown send status and never retries; radio success followed by persistence failure is explicitly identified as already sent.
 - **Plugin name.** The Capacitor plugin name is `"ElizaMessages"` (set in both `index.ts` and the Kotlin `@CapacitorPlugin` annotation). The npm package name is `@elizaos/capacitor-messages`. The directory is `plugin-native-messages`. All three differ — keep them in sync if renaming.
 - **Build output.** `tsc` emits to `dist/esm/`; rollup then bundles `dist/esm/index.js` into `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js`. The `exports` field in package.json uses `dist/esm/index.js` for ESM consumers and `dist/plugin.cjs.js` for CJS.
 - **Peer dep.** `@capacitor/core ^8.3.1` is a peer dependency; the host Capacitor app owns the exact version.

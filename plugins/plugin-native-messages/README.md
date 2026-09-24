@@ -4,7 +4,7 @@ Android SMS/MMS bridge for elizaOS — a Capacitor plugin that lets an Eliza age
 
 ## What it does
 
-- **Send SMS** — dispatches single or multipart text messages using `SmsManager`, waits for radio-layer delivery confirmation, and writes the sent message to the Android sent folder.
+- **Send SMS** — dispatches single or multipart text messages using `SmsManager`, waits for radio-layer sent confirmation, and writes the sent message to the Android sent folder.
 - **Read SMS** — queries the system `content://sms` provider and returns messages sorted newest-first, with optional filtering by conversation thread.
 
 The web/browser fallback reports messaging unavailable (`sendSms` throws; `listMessages` returns an empty list). This plugin is meaningful only on Android.
@@ -44,13 +44,15 @@ const result = await Messages.sendSms({
 // result: { messageId: string, messageUri: string }
 ```
 
+The host must be the default SMS app so it can persist the returned sent record. Missing role is rejected before dispatch. A missing sent receipt times out after 60 seconds with unknown send status; do not automatically retry. Radio confirmation does not prove delivery to the recipient.
+
 Long messages are automatically split into multipart SMS by `SmsManager.divideMessage`. The call resolves only after every part has been confirmed by the radio layer.
 
 ### `Messages.listMessages(options?)`
 
 ```typescript
 const { messages } = await Messages.listMessages({
-  limit: 50,       // 1–500, default 100
+  limit: 50,       // optional positive integer; omit for all matching messages
   threadId: "42",  // optional — filter to one conversation
 });
 // messages: SmsMessageSummary[]

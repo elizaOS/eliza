@@ -1,3 +1,4 @@
+/** Exercises browser SMS input rejection without invoking an Android radio. */
 import { describe, expect, it } from "vitest";
 
 import type { ListMessagesOptions, SendSmsOptions } from "./definitions";
@@ -63,7 +64,8 @@ describe("MessagesWeb fallback", () => {
   it.each([
     0,
     -1,
-    501,
+    1.5,
+    2_147_483_648,
     "25",
     null,
     { valueOf: () => 25 },
@@ -74,14 +76,14 @@ describe("MessagesWeb fallback", () => {
 
     await expect(
       messages.listMessages({ limit } as unknown as ListMessagesOptions),
-    ).rejects.toThrow("limit must be between 1 and 500");
+    ).rejects.toThrow("limit must be a positive 32-bit integer");
   });
 
   it("returns an empty message list for valid web fallback queries", async () => {
     const messages = new MessagesWeb();
 
     await expect(
-      messages.listMessages({ limit: 25.9, threadId: "../../thread" }),
+      messages.listMessages({ limit: 501, threadId: "../../thread" }),
     ).resolves.toEqual({ messages: [] });
   });
 
