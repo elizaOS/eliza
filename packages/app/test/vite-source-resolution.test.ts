@@ -62,6 +62,38 @@ async function createAppResolutionServer(
 }
 
 describe("workspace package resolution", () => {
+  test.each([
+    [
+      "@elizaos/plugin-elizacloud/steward-session-client",
+      "plugins/plugin-elizacloud/src/steward-session-client/index.ts",
+    ],
+    [
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract",
+      "plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts",
+    ],
+    [
+      "@elizaos/plugin-assistant/text/template-rendering",
+      "plugins/plugin-assistant/src/text/template-rendering.ts",
+    ],
+  ])(
+    "resolves %s from its canonical source export",
+    async (specifier, source) => {
+      const { server } = await createAppResolutionServer("build");
+      try {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            specifier,
+            path.resolve(appRoot, "src/main.tsx"),
+          );
+        expect(resolved?.id).toBe(
+          normalizePath(path.resolve(appRoot, "../..", source)),
+        );
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test.each(["contacts", "messages", "phone"])(
     "resolves the %s host bridge from source in production",
     async (name) => {

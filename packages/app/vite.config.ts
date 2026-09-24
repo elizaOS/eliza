@@ -750,9 +750,9 @@ function resolvePackageExportTarget(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  for (const condition of ["source", "import", "default"]) {
-    const target = record[condition];
-    if (typeof target === "string") return target;
+  for (const condition of ["eliza-source", "source", "import", "default"]) {
+    const target = resolvePackageExportTarget(record[condition]);
+    if (target !== null) return target;
   }
   return null;
 }
