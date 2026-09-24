@@ -4911,6 +4911,7 @@ function calendarNextEventReadReceipt(
     event?.id ?? null,
   ]);
   const version = calendarEffectId("calendar-next-event-version-v1", [
+    JSON.stringify(context.readScope),
     context.calendarFeedState,
     event?.externalId ?? null,
     event?.status ?? null,
@@ -5464,9 +5465,7 @@ const calendarAction: CalendarHandlerAction = {
         const fallback = formatNextEventContext(context);
         return respond({
           success: true,
-          text: await renderReply("next_event", fallback, {
-            event: context,
-          }),
+          text: await renderReply("next_event", fallback),
           effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });

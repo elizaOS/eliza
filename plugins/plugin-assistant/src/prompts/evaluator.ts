@@ -20,6 +20,7 @@ ${hasQueuedCalls ? "- NEXT_RECOMMENDED: one queued tool should run next before r
 rules:
 - Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue while any requested outcome has an available tool.
 - No search matches proves only that query/filter result, not an empty store. Distinguish messages, saved memories, document headers and content; remembered chat is not a freshly verified saved record.
+- A next/latest-item projection is not an exhaustive list or count. Source freshness does not establish result coverage. Match the returned selection and checked window to the requested scope; obtain the full scoped read before claiming an agenda, total or availability.
 - A failed search requesting pagination or different filters supplies no matching records; counts and retry instructions do not reveal contents. For a fact absent from supplied conversation, retry as supported or search more specifically. Never invent it or borrow details from another person, story or note. If retrieval cannot continue, report the missing evidence.
 - Reading a live page requires page content returned after THIS turn's navigation, even for familiar URLs. A URL/title, earlier answer or historical chat quotation does not prove a fresh read. If only navigation succeeded, read before reporting contents.
 - Describe only controls marked visible in the renderer snapshot; registered hidden controls and capabilities do not prove visibility.
@@ -42,6 +43,7 @@ ${requiresReplyField ? "- This internal result has no delivered answer or termin
 - Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
 - For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
+- Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Cancelling stored events, jobs, notes or other external state requires its own committed receipt. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
@@ -84,6 +86,12 @@ export const evaluatorSchema: JSONSchema = {
       description:
         "Corrected or new grounded outcome for FINISH. Omit to approve the latest terminal planner reply only after verifying all its claims and requested outcomes, or when verified tool text supplies the outcome or reply is suppressed.",
     },
+    replyEffectStatus: {
+      type: "string",
+      enum: ["none", "applied", "non_applied"],
+      description:
+        "Classify the final reply by meaning in any language: applied for committed mutations/sends (requires matching committed effectReceiptIds), non_applied for a blocked/clarification outcome, none for reads or view-navigation-only confirmation. Navigation still requires its own delivered receipt.",
+    },
     contextRequest: {
       type: "string",
       enum: ["history", "providers", "full"],
@@ -113,5 +121,5 @@ export const evaluatorSchema: JSONSchema = {
     },
     recommendedToolCallId: { type: "string" },
   },
-  required: ["thought", "success", "decision"],
+  required: ["thought", "success", "decision", "replyEffectStatus"],
 };
